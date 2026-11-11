@@ -412,6 +412,18 @@
           ],
           [
             "bubblewrap sandbox under the real kernel",
+            "a hidden home file the host replaces by rename mid-session stays unreadable"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hidden socket the host unlinks and creates again mid-session refuses a connection"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a socket under the host's /tmp, there at the start or created mid-session, is unreachable"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
             "a granted path does not grant its sibling that shares the prefix"
           ],
           [
@@ -433,6 +445,13 @@
               "the host's Docker socket refuses a connection from inside"
             ],
             "reason": "Skips at runtime (ctx.skip) when no Docker socket exists that this user can connect to outside the sandbox, so the refusal inside would prove nothing. A hosted runner whose user is in the docker group runs it; a skip is recorded, a failure is not accepted. The hidden-socket leg proves the mechanism on every host."
+          },
+          {
+            "test": [
+              "bubblewrap sandbox under the real kernel",
+              "a name resolves through DNS inside the sandbox"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when this host cannot resolve a name outside the sandbox either (no resolver or no network), so a failure inside would prove nothing. A skip is recorded, a failure is not accepted."
           }
         ],
         "notRequired": []

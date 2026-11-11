@@ -20,6 +20,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -106,7 +107,9 @@ describe.skipIf(!probe.ok)(
   // One title on every host, so a skipped run reports the same ids (#4772).
   'bubblewrap sandbox under the real kernel',
   () => {
-    const makeTempDir = trackTempDirs({ lifetime: 'file' });
+    // Outside /tmp: the sandbox has its own /tmp, so a fixture there would
+    // be absent inside except for the mounted grants.
+    const makeTempDir = trackTempDirs({ lifetime: 'file', base: '/var/tmp' });
     const provider = createBubblewrapConfinementProvider();
     let root: string;
     let home: string;
@@ -192,6 +195,64 @@ describe.skipIf(!probe.ok)(
         stderr: result.stderr,
         launch,
       };
+    }
+
+    /**
+     * Starts `script` under the production sandbox and resolves once it
+     * prints `READY`, so the host can change something while it runs. The
+     * script waits for the file `go` names to exist (in the workspace, which
+     * both sides see) before it goes on. `done` settles when it exits.
+     */
+    async function confinedLive(workspace: string, script: string) {
+      const launch = await prepareConfinedClaudeLaunch({
+        workspace: canonicalPath(workspace),
+        configDir: join(stationHome, 'confined-homes', 'claude'),
+        stationHome,
+        home,
+        stationRoot,
+        mechanism: 'bubblewrap',
+      });
+      const go = join(workspace, `go-${process.pid}-${Date.now()}`);
+      const wrapped = confinedClaudeSpawn(provider, launch).wrap({
+        command: '/bin/sh',
+        args: [
+          '-c',
+          `echo READY; while [ ! -e "${go}" ]; do sleep 0.05; done; ${script}`,
+        ],
+        cwd: workspace,
+        env: { PATH: '/usr/bin:/bin', HOME: home, ...GIT_IDENTITY },
+      });
+      const child = spawn(wrapped.command, wrapped.args, {
+        cwd: wrapped.cwd,
+        env: wrapped.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk;
+      });
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk;
+      });
+      const done = new Promise<{
+        status: number | null;
+        stdout: string;
+        stderr: string;
+      }>((resolve) =>
+        child.on('close', (status) => {
+          launch.cleanup();
+          rmSync(go, { force: true });
+          resolve({ status, stdout, stderr });
+        }),
+      );
+      for (let waited = 0; !stdout.includes('READY'); waited += 25) {
+        if (waited > 15_000 || child.exitCode !== null)
+          throw new Error(`the sandbox did not start: ${stderr}`);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return { release: () => writeFileSync(go, ''), done };
     }
 
     test('the probe passed on this host, and the provider a start consults reports the sandbox available', () => {
@@ -366,8 +427,8 @@ describe.skipIf(!probe.ok)(
       for (const [secret, refusal] of [
         // Inside a hidden directory: an empty mount, so no such file.
         [join(home, '.ssh', 'id_ed25519'), /No such file or directory/],
-        // A hidden file: `/dev/null` on a nodev mount, so opening it fails.
-        [join(home, '.netrc'), /Permission denied/],
+        // A hidden file: the shadowed home has no such entry.
+        [join(home, '.netrc'), /No such file or directory/],
         [join(stationHome, 'station.sqlite'), /No such file or directory/],
       ] as const) {
         const result = await confined(worktree, `cat "${secret}"`);
@@ -687,6 +748,120 @@ describe.skipIf(!probe.ok)(
       expect(readFileSync(join(scratch, '.git'), 'utf8')).toBe(
         'not a git pointer\n',
       );
+    });
+
+    /** Listens on a Unix socket at `path`, replacing whatever is there. */
+    async function listen(path: string) {
+      rmSync(path, { force: true });
+      // The clients only connect; each is closed at once.
+      const server = createServer((socket) => {
+        socket.on('error', () => undefined);
+        socket.destroy();
+      });
+      await new Promise((resolve) => server.listen(path, () => resolve(null)));
+      return server;
+    }
+
+    function connectsFromHost(path: string): boolean {
+      return (
+        spawnSync('/bin/sh', ['-c', connectScript(path)], {
+          windowsHide: true,
+        }).status === 0
+      );
+    }
+
+    test('a hidden home file the host replaces by rename mid-session stays unreadable', async () => {
+      const credentials = join(home, '.git-credentials');
+      writeFileSync(credentials, 'https://u:OLDTOKEN@example.com\n');
+      writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = visible\n');
+      const live = await confinedLive(
+        worktree,
+        `cat "${credentials}"; echo "status=$?"; cat "${home}/.gitconfig"`,
+      );
+      // What git credential-store does: write a lock file, rename it over.
+      writeFileSync(`${credentials}.lock`, 'https://u:NEWTOKEN@example.com\n');
+      renameSync(`${credentials}.lock`, credentials);
+      live.release();
+      const result = await live.done;
+      expect(readFileSync(credentials, 'utf8')).toContain('NEWTOKEN');
+      expect(result.stdout).not.toContain('TOKEN');
+      expect(result.stdout).toMatch(/status=[1-9]/);
+      // Positive control: the home folder itself is visible inside.
+      expect(result.stdout).toContain('name = visible');
+    });
+
+    test('a hidden socket the host unlinks and creates again mid-session refuses a connection', async () => {
+      // A socket a `unix://` DOCKER_HOST names: hidden as a file, so its
+      // directory is shadowed.
+      const dockerd = join(root, 'dockerd');
+      mkdirSync(dockerd, { recursive: true });
+      const socket = join(dockerd, 'docker.sock');
+      const control = join(outside, 'live-control.sock');
+      const previous = process.env.DOCKER_HOST;
+      process.env.DOCKER_HOST = `unix://${socket}`;
+      const servers = [await listen(socket), await listen(control)];
+      try {
+        const live = await confinedLive(
+          worktree,
+          `${connectScript(socket)}; echo "before=$?"; ${connectScript(control)}; echo "control=$?"`,
+        );
+        // The daemon restarts: its socket is unlinked and created again.
+        await new Promise((resolve) => servers[0]!.close(resolve));
+        servers[0] = await listen(socket);
+        expect(connectsFromHost(socket)).toBe(true);
+        live.release();
+        const result = await live.done;
+        expect(result.stdout).toMatch(/before=3/);
+        expect(result.stdout).toMatch(/control=0/);
+      } finally {
+        if (previous === undefined) delete process.env.DOCKER_HOST;
+        else process.env.DOCKER_HOST = previous;
+        for (const server of servers) server.close();
+      }
+    });
+
+    test("a socket under the host's /tmp, there at the start or created mid-session, is unreachable", async () => {
+      const early = `/tmp/station-bwrap-${process.pid}-early.sock`;
+      const late = `/tmp/station-bwrap-${process.pid}-late.sock`;
+      const control = join(outside, 'tmp-control.sock');
+      const servers = [await listen(early), await listen(control)];
+      try {
+        const live = await confinedLive(
+          worktree,
+          [early, late, control]
+            .map((path, index) => `${connectScript(path)}; echo "s${index}=$?"`)
+            .join('; '),
+        );
+        servers.push(await listen(late));
+        expect(connectsFromHost(early)).toBe(true);
+        expect(connectsFromHost(late)).toBe(true);
+        live.release();
+        const result = await live.done;
+        expect(result.stdout).toMatch(/s0=3/);
+        expect(result.stdout).toMatch(/s1=3/);
+        expect(result.stdout).toMatch(/s2=0/);
+      } finally {
+        for (const server of servers) server.close();
+        for (const path of [early, late]) rmSync(path, { force: true });
+      }
+    });
+
+    test('a name resolves through DNS inside the sandbox', async (ctx) => {
+      const lookup = `"${process.execPath}" -e "require('dns').resolve4('example.com',(e)=>{if(e){console.error(e.code);process.exit(3)}process.exit(0)})"`;
+      const host = spawnSync('/bin/sh', ['-c', lookup], {
+        encoding: 'utf8',
+        timeout: 20_000,
+        windowsHide: true,
+      });
+      if (host.status !== 0) {
+        process.stderr.write(
+          `\n[bubblewrap.process] SKIPPED DNS inside: this host cannot resolve a name outside the sandbox either (${host.stderr.trim() || `exit ${host.status}`})\n`,
+        );
+        ctx.skip('this host cannot resolve a name outside the sandbox');
+      }
+      const inside = await confined(worktree, lookup);
+      expect(inside.stderr).toBe('');
+      expect(inside.status).toBe(0);
     });
 
     test('a granted path does not grant its sibling that shares the prefix', async () => {

@@ -3,8 +3,8 @@
   "numPassedTestSuites": 2,
   "numFailedTestSuites": 0,
   "numPendingTestSuites": 0,
-  "numTotalTests": 49,
-  "numPassedTests": 49,
+  "numTotalTests": 53,
+  "numPassedTests": 53,
   "numFailedTests": 0,
   "numPendingTests": 0,
   "numTodoTests": 0,
@@ -24,7 +24,7 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1794410903394,
+  "startTime": 1794414147920,
   "success": true,
   "testResults": [
     {
@@ -34,7 +34,7 @@
           "fullName": "bubblewrap sandbox under the real kernel the probe passed on this host, and the provider a start consults reports the sandbox available",
           "status": "passed",
           "title": "the probe passed on this host, and the provider a start consults reports the sandbox available",
-          "duration": 9.340310999999929,
+          "duration": 11.551731000000018,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -44,7 +44,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a write in the workspace is allowed; a write outside it is denied",
           "status": "passed",
           "title": "a write in the workspace is allowed; a write outside it is denied",
-          "duration": 15.671672000000058,
+          "duration": 16.530926000000022,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -54,7 +54,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree's git metadata is read-only: status works, staging and committing are refused (a stated difference)",
           "status": "passed",
           "title": "a linked worktree's git metadata is read-only: status works, staging and committing are refused (a stated difference)",
-          "duration": 19.56904899999995,
+          "duration": 10.49178100000006,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -64,7 +64,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write a shared hook",
           "status": "passed",
           "title": "a linked worktree may not write a shared hook",
-          "duration": 13.18085300000007,
+          "duration": 17.33511699999997,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -74,7 +74,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write the shared config",
           "status": "passed",
           "title": "a linked worktree may not write the shared config",
-          "duration": 11.07524699999999,
+          "duration": 11.351267000000007,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -84,7 +84,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write shared info",
           "status": "passed",
           "title": "a linked worktree may not write shared info",
-          "duration": 13.123477999999977,
+          "duration": 18.182518000000073,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -94,7 +94,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not move main",
           "status": "passed",
           "title": "a linked worktree may not move main",
-          "duration": 10.401364000000058,
+          "duration": 8.79431199999999,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -104,7 +104,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not create another branch",
           "status": "passed",
           "title": "a linked worktree may not create another branch",
-          "duration": 10.399947999999995,
+          "duration": 14.643117999999959,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -114,7 +114,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not repoint the .git pointer file",
           "status": "passed",
           "title": "a linked worktree may not repoint the .git pointer file",
-          "duration": 8.847472999999923,
+          "duration": 12.26866999999993,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -124,7 +124,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not remove the .git pointer file",
           "status": "passed",
           "title": "a linked worktree may not remove the .git pointer file",
-          "duration": 10.343155000000024,
+          "duration": 27.279133,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -134,7 +134,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write config.worktree",
           "status": "passed",
           "title": "a linked worktree may not write config.worktree",
-          "duration": 9.614688999999998,
+          "duration": 16.248334,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -144,7 +144,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not repoint its commondir",
           "status": "passed",
           "title": "a linked worktree may not repoint its commondir",
-          "duration": 7.798252000000048,
+          "duration": 13.11848699999996,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -154,7 +154,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write object alternates",
           "status": "passed",
           "title": "a linked worktree may not write object alternates",
-          "duration": 7.854002999999921,
+          "duration": 11.981327999999962,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -164,7 +164,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot write a hook",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot write a hook",
-          "duration": 7.711876999999959,
+          "duration": 13.191948000000025,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -174,7 +174,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot write its config",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot write its config",
-          "duration": 6.923827000000074,
+          "duration": 12.099081999999953,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -184,7 +184,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot write info",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot write info",
-          "duration": 7.287539000000038,
+          "duration": 11.161801999999966,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -194,7 +194,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot add a commondir redirect",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot add a commondir redirect",
-          "duration": 9.294936000000007,
+          "duration": 11.941326000000004,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -204,7 +204,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot add object alternates",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot add object alternates",
-          "duration": 7.212705000000028,
+          "duration": 15.470559999999978,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -214,7 +214,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot repoint another worktree's gitdir",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot repoint another worktree's gitdir",
-          "duration": 6.684906999999953,
+          "duration": 11.005588999999986,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -224,7 +224,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot add a submodule's config",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot add a submodule's config",
-          "duration": 7.985920999999962,
+          "duration": 13.555042999999955,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -234,7 +234,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot create a branch",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot create a branch",
-          "duration": 8.20559000000003,
+          "duration": 12.292586999999912,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -244,7 +244,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot rename the .git",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot rename the .git",
-          "duration": 9.369603000000097,
+          "duration": 12.724642000000017,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -254,7 +254,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot remove the .git",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot remove the .git",
-          "duration": 10.08869500000003,
+          "duration": 20.18712199999993,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -264,7 +264,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace still has a writable workspace",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace still has a writable workspace",
-          "duration": 5.632144999999923,
+          "duration": 7.773739999999975,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -274,7 +274,7 @@
           "fullName": "bubblewrap sandbox under the real kernel secret stores and Station data cannot be read; Station installs stay readable",
           "status": "passed",
           "title": "secret stores and Station data cannot be read; Station installs stay readable",
-          "duration": 22.950794000000087,
+          "duration": 30.79340699999989,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -284,7 +284,7 @@
           "fullName": "bubblewrap sandbox under the real kernel an SSH key does not reveal its content, however it is spelled",
           "status": "passed",
           "title": "an SSH key does not reveal its content, however it is spelled",
-          "duration": 26.207871999999952,
+          "duration": 42.52664400000003,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -294,7 +294,7 @@
           "fullName": "bubblewrap sandbox under the real kernel AWS credentials does not reveal its content, however it is spelled",
           "status": "passed",
           "title": "AWS credentials does not reveal its content, however it is spelled",
-          "duration": 23.992847000000097,
+          "duration": 42.03008699999987,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -304,7 +304,7 @@
           "fullName": "bubblewrap sandbox under the real kernel the gh login does not reveal its content, however it is spelled",
           "status": "passed",
           "title": "the gh login does not reveal its content, however it is spelled",
-          "duration": 21.745613999999932,
+          "duration": 33.250191000000086,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -314,7 +314,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a netrc file does not reveal its content, however it is spelled",
           "status": "passed",
           "title": "a netrc file does not reveal its content, however it is spelled",
-          "duration": 22.39212100000009,
+          "duration": 40.13677800000005,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -324,7 +324,7 @@
           "fullName": "bubblewrap sandbox under the real kernel the operator's Claude credential file does not reveal its content, however it is spelled",
           "status": "passed",
           "title": "the operator's Claude credential file does not reveal its content, however it is spelled",
-          "duration": 25.298861999999986,
+          "duration": 39.42667299999994,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -334,7 +334,7 @@
           "fullName": "bubblewrap sandbox under the real kernel Station's runtime home does not reveal its content, however it is spelled",
           "status": "passed",
           "title": "Station's runtime home does not reveal its content, however it is spelled",
-          "duration": 22.43974700000001,
+          "duration": 39.03920300000004,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -344,7 +344,7 @@
           "fullName": "bubblewrap sandbox under the real kernel Station's root, outside the runtime home does not reveal its content, however it is spelled",
           "status": "passed",
           "title": "Station's root, outside the runtime home does not reveal its content, however it is spelled",
-          "duration": 19.24275399999999,
+          "duration": 32.23461800000018,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -354,7 +354,7 @@
           "fullName": "bubblewrap sandbox under the real kernel the operator's Claude config is not writable; the Station-owned one is",
           "status": "passed",
           "title": "the operator's Claude config is not writable; the Station-owned one is",
-          "duration": 15.151250000000005,
+          "duration": 26.286768000000166,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -364,7 +364,7 @@
           "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot write its settings",
           "status": "passed",
           "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot write its settings",
-          "duration": 6.244527000000062,
+          "duration": 8.919025000000147,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -374,7 +374,7 @@
           "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot add local settings",
           "status": "passed",
           "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot add local settings",
-          "duration": 5.824189000000047,
+          "duration": 17.17944599999987,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -384,7 +384,7 @@
           "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot rename it away",
           "status": "passed",
           "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot rename it away",
-          "duration": 4.572966999999949,
+          "duration": 9.501708999999892,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -394,7 +394,7 @@
           "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot remove it",
           "status": "passed",
           "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot remove it",
-          "duration": 4.086003000000005,
+          "duration": 9.52566899999988,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -404,7 +404,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a new engine configuration directory can be created in the workspace: a stated difference from Seatbelt",
           "status": "passed",
           "title": "a new engine configuration directory can be created in the workspace: a stated difference from Seatbelt",
-          "duration": 5.5147269999999935,
+          "duration": 14.276982000000089,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -414,7 +414,7 @@
           "fullName": "bubblewrap sandbox under the real kernel the session temp directory is writable and the confined env points at it",
           "status": "passed",
           "title": "the session temp directory is writable and the confined env points at it",
-          "duration": 4.669050999999968,
+          "duration": 10.492489999999862,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -424,7 +424,7 @@
           "fullName": "bubblewrap sandbox under the real kernel processes outside the sandbox are invisible and cannot be signalled",
           "status": "passed",
           "title": "processes outside the sandbox are invisible and cannot be signalled",
-          "duration": 10.896536000000083,
+          "duration": 30.387269999999944,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -434,7 +434,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a nested user namespace cannot be created inside, so the mounts cannot be rearranged",
           "status": "passed",
           "title": "a nested user namespace cannot be created inside, so the mounts cannot be rearranged",
-          "duration": 6.274068999999827,
+          "duration": 30.400311999999985,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -444,7 +444,7 @@
           "fullName": "bubblewrap sandbox under the real kernel the confined process runs with no_new_privs, so a setuid program gains nothing",
           "status": "passed",
           "title": "the confined process runs with no_new_privs, so a setuid program gains nothing",
-          "duration": 5.821731,
+          "duration": 11.286305999999968,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -454,7 +454,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a hidden file cannot be hard-linked into the workspace",
           "status": "passed",
           "title": "a hidden file cannot be hard-linked into the workspace",
-          "duration": 9.458229000000074,
+          "duration": 22.230434999999943,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -464,7 +464,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a hard link made outside the sandbox beforehand is readable: an accepted residual",
           "status": "passed",
           "title": "a hard link made outside the sandbox beforehand is readable: an accepted residual",
-          "duration": 6.516029999999773,
+          "duration": 7.650818999999956,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -474,7 +474,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a listening socket at a hidden path refuses a connection from inside",
           "status": "passed",
           "title": "a listening socket at a hidden path refuses a connection from inside",
-          "duration": 55.12294100000008,
+          "duration": 70.06674300000009,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -484,7 +484,7 @@
           "fullName": "bubblewrap sandbox under the real kernel the host's Docker socket refuses a connection from inside",
           "status": "passed",
           "title": "the host's Docker socket refuses a connection from inside",
-          "duration": 34.54388000000017,
+          "duration": 41.802329999999984,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -494,7 +494,47 @@
           "fullName": "bubblewrap sandbox under the real kernel an existing .git is read-only even when its layout cannot be read",
           "status": "passed",
           "title": "an existing .git is read-only even when its layout cannot be read",
-          "duration": 5.5771870000000945,
+          "duration": 9.58775300000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a hidden home file the host replaces by rename mid-session stays unreadable",
+          "status": "passed",
+          "title": "a hidden home file the host replaces by rename mid-session stays unreadable",
+          "duration": 65.22213499999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a hidden socket the host unlinks and creates again mid-session refuses a connection",
+          "status": "passed",
+          "title": "a hidden socket the host unlinks and creates again mid-session refuses a connection",
+          "duration": 91.60836399999994,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a socket under the host's /tmp, there at the start or created mid-session, is unreachable",
+          "status": "passed",
+          "title": "a socket under the host's /tmp, there at the start or created mid-session, is unreachable",
+          "duration": 176.83786599999985,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a name resolves through DNS inside the sandbox",
+          "status": "passed",
+          "title": "a name resolves through DNS inside the sandbox",
+          "duration": 56.14552200000003,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -504,7 +544,7 @@
           "fullName": "bubblewrap sandbox under the real kernel a granted path does not grant its sibling that shares the prefix",
           "status": "passed",
           "title": "a granted path does not grant its sibling that shares the prefix",
-          "duration": 4.778011000000106,
+          "duration": 20.38567000000012,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -514,14 +554,14 @@
           "fullName": "bubblewrap sandbox under the real kernel the installed Claude Code answers its handshake from inside the sandbox, and the provider observes it confined",
           "status": "passed",
           "title": "the installed Claude Code answers its handshake from inside the sandbox, and the provider observes it confined",
-          "duration": 830.0409339999999,
+          "duration": 1600.7761179999998,
           "failureMessages": [],
           "meta": {},
           "tags": []
         }
       ],
-      "startTime": 1794410904071,
-      "endTime": 1794410905505.041,
+      "startTime": 1794414148892,
+      "endTime": 1794414151855.7761,
       "status": "passed",
       "message": "",
       "name": "/station/src-server/security/confinement/__tests__/bubblewrap.process.test.ts"

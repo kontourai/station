@@ -41,7 +41,13 @@ import {
   seatbeltHiddenPaths,
 } from '../seatbelt.js';
 
-const makeTempDir = trackTempDirs();
+/**
+ * Outside `/tmp` on Linux: the sandbox replaces `/tmp` with its own, so a
+ * layout there would need no shadowing at all.
+ */
+const makeTempDir = trackTempDirs(
+  process.platform === 'linux' ? { base: '/var/tmp' } : {},
+);
 
 /** A host layout on disk: the arguments are built from what exists. */
 interface Layout {
@@ -100,6 +106,7 @@ function grantsFor(at: Layout): ConfinementSpawnSpec['grants'] {
     stationRoot: at.stationRoot,
     stationHome: at.stationHome,
     runtimeDir: null,
+    env: {},
   });
   return bubblewrapGrants({
     workspace: at.workspace,
@@ -301,6 +308,7 @@ describe('bubblewrap grants', () => {
     const hidden = bubblewrapHiddenPaths({
       ...options,
       runtimeDir: '/run/user/1000',
+      env: {},
     }).hidden;
     // Pinned independently of the builder: each path, symlink-resolved as
     // every confinement path is (/var/run links to /run on most hosts, so
@@ -316,12 +324,34 @@ describe('bubblewrap grants', () => {
       '/run/podman',
       '/run/containerd',
       '/run/dbus/system_bus_socket',
-      '/tmp/.X11-unix',
     ].map(canonicalPath);
     expect(hidden).toEqual([...new Set(expected)]);
     expect(
-      bubblewrapHiddenPaths({ ...options, runtimeDir: null }).hidden,
+      bubblewrapHiddenPaths({ ...options, runtimeDir: null, env: {} }).hidden,
     ).not.toContain(canonicalPath('/run/user/1000'));
+  });
+
+  test('also hides a runtime directory named by XDG_RUNTIME_DIR and a unix:// DOCKER_HOST socket', () => {
+    const hidden = bubblewrapHiddenPaths({
+      home: '/home/op',
+      stationRoot: '/home/op/.station',
+      stationHome: '/home/op/.station/instances/a',
+      runtimeDir: null,
+      env: {
+        XDG_RUNTIME_DIR: '/srv/xdg-op',
+        DOCKER_HOST: 'unix:///srv/custom/docker.sock',
+      },
+    }).hidden;
+    expect(hidden).toContain(canonicalPath('/srv/xdg-op'));
+    expect(hidden).toContain(canonicalPath('/srv/custom/docker.sock'));
+    // A TCP DOCKER_HOST names no path.
+    expect(
+      bubblewrapHiddenPaths({
+        home: '/home/op',
+        runtimeDir: null,
+        env: { DOCKER_HOST: 'tcp://127.0.0.1:2375' },
+      }).hidden.some((path) => path.includes('2375')),
+    ).toBe(false);
   });
 
   test('an existing .git is read-only even when its layout cannot be read', () => {
@@ -370,6 +400,8 @@ describe('bubblewrap arguments', () => {
       '/dev',
       '--proc',
       '/proc',
+      '--tmpfs',
+      '/tmp',
     ]);
     expect(args.slice(-5)).toEqual([
       '--chdir',
@@ -384,36 +416,84 @@ describe('bubblewrap arguments', () => {
     });
   });
 
-  test('hide a directory under a read-only empty mount and a file under /dev/null; skip what does not exist', () => {
+  test('shadow the home folder: every entry the host has is mounted back read-only except the hidden ones, links re-created', () => {
+    writeFileSync(join(where.home, '.gitconfig'), '[user]\n');
+    mkdirSync(join(where.home, 'notes'));
+    symlinkSync(join(where.home, 'notes'), join(where.home, 'notes-link'));
+    mkdirSync(join(where.home, '.config', 'gh'), { recursive: true });
+    mkdirSync(join(where.home, '.config', 'git'));
     const args = bubblewrapArgs(specFor(where));
-    const ssh = join(where.home, '.ssh');
-    expect(at(args, '--tmpfs', ssh)).toBeGreaterThan(0);
-    expect(at(args, '--remount-ro', ssh)).toBeGreaterThan(
-      at(args, '--bind', where.workspace, where.workspace),
+    const home = at(args, '--tmpfs', where.home);
+    expect(home).toBeGreaterThan(0);
+    for (const visible of ['.gitconfig', 'notes'].map((name) =>
+      join(where.home, name),
+    ))
+      expect(at(args, '--ro-bind', visible, visible), visible).toBeGreaterThan(
+        home,
+      );
+    expect(
+      at(
+        args,
+        '--symlink',
+        join(where.home, 'notes'),
+        join(where.home, 'notes-link'),
+      ),
+    ).toBeGreaterThan(home);
+    // A directory on the way to a hidden one is shadowed the same way.
+    const config = join(where.home, '.config');
+    expect(at(args, '--tmpfs', config)).toBeGreaterThan(home);
+    const git = join(config, 'git');
+    expect(at(args, '--ro-bind', git, git)).toBeGreaterThan(0);
+    // The hidden entries are not in the sandbox at all: no mount names them.
+    for (const hidden of [
+      join(where.home, '.ssh'),
+      join(where.home, '.netrc'),
+      join(where.home, '.station'),
+      join(config, 'gh'),
+    ])
+      expect(args, hidden).not.toContain(hidden);
+    // Each shadow is made read-only after the grants inside it are mounted.
+    const dotGit = join(where.workspace, '.git');
+    for (const shadow of [where.home, config])
+      expect(at(args, '--remount-ro', shadow), shadow).toBeGreaterThan(
+        at(args, '--ro-bind', dotGit, dotGit),
+      );
+  });
+
+  test('a hidden path under /tmp needs no mount: the sandbox has its own /tmp', () => {
+    const args = bubblewrapArgs(
+      specFor(where, {
+        ...grantsFor(where),
+        hidden: ['/tmp/.X11-unix', '/tmp/ssh-x/agent.1'],
+      }),
     );
-    const netrc = join(where.home, '.netrc');
-    expect(at(args, '--ro-bind', '/dev/null', netrc)).toBeGreaterThan(0);
-    // Absent at the start: nothing to cover (a stated difference).
-    expect(args).not.toContain(join(where.home, '.aws'));
-    // Inside a hidden directory already: not covered twice.
-    expect(args.filter((value) => value === where.stationHome)).toEqual([]);
-    expect(at(args, '--tmpfs', where.stationRoot)).toBeGreaterThan(0);
+    expect(args.filter((value) => value.startsWith('/tmp/'))).toEqual([]);
   });
 
   test('re-open the installs, then the write grants inside the hidden Station root, before denying the .git', () => {
     const args = bubblewrapArgs(specFor(where));
     const installs = join(where.stationRoot, 'installs');
-    const hiddenRoot = at(args, '--tmpfs', where.stationRoot);
+    const home = at(args, '--tmpfs', where.home);
     const reopened = at(args, '--ro-bind', installs, installs);
     const temp = at(args, '--bind', where.temp, where.temp);
     const config = at(args, '--bind', where.config, where.config);
     const workspace = at(args, '--bind', where.workspace, where.workspace);
     const dotGit = join(where.workspace, '.git');
     const denied = at(args, '--ro-bind', dotGit, dotGit);
-    expect(reopened).toBeGreaterThan(hiddenRoot);
+    expect(home).toBeGreaterThan(0);
+    expect(reopened).toBeGreaterThan(home);
     for (const grant of [temp, config, workspace])
       expect(grant).toBeGreaterThan(reopened);
     expect(denied).toBeGreaterThan(Math.max(temp, config, workspace));
+  });
+
+  test('a .git that is a symbolic link is refused by name, before anything starts', () => {
+    rmSync(join(where.workspace, '.git'));
+    mkdirSync(join(where.root, 'real-git'));
+    symlinkSync(join(where.root, 'real-git'), join(where.workspace, '.git'));
+    expect(() => bubblewrapArgs(specFor(where))).toThrow(
+      /\.git is a symbolic link, which the sandbox cannot keep read-only/,
+    );
   });
 
   test('an existing engine configuration directory at a grant root is read-only, in any case; a file or a link is not', () => {

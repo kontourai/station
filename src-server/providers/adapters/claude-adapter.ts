@@ -1301,7 +1301,7 @@ const CONFINEMENT_FALLBACK_MESSAGES: Record<ConfinementFallbackReason, string> =
     'resume-bound-elsewhere':
       'Full access runs as Auto: this session resumes a conversation recorded under another Claude configuration home.',
     'workspace-too-broad':
-      "Full access runs as Auto: this session's folder is or contains your home folder, Station's data or a secret store the sandbox hides, so confining it to that folder would confine nothing.",
+      "Full access runs as Auto: this session's folder is or contains your home folder or Station's data, so confining it to that folder would confine nothing.",
   };
 
 const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
@@ -1795,7 +1795,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         artifactsEnv,
       );
       if (seatbelt.fallback)
-        this.publishConfinementFallback(input.threadId, seatbelt.fallback);
+        this.publishConfinementFallback(
+          input.threadId,
+          seatbelt.fallback,
+          input.confinementPlan?.mechanism,
+        );
       return session;
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
@@ -1976,7 +1980,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private publishConfinementFallback(
     threadId: string,
     reason: ConfinementFallbackReason,
+    mechanism?: ConfinementPlan['mechanism'],
   ): void {
+    // #4770: bubblewrap also refuses a folder holding a hidden secret.
+    const message =
+      reason === 'workspace-too-broad' && mechanism === 'bubblewrap'
+        ? `${CONFINEMENT_FALLBACK_MESSAGES[reason]} Under the bubblewrap sandbox this also covers a folder inside, or containing, a secret store the sandbox hides.`
+        : CONFINEMENT_FALLBACK_MESSAGES[reason];
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1984,7 +1994,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       createdAt: new Date().toISOString(),
       method: 'runtime.warning',
       severity: 'warning',
-      message: CONFINEMENT_FALLBACK_MESSAGES[reason],
+      message,
       code: CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
       details: { reason },
     });
@@ -2266,7 +2276,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       assertRequiredConfinementObserved(
         observedConfinementRecord(seatbelt.plan, 'configured-but-failed'),
         this.provider,
-        `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} would grant writes past the workspace, its git subset and the Station-owned directories, or cannot be built.`,
+        seatbelt.launch.buildError
+          ? `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} cannot be built: ${seatbelt.launch.buildError}`
+          : `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} would grant writes past the workspace, its git subset and the Station-owned directories.`,
       );
     }
     const seatbeltSpawn = seatbelt

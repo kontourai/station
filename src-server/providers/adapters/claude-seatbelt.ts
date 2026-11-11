@@ -49,6 +49,7 @@ import {
   seatbeltWorkspaceRefusal,
   seatbeltWriteGrantKinds,
 } from '../../security/confinement/seatbelt.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { hasOAuthCredential } from '../auth/claude-auth.js';
 import type {
   ClaudeSpawnLaunch,
@@ -224,6 +225,8 @@ export interface ConfinedClaudeLaunch {
   bounds: SeatbeltBounds;
   /** Kinds of the grants, or `undefined` when any reaches out of bounds. */
   writeGrants: ConfinementWriteGrant[] | undefined;
+  /** Why the sandbox's arguments could not be built, when they could not. */
+  buildError?: string;
   cleanup: () => void;
 }
 
@@ -313,9 +316,9 @@ function bubblewrapLaunchWriteGrants(
   workspace: string,
   grants: ConfinementSpawnSpec['grants'],
   bounds: SeatbeltBounds,
-): ConfinementWriteGrant[] | undefined {
+): { writeGrants?: ConfinementWriteGrant[]; buildError?: string } {
   try {
-    return bubblewrapWriteGrantKinds(
+    const writeGrants = bubblewrapWriteGrantKinds(
       bubblewrapArgs({
         command: '/bin/true',
         args: [],
@@ -326,8 +329,9 @@ function bubblewrapLaunchWriteGrants(
       }),
       bounds,
     );
-  } catch {
-    return undefined;
+    return writeGrants ? { writeGrants } : {};
+  } catch (error) {
+    return { buildError: errorMessage(error) };
   }
 }
 
@@ -376,15 +380,17 @@ export async function prepareConfinedClaudeLaunch(input: {
     home,
     ...(git ? { git } : {}),
   };
+  const built = bubblewrap
+    ? bubblewrapLaunchWriteGrants(input.workspace, grants, bounds)
+    : { writeGrants: seatbeltWriteGrantKinds(grants, bounds) };
   return {
     workspace: input.workspace,
     configDir,
     tmpDir,
     grants,
     bounds,
-    writeGrants: bubblewrap
-      ? bubblewrapLaunchWriteGrants(input.workspace, grants, bounds)
-      : seatbeltWriteGrantKinds(grants, bounds),
+    writeGrants: built.writeGrants,
+    ...(built.buildError ? { buildError: built.buildError } : {}),
     cleanup: () => rmSync(tmpDir, { recursive: true, force: true }),
   };
 }

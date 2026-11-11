@@ -8,7 +8,7 @@
  *   macOS host where `sandbox-exec` applies the production profile (51 passed).
  * - `bubblewrap-process-linux.report.json`: `bubblewrap.process.test.ts` run
  *   on a Linux kernel where `bwrap` applies the production sandbox (#4770,
- *   49 passed).
+ *   53 passed).
  * - `vitest-statuses.report.json`: a throwaway file with a `describe.skipIf`
  *   suite, a `test.skipIf`, a `ctx.skip()`, a failure and a `test.todo`, so
  *   the statuses the reporter writes for each are read from a real run.
@@ -656,12 +656,12 @@ describe('the pinned profile agrees with the real test file', () => {
   test.each([
     // 48 must-pass + 2 may-skip + 1 not-required today.
     ['seatbelt.process.test.ts', 'seatbelt-kernel', SEATBELT_FILE, 51],
-    // 47 must-pass + 2 may-skip today (#4770).
+    // 50 must-pass + 3 may-skip today (#4770).
     [
       'bubblewrap.process.test.ts',
       'linux-bubblewrap-kernel',
       BUBBLEWRAP_FILE,
-      49,
+      53,
     ],
   ] as const)(
     'the profile classifies exactly the tests %s registers on this host',

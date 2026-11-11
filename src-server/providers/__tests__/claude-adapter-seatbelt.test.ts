@@ -8,7 +8,7 @@
  * production one, so the profile and the posture rules are real. The kernel
  * side is `seatbelt.process.test.ts`.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -607,22 +607,59 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     ).toBe('confined');
   });
 
-  test('a workspace that is the home folder is too broad to confine: Auto, recorded', async () => {
-    createAdapter();
+  test.each([
+    ['seatbelt', SEATBELT_PLAN],
+    ['bubblewrap', BUBBLEWRAP_PLAN],
+  ] as const)(
+    'a workspace that is the home folder is too broad to confine under %s: Auto, recorded, and the warning says why',
+    async (mechanism, plan) => {
+      createAdapter();
+      startingQuery(Promise.resolve({}));
+      const threadId = `home-${mechanism}`;
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        cwd: homedir(),
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: plan,
+      });
+      expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(
+        FAKE_CLAUDE_COMMAND,
+      );
+      expect((await started(threadId)).stationConfinementRecord).toMatchObject({
+        posture: 'no-mechanism',
+        fallback: 'workspace-too-broad',
+      });
+      const warning = events.find(
+        (e) => e.method === 'runtime.warning' && e.threadId === threadId,
+      ) as { message?: string } | undefined;
+      // The Seatbelt text is unchanged; bubblewrap adds its own rule.
+      const seatbeltText =
+        "Full access runs as Auto: this session's folder is or contains your home folder or Station's data, so confining it to that folder would confine nothing.";
+      expect(warning?.message).toBe(
+        mechanism === 'seatbelt'
+          ? seatbeltText
+          : `${seatbeltText} Under the bubblewrap sandbox this also covers a folder inside, or containing, a secret store the sandbox hides.`,
+      );
+    },
+  );
+
+  test('#4770: a bubblewrap workspace whose .git is a symbolic link is refused before spawning, naming why', async () => {
+    createAdapter({ serverProvider: true });
+    const real = join(workspace, '..', 'real-git');
+    mkdirSync(real);
+    symlinkSync(real, join(workspace, '.git'));
     startingQuery(Promise.resolve({}));
-    await adapter.startSession({
-      provider: 'claude',
-      threadId: 'home',
-      cwd: homedir(),
-      confinement: 'workspace',
-      modelOptions: { approvalMode: 'never' },
-      confinementPlan: SEATBELT_PLAN,
+    await expect(
+      startConfined('symlinked-git', { confinementPlan: BUBBLEWRAP_PLAN }),
+    ).rejects.toMatchObject({
+      code: 'confinement_not_observed',
+      message: expect.stringContaining(
+        'Its bubblewrap sandbox cannot be built: .git is a symbolic link',
+      ),
     });
-    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
-    expect((await started('home')).stationConfinementRecord).toMatchObject({
-      posture: 'no-mechanism',
-      fallback: 'workspace-too-broad',
-    });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   test.each([
