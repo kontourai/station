@@ -3864,7 +3864,10 @@ be remote. Per engine:
   configuration; `warn` naming `confined-credential-unavailable` and the
   setup step when none is, because such a start runs at Auto with nothing
   engaged; `warn` "Not verified" when the server could not resolve the
-  connection or credential profile the check needs. Where the mechanism is
+  connection or credential profile the check needs, including a credential
+  profile whose home a start could not create (its path or an ancestor is
+  not a directory, or the directory it would go in is not writable), where
+  such a start is refused. Where the mechanism is
   unavailable the row is a `warn` saying the question is moot there: a start
   that requires confinement is refused before any credential is checked. The
   answer covers starts that name no credential profile of their own (the
@@ -3884,8 +3887,9 @@ The workspace and conversation checks (`workspace-too-broad`,
 Session starts. Confinement rows are never `fail` and do not change the exit
 status. The server's answer is states, kinds and fixed setup text, never an
 environment value or credential content. Doctor removes terminal escape
-sequences and control characters from every text it shows from the Station,
-then passes it through Station's free-text sanitizer, which redacts known
+sequences and control characters from every text it shows from the Station
+(a run of line, page or tab breaks between words becomes one space), then
+passes it through Station's free-text sanitizer, which redacts known
 credential shapes and replaces URLs and the absolute paths it recognizes; it
 does the same to `--json`.
 
