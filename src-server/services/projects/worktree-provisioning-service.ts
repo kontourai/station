@@ -1252,8 +1252,10 @@ export class WorktreeProvisioningService {
         : { kind: 'unresolvable' };
     }
     // `HEAD`, `@` or (on a case-insensitive filesystem) `head` while the
-    // checkout is detached: a name that is not a full ref.
-    return fullName && !fullName.startsWith('refs/')
+    // checkout is detached all print as `HEAD` in some case. Any other name
+    // that is not a full ref (`ORIG_HEAD`, `FETCH_HEAD`) is not a checkout,
+    // so it is unresolvable rather than detached.
+    return fullName.toUpperCase() === 'HEAD'
       ? { kind: 'detached' }
       : { kind: 'unresolvable' };
   }

@@ -1377,6 +1377,46 @@ describe('what names the base (#4771)', () => {
     expect(service.read('session-a')).toBeUndefined();
   });
 
+  test('a remote-tracking branch, or a branch with a slash in its name, is a base', async () => {
+    for (const [baseRef, baseBranch] of [
+      ['origin/main', 'origin/main'],
+      ['refs/remotes/origin/main', 'origin/main'],
+      ['release/2026', 'release/2026'],
+    ] as const) {
+      const { repo, service } = fixture();
+      const a = await sessionWorktree(repo, 'session-a');
+      git(
+        repo,
+        'merge',
+        '--quiet',
+        '--no-ff',
+        '-m',
+        'merge',
+        a.metadata.branch,
+      );
+      const tip = git(repo, 'rev-parse', 'HEAD');
+      git(repo, 'update-ref', 'refs/remotes/origin/main', tip);
+      git(repo, 'branch', 'release/2026', tip);
+
+      expect(await keepAgainst(service, a, baseRef)).toMatchObject({
+        kind: 'recorded',
+        settlement: { evidence: { containingCommit: tip, baseBranch } },
+      });
+    }
+  });
+
+  test('a special ref such as ORIG_HEAD is unresolvable, not detached', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'update-ref', 'ORIG_HEAD', a.head);
+
+    expect(await keepAgainst(service, a, 'ORIG_HEAD')).toMatchObject({
+      kind: 'refused',
+      reason: 'base-unresolvable',
+    });
+    expect(service.read('session-a')).toBeUndefined();
+  });
+
   test('a commit id or a tag names no branch to keep onto', async () => {
     const { repo, service } = fixture();
     const a = await sessionWorktree(repo, 'session-a');
