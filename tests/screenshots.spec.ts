@@ -3581,16 +3581,17 @@ function roomConversationScreens(): Screen[] {
               const draftText = 'Draft that survives a reload';
               await composer.fill(draftText);
               await page.reload();
-              await page.evaluate(
-                (selected) =>
-                  document.documentElement.setAttribute('data-theme', selected),
-                theme,
-              );
               await expect(
                 page
                   .getByRole('region', { name: 'Project room' })
                   .getByRole('textbox', { name: /^Message/ }),
               ).toHaveValue(draftText);
+              // Boot re-applies the saved theme; set the scene's after it.
+              await page.evaluate(
+                (selected) =>
+                  document.documentElement.setAttribute('data-theme', selected),
+                theme,
+              );
             }
             if (scene === 'new-messages' && fixture) {
               const box = await roomRegion
