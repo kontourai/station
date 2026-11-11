@@ -71,8 +71,8 @@ or at the forge.
 branch head in the base ref's tip, resolved at request time with replacement
 objects disabled. The base must name a local or remote-tracking branch, recorded
 as `baseBranch`; a branch name is read as `refs/heads/<name>`, so a tag of the
-same name cannot stand in for it, and a tag or a commit id is refused
-(`base-unresolvable`). The default `baseRef` is `HEAD`: any spelling of it
+same name cannot stand in for it, and a tag, a commit id or another
+special ref such as `ORIG_HEAD` is refused (`base-unresolvable`). The default `baseRef` is `HEAD`: any spelling of it
 (`HEAD`, `@`, or `head` where the filesystem folds case) is resolved to the
 branch the repository's checkout has checked out now. A detached checkout
 names no branch (`base-detached`), and a
