@@ -40,13 +40,15 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
     TOUCH_PHONE,
   );
   try {
+    await page.getByRole('list', { name: 'Conversation' }).waitFor();
     const region = page.getByRole('region', { name: 'Messages in #general' });
-    await region.waitFor();
+    expect(await region.count()).toBe(1);
     // The scroll region keeps the list inside it.
     expect(
       await region.getByRole('list', { name: 'Conversation' }).count(),
     ).toBe(1);
 
+    // Each message's actions are reachable without a long press.
     const more = page.getByRole('button', { name: /^More actions for / });
     expect(await more.count()).toBe(6);
     const first = page.getByRole('button', {
