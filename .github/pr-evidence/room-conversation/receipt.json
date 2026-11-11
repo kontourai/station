@@ -1,12 +1,12 @@
 {
   "beforeSource": "c493a11367da6f920634c452fce9843847a37a75 (origin/main) UI with this branch's room gallery scenes and fixtures only",
-  "afterSource": "0a51d314ad9b8f452fa18a05d1374f56c1fca140 (branch merged with origin/main e5b5bd24e1ae)",
+  "afterSource": "Branch head with the #4810 delta fixes (6bd759071fcb onward), merged with origin/main e5b5bd24e1ae",
   "capture": "npm run test:e2e:screenshot -- --screens=<the 32 room-* scenes>, local isolated e2e Station, Chromium",
   "assets": {
     "branch": "pr-assets/room-conversation-4810",
-    "commit": "dd6aa8733b558f4e4056c597140cd145cc5b2f76",
+    "commit": "5a56f45cc460c5318352975fff7551108d4d33ce",
     "path": "room-conversation-4810/",
-    "rawBase": "https://raw.githubusercontent.com/kontourai/station/dd6aa8733b558f4e4056c597140cd145cc5b2f76/room-conversation-4810"
+    "rawBase": "https://raw.githubusercontent.com/kontourai/station/5a56f45cc460c5318352975fff7551108d4d33ce/room-conversation-4810"
   },
   "pixelComparison": "NOT_VERIFIED:32new/0comparisons (scenes are new; no tracked baseline)",
   "files": [
@@ -20,11 +20,11 @@
     },
     {
       "file": "after-room-empty-light-desktop.png",
-      "sha256": "300143ae04c84766df7234ffadbbca66bec5817adf3d9f2a76ac294b76c5a0e7"
+      "sha256": "bd1c6734a98da1f1eef1c8887197a8f44f2ff27b676f1365be5d9e550b0ff96c"
     },
     {
       "file": "after-room-empty-light-mobile.png",
-      "sha256": "50db6cff2d46340bfbdbd56709a3e5a8998054d0335e9451ca66878e812e9edf"
+      "sha256": "e9f4b00c15c1d422c8b563b836244cf1254b060601727986c68f274ffb88516a"
     },
     {
       "file": "after-room-failed-send-dark-desktop.png",
@@ -36,7 +36,7 @@
     },
     {
       "file": "after-room-failed-send-light-desktop.png",
-      "sha256": "41a3b3717c9cd6328b5faf3843f10aba35b89d6ac177071691439f7d84292b7d"
+      "sha256": "2cf8cbb89bf8162dfc8d208ed523886b07aa12bf014048d70ce9dfe1b3ca3776"
     },
     {
       "file": "after-room-failed-send-light-mobile.png",
@@ -44,7 +44,7 @@
     },
     {
       "file": "after-room-long-dark-desktop.png",
-      "sha256": "e6386ae89054356e5196d776246745bbe7612c1d094e882610ba6a6daf61fb17"
+      "sha256": "ba599b5a7eb51dc9fb865e3ea46c860bcc2df682ae300a7fa58c078e500c5ae0"
     },
     {
       "file": "after-room-long-dark-mobile.png",
@@ -60,15 +60,15 @@
     },
     {
       "file": "after-room-mention-dark-desktop.png",
-      "sha256": "e86ee628c8163cbc4d0268c76818f2f43b3c7c41742135db40b85b746d19879c"
+      "sha256": "47af452f42915842ea8a03927b3c1a5e0dbc3ceb3285a2390a5a0b3b09fcfe97"
     },
     {
       "file": "after-room-mention-dark-mobile.png",
-      "sha256": "3878f255563b4ba5154e692a3df53f277ac81631b3871004bbc19485e51a84a9"
+      "sha256": "7a7cc4e67139cfd766f9e7186ef7dbbdc7425a88b2ba0f9fc3eacc63fa127160"
     },
     {
       "file": "after-room-mention-light-desktop.png",
-      "sha256": "7d1c989ec39d8fd1f6c8818814266c6562dc443c0cc46f60daf169fd84c4fce2"
+      "sha256": "97d0d094506effc84dc2eb9a11d00fe204c301c589594bbfd946cb1f57d6dd89"
     },
     {
       "file": "after-room-mention-light-mobile.png",
@@ -92,11 +92,11 @@
     },
     {
       "file": "after-room-short-dark-desktop.png",
-      "sha256": "b14ee2be0fcee0bcb0413532844e2cd3af149d36a595ff47d164892dccec8b4f"
+      "sha256": "d0f67ee1dcda1be764742ab0e76e5c67553e23ac519bbd04b9f7011dc375a308"
     },
     {
       "file": "after-room-short-dark-mobile.png",
-      "sha256": "52097d08f656a88c41d8033e857feebd60fb47f91d90391b06637150b95cdc87"
+      "sha256": "a94a66419ca11260b778287ea825a3b00c71264c276e9c790bab772a2723e0d2"
     },
     {
       "file": "after-room-short-light-desktop.png",
@@ -104,7 +104,7 @@
     },
     {
       "file": "after-room-short-light-mobile.png",
-      "sha256": "61a45ec9ed35760e5ba198770e3e9be22d54347454bd38905d20b64a1f6a19bd"
+      "sha256": "554360dc39f3a220640ac25dd827037300c17d4fd068baef3800b6e982a2c624"
     },
     {
       "file": "after-room-task-thread-dark-desktop.png",
