@@ -31,7 +31,7 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Overview' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
     fireEvent.click(screen.getByRole('link', { name: 'Files & connections' }));
     expect(new URLSearchParams(window.location.search).get('section')).toBe(
       'sources',
@@ -40,7 +40,7 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Files & connections' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
     await act(async () => {
       window.history.back();
       await vi.waitFor(() =>
@@ -53,7 +53,7 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Overview' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
     await act(async () => {
       window.history.forward();
       await vi.waitFor(() =>
@@ -66,7 +66,7 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Files & connections' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
   });
 
   test('honors direct destination and existing Starter Work links on mount', () => {
@@ -75,12 +75,12 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: '# Project room' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
     first.unmount();
     mount('?starter=start-task');
     expect(
       screen.getByRole('link', { name: 'Tasks' }).getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
   });
 
   test('destination and Settings links consult the existing dirty-state guard', () => {
@@ -101,7 +101,7 @@ describe('Project destination navigation', () => {
         screen
           .getByRole('link', { name: 'Tasks' })
           .getAttribute('aria-current'),
-      ).toBe('page');
+      ).toBe('location');
       fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
       expect(decisions).toHaveLength(2);
       expect(window.location.pathname).toBe('/projects/demo');

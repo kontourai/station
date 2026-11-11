@@ -248,19 +248,24 @@ function ProjectRoomSession({
     return (
       <section className="project-room" aria-label="Project room">
         <h3># Project room</h3>
-        <p>The room has not been opened yet.</p>
         {room.initialize.isError && (
           <p role="alert">
             Opening was not confirmed. Check access, then try again.
           </p>
         )}
-        <Button
-          pending={room.initialize.isPending}
-          pendingLabel="Open room"
-          onClick={() => room.initialize.mutate()}
-        >
-          Open room
-        </Button>
+        <Empty
+          variant="compact"
+          label="The room has not been opened yet."
+          action={
+            <Button
+              pending={room.initialize.isPending}
+              pendingLabel="Open room"
+              onClick={() => room.initialize.mutate()}
+            >
+              Open room
+            </Button>
+          }
+        />
       </section>
     );
   if (room.discovery.isError)

@@ -572,7 +572,14 @@ export function ProjectTasksSection({
       <div
         className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ' project-tasks-section__list-layout'}`}
       >
-        <div className="project-page__task-list">
+        <div
+          className={
+            tasksError ||
+            (sortedTasks.length === 0 && providerItems.length === 0)
+              ? 'project-page__task-list project-page__task-list--state'
+              : 'project-page__task-list'
+          }
+        >
           {tasksError ? (
             <ErrorState
               variant="compact"
