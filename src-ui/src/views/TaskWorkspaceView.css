@@ -2003,6 +2003,13 @@
   font-size: var(--k-text-sm);
   font-weight: 600;
 }
+.room-conversation--compact
+  .task-room-thread-summary
+  .button.task-room-thread-summary__count {
+  /* The base rule above is more specific than the phone floor (#4810 review 6). */
+  min-height: 44px;
+  min-width: 44px;
+}
 .task-room-thread-summary__last {
   color: var(--k-text-faint);
   font-size: var(--k-text-sm);

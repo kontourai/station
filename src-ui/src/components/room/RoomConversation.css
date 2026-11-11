@@ -362,10 +362,13 @@
 }
 
 .room-conversation--compact .room-conversation__jump.button {
-  /* A phone line runs nearly edge to edge: the corner covers the least. */
-  right: var(--k-space-3);
-  left: auto;
+  /* A phone line runs edge to edge, so no overlay spot is free: the control
+     takes its own row under the list while it is shown (#4810 review 8). */
+  position: static;
+  align-self: flex-end;
+  margin: var(--k-space-1) var(--room-inset) 0;
   transform: none;
+  box-shadow: none;
 }
 
 .room-conversation--compact .room-row--system.room-row--failed {

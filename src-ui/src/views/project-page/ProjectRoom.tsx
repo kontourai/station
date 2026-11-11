@@ -19,6 +19,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type Ref,
   type RefObject,
+  useCallback,
   useEffect,
   useId,
   useImperativeHandle,
@@ -43,7 +44,10 @@ import {
   RoomMentionPicker,
   useRoomMention,
 } from '../../components/room/RoomMentionPicker';
-import { useRoomDraft } from '../../components/room/useRoomDraft';
+import {
+  roomDraftKey,
+  useRoomDraftValue,
+} from '../../components/room/useRoomDraft';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
@@ -52,7 +56,8 @@ import './ProjectRoom.css';
 export interface ProjectRoomProps {
   slug: string;
   projectId: string;
-  requestScope: ApiRequestScope;
+  /** `draftRecoveryKey` is the shell's non-secret reload partition. */
+  requestScope: ApiRequestScope & { draftRecoveryKey?: string };
   variant?: 'preview' | 'full';
   onOpenRoom?(): void;
 }
@@ -66,30 +71,38 @@ function scopeKey(props: ProjectRoomProps) {
 }
 export function ProjectRoom(props: ProjectRoomProps) {
   const key = scopeKey(props);
-  const previous = useRef(key);
+  // Drafts follow the reload partition, not the activation epoch in `key`,
+  // which changes on every reload (#4810 review 1).
+  const draftKey = roomDraftKey(
+    props.requestScope.draftRecoveryKey ?? props.requestScope.authorityKey,
+    props.requestScope.apiBase,
+    props.projectId,
+    props.slug,
+    'project-room',
+  );
+  const previous = useRef({ key, draftKey });
   useLayoutEffect(() => {
-    if (previous.current !== key) {
+    const prior = previous.current;
+    if (prior.key !== key) {
       // Authority switches retire the prior browser's retained proposal.
       try {
-        sessionStorage.removeItem(`station-project-room:${previous.current}`);
-        sessionStorage.removeItem(
-          `station-project-room:${previous.current}:agent`,
-        );
-        sessionStorage.removeItem(
-          `station-room-draft:project:${previous.current}`,
-        );
+        sessionStorage.removeItem(`station-project-room:${prior.key}`);
+        sessionStorage.removeItem(`station-project-room:${prior.key}:agent`);
+        // A different partition (another credential) retires its draft too.
+        if (prior.draftKey && prior.draftKey !== draftKey)
+          sessionStorage.removeItem(`station-room-draft:${prior.draftKey}`);
       } catch {
         /* Sending requires successful storage separately. */
       }
-      previous.current = key;
     }
-  }, [key]);
+    previous.current = { key, draftKey };
+  }, [key, draftKey]);
   return (
     <ProjectRoomSession
       key={key}
       {...props}
       storageKey={`station-project-room:${key}`}
-      draftKey={`project:${key}`}
+      draftKey={draftKey}
     />
   );
 }
@@ -164,6 +177,45 @@ function useRoomMessages(roomId: string | undefined, fetched: RoomMessage[]) {
   return [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq);
 }
 
+/** What a Project room keeps for an unsent message (#4810 review 3). */
+interface ProjectRoomDraft {
+  text: string;
+  replyTo?: string;
+  recipient?: { id: string; name: string };
+}
+const EMPTY_PROJECT_DRAFT: ProjectRoomDraft = { text: '' };
+const PROJECT_DRAFT_CODEC = {
+  encode: (draft: ProjectRoomDraft) => JSON.stringify(draft),
+  decode(raw: string): ProjectRoomDraft | undefined {
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object') return undefined;
+    const draft = value as Record<string, unknown>;
+    if (typeof draft.text !== 'string') return undefined;
+    const recipient = draft.recipient as Record<string, unknown> | undefined;
+    return {
+      text: draft.text,
+      ...(typeof draft.replyTo === 'string' && isProjectRoomUuid(draft.replyTo)
+        ? { replyTo: draft.replyTo }
+        : {}),
+      ...(recipient &&
+      typeof recipient.id === 'string' &&
+      typeof recipient.name === 'string' &&
+      recipient.id.length > 0 &&
+      recipient.id.length <= 256
+        ? { recipient: { id: recipient.id, name: recipient.name } }
+        : {}),
+    };
+  },
+  isEmpty: (draft: ProjectRoomDraft) =>
+    !draft.text && !draft.replyTo && !draft.recipient,
+};
+type Update<T> = T | ((current: T) => T);
+function apply<T>(update: Update<T>, current: T): T {
+  return typeof update === 'function'
+    ? (update as (current: T) => T)(current)
+    : update;
+}
+
 function ProjectRoomSession({
   slug,
   projectId,
@@ -172,7 +224,7 @@ function ProjectRoomSession({
   onOpenRoom,
   storageKey,
   draftKey,
-}: ProjectRoomProps & { storageKey: string; draftKey: string }) {
+}: ProjectRoomProps & { storageKey: string; draftKey: string | undefined }) {
   const editorId = useId();
   const composer = useRef<HTMLTextAreaElement>(null);
   const section = useRef<HTMLElement>(null);
@@ -180,8 +232,38 @@ function ProjectRoomSession({
   const room = useProjectRoom(requestScope, slug, projectId);
   const view = room.discovery.data;
   const [tab, setTab] = useState<'conversation' | 'notes'>('conversation');
-  const [text, setText] = useRoomDraft(draftKey);
-  const [replyTo, setReplyTo] = useState<string>();
+  // Text, reply target and Agent recipient are restored together; the
+  // recipient is revalidated against the live catalog before it is used.
+  const [draft, setDraft] = useRoomDraftValue(
+    draftKey,
+    EMPTY_PROJECT_DRAFT,
+    PROJECT_DRAFT_CODEC,
+  );
+  const { text, replyTo, recipient } = draft;
+  const setText = useCallback(
+    (update: Update<string>) =>
+      setDraft((current) => ({
+        ...current,
+        text: apply(update, current.text),
+      })),
+    [setDraft],
+  );
+  const setReplyTo = useCallback(
+    (update: Update<string | undefined>) =>
+      setDraft(({ replyTo: previous, ...rest }) => {
+        const next = apply(update, previous);
+        return next ? { ...rest, replyTo: next } : rest;
+      }),
+    [setDraft],
+  );
+  const setRecipient = useCallback(
+    (update: Update<ProjectRoomDraft['recipient']>) =>
+      setDraft(({ recipient: previous, ...rest }) => {
+        const next = apply(update, previous);
+        return next ? { ...rest, recipient: next } : rest;
+      }),
+    [setDraft],
+  );
   const [proposal, setProposal] = useState<ProjectRoomMessageIntent>();
   const [restored, setRestored] = useState(false);
   const [notice, setNotice] = useState('');
@@ -240,8 +322,7 @@ function ProjectRoomSession({
   }, [view, restored, storageKey, projectId]);
   useEffect(() => {
     if (!room.stopped) return;
-    setText('');
-    setReplyTo(undefined);
+    setDraft(EMPTY_PROJECT_DRAFT);
     setProposal(undefined);
     setNoteDraft(undefined);
     try {
@@ -250,7 +331,7 @@ function ProjectRoomSession({
     } catch {
       /* Content is already hidden and sending stopped. */
     }
-  }, [room.stopped, storageKey, setText]);
+  }, [room.stopped, storageKey, setDraft]);
   useEffect(() => {
     if (view && (!view.capabilities.discuss || !view.capabilities.execute)) {
       try {
@@ -265,8 +346,7 @@ function ProjectRoomSession({
   useEffect(() => {
     if (!actorId) return;
     if (discoveredActor.current && discoveredActor.current !== actorId) {
-      setText('');
-      setReplyTo(undefined);
+      setDraft(EMPTY_PROJECT_DRAFT);
       setProposal(undefined);
       setNoteDraft(undefined);
       try {
@@ -278,7 +358,7 @@ function ProjectRoomSession({
       setNotice('The person using this room changed. Start a new message.');
     }
     discoveredActor.current = actorId;
-  }, [actorId, storageKey, setText]);
+  }, [actorId, storageKey, setDraft]);
   const messages = useRoomMessages(
     room.stopped ? undefined : view?.roomId,
     room.history.data?.pages.flatMap((page) => page.messages) ?? [],
@@ -617,7 +697,9 @@ function ProjectRoomSession({
               setText={setText}
               replyTo={replyTo}
               replyAuthor={replyTo ? authorOf(replyTo) : undefined}
-              cancelReply={() => setReplyTo(undefined)}
+              setReplyTo={setReplyTo}
+              recipient={recipient}
+              setRecipient={setRecipient}
               participants={participants}
               restored={restored}
               blocked={!!proposal || room.send.isPending}
@@ -741,7 +823,9 @@ function ProjectRoomComposer({
   setText,
   replyTo,
   replyAuthor,
-  cancelReply,
+  setReplyTo,
+  recipient,
+  setRecipient,
   participants,
   restored,
   blocked,
@@ -758,10 +842,12 @@ function ProjectRoomComposer({
   requestScope: ApiRequestScope;
   storageKey: string;
   text: string;
-  setText(value: string | ((current: string) => string)): void;
+  setText(value: Update<string>): void;
   replyTo?: string;
   replyAuthor?: string;
-  cancelReply(): void;
+  setReplyTo(value: Update<string | undefined>): void;
+  recipient?: { id: string; name: string };
+  setRecipient(value: Update<ProjectRoomDraft['recipient']>): void;
   participants: ProjectRoomBrowserView['actor'][];
   restored: boolean;
   blocked: boolean;
@@ -782,7 +868,31 @@ function ProjectRoomComposer({
     },
     agents,
   ).catalog;
-  const [recipient, setRecipient] = useState<{ id: string; name: string }>();
+  const cancelReply = () => setReplyTo(undefined);
+  const [recipientNotice, setRecipientNotice] = useState('');
+  // A restored (or long-held) recipient must still be an available Agent the
+  // reader may ask; otherwise the draft stays as a message.
+  useEffect(() => {
+    if (!recipient) return;
+    if (!agents) {
+      setRecipient(undefined);
+      setRecipientNotice(
+        'The saved Agent is unavailable. Your draft is kept as a message.',
+      );
+      return;
+    }
+    if (!catalog.isSuccess || catalog.data?.catalogState === 'reconciling')
+      return;
+    const current = catalog.data?.agents.find(
+      (agent) => agent.slug === recipient.id && agent.available !== false,
+    );
+    if (!current) {
+      setRecipient(undefined);
+      setRecipientNotice(
+        'The saved Agent is unavailable. Your draft is kept as a message.',
+      );
+    }
+  }, [recipient, agents, catalog.isSuccess, catalog.data, setRecipient]);
   const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
   const agentPanel = useRef<{ ask(agentId: string): void }>(null);
   const candidates: RoomMentionCandidate[] = [
@@ -845,10 +955,15 @@ function ProjectRoomComposer({
           blocked={!restored || blocked}
           toolsSlot={toolsSlot}
           askRef={agentPanel}
-          onAsked={() => {
-            setText('');
-            setRecipient(undefined);
-            cancelReply();
+          onAsked={(asked) => {
+            // Clear only what was acknowledged: an edit made meanwhile stays.
+            setText((current) => (current === asked.text ? '' : current));
+            setRecipient((current) =>
+              current?.id === asked.agentId ? undefined : current,
+            );
+            setReplyTo((current) =>
+              current === asked.replyTo ? undefined : current,
+            );
           }}
           prepareRecap={prepareRecap}
           refresh={refresh}
@@ -861,6 +976,7 @@ function ProjectRoomComposer({
         value={text}
         onValueChange={(value, caret) => {
           setText(value);
+          setRecipientNotice('');
           mention.find(value, caret);
         }}
         onSend={() => {
@@ -962,6 +1078,11 @@ function ProjectRoomComposer({
               Enter to send, Shift+Enter for a new line. Type @ to mention a
               person or agent.
             </p>
+            {recipientNotice && (
+              <p className="room-composer__status" role="status">
+                {recipientNotice}
+              </p>
+            )}
             {tooLong && (
               <p className="room-composer__status" role="alert">
                 This message is too long to send.
@@ -1007,8 +1128,8 @@ function ProjectRoomAgentPanel({
   toolsSlot: HTMLElement | null;
   /** Lets an @agent pick in the composer ask through this same request path. */
   askRef: Ref<{ ask(agentId: string): void }>;
-  /** An @agent request was accepted; the composer clears its draft. */
-  onAsked(): void;
+  /** An @agent request was acknowledged; the composer clears that snapshot. */
+  onAsked(asked: { text: string; agentId: string; replyTo?: string }): void;
 }) {
   const guard = {
     expectedRoomId: roomId,
@@ -1075,6 +1196,22 @@ function ProjectRoomAgentPanel({
     if (!ready || stopped || busy.current) return;
     let saved = retained;
     const chosen = mentioned ?? agentId;
+    if (mentioned && retained) {
+      // A new @agent ask never reuses the retained intent: that is only for
+      // an explicit retry (#4810 review 2). One request is tracked at a time.
+      const settled =
+        handle?.state === 'published' || handle?.state === 'cancelled';
+      if (!settled) {
+        setNotice(
+          'Finish or clear the current Agent request before asking again.',
+        );
+        return;
+      }
+      sessionStorage.removeItem(storageKey);
+      setRetained(undefined);
+      setHandle(undefined);
+      saved = undefined;
+    }
     if (!saved) {
       if (
         action !== 'request' ||
@@ -1122,7 +1259,12 @@ function ProjectRoomAgentPanel({
       sessionStorage.setItem(storageKey, JSON.stringify(next));
       setOpen(false);
       setNotice('');
-      if (mentioned) onAsked();
+      if (mentioned)
+        onAsked({
+          text: saved.intent.text,
+          agentId: saved.intent.agentId,
+          ...(saved.intent.replyTo ? { replyTo: saved.intent.replyTo } : {}),
+        });
       if (result.state === 'published') refresh();
     } catch (error) {
       if (!mounted.current) return;

@@ -84,7 +84,8 @@ export function useRoomMention({
       setMention(undefined);
     },
     onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-      if (!open || event.nativeEvent.isComposing) return;
+      if (!open || event.nativeEvent.isComposing || event.keyCode === 229)
+        return;
       if (event.key === 'Escape') {
         event.preventDefault();
         setMention(undefined);

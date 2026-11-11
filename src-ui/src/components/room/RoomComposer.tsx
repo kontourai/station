@@ -126,6 +126,9 @@ export function RoomComposer({
     if (canSend && !pending) onSend();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // A key that belongs to an IME composition is the IME's: neither the @
+    // list nor sending may act on it (#4810 review 4).
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     inputProps?.onKeyDown?.(event);
     if (event.defaultPrevented) return;
     const action = composerEnterAction(

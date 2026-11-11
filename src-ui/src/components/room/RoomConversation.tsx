@@ -338,7 +338,12 @@ export function RoomConversation({
   const setFollowing = useCallback((next: boolean) => {
     following.current = next;
     setIsFollowing(next);
-    if (next) setUnseen(0);
+    if (next) {
+      // Reading to the end retires the New marker; the next time away
+      // marks its own first arrival (#4810 review 5).
+      setUnseen(0);
+      setUnreadFrom(undefined);
+    }
   }, []);
 
   const pin = useCallback(() => {

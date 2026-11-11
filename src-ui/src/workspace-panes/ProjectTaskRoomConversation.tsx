@@ -35,7 +35,7 @@ import {
   RoomConversation,
   type RoomConversationRow,
 } from '../components/room/RoomConversation';
-import { useRoomDraft } from '../components/room/useRoomDraft';
+import { roomDraftKey, useRoomDraft } from '../components/room/useRoomDraft';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -155,19 +155,19 @@ export function ProjectTaskRoomConversation({
     capabilities?.historyRead,
   );
   const [thread, setThread] = useState<string>();
-  // A thread's unsent reply survives leaving the Task and a reload; keyed
-  // by Station authority, Task and Session so it never reaches another agent.
+  // A thread's unsent reply survives leaving the Task and a reload; keyed by
+  // the reload partition (not the per-reload authority epoch), Task and
+  // Session so it never reaches another agent (#4810 review 1).
   const [reply, setReply] = useRoomDraft(
-    thread && scope
-      ? JSON.stringify([
-          'task-thread',
-          scope.apiBase,
-          scope.authorityKey,
-          taskId,
-          thread,
-        ])
-      : undefined,
+    roomDraftKey(
+      scope?.draftRecoveryKey ?? scope?.authorityKey,
+      scope?.apiBase,
+      taskId,
+      thread,
+      'task-thread',
+    ),
   );
+
   const replyAttachments = useTaskRoomAttachments(
     taskId,
     taskCreatedAt ?? '',

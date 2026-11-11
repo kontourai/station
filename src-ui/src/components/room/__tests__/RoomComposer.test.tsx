@@ -67,6 +67,47 @@ function Rooms({ onSend }: { onSend: (text: string) => void }) {
   );
 }
 
+const PICKER_CANDIDATES: RoomMentionCandidate[] = [
+  { id: 'scout', name: 'Scout', agent: true, ready: true },
+];
+function Picker({
+  onPick,
+  onSend,
+}: {
+  onPick: (candidate: RoomMentionCandidate) => void;
+  onSend: () => void;
+}) {
+  const [value, setValue] = useState('');
+  const mention = useRoomMention({
+    candidates: PICKER_CANDIDATES,
+    enabled: true,
+    onPick,
+  });
+  return (
+    <RoomComposer
+      id="picker"
+      label="Message the room"
+      placeholder="Message"
+      value={value}
+      onValueChange={(next, caret) => {
+        setValue(next);
+        mention.find(next, caret);
+      }}
+      onSend={onSend}
+      canSend={!!value.trim()}
+      sendLabel="Send message"
+      inputProps={{ onKeyDown: mention.onKeyDown }}
+      below={
+        <RoomMentionPicker
+          id="picker-mentions"
+          state={mention}
+          onClearQuery={() => {}}
+        />
+      }
+    />
+  );
+}
+
 const field = () =>
   screen.getByRole<HTMLTextAreaElement>('textbox', {
     name: 'Message the room',
@@ -129,41 +170,7 @@ describe('RoomComposer', () => {
   test('a composition Enter never picks from the @ list (#4810 review 4)', () => {
     const onPick = vi.fn();
     const onSend = vi.fn();
-    const candidates: RoomMentionCandidate[] = [
-      { id: 'scout', name: 'Scout', agent: true, ready: true },
-    ];
-    function Picker() {
-      const [value, setValue] = useState('');
-      const mention = useRoomMention({
-        candidates,
-        enabled: true,
-        onPick,
-      });
-      return (
-        <RoomComposer
-          id="picker"
-          label="Message the room"
-          placeholder="Message"
-          value={value}
-          onValueChange={(next, caret) => {
-            setValue(next);
-            mention.find(next, caret);
-          }}
-          onSend={onSend}
-          canSend={!!value.trim()}
-          sendLabel="Send message"
-          inputProps={{ onKeyDown: mention.onKeyDown }}
-          below={
-            <RoomMentionPicker
-              id="picker-mentions"
-              state={mention}
-              onClearQuery={() => {}}
-            />
-          }
-        />
-      );
-    }
-    render(<Picker />);
+    render(<Picker onPick={onPick} onSend={onSend} />);
     fireEvent.change(field(), { target: { value: '@' } });
     expect(screen.getByRole('option', { name: 'Scout @scout' })).toBeTruthy();
     // Safari and some IMEs report composition only as keyCode 229.

@@ -69,15 +69,12 @@
   --room-avatar-size: calc(var(--k-space-5) - var(--k-space-1));
   display: inline-flex;
   flex: 0 0 auto;
+  /* Side by side: overlapping faces hid each other's initials. */
+  gap: 2px;
 }
 
 .project-room__faces > .task-room-avatar {
-  box-shadow: 0 0 0 2px var(--k-panel);
   font-size: calc(var(--k-text-xs) - 2px);
-}
-
-.project-room__faces > .task-room-avatar + .task-room-avatar {
-  margin-inline-start: calc(-1 * var(--k-space-1) - 2px);
 }
 
 .project-room__names {
@@ -242,7 +239,10 @@
   padding-inline: var(--k-space-3);
 }
 
-.project-room--compact button {
+.project-room--compact button,
+.project-room--compact .project-room__delivery .button {
+  /* The delivery row's compact sizing is more specific; phones still get
+     44px Retry and Discard (#4810 review 6). */
   min-height: 44px;
   min-width: 44px;
 }
