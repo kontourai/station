@@ -1,15 +1,47 @@
 {
   "beforeSource": "c493a11367da6f920634c452fce9843847a37a75 (origin/main) UI with this branch's room gallery scenes and fixtures only",
-  "afterSource": "Branch head with the #4810 delta fixes (6bd759071fcb onward), merged with origin/main e5b5bd24e1ae",
-  "capture": "npm run test:e2e:screenshot -- --screens=<the 32 room-* scenes>, local isolated e2e Station, Chromium",
+  "afterSource": "f1e23f52d97f branch head with the #4810 review, delta and round-2 fixes, merged with origin/main e5b5bd24e1ae",
+  "capture": "node scripts/heavy-check-slot.mjs screenshots-room scripts/run-e2e-suite.mjs --suite=screenshot --screens=<the 40 room-* scenes>, local isolated e2e Station, Chromium",
   "assets": {
     "branch": "pr-assets/room-conversation-4810",
-    "commit": "5a56f45cc460c5318352975fff7551108d4d33ce",
+    "commit": "65d5d2f7d15b29ea1f341686d805b1a0a8ec3282",
     "path": "room-conversation-4810/",
-    "rawBase": "https://raw.githubusercontent.com/kontourai/station/5a56f45cc460c5318352975fff7551108d4d33ce/room-conversation-4810"
+    "rawBase": "https://raw.githubusercontent.com/kontourai/station/65d5d2f7d15b29ea1f341686d805b1a0a8ec3282/room-conversation-4810"
   },
-  "pixelComparison": "NOT_VERIFIED:32new/0comparisons (scenes are new; no tracked baseline)",
+  "pixelComparison": "NOT_VERIFIED:40new/0comparisons (scenes are new; no tracked baseline)",
   "files": [
+    {
+      "file": "after-room-agent-abandon-dark-desktop.png",
+      "sha256": "f8eb06f953a29bf880be1a492e2ab0f2619a207d73ade2f2aea3a9a6619947b7"
+    },
+    {
+      "file": "after-room-agent-abandon-dark-mobile.png",
+      "sha256": "957a913f62a2e1b63f7a77ade8453a1b0b06cf02ab7f4447eb8116453ba59abb"
+    },
+    {
+      "file": "after-room-agent-abandon-light-desktop.png",
+      "sha256": "47a1c484285a9b2a4ad4981ba0b4423815d214c237920494f0cde0b3c73c727b"
+    },
+    {
+      "file": "after-room-agent-abandon-light-mobile.png",
+      "sha256": "73cd1b84148b0278441371de4cef88c54f1a9805956a28145917bdba772e79d8"
+    },
+    {
+      "file": "after-room-agent-pending-dark-desktop.png",
+      "sha256": "ba10d5e38be960359fb7257c8ad03f66e30a98c8990ce875148c2d7d54361ab7"
+    },
+    {
+      "file": "after-room-agent-pending-dark-mobile.png",
+      "sha256": "bbced5dd482f06ef6c2344793b35f6aa989560b867cfc9a4000b5e2fb4658064"
+    },
+    {
+      "file": "after-room-agent-pending-light-desktop.png",
+      "sha256": "a01bd9499fcbb0e026467eabf58bf123982597dd2aff51afc9d7e364df032195"
+    },
+    {
+      "file": "after-room-agent-pending-light-mobile.png",
+      "sha256": "2da403633ea83c4517a339f5c1d8655866f57e58d0fa911e578beb36d563caa9"
+    },
     {
       "file": "after-room-empty-dark-desktop.png",
       "sha256": "59d9a10a259786f2f96af9970f9e5c4f629a384bd14e8d66b83a53f9f141a2d2"
@@ -20,11 +52,11 @@
     },
     {
       "file": "after-room-empty-light-desktop.png",
-      "sha256": "bd1c6734a98da1f1eef1c8887197a8f44f2ff27b676f1365be5d9e550b0ff96c"
+      "sha256": "300143ae04c84766df7234ffadbbca66bec5817adf3d9f2a76ac294b76c5a0e7"
     },
     {
       "file": "after-room-empty-light-mobile.png",
-      "sha256": "e9f4b00c15c1d422c8b563b836244cf1254b060601727986c68f274ffb88516a"
+      "sha256": "50db6cff2d46340bfbdbd56709a3e5a8998054d0335e9451ca66878e812e9edf"
     },
     {
       "file": "after-room-failed-send-dark-desktop.png",
@@ -60,15 +92,15 @@
     },
     {
       "file": "after-room-mention-dark-desktop.png",
-      "sha256": "47af452f42915842ea8a03927b3c1a5e0dbc3ceb3285a2390a5a0b3b09fcfe97"
+      "sha256": "f5323be1419f2d5229d0a2a8aaf227ff4031aab4afc5321e0171ab167b302185"
     },
     {
       "file": "after-room-mention-dark-mobile.png",
-      "sha256": "7a7cc4e67139cfd766f9e7186ef7dbbdc7425a88b2ba0f9fc3eacc63fa127160"
+      "sha256": "3878f255563b4ba5154e692a3df53f277ac81631b3871004bbc19485e51a84a9"
     },
     {
       "file": "after-room-mention-light-desktop.png",
-      "sha256": "97d0d094506effc84dc2eb9a11d00fe204c301c589594bbfd946cb1f57d6dd89"
+      "sha256": "7d1c989ec39d8fd1f6c8818814266c6562dc443c0cc46f60daf169fd84c4fce2"
     },
     {
       "file": "after-room-mention-light-mobile.png",
@@ -76,11 +108,11 @@
     },
     {
       "file": "after-room-new-messages-dark-desktop.png",
-      "sha256": "870b076240006e9b570d579203fea1ce9a7072bbddd04ba5b23a816b43f9ca83"
+      "sha256": "2aaafac72e1d14c877758c5123c506882fafe97399a13617e338eb1a0a15b6ed"
     },
     {
       "file": "after-room-new-messages-dark-mobile.png",
-      "sha256": "744315cba7050db1cdf010d94576b5d939aae17d6e321dc2471bac0d8bc53e0c"
+      "sha256": "77569d2287e301aa86082afcdf3cf1993b026cbf76322a67a391f14dccbba0cc"
     },
     {
       "file": "after-room-new-messages-light-desktop.png",
@@ -92,7 +124,7 @@
     },
     {
       "file": "after-room-short-dark-desktop.png",
-      "sha256": "d0f67ee1dcda1be764742ab0e76e5c67553e23ac519bbd04b9f7011dc375a308"
+      "sha256": "b14ee2be0fcee0bcb0413532844e2cd3af149d36a595ff47d164892dccec8b4f"
     },
     {
       "file": "after-room-short-dark-mobile.png",
