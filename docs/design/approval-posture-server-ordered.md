@@ -1203,11 +1203,17 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   the app home of the connection's active credential profile (or its
   app-home opt-in). The answer's `appliesTo` says so: an Agent with its own
   `execution.credentialProfileRef`, or a credential-recovery restart, uses
-  that profile's confined home and is decided at start. Its credential
-  inputs are read without creating anything: it uses `inheritedSpawnEnv` (no PATH augmentation, no TMPDIR
-  creation) and `createCredentialProfileAppHomeEnvPeek`, which names a
-  profile home that does not exist yet by the directory a start would
-  create. `createStationConfinementPreflight` assembles these inputs.
+  that profile's confined home and is decided at start. It creates no
+  app-home profile and no spawn TMPDIR: it uses `inheritedSpawnEnv` (no
+  PATH augmentation, no TMPDIR creation) and
+  `createCredentialProfileAppHomeEnvPeek`, which names a profile home that
+  does not exist yet by the directory a start would create, and answers
+  `unverified` where it can see, without writing, that the start would be
+  refused (that home's path or an ancestor is not a directory, or the
+  directory it would be created in is not writable). The connection
+  settings come from the ordinary app config load, which may write a
+  default `config/app.json` or migrate legacy keys in it, as any config
+  read does. `createStationConfinementPreflight` assembles these inputs.
   Known gap: that assembly mirrors the layering in
   `ClaudeAdapter.startSession` and `prepareSeatbeltStart` rather than
   sharing it, so a change to the adapter's layering is not seen by the
