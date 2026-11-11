@@ -3621,15 +3621,18 @@ function roomConversationScreens(): Screen[] {
                 });
                 await expect(dialog).toBeVisible();
                 await expect(
-                  dialog.getByRole('button', { name: 'Cancel' }),
+                  dialog.getByRole('button', { name: 'Cancel', exact: true }),
                 ).toBeFocused();
                 if (viewport.width === MOBILE.width) {
                   await expectTouchTarget(
-                    dialog.getByRole('button', { name: 'Cancel' }),
+                    dialog.getByRole('button', { name: 'Cancel', exact: true }),
                     'Cancel',
                   );
                   await expectTouchTarget(
-                    dialog.getByRole('button', { name: 'Stop tracking' }),
+                    dialog.getByRole('button', {
+                      name: 'Stop tracking',
+                      exact: true,
+                    }),
                     'Stop tracking',
                   );
                 }
