@@ -1,4 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  type OwnerIdentity,
+  type OwnerLiveness,
+  ownerLivenessFromProbe,
+} from '@kontourai/monument';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type {
   WorktreeOutputSettlement,
@@ -7,6 +12,10 @@ import type {
   WorktreeOutputSettlementRequest,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
+import {
+  exactProcessIdentity,
+  probeExactProcessIdentity,
+} from '@kontourai/station-shared/process-identity';
 import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 import type {
   StoredWorktreeOutputSettlement,
@@ -15,6 +24,7 @@ import type {
 import { readPullRequestByIdentity } from '../pull-requests/pull-request-identity-read.js';
 import {
   type SessionWorktreeDiscard,
+  type SessionWorktreeInspection,
   sessionExitWorktreeMetadata,
   type WorktreeProvisioningService,
   type WorktreeTerminalState,
@@ -43,6 +53,7 @@ type SettlementWorktrees = Pick<
   | 'baseContainment'
   | 'discardSessionWorktree'
   | 'readSessionBranchHead'
+  | 'sessionWorktreeRemovalProblem'
   | 'finalize'
 >;
 
@@ -63,6 +74,12 @@ interface SettleInput {
 /** The request key every cleanup-policy record carries; one per Session. */
 const CLEANUP_REQUEST_KEY = 'cleanup-policy';
 
+/**
+ * How long a `released` request waits for the forge. Operations on one
+ * Session are serialized, so Session-exit cleanup can wait behind this read.
+ */
+const DEFAULT_FORGE_DEADLINE_MS = 30_000;
+
 const refused = (
   reason: WorktreeOutputSettlementRefusal,
   detail: string,
@@ -80,6 +97,26 @@ const AUTHORITY_CHANGED = refused(
   'authority-changed',
   'Your access to this Session changed; nothing was recorded or removed.',
 );
+
+const INSPECTION_REFUSAL: Record<
+  Extract<SessionWorktreeInspection, { kind: 'refused' }>['reason'],
+  WorktreeOutputSettlementRefusal
+> = {
+  'unsafe-config': 'unsafe-repository-config',
+  'not-a-directory': 'worktree-path-not-a-directory',
+  replaced: 'worktree-replaced',
+  'repository-missing': 'repository-missing',
+};
+
+const DISCARD_REFUSAL: Record<
+  Extract<SessionWorktreeDiscard, { kind: 'refused' }>['reason'],
+  WorktreeOutputSettlementRefusal
+> = {
+  ...INSPECTION_REFUSAL,
+  'uncommitted-changes': 'uncommitted-changes',
+  'branch-moved': 'branch-moved',
+  'branch-checked-out-elsewhere': 'branch-checked-out-elsewhere',
+};
 
 /**
  * What a replay must repeat exactly: the outcome and every input that
@@ -131,6 +168,27 @@ export function sessionWorktreeForSettlement(
   return metadata ? { kind: 'session', metadata } : { kind: 'none' };
 }
 
+/** `undefined` once `deadlineMs` passes; a late answer is dropped. */
+function withinDeadline<T>(
+  pending: Promise<T>,
+  deadlineMs: number,
+): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(undefined), deadlineMs);
+    timer.unref?.();
+    pending.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 /**
  * #4771: records what became of a worktree Session's output, at most once.
  *
@@ -139,21 +197,39 @@ export function sessionWorktreeForSettlement(
  * derived from what Git and the forge say now, never from the caller's
  * word. A discard writes its intent (`pending`) before the Git effect, so a
  * crash between the two converges on retry. Operations on one Session run
- * one at a time in this process.
+ * one at a time in this process. Across processes, a pending intent names
+ * the process that wrote it, and another process abandons or completes it
+ * only once that process is provably gone; a retry with the intent's own
+ * request key always completes it.
  */
 export class WorktreeOutputSettlementService {
   private readonly queue = createKeyedSerialQueue();
   private readonly now: () => Date;
+  private readonly ownerId = randomUUID();
+  private owner?: OwnerIdentity;
+  private readonly liveness: OwnerLiveness;
 
   constructor(
     private readonly deps: {
       store: WorktreeOutputSettlementStore;
       worktrees: SettlementWorktrees;
       pullRequestProviders: () => IPullRequestProvider[];
+      /** Whether a Session has a running turn in this directory. */
+      isWorkspaceBusy?: (path: string) => boolean;
       now?: () => Date;
+      forgeDeadlineMs?: number;
+      /** Process liveness; the exact pid-and-birth probe by default. */
+      liveness?: OwnerLiveness;
     },
   ) {
     this.now = deps.now ?? (() => new Date());
+    // This instance's own earlier intent is never in flight when a new
+    // request runs: the per-Session queue finished it first.
+    this.liveness =
+      deps.liveness ??
+      ownerLivenessFromProbe(probeExactProcessIdentity, {
+        isReleased: (id) => id === this.ownerId,
+      });
   }
 
   read(sessionId: string): WorktreeOutputSettlement | undefined {
@@ -166,8 +242,9 @@ export class WorktreeOutputSettlementService {
 
   /**
    * The Session-exit cleanup policy, recorded: when it removes the worktree
-   * and no decision exists, the record says exactly that. A crash between
-   * the removal and this record leaves no record (not a decision).
+   * and no decision exists, the record says exactly that, and whether the
+   * worktree and branch are actually gone afterwards. A crash between the
+   * removal and this record leaves no record (not a decision).
    */
   finalizeSessionExit(input: {
     sessionId: string;
@@ -175,6 +252,10 @@ export class WorktreeOutputSettlementService {
     terminalState: WorktreeTerminalState;
   }): Promise<'removed' | 'preserved'> {
     return this.queue.run(input.sessionId, async () => {
+      const problem = await this.deps.worktrees.sessionWorktreeRemovalProblem(
+        input.metadata,
+      );
+      if (problem) throw new Error(problem);
       const decided = this.deps.store.read(input.sessionId) !== undefined;
       const head = decided
         ? undefined
@@ -182,28 +263,46 @@ export class WorktreeOutputSettlementService {
             .readSessionBranchHead(input.metadata)
             .catch(() => undefined);
       const result = await this.deps.worktrees.finalize(input);
-      if (result === 'removed' && !decided) {
-        const at = this.now().toISOString();
-        this.deps.store.insert({
-          requestDigest: CLEANUP_REQUEST_KEY,
-          record: {
-            ...this.identity(input.sessionId, input.metadata),
-            state: 'settled',
-            outcome: 'cleaned-up-without-decision',
-            actor: { kind: 'station', id: 'worktree-cleanup-policy' },
-            requestKey: CLEANUP_REQUEST_KEY,
-            ...(head ? { headCommit: head } : {}),
-            evidence: {
-              terminalState: input.terminalState,
-              removedWorktree: true,
-              removedBranch: true,
-            },
-            requestedAt: at,
-            settledAt: at,
-          },
-        });
-      }
+      if (result === 'removed' && !decided)
+        await this.recordCleanup(input, head);
       return result;
+    });
+  }
+
+  private async recordCleanup(
+    input: {
+      sessionId: string;
+      metadata: WorktreeSessionMetadata;
+      terminalState: WorktreeTerminalState;
+    },
+    head: string | undefined,
+  ): Promise<void> {
+    // Cleanup's `branch -D` is allowed to fail (a branch checked out
+    // elsewhere), so what is gone is read back, not assumed.
+    const branchLeft = await this.deps.worktrees
+      .readSessionBranchHead(input.metadata)
+      .catch(() => 'unknown');
+    const worktreeLeft = await this.deps.worktrees
+      .isSessionWorktreeIntact(input.metadata, input.sessionId)
+      .catch(() => true);
+    const at = this.now().toISOString();
+    this.deps.store.insert({
+      requestDigest: CLEANUP_REQUEST_KEY,
+      record: {
+        ...this.identity(input.sessionId, input.metadata),
+        state: 'settled',
+        outcome: 'cleaned-up-without-decision',
+        actor: { kind: 'station', id: 'worktree-cleanup-policy' },
+        requestKey: CLEANUP_REQUEST_KEY,
+        ...(head ? { headCommit: head } : {}),
+        evidence: {
+          terminalState: input.terminalState,
+          removedWorktree: !worktreeLeft,
+          removedBranch: branchLeft === undefined,
+        },
+        requestedAt: at,
+        settledAt: at,
+      },
     });
   }
 
@@ -214,6 +313,11 @@ export class WorktreeOutputSettlementService {
     const existing = this.deps.store.read(input.sessionId);
     if (existing?.record.state === 'settled')
       return answerSettled(existing, input.request.requestKey, digest);
+    if (this.deps.isWorkspaceBusy?.(input.metadata.path))
+      return refused(
+        'session-running',
+        "A turn is running in the Session's worktree; settle it once the Session is idle.",
+      );
     if (existing) {
       const pending = await this.resolvePending(input, existing, digest);
       if (pending) return pending;
@@ -229,9 +333,11 @@ export class WorktreeOutputSettlementService {
   }
 
   /**
-   * A pending discard: while its worktree is intact nothing was removed, so
-   * the intent gives way to this request (`undefined`: proceed). Once the
-   * removal has started, only completing that discard converges.
+   * A pending discard. Its own request key completes it. Another request
+   * waits while the process that wrote it may still be running it; once that
+   * process is gone, an intent whose worktree is intact had no effect and
+   * gives way (`undefined`: proceed), and one whose removal started is
+   * completed as it was recorded.
    */
   private async resolvePending(
     input: SettleInput,
@@ -239,15 +345,6 @@ export class WorktreeOutputSettlementService {
     digest: string,
   ): Promise<WorktreeOutputSettlementResult | undefined> {
     const { record } = existing;
-    if (
-      await this.deps.worktrees.isSessionWorktreeIntact(
-        input.metadata,
-        input.sessionId,
-      )
-    ) {
-      this.deps.store.abandonPending(input.sessionId, record.requestKey);
-      return undefined;
-    }
     const sameKey = record.requestKey === input.request.requestKey;
     if (sameKey && existing.requestDigest !== digest)
       return refused(
@@ -255,6 +352,22 @@ export class WorktreeOutputSettlementService {
         'This request key was used for a different settlement request.',
         record,
       );
+    if (!sameKey && !this.ownerGone(existing))
+      return refused(
+        'settlement-pending',
+        'Another settlement of this worktree may still be in progress.',
+        record,
+      );
+    if (
+      !sameKey &&
+      (await this.deps.worktrees.isSessionWorktreeIntact(
+        input.metadata,
+        input.sessionId,
+      ))
+    ) {
+      this.deps.store.abandonPending(input.sessionId, record.requestKey);
+      return undefined;
+    }
     if (input.request.outcome !== 'discarded')
       return refused(
         'settlement-pending',
@@ -269,6 +382,26 @@ export class WorktreeOutputSettlementService {
     );
   }
 
+  /** Provably gone: this instance's own finished attempt, or a dead process. */
+  private ownerGone(stored: StoredWorktreeOutputSettlement): boolean {
+    return stored.owner !== undefined && this.liveness(stored.owner) === 'dead';
+  }
+
+  private processOwner(): OwnerIdentity {
+    if (!this.owner) {
+      const exact = exactProcessIdentity(process.pid);
+      this.owner = exact
+        ? {
+            id: this.ownerId,
+            pid: process.pid,
+            identityKind: 'exact',
+            birth: exact.start,
+          }
+        : { id: this.ownerId, pid: process.pid, identityKind: 'unverified' };
+    }
+    return this.owner;
+  }
+
   private async discard(
     input: SettleInput,
     request: Extract<WorktreeOutputSettlementRequest, { outcome: 'discarded' }>,
@@ -276,6 +409,11 @@ export class WorktreeOutputSettlementService {
   ): Promise<WorktreeOutputSettlementResult> {
     const inspection = await this.inspect(input);
     if (inspection.kind === 'refused') return inspection.result;
+    if (inspection.checkedOutElsewhere)
+      return refused(
+        'branch-checked-out-elsewhere',
+        `Branch ${input.metadata.branch} is checked out in another checkout; nothing was removed.`,
+      );
     const accept = request.acceptUncommittedLoss === true;
     if (inspection.dirty && !accept)
       return refused(
@@ -285,6 +423,7 @@ export class WorktreeOutputSettlementService {
     if (!input.stillAuthorized()) return AUTHORITY_CHANGED;
     const pending = this.deps.store.insert({
       requestDigest: digest,
+      owner: this.processOwner(),
       record: {
         ...this.identity(input.sessionId, input.metadata),
         state: 'pending',
@@ -319,16 +458,18 @@ export class WorktreeOutputSettlementService {
       acceptUncommittedLoss: record.evidence.acceptedUncommittedLoss === true,
     });
     if (result.kind === 'refused') {
-      // Only an intact worktree proves nothing was removed; otherwise the
-      // intent stays, so a retry can still complete it.
+      // A refusal removed nothing. The intent goes only while its worktree
+      // is intact and no other live process wrote it; otherwise a retry
+      // can still complete it.
       if (
-        await this.deps.worktrees.isSessionWorktreeIntact(
+        this.ownerGone(stored) &&
+        (await this.deps.worktrees.isSessionWorktreeIntact(
           metadata,
           record.sessionId,
-        )
+        ))
       )
         this.deps.store.abandonPending(record.sessionId, record.requestKey);
-      return refused(discardRefusal(result.reason), result.detail);
+      return refused(DISCARD_REFUSAL[result.reason], result.detail);
     }
     const settled = this.deps.store.settlePending({
       sessionId: record.sessionId,
@@ -338,9 +479,10 @@ export class WorktreeOutputSettlementService {
         hadUncommittedChanges:
           record.evidence.hadUncommittedChanges === true ||
           result.hadUncommittedChanges,
+        ignoredEntries: result.ignoredEntries,
         removedWorktree: result.removedWorktree,
         removedBranch: result.removedBranch,
-        ...(result.branchMoved ? { branchMoved: true } : {}),
+        ...(result.branchKept ? { branchKept: result.branchKept } : {}),
       },
       settledAt: this.now().toISOString(),
     });
@@ -367,18 +509,29 @@ export class WorktreeOutputSettlementService {
       input.metadata,
       inspection.head,
     );
+    if (containment.kind === 'detached')
+      return refused(
+        'base-detached',
+        "The base is HEAD and the repository's checkout is detached, so it names no branch to keep onto.",
+      );
     if (containment.kind === 'unresolvable')
       return refused(
         'base-unresolvable',
         `${input.metadata.baseRef} does not resolve to a commit in the repository.`,
       );
+    if (containment.baseBranch === input.metadata.branch)
+      return refused(
+        'base-is-session-branch',
+        `${input.metadata.baseRef} names the Session's own branch ${input.metadata.branch}, which trivially contains its head.`,
+      );
     if (containment.kind === 'not-contained')
       return refused(
         'base-does-not-contain-head',
-        `${input.metadata.baseRef} (${containment.baseTip}) does not contain ${inspection.head}. A squash or rebase merge does not contain the branch head; record such a merge as released with its pull request.`,
+        `${containment.baseBranch ?? input.metadata.baseRef} (${containment.baseTip}) does not contain ${inspection.head}. A squash or rebase merge does not contain the branch head; record such a merge as released with its pull request.`,
       );
     return this.recordSettled(input, digest, inspection.head, {
       containingCommit: containment.baseTip,
+      ...(containment.baseBranch ? { baseBranch: containment.baseBranch } : {}),
     });
   }
 
@@ -394,14 +547,19 @@ export class WorktreeOutputSettlementService {
         'uncommitted-changes',
         'The worktree has uncommitted or untracked changes, which no pull request contains.',
       );
-    const read = await readPullRequestByIdentity(
-      this.deps.pullRequestProviders,
-      request.pullRequest,
+    const read = await withinDeadline(
+      readPullRequestByIdentity(
+        this.deps.pullRequestProviders,
+        request.pullRequest,
+      ),
+      this.deps.forgeDeadlineMs ?? DEFAULT_FORGE_DEADLINE_MS,
     );
-    if (read.kind !== 'current')
+    if (read?.kind !== 'current')
       return refused(
         'pull-request-unavailable',
-        'Station could not read that pull request from its forge.',
+        read
+          ? 'Station could not read that pull request from its forge.'
+          : 'The forge did not answer in time.',
       );
     const pr = read.pullRequest;
     // The forge's own word, and exactly OPEN or MERGED (as Task close-out).
@@ -437,7 +595,7 @@ export class WorktreeOutputSettlementService {
   private async inspect(
     input: SettleInput,
   ): Promise<
-    | { kind: 'present'; head: string; dirty: boolean }
+    | Extract<SessionWorktreeInspection, { kind: 'present' }>
     | { kind: 'refused'; result: WorktreeOutputSettlementResult }
   > {
     const inspection = await this.deps.worktrees.inspectSessionWorktree(
@@ -452,10 +610,13 @@ export class WorktreeOutputSettlementService {
           "The Session's worktree or its branch is no longer in place.",
         ),
       };
-    if (inspection.kind === 'unsafe-config')
+    if (inspection.kind === 'refused')
       return {
         kind: 'refused',
-        result: refused('unsafe-repository-config', inspection.detail),
+        result: refused(
+          INSPECTION_REFUSAL[inspection.reason],
+          inspection.detail,
+        ),
       };
     return inspection;
   }
@@ -532,12 +693,6 @@ function answerExisting(
         'Another settlement of this worktree is in progress.',
         existing.record,
       );
-}
-
-function discardRefusal(
-  reason: Extract<SessionWorktreeDiscard, { kind: 'refused' }>['reason'],
-): WorktreeOutputSettlementRefusal {
-  return reason === 'unsafe-config' ? 'unsafe-repository-config' : reason;
 }
 
 function sameIdentity(

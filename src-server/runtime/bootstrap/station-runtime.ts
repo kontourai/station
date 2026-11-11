@@ -1982,20 +1982,7 @@ export class StationRuntime {
         resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
         // #4507: a Task worktree is never removed while a Session in it has a
         // running turn. Read when finalization runs, not at construction.
-        isWorkspaceBusy: (path) => {
-          const root = resolve(path);
-          return this.orchestrationService
-            .listActiveTurnThreadIds()
-            .some((threadId) => {
-              const cwd =
-                this.orchestrationEventStore?.readSessionByThread(
-                  threadId,
-                )?.cwd;
-              if (!cwd) return false;
-              const at = resolve(cwd);
-              return at === root || at.startsWith(`${root}${sep}`);
-            });
-        },
+        isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
       });
       // Release a task's assignment claim when its orchestration session ends
       // (natural completion or `stopSession`/cancel — both surface as the
@@ -2026,6 +2013,9 @@ export class StationRuntime {
             worktrees: worktreeProvisioningService,
             pullRequestProviders: () =>
               listProviders('pullRequest').map((entry) => entry.provider),
+            // A worktree is not settled while a turn runs in it, the rule
+            // Task finalization follows (#4507).
+            isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
           })
         : undefined;
       this.eventBus.subscribe((serverEvent) => {
@@ -2657,6 +2647,23 @@ export class StationRuntime {
    * those suites into an instant abandonment. Same reason the activation
    * index above is lazily initialized at its use sites.
    */
+  /**
+   * Whether a Session with a running turn works in `path` or below it. Read
+   * when asked, never at construction (#4507, #4771).
+   */
+  private isWorkspaceBusy(path: string): boolean {
+    const root = resolve(path);
+    return this.orchestrationService
+      .listActiveTurnThreadIds()
+      .some((threadId) => {
+        const cwd =
+          this.orchestrationEventStore?.readSessionByThread(threadId)?.cwd;
+        if (!cwd) return false;
+        const at = resolve(cwd);
+        return at === root || at.startsWith(`${root}${sep}`);
+      });
+  }
+
   private activationDeadlineMs(): number {
     return (
       this.agentConfigurationActivationDeadlineMs ??

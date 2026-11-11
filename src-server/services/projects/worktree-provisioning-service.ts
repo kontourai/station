@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync, type Stats } from 'node:fs';
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import {
   basename,
@@ -93,12 +93,49 @@ function unsafeConfigDetail(keys: readonly string[]): string {
 
 const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
+/**
+ * #4771: what is at a Session worktree's recorded place before any git
+ * command touches it. `git worktree remove` deletes through a symlink, so a
+ * path that is not a plain directory holding a linked worktree's `.git`
+ * file is never handed to git.
+ */
+type SessionWorktreeShape =
+  | 'directory'
+  | 'missing'
+  | 'not-a-directory'
+  | 'replaced'
+  | 'repository-missing';
+
+type SessionWorktreeShapeRefusal = Exclude<
+  SessionWorktreeShape,
+  'directory' | 'missing'
+>;
+
+const SHAPE_DETAIL: Record<SessionWorktreeShapeRefusal, string> = {
+  'not-a-directory':
+    "The Session's worktree path is a symlink or not a directory; nothing was touched.",
+  replaced:
+    "The Session's worktree path now holds something other than its worktree; nothing was touched.",
+  'repository-missing':
+    "The Session's repository is no longer at its recorded path; nothing was touched.",
+};
+
 /** #4771: a Session worktree's state, read for a settlement. */
 export type SessionWorktreeInspection =
-  | { kind: 'present'; head: string; dirty: boolean }
-  /** Not in place: its folder or its registration on its branch is gone. */
+  | {
+      kind: 'present';
+      head: string;
+      dirty: boolean;
+      /** Another checkout has the Session's branch checked out. */
+      checkedOutElsewhere: boolean;
+    }
+  /** Not in place: its folder, its registration or its branch is gone. */
   | { kind: 'missing' }
-  | { kind: 'unsafe-config'; detail: string };
+  | {
+      kind: 'refused';
+      reason: 'unsafe-config' | SessionWorktreeShapeRefusal;
+      detail: string;
+    };
 
 /** #4771: what discarding a Session's worktree did, or why it did nothing. */
 export type SessionWorktreeDiscard =
@@ -106,14 +143,49 @@ export type SessionWorktreeDiscard =
       kind: 'discarded';
       removedWorktree: boolean;
       removedBranch: boolean;
-      branchMoved: boolean;
+      /** Why the branch was kept, when it was. */
+      branchKept?: 'moved' | 'checked-out-elsewhere';
       hadUncommittedChanges: boolean;
+      /** Ignored entries removed with the worktree (none when it was gone). */
+      ignoredEntries: number;
     }
+  /** A refusal happens before anything is removed. */
   | {
       kind: 'refused';
-      reason: 'uncommitted-changes' | 'branch-moved' | 'unsafe-config';
+      reason:
+        | 'uncommitted-changes'
+        | 'branch-moved'
+        | 'branch-checked-out-elsewhere'
+        | 'unsafe-config'
+        | SessionWorktreeShapeRefusal;
       detail: string;
     };
+
+function lstatOrMissing(path: string): Stats | undefined {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+function discardRefusal(
+  kept: 'moved' | 'checked-out-elsewhere',
+  branch: string,
+): Extract<SessionWorktreeDiscard, { kind: 'refused' }> {
+  return kept === 'moved'
+    ? {
+        kind: 'refused',
+        reason: 'branch-moved',
+        detail: `Branch ${branch} moved since its head was recorded.`,
+      }
+    : {
+        kind: 'refused',
+        reason: 'branch-checked-out-elsewhere',
+        detail: `Branch ${branch} is checked out in another checkout; nothing was removed.`,
+      };
+}
 
 const UNCOMMITTED_REFUSAL = {
   kind: 'refused',
@@ -1049,8 +1121,8 @@ export class WorktreeProvisioningService {
 
   /**
    * #4771: whether a Session's own worktree is untouched by any removal: its
-   * folder exists and git registers it on the Session's branch. Throws for
-   * metadata not bound to the Session.
+   * folder is a plain directory holding a linked worktree and git registers
+   * it on the Session's branch. Throws for metadata not bound to the Session.
    */
   async isSessionWorktreeIntact(
     metadata: WorktreeSessionMetadata,
@@ -1058,37 +1130,51 @@ export class WorktreeProvisioningService {
   ): Promise<boolean> {
     assertWorktreeMetadataSessionBinding(metadata, sessionId);
     return (
-      existsSync(metadata.path) &&
+      (await this.sessionWorktreeShape(metadata)) === 'directory' &&
       (await this.cleanupTargetRegistered(metadata))
     );
   }
 
   /**
    * #4771: the facts a settlement of a Session's worktree is judged on: the
-   * branch's head commit and whether the checkout has uncommitted or
-   * untracked changes. `status` runs through Station's judged copy of the
-   * repository's config, as finalization does (#2411).
+   * branch's head commit, whether the checkout has uncommitted or untracked
+   * changes, and whether another checkout has the branch. `status` runs
+   * through Station's judged copy of the repository's config, as
+   * finalization does (#2411).
    */
   async inspectSessionWorktree(
     metadata: WorktreeSessionMetadata,
     sessionId: string,
   ): Promise<SessionWorktreeInspection> {
-    if (!(await this.isSessionWorktreeIntact(metadata, sessionId)))
-      return { kind: 'missing' };
+    assertWorktreeMetadataSessionBinding(metadata, sessionId);
+    const shape = await this.sessionWorktreeShape(metadata);
+    if (shape === 'missing') return { kind: 'missing' };
+    if (shape !== 'directory')
+      return { kind: 'refused', reason: shape, detail: SHAPE_DETAIL[shape] };
+    const checkouts = await this.branchCheckouts(metadata);
+    if (!checkouts.registered) return { kind: 'missing' };
     const opened = await this.openCheckedForFinalization(metadata);
     if ('kept' in opened)
       return {
-        kind: 'unsafe-config',
+        kind: 'refused',
+        reason: 'unsafe-config',
         detail: ('detail' in opened.kept && opened.kept.detail) || '',
       };
     const { repository, worktree } = opened;
     try {
       const head = await this.ownBranchTip(repository, metadata.branch);
-      if (head.kind !== 'tip') return head;
+      if (head.kind === 'missing') return head;
+      if (head.kind === 'unsafe-config')
+        return {
+          kind: 'refused',
+          reason: 'unsafe-config',
+          detail: head.detail,
+        };
       return {
         kind: 'present',
         head: head.commit,
-        dirty: await this.hasUncommittedChanges(worktree),
+        dirty: (await this.worktreeStatus(worktree)).dirty,
+        checkedOutElsewhere: checkouts.elsewhere,
       };
     } finally {
       await worktree.dispose();
@@ -1097,19 +1183,45 @@ export class WorktreeProvisioningService {
   }
 
   /**
-   * #4771: whether `baseRef`'s current tip contains `commit`, read now in the
-   * worktree's repository. Replacement objects are ignored, so a replace ref
-   * cannot make an unrelated commit look contained.
+   * #4771: the branch `baseRef` names now (a detached `HEAD` names none) and
+   * whether its tip contains `commit`, read in the worktree's repository.
+   * Replacement objects are ignored, so a replace ref cannot make an
+   * unrelated commit look contained.
    */
   async baseContainment(
     metadata: WorktreeSessionMetadata,
     commit: string,
   ): Promise<
-    | { kind: 'contained' | 'not-contained'; baseTip: string }
+    | {
+        kind: 'contained' | 'not-contained';
+        baseTip: string;
+        baseBranch?: string;
+      }
     | { kind: 'unresolvable' }
+    | { kind: 'detached' }
   > {
     const repo = ['-C', metadata.repoPath];
     const env = { GIT_NO_REPLACE_OBJECTS: '1' };
+    const named = await this.git.run(
+      [
+        ...repo,
+        'rev-parse',
+        '--symbolic-full-name',
+        '--end-of-options',
+        metadata.baseRef,
+      ],
+      { allowCodes: [0, 128], env },
+    );
+    // `--end-of-options` is echoed on its own line before the name.
+    const fullName =
+      named.code === 0 ? (named.stdout.trim().split('\n').at(-1) ?? '') : '';
+    if (metadata.baseRef === 'HEAD' && fullName === 'HEAD')
+      return { kind: 'detached' };
+    const baseBranch = fullName.startsWith('refs/heads/')
+      ? fullName.slice('refs/heads/'.length)
+      : undefined;
+    // The branch itself, not `HEAD` again: the checkout may switch between
+    // the two reads.
     const tip = await this.git.run(
       [
         ...repo,
@@ -1117,7 +1229,7 @@ export class WorktreeProvisioningService {
         '--verify',
         '--quiet',
         '--end-of-options',
-        `${metadata.baseRef}^{commit}`,
+        `${baseBranch ? fullName : metadata.baseRef}^{commit}`,
       ],
       { allowCodes: [0, 1, 128], env },
     );
@@ -1131,6 +1243,7 @@ export class WorktreeProvisioningService {
     return {
       kind: ancestor.code === 0 ? 'contained' : 'not-contained',
       baseTip,
+      ...(baseBranch ? { baseBranch } : {}),
     };
   }
 
@@ -1138,8 +1251,10 @@ export class WorktreeProvisioningService {
    * #4771: removes exactly the worktree and branch Station created for this
    * Session, and nothing else. Converges: a worktree or branch already gone
    * is not an error. The branch is deleted only at `expectedHead`, the head
-   * the decision was made on; any refusal happens before anything is
-   * removed.
+   * the decision was made on, and only while no other checkout has it; any
+   * refusal happens before anything is removed. Once an earlier attempt
+   * removed the worktree, a branch that moved or is checked out elsewhere is
+   * kept and the result says why.
    */
   async discardSessionWorktree(request: {
     metadata: WorktreeSessionMetadata;
@@ -1149,60 +1264,117 @@ export class WorktreeProvisioningService {
   }): Promise<SessionWorktreeDiscard> {
     const { metadata } = request;
     assertWorktreeMetadataSessionBinding(metadata, request.sessionId);
-    const registered = await this.cleanupTargetRegistered(metadata);
-    let repository: LiveRepository;
-    try {
-      repository = await this.ownRepository(
-        metadata.repoPath,
-        metadata.repoPath,
-        { newWorktree: true },
-      );
-    } catch (error) {
-      if (error instanceof RepositoryConfigRefusedError)
-        return {
-          kind: 'refused',
-          reason: 'unsafe-config',
-          detail: unsafeConfigDetail(error.keys),
-        };
-      throw error;
-    }
+    const shape = await this.sessionWorktreeShape(metadata);
+    if (shape !== 'directory' && shape !== 'missing')
+      return { kind: 'refused', reason: shape, detail: SHAPE_DETAIL[shape] };
+    const checkouts = await this.branchCheckouts(metadata);
+    const opened = await this.openOwnRepository(metadata);
+    if ('refused' in opened) return opened.refused;
+    const repository = opened.repository;
     try {
       const tip = await this.ownBranchTip(repository, metadata.branch);
       if (tip.kind === 'unsafe-config')
         return { kind: 'refused', reason: 'unsafe-config', detail: tip.detail };
-      const moved = tip.kind === 'tip' && tip.commit !== request.expectedHead;
-      // Moved while the worktree is still in place: nothing is removed. Once
-      // an earlier attempt removed the worktree, the branch's new commits
-      // are kept and the rest converges.
-      if (moved && registered && existsSync(metadata.path))
-        return {
-          kind: 'refused',
-          reason: 'branch-moved',
-          detail: `Branch ${metadata.branch} moved since its head was recorded.`,
-        };
-      let hadUncommittedChanges = false;
-      if (registered) {
-        const removed = await this.removeOwnWorktree(
+      const kept =
+        tip.kind !== 'tip'
+          ? undefined
+          : tip.commit !== request.expectedHead
+            ? ('moved' as const)
+            : checkouts.elsewhere
+              ? ('checked-out-elsewhere' as const)
+              : undefined;
+      // Nothing removed yet: refuse rather than leave a half discard.
+      if (kept && checkouts.registered && shape === 'directory')
+        return discardRefusal(kept, metadata.branch);
+      let removed = { hadUncommittedChanges: false, ignoredEntries: 0 };
+      if (checkouts.registered) {
+        const result = await this.removeOwnWorktree(
           repository,
           metadata,
           request.acceptUncommittedLoss,
         );
-        if (removed.kind === 'refused') return removed;
-        hadUncommittedChanges = removed.hadUncommittedChanges;
+        if (result.kind === 'refused') return result;
+        removed = result;
       }
       const branch =
-        tip.kind === 'tip' && !moved
+        tip.kind === 'tip' && !kept
           ? await this.deleteOwnBranch(repository, metadata.branch, tip.commit)
-          : { removed: false, moved };
+          : { removed: false, ...(kept ? { kept } : {}) };
       return {
         kind: 'discarded',
-        removedWorktree: registered,
+        removedWorktree: checkouts.registered,
         removedBranch: branch.removed,
-        branchMoved: branch.moved,
-        hadUncommittedChanges,
+        ...('kept' in branch && branch.kept ? { branchKept: branch.kept } : {}),
+        ...removed,
       };
     } finally {
       await repository.dispose();
+    }
+  }
+
+  /**
+   * #4771: why Session-exit cleanup must not hand this worktree path to git
+   * (a symlink, a non-directory or another repository), or `undefined`.
+   * `worktree remove --force` would delete through it.
+   */
+  async sessionWorktreeRemovalProblem(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<string | undefined> {
+    const shape = await this.sessionWorktreeShape(metadata);
+    return shape === 'not-a-directory' || shape === 'replaced'
+      ? SHAPE_DETAIL[shape]
+      : undefined;
+  }
+
+  /** #4771: the shape check; see {@link SessionWorktreeShape}. */
+  private async sessionWorktreeShape(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<SessionWorktreeShape> {
+    const top = await this.git.run(
+      ['-C', metadata.repoPath, 'rev-parse', '--show-toplevel'],
+      { allowCodes: [0, 128] },
+    );
+    if (
+      top.code !== 0 ||
+      canonicalizePath(top.stdout.trim()) !==
+        canonicalizePath(metadata.repoPath)
+    )
+      return 'repository-missing';
+    const entry = lstatOrMissing(metadata.path);
+    if (!entry) return 'missing';
+    if (entry.isSymbolicLink() || !entry.isDirectory())
+      return 'not-a-directory';
+    // A linked worktree has a `.git` file; a directory there is another
+    // repository, and none at all is not a worktree git can operate.
+    return lstatOrMissing(join(metadata.path, '.git'))?.isFile()
+      ? 'directory'
+      : 'replaced';
+  }
+
+  /** #4771: the repository, opened through the judged-config reader. */
+  private async openOwnRepository(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<
+    | { repository: LiveRepository }
+    | { refused: Extract<SessionWorktreeDiscard, { kind: 'refused' }> }
+  > {
+    try {
+      return {
+        repository: await this.ownRepository(
+          metadata.repoPath,
+          metadata.repoPath,
+          { newWorktree: true },
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof RepositoryConfigRefusedError)) throw error;
+      return {
+        refused: {
+          kind: 'refused',
+          reason: 'unsafe-config',
+          detail: unsafeConfigDetail(error.keys),
+        },
+      };
     }
   }
 
@@ -1239,9 +1411,15 @@ export class WorktreeProvisioningService {
       : { kind: 'missing' };
   }
 
-  private async hasUncommittedChanges(
+  /**
+   * #4771: whether the checkout has uncommitted or untracked changes, and how
+   * many ignored entries it holds. Ignored files are reported, not treated
+   * as changes: build output would otherwise make every discard need
+   * `acceptUncommittedLoss`.
+   */
+  private async worktreeStatus(
     worktree: LiveRepository,
-  ): Promise<boolean> {
+  ): Promise<{ dirty: boolean; ignoredEntries: number }> {
     const changes = await this.git.run(
       [
         '-C',
@@ -1250,10 +1428,15 @@ export class WorktreeProvisioningService {
         'status',
         '--porcelain',
         '--untracked-files=all',
+        '--ignored=traditional',
       ],
       { env: worktree.env },
     );
-    return changes.stdout.trim() !== '';
+    const lines = changes.stdout.split('\n').filter(Boolean);
+    const ignoredEntries = lines.filter((line) =>
+      line.startsWith('!! '),
+    ).length;
+    return { dirty: lines.length > ignoredEntries, ignoredEntries };
   }
 
   /**
@@ -1266,10 +1449,14 @@ export class WorktreeProvisioningService {
     metadata: WorktreeSessionMetadata,
     acceptUncommittedLoss: boolean,
   ): Promise<
-    | { kind: 'removed'; hadUncommittedChanges: boolean }
+    | {
+        kind: 'removed';
+        hadUncommittedChanges: boolean;
+        ignoredEntries: number;
+      }
     | Extract<SessionWorktreeDiscard, { kind: 'refused' }>
   > {
-    let hadUncommittedChanges = false;
+    let status = { dirty: false, ignoredEntries: 0 };
     if (existsSync(metadata.path)) {
       let worktree: LiveRepository;
       try {
@@ -1284,12 +1471,11 @@ export class WorktreeProvisioningService {
         throw error;
       }
       try {
-        hadUncommittedChanges = await this.hasUncommittedChanges(worktree);
+        status = await this.worktreeStatus(worktree);
       } finally {
         await worktree.dispose();
       }
-      if (hadUncommittedChanges && !acceptUncommittedLoss)
-        return UNCOMMITTED_REFUSAL;
+      if (status.dirty && !acceptUncommittedLoss) return UNCOMMITTED_REFUSAL;
     }
     const removed = await this.git.run(
       [
@@ -1303,7 +1489,12 @@ export class WorktreeProvisioningService {
       ],
       { allowCodes: [0, 128], env: repository.env },
     );
-    if (removed.code === 0) return { kind: 'removed', hadUncommittedChanges };
+    if (removed.code === 0)
+      return {
+        kind: 'removed',
+        hadUncommittedChanges: status.dirty,
+        ignoredEntries: status.ignoredEntries,
+      };
     // Without `--force`, git itself refuses a worktree that gained a change
     // after the check above; the change is kept.
     if (/modified or untracked files/.test(removed.stderr))
@@ -1321,7 +1512,7 @@ export class WorktreeProvisioningService {
     repository: LiveRepository,
     branch: string,
     tip: string,
-  ): Promise<{ removed: boolean; moved: boolean }> {
+  ): Promise<{ removed: boolean; kept?: 'moved' }> {
     const deleted = await this.git.run(
       [
         '--git-dir',
@@ -1334,9 +1525,9 @@ export class WorktreeProvisioningService {
       ],
       { allowCodes: [0, 1, 128] },
     );
-    if (deleted.code === 0) return { removed: true, moved: false };
+    if (deleted.code === 0) return { removed: true };
     if (/but expected/.test(deleted.stderr))
-      return { removed: false, moved: true };
+      return { removed: false, kept: 'moved' };
     throw new Error(
       `git update-ref failed: ${deleted.stderr.trim() || `git exited ${deleted.code}`}`,
     );
@@ -1487,6 +1678,17 @@ export class WorktreeProvisioningService {
   private async cleanupTargetRegistered(
     metadata: WorktreeSessionMetadata,
   ): Promise<boolean> {
+    return (await this.branchCheckouts(metadata)).registered;
+  }
+
+  /**
+   * #4771: where git has the metadata's branch checked out: at its own path
+   * (`registered`), and whether at any other path too (`elsewhere`), the
+   * repository's main checkout included. Same checks as cleanup.
+   */
+  private async branchCheckouts(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<{ registered: boolean; elsewhere: boolean }> {
     const repoRoot = (
       await this.git.run([
         '-C',
@@ -1518,11 +1720,13 @@ export class WorktreeProvisioningService {
       'list',
       '--porcelain',
     ]);
-    const entries = parseWorktreeList(registered.stdout);
-    return entries.some(
-      (entry) =>
-        entry.path === expectedPath && entry.branch === metadata.branch,
+    const onBranch = parseWorktreeList(registered.stdout).filter(
+      (entry) => entry.branch === metadata.branch,
     );
+    return {
+      registered: onBranch.some((entry) => entry.path === expectedPath),
+      elsewhere: onBranch.some((entry) => entry.path !== expectedPath),
+    };
   }
 
   /**

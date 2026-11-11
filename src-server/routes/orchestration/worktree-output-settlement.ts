@@ -57,6 +57,13 @@ const settlementRequestSchema = z.discriminatedUnion('outcome', [
 
 const REFUSAL_STATUS: Record<WorktreeOutputSettlementRefusal, 404 | 409> = {
   'authority-changed': 404,
+  'session-running': 409,
+  'branch-checked-out-elsewhere': 409,
+  'worktree-path-not-a-directory': 409,
+  'worktree-replaced': 409,
+  'repository-missing': 409,
+  'base-detached': 409,
+  'base-is-session-branch': 409,
   'already-settled': 409,
   'request-key-mismatch': 409,
   'settlement-pending': 409,

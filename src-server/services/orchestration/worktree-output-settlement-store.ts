@@ -1,3 +1,4 @@
+import type { OwnerIdentity } from '@kontourai/monument';
 import type {
   WorktreeOutputSettlement,
   WorktreeOutputSettlementEvidence,
@@ -9,6 +10,8 @@ export interface StoredWorktreeOutputSettlement {
   readonly record: WorktreeOutputSettlement;
   /** Digest of the request that made it; a replay must match it. */
   readonly requestDigest: string;
+  /** The process that wrote a pending intent; never part of the record. */
+  readonly owner?: OwnerIdentity;
 }
 
 export type WorktreeOutputSettlementInsert =
@@ -61,6 +64,7 @@ interface Row {
   evidence_json: string;
   requested_at: string;
   settled_at: string | null;
+  owner_json: string | null;
 }
 
 function fromRow(row: Row): StoredWorktreeOutputSettlement {
@@ -70,6 +74,9 @@ function fromRow(row: Row): StoredWorktreeOutputSettlement {
       : { kind: 'person', id: row.actor_id };
   return {
     requestDigest: row.request_digest,
+    ...(row.owner_json
+      ? { owner: JSON.parse(row.owner_json) as OwnerIdentity }
+      : {}),
     record: {
       sessionId: row.session_id,
       state: row.state,
@@ -121,8 +128,8 @@ export function createSqliteWorktreeOutputSettlementStore(
         db.prepare(`INSERT INTO worktree_output_settlements
           (session_id, state, outcome, request_key, request_digest, actor_kind, actor_id,
            repo_path, worktree_path, branch, base_ref, base_commit, head_commit,
-           evidence_json, requested_at, settled_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+           evidence_json, requested_at, settled_at, owner_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           record.sessionId,
           record.state,
           record.outcome,
@@ -139,6 +146,7 @@ export function createSqliteWorktreeOutputSettlementStore(
           JSON.stringify(record.evidence),
           record.requestedAt,
           record.settledAt ?? null,
+          stored.owner ? JSON.stringify(stored.owner) : null,
         );
         const inserted = read(record.sessionId);
         if (!inserted)
@@ -149,7 +157,7 @@ export function createSqliteWorktreeOutputSettlementStore(
       transaction(() => {
         const updated = db
           .prepare(`UPDATE worktree_output_settlements
-            SET state = 'settled', evidence_json = ?, settled_at = ?
+            SET state = 'settled', evidence_json = ?, settled_at = ?, owner_json = NULL
             WHERE session_id = ? AND request_key = ? AND state = 'pending'`)
           .run(
             JSON.stringify(input.evidence),

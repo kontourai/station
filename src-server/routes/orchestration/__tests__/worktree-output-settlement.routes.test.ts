@@ -16,6 +16,7 @@ function fixture(
 ) {
   let person = true;
   let owner = true;
+  let mayMutate = true;
   const recorded: WorktreeOutputSettlement = {
     sessionId: 'exact',
     state: 'settled',
@@ -42,7 +43,7 @@ function fixture(
   const routes = createWorktreeOutputSettlementRoutes({
     orchestration: {
       canUserReadSession: () => owner,
-      canUserMutateSession: () => owner,
+      canUserMutateSession: () => owner && mayMutate,
       readSession: async () =>
         ({
           events: [
@@ -96,6 +97,10 @@ function fixture(
     },
     disown: () => {
       owner = false;
+    },
+    /** Read authority stays; mutation authority goes. */
+    readOnly: () => {
+      mayMutate = false;
     },
   };
 }
@@ -207,6 +212,18 @@ describe('worktree output settlement route (#4771)', () => {
     ).toBe(404);
     expect(agent.settle).not.toHaveBeenCalled();
     expect(stranger.settle).not.toHaveBeenCalled();
+  });
+
+  test('reading needs Session read authority; settling needs mutation authority', async () => {
+    const f = fixture();
+    f.readOnly();
+    expect(
+      (await f.app.request('/sessions/exact/worktree-settlement')).status,
+    ).toBe(200);
+    expect(
+      (await post(f.app, { requestKey: 'k', outcome: 'kept' })).status,
+    ).toBe(404);
+    expect(f.settle).not.toHaveBeenCalled();
   });
 
   test('a Task-owned worktree is settled with its Task, not here', async () => {

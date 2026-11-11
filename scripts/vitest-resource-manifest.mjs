@@ -1423,6 +1423,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4771: a real StationRuntime's Session-exit handler removing a real
   // worktree and recording it, spawning real git.
   'src-server/runtime/bootstrap/__tests__/station-runtime-worktree-exit-settlement.test.ts',
+  // #4771: the settlement route through the production runtime route
+  // composition, discarding a real worktree with real git.
+  'src-server/runtime/routes/__tests__/runtime-routes-worktree-settlement.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

@@ -6,7 +6,9 @@
  * before the Git effect, so a crash between the effect and the record
  * leaves a row a retry completes, never a gone worktree with no decision.
  * A pending row may still be replaced or removed, because nothing about it
- * is final.
+ * is final. `owner_json` names the process that wrote a pending intent
+ * (pid and birth fingerprint), so another process abandons it only once
+ * that owner is provably gone.
  */
 export const WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION = `
 CREATE TABLE IF NOT EXISTS worktree_output_settlements (
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS worktree_output_settlements (
   evidence_json TEXT NOT NULL CHECK (json_valid(evidence_json) AND length(evidence_json) <= 8192),
   requested_at TEXT NOT NULL,
   settled_at TEXT,
+  owner_json TEXT CHECK (owner_json IS NULL OR (json_valid(owner_json) AND length(owner_json) <= 1024)),
   CHECK ((state = 'settled') = (settled_at IS NOT NULL)),
   CHECK (state = 'settled' OR outcome = 'discarded'),
   CHECK ((actor_kind = 'station') = (outcome = 'cleaned-up-without-decision'))

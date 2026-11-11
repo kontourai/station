@@ -4,13 +4,23 @@
  * the only fake: a pull request provider answering by identity.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, join } from 'node:path';
+import type { OwnerIdentity } from '@kontourai/monument';
 import type {
   IPullRequestProvider,
   PullRequest,
 } from '@kontourai/station-contracts/pull-request-provider';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
+import { exactProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../orchestration/event-store.js';
@@ -142,6 +152,8 @@ function fixture(
   options: {
     store?: WorktreeOutputSettlementStore;
     forge?: () => Partial<PullRequest> | undefined;
+    worktrees?: WorktreeProvisioningService;
+    isWorkspaceBusy?: (path: string) => boolean;
   } = {},
 ) {
   const { parent, repo } = repository();
@@ -149,8 +161,11 @@ function fixture(
   const store = options.store ?? storeAt(dbPath);
   const service = new WorktreeOutputSettlementService({
     store,
-    worktrees: new WorktreeProvisioningService(),
+    worktrees: options.worktrees ?? new WorktreeProvisioningService(),
     pullRequestProviders: pullRequests(options.forge ?? (() => undefined)),
+    ...(options.isWorkspaceBusy
+      ? { isWorkspaceBusy: options.isWorkspaceBusy }
+      : {}),
   });
   return { parent, repo, dbPath, store, service };
 }
@@ -323,7 +338,7 @@ describe('kept is derived from the base, never asserted (#4771)', () => {
       settlement: {
         outcome: 'kept',
         headCommit: a.head,
-        evidence: { containingCommit: tip },
+        evidence: { containingCommit: tip, baseBranch: 'main' },
       },
     });
     // Recording `kept` performs no Git effect.
@@ -651,13 +666,15 @@ describe('a crash between the Git effect and the record converges (#4771)', () =
     });
   });
 
-  test('an intent whose worktree is still intact had no effect and gives way', async () => {
-    const { repo, store, service } = fixture();
-    const a = await sessionWorktree(repo, 'session-a');
-    git(repo, 'merge', '--quiet', '--no-ff', '-m', 'merge', a.metadata.branch);
-    // The process stopped after writing the intent, before any removal.
+  /** The process that wrote an intent: this one, or one that is gone. */
+  function intentBy(
+    store: WorktreeOutputSettlementStore,
+    a: { metadata: WorktreeSessionMetadata; head: string },
+    owner: OwnerIdentity | undefined,
+  ) {
     store.insert({
       requestDigest: 'sha256:stale',
+      ...(owner ? { owner } : {}),
       record: {
         sessionId: 'session-a',
         state: 'pending',
@@ -673,6 +690,25 @@ describe('a crash between the Git effect and the record converges (#4771)', () =
         requestedAt: '2026-11-11T00:00:00.000Z',
       },
     });
+  }
+  /** This process under another writer's id; `birth` overrides its own. */
+  const thisProcess = (birth?: string): OwnerIdentity => {
+    const exact = exactProcessIdentity(process.pid);
+    if (!exact) throw new Error('this process has no exact identity');
+    return {
+      id: 'another-writer',
+      pid: process.pid,
+      identityKind: 'exact',
+      birth: birth ?? exact.start,
+    };
+  };
+
+  test('an intent from a process that is gone, whose worktree is intact, had no effect and gives way', async () => {
+    const { repo, store, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'merge', '--quiet', '--no-ff', '-m', 'merge', a.metadata.branch);
+    // Same pid, another birth: a process that has since gone.
+    intentBy(store, a, thisProcess('a-process-long-gone'));
 
     expect(
       await service.settle({
@@ -685,6 +721,94 @@ describe('a crash between the Git effect and the record converges (#4771)', () =
     ).toMatchObject({
       kind: 'recorded',
       settlement: { outcome: 'kept', actor: OWNER },
+    });
+  });
+
+  test('an intent from a process that may still run it is never taken over', async () => {
+    const { repo, store, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'merge', '--quiet', '--no-ff', '-m', 'merge', a.metadata.branch);
+    for (const owner of [thisProcess(), undefined]) {
+      intentBy(store, a, owner);
+      for (const request of [
+        { requestKey: 'kept-1', outcome: 'kept' as const },
+        { requestKey: 'discard-1', outcome: 'discarded' as const },
+      ])
+        expect(
+          await service.settle({
+            sessionId: 'session-a',
+            metadata: a.metadata,
+            actor: OWNER,
+            stillAuthorized: allowed,
+            request,
+          }),
+        ).toMatchObject({ kind: 'refused', reason: 'settlement-pending' });
+      expect(service.read('session-a')).toMatchObject({
+        state: 'pending',
+        requestKey: 'discard-stale',
+      });
+      store.abandonPending('session-a', 'discard-stale');
+    }
+    expect(existsSync(a.metadata.path)).toBe(true);
+    expect(branchExists(repo, a.metadata.branch)).toBe(true);
+  });
+
+  test('two Station processes on one database: a second request waits for the first discard', async () => {
+    const { parent, repo } = repository();
+    const dbPath = join(parent, 'orchestration.sqlite');
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'merge', '--quiet', '--no-ff', '-m', 'merge', a.metadata.branch);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const paused = new WorktreeProvisioningService();
+    const discard = paused.discardSessionWorktree.bind(paused);
+    paused.discardSessionWorktree = async (request) => {
+      entered();
+      await gate;
+      return discard(request);
+    };
+    const first = new WorktreeOutputSettlementService({
+      store: storeAt(dbPath),
+      worktrees: paused,
+      pullRequestProviders: () => [],
+    });
+    const second = new WorktreeOutputSettlementService({
+      store: storeAt(dbPath),
+      worktrees: new WorktreeProvisioningService(),
+      pullRequestProviders: () => [],
+    });
+    const discarding = first.settle({
+      sessionId: 'session-a',
+      metadata: a.metadata,
+      actor: OWNER,
+      stillAuthorized: allowed,
+      request: { requestKey: 'discard-1', outcome: 'discarded' },
+    });
+    await inside;
+
+    expect(
+      await second.settle({
+        sessionId: 'session-a',
+        metadata: a.metadata,
+        actor: OTHER,
+        stillAuthorized: allowed,
+        request: { requestKey: 'kept-1', outcome: 'kept' },
+      }),
+    ).toMatchObject({ kind: 'refused', reason: 'settlement-pending' });
+    release();
+    expect(await discarding).toMatchObject({
+      kind: 'recorded',
+      settlement: { outcome: 'discarded', actor: OWNER },
+    });
+    expect(second.read('session-a')).toMatchObject({
+      state: 'settled',
+      outcome: 'discarded',
     });
   });
 });
@@ -756,5 +880,372 @@ describe('cleanup policy without a decision (#4771)', () => {
       }),
     ).toBe('preserved');
     expect(service.read('session-a')).toBeUndefined();
+  });
+});
+
+/** A provisioning service whose branch deletion stops the process first. */
+function stoppingBeforeBranchDeletion() {
+  const worktrees = new WorktreeProvisioningService();
+  Reflect.set(worktrees, 'deleteOwnBranch', async () => {
+    throw new Error('process stopped after the worktree was removed');
+  });
+  return worktrees;
+}
+
+const discardBy = (
+  service: WorktreeOutputSettlementService,
+  a: { metadata: WorktreeSessionMetadata },
+  options: { requestKey?: string; acceptUncommittedLoss?: boolean } = {},
+) =>
+  service.settle({
+    sessionId: 'session-a',
+    metadata: a.metadata,
+    actor: OWNER,
+    stillAuthorized: allowed,
+    request: {
+      requestKey: options.requestKey ?? 'discard-1',
+      outcome: 'discarded',
+      ...(options.acceptUncommittedLoss ? { acceptUncommittedLoss: true } : {}),
+    },
+  });
+
+describe('a branch another checkout has (#4771)', () => {
+  test('a fresh discard is refused before anything is removed', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(
+      repo,
+      'checkout',
+      '--quiet',
+      '--ignore-other-worktrees',
+      a.metadata.branch,
+    );
+
+    expect(await discardBy(service, a)).toMatchObject({
+      kind: 'refused',
+      reason: 'branch-checked-out-elsewhere',
+    });
+    expect(existsSync(a.metadata.path)).toBe(true);
+    expect(branchExists(repo, a.metadata.branch)).toBe(true);
+    expect(git(repo, 'symbolic-ref', 'HEAD')).toBe(
+      `refs/heads/${a.metadata.branch}`,
+    );
+    expect(git(repo, 'rev-parse', '--verify', 'HEAD')).toBe(a.head);
+    expect(service.read('session-a')).toBeUndefined();
+  });
+
+  test('a crash after the worktree was removed converges: the branch is deleted, or kept when checked out since', async () => {
+    for (const checkedOutSince of [false, true]) {
+      const { parent, repo } = repository();
+      const dbPath = join(parent, 'orchestration.sqlite');
+      const a = await sessionWorktree(repo, 'session-a');
+      const crashing = new WorktreeOutputSettlementService({
+        store: storeAt(dbPath),
+        worktrees: stoppingBeforeBranchDeletion(),
+        pullRequestProviders: () => [],
+      });
+      await expect(discardBy(crashing, a)).rejects.toThrow(/process stopped/);
+      expect(existsSync(a.metadata.path)).toBe(false);
+      expect(branchExists(repo, a.metadata.branch)).toBe(true);
+      if (checkedOutSince) git(repo, 'switch', '--quiet', a.metadata.branch);
+
+      const restarted = new WorktreeOutputSettlementService({
+        store: storeAt(dbPath),
+        worktrees: new WorktreeProvisioningService(),
+        pullRequestProviders: () => [],
+      });
+      expect(await discardBy(restarted, a)).toMatchObject({
+        kind: 'recorded',
+        settlement: {
+          outcome: 'discarded',
+          evidence: checkedOutSince
+            ? {
+                removedWorktree: false,
+                removedBranch: false,
+                branchKept: 'checked-out-elsewhere',
+              }
+            : { removedWorktree: false, removedBranch: true },
+        },
+      });
+      expect(branchExists(repo, a.metadata.branch)).toBe(checkedOutSince);
+      // The base checkout still resolves its HEAD either way.
+      expect(git(repo, 'rev-parse', '--verify', 'HEAD')).toMatch(/^[0-9a-f]+$/);
+    }
+  });
+});
+
+describe('kept against a base of HEAD (#4771)', () => {
+  const keep = (
+    service: WorktreeOutputSettlementService,
+    a: { metadata: WorktreeSessionMetadata },
+    requestKey: string,
+  ) =>
+    service.settle({
+      sessionId: 'session-a',
+      metadata: a.metadata,
+      actor: OWNER,
+      stillAuthorized: allowed,
+      request: { requestKey, outcome: 'kept' },
+    });
+
+  test('a detached base checkout, or one on the Session branch, is not a base', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    expect(a.metadata.baseRef).toBe('HEAD');
+
+    git(repo, 'checkout', '--quiet', '--detach', a.head);
+    expect(await keep(service, a, 'kept-1')).toMatchObject({
+      kind: 'refused',
+      reason: 'base-detached',
+    });
+    git(
+      repo,
+      'checkout',
+      '--quiet',
+      '--ignore-other-worktrees',
+      a.metadata.branch,
+    );
+    expect(await keep(service, a, 'kept-2')).toMatchObject({
+      kind: 'refused',
+      reason: 'base-is-session-branch',
+    });
+    expect(service.read('session-a')).toBeUndefined();
+  });
+
+  test('a fast-forward merge is kept, naming the branch HEAD named', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'merge', '--quiet', '--ff-only', a.metadata.branch);
+
+    expect(await keep(service, a, 'kept-1')).toMatchObject({
+      kind: 'recorded',
+      settlement: {
+        headCommit: a.head,
+        evidence: { containingCommit: a.head, baseBranch: 'main' },
+      },
+    });
+  });
+});
+
+describe('what a discard checks and records (#4771)', () => {
+  test('is refused while a turn runs in the Session worktree', async () => {
+    const busy: string[] = [];
+    const { repo, service } = fixture({
+      isWorkspaceBusy: (path) => busy.includes(path),
+    });
+    const a = await sessionWorktree(repo, 'session-a');
+    busy.push(a.metadata.path);
+
+    expect(await discardBy(service, a)).toMatchObject({
+      kind: 'refused',
+      reason: 'session-running',
+    });
+    expect(existsSync(a.metadata.path)).toBe(true);
+    expect(service.read('session-a')).toBeUndefined();
+    busy.length = 0;
+    expect((await discardBy(service, a)).kind).toBe('recorded');
+  });
+
+  test('ignored files go without acceptance, and the record counts them', async () => {
+    const { repo, service } = fixture();
+    writeFileSync(join(repo, '.gitignore'), '.env\n');
+    git(repo, 'add', '.gitignore');
+    git(repo, 'commit', '--quiet', '-m', 'ignore');
+    const a = await sessionWorktree(repo, 'session-a');
+    writeFileSync(join(a.metadata.path, '.env'), 'SECRET=local\n');
+
+    expect(await discardBy(service, a)).toMatchObject({
+      kind: 'recorded',
+      settlement: {
+        evidence: { hadUncommittedChanges: false, ignoredEntries: 1 },
+      },
+    });
+  });
+
+  test('a branch that moved after inspection is refused with nothing removed', async () => {
+    const worktrees = new WorktreeProvisioningService();
+    const discard = worktrees.discardSessionWorktree.bind(worktrees);
+    let a!: { metadata: WorktreeSessionMetadata; head: string };
+    worktrees.discardSessionWorktree = async (request) => {
+      writeFileSync(join(a.metadata.path, 'late.txt'), 'late\n');
+      git(a.metadata.path, 'add', 'late.txt');
+      git(a.metadata.path, 'commit', '--quiet', '-m', 'late');
+      return discard(request);
+    };
+    const { repo, service } = fixture({ worktrees });
+    a = await sessionWorktree(repo, 'session-a');
+
+    expect(await discardBy(service, a)).toMatchObject({
+      kind: 'refused',
+      reason: 'branch-moved',
+    });
+    expect(existsSync(join(a.metadata.path, 'late.txt'))).toBe(true);
+    expect(branchExists(repo, a.metadata.branch)).toBe(true);
+    expect(service.read('session-a')).toBeUndefined();
+  });
+
+  test('a repository config that names a program refuses without running it', async () => {
+    const { parent, repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    const marker = join(parent, 'filter-ran');
+    git(repo, 'config', 'filter.evil.clean', `sh -c 'touch ${marker}; cat'`);
+    writeFileSync(join(a.metadata.path, '.gitattributes'), '* filter=evil\n');
+
+    expect(await discardBy(service, a)).toMatchObject({
+      kind: 'refused',
+      reason: 'unsafe-repository-config',
+    });
+    expect(existsSync(marker)).toBe(false);
+    expect(existsSync(a.metadata.path)).toBe(true);
+  });
+
+  test('a branch turned into a symbolic ref is refused and its target kept', async () => {
+    const { repo } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'worktree', 'remove', a.metadata.path);
+    git(repo, 'update-ref', '-d', `refs/heads/${a.metadata.branch}`);
+    git(
+      repo,
+      'symbolic-ref',
+      `refs/heads/${a.metadata.branch}`,
+      'refs/heads/main',
+    );
+
+    expect(
+      await new WorktreeProvisioningService().discardSessionWorktree({
+        metadata: a.metadata,
+        sessionId: 'session-a',
+        expectedHead: a.head,
+        acceptUncommittedLoss: true,
+      }),
+    ).toMatchObject({ kind: 'refused', reason: 'unsafe-config' });
+    expect(branchExists(repo, 'main')).toBe(true);
+  });
+});
+
+describe('a worktree path that is no longer the worktree (#4771)', () => {
+  test('a symlink, another repository, or a moved repository is refused and nothing behind it is touched', async () => {
+    // A symlink to the moved worktree: `git worktree remove` would delete
+    // through it.
+    {
+      const { parent, repo, service } = fixture();
+      const a = await sessionWorktree(repo, 'session-a');
+      mkdirSync(join(parent, 'moved'));
+      const moved = join(parent, 'moved', basename(a.metadata.path));
+      renameSync(a.metadata.path, moved);
+      symlinkSync(moved, a.metadata.path);
+      expect(
+        await discardBy(service, a, { acceptUncommittedLoss: true }),
+      ).toMatchObject({
+        kind: 'refused',
+        reason: 'worktree-path-not-a-directory',
+      });
+      expect(existsSync(join(moved, 'session-a.txt'))).toBe(true);
+      expect(branchExists(repo, a.metadata.branch)).toBe(true);
+    }
+    {
+      const { repo, service } = fixture();
+      const a = await sessionWorktree(repo, 'session-a');
+      rmSync(a.metadata.path, { recursive: true, force: true });
+      mkdirSync(a.metadata.path);
+      git(a.metadata.path, 'init', '--quiet');
+      writeFileSync(join(a.metadata.path, 'precious.txt'), 'mine\n');
+      expect(
+        await discardBy(service, a, { acceptUncommittedLoss: true }),
+      ).toMatchObject({ kind: 'refused', reason: 'worktree-replaced' });
+      expect(existsSync(join(a.metadata.path, 'precious.txt'))).toBe(true);
+    }
+    {
+      const { parent, repo, service } = fixture();
+      const a = await sessionWorktree(repo, 'session-a');
+      renameSync(repo, join(parent, 'repo-moved'));
+      expect(await discardBy(service, a)).toMatchObject({
+        kind: 'refused',
+        reason: 'repository-missing',
+      });
+      expect(service.read('session-a')).toBeUndefined();
+    }
+  });
+});
+
+describe('cleanup records what is actually gone (#4771)', () => {
+  test('cleanup does not run on a worktree path that is now a symlink', async () => {
+    const { parent, repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a', { cleanup: true });
+    mkdirSync(join(parent, 'moved'));
+    const moved = join(parent, 'moved', basename(a.metadata.path));
+    renameSync(a.metadata.path, moved);
+    symlinkSync(moved, a.metadata.path);
+
+    await expect(
+      service.finalizeSessionExit({
+        sessionId: 'session-a',
+        metadata: a.metadata,
+        terminalState: 'completed',
+      }),
+    ).rejects.toThrow(/symlink or not a directory/);
+    expect(existsSync(join(moved, 'session-a.txt'))).toBe(true);
+    expect(service.read('session-a')).toBeUndefined();
+  });
+
+  test('a branch the cleanup could not delete is recorded as kept', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a', { cleanup: true });
+    git(
+      repo,
+      'checkout',
+      '--quiet',
+      '--ignore-other-worktrees',
+      a.metadata.branch,
+    );
+
+    expect(
+      await service.finalizeSessionExit({
+        sessionId: 'session-a',
+        metadata: a.metadata,
+        terminalState: 'completed',
+      }),
+    ).toBe('removed');
+    expect(branchExists(repo, a.metadata.branch)).toBe(true);
+    expect(service.read('session-a')).toMatchObject({
+      outcome: 'cleaned-up-without-decision',
+      evidence: { removedWorktree: true, removedBranch: false },
+    });
+  });
+});
+
+describe('the forge read is bounded (#4771)', () => {
+  test('a forge that never answers is refused as unavailable', async () => {
+    const { repo, store } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    const silent = {
+      id: 'github',
+      canServeHost: () => true,
+      getPullRequestByIdentity: () => new Promise(() => undefined),
+    } as unknown as IPullRequestProvider;
+    const service = new WorktreeOutputSettlementService({
+      store,
+      worktrees: new WorktreeProvisioningService(),
+      pullRequestProviders: () => [silent],
+      forgeDeadlineMs: 50,
+    });
+
+    expect(
+      await service.settle({
+        sessionId: 'session-a',
+        metadata: a.metadata,
+        actor: OWNER,
+        stillAuthorized: allowed,
+        request: {
+          requestKey: 'released-1',
+          outcome: 'released',
+          pullRequest: PULL_REQUEST,
+        },
+      }),
+    ).toMatchObject({
+      kind: 'refused',
+      reason: 'pull-request-unavailable',
+      detail: 'The forge did not answer in time.',
+    });
   });
 });

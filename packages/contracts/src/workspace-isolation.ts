@@ -69,8 +69,11 @@ export type WorkspaceIsolationMetadata =
 /**
  * #4771: what became of a worktree Session's output, recorded at most once.
  *
- * - `discarded`: a person asked; Station removed the worktree and the branch
- *   it created for that Session.
+ * - `discarded`: a person asked; Station removed the worktree it created for
+ *   that Session, and its branch unless the branch had moved on or was
+ *   checked out somewhere else (then the branch is kept and the evidence
+ *   says why). Files the repository ignores are removed with the worktree
+ *   without needing `acceptUncommittedLoss`; the evidence counts them.
  * - `kept`: derived, never asserted. The base's current tip contained the
  *   worktree branch's head commit when it was recorded. A squash merge does
  *   not contain the head commit, so it is never `kept`; see `released`.
@@ -117,14 +120,26 @@ export interface WorktreeOutputSettlementEvidence {
   hadUncommittedChanges?: boolean;
   /** `discarded`: the request accepted losing those changes. */
   acceptedUncommittedLoss?: boolean;
-  /** `discarded`: whether this settlement's own Git effect removed each. */
+  /**
+   * `discarded`: how many ignored entries (files, or whole directories as
+   * git reports them) the worktree held when it was removed. Ignored files
+   * are removed without `acceptUncommittedLoss`.
+   */
+  ignoredEntries?: number;
+  /**
+   * `discarded` and `cleaned-up-without-decision`: whether the worktree and
+   * the branch were gone afterwards because of this settlement's own effect.
+   */
   removedWorktree?: boolean;
   removedBranch?: boolean;
   /**
-   * `discarded`: the branch gained a commit after the head was recorded, so
-   * it was kept rather than deleted.
+   * `discarded`: why the branch was kept: it gained a commit after the head
+   * was recorded (`moved`), or another checkout has it checked out
+   * (`checked-out-elsewhere`).
    */
-  branchMoved?: boolean;
+  branchKept?: 'moved' | 'checked-out-elsewhere';
+  /** `kept`: the branch the base ref named when it was checked. */
+  baseBranch?: string;
   /** `cleaned-up-without-decision`: the Session's terminal state. */
   terminalState?: 'completed' | 'failed' | 'cancelled';
 }
@@ -172,10 +187,29 @@ export type WorktreeOutputSettlementRequest =
       };
     };
 
-/** Why a settlement request was refused; nothing was recorded or removed. */
+/**
+ * Why a settlement request was refused. A refusal records nothing and
+ * removes nothing. (`settlement-pending` reports an earlier discard whose
+ * removal may already have happened; that discard, not this request, did
+ * it.)
+ */
 export type WorktreeOutputSettlementRefusal =
   /** The caller lost its authority over the Session while Station checked. */
   | 'authority-changed'
+  /** A turn is running in the Session's worktree. */
+  | 'session-running'
+  /** Another checkout has the Session's branch checked out. */
+  | 'branch-checked-out-elsewhere'
+  /** The worktree path is a symlink or not a directory. */
+  | 'worktree-path-not-a-directory'
+  /** The worktree path now holds a different repository. */
+  | 'worktree-replaced'
+  /** The Session's repository is no longer at its recorded path. */
+  | 'repository-missing'
+  /** `kept` with base `HEAD` while the base checkout's HEAD is detached. */
+  | 'base-detached'
+  /** `kept` with a base that names the Session's own branch. */
+  | 'base-is-session-branch'
   | 'already-settled'
   | 'request-key-mismatch'
   | 'settlement-pending'
