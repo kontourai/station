@@ -3406,6 +3406,25 @@ const ROOM_SCENES = [
   | { scene: TaskRoomScene; room: 'task' }
 )[];
 
+/** A phone control is at least 44px both ways (#4810 review 6). */
+async function expectTouchTarget(target: Locator, name: string) {
+  const box = await target.boundingBox();
+  expect(box, name).not.toBeNull();
+  expect(Math.round(box!.height), `${name} height`).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box!.width), `${name} width`).toBeGreaterThanOrEqual(44);
+}
+
+/** Boxes that intersect by more than a hairline. */
+function overlaps(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+) {
+  return (
+    Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 1 &&
+    Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 1
+  );
+}
+
 function roomConversationScreens(): Screen[] {
   return ROOM_SCENES.flatMap(({ scene, room }) =>
     (['dark', 'light'] as const).flatMap((theme) =>
@@ -3471,10 +3490,16 @@ function roomConversationScreens(): Screen[] {
               await expect(
                 page.getByRole('list', { name: 'Task room history' }),
               ).toBeVisible();
-              if (scene === 'thread')
+              if (scene === 'thread') {
                 await expect(
                   page.getByRole('img', { name: 'crash-report.png' }),
                 ).toBeVisible();
+                if (viewport.width === MOBILE.width)
+                  await expectTouchTarget(
+                    page.getByRole('button', { name: '3 replies' }),
+                    'Thread replies',
+                  );
+              }
               if (scene === 'working')
                 await expect(
                   page.getByRole('button', { name: 'Watch' }),
@@ -3485,6 +3510,26 @@ function roomConversationScreens(): Screen[] {
               name: 'Project room',
             });
             await expect(roomRegion).toBeVisible();
+            // Presence faces sit side by side; initials never overlap (#4810 review 8).
+            const faces = await roomRegion
+              .locator('.project-room__faces > .task-room-avatar')
+              .evaluateAll((nodes) =>
+                nodes.map((node) => {
+                  const box = node.getBoundingClientRect();
+                  return {
+                    x: box.x,
+                    y: box.y,
+                    width: box.width,
+                    height: box.height,
+                  };
+                }),
+              );
+            expect(faces.length).toBeGreaterThan(1);
+            for (let index = 1; index < faces.length; index += 1)
+              expect(
+                overlaps(faces[index - 1]!, faces[index]!),
+                'presence faces overlap',
+              ).toBe(false);
             if (scene === 'empty') {
               await expect(
                 roomRegion.getByText('Start a chat with your project team.'),
@@ -3510,6 +3555,18 @@ function roomConversationScreens(): Screen[] {
               await expect(
                 roomRegion.getByRole('button', { name: /Retry/ }),
               ).toBeVisible();
+              if (viewport.width === MOBILE.width) {
+                await expectTouchTarget(
+                  roomRegion.getByRole('button', {
+                    name: 'Retry same message',
+                  }),
+                  'Retry',
+                );
+                await expectTouchTarget(
+                  roomRegion.getByRole('button', { name: 'Discard' }),
+                  'Discard',
+                );
+              }
             }
             if (scene === 'mention') {
               await composer.click();
@@ -3556,6 +3613,31 @@ function roomConversationScreens(): Screen[] {
               }
               await expect(divider).toBeInViewport();
               await expect(jump).toBeVisible();
+              if (viewport.width === MOBILE.width) {
+                // On a phone the jump control covers no message (#4810 review 8).
+                const pill = await jump.boundingBox();
+                expect(pill).not.toBeNull();
+                const port = await roomRegion
+                  .locator('.room-conversation__scroller')
+                  .boundingBox();
+                const bodies = await conversation
+                  .locator('.room-row__main')
+                  .evaluateAll((nodes) =>
+                    nodes.map((node) => {
+                      const box = node.getBoundingClientRect();
+                      return {
+                        x: box.x,
+                        y: box.y,
+                        width: box.width,
+                        height: box.height,
+                      };
+                    }),
+                  );
+                const covered = bodies.filter(
+                  (body) => overlaps(body, port!) && overlaps(body, pill!),
+                );
+                expect(covered, 'jump control covers message text').toEqual([]);
+              }
             }
           },
           async cleanup() {

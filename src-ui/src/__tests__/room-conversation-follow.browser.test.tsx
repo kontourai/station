@@ -52,6 +52,15 @@ const readerRow = (page: Page) =>
         }
       : null;
   });
+/** The rows that carry a New marker, by message id. */
+const unreadMarkers = (page: Page) =>
+  scroller(page).evaluate((element) =>
+    [...element.querySelectorAll('.room-divider--unread')].map(
+      (marker) =>
+        marker.closest<HTMLElement>('[data-chat-message-key]')?.dataset
+          .chatMessageKey,
+    ),
+  );
 const call = (page: Page, method: 'append' | 'prepend', count: number) =>
   page.evaluate(
     ([name, value]) =>
@@ -133,6 +142,26 @@ test.each([
       await expect
         .poll(() => page.getByRole('button', { name: /new message/ }).count())
         .toBe(0);
+      // Reading to the end retires the old New marker (#4810 review 5).
+      await expect.poll(() => unreadMarkers(page)).toEqual([]);
+
+      // A second away-and-back cycle marks only its own first arrival.
+      const lastBefore = 1000 + initial - 1 + 2 + 3 + 1;
+      await page.mouse.wheel(0, -300);
+      await expect.poll(() => distanceFromEnd(page)).toBeGreaterThan(100);
+      await settle(page);
+      await call(page, 'append', 2);
+      await settle(page);
+      await page
+        .getByRole('button', { name: '2 new messages', exact: true })
+        .waitFor();
+      await expect
+        .poll(() => unreadMarkers(page))
+        .toEqual([`m${lastBefore + 1}`]);
+      await page
+        .getByRole('button', { name: '2 new messages', exact: true })
+        .click();
+      await expect.poll(() => unreadMarkers(page)).toEqual([]);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

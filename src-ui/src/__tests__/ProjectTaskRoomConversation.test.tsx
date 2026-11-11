@@ -14,6 +14,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   realGuard: false,
   authorityCurrent: true,
+  authorityKey: 'owner',
   historyError: null as Error | null,
   collaboration: false,
   records: [] as ProjectTaskRoomBrowserRecord[],
@@ -47,7 +48,8 @@ vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station',
-    authorityKey: 'owner',
+    authorityKey: mocks.authorityKey,
+    draftRecoveryKey: 'owner-partition',
     isCurrent: () => mocks.authorityCurrent,
   }),
 }));
@@ -186,6 +188,7 @@ beforeEach(() => {
     },
   ]);
   mocks.authorityCurrent = true;
+  mocks.authorityKey = 'owner';
   mocks.historyError = null;
   mocks.realGuard = false;
   mocks.collaboration = false;
@@ -642,6 +645,26 @@ test('a thread reply draft survives leaving the Task and stays with its own thre
   fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
   replyIn(1);
   expect(field().value).toBe('');
+});
+
+test('a thread reply draft survives a reload whose authority epoch changes (#4810 review 1)', () => {
+  mocks.records = [record(1, true)];
+  const first = mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Reply to this agent' }),
+    { target: { value: 'Keep this across reload' } },
+  );
+  first.unmount();
+  // A reload mints a new activation epoch in the same recovery partition.
+  mocks.authorityKey = 'owner-after-reload';
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  expect(
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply to this agent',
+    }).value,
+  ).toBe('Keep this across reload');
 });
 
 test('cancel retains a thread draft, while confirmed discard cannot carry it to another agent', async () => {

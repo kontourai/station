@@ -4,6 +4,11 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TOUCH_KEYBOARD_QUERY } from '../composerKeys';
 import { RoomComposer } from '../RoomComposer';
+import {
+  type RoomMentionCandidate,
+  RoomMentionPicker,
+  useRoomMention,
+} from '../RoomMentionPicker';
 import { useRoomDraft } from '../useRoomDraft';
 
 let touch = false;
@@ -119,5 +124,54 @@ describe('RoomComposer', () => {
     expect(send.disabled).toBe(true);
     fireEvent.change(field(), { target: { value: 'x' } });
     expect(send.disabled).toBe(false);
+  });
+
+  test('a composition Enter never picks from the @ list (#4810 review 4)', () => {
+    const onPick = vi.fn();
+    const onSend = vi.fn();
+    const candidates: RoomMentionCandidate[] = [
+      { id: 'scout', name: 'Scout', agent: true, ready: true },
+    ];
+    function Picker() {
+      const [value, setValue] = useState('');
+      const mention = useRoomMention({
+        candidates,
+        enabled: true,
+        onPick,
+      });
+      return (
+        <RoomComposer
+          id="picker"
+          label="Message the room"
+          placeholder="Message"
+          value={value}
+          onValueChange={(next, caret) => {
+            setValue(next);
+            mention.find(next, caret);
+          }}
+          onSend={onSend}
+          canSend={!!value.trim()}
+          sendLabel="Send message"
+          inputProps={{ onKeyDown: mention.onKeyDown }}
+          below={
+            <RoomMentionPicker
+              id="picker-mentions"
+              state={mention}
+              onClearQuery={() => {}}
+            />
+          }
+        />
+      );
+    }
+    render(<Picker />);
+    fireEvent.change(field(), { target: { value: '@' } });
+    expect(screen.getByRole('option', { name: 'Scout @scout' })).toBeTruthy();
+    // Safari and some IMEs report composition only as keyCode 229.
+    fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229 });
+    fireEvent.keyDown(field(), { key: 'Enter', isComposing: true });
+    expect(onPick).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(onPick).toHaveBeenCalledOnce();
   });
 });
