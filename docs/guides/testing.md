@@ -2871,7 +2871,11 @@ The `linux-bubblewrap-kernel` profile pins the kernel legs of
   hosted Linux corpus lane runs the legs only if bubblewrap applies there;
   no corpus lane checks that they did not skip.
 - **Allowed to skip at runtime:** the nested user namespace leg skips when
-  `unshare --user` cannot create one even outside the sandbox.
+  `unshare --user` cannot create one even outside the sandbox, and the
+  Docker socket leg skips when no Docker socket exists that the user can
+  connect to outside it. To run the Docker leg in a container, serve a
+  root-owned socket at `/run/docker.sock` for a `docker` group the test user
+  belongs to.
 - **Required, unlike on macOS:** the live Claude Code handshake. It uses
   `claude` on PATH, or else the Agent SDK's own binary for the platform,
   which `npm run dependencies:ci` installs.

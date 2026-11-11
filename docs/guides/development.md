@@ -23,8 +23,9 @@ AppArmor restrictions to make a readiness check pass.
 Station's own confinement of Claude on Linux (#4770) uses the same
 mechanism: a workspace full-access Claude session runs inside a bubblewrap
 sandbox, and is refused, naming bubblewrap's reason, where `/usr/bin/bwrap`
-is missing or cannot create its user namespace. Install the distribution's
-`bubblewrap` package. Where Ubuntu restricts unprivileged user namespaces,
+is missing, older than 0.8.0, or cannot create its user namespace. Install
+the distribution's `bubblewrap` package, 0.8.0 or later (Debian 12 ships
+0.8.0). Where Ubuntu restricts unprivileged user namespaces,
 give `/usr/bin/bwrap` an AppArmor profile that allows them, as for the
 browser (see [the browser workspace guide](browser-workspace.md)), rather
 than turning the restriction off. `station doctor` reports whether the

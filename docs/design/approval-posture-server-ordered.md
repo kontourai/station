@@ -1304,54 +1304,65 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   is refused with bubblewrap's own reason. It never starts unconfined.
 - **Where it applies.** A `workspace` Claude start at `never` on Linux.
   Availability needs Linux, an executable `/usr/bin/bwrap` (a fixed path,
-  never `PATH`), and a probe run once per process. The probe runs the
-  production arguments, with the real hidden list, around `/bin/sh` in a
-  throwaway directory. The shell must be able to write the workspace, and
-  must be refused four things: a write outside it, the content of a hidden
-  directory's file, the content of a hidden file, and a write to the `.git`
-  pointer file.
+  never `PATH`) of version 0.8.0 or later (`--disable-userns`), and a probe
+  run once per process. An older bubblewrap is refused with its version
+  named. The probe runs the production arguments, with the real hidden
+  list, around `/bin/sh` in a throwaway directory, with the session's temp
+  and configuration directories inside a hidden Station home as a start
+  mounts them. The shell must be able to write the workspace and the temp
+  directory. It must be refused a write outside the workspace, a write to
+  the hidden home outside its grants, the content of a hidden directory's
+  file and of a hidden file, and a write to the `.git` pointer file.
+- **Workspaces it refuses.** Besides the Seatbelt rule (home folder,
+  Station's data, a hidden folder), a workspace inside a path the sandbox
+  hides, or containing one, falls back to Auto as `workspace-too-broad`. A
+  secret store linked into the workspace resolves there, and the
+  workspace's writable mount would re-open it; the argument builder also
+  refuses a hidden path inside any write grant.
 - **The sandbox.** It runs in a new user, PID and IPC namespace, may not
   create a nested user namespace, gets a new session, and ends with
   Station's process. Then, in order, later mounts covering earlier ones:
   - The whole filesystem read-only, a private `/dev`, and a `/proc` that
     shows only the sandbox's own processes.
   - Each hidden path that exists: a directory as an empty read-only mount,
-    a file as `/dev/null`.
+    a file or socket as `/dev/null`.
   - Station's installs re-opened read-only, then the write grants bound
     writable.
-  - The workspace's `.git` read-only, and an existing `.codex` or `.claude`
-    directory (in any case) at the root of a write grant read-only.
+  - The workspace's `.git` read-only whenever it exists, even when its
+    layout cannot be read, and an existing `.codex` or `.claude` directory
+    (in any case) at the root of a write grant read-only.
 
   A grant of a single file, an exact-path deny, a missing write grant, or a
   denied path that only its whole grant could cover is refused, never
   narrowed or widened.
 - **Grants.** The write kinds are `workspace`, `station-temp` and
   `station-config`, read back from the arguments bubblewrap is given. No
-  git kind is granted. A mount covers a path that exists. Git updates a
-  branch by writing `<ref>.lock` beside the ref and renaming it over the
-  ref, which needs the whole `refs/heads` directory, and so every other
-  branch (EXECUTED: with the ref and log bound writable, `git commit`
-  failed on `refs/heads/feature.lock`, `Read-only file system`). Granting
-  a linked worktree's git directory and objects without the ref would let it
-  stage but never commit. Its absent `config.worktree` could also not be
-  protected without creating it. So the workspace's `.git` stays read-only
-  in both layouts. A confined session can run `git status`, diff and log,
-  but cannot stage or commit.
+  git metadata is writable in this change, by choice: the workspace's
+  `.git` is read-only, so a confined session can run `git status`, diff and
+  log, but cannot stage or commit. Granting git writes needs a design of its
+  own. Git replaces a branch ref by renaming `<ref>.lock` over it, so a
+  mount can grant the ref only with its whole directory. For a Station
+  worktree branch (`station/session/<suffix>`) that is
+  `refs/heads/station/session`: commits then work and `refs/heads/main`
+  stays refused, but every sibling `station/session/*` branch becomes
+  writable (EXECUTED in review). A linked worktree's absent
+  `config.worktree` also cannot be covered without creating it. A follow-up
+  adds worktree-mode git writes.
 - **The posture.** It is `confined` only when three things hold. The spawn
   seam recorded `/usr/bin/bwrap` with exactly these arguments. The engine
   answered its handshake over that process's stdout (bubblewrap execs it
   only after the sandbox is in place). The arguments it was spawned with are
   in bounds: they start with the namespace and read-only-root options, every
-  writable mount is one of the three grants, and the workspace's `.git` is
-  mounted read-only after the workspace. Anything else is
-  `configured-but-failed`, and the start is refused before or after the
+  writable mount is one of the three grants, and the workspace's `.git`
+  (when it exists) is mounted read-only after the workspace. Anything else
+  is `configured-but-failed`, and the start is refused before or after the
   spawn exactly as for Seatbelt.
 - **Read denials compared with Seatbelt.**
 
   | Seatbelt | bubblewrap |
   | --- | --- |
-  | Secret stores, `~/.claude.json`, the engines' credential files, Station's root and runtime home: reads refused | Matched for paths that exist at the start, as empty content rather than a refused read. A path created after the start is readable. |
-  | `~/Library/Keychains` hidden | Not applicable on Linux. The login keyring (`~/.local/share/keyrings`) and the runtime directory (`/run/user/<uid>`, which holds the session bus and the keyring's SSH agent socket) are hidden instead. |
+  | Secret stores, `~/.claude.json`, the engines' credential files, Station's root and runtime home: reads refused | Matched for paths that exist at the start. A file in a hidden directory does not exist inside; a hidden file is `/dev/null` on a `nodev` mount, so opening it is refused (`Permission denied`). A path created after the start is readable. |
+  | `~/Library/Keychains` hidden | Not applicable on Linux. Hidden instead: the login keyring (`~/.local/share/keyrings`); the runtime directory (`/run/user/<uid>`: session bus, keyring SSH agent, rootless Docker or Podman); `~/.docker/run`; the Docker, Podman and containerd sockets under `/run`; the system bus socket; the X11 sockets (`/tmp/.X11-unix`) and `~/.Xauthority`. A read-only mount does not stop `connect()`, and the process keeps its user's groups (`docker`), so these daemon sockets are hidden, not just read-only. |
   | Station's `installs` readable | Matched. |
   | A hidden file through a symlink, another case, a firmlink | Matched through a symlink, `/proc/self/root` and `..`. Linux file systems are case-sensitive. |
   | A hard link to a hidden file made inside | Matched: refused. |
@@ -1361,27 +1372,43 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   | Seatbelt | bubblewrap |
   | --- | --- |
   | Workspace, session temp, Station configuration directory writable | Matched. |
-  | A linked worktree's git directory, the objects and its own branch ref writable | Not granted: no staging or commits. |
+  | A linked worktree's git directory, the objects and its own branch ref writable | Not granted in this change: no staging or commits. |
   | git `hooks`, `config`, `info`, `commondir`, alternates, pointer files denied | Stronger: the workspace's whole `.git` is read-only, and the shared repository is outside every grant. |
-  | `.codex` and `.claude` denied at any depth, in any case | Partly: only an existing one at a grant root. Creating one anywhere, or writing an existing nested one, is allowed (the same gap Codex has on Linux, above). |
+  | `.codex` and `.claude` denied at any depth, in any case | Partly: only an existing one at a grant root. Creating one anywhere, or writing an existing nested one, is allowed. |
   | Signals only within the sandbox | Matched by the PID namespace: outside processes are not visible. |
   | A setuid program refused | Matched: `no_new_privs`. |
-- **Residuals.** The network is open, as for Seatbelt (#4769). Unix sockets
-  outside the hidden paths stay connectable: an `ssh-agent` socket under
-  `/tmp`, an abstract socket. `/dev` is a private writable memory file
-  system, which reaches nothing outside the sandbox. The optional
-  `claude-confined-credential` readiness entry is still macOS-only;
-  `station doctor` reports the confined credential on Linux.
+- **Residuals.**
+  - **A known gap that weakens #3800.** A confined session can create a
+    `.claude` or `.codex` directory wherever none exists, at the workspace
+    root (`.claude/settings.json` with hooks) or nested (`sub/.codex`), and
+    write an existing nested one. The next unconfined Claude or Codex
+    session started there loads it and runs its hooks or MCP servers outside
+    the sandbox. A mount covers only a path that exists, so bubblewrap cannot
+    deny the name the way Seatbelt does. Closing it needs an owner decision
+    (for example refusing such a start, or another mechanism). A kernel test
+    pins the current behaviour.
+  - **Sockets and network.** The network is open until #4769, and the
+    network namespace is shared. Abstract Unix sockets stay connectable: a
+    session bus or X11 server listening on one is reachable, and
+    `/proc/net/unix` lists them. Unix sockets outside the hidden paths stay
+    connectable too, such as an `ssh-agent` socket under `/tmp`.
+  - `/dev` is a private writable memory file system, which reaches nothing
+    outside the sandbox.
+  - The optional `claude-confined-credential` readiness entry is still
+    macOS-only; `station doctor` reports the confined credential on Linux.
 - **Tests.**
   [bubblewrap.process.test.ts](../../src-server/security/confinement/__tests__/bubblewrap.process.test.ts)
   runs the production arguments under the real kernel, including a live
-  Claude Code handshake observed `confined`. It skips loudly where the
+  Claude Code handshake observed `confined`, a socket listening at a hidden
+  path that refuses a connection from inside, and the host's Docker socket
+  (where this user can reach one outside). It skips loudly where the
   sandbox cannot apply. Its ids are pinned as the `linux-bubblewrap-kernel`
   profile, and the dispatch-only
   [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
   workflow runs it on a hosted Ubuntu runner. EXECUTED: Linux 7.2.12
   (OrbStack, aarch64, Landlock ABI 10 present and unused), bubblewrap 0.8.0,
-  git 2.39.5, 46 of 46 passed.
+  git 2.39.5, with a root-owned Docker socket for the `docker` group: 49 of
+  49 passed.
 
 Not in this slice: the foreground chat handle's receipt, ACP, and Windows
 mechanisms.

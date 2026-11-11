@@ -1160,11 +1160,13 @@ own credential profile is decided when it starts. See
 
 On Linux, the same session runs inside Station's bubblewrap sandbox, with the
 same credential rule, Station-owned configuration directory and environment
-allowlist. It needs the `bubblewrap` package and a kernel that lets
-`/usr/bin/bwrap` create user namespaces. Without them such a start is
+allowlist. It needs the `bubblewrap` package, version 0.8.0 or later, and a
+kernel that lets `/usr/bin/bwrap` create user namespaces. Without them such a start is
 refused, naming why, rather than run unconfined. Inside the sandbox the
 workspace's git metadata is read-only, so the session can read status and
-history but cannot stage or commit. The readiness entry is macOS-only;
+history but cannot stage or commit. It can still create a `.claude` or
+`.codex` folder in the workspace, which your next unconfined session there
+would load: check for one before you start such a session yourself. The readiness entry is macOS-only;
 `station doctor` answers both questions on Linux too.
 
 A confined session also gets only an allowlisted environment. Variables you
