@@ -2,7 +2,7 @@
 
 Retention: retained as bounded before/after review evidence for #4790, #4791 and #4793. Replace only with superseding reviewed evidence.
 
-Before: today's Project room and Task room components (origin/main `c493a11367da`) rendered through this PR's room gallery scenes and fixtures. After: the shared `RoomConversation` and `RoomComposer` at `b80164fac3c9`. Both are local captures of the same 32 scenes on an isolated e2e Station; every PNG here was opened at 390 and 1440 in both themes. Times follow the capturing host's time zone.
+Before: today's Project room and Task room components (origin/main `c493a11367da`) rendered through this PR's room gallery scenes and fixtures. After: the shared `RoomConversation` and `RoomComposer` at `c2b45a8c70c2`, merged with origin/main `e5b5bd24e1ae`. Both are local captures of the same 32 scenes on an isolated e2e Station; every PNG here was opened at 390 and 1440 in both themes. Times follow the capturing host's time zone.
 
 These scenes are new, so there is no tracked baseline and no pixel comparison (`NOT_VERIFIED: 32 new / 0 comparisons`). They are visual receipts, not a full-gallery qualification, and they do not cover native shells or physical devices. Reactions have no scene: no room contract carries them yet.
 
