@@ -470,6 +470,7 @@ async function mentionAgent(name: string) {
 }
 
 test('a draft survives a reload whose authority epoch changes within the same recovery partition (#4810 review 1)', async () => {
+  selectedAuthority = 'epoch-1';
   const first = mount('epoch-1', 'partition-a');
   fireEvent.change(
     await screen.findByRole('textbox', { name: 'Message the project' }),
@@ -513,9 +514,18 @@ test('a second @agent request never replays the first or wipes its own draft (#4
   await mentionAgent('Researcher');
   fireEvent.change(composerField(), { target: { value: 'Second ask' } });
   fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
-  await screen.findByText(/Finish or clear the current Agent request/);
+  await waitFor(() =>
+    expect(
+      agentWrites.length > 1 ||
+        !!screen.queryByText(/Finish or clear the current Agent request/),
+    ).toBe(true),
+  );
+  // No replay of the first intent, and the new draft is still there.
   expect(agentWrites).toHaveLength(1);
   expect(composerField().value).toBe('Second ask');
+  expect(
+    screen.getByText(/Finish or clear the current Agent request/),
+  ).toBeTruthy();
 
   // Once the first settles, the new ask sends its own text.
   fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
