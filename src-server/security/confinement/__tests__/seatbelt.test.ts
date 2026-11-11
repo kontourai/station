@@ -265,20 +265,38 @@ describe('Seatbelt restricted network (#4769)', () => {
     expect(seatbeltProfileNetwork(profile)).toBe('full');
   });
 
-  test('with a broker port the only network rule is outbound TCP to that loopback port, and nothing else changes', () => {
+  test('with a broker port the only network rule is outbound IPv4 TCP to that loopback port, Mach lookups are an allow-list, and nothing else changes', () => {
     const open = seatbeltProfile(linkedGrants()).split('\n');
     const restricted = seatbeltProfile(linkedGrants(), 41_234).split('\n');
     expect(networkRules(restricted.join('\n'))).toEqual([
-      '(allow network-outbound (remote tcp "localhost:41234"))',
+      '(allow network-outbound (remote tcp4 "localhost:41234"))',
     ]);
-    // Line for line the same profile, the network rule replaced in place.
+    const mach = [
+      '(deny mach-lookup)',
+      '(allow mach-lookup (global-name "com.apple.bsd.dirhelper") (global-name "com.apple.diagnosticd") (global-name "com.apple.logd") (global-name "com.apple.system.notification_center") (global-name "com.apple.system.opendirectoryd.libinfo") (global-name "com.apple.system.opendirectoryd.membership"))',
+    ];
+    // Line for line the same profile: the network rule replaced in place,
+    // and the Mach allow-list after it, so it wins over `(allow mach*)`.
     const at = open.indexOf('(allow network*)');
+    expect(open.indexOf('(allow mach*)')).toBeLessThan(at);
     expect(restricted).toEqual([
       ...open.slice(0, at),
-      '(allow network-outbound (remote tcp "localhost:41234"))',
+      '(allow network-outbound (remote tcp4 "localhost:41234"))',
+      ...mach,
       ...open.slice(at + 1),
     ]);
+    // No network-capable service is on the list.
+    expect(mach[1]).not.toMatch(
+      /nsurlsessiond|lsd|trustd|cloudd|configd|appleevents|coreservices/,
+    );
     expect(seatbeltProfileNetwork(restricted.join('\n'))).toBe('restricted');
+    // The broker rule without the Mach restriction is not the restricted
+    // profile, so a spawn that dropped it is not observed restricted.
+    expect(
+      seatbeltProfileNetwork(
+        restricted.filter((line) => !mach.includes(line)).join('\n'),
+      ),
+    ).toBeUndefined();
   });
 
   test.each([0, 65_536, 1.5, Number.NaN, -1])(
@@ -308,7 +326,7 @@ describe('Seatbelt restricted network (#4769)', () => {
     // A path that merely names the network is not a network rule.
     expect(
       seatbeltProfileNetwork(
-        '(allow network*)\n(allow file-read* (subpath "/Users/op/network"))',
+        '(allow mach*)\n(allow network*)\n(allow file-read* (subpath "/Users/op/network"))',
       ),
     ).toBe('full');
   });

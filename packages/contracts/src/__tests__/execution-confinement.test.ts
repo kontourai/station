@@ -1,7 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import { appConfigSemanticError } from '../config.js';
 import {
   type ExecutionConfinementRecord,
   MAX_CONFINED_NETWORK_ALLOWED_HOSTS,
+  normalizeEgressHost,
   parseConfinedNetworkSetting,
 } from '../execution-confinement.js';
 import type { ExecutionResolutionReceipt } from '../execution-target.js';
@@ -81,7 +83,51 @@ describe('#4769: the confinedNetwork setting', () => {
       },
     ],
     ['an unknown key', { mode: 'restricted', allowedHosts: [], extra: true }],
+    [
+      'an entry the broker cannot read',
+      { mode: 'restricted', allowedHosts: ['https://x.com'] },
+    ],
+    [
+      'an entry with a space',
+      { mode: 'restricted', allowedHosts: ['bad host!'] },
+    ],
   ])('is not one with %s', (_label, value) => {
     expect(parseConfinedNetworkSetting(value)).toBeUndefined();
+  });
+
+  it('is refused when written, with the entry rule named', () => {
+    expect(
+      appConfigSemanticError({
+        confinedNetwork: {
+          mode: 'restricted',
+          allowedHosts: ['https://x.com'],
+        },
+      }),
+    ).toMatch(/^confinedNetwork: each allowedHosts entry must be/);
+    expect(
+      appConfigSemanticError({
+        confinedNetwork: { mode: 'restricted', allowedHosts: ['x.com'] },
+      }),
+    ).toBeUndefined();
+  });
+
+  it('reads IP literals without Node: dotted IPv4, IPv6 with one ::, an IPv4 tail', () => {
+    for (const [raw, host] of [
+      ['203.0.113.7', '203.0.113.7'],
+      ['[2001:DB8::1]', '2001:db8::1'],
+      ['::ffff:127.0.0.1', '::ffff:127.0.0.1'],
+      ['1:2:3:4:5:6:7:8', '1:2:3:4:5:6:7:8'],
+      ['::', '::'],
+    ] as const)
+      expect(normalizeEgressHost(raw), raw).toBe(host);
+    for (const raw of [
+      '1:2:3:4:5:6:7:8:9',
+      '1::2::3',
+      '12345::1',
+      '[203.0.113.7]',
+      '::ffff:999.0.0.1',
+      'fe80::1%en0',
+    ])
+      expect(normalizeEgressHost(raw), raw).toBeUndefined();
   });
 });

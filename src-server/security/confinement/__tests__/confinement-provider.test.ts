@@ -12,6 +12,7 @@ import {
   assertRequiredConfinementObserved,
   type ConfinementProvider,
   confinedNetworkPlan,
+  loadConfinedNetworkPlan,
   observedConfinementRecord,
   readConfinementRecord,
   requiredConfinementLevel,
@@ -360,6 +361,26 @@ describe('#4769: a restricted network policy', () => {
       );
     },
   );
+
+  test('a configuration that cannot be read refuses the start as a confinement refusal, not the loader error', async () => {
+    await expect(
+      loadConfinedNetworkPlan(async () => {
+        throw new Error('app config exceeds the byte limit.');
+      }),
+    ).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('could not be read'),
+    });
+    await expect(
+      loadConfinedNetworkPlan(async () => ({
+        confinedNetwork: { mode: 'restricted', allowedHosts: ['x.example'] },
+      })),
+    ).resolves.toEqual({ policy: 'restricted', allowedHosts: ['x.example'] });
+    await expect(loadConfinedNetworkPlan(async () => ({}))).resolves.toBe(
+      undefined,
+    );
+  });
 
   test('the record states a restricted network, and reads back only that value', () => {
     const plan = {

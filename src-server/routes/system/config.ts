@@ -12,6 +12,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   type AppConfig,
+  appConfigSemanticError,
   describeFirstRunTransitionViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
@@ -850,6 +851,20 @@ export function createConfigRoutes(
       }
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
+      }
+      // #4769: the confined network policy is refused here, as written, when
+      // its shape or any allowed host is not one the broker can read; stored,
+      // it would refuse every start that requires confinement. `null` clears it.
+      if (Object.hasOwn(body as object, 'confinedNetwork')) {
+        const value = (body as Record<string, unknown>).confinedNetwork;
+        if (value !== null && value !== undefined) {
+          const problem = appConfigSemanticError({ confinedNetwork: value });
+          if (problem)
+            return c.json(
+              { success: false, error: `${problem} No settings were saved.` },
+              400,
+            );
+        }
       }
       // Terminal history retention: each value's range is the registry's;
       // the rules spanning settings are checked against the merged result.

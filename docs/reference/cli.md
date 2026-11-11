@@ -3996,7 +3996,7 @@ The JSON document has this top-level schema:
             },
             "restrictedNetwork": {
               "state": "available",
-              "reason": "A restricted start reaches only Station's egress broker, which admits the engine's model endpoint and the allowed hosts."
+              "reason": "The Seatbelt profile allows outbound TCP only to Station's egress broker on IPv4 loopback and Mach lookups only to a reviewed list of local services; the broker admits the engine's model endpoint and the allowed hosts."
             }
           }
         ],

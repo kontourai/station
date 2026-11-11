@@ -1220,6 +1220,11 @@ export interface ClaudeAdapterOptions {
    * handshake before it is refused as not observed. Default 60 s.
    */
   confinementHandshakeTimeoutMs?: number;
+  /**
+   * #4769: where a restricted session's distinct broker decisions are kept
+   * (the Station log in production). Absent, they are not kept.
+   */
+  logNetworkDecision?: (details: Record<string, unknown>) => void;
   logger?: ClaudeAdapterLogger;
 }
 
@@ -1244,6 +1249,32 @@ interface SeatbeltStart {
 
 /** #4769: the distinct refused hosts a session reports, one warning each. */
 const MAX_REPORTED_NETWORK_DENIALS = 20;
+
+/** #4769: what each fallback to Auto means, in a restricted refusal. */
+const RESTRICTED_FALLBACK_REASONS: Record<ConfinementFallbackReason, string> = {
+  'confined-credential-unavailable':
+    'no credential a confined Claude session can use was found',
+  'config-root-pinned':
+    'it continues a conversation kept in your own Claude configuration, which a confined session may not write',
+  'resume-bound-elsewhere':
+    'it resumes a conversation recorded under another Claude configuration home',
+  'workspace-too-broad':
+    "its folder is or contains your home folder or Station's data (or, under bubblewrap, a secret store the sandbox hides)",
+};
+
+/**
+ * #4769: a start whose plan restricts the network but which would fall back
+ * to Auto with nothing engaged (and so with an open network) is refused,
+ * naming the fallback, rather than run open.
+ */
+function restrictedNetworkFallbackRefusal(
+  reason: ConfinementFallbackReason,
+): ConfinementRefusedError {
+  return new ConfinementRefusedError(
+    'confinement_mechanism_unavailable',
+    `This claude session requires a restricted network, which cannot be applied to this start: ${RESTRICTED_FALLBACK_REASONS[reason]} (${reason}). Nothing started.`,
+  );
+}
 
 /**
  * Whether the engine refuses a spawn granted `allowDangerouslySkipPermissions`
@@ -1878,6 +1909,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         )
     )
       fallback = 'resume-bound-elsewhere';
+    // #4769: under a restricted network a fallback would run the engine at
+    // Auto with nothing engaged, its network open, so it is refused.
+    if ((fallback || !('configDir' in decision)) && plan.network)
+      throw restrictedNetworkFallbackRefusal(fallback ?? 'workspace-too-broad');
     if (fallback || !('configDir' in decision))
       return {
         input: withConfinementFallback(
@@ -1977,19 +2012,32 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * #4769: reports each refused connection of a restricted session as a
-   * `runtime.warning` (host, port and reason; never a payload or path), the
+   * #4769: keeps a restricted session's broker decisions. Each distinct
+   * decision (allowed or denied) is written once to the Station log (host,
+   * port, verdict, reason, time; at most 80 per session). Each refused
+   * connection is also reported as a `runtime.warning` (host, port and
+   * reason; never a payload or path), stored with the session's events: the
    * simplest existing path to the person until #2495 turns sandbox denials
    * into approval cards. Each distinct refusal is reported once, and at most
-   * {@link MAX_REPORTED_NETWORK_DENIALS} per session; the broker keeps every
-   * record either way.
+   * {@link MAX_REPORTED_NETWORK_DENIALS} per session.
    */
   private networkDenialReporter(
     threadId: string,
   ): (record: EgressDecisionRecord) => void {
     const reported = new Set<string>();
+    const logged = new Set<string>();
     let capped = false;
     return (record) => {
+      // Each distinct decision once per session in the Station log: host,
+      // port, verdict, reason and time, never more.
+      const logKey = `${record.verdict}|${record.reason}|${record.host ?? ''}|${record.port ?? ''}`;
+      if (
+        !logged.has(logKey) &&
+        logged.size < 4 * MAX_REPORTED_NETWORK_DENIALS
+      ) {
+        logged.add(logKey);
+        this.options.logNetworkDecision?.({ threadId, ...record });
+      }
       if (record.verdict !== 'denied') return;
       const key = `${record.reason}|${record.host ?? ''}|${record.port ?? ''}`;
       if (reported.has(key) || capped) return;
@@ -2177,6 +2225,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     )
       ? ('config-root-pinned' as const)
       : undefined;
+    // #4769: and under a restricted network that Auto start would run open,
+    // so it is refused instead.
+    if (adoptionFallback && input.confinementPlan?.network)
+      throw restrictedNetworkFallbackRefusal(adoptionFallback);
     if (adoptionFallback && input.confinementPlan)
       input = withConfinementFallback(
         input,
@@ -4381,7 +4433,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   /**
    * #90 D14: the built-in `station-browser` server for a resolved agent,
-   * unless the agent switched it off or this runtime cannot serve it bound.
+   * unless the agent switched it off, this runtime cannot serve it bound, or
+   * (#4769) the start's network is restricted.
    * An authored tool server that reuses the id is replaced, never merged.
    */
   private resolveStationBrowser(
@@ -4390,6 +4443,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const create = this.options.createInProcessStationBrowser;
     if (!create || !input.agent || input.agent.browserTools === false)
       return undefined;
+    // #4769: Station's browser runs in Station's own process, outside the
+    // sandbox, and navigates wherever it is told: under a restricted network
+    // it would be a way out, so a restricted session does not get it.
+    if (input.confinementPlan?.network) return undefined;
     return {
       [STATION_BROWSER_MCP_SERVER_ID]: {
         type: 'sdk',

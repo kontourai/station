@@ -762,14 +762,14 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Confined session network',
-    help: 'Restricted, confined sessions reach only their model endpoint and the hosts you allow; every other connection is blocked and reported.',
+    help: 'Restricted, confined sessions reach their model endpoint and the hosts you allow through Station’s broker; their other connections are blocked and reported.',
     // #4769: read at each start that requires confinement
     // (orchestration-service `withConfinement`); the operator's own `host`
     // sessions are never confined. Enforced by the egress broker and the
     // Seatbelt profile; a mechanism that cannot restrict the network
     // (bubblewrap, Codex's sandbox) refuses such a start by name.
     description:
-      'Open by default. Restricted applies to sessions Station confines (full-access sessions started by someone other than you, on macOS): they reach only the engine’s own model endpoint and the listed hosts, through Station’s broker. Where the network cannot be restricted the session is refused rather than run open. Your own sessions are unaffected.',
+      'Open by default. Restricted applies only to sessions Station confines (full-access sessions started by someone other than you, on macOS): they reach the engine’s own model endpoint and the listed hosts, through Station’s broker. Such a session that cannot be confined with a restricted network (on Linux, with Codex, or one that would otherwise fall back to Auto) is refused rather than run open. Sessions at Auto or Ask, and your own sessions, are not confined, and their network is not restricted at all.',
     defaultValue: { mode: 'full' },
   }),
   defineSetting({

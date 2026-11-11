@@ -13,10 +13,10 @@
  *   would reach Station's own port), a request that is not `CONNECT`
  *   (405), a malformed one (400) and one that does not finish its header in
  *   time (408).
- * - Every request appends one decision record: host, port, verdict, reason
- *   and time. Never a payload, a URL path or a header. The records are kept
- *   in memory, at most {@link MAX_EGRESS_DECISIONS}, oldest dropped first,
- *   and go when the broker closes.
+ * - Every request produces one decision record: host, port, verdict, reason
+ *   and time. Never a payload, a URL path or a header. The broker keeps none
+ *   itself: each is handed to `onDecision`, whose owner (the session) keeps
+ *   or reports it.
  *
  * Design after Shepherd's `_egress_broker.py` (MIT); no code is shared.
  */
@@ -27,15 +27,25 @@ import {
   connect as netConnect,
   type Socket,
 } from 'node:net';
+import {
+  type EgressHostRule,
+  type EgressTarget,
+  normalizeEgressHost,
+  parseConnectAuthority,
+  parseEgressHostRule,
+} from '@kontourai/station-contracts/execution-confinement';
 
-/** The port an allowed-host entry without one means. */
-const EGRESS_DEFAULT_PORT = 443;
-/** The longest host name DNS can carry. */
-const MAX_EGRESS_HOST_LENGTH = 253;
+/** #4769: the host-entry parsers live with the setting they validate. */
+export {
+  type EgressHostRule,
+  type EgressTarget,
+  normalizeEgressHost,
+  parseConnectAuthority,
+  parseEgressHostRule,
+};
+
 /** The most allowed-host entries a policy may list. */
 const MAX_EGRESS_ALLOWED_HOSTS = 256;
-/** The decision records a broker keeps, oldest dropped first. */
-export const MAX_EGRESS_DECISIONS = 256;
 /** How long a client has to finish its request header. */
 const EGRESS_HEADER_DEADLINE_MS = 10_000;
 /** The longest request header the broker reads. */
@@ -44,21 +54,6 @@ const MAX_EGRESS_HEADER_BYTES = 8 * 1024;
 const EGRESS_CONNECT_TIMEOUT_MS = 15_000;
 /** The most connections a broker holds open at once. */
 const MAX_EGRESS_CONNECTIONS = 256;
-
-/** A `CONNECT` target: a lowercase host name or an IP literal, and a port. */
-export interface EgressTarget {
-  host: string;
-  port: number;
-}
-
-/**
- * One allowed-host entry: an exact host (a name or an IP literal), or every
- * subdomain of a name (`*.example.com`, not `example.com` itself), on one
- * port.
- */
-export type EgressHostRule =
-  | { kind: 'exact'; host: string; port: number }
-  | { kind: 'subdomains'; suffix: string; port: number };
 
 export type EgressDecisionReason =
   | 'model-endpoint'
@@ -81,89 +76,6 @@ export interface EgressDecisionRecord {
   reason: EgressDecisionReason;
   host?: string;
   port?: number;
-}
-
-const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
-
-/**
- * `raw` as the broker compares hosts: lowercase, one trailing dot removed,
- * an IPv6 literal without brackets. `undefined` for anything else: an empty
- * or over-long name, a label DNS cannot carry, a non-ASCII name (it must
- * arrive in its `xn--` form) or a bracketed literal that is not IPv6.
- */
-export function normalizeEgressHost(raw: string): string | undefined {
-  // An IPv6 zone names an interface of this host, not a destination.
-  if (raw.includes('%')) return undefined;
-  if (raw.startsWith('[') && raw.endsWith(']')) {
-    const literal = raw.slice(1, -1).toLowerCase();
-    return isIP(literal) === 6 ? literal : undefined;
-  }
-  if (isIP(raw) === 4) return raw;
-  if (isIP(raw) === 6) return raw.toLowerCase();
-  const host = (raw.endsWith('.') ? raw.slice(0, -1) : raw).toLowerCase();
-  if (host.length === 0 || host.length > MAX_EGRESS_HOST_LENGTH)
-    return undefined;
-  return host.split('.').every((label) => LABEL.test(label)) ? host : undefined;
-}
-
-function parsePort(text: string): number | undefined {
-  if (!/^[0-9]{1,5}$/.test(text)) return undefined;
-  const port = Number(text);
-  return port >= 1 && port <= 65_535 ? port : undefined;
-}
-
-/** `host:port` or `[v6]:port`, the port required. */
-function splitAuthority(
-  text: string,
-): { host: string; port: string | undefined } | undefined {
-  if (text.startsWith('[')) {
-    const close = text.indexOf(']');
-    if (close < 0) return undefined;
-    const rest = text.slice(close + 1);
-    if (rest !== '' && !rest.startsWith(':')) return undefined;
-    return {
-      host: text.slice(0, close + 1),
-      port: rest === '' ? undefined : rest.slice(1),
-    };
-  }
-  const colon = text.lastIndexOf(':');
-  // A bare IPv6 literal has colons of its own.
-  if (colon < 0 || text.indexOf(':') !== colon)
-    return { host: text, port: undefined };
-  return { host: text.slice(0, colon), port: text.slice(colon + 1) };
-}
-
-/** A `CONNECT` request target (`host:port`), or `undefined` when malformed. */
-export function parseConnectAuthority(text: string): EgressTarget | undefined {
-  const parts = splitAuthority(text);
-  if (!parts || parts.port === undefined) return undefined;
-  const host = normalizeEgressHost(parts.host);
-  const port = parsePort(parts.port);
-  return host && port ? { host, port } : undefined;
-}
-
-/**
- * One allowed-host entry as written in the policy: `host`, `host:port`,
- * `*.domain`, `*.domain:port`, an IPv4 literal or a bracketed IPv6 literal,
- * each optionally with a port ({@link EGRESS_DEFAULT_PORT} otherwise).
- * `undefined` for anything else; a policy holding one is refused whole.
- */
-export function parseEgressHostRule(text: string): EgressHostRule | undefined {
-  if (typeof text !== 'string' || text.length > MAX_EGRESS_HOST_LENGTH + 8)
-    return undefined;
-  const wildcard = text.startsWith('*.');
-  const parts = splitAuthority(wildcard ? text.slice(2) : text);
-  if (!parts) return undefined;
-  const port =
-    parts.port === undefined ? EGRESS_DEFAULT_PORT : parsePort(parts.port);
-  const host = normalizeEgressHost(parts.host);
-  if (!host || !port || (parts.host.endsWith('.') && wildcard))
-    return undefined;
-  if (!wildcard) return { kind: 'exact', host, port };
-  // A wildcard names DNS subdomains: never of an IP literal or a single label.
-  return isIP(host) === 0 && host.includes('.')
-    ? { kind: 'subdomains', suffix: host, port }
-    : undefined;
 }
 
 /** Whether `rule` admits `target`. */
@@ -226,30 +138,58 @@ function ipv6Groups(address: string): number[] | undefined {
     : undefined;
 }
 
+/** Two 16-bit groups as a dotted IPv4 address. */
+function ipv4Of(high: number, low: number): string {
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
+/**
+ * The IPv4 address an IPv6 form embeds, when it is one that carries an IPv4
+ * destination: IPv4-compatible (`::a.b.c.d`), IPv4-mapped
+ * (`::ffff:a.b.c.d`), IPv4-translated (`::ffff:0:a.b.c.d`) and the NAT64
+ * well-known prefix (`64:ff9b::/96`). `::` and `::1` are not embeddings.
+ */
+function embeddedIpv4(groups: readonly number[]): string | undefined {
+  const zero = (from: number, to: number) =>
+    groups.slice(from, to).every((group) => group === 0);
+  const [g4 = 0, g5 = 0, g6 = 0, g7 = 0] = groups.slice(4);
+  if (zero(0, 6) && (g6 !== 0 || g7 > 1)) return ipv4Of(g6, g7);
+  if (zero(0, 5) && g5 === 0xffff) return ipv4Of(g6, g7);
+  if (zero(0, 4) && g4 === 0xffff && g5 === 0) return ipv4Of(g6, g7);
+  if (groups[0] === 0x64 && groups[1] === 0xff9b && zero(2, 6))
+    return ipv4Of(g6, g7);
+  return undefined;
+}
+
 function ipv6IsPublic(address: string): boolean {
   const groups = ipv6Groups(address.toLowerCase());
   if (!groups || groups.some((group) => Number.isNaN(group))) return false;
-  const [g0 = 0, g1 = 0] = groups;
+  const [g0 = 0, g1 = 0, g2 = 0] = groups;
   if (groups.every((group) => group === 0)) return false; // ::
   if (groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1)
     return false; // ::1
-  // An IPv4-mapped address is judged as the IPv4 address it maps.
-  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff)
-    return ipv4IsPublic(
-      `${groups[6]! >> 8}.${groups[6]! & 0xff}.${groups[7]! >> 8}.${groups[7]! & 0xff}`,
-    );
+  // A form that embeds an IPv4 destination is judged as that address.
+  const embedded = embeddedIpv4(groups);
+  if (embedded) return ipv4IsPublic(embedded);
   return !(
     (g0 & 0xfe00) === 0xfc00 || // unique local
     (g0 & 0xffc0) === 0xfe80 || // link-local
+    (g0 & 0xffc0) === 0xfec0 || // site-local (deprecated)
     (g0 & 0xff00) === 0xff00 || // multicast
-    (g0 === 0x2001 && g1 === 0x0db8) // documentation
+    (g0 & 0xff00) === 0 || // the rest of ::/8 (reserved, IPv4-compatible)
+    g0 === 0x2002 || // 6to4: relayed IPv4, any destination
+    (g0 === 0x2001 && g1 === 0) || // Teredo: relayed IPv4
+    (g0 === 0x2001 && g1 === 0x0db8) || // documentation
+    (g0 === 0x64 && g1 === 0xff9b && g2 === 1) || // local-use NAT64
+    (g0 === 0x100 && groups.slice(1, 4).every((group) => group === 0)) // discard
   );
 }
 
 /**
  * Whether `address` (an IP literal) is a public unicast address: not
- * loopback, unspecified, private, unique-local, carrier-grade NAT,
- * link-local (cloud metadata lives there), multicast or reserved.
+ * loopback, unspecified, private, unique-local, site-local, carrier-grade
+ * NAT, link-local (cloud metadata lives there), multicast or reserved, and
+ * not an IPv6 form that embeds or relays to an IPv4 address that is not.
  */
 export function isPublicAddress(address: string): boolean {
   const family = isIP(address);
@@ -258,21 +198,22 @@ export function isPublicAddress(address: string): boolean {
   return false;
 }
 
-/** Whether `address` is a loopback or unspecified address. */
+/** Whether `address` is loopback or unspecified, an IPv4 embedding included. */
 function isLocalAddress(address: string): boolean {
-  if (isIP(address) === 4) {
-    const [a] = ipv4Octets(address);
+  const ipv4Local = (ipv4: string) => {
+    const [a] = ipv4Octets(ipv4);
     return a === 127 || a === 0;
-  }
+  };
+  if (isIP(address) === 4) return ipv4Local(address);
   const groups = ipv6Groups(address.toLowerCase());
   if (!groups) return true;
-  const mapped =
-    groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
-  if (mapped) return groups[6]! >> 8 === 127 || groups[6]! >> 8 === 0;
-  return (
+  if (
     groups.slice(0, 7).every((group) => group === 0) &&
     (groups[7] === 0 || groups[7] === 1)
-  );
+  )
+    return true;
+  const embedded = embeddedIpv4(groups);
+  return embedded !== undefined && ipv4Local(embedded);
 }
 
 /** What a policy decides for a target before any address is known. */
@@ -351,7 +292,6 @@ export interface EgressBrokerOptions {
   now?: () => Date;
   headerDeadlineMs?: number;
   maxHeaderBytes?: number;
-  maxDecisions?: number;
   connectTimeoutMs?: number;
 }
 
@@ -360,8 +300,6 @@ export interface EgressBroker {
   readonly port: number;
   /** Sets the model endpoint, from the environment the engine is spawned with. */
   setModelEndpoint(endpoint: EgressTarget | undefined): void;
-  /** The kept decision records, oldest first. */
-  decisions(): readonly EgressDecisionRecord[];
   /** Stops listening and closes every connection. */
   close(): Promise<void>;
 }
@@ -432,10 +370,8 @@ export async function startEgressBroker(
   const headerDeadlineMs =
     options.headerDeadlineMs ?? EGRESS_HEADER_DEADLINE_MS;
   const maxHeaderBytes = options.maxHeaderBytes ?? MAX_EGRESS_HEADER_BYTES;
-  const maxDecisions = options.maxDecisions ?? MAX_EGRESS_DECISIONS;
   const connectTimeoutMs =
     options.connectTimeoutMs ?? EGRESS_CONNECT_TIMEOUT_MS;
-  const records: EgressDecisionRecord[] = [];
   const open = new Set<Socket>();
 
   const record = (
@@ -449,9 +385,6 @@ export async function startEgressBroker(
       reason,
       ...(target ? { host: target.host, port: target.port } : {}),
     };
-    records.push(entry);
-    if (records.length > maxDecisions)
-      records.splice(0, records.length - maxDecisions);
     options.onDecision?.(entry);
   };
 
@@ -545,6 +478,17 @@ export async function startEgressBroker(
     const onData = (chunk: Buffer): void => {
       if (settled) return;
       buffered = Buffer.concat([buffered, chunk]);
+      // A line ended by a bare LF is not HTTP/1.1: refused at once rather
+      // than left to wait for a CRLF that never comes.
+      const firstLf = buffered.indexOf('\n');
+      if (firstLf >= 0 && (firstLf === 0 || buffered[firstLf - 1] !== 0x0d)) {
+        settled = true;
+        clearTimeout(deadline);
+        client.off('data', onData);
+        record('denied', 'malformed-request');
+        refuse(client, 400, 'Station could not read the request.');
+        return;
+      }
       const end = buffered.indexOf('\r\n\r\n');
       if (end < 0) {
         if (buffered.length > maxHeaderBytes) {
@@ -620,7 +564,6 @@ export async function startEgressBroker(
     setModelEndpoint(endpoint) {
       modelEndpoint = endpoint;
     },
-    decisions: () => [...records],
     close() {
       closed ??= new Promise<void>((resolve) => {
         server.close(() => resolve());

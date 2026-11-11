@@ -4,7 +4,10 @@ import {
 } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
-import type { ConfinedNetworkSetting } from './execution-confinement.js';
+import {
+  type ConfinedNetworkSetting,
+  parseConfinedNetworkSetting,
+} from './execution-confinement.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
 import type { TelemetryTierChoices } from './product-telemetry.js';
 import type { ApprovalMode } from './provider.js';
@@ -660,8 +663,15 @@ export function hasAppConfigStationDecision(
  */
 export function appConfigSemanticError(config: unknown): string | undefined {
   if (!config || typeof config !== 'object') return undefined;
-  const { templateVariables, builtinAgentEngineConnectionId } =
+  const { templateVariables, builtinAgentEngineConnectionId, confinedNetwork } =
     config as Partial<AppConfig>;
+  // #4769: every allowed host as the broker reads it, so a value that would
+  // refuse every confined start is refused when it is written.
+  if (
+    confinedNetwork !== undefined &&
+    !parseConfinedNetworkSetting(confinedNetwork)
+  )
+    return 'confinedNetwork: each allowedHosts entry must be host, host:port, *.domain or an IP literal (IPv6 in brackets), with an optional port.';
   const formatError = templateVariableFormatError(templateVariables);
   if (formatError) return `templateVariables: ${formatError}`;
   if (

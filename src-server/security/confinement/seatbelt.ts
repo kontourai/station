@@ -346,38 +346,85 @@ function sbplNamedSegmentDeny(root: string, name: string): string {
 const SEATBELT_OPEN_NETWORK = '(allow network*)';
 
 /**
+ * #4769: the Mach services a restricted profile may still look up, each
+ * local to this machine: user and group lookups (`getpwuid`, group
+ * membership), the per-user temp and cache directory paths (`confstr`),
+ * `notify(3)` and the unified log. Found by running Node, Claude Code (its
+ * handshake and a model turn through the broker), a shell and git under a
+ * profile that denies every lookup, and reading the sandbox's own denials
+ * in the unified log (`log stream --predicate 'sender == "Sandbox"'`): these
+ * are the ones ordinary tools asked for; none of them makes a network
+ * request for its caller. Everything else is refused, among them
+ * `com.apple.nsurlsessiond` (a background `URLSession` upload runs in that
+ * daemon, outside the sandbox), LaunchServices (`com.apple.lsd.*`, which
+ * opens a URL in another application), Apple Events, `trustd`, `cloudd`
+ * and `configd`.
+ */
+const SEATBELT_RESTRICTED_MACH_SERVICES: readonly string[] = [
+  'com.apple.bsd.dirhelper',
+  'com.apple.diagnosticd',
+  'com.apple.logd',
+  'com.apple.system.notification_center',
+  'com.apple.system.opendirectoryd.libinfo',
+  'com.apple.system.opendirectoryd.membership',
+];
+
+/** The Mach rules a restricted profile adds after `(allow mach*)`. */
+const SEATBELT_RESTRICTED_MACH_RULES: readonly string[] = [
+  '(deny mach-lookup)',
+  `(allow mach-lookup ${SEATBELT_RESTRICTED_MACH_SERVICES.map((name) => `(global-name "${name}")`).join(' ')})`,
+];
+
+/**
  * #4769: the network rules of a profile. Without a broker port, the network
- * is open, as it always was. With one, the only network operation allowed
- * is an outbound TCP connection to that port on loopback (SBPL names
- * loopback `localhost`; only `localhost` and `*` are accepted as a host):
- * under `(deny default)` every other connect is refused by the kernel,
- * including one to a Unix socket (the DNS resolver's included), UDP, and
- * another loopback port such as Station's own.
+ * is open, as it always was. With one:
+ *
+ * - The only network operation allowed is an outbound IPv4 TCP connection to
+ *   that port on loopback (`tcp4`: SBPL names loopback `localhost`, and
+ *   `tcp` would also admit `[::1]:<port>`, which the broker does not hold).
+ *   Under `(deny default)` every other connect is refused by the kernel,
+ *   including one to a Unix socket (the DNS resolver's included), UDP, and
+ *   another loopback port such as Station's own.
+ * - Mach lookups are limited to {@link SEATBELT_RESTRICTED_MACH_SERVICES}:
+ *   a service that makes requests for its caller (a background `URLSession`
+ *   in `nsurlsessiond`) would otherwise carry them outside the sandbox.
  */
 export function seatbeltNetworkRules(brokerPort?: number): string[] {
   if (brokerPort === undefined) return [SEATBELT_OPEN_NETWORK];
   if (!Number.isInteger(brokerPort) || brokerPort < 1 || brokerPort > 65_535)
     throw new Error('The egress broker port is not a TCP port.');
-  return [`(allow network-outbound (remote tcp "localhost:${brokerPort}"))`];
+  return [
+    `(allow network-outbound (remote tcp4 "localhost:${brokerPort}"))`,
+    ...SEATBELT_RESTRICTED_MACH_RULES,
+  ];
 }
 
 /**
  * #4769: what a built profile lets the process reach: `full` when it holds
- * the open-network rule and no other network rule, `restricted` when its
- * only network rule is one broker rule, `undefined` for anything else (a
+ * the open-network rule, no other network rule and no Mach restriction;
+ * `restricted` when its only network rule is one broker rule and it carries
+ * exactly the restricted Mach rules; `undefined` for anything else (a
  * profile Station did not build).
  */
 export function seatbeltProfileNetwork(
   profile: string | undefined,
 ): 'full' | 'restricted' | undefined {
-  const rules = (profile ?? '')
-    .split('\n')
-    .filter((line) => /^\((allow|deny) network/.test(line));
+  const lines = (profile ?? '').split('\n');
+  const rules = lines.filter((line) => /^\((allow|deny) network/.test(line));
+  const mach = lines.filter((line) => /^\((allow|deny) mach/.test(line));
   if (rules.length !== 1) return undefined;
-  if (rules[0] === SEATBELT_OPEN_NETWORK) return 'full';
-  return /^\(allow network-outbound \(remote tcp "localhost:[1-9][0-9]{0,4}"\)\)$/.test(
+  if (rules[0] === SEATBELT_OPEN_NETWORK)
+    return mach.length === 1 && mach[0] === '(allow mach*)'
+      ? 'full'
+      : undefined;
+  return /^\(allow network-outbound \(remote tcp4 "localhost:[1-9][0-9]{0,4}"\)\)$/.test(
     rules[0]!,
-  )
+  ) &&
+    mach.length === 1 + SEATBELT_RESTRICTED_MACH_RULES.length &&
+    mach[0] === '(allow mach*)' &&
+    SEATBELT_RESTRICTED_MACH_RULES.every(
+      (rule, index) => mach[index + 1] === rule,
+    )
     ? 'restricted'
     : undefined;
 }

@@ -50,6 +50,7 @@ import {
 } from '../../../providers/adapters/claude-seatbelt.js';
 import {
   type EgressBroker,
+  type EgressDecisionRecord,
   parseEgressHostRule,
   startEgressBroker,
 } from '../egress-broker.js';
@@ -182,6 +183,26 @@ function nonLoopbackAddress(): string | undefined {
       if (entry.family === 'IPv4' && !entry.internal) return entry.address;
   return undefined;
 }
+
+/**
+ * #4769: a background `URLSession` upload of a file to a URL, waiting up to
+ * the given seconds: the request runs in `nsurlsessiond`, outside the
+ * calling process. Prints how the task ended.
+ */
+const URLSESSION_UPLOAD_PROBE = `import Foundation
+final class Done: NSObject, URLSessionDataDelegate {
+  func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError e: Error?) {
+    print("complete status=\\((task.response as? HTTPURLResponse)?.statusCode ?? -1) error=\\(e != nil)")
+    exit(0)
+  }
+}
+let configuration = URLSessionConfiguration.background(withIdentifier: "station.probe.\\(Int.random(in: 0..<1_000_000_000))")
+let session = URLSession(configuration: configuration, delegate: Done(), delegateQueue: nil)
+var request = URLRequest(url: URL(string: CommandLine.arguments[1])!)
+request.httpMethod = "POST"
+session.uploadTask(with: request, fromFile: URL(fileURLWithPath: CommandLine.arguments[2])).resume()
+RunLoop.current.run(until: Date(timeIntervalSinceNow: Double(CommandLine.arguments[3]) ?? 8))
+`;
 
 describe.skipIf(!probe.ok)(
   // One title on every host, so a skipped run reports the same ids (#4772).
@@ -936,6 +957,8 @@ describe.skipIf(!probe.ok)(
       let upstreamPort: number;
       let outsidePort: number;
       let broker: EgressBroker;
+      /** What the broker handed its `onDecision`, in order. */
+      const decisions: EgressDecisionRecord[] = [];
 
       beforeAll(async () => {
         workspace = join(
@@ -967,6 +990,7 @@ describe.skipIf(!probe.ok)(
         servers.push(other, upstream, outside, unix);
         broker = await startEgressBroker({
           allowedHosts: [parseEgressHostRule('allowed.test')!],
+          onDecision: (record) => decisions.push(record),
           // Hermetic: documentation addresses, dialled to the local stand-in.
           lookup: async (host) =>
             host === 'allowed.test' ? ['203.0.113.10'] : ['203.0.113.11'],
@@ -981,6 +1005,11 @@ describe.skipIf(!probe.ok)(
 
       /** Runs the client under the production restricted profile. */
       async function confinedClient(...args: string[]) {
+        return confinedCommand(process.execPath, ['-e', CLIENT, ...args]);
+      }
+
+      /** Runs `command` under the production restricted profile. */
+      async function confinedCommand(command: string, args: string[]) {
         const launch = await prepareConfinedClaudeLaunch({
           workspace: canonicalPath(workspace),
           configDir: join(stationHome, 'confined-homes', 'claude'),
@@ -992,8 +1021,8 @@ describe.skipIf(!probe.ok)(
           broker,
         });
         const wrapped = wrapper.wrap({
-          command: process.execPath,
-          args: ['-e', CLIENT, ...args],
+          command,
+          args,
           cwd: workspace,
           env: { PATH: '/usr/bin:/bin', HOME: home },
         });
@@ -1050,8 +1079,9 @@ describe.skipIf(!probe.ok)(
         const profile = result.wrapped.args[1]!;
         expect(profile).not.toContain('(allow network*)');
         expect(profile).toContain(
-          `(allow network-outbound (remote tcp "localhost:${broker.port}"))`,
+          `(allow network-outbound (remote tcp4 "localhost:${broker.port}"))`,
         );
+        expect(profile).toContain('(deny mach-lookup)');
         expect(seatbeltProfileNetwork(profile)).toBe('restricted');
         expect(result.network).toBe('restricted');
         expect(result.wrapped.env.HTTPS_PROXY).toBe(
@@ -1116,13 +1146,99 @@ describe.skipIf(!probe.ok)(
         }
       });
 
+      test('a connection to the broker port over IPv6 loopback is refused by the kernel', async (ctx) => {
+        // Another listener holding the broker's port on ::1, which the
+        // broker itself does not hold.
+        const v6 = createServer((socket) => quiet(socket).end('v6\n'));
+        const bound = await new Promise<boolean>((resolve) => {
+          v6.once('error', () => resolve(false));
+          v6.listen(broker.port, '::1', () => resolve(true));
+        });
+        if (!bound) {
+          ctx.skip('this host cannot listen on ::1 at the broker port');
+          return;
+        }
+        try {
+          expect(unconfinedClient('tcp', '::1', String(broker.port))).toBe(
+            'CONNECTED',
+          );
+          const result = await confinedClient(
+            'tcp',
+            '::1',
+            String(broker.port),
+          );
+          expect(result.line, result.stderr).toBe('ERR EPERM');
+        } finally {
+          v6.close();
+        }
+      });
+
+      test('a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker', async (ctx) => {
+        // The reviewed escape (#4769): a background session hands the
+        // request to a daemon that runs outside the sandbox.
+        const dir = makeTempDir('seatbelt-urlsession-');
+        writeFileSync(join(dir, 'upload.swift'), URLSESSION_UPLOAD_PROBE);
+        const compiled = spawnSync(
+          '/usr/bin/swiftc',
+          ['-o', join(dir, 'upload'), join(dir, 'upload.swift')],
+          { encoding: 'utf8', timeout: 120_000, windowsHide: true },
+        );
+        if (compiled.status !== 0) {
+          ctx.skip(
+            `swiftc cannot build the probe on this host: ${(compiled.error?.message ?? compiled.stderr ?? '').slice(0, 200)}`,
+          );
+          return;
+        }
+        const received: string[] = [];
+        const outside = createServer((socket) => {
+          let text = '';
+          quiet(socket).on('data', (chunk) => {
+            text += chunk;
+            if (!text.includes('\r\n\r\n')) return;
+            received.push(text.split('\r\n')[0]!);
+            socket.end('HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n');
+          });
+        });
+        const port = await listen(outside);
+        const file = join(workspace, 'upload.txt');
+        writeFileSync(file, 'workspace content\n');
+        const url = `http://127.0.0.1:${port}/upload`;
+        try {
+          // The positive control: unconfined, the daemon delivers it.
+          await new Promise<void>((resolve) => {
+            const child = spawn(join(dir, 'upload'), [url, file, '6'], {
+              stdio: 'ignore',
+              windowsHide: true,
+            });
+            child.once('close', () => resolve());
+            child.once('error', () => resolve());
+          });
+          if (received.length === 0) {
+            ctx.skip(
+              'nsurlsessiond did not deliver the upload even unconfined',
+            );
+            return;
+          }
+          received.length = 0;
+          const result = await confinedCommand(join(dir, 'upload'), [
+            url,
+            file,
+            '6',
+          ]);
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          expect(received, `${result.line}\n${result.stderr}`).toEqual([]);
+        } finally {
+          outside.close();
+        }
+      }, 180_000);
+
       test('a connection through the broker to an allowed host is tunnelled to it', async () => {
-        const before = broker.decisions().length;
+        const before = decisions.length;
         const result = await confinedClient('connect', 'allowed.test:443');
         expect(result.line, result.stderr).toBe(
           'TUNNELLED HTTP/1.1 200 Connection Established',
         );
-        expect(broker.decisions().slice(before)).toEqual([
+        expect(decisions.slice(before)).toEqual([
           {
             at: expect.any(String),
             verdict: 'allowed',
@@ -1134,12 +1250,12 @@ describe.skipIf(!probe.ok)(
       });
 
       test('a connection through the broker to a host that is not allowed gets 403, and is recorded', async () => {
-        const before = broker.decisions().length;
+        const before = decisions.length;
         const result = await confinedClient('connect', 'denied.test:443');
         expect(result.line, result.stderr).toBe(
           'CLOSED HTTP/1.1 403 Forbidden',
         );
-        expect(broker.decisions().slice(before)).toEqual([
+        expect(decisions.slice(before)).toEqual([
           {
             at: expect.any(String),
             verdict: 'denied',
@@ -1170,8 +1286,10 @@ describe.skipIf(!probe.ok)(
             });
           });
           const modelPort = await listen(model);
+          const modelDecisions: EgressDecisionRecord[] = [];
           const modelBroker = await startEgressBroker({
             allowedHosts: [],
+            onDecision: (record) => modelDecisions.push(record),
             lookup: async () => ['127.0.0.1'],
             dial: (_address, port) => tcpConnect(port, '127.0.0.1'),
           });
@@ -1283,10 +1401,8 @@ describe.skipIf(!probe.ok)(
           ).toBe('confined');
           expect(confinedSpawn.pending()?.network?.()).toBe('restricted');
           // A TLS handshake record (0x16), through the tunnel.
-          expect(received?.[0], JSON.stringify(modelBroker.decisions())).toBe(
-            0x16,
-          );
-          expect(modelBroker.decisions()).toContainEqual({
+          expect(received?.[0], JSON.stringify(modelDecisions)).toBe(0x16);
+          expect(modelDecisions).toContainEqual({
             at: expect.any(String),
             verdict: 'allowed',
             reason: 'model-endpoint',

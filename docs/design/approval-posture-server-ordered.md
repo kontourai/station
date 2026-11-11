@@ -1482,8 +1482,9 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
 #### Restricted network (#4769)
 
 A confined process can read the workspace, so with an open network it can
-send it anywhere. A restricted network limits a confined start to Station's
-egress broker. Domain shapes are in `execution-confinement`; the broker is
+send it anywhere. A restricted network limits a confined start's own
+connections to Station's egress broker. Domain shapes are in
+`execution-confinement`; the broker is
 [egress-broker.ts](../../src-server/security/confinement/egress-broker.ts).
 
 - **Opt-in, at Station scope.** The `confinedNetwork` Station setting
@@ -1495,22 +1496,36 @@ egress broker. Domain shapes are in `execution-confinement`; the broker is
   carry it, so it is a Station setting, and a [managed
   policy](../guides/managed-policy.md#settings) can lock it, which no
   Station value then lowers. A Project that raises it for itself is not
-  built. The operator's own `host` starts, and any start that requires no
-  confinement (Auto, Ask, an adoption, a fallback to Auto), are not confined
-  and keep an open network: the policy is never read for them.
+  built. `PUT /config/app`, the settings file load and a managed policy all
+  refuse a value whose shape or any allowed host the broker cannot read
+  (`appConfigSemanticError`, which parses each entry with the broker's own
+  `parseEgressHostRule`).
+- **Which starts it covers.** Only starts that require confinement. The
+  operator's own `host` starts and every start at Auto or Ask are not
+  confined, so their network is not restricted at all; the policy is never
+  read for them. A start that requires confinement either runs restricted or
+  is refused: it never falls back open. The Claude fallbacks to Auto
+  (`confined-credential-unavailable`, `workspace-too-broad`,
+  `resume-bound-elsewhere`, `config-root-pinned`) are refused under a
+  restricted policy, naming the reason ("the network cannot be restricted
+  for this start"), instead of running at Auto with nothing engaged.
 - **Resolution.** `withConfinement` reads the policy only for a start whose
-  required level is above `host`, at the fresh start, a respawn or
-  credential-profile restart, and an adoption (all three call it). Restricted,
+  required level is above `host`: a fresh start, a respawn or
+  credential-profile restart, and an adoption all pass through it. An
+  adoption carries no approval mode, so it requires no confinement and does
+  not read the policy; if an adoption did reach the Claude adapter with a
+  restricted plan, the adapter refuses it (adoption pins the global
+  configuration root, so it cannot be confined). Restricted,
   `resolveConfinement` resolves only a provider that declares it can restrict
   the network (`restrictsNetwork`), and the plan carries the policy. Station's
   Seatbelt provider can. Bubblewrap and Codex's own sandbox cannot, so such a
   start is refused (`confinement_mechanism_unavailable`) with each reason
   named, for example "bubblewrap: restricted network is not available with
-  the bubblewrap sandbox yet". A policy that is not a valid setting, or that
-  lists an entry the broker cannot read, also refuses the start rather than
-  running it open or with a shorter list.
+  the bubblewrap sandbox yet". A stored policy that is not valid, or a
+  configuration that cannot be read, also refuses the start, as a
+  confinement refusal.
 - **The broker.** One per confined session, on `127.0.0.1` and a port the
-  system picks, closed with the session's temp directory. It is an HTTP
+  system picks, closed after the session's engine is stopped. It is an HTTP
   `CONNECT` proxy: `CONNECT` names the host before any DNS lookup and
   without TLS interception. In a pinned order it admits the engine's model
   endpoint, then any allowed-host entry, and denies the rest with 403. An
@@ -1518,11 +1533,15 @@ egress broker. Domain shapes are in `execution-confinement`; the broker is
   IP literal, on port 443 unless named; hosts compare in lowercase with one
   trailing dot removed. For an admitted name the broker resolves it itself
   and dials the address it checked. A listed name that resolves to a
-  loopback, private, link-local or other non-public address is refused, so
-  DNS rebinding cannot reach Station's own port; a listed IP literal may be
-  private but never loopback. A request that is not `CONNECT` gets 405, a
-  malformed one 400, a header over 8 KiB 431, and a header not finished in
-  10 seconds 408. At most 256 connections are open at once.
+  loopback, private, site-local, link-local or other non-public address is
+  refused, and so is an IPv6 form that embeds or relays to one
+  (IPv4-compatible, -mapped and -translated forms and the NAT64 well-known
+  prefix are judged by the IPv4 address they carry; 6to4, Teredo and
+  local-use NAT64 are never public), so DNS rebinding cannot reach Station's
+  own port. A listed IP literal may be private but never loopback. A request
+  that is not `CONNECT` gets 405, a malformed one 400 (a line ended by a bare
+  LF at once), a header over 8 KiB 431, and a header not finished in 10
+  seconds 408. At most 256 connections are open at once.
 - **The model endpoint** is derived from the environment the engine is
   actually spawned with (`claudeModelEndpoint`): an `https:`
   `ANTHROPIC_BASE_URL` (a gateway, or Station's model-proxy route), else
@@ -1538,17 +1557,43 @@ egress broker. Domain shapes are in `execution-confinement`; the broker is
   telemetry and update hosts are not allowed. EXECUTED (Claude Code 2.1.321,
   macOS 26.7.2): the installed engine answered its handshake inside the
   restricted profile and its first model request arrived at a stand-in
-  endpoint as a TLS ClientHello through the broker's tunnel. Its children (a
-  shell, MCP servers) inherit the same variables and the same kernel rule.
-- **Seatbelt.** The open-network rule `(allow network*)` is replaced, in
-  place, by `(allow network-outbound (remote tcp "localhost:<port>"))`; SBPL
-  accepts only `localhost` or `*` as a host there. Under `(deny default)`
-  the kernel then refuses every other connect with `EPERM`: another loopback
-  port (Station's own), any outside address, a Unix socket at a known path
-  (an SSH agent's), and UDP. The engine needed no other local IPC: the SDK
-  speaks to it over its stdio pipes, which are not network operations.
+  endpoint as a TLS ClientHello through the broker's tunnel; against
+  Anthropic's API through the broker, with a fake key, the request completed
+  TLS and was answered "Invalid API key", so certificate checks need none of
+  the Mach services denied below. Its children (a shell, MCP servers)
+  inherit the same variables and the same kernel rules.
+- **Seatbelt.** Two changes, both only in restricted mode:
+  - The open-network rule `(allow network*)` is replaced, in place, by
+    `(allow network-outbound (remote tcp4 "localhost:<port>"))`. SBPL accepts
+    only `localhost` or `*` as a host there, and `tcp` would also admit
+    `[::1]:<port>`, which the broker does not hold (EXECUTED: an unrelated
+    listener on `[::1]:<broker port>` was reachable with `tcp` and is refused
+    with `tcp4`). Under `(deny default)` the kernel refuses every other
+    connect with `EPERM`: another loopback port (Station's own), any outside
+    address, IPv6 loopback, a Unix socket at a known path (an SSH agent's),
+    and UDP.
+  - Mach lookups become an allow-list: `(deny mach-lookup)` after
+    `(allow mach*)`, then only `com.apple.bsd.dirhelper`,
+    `com.apple.diagnosticd`, `com.apple.logd`,
+    `com.apple.system.notification_center` and
+    `com.apple.system.opendirectoryd.libinfo` and `.membership`. With
+    `(allow mach*)` a background `URLSession` upload, which
+    `nsurlsessiond` performs outside the sandbox, carried workspace content
+    to the LAN, to `https://example.com` and to any loopback port (EXECUTED
+    in review, with a program `swiftc` compiled inside the sandbox). The list
+    was found by running Node, Claude Code (handshake and a model turn
+    through the broker), a shell and git under a profile that denied every
+    lookup, and reading the sandbox's denials in the unified log (`log
+    stream --predicate 'sender == "Sandbox"'`); the services kept are local
+    (user and group lookups, per-user temp paths, `notify(3)`, the unified
+    log). Denied among others: `com.apple.nsurlsessiond`, LaunchServices
+    (`com.apple.lsd.*`, which opens a URL in another application),
+    CoreServices and Apple Events, `trustd`, `cloudd`, `configd`, and
+    `com.apple.dnssd.service`. Inside, `swiftc` itself no longer runs.
   The filter syntax follows macOS's own profiles in
-  `/System/Library/Sandbox/Profiles`.
+  `/System/Library/Sandbox/Profiles`. The engine needed no other local IPC:
+  the SDK speaks to it over its stdio pipes, which are not network
+  operations.
 - **Linux.** Not shipped: bubblewrap refuses a restricted start by name. The
   sandbox shares the host's network namespace, so its only restriction would
   be `--unshare-net`, which leaves a private loopback that the broker on the
@@ -1562,34 +1607,58 @@ egress broker. Domain shapes are in `execution-confinement`; the broker is
   above names.
 - **The record** gains `network: 'restricted'`, written only when the start
   was observed `confined` and the profile it was spawned with is the
-  broker-only one (`pending.network`, read from the built arguments, which
-  the posture already requires to equal the spawned ones). A plan that asks
-  for a restricted network whose spawn has the open rule is
-  `configured-but-failed` and refused. Absent means the network was open.
-- **Decision records.** Every request to the broker appends one record:
+  restricted one, broker rule and Mach allow-list both (`pending.network`,
+  read from the built arguments, which the posture already requires to
+  equal the spawned ones). A plan that asks for a restricted network whose
+  spawn lacks either is `configured-but-failed` and refused. Absent means
+  the network was open.
+- **Decision records.** Every request to the broker produces one record:
   time, verdict, reason and, when it named one, host and port. Never a
   payload, a URL path or a header (a plain-HTTP request's path is dropped).
-  The broker keeps the latest 256 in memory and drops them when it closes.
+  The broker keeps none itself. The session writes each distinct decision
+  (allowed or denied) once to the Station log, at most 80 per session, and
+  reports each refusal to the person (below).
 - **What the person sees.** #2495 (sandbox denials as approval cards) is not
-  built, so a refused connection is reported as a `runtime.warning` with code
-  `confined_network_denied`, naming the host, port and reason, in the
-  session's activity. Each distinct refusal is reported once, and at most 20
-  per session, followed by one notice that further refusals are not reported
-  one by one. Those warnings are stored with the conversation's events, so a
-  denied host name is kept as long as the conversation is; allowed
-  connections are not stored anywhere.
+  built, so a refused connection is published as a `runtime.warning` with
+  code `confined_network_denied`, naming the host, port and reason. The app
+  shows it as a five-second warning toast while the session is open; the
+  event is stored with the session's events and is listed in the session's
+  diagnostics log. Each distinct refusal is reported once, and at most 20 per
+  session, followed by one notice that further refusals are not reported one
+  by one. A denied host name is kept as long as the conversation's events
+  are; allowed connections are kept only in the Station log.
 - **Doctor.** The confinement preflight reports, per engine,
   `restrictedNetwork`: `available` when its mechanism can restrict the
   network and is available on the host, otherwise `unavailable` with the
   reason; `station doctor` shows it as a `Restricted network` row.
 - **Residuals.**
-  - Mach services stay broadly allowed, so a confined process can still ask
-    an unconfined service to make a request for it (LaunchServices opening a
-    URL in the browser, Apple Events). Not probed.
-  - DNS: a name lookup inside the restricted profile failed (`ENOTFOUND`)
-    where the same lookup outside succeeded (EXECUTED in an ad-hoc probe with
-    the same network rules; not a pinned leg). The broker resolves names
-    itself.
+  - Station's own tools run in Station's process, outside the sandbox:
+    - Station's browser (`station-browser`, Station's Chromium) navigates
+      wherever it is told, so a restricted session is not given it.
+    - `terminal_run` runs a command outside the sandbox only once a person
+      approves that run.
+    - Install tools (`install_skill`, `install_registry_integration`) are
+      operator or person-only and refuse a confined session's caller.
+    - The model-catalog probe is Station's own request to the connection's
+      endpoint; the session does not choose where it goes.
+    - Delegation (`send_message` and the dispatch routes) starts other
+      sessions, which resolve their own confinement: one that requires
+      confinement is restricted or refused like any other, but one at Auto
+      or Ask is not network-restricted. A delegated Claude child cannot have
+      its prompts answered and is refused them (#2933); a Codex child at Auto
+      runs in Codex's own sandbox, whose network the operator's Codex
+      configuration decides (off unless enabled). Not closed here (REASONED,
+      not probed).
+  - The Mach allow-list keeps user and group lookups, which on a Mac bound to
+    a directory service can query that server; no request content is the
+    caller's beyond a user or group name.
+  - A process the session started that outlives it (a background job the
+    agent left running; the engine is stopped without its process group)
+    keeps the kernel rule to the broker's port after the broker closes. If
+    another program later listens on that port, such a process could
+    connect to it.
+  - DNS: a name lookup inside the restricted profile fails; the broker
+    resolves names itself.
   - Station's own port is unreachable, so a remote MCP server Station proxies
     through its engine OAuth route does not work in a restricted session;
     reaching Station with an attenuated credential (#2494) is not built.
@@ -1599,8 +1668,6 @@ egress broker. Domain shapes are in `execution-confinement`; the broker is
   - A Claude credential file enrolled in the Station-owned configuration
     refreshes against Anthropic's sign-in host, which is not derived; list
     it, or use an environment credential.
-  - Records are in memory per session; there is no session-wide export of
-    the allowed connections.
 - **Tests.** Broker policy and CONNECT handling over real loopback sockets
   ([egress-broker.test.ts](../../src-server/security/confinement/__tests__/egress-broker.test.ts));
   the profile builder and posture
@@ -1608,12 +1675,15 @@ egress broker. Domain shapes are in `execution-confinement`; the broker is
   resolution, the setting and the record
   ([confinement-provider.test.ts](../../src-server/security/confinement/__tests__/confinement-provider.test.ts),
   [confinement-start.test.ts](../../src-server/services/orchestration/__tests__/confinement-start.test.ts));
-  the adapter wiring
+  the write path
+  ([config.routes.test.ts](../../src-server/routes/system/__tests__/config.routes.test.ts));
+  the adapter wiring, fallback and adoption refusals and the withheld browser
   ([claude-adapter-seatbelt.test.ts](../../src-server/providers/__tests__/claude-adapter-seatbelt.test.ts));
-  and nine kernel legs nested in
+  and eleven kernel legs nested in
   [seatbelt.process.test.ts](../../src-server/security/confinement/__tests__/seatbelt.process.test.ts)
-  (`with a restricted network (#4769)`), pinned in the `seatbelt-kernel`
-  profile. EXECUTED on macOS 26.7.2: 60 of 60 passed.
+  (`with a restricted network (#4769)`), among them the background
+  `URLSession` upload and the IPv6 loopback leg, pinned in the
+  `seatbelt-kernel` profile.
 
 Not in this slice: the foreground chat handle's receipt, ACP, and Windows
 mechanisms.

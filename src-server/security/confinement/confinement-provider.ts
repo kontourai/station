@@ -19,7 +19,6 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
-import { parseEgressHostRule } from './egress-broker.js';
 
 /**
  * #2494: one interface for every confinement mechanism. See
@@ -368,21 +367,35 @@ export function confinedNetworkPlan(
 ): ConfinementNetworkPlan | undefined {
   if (value === undefined) return undefined;
   const setting = parseConfinedNetworkSetting(value);
-  const unreadable = setting
-    ? setting.mode === 'restricted'
-      ? setting.allowedHosts.find((entry) => !parseEgressHostRule(entry))
-      : undefined
-    : value;
-  if (unreadable !== undefined)
+  if (!setting)
     throw new ConfinementRefusedError(
       'confinement_mechanism_unavailable',
-      setting
-        ? `This Station's confined network policy lists an allowed host Station cannot read (${JSON.stringify(String(unreadable).slice(0, 80))}), so a session that requires confinement cannot start. Nothing started.`
-        : "This Station's confined network policy (`confinedNetwork`) is not valid, so a session that requires confinement cannot start. Nothing started.",
+      "This Station's confined network policy (`confinedNetwork`) is not valid (a malformed value, or an allowed host Station cannot read), so a session that requires confinement cannot start. Nothing started.",
     );
-  return setting?.mode === 'restricted'
+  return setting.mode === 'restricted'
     ? { policy: 'restricted', allowedHosts: [...setting.allowedHosts] }
     : undefined;
+}
+
+/**
+ * #4769: reads the policy through `load` (this Station's configuration, as
+ * loaded); a configuration that cannot be read refuses the start that needs
+ * the policy, as a confinement refusal, rather than failing it with the
+ * loader's own error.
+ */
+export async function loadConfinedNetworkPlan(
+  load: () => Promise<{ confinedNetwork?: unknown }>,
+): Promise<ConfinementNetworkPlan | undefined> {
+  let value: unknown;
+  try {
+    value = (await load()).confinedNetwork;
+  } catch {
+    throw new ConfinementRefusedError(
+      'confinement_mechanism_unavailable',
+      "This Station's configuration could not be read, so its confined network policy is unknown and a session that requires confinement cannot start. Nothing started.",
+    );
+  }
+  return confinedNetworkPlan(value);
 }
 
 /** The record a start with no engaged mechanism writes before it starts. */

@@ -1204,16 +1204,24 @@ confinement exists for it there. See
 
 By default a confined session's network is open. Set the Station's
 [`confinedNetwork`](../reference/config.md#optional-fields) to `restricted`
-to limit it: such a session then reaches only its model endpoint and the
-hosts you list, through a broker Station runs for it, and every other
-connection is blocked and shown in its activity with the host it tried. On
-macOS this also stops it connecting to an SSH agent socket. The Claude
-connection must use Anthropic's API or an `https:` `ANTHROPIC_BASE_URL`; one
-that uses Bedrock, Vertex or Foundry is refused while the network is
-restricted. On Linux, and for Codex, a restricted network is not available
-yet, so such a session is refused, naming why, rather than run open. Tools
-inside the session reach the listed hosts over HTTPS only, through the proxy
-variables Station sets; `ssh` and plain HTTP are blocked. See
+to limit it. This covers only confined sessions: sessions at Auto or Ask,
+and your own sessions, are not confined and their network is not restricted
+at all. On macOS a restricted session's own connections go only to a broker
+Station runs for it, which lets through its model endpoint and the hosts you
+list; a connection to anything else is blocked and shown as a warning with
+the host it tried (a toast while the session is open, and in its
+diagnostics log). The sandbox also stops it asking macOS services to make a
+request for it (a background download, opening a URL in another app) and
+connecting to an SSH agent socket, and Station does not give it its own
+browser. The Claude connection must use Anthropic's API or an `https:`
+`ANTHROPIC_BASE_URL`. Such a session is refused, naming why, rather than run
+open: on Linux and for Codex, where a restricted network is not available
+yet; with a connection that uses Bedrock, Vertex or Foundry; and where it
+would otherwise run at Auto (no confined credential, a folder too broad to
+confine, a resume recorded elsewhere, an adoption). Tools inside the session
+reach the listed hosts over HTTPS only, through the proxy variables Station
+sets; `ssh` and plain HTTP are blocked. Other sessions it starts through
+Station resolve their own confinement. See
 [restricted network](../design/approval-posture-server-ordered.md#restricted-network-4769).
 
 A Codex session that does not run as `host` (started by you in person, or

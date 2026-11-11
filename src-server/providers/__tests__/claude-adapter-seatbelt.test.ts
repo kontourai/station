@@ -187,9 +187,13 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
   let workspace: string;
   let adapter: ClaudeAdapter;
   let events: CanonicalRuntimeEvent[];
+  /** #4769: what the adapter kept in the Station log. */
+  let decisionLog: Record<string, unknown>[] = [];
 
   function createAdapter(
     options: {
+      /** Serve Station's in-process browser to agent sessions. */
+      stationBrowser?: true;
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
       /** Inject nothing: the adapter picks the server's own provider. */
@@ -198,7 +202,12 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       resolveMcpOAuth?: EngineMcpOAuthResolver;
     } = {},
   ) {
+    decisionLog = [];
     adapter = new ClaudeAdapter({
+      logNetworkDecision: (details) => decisionLog.push(details),
+      ...(options.stationBrowser
+        ? { createInProcessStationBrowser: () => ({}) as never }
+        : {}),
       resolveMcpOAuth: options.resolveMcpOAuth,
       revokeStationControlCallerToken: revokeStationControlMcpToken,
       ...(options.appHomeDir
@@ -993,7 +1002,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     const profile = child.spawnArgs.args[1]!;
     expect(profile).not.toContain('(allow network*)');
     const port = Number(
-      /\(allow network-outbound \(remote tcp "localhost:(\d+)"\)\)/.exec(
+      /\(allow network-outbound \(remote tcp4 "localhost:(\d+)"\)\)/.exec(
         profile,
       )?.[1],
     );
@@ -1036,6 +1045,17 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
         }),
       ]),
     );
+    // Kept once in the Station log, content-free.
+    expect(decisionLog).toEqual([
+      {
+        threadId: 'restricted',
+        at: expect.any(String),
+        verdict: 'denied',
+        reason: 'not-allowed',
+        host: 'exfil.example',
+        port: 443,
+      },
+    ]);
     // Stopping the session closes its broker.
     await adapter.stopSession('restricted');
     await vi.waitFor(() =>
@@ -1106,6 +1126,115 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       message: expect.stringContaining('https://x.example'),
     });
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test('#4769: under a restricted network, a start that would fall back to Auto is refused, naming why, and nothing is spawned', async () => {
+    const refusedFor = async (reason: string, start: Promise<unknown>) => {
+      await expect(start).rejects.toMatchObject({
+        name: 'ConfinementRefusedError',
+        code: 'confinement_mechanism_unavailable',
+        message: expect.stringContaining(
+          `requires a restricted network, which cannot be applied to this start`,
+        ),
+      });
+      await expect(start).rejects.toThrow(`(${reason})`);
+    };
+    // No confined credential.
+    createAdapter({ connectionEnv: NO_CREDENTIAL });
+    await refusedFor(
+      'confined-credential-unavailable',
+      startConfined('no-credential-restricted', {
+        confinementPlan: RESTRICTED_PLAN,
+      }),
+    );
+    // A folder too broad to confine.
+    createAdapter();
+    await refusedFor(
+      'workspace-too-broad',
+      adapter.startSession({
+        provider: 'claude',
+        threadId: 'home-restricted',
+        cwd: homedir(),
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: RESTRICTED_PLAN,
+      }),
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
+    // A resume recorded under another configuration home.
+    startingQuery(Promise.resolve({}));
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'elsewhere-restricted',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    const binding = (await started('elsewhere-restricted'))
+      .nativeResumeBindingKey as string;
+    await adapter.stopSession('elsewhere-restricted');
+    mockQuery.mockClear();
+    await refusedFor(
+      'resume-bound-elsewhere',
+      startConfined('elsewhere-restricted', {
+        confinementPlan: RESTRICTED_PLAN,
+        resumeCursor: 'native-session-2',
+        nativeResumeBindingKey: binding,
+      }),
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
+    // Without the restriction the same fallbacks still run at Auto.
+    createAdapter({ connectionEnv: NO_CREDENTIAL });
+    startingQuery(Promise.resolve({}));
+    await startConfined('no-credential-open');
+    expect(
+      (await started('no-credential-open')).stationConfinementRecord,
+    ).toMatchObject({ fallback: 'confined-credential-unavailable' });
+  });
+
+  test('#4769: under a restricted network, an adoption (which pins the global config root) is refused, not run open', async () => {
+    createAdapter({ serverProvider: true });
+    mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+    startingQuery(Promise.resolve({}));
+    const adopting = adapter.adoptSession({
+      provider: 'claude',
+      threadId: 'adopted-restricted',
+      sourceSessionId: 'vendor-source',
+      sourceKind: 'claude-transcript',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'never' },
+      confinementPlan: RESTRICTED_PLAN,
+    });
+    await expect(adopting).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('(config-root-pinned)'),
+    });
+    // Refused before the transcript is forked or an engine spawned.
+    expect(mockForkSession).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test("#4769: a restricted session is not given Station's in-process browser, which runs outside the sandbox", async () => {
+    createAdapter({ stationBrowser: true });
+    for (const [threadId, plan, expected] of [
+      ['browser-open', SEATBELT_PLAN, true],
+      ['browser-restricted', RESTRICTED_PLAN, false],
+    ] as const) {
+      const query = startingQuery(Promise.resolve({}));
+      await startConfined(threadId, {
+        confinementPlan: plan,
+        agent: { slug: 'agent' },
+      });
+      const servers = (query.options?.mcpServers ?? {}) as Record<
+        string,
+        unknown
+      >;
+      expect(Object.hasOwn(servers, 'station-browser'), threadId).toBe(
+        expected,
+      );
+    }
   });
 
   test('readiness says, on macOS, whether a confined credential exists, without a login', async () => {

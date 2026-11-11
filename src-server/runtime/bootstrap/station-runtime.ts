@@ -1046,6 +1046,13 @@ export class StationRuntime {
           ...args,
         ),
     },
+    // #4769: each distinct broker decision of a restricted session, kept in
+    // the Station log (content-free: host, port, verdict, reason, time).
+    logNetworkDecision: (details: Record<string, unknown>) =>
+      (this.logger?.info as ((...a: unknown[]) => void) | undefined)?.(
+        'Confined network decision',
+        details,
+      ),
   });
   private codexAdapter = new CodexAdapter({
     resolveBoundToolPolicy: (input) =>

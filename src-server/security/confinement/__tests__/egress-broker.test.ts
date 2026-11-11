@@ -10,8 +10,8 @@ import {
   decideEgress,
   type EgressBroker,
   type EgressBrokerOptions,
+  type EgressDecisionRecord,
   isPublicAddress,
-  MAX_EGRESS_DECISIONS,
   normalizeEgressHost,
   parseConnectAuthority,
   parseEgressHostRule,
@@ -139,8 +139,23 @@ describe('egress host policy', () => {
       '::ffff:127.0.0.1',
       '::ffff:7f00:1',
       'not an address',
+      // IPv6 forms that embed, translate or relay to an IPv4 address.
+      '::127.0.0.1',
+      '::ffff:0:127.0.0.1',
+      '64:ff9b::7f00:1',
+      '64:ff9b::a00:1',
+      '64:ff9b:1::5db8:d822',
+      '2002:7f00:1::1',
+      '2002:5db8:d822::1',
+      '2001:0:4136:e378::1',
+      'fec0::1',
+      '100::1',
     ])
       expect(isPublicAddress(address), address).toBe(false);
+    // The NAT64 well-known prefix and IPv4-compatible forms of a public
+    // address are judged as that address.
+    for (const address of ['64:ff9b::5db8:d822', '::93.184.216.34'])
+      expect(isPublicAddress(address), address).toBe(true);
   });
 
   test('a listed name that resolves to loopback or a private address is refused; the model endpoint is not', () => {
@@ -162,6 +177,22 @@ describe('egress host policy', () => {
       { allowedHosts: [parseEgressHostRule('127.0.0.1:3141')!] },
     );
     expect(addressesAdmitted(loopbackLiteral, ['127.0.0.1'])).toBe(false);
+    // A listed IPv6 literal that embeds loopback is loopback too.
+    for (const literal of [
+      '::ffff:0:127.0.0.1',
+      '64:ff9b::7f00:1',
+      '::127.0.0.1',
+    ])
+      expect(
+        addressesAdmitted(
+          decideEgress(
+            { host: literal, port: 443 },
+            { allowedHosts: [parseEgressHostRule(`[${literal}]`)!] },
+          ),
+          [literal],
+        ),
+        literal,
+      ).toBe(false);
     const model = decideEgress(
       { host: 'localhost', port: 4000 },
       {
@@ -212,11 +243,17 @@ describe('egress broker', () => {
     for (const item of opened.splice(0)) await item.close();
   });
 
+  /** A started broker, with the records its `onDecision` was handed. */
   async function broker(
     options: Partial<EgressBrokerOptions> & { upstreamPort?: number } = {},
-  ): Promise<EgressBroker> {
-    const { upstreamPort, ...rest } = options;
+  ): Promise<EgressBroker & { decisions: () => EgressDecisionRecord[] }> {
+    const { upstreamPort, onDecision, ...rest } = options;
+    const records: EgressDecisionRecord[] = [];
     const started = await startEgressBroker({
+      onDecision: (record) => {
+        records.push(record);
+        onDecision?.(record);
+      },
       allowedHosts: [parseEgressHostRule('allowed.example')!],
       lookup: async () => ['93.184.216.34'],
       ...(upstreamPort
@@ -226,7 +263,7 @@ describe('egress broker', () => {
       ...rest,
     });
     opened.push(started);
-    return started;
+    return Object.assign(started, { decisions: () => [...records] });
   }
 
   test('an allowed host is tunnelled and recorded with host, port, verdict and time only', async () => {
@@ -398,19 +435,22 @@ describe('egress broker', () => {
     ]);
   });
 
-  test('the decision records are bounded, oldest dropped first', async () => {
-    const started = await broker({ maxDecisions: 3 });
-    for (const host of ['a', 'b', 'c', 'd', 'e'])
-      await exchange(
-        started.port,
-        `CONNECT ${host}.example:443 HTTP/1.1\r\n\r\n`,
-      );
-    expect(started.decisions().map((record) => record.host)).toEqual([
-      'c.example',
-      'd.example',
-      'e.example',
+  test('a request whose lines end in a bare LF is refused at once, not at the deadline', async () => {
+    const started = await broker({ headerDeadlineMs: 30_000 });
+    const begun = Date.now();
+    const reply = await exchange(
+      started.port,
+      'CONNECT allowed.example:443 HTTP/1.1\n\n',
+    );
+    expect(Date.now() - begun).toBeLessThan(5_000);
+    expect(reply).toMatch(/^HTTP\/1\.1 400 Bad Request/);
+    expect(started.decisions()).toEqual([
+      {
+        at: '2026-11-11T00:00:00.000Z',
+        verdict: 'denied',
+        reason: 'malformed-request',
+      },
     ]);
-    expect(MAX_EGRESS_DECISIONS).toBe(256);
   });
 
   test('every decision reaches the observer as it is made', async () => {

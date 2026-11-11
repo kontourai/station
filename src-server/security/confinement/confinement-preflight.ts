@@ -66,7 +66,7 @@ function restrictedNetworkFor(
     ? {
         state: 'available',
         reason:
-          "A restricted start reaches only Station's egress broker, which admits the engine's model endpoint and the allowed hosts.",
+          "The Seatbelt profile allows outbound TCP only to Station's egress broker on IPv4 loopback and Mach lookups only to a reviewed list of local services; the broker admits the engine's model endpoint and the allowed hosts.",
       }
     : {
         state: 'unavailable',
