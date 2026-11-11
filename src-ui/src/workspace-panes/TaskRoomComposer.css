@@ -79,7 +79,7 @@
   gap: var(--k-space-1);
   max-width: 100%;
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .task-room-attachment-images img {
   display: block;

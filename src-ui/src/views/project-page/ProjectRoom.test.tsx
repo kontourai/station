@@ -570,7 +570,11 @@ test('loads older history and explicitly requests an available Agent with actual
     screen.getByRole('button', { name: 'Load earlier messages' }),
   );
   await screen.findByText('Update 1');
-  expect(screen.getByText('Agent')).toBeTruthy();
+  expect(
+    within(screen.getByRole('list', { name: 'Conversation' })).getByText(
+      'Agent',
+    ),
+  ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Reply to Researcher' }));
   fireEvent.change(
     screen.getByRole('textbox', { name: 'Message the project' }),

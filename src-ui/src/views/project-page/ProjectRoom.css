@@ -134,7 +134,7 @@
   flex-wrap: wrap;
   gap: var(--k-space-1);
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .project-room__delivery--failed {
@@ -144,7 +144,7 @@
 
 .project-room__delivery .button {
   min-height: calc(var(--k-space-5) + var(--k-space-1));
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* Agent request status sits between the conversation and the composer. */

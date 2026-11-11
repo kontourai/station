@@ -2005,7 +2005,7 @@
 }
 .task-room-thread-summary__last {
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .task-room-live {
   display: flex;
@@ -2049,7 +2049,7 @@
 }
 .task-room-running__meta {
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .task-room-running__actions {
   display: inline-flex;
