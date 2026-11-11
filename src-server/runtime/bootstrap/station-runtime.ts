@@ -5,7 +5,10 @@ import { analyticsHomeExportActivation } from '../../analytics/analytics-activat
 import { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
 import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
-import { getBrandingProvider } from '../../providers/registries/registry.js';
+import {
+  getBrandingProvider,
+  listProviders,
+} from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -248,6 +251,7 @@ import { composeTaskBriefSource } from '../../services/projects/task-brief-sourc
 import { composeTaskDispatcher } from '../../services/projects/task-dispatch-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
 import {
   sessionExitWorktreeMetadata,
   terminalWorktreeStateForExit,
@@ -1244,6 +1248,11 @@ export class StationRuntime {
   private readonly taskFollowUps = new TaskFollowUpStoreHolder(() =>
     taskFollowUpStorePath(this.configLoader.getProjectHomeDir()),
   );
+  /**
+   * #4771: what became of each worktree Session's output. Absent without an
+   * orchestration store; Session-exit cleanup then records nothing.
+   */
+  private worktreeOutputSettlements?: WorktreeOutputSettlementService;
   private ptyAdapter!: IPtyAdapter;
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
@@ -1938,20 +1947,7 @@ export class StationRuntime {
         resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
         // #4507: a Task worktree is never removed while a Session in it has a
         // running turn. Read when finalization runs, not at construction.
-        isWorkspaceBusy: (path) => {
-          const root = resolve(path);
-          return this.orchestrationService
-            .listActiveTurnThreadIds()
-            .some((threadId) => {
-              const cwd =
-                this.orchestrationEventStore?.readSessionByThread(
-                  threadId,
-                )?.cwd;
-              if (!cwd) return false;
-              const at = resolve(cwd);
-              return at === root || at.startsWith(`${root}${sep}`);
-            });
-        },
+        isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
       });
       // Release a task's assignment claim when its orchestration session ends
       // (natural completion or `stopSession`/cancel — both surface as the
@@ -1974,6 +1970,19 @@ export class StationRuntime {
       });
       subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
       const worktreeProvisioningService = new WorktreeProvisioningService();
+      const settlementStore =
+        this.orchestrationEventStore?.worktreeOutputSettlementStore();
+      this.worktreeOutputSettlements = settlementStore
+        ? new WorktreeOutputSettlementService({
+            store: settlementStore,
+            worktrees: worktreeProvisioningService,
+            pullRequestProviders: () =>
+              listProviders('pullRequest').map((entry) => entry.provider),
+            // A worktree is not settled while a turn runs in it, the rule
+            // Task finalization follows (#4507).
+            isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
+          })
+        : undefined;
       this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
         const event = serverEvent.data?.event as
@@ -2072,11 +2081,10 @@ export class StationRuntime {
               exitCode: event.exitCode,
               events: detail.events,
             });
-            await worktreeProvisioningService.finalize({
-              metadata,
-              terminalState,
-              sessionId,
-            });
+            const exit = { metadata, terminalState, sessionId };
+            await (this.worktreeOutputSettlements
+              ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
+              : worktreeProvisioningService.finalize(exit));
           })
           .catch((error) => {
             this.logger.warn('Failed to finalize worktree on session exit', {
@@ -2593,6 +2601,23 @@ export class StationRuntime {
         { graceMs: this.drainGraceMs() },
       );
     }
+  }
+
+  /**
+   * Whether a Session with a running turn works in `path` or below it. Read
+   * when asked, never at construction (#4507, #4771).
+   */
+  private isWorkspaceBusy(path: string): boolean {
+    const root = resolve(path);
+    return this.orchestrationService
+      .listActiveTurnThreadIds()
+      .some((threadId) => {
+        const cwd =
+          this.orchestrationEventStore?.readSessionByThread(threadId)?.cwd;
+        if (!cwd) return false;
+        const at = resolve(cwd);
+        return at === root || at.startsWith(`${root}${sep}`);
+      });
   }
 
   /**
@@ -5406,6 +5431,7 @@ export class StationRuntime {
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
       taskFollowUps: this.taskFollowUps,
+      worktreeOutputSettlements: () => this.worktreeOutputSettlements,
       ptyAdapter: this.ptyAdapter,
       scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,

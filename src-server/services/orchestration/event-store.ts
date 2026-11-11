@@ -189,6 +189,10 @@ import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrati
 import { migrateContextSummaryBoundaries } from '../../domain/migrations/026-context-summary-boundaries.js';
 import { TASK_WRITE_BACK_MIGRATION } from '../../domain/migrations/026-task-write-back.js';
 import {
+  ensureWorktreeOutputSettlementOwnerColumn,
+  WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION,
+} from '../../domain/migrations/029-worktree-output-settlements.js';
+import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
@@ -489,6 +493,10 @@ import {
   SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
   SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
 } from './work-item-result-projector.js';
+import {
+  createSqliteWorktreeOutputSettlementStore,
+  type WorktreeOutputSettlementStore,
+} from './worktree-output-settlement-store.js';
 
 const require = createRequire(import.meta.url);
 const logger = createLogger({ name: 'event-store' });
@@ -2690,6 +2698,7 @@ export class EventStore {
   private taskMemory?: TaskMemoryStore;
   private taskReview?: TaskReviewStore;
   private taskWriteBack?: TaskWriteBackStore;
+  private worktreeOutputSettlements?: WorktreeOutputSettlementStore;
   private agentSchedule?: AgentScheduleStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
@@ -3078,6 +3087,9 @@ export class EventStore {
       ensureUsageExportInvalidations(this.db);
       this.db.exec(TASK_REVIEW_MIGRATION);
       this.db.exec(TASK_WRITE_BACK_MIGRATION);
+      // #4771: what became of each worktree Session's output.
+      this.db.exec(WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION);
+      ensureWorktreeOutputSettlementOwnerColumn(this.db);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
       this.db
@@ -16367,6 +16379,13 @@ export class EventStore {
   taskWriteBackStore(): TaskWriteBackStore {
     this.taskWriteBack ??= createSqliteTaskWriteBackStore(this.db);
     return this.taskWriteBack;
+  }
+
+  /** #4771: one outcome per worktree Session. Authority is the caller's. */
+  worktreeOutputSettlementStore(): WorktreeOutputSettlementStore {
+    this.worktreeOutputSettlements ??=
+      createSqliteWorktreeOutputSettlementStore(this.db);
+    return this.worktreeOutputSettlements;
   }
 
   taskReviewStore(): TaskReviewStore {

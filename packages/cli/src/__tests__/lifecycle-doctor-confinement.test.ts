@@ -205,6 +205,41 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
     );
   });
 
+  test('#4770: a Linux Station reporting bubblewrap is read and rendered, not "Not checked"', async () => {
+    const report = await reportFor(
+      readerDeps(
+        answering(
+          preflight({
+            mechanism: 'bubblewrap',
+            mechanismState: 'available',
+            mechanismReason:
+              'the bubblewrap sandbox applies and enforces on this host',
+            confinedAuthentication: {
+              state: 'available',
+              source: 'environment',
+              appliesTo: SCOPE,
+            },
+          }),
+        ),
+      ),
+    );
+    const rows = confinementRows(report).filter((row) =>
+      row.label.includes('claude'),
+    );
+    expect(rows).toEqual([
+      {
+        label: 'Confinement mechanism (claude: bubblewrap)',
+        status: 'pass',
+        detail:
+          'Available on the host of Station "laptop": the bubblewrap sandbox applies and enforces on this host.',
+      },
+      expect.objectContaining({
+        label: 'Confined credential (claude)',
+        status: 'pass',
+      }),
+    ]);
+  });
+
   test('credential unavailable: a warn row naming the fallback and the remedy', async () => {
     const report = await reportFor(
       readerDeps(answering(CREDENTIAL_UNAVAILABLE)),

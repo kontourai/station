@@ -219,6 +219,15 @@ describe('readConfinementRecord', () => {
     expect(readConfinementRecord(fallback)).toEqual(fallback);
   });
 
+  test('#4770: reads back a bubblewrap record with its grant kinds', () => {
+    const bubblewrap = {
+      ...valid,
+      mechanism: 'bubblewrap',
+      writeGrants: ['station-config', 'station-temp', 'workspace'],
+    };
+    expect(readConfinementRecord(bubblewrap)).toEqual(bubblewrap);
+  });
+
   test.each([
     ['an unknown write grant', { ...valid, writeGrants: ['everything'] }],
     [

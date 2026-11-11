@@ -1,6 +1,6 @@
 /**
- * #2494: the Claude adapter's Seatbelt seam. A start whose plan names
- * `seatbelt` must spawn its engine through the provider's `confine`, take
+ * #2494: the Claude adapter's Seatbelt seam (and, #4770, the same seam for
+ * a plan naming `bubblewrap`). A start whose plan names `seatbelt` must spawn its engine through the provider's `confine`, take
  * its posture from the provider's `pending.observe` once the engine has
  * answered its handshake, and only then run at full access. Every other
  * start is untouched. The real adapter and the real spawn wrapper run here
@@ -8,7 +8,7 @@
  * production one, so the profile and the posture rules are real. The kernel
  * side is `seatbelt.process.test.ts`.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -101,6 +101,10 @@ const SEATBELT_PLAN: ConfinementPlan = {
   level: 'os-profile',
   workspaceAccess: 'mounted',
 };
+const BUBBLEWRAP_PLAN: ConfinementPlan = {
+  ...SEATBELT_PLAN,
+  mechanism: 'bubblewrap',
+};
 
 /** Masks every credential an ambient environment could carry. */
 const NO_CREDENTIAL = {
@@ -168,6 +172,8 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     options: {
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
+      /** Inject nothing: the adapter picks the server's own provider. */
+      serverProvider?: true;
       appHomeDir?: string;
       resolveMcpOAuth?: EngineMcpOAuthResolver;
     } = {},
@@ -190,7 +196,12 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       confinementHandshakeTimeoutMs: 2_000,
       getConnectionEnv: async () =>
         options.connectionEnv ?? FAKE_ENV_CREDENTIAL,
-      seatbeltProvider: options.provider ?? createSeatbeltConfinementProvider(),
+      ...(options.serverProvider
+        ? {}
+        : {
+            seatbeltProvider:
+              options.provider ?? createSeatbeltConfinementProvider(),
+          }),
     });
     events = [];
     void (async () => {
@@ -596,44 +607,95 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     ).toBe('confined');
   });
 
-  test('a workspace that is the home folder is too broad to confine: Auto, recorded', async () => {
-    createAdapter();
+  test.each([
+    ['seatbelt', SEATBELT_PLAN],
+    ['bubblewrap', BUBBLEWRAP_PLAN],
+  ] as const)(
+    'a workspace that is the home folder is too broad to confine under %s: Auto, recorded, and the warning says why',
+    async (mechanism, plan) => {
+      createAdapter();
+      startingQuery(Promise.resolve({}));
+      const threadId = `home-${mechanism}`;
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        cwd: homedir(),
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: plan,
+      });
+      expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(
+        FAKE_CLAUDE_COMMAND,
+      );
+      expect((await started(threadId)).stationConfinementRecord).toMatchObject({
+        posture: 'no-mechanism',
+        fallback: 'workspace-too-broad',
+      });
+      const warning = events.find(
+        (e) => e.method === 'runtime.warning' && e.threadId === threadId,
+      ) as { message?: string } | undefined;
+      // The Seatbelt text is unchanged; bubblewrap adds its own rule.
+      const seatbeltText =
+        "Full access runs as Auto: this session's folder is or contains your home folder or Station's data, so confining it to that folder would confine nothing.";
+      expect(warning?.message).toBe(
+        mechanism === 'seatbelt'
+          ? seatbeltText
+          : `${seatbeltText} Under the bubblewrap sandbox this also covers a folder inside, or containing, a secret store the sandbox hides.`,
+      );
+    },
+  );
+
+  test('#4770: a bubblewrap workspace whose .git is a symbolic link is refused before spawning, naming why', async () => {
+    createAdapter({ serverProvider: true });
+    const real = join(workspace, '..', 'real-git');
+    mkdirSync(real);
+    symlinkSync(real, join(workspace, '.git'));
     startingQuery(Promise.resolve({}));
-    await adapter.startSession({
-      provider: 'claude',
-      threadId: 'home',
-      cwd: homedir(),
-      confinement: 'workspace',
-      modelOptions: { approvalMode: 'never' },
-      confinementPlan: SEATBELT_PLAN,
+    await expect(
+      startConfined('symlinked-git', { confinementPlan: BUBBLEWRAP_PLAN }),
+    ).rejects.toMatchObject({
+      code: 'confinement_not_observed',
+      message: expect.stringContaining(
+        'Its bubblewrap sandbox cannot be built: .git is a symbolic link',
+      ),
     });
-    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
-    expect((await started('home')).stationConfinementRecord).toMatchObject({
-      posture: 'no-mechanism',
-      fallback: 'workspace-too-broad',
-    });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  test('adoption pins the global config root, so it is never confined: Auto, recorded', async () => {
-    createAdapter();
-    mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
-    const query = startingQuery(Promise.resolve({}));
-    await adapter.adoptSession({
-      provider: 'claude',
-      threadId: 'adopted',
-      sourceSessionId: 'vendor-source',
-      sourceKind: 'claude-transcript',
-      cwd: workspace,
-      confinement: 'workspace',
-      modelOptions: { approvalMode: 'never' },
-      confinementPlan: SEATBELT_PLAN,
-    });
-    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
-    expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
-    expect((await started('adopted')).stationConfinementRecord).toMatchObject({
-      fallback: 'config-root-pinned',
-    });
-  });
+  test.each([
+    ['seatbelt', SEATBELT_PLAN],
+    ['bubblewrap', BUBBLEWRAP_PLAN],
+  ] as const)(
+    'adoption pins the global config root, so a %s plan is never confined: Auto, recorded',
+    async (mechanism, plan) => {
+      // The server's own provider for the mechanism, as production picks it.
+      createAdapter({ serverProvider: true });
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      const query = startingQuery(Promise.resolve({}));
+      const threadId = `adopted-${mechanism}`;
+      await adapter.adoptSession({
+        provider: 'claude',
+        threadId,
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: workspace,
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: plan,
+      });
+      expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(
+        FAKE_CLAUDE_COMMAND,
+      );
+      // Never full access outside a sandbox.
+      expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
+      expect(query.options?.permissionMode).not.toBe('bypassPermissions');
+      expect((await started(threadId)).stationConfinementRecord).toMatchObject({
+        posture: 'no-mechanism',
+        required: false,
+        fallback: 'config-root-pinned',
+      });
+    },
+  );
 
   test('chat-host-images: a confined session image root is exactly its Seatbelt TMPDIR, and no unused session-tmp folder is created', async () => {
     vi.stubEnv('STATION_HOME', stationHome);
@@ -825,6 +887,74 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
     });
+  });
+
+  test('#4770: a plan naming bubblewrap spawns through bwrap with the server’s own provider, lifted only once observed', async () => {
+    createAdapter({ serverProvider: true });
+    const handshake = deferred<unknown>();
+    const query = startingQuery(handshake.promise);
+    const starting = startConfined('bubblewrap', {
+      confinementPlan: BUBBLEWRAP_PLAN,
+    });
+    await vi.waitFor(() =>
+      expect(query.initializationResult).toHaveBeenCalled(),
+    );
+    const child = FakeClaudeChild.newest!;
+    expect(child.spawnArgs.command).toBe('/usr/bin/bwrap');
+    const args = child.spawnArgs.args;
+    expect(args.slice(0, 3)).toEqual([
+      '--unshare-user',
+      '--unshare-pid',
+      '--unshare-ipc',
+    ]);
+    expect(args[args.indexOf('--') + 1]).toBe(FAKE_CLAUDE_COMMAND);
+    expect(args).toEqual(
+      expect.arrayContaining(['--bind', workspace, workspace]),
+    );
+    expect(spawnedEnv().CLAUDE_CONFIG_DIR).toBe(
+      join(stationHome, 'confined-homes', 'claude'),
+    );
+    expect(query.options).toMatchObject({
+      permissionMode: 'acceptEdits',
+      allowDangerouslySkipPermissions: true,
+    });
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    expect(announced('bubblewrap')).toBe(false);
+
+    handshake.resolve({});
+    await starting;
+    expect(query.setPermissionMode).toHaveBeenCalledExactlyOnceWith(
+      'bypassPermissions',
+    );
+    expect((await started('bubblewrap')).stationConfinementRecord).toEqual({
+      level: 'os-profile',
+      required: true,
+      posture: 'confined',
+      mechanism: 'bubblewrap',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+      writeGrants: ['station-config', 'station-temp', 'workspace'],
+    });
+  });
+
+  test('#4770: a bubblewrap start whose engine never answers is refused, with no unconfined fallback spawn', async () => {
+    createAdapter({ serverProvider: true });
+    const query = startingQuery(
+      Promise.reject(new Error('Claude Code process exited with code 1')),
+    );
+    await expect(
+      startConfined('bubblewrap-failed', { confinementPlan: BUBBLEWRAP_PLAN }),
+    ).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_not_observed',
+      message: expect.stringContaining(
+        'not observed inside its bubblewrap sandbox (configured-but-failed)',
+      ),
+    });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe('/usr/bin/bwrap');
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    await expect(adapter.hasSession('bubblewrap-failed')).resolves.toBe(false);
   });
 
   test('readiness says, on macOS, whether a confined credential exists, without a login', async () => {

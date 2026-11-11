@@ -1,12 +1,13 @@
 /**
  * #2494: what the Claude adapter needs to run a session under Station's
- * Seatbelt profile: the Station-owned configuration directory, the
- * credential check that decides whether a confined session can authenticate
- * at all, and the spawn wrapper that sends the engine spawn through the
- * provider's `confine`.
+ * Seatbelt profile, or (#4770) its bubblewrap sandbox on Linux: the
+ * Station-owned configuration directory, the credential check that decides
+ * whether a confined session can authenticate at all, and the spawn wrapper
+ * that sends the engine spawn through the provider's `confine`.
  *
- * A confined engine never reads the operator's Keychain (the profile hides
- * it) and never writes the operator's `~/.claude`. It authenticates only
+ * A confined engine never reads the operator's Keychain or login keyring
+ * (the profile hides it) and never writes the operator's `~/.claude`. It
+ * authenticates only
  * with a credential that needs no operator state: one in its environment,
  * or one enrolled as a file in its Station-owned configuration directory.
  * The operator's own login is never copied there: Claude rotates its
@@ -18,8 +19,17 @@ import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import type {
   ConfinementFallbackReason,
+  ConfinementMechanism,
   ConfinementWriteGrant,
 } from '@kontourai/station-contracts/execution-confinement';
+import {
+  bubblewrapArgs,
+  bubblewrapConfinementProvider,
+  bubblewrapGrants,
+  bubblewrapHiddenPaths,
+  bubblewrapWorkspaceRefusal,
+  bubblewrapWriteGrantKinds,
+} from '../../security/confinement/bubblewrap.js';
 import type {
   ConfinementProvider,
   ConfinementSpawnSpec,
@@ -31,6 +41,7 @@ import {
   type SeatbeltBounds,
   type SeatbeltEvidence,
   seatbeltConfigRoot,
+  seatbeltConfinementProvider,
   seatbeltGrants,
   seatbeltHiddenPaths,
   seatbeltSessionDirPrefix,
@@ -38,6 +49,7 @@ import {
   seatbeltWorkspaceRefusal,
   seatbeltWriteGrantKinds,
 } from '../../security/confinement/seatbelt.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { hasOAuthCredential } from '../auth/claude-auth.js';
 import type {
   ClaudeSpawnLaunch,
@@ -170,6 +182,40 @@ export function confinedClaudeCredential(
   return { available: false };
 }
 
+/**
+ * #4770: the Station-applied mechanisms a confined Claude start wraps its
+ * engine spawn in: Seatbelt on macOS, bubblewrap on Linux. Both prepare the
+ * same Station-owned directories, environment and credential, and both are
+ * observed from the same evidence (`SeatbeltEvidence`).
+ */
+export type ClaudeSpawnWrapMechanism = Extract<
+  ConfinementMechanism,
+  'seatbelt' | 'bubblewrap'
+>;
+
+/** Whether a plan's mechanism is one the Claude adapter wraps the spawn in. */
+export function isClaudeSpawnWrapMechanism(
+  mechanism: ConfinementMechanism | undefined,
+): mechanism is ClaudeSpawnWrapMechanism {
+  return mechanism === 'seatbelt' || mechanism === 'bubblewrap';
+}
+
+/** How a refusal names a spawn-wrapped mechanism to a person. */
+export function claudeSpawnWrapLabel(
+  mechanism: ClaudeSpawnWrapMechanism,
+): string {
+  return mechanism === 'bubblewrap' ? 'bubblewrap sandbox' : 'Seatbelt profile';
+}
+
+/** The server's own provider for a spawn-wrapped mechanism. */
+export function claudeSpawnWrapProvider(
+  mechanism: ClaudeSpawnWrapMechanism,
+): ConfinementProvider<SeatbeltEvidence> {
+  return mechanism === 'bubblewrap'
+    ? bubblewrapConfinementProvider
+    : seatbeltConfinementProvider;
+}
+
 /** A confined launch, prepared before the engine is spawned. */
 export interface ConfinedClaudeLaunch {
   workspace: string;
@@ -179,6 +225,8 @@ export interface ConfinedClaudeLaunch {
   bounds: SeatbeltBounds;
   /** Kinds of the grants, or `undefined` when any reaches out of bounds. */
   writeGrants: ConfinementWriteGrant[] | undefined;
+  /** Why the sandbox's arguments could not be built, when they could not. */
+  buildError?: string;
   cleanup: () => void;
 }
 
@@ -191,6 +239,13 @@ export interface ConfinedClaudeDecisionInput {
   globalConfigPinned: boolean;
   stationHome: string;
   home?: string;
+  /**
+   * #4770: the mechanism the plan names (Seatbelt by default). Under
+   * bubblewrap a workspace inside or containing a path the sandbox hides is
+   * too broad as well (`bubblewrapWorkspaceRefusal`).
+   */
+  mechanism?: ClaudeSpawnWrapMechanism;
+  stationRoot?: string;
 }
 
 /**
@@ -217,9 +272,9 @@ export function confinedClaudeCredentialCheck(
 }
 
 /**
- * Why a start that asked for Seatbelt runs at Auto with nothing engaged
- * instead, derived in order from checks, or the configuration directory a
- * confined start uses.
+ * Why a start that asked for Seatbelt or bubblewrap runs at Auto with
+ * nothing engaged instead, derived in order from checks, or the
+ * configuration directory a confined start uses.
  */
 export function confinedClaudeDecision(
   input: ConfinedClaudeDecisionInput,
@@ -234,7 +289,16 @@ export function confinedClaudeDecision(
     seatbeltWorkspaceRefusal(workspace, {
       home,
       stationHome: input.stationHome,
-    })
+    }) ||
+    (input.mechanism === 'bubblewrap' &&
+      bubblewrapWorkspaceRefusal(
+        workspace,
+        bubblewrapHiddenPaths({
+          home,
+          stationHome: input.stationHome,
+          ...(input.stationRoot ? { stationRoot: input.stationRoot } : {}),
+        }).hidden,
+      ))
   )
     return { fallback: 'workspace-too-broad' };
   const { configDir, credential } = confinedClaudeCredentialCheck(input);
@@ -244,9 +308,38 @@ export function confinedClaudeDecision(
 }
 
 /**
- * Creates the session's directories and derives its grants. Nothing is
- * spawned here; a launch whose grants reach out of bounds is still
- * returned, with `writeGrants` undefined, for the caller to refuse.
+ * The kinds of the writes a bubblewrap launch with `grants` would allow,
+ * read from the arguments bubblewrap would be given, or `undefined` when
+ * those reach out of bounds or cannot be built at all.
+ */
+function bubblewrapLaunchWriteGrants(
+  workspace: string,
+  grants: ConfinementSpawnSpec['grants'],
+  bounds: SeatbeltBounds,
+): { writeGrants?: ConfinementWriteGrant[]; buildError?: string } {
+  try {
+    const writeGrants = bubblewrapWriteGrantKinds(
+      bubblewrapArgs({
+        command: '/bin/true',
+        args: [],
+        cwd: workspace,
+        env: {},
+        grants,
+        network: 'full',
+      }),
+      bounds,
+    );
+    return writeGrants ? { writeGrants } : {};
+  } catch (error) {
+    return { buildError: errorMessage(error) };
+  }
+}
+
+/**
+ * Creates the session's directories and derives its grants for
+ * `mechanism` (Seatbelt by default). Nothing is spawned here; a launch
+ * whose grants reach out of bounds is still returned, with `writeGrants`
+ * undefined, for the caller to refuse.
  */
 export async function prepareConfinedClaudeLaunch(input: {
   workspace: string;
@@ -254,6 +347,7 @@ export async function prepareConfinedClaudeLaunch(input: {
   stationHome: string;
   home?: string;
   stationRoot?: string;
+  mechanism?: ClaudeSpawnWrapMechanism;
 }): Promise<ConfinedClaudeLaunch> {
   mkdirSync(input.configDir, { recursive: true, mode: 0o700 });
   const tempRoot = seatbeltTempRoot(input.stationHome);
@@ -264,12 +358,15 @@ export async function prepareConfinedClaudeLaunch(input: {
   const configDir = canonicalPath(input.configDir);
   const home = canonicalPath(input.home ?? homedir());
   const git = await discoverSeatbeltGitLayout(input.workspace);
-  const { hidden, readable } = seatbeltHiddenPaths({
+  const bubblewrap = input.mechanism === 'bubblewrap';
+  const { hidden, readable } = (
+    bubblewrap ? bubblewrapHiddenPaths : seatbeltHiddenPaths
+  )({
     home,
     stationHome: input.stationHome,
     ...(input.stationRoot ? { stationRoot: input.stationRoot } : {}),
   });
-  const grants = seatbeltGrants({
+  const grants = (bubblewrap ? bubblewrapGrants : seatbeltGrants)({
     workspace: input.workspace,
     stationTempDir: tmpDir,
     stationConfigDir: configDir,
@@ -283,13 +380,17 @@ export async function prepareConfinedClaudeLaunch(input: {
     home,
     ...(git ? { git } : {}),
   };
+  const built = bubblewrap
+    ? bubblewrapLaunchWriteGrants(input.workspace, grants, bounds)
+    : { writeGrants: seatbeltWriteGrantKinds(grants, bounds) };
   return {
     workspace: input.workspace,
     configDir,
     tmpDir,
     grants,
     bounds,
-    writeGrants: seatbeltWriteGrantKinds(grants, bounds),
+    writeGrants: built.writeGrants,
+    ...(built.buildError ? { buildError: built.buildError } : {}),
     cleanup: () => rmSync(tmpDir, { recursive: true, force: true }),
   };
 }

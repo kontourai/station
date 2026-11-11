@@ -15,6 +15,11 @@ authority and `orchestration:operate`. The current Codex adapter supports save
 paused, pause and clear; resume and Station-managed execution are unavailable.
 See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
 
+A Session that started in a worktree of its own records what became of its
+output once: `GET` or `POST /api/orchestration/sessions/:threadId/worktree-settlement`
+(discarded, kept, released or cleaned up without a decision). No composer
+control calls it yet. See [Worktree output settlement](api.md#worktree-output-settlement).
+
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
@@ -409,9 +414,9 @@ carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own
 `session.started`: the level, whether it was required, the posture the engine
 reported applying at that start (`confined`, `no-mechanism` or
-`configured-but-failed`), the mechanism (`codex-sandbox` or `seatbelt`),
-workspace access and policy basis. A Seatbelt record also lists the kinds of
-writes its profile grants (`writeGrants`). A start that asked for confinement
+`configured-but-failed`), the mechanism (`codex-sandbox`, `seatbelt` or
+`bubblewrap`), workspace access and policy basis. A Seatbelt or bubblewrap
+record also lists the kinds of writes its profile grants (`writeGrants`). A start that asked for confinement
 but ran at Auto with none engaged names why in `fallback`
 (`confined-credential-unavailable`, `config-root-pinned`,
 `resume-bound-elsewhere` or `workspace-too-broad`). It
