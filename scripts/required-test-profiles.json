@@ -230,6 +230,11 @@
             "Seatbelt profile under the real kernel",
             "with a restricted network (#4769)",
             "a connection through the broker to a host that is not allowed gets 403, and is recorded"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a Mach service outside the allow-list is refused: configd answers scutil outside the profile and not inside it"
           ]
         ],
         "mayRuntimeSkip": [
