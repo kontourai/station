@@ -7257,15 +7257,19 @@ export function createOrchestrationRoutes(
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
     const cursor = parseResumeCursor(c.req.header('Last-Event-ID'));
-    // #3075: resolved once, as `authority` is; a per-session stream does not
-    // carry inbox-wide read-state changes.
-    let readMarkerPerson: string | undefined;
-    if (threadId === undefined)
+    // #3075 review: whose read-marker changes this stream carries is
+    // resolved when each change is published, never captured at connect: a
+    // device whose owner standing is withdrawn (narrowed to read-only, bound
+    // to a person, revoked) stops receiving the owner's changes at once. A
+    // per-session stream carries none.
+    const readMarkerPerson = (): string | undefined => {
+      if (threadId !== undefined) return undefined;
       try {
-        readMarkerPerson = deps.readMarkerPersonKey?.(c);
+        return deps.readMarkerPersonKey?.(c);
       } catch {
-        readMarkerPerson = undefined;
+        return undefined;
       }
+    };
     if (c.req.query('includeGeneral') === '1' && deps.generalEventProducer) {
       c.header('X-Station-General-Stream', '1');
     }
@@ -7618,9 +7622,8 @@ export function createOrchestrationRoutes(
             const personKey = (evt.data as { personKey?: unknown } | undefined)
               ?.personKey;
             if (
-              readMarkerPerson !== undefined &&
               typeof personKey === 'string' &&
-              personKey === readMarkerPerson
+              personKey === readMarkerPerson()
             )
               forward({ event: evt.event, data: '{}' });
             return;

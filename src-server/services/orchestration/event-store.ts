@@ -2454,6 +2454,41 @@ export class VoiceTurnStartupUnavailableError extends Error {
  */
 export type CommandRefusalPhase = 'authorization' | 'execution';
 
+/**
+ * #3075: the events that are readable transcript content, the ones that move
+ * a conversation's content version: a person's prompt, assistant text, a
+ * tool result, host images, and a turn finishing, ending unfinished or
+ * failing. Lifecycle bookkeeping (start, stop, exit, restore, state and
+ * metadata changes) never is.
+ */
+const READABLE_CONTENT_METHODS = new Set([
+  'content.text-delta',
+  'tool.completed',
+  'content.host-images',
+  'turn.completed',
+  'turn.aborted',
+  'runtime.error',
+]);
+export function isReadableContentEvent(event: CanonicalRuntimeEvent): boolean {
+  if (READABLE_CONTENT_METHODS.has(event.method)) return true;
+  return (
+    event.method === 'turn.started' &&
+    typeof event.prompt === 'string' &&
+    event.prompt.length > 0 &&
+    !isProviderTriggeredTurn(event)
+  );
+}
+/** {@link isReadableContentEvent} over stored rows (alias `e`). */
+const READABLE_CONTENT_EVENT_SQL = `(e.method IN (${[
+  ...READABLE_CONTENT_METHODS,
+]
+  .map((method) => `'${method}'`)
+  .join(', ')}) OR (e.method = 'turn.started'
+  AND json_valid(e.payload)
+  AND json_type(e.payload, '$.prompt') = 'text'
+  AND length(json_extract(e.payload, '$.prompt')) > 0
+  AND COALESCE(json_extract(e.payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'))`;
+
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
 
@@ -3101,6 +3136,7 @@ export class EventStore {
       // exclusion set into SQLite.
       this.backfillConversationHistoryProjectSlugs();
       this.ensureConversationHistoryUpgrade();
+      this.ensureThreadContentProjection();
       this.conversationSessionLineage =
         this.composeConversationSessionLineage();
       this.conversationSessionLineage.backfillLegacySessions();
@@ -5166,6 +5202,7 @@ export class EventStore {
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
+        this.projectThreadContent(event, globalSequence);
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
@@ -7431,6 +7468,7 @@ export class EventStore {
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
+        this.projectThreadContent(event, globalSequence);
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
@@ -11320,42 +11358,198 @@ export class EventStore {
   }
 
   /**
-   * #3075: each conversation's content time, the `created_at` of the newest
-   * event that is something a person would read (a turn finishing, ending
-   * unfinished or failing), across every Session in its lineage. Lifecycle
-   * bookkeeping (`session.exited` when Station stops, state changes) never
-   * moves it, unlike the history row's `updated_at`. A conversation with no
-   * such event is absent. Callers pass the ids of one bounded page.
+   * #3075: each conversation's content version, the highest
+   * `global_sequence` of a readable transcript event (`isReadableContentEvent`)
+   * on any Session in its lineage, from the maintained
+   * `orchestration_thread_content` projection: one primary-key lookup per
+   * Session, never a history scan. Lifecycle bookkeeping never moves it. A
+   * conversation with no readable content yet is absent. Callers pass the
+   * ids of one bounded page.
    */
-  readConversationContentTimes(
+  readConversationContentVersions(
     conversationIds: readonly string[],
-  ): Map<string, string> {
-    const result = new Map<string, string>();
+  ): Map<string, number> {
+    const result = new Map<string, number>();
     if (conversationIds.length === 0) return result;
-    // Per Session, newest first by sequence through `idx_events_thread`; the
-    // unary `+` keeps the planner off the method index, which would walk
-    // every content event in the store.
     const rows = this.db
       .prepare(
         `SELECT cs.conversation_id AS conversation_id,
-                MAX((
-                  SELECT e.created_at FROM orchestration_events e
-                  WHERE e.thread_id = cs.session_id
-                    AND +e.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
-                  ORDER BY e.sequence DESC
-                  LIMIT 1
-                )) AS content_at
+                MAX(tc.content_sequence) AS content_sequence
          FROM orchestration_conversation_sessions cs
+         JOIN orchestration_thread_content tc ON tc.thread_id = cs.session_id
          WHERE cs.conversation_id IN (${conversationIds.map(() => '?').join(', ')})
          GROUP BY cs.conversation_id`,
       )
       .all(...conversationIds) as {
       conversation_id: string;
-      content_at: string | null;
+      content_sequence: number | null;
     }[];
     for (const row of rows)
-      if (row.content_at) result.set(row.conversation_id, row.content_at);
+      if (row.content_sequence !== null)
+        result.set(row.conversation_id, Number(row.content_sequence));
     return result;
+  }
+
+  /**
+   * #3075: what an older client that acknowledges only the inventory
+   * `updatedAt` it showed could have seen, mapped conservatively: content
+   * appended no later than the FIRST event that gave the conversation that
+   * `updatedAt`. Content persisted afterwards, whatever its own timestamp,
+   * stays unread. `undefined` when no event carries that time (nothing is
+   * then marked). Reads the conversation's own history; only that legacy
+   * path calls it.
+   */
+  conversationContentVersionAsOfView(
+    conversationId: string,
+    updatedAt: string,
+  ): number | undefined {
+    const bound = this.db
+      .prepare(
+        `SELECT MIN(e.global_sequence) AS bound
+         FROM orchestration_conversation_sessions cs
+         JOIN orchestration_events e ON e.thread_id = cs.session_id
+         WHERE cs.conversation_id = ? AND e.created_at = ?`,
+      )
+      .get(conversationId, updatedAt) as { bound: number | null } | undefined;
+    if (bound?.bound === null || bound?.bound === undefined) return undefined;
+    return this.conversationContentVersionWhere(
+      conversationId,
+      'e.global_sequence <= ?',
+      Number(bound.bound),
+    );
+  }
+
+  /**
+   * #3075 upgrade only: the content version a conversation had at `time`,
+   * for converting a marker recorded as a time once.
+   */
+  conversationContentVersionAsOfTime(
+    conversationId: string,
+    time: string,
+  ): number | undefined {
+    return this.conversationContentVersionWhere(
+      conversationId,
+      'e.created_at <= ?',
+      time,
+    );
+  }
+
+  /**
+   * #3075 upgrade only: the store-wide sequence at `time` (the highest
+   * `global_sequence` of an event created by then), for converting the read
+   * state baseline once. One pass over the history.
+   */
+  globalSequenceAsOfTime(time: string): number {
+    const row = this.db
+      .prepare(
+        'SELECT MAX(global_sequence) AS sequence FROM orchestration_events WHERE created_at <= ?',
+      )
+      .get(time) as { sequence: number | null } | undefined;
+    return Number(row?.sequence ?? 0);
+  }
+
+  /** Whether a conversation lineage exists (a runtime conversation). */
+  hasConversation(conversationId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          'SELECT 1 AS found FROM orchestration_conversation_sessions WHERE conversation_id = ? LIMIT 1',
+        )
+        .get(conversationId) !== undefined
+    );
+  }
+
+  /** The store's current high-water `global_sequence`. */
+  currentGlobalSequence(): number {
+    const row = this.db
+      .prepare(
+        'SELECT high_water FROM orchestration_stream_identity WHERE singleton = 1',
+      )
+      .get() as { high_water: number | null } | undefined;
+    return Number(row?.high_water ?? 0);
+  }
+
+  private conversationContentVersionWhere(
+    conversationId: string,
+    predicate: string,
+    value: number | string,
+  ): number | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT MAX(e.global_sequence) AS sequence
+         FROM orchestration_conversation_sessions cs
+         JOIN orchestration_events e ON e.thread_id = cs.session_id
+         WHERE cs.conversation_id = ?
+           AND ${READABLE_CONTENT_EVENT_SQL}
+           AND ${predicate}`,
+      )
+      .get(conversationId, value) as { sequence: number | null } | undefined;
+    return row?.sequence === null || row?.sequence === undefined
+      ? undefined
+      : Number(row.sequence);
+  }
+
+  /**
+   * #3075: bumps the Session's content version in the same write that
+   * appends readable transcript content, monotonically.
+   */
+  private projectThreadContent(
+    event: CanonicalRuntimeEvent,
+    globalSequence: number,
+  ): void {
+    if (!isReadableContentEvent(event)) return;
+    this.db
+      .prepare(
+        `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
+         VALUES (?, ?)
+         ON CONFLICT(thread_id) DO UPDATE SET
+           content_sequence = MAX(content_sequence, excluded.content_sequence)`,
+      )
+      .run(event.threadId, globalSequence);
+  }
+
+  /**
+   * #3075: the content-version projection and its one-time backfill from
+   * the existing history, so an upgraded home keeps its versions.
+   */
+  private ensureThreadContentProjection(): void {
+    this.db.exec(
+      `CREATE TABLE IF NOT EXISTS orchestration_thread_content (
+         thread_id TEXT NOT NULL PRIMARY KEY,
+         content_sequence INTEGER NOT NULL
+       );
+       CREATE TABLE IF NOT EXISTS orchestration_thread_content_backfill (
+         singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+         completed_at TEXT NOT NULL
+       );`,
+    );
+    const done = this.db
+      .prepare(
+        'SELECT 1 AS done FROM orchestration_thread_content_backfill WHERE singleton = 1',
+      )
+      .get();
+    if (done) return;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.exec(
+        `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
+         SELECT e.thread_id, MAX(e.global_sequence)
+         FROM orchestration_events e
+         WHERE ${READABLE_CONTENT_EVENT_SQL}
+         GROUP BY e.thread_id
+         ON CONFLICT(thread_id) DO UPDATE SET
+           content_sequence = MAX(content_sequence, excluded.content_sequence)`,
+      );
+      this.db
+        .prepare(
+          'INSERT INTO orchestration_thread_content_backfill (singleton, completed_at) VALUES (1, ?)',
+        )
+        .run(new Date().toISOString());
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   listConversationHistoryPage(options: {

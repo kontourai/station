@@ -2596,16 +2596,27 @@ export function conversationReadVersion(
 }
 
 /**
- * A file conversation id, parsed as one whole file-name segment (#3075
- * review): an alphanumeric first character, then alphanumerics, `.`, `_`,
- * `-` and the engine prefix's `:` (`codex:<id>`, `<agent>:<time>`). Nothing
- * with a separator, a `%` escape or a leading dot parses, so `..`, `a/b`,
- * `..\b` and an encoded separator name no file. `undefined` when it does not
- * parse.
+ * A file conversation id that names exactly one file (#3075 review). The id
+ * contract is otherwise the existing one (`createChatConversationId` embeds
+ * the person id, such as `human:tailscale-serve:casey@example.test`), so
+ * only what could name another path is refused: a path separator (`/`,
+ * `\`), a `.` or `..` segment, NUL, or a percent-encoded separator a later
+ * decode could turn into one. `undefined` when refused.
  */
-const FILE_CONVERSATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const ENCODED_SEPARATOR = /%(?:2f|5c)/i;
 function parseFileConversationId(value: string): string | undefined {
-  return FILE_CONVERSATION_ID.test(value) ? value : undefined;
+  if (
+    value.length === 0 ||
+    value.length > 512 ||
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    value.includes('\\') ||
+    value.includes('\u0000') ||
+    ENCODED_SEPARATOR.test(value)
+  )
+    return undefined;
+  return value;
 }
 
 /**
@@ -2657,20 +2668,28 @@ export function createAgentConversationVersionSource(
       'readSessionConversation'
     >;
     authorityFor(request: Request): SessionReadAuthority;
-    /** The event store's content times (`readConversationContentTimes`). */
+    /**
+     * The event store's content-version projection
+     * (`readConversationContentVersions`) and the conservative mapping for an
+     * older client's `updatedAt`-only acknowledgement.
+     */
     conversationContent: {
-      readConversationContentTimes(
+      readConversationContentVersions(
         conversationIds: readonly string[],
-      ): ReadonlyMap<string, string>;
+      ): ReadonlyMap<string, number>;
+      conversationContentVersionAsOfView(
+        conversationId: string,
+        updatedAt: string,
+      ): number | undefined;
     };
   },
 ): AgentConversationVersionSource {
   /**
-   * A runtime conversation's content version is the time of its newest
-   * content event (0 before its first reply); its inventory `updatedAt` also
-   * moves on lifecycle bookkeeping, so it bounds acknowledgements only. A
-   * file-backed conversation has no lifecycle events: its own `updatedAt`
-   * is both.
+   * A runtime conversation's content version is its projected content
+   * sequence (0 before any readable content); its inventory `updatedAt` also
+   * moves on lifecycle bookkeeping, so it bounds the last-viewed record only.
+   * A file-backed conversation has no lifecycle events: its own `updatedAt`
+   * is its version (`space: 'time'`).
    */
   const versionsOf = (
     items: readonly AgentConversationVersionItem[],
@@ -2678,8 +2697,8 @@ export function createAgentConversationVersionSource(
     const runtimeIds = items.flatMap((item) =>
       item.source === 'runtime' ? [item.id] : [],
     );
-    const contentTimes =
-      deps.conversationContent.readConversationContentTimes(runtimeIds);
+    const contentVersions =
+      deps.conversationContent.readConversationContentVersions(runtimeIds);
     const result = new Map<string, AgentConversationVersion>();
     for (const item of items) {
       const acknowledgeableUntil = conversationReadVersion(item);
@@ -2687,15 +2706,14 @@ export function createAgentConversationVersionSource(
       if (item.source !== 'runtime') {
         result.set(item.id, {
           version: acknowledgeableUntil,
+          space: 'time',
           acknowledgeableUntil,
         });
         continue;
       }
-      const contentAt = contentTimes.get(item.id);
-      const content = contentAt === undefined ? 0 : Date.parse(contentAt);
-      if (!Number.isSafeInteger(content) || content < 0) continue;
       result.set(item.id, {
-        version: Math.min(content, acknowledgeableUntil),
+        version: contentVersions.get(item.id) ?? 0,
+        space: 'content',
         acknowledgeableUntil,
       });
     }
@@ -2703,6 +2721,11 @@ export function createAgentConversationVersionSource(
   };
   return {
     versionsOf,
+    contentVersionAsOfView: (conversationId, updatedAt) =>
+      deps.conversationContent.conversationContentVersionAsOfView(
+        conversationId,
+        updatedAt,
+      ),
     async latestVersions(conversationIds, request) {
       const result = new Map<string, AgentConversationVersion>();
       if (conversationIds.length === 0) return result;
@@ -2729,7 +2752,11 @@ export function createAgentConversationVersionSource(
         }
         const version = await ownedFileConversationVersion(deps, authority, id);
         if (version !== undefined)
-          result.set(id, { version, acknowledgeableUntil: version });
+          result.set(id, {
+            version,
+            space: 'time',
+            acknowledgeableUntil: version,
+          });
       }
       for (const [id, versions] of versionsOf(found)) result.set(id, versions);
       return result;
@@ -3088,6 +3115,22 @@ export function createGlobalConversationRoutes(
         400,
       );
     }
+    // #3075: the content version the client rendered (`readState.version`).
+    // Absent from older clients; anything else must be a version.
+    const readVersion: unknown = body.readVersion;
+    if (
+      readVersion !== undefined &&
+      !(
+        typeof readVersion === 'number' &&
+        Number.isSafeInteger(readVersion) &&
+        readVersion >= 0
+      )
+    ) {
+      return c.json(
+        { success: false, error: 'readVersion must be a read state version' },
+        400,
+      );
+    }
     // The same key the inventory GET reads (`conversationAcknowledgementKey`):
     // what a person viewed on one device clears it on all of theirs.
     const acknowledgementKey = conversationAcknowledgementKey(
@@ -3119,7 +3162,10 @@ export function createGlobalConversationRoutes(
       const outcome = await readMarkers.acknowledgeConversation(
         c,
         conversationId,
-        parsedUpdatedAt,
+        {
+          updatedAt,
+          ...(readVersion === undefined ? {} : { readVersion }),
+        },
         acknowledgementKey,
       );
       if (!outcome)

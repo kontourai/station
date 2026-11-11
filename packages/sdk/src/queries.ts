@@ -196,6 +196,7 @@ export {
   useStartIntegrationOAuthMutation,
 } from './query-domains/catalog';
 export {
+  type AcknowledgeConversationVariables,
   type AdoptOrchestrationSessionIntent,
   AdoptSessionError,
   type AdoptSessionFailureClass,

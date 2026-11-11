@@ -60,6 +60,7 @@ import {
 } from '@kontourai/station-contracts/deployment-authentication';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
+  PAIRING_SCOPE_PRESETS,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
@@ -2567,6 +2568,88 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       for (const abort of aborts) abort.abort();
       await owner.cancel();
       await guest.cancel();
+    }
+  });
+
+  test('#3075 review: a connected device whose owner standing is withdrawn stops receiving the owner’s read-marker changes', async () => {
+    const eventBus = new EventBus();
+    const { app, pairing, paired } = await setup(
+      'device',
+      true,
+      undefined,
+      false,
+      false,
+      { eventBus, ownerDeviceStanding: true },
+    );
+    expect(pairing.deviceHasOwnerStanding(paired.device.id)).toBe(true);
+    const abort = new AbortController();
+    const response = await app.request(
+      '/api/orchestration/events',
+      {
+        headers: { Authorization: `Bearer ${paired.credential}` },
+        signal: abort.signal,
+      },
+      REMOTE_TAILNET_ENV,
+    );
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    const until = async (marker: string) => {
+      const deadline = Date.now() + 8_000;
+      while (!text.includes(marker)) {
+        const chunk = await Promise.race([
+          reader.read(),
+          new Promise<'timeout'>((resolve) =>
+            setTimeout(
+              () => resolve('timeout'),
+              Math.max(0, deadline - Date.now()),
+            ),
+          ),
+        ]);
+        if (chunk === 'timeout')
+          throw new Error(`Missing stream marker ${marker}`);
+        if (chunk.done) throw new Error(`Stream ended before ${marker}`);
+        text += decoder.decode(chunk.value, { stream: true });
+      }
+      const seen = text;
+      text = '';
+      return seen;
+    };
+    const FENCE = `event: ${SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED}`;
+    const ownerChangeThenFence = (marker: string) => {
+      eventBus.emit(SERVER_EVENTS.READ_MARKERS_CHANGED, {
+        personKey: PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
+      });
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED, {
+        threadId: marker,
+        canRead: () => true,
+      });
+    };
+    try {
+      await until('orchestration:caughtUp');
+      ownerChangeThenFence('while-owner');
+      expect(await until(FENCE), 'with owner standing').toContain(
+        `event: ${SERVER_EVENTS.READ_MARKERS_CHANGED}`,
+      );
+      // The operator narrows this connected phone to read-only.
+      pairing.setDeviceScope(
+        paired.device.id,
+        PAIRING_SCOPE_PRESETS['read-only'],
+        { kind: 'presented-credential' },
+      );
+      expect(pairing.deviceHasOwnerStanding(paired.device.id)).toBe(false);
+      ownerChangeThenFence('after-narrowing');
+      const after = await until(FENCE).catch((error: unknown) =>
+        // A stream the server retires on the change is just as private.
+        String(error).includes('Stream ended') ? '' : Promise.reject(error),
+      );
+      expect(after, 'after narrowing').not.toContain(
+        SERVER_EVENTS.READ_MARKERS_CHANGED,
+      );
+    } finally {
+      abort.abort();
+      await reader.cancel().catch(() => undefined);
     }
   });
 

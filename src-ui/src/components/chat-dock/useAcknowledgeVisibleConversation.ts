@@ -13,6 +13,7 @@ type AcknowledgeableItem = Pick<
   | 'conversationUpdatedAt'
   | 'acknowledgedAt'
   | 'unread'
+  | 'readVersion'
 >;
 
 /**
@@ -76,12 +77,19 @@ export function useAcknowledgeVisibleConversation(
   const version = visible
     ? visibleConversationAcknowledgement(item, viewedWhileLive.current)
     : undefined;
+  // #3075: the content version this client rendered, which is what the
+  // server marks read.
+  const readVersion = item?.readVersion;
   useEffect(() => {
     if (!id || !version) return;
-    const key = `${id}\u0000${version}`;
+    const key = `${id}\u0000${version}\u0000${readVersion ?? ''}`;
     if (sent.current === key) return;
     sent.current = key;
     viewedWhileLive.current.add(id);
-    mutate({ conversationId: id, updatedAt: version });
-  }, [id, version, mutate]);
+    mutate({
+      conversationId: id,
+      updatedAt: version,
+      ...(readVersion === undefined ? {} : { readVersion }),
+    });
+  }, [id, version, readVersion, mutate]);
 }

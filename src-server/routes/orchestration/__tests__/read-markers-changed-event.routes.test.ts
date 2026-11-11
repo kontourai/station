@@ -46,14 +46,20 @@ test('a read-marker change reaches only that person’s streams, never another p
     eventBus: bus,
     getUserId: () => actor,
     logger: { debug() {} },
-    // The request's read-marker person key, as the runtime derives it.
-    readMarkerPersonKey: () => `human:test:${actor}`,
+    // The request's read-marker person key, as the runtime derives it from
+    // the request itself (resolved again for each change it publishes).
+    readMarkerPersonKey: (c: {
+      req: { header(name: string): string | undefined };
+    }) => `human:test:${c.req.header('x-test-actor')}`,
   } as Parameters<typeof createOrchestrationRoutes>[1]);
   const openStream = async (user: string) => {
     actor = user;
     const abort = new AbortController();
     cleanups.push(() => abort.abort());
-    const response = await app.request('/events', { signal: abort.signal });
+    const response = await app.request('/events', {
+      signal: abort.signal,
+      headers: { 'x-test-actor': user },
+    });
     const reader = response.body!.getReader();
     cleanups.push(() => reader.cancel());
     const decoder = new TextDecoder();

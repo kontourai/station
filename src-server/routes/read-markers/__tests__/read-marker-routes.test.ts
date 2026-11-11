@@ -49,6 +49,7 @@ import {
   projectRoomVersionSource,
   taskRoomVersionSource,
 } from '../../../services/read-markers/room-version-sources.js';
+import { createChatConversationId } from '../../chat/chat-persistence.js';
 import {
   createAgentConversationVersionSource,
   createGlobalConversationRoutes,
@@ -236,9 +237,12 @@ function station(
     searchSessionMessages: vi.fn(() => []),
     successorConversationId: () => undefined,
   };
+  // The baseline in both spaces: the fixtures' versions are epoch ms.
+  const baselineAt = options.baseline ? Date.parse(options.baseline) : 0;
   const store = new FileReadMarkerStore(
     dir,
-    () => new Date(options.baseline ?? 0),
+    () => new Date(baselineAt),
+    () => baselineAt,
   );
   const acknowledgements = new FileConversationAcknowledgementStore(dir);
   const service = new ReadMarkerService({
@@ -258,16 +262,20 @@ function station(
       memoryAdapters,
       sessionConversationReader: reader,
       authorityFor,
-      // These fixtures have no lifecycle bookkeeping: each runtime
-      // conversation's content time is its `updatedAt`.
+      // These fixtures have no lifecycle bookkeeping, so each runtime
+      // conversation's content version is the epoch ms of its `updatedAt`:
+      // monotonic per conversation, as the event store's sequence is. An
+      // older client's `updatedAt` maps to the same number.
       conversationContent: {
-        readConversationContentTimes: (ids) =>
+        readConversationContentVersions: (ids) =>
           new Map(
             ids.flatMap((id) => {
               const at = conversations.get(id);
-              return at ? [[id, at] as const] : [];
+              return at ? [[id, Date.parse(at)] as const] : [];
             }),
           ),
+        conversationContentVersionAsOfView: (_id, updatedAt) =>
+          Date.parse(updatedAt),
       },
     }),
     projectRooms: projectRoomVersionSource({
@@ -816,8 +824,9 @@ describe('review fixes (#4813)', () => {
     writeFileSync(
       join(dir, READ_MARKER_STORE_FILE),
       JSON.stringify({
-        version: 1,
+        version: 2,
         createdAt: 0,
+        baselineSequence: 0,
         markers: {
           'human:test:ada': { 'project-room:room-1': { v: 'bad', at: T1 } },
         },
@@ -894,8 +903,8 @@ describe('delta review fixes (#4813)', () => {
     // A real id, with the engine's colon, still resolves past the window.
     const real = await s.mark('ada', target('default:1794'), V1);
     expect(real.status).toBe(200);
-    expect(storedMarkers()['human:test:ada']).toEqual({
-      'default:1794': T1,
+    expect(storedMarkers()['human:test:ada']).toMatchObject({
+      'agent-conversation:default:1794': { v: V1 },
     });
   });
 
@@ -906,10 +915,12 @@ describe('delta review fixes (#4813)', () => {
     expect((await s.acknowledge('ada', 'c1', T1)).status).toBe(200);
     writeFileSync(
       join(dir, READ_MARKER_STORE_FILE),
+      // Ada's markers stay as they are; only Bo's record is broken.
       JSON.stringify({
-        version: 1,
-        createdAt: 0,
+        ...JSON.parse(readFileSync(join(dir, READ_MARKER_STORE_FILE), 'utf8')),
         markers: {
+          ...JSON.parse(readFileSync(join(dir, READ_MARKER_STORE_FILE), 'utf8'))
+            .markers,
           'human:test:bo': { 'project-room:room-1': { v: 'bad', at: T1 } },
         },
       }),
@@ -925,13 +936,15 @@ describe('delta review fixes (#4813)', () => {
       unread: false,
     });
     expect((await s.summary('ada', [room])).status).toBe(200);
-    // Bo's own room marker is refused, never read as "read" ...
+    // Bo's own record is refused, never read as "read": his room marker
+    // and his conversation read state (unknown), and his conversations stay
+    // listed.
     expect((await s.summary('bo', [room])).status).toBe(503);
-    // ... and his conversation read state does not depend on it.
-    expect((await s.inventory('bo')).get('c1')?.readState).toEqual({
+    const bos = await s.inventory('bo');
+    expect([...bos.keys()]).toEqual(['c1']);
+    expect(bos.get('c1')?.readState).toEqual({
       version: V1,
-      seenVersion: 0,
-      unread: true,
+      unavailable: true,
     });
   });
 
@@ -939,12 +952,12 @@ describe('delta review fixes (#4813)', () => {
     [
       'a marker store nobody can decode',
       READ_MARKER_STORE_FILE,
-      JSON.stringify({ version: 1, createdAt: 'x', markers: {} }),
-    ],
-    [
-      'an acknowledgement store nobody can decode',
-      'conversation-acknowledgements.json',
-      '{"version":',
+      JSON.stringify({
+        version: 2,
+        createdAt: 'x',
+        baselineSequence: 0,
+        markers: {},
+      }),
     ],
   ])(
     '%s reads as unknown for everyone, never as read, and the conversations stay listed',
@@ -960,4 +973,60 @@ describe('delta review fixes (#4813)', () => {
       });
     },
   );
+
+  test('an acknowledgement store nobody can decode costs only "last viewed": read state and conversations stay', async () => {
+    const s = station();
+    expect((await s.acknowledge('ada', 'c1', T1)).status).toBe(200);
+    writeFileSync(
+      join(dir, 'conversation-acknowledgements.json'),
+      '{"version":',
+    );
+    const inventory = await s.inventory('ada');
+    expect([...inventory.keys()]).toEqual(['c1']);
+    // Read state lives in the read-marker store, never in "last viewed".
+    expect(inventory.get('c1')?.readState).toEqual({
+      version: V1,
+      seenVersion: V1,
+      unread: false,
+    });
+    expect(inventory.get('c1')?.acknowledgedAt).toBeUndefined();
+  });
+});
+
+describe('file conversation ids keep their contract (#4813 round 3)', () => {
+  test('an id `createChatConversationId` makes for a tailnet person resolves; separators, `..`, NUL and encoded separators do not', async () => {
+    const s = station({
+      realFileMemory: true,
+      conversations: new Map(
+        Array.from({ length: 100 }, (_, i) => [`recent-${i}`, T2] as const),
+      ),
+    });
+    const tailnetId = createChatConversationId(
+      'human:tailscale-serve:casey@example.test',
+    );
+    plantFileConversation(`conversations/${tailnetId}.json`, {
+      id: tailnetId,
+    });
+    const target = (conversationId: string): ReadMarkerTarget => ({
+      kind: 'agent-conversation',
+      conversationId,
+    });
+    expect((await s.mark('ada', target(tailnetId), V1)).status).toBe(200);
+    for (const id of [
+      'a/b',
+      'a\\b',
+      '..',
+      'a\u0000b',
+      '..%2Fescaped',
+      '..%2fescaped',
+      '..%5Cescaped',
+    ]) {
+      // A record at the very path the id names, so a refusal is the rule's,
+      // not a missing file's. A NUL cannot be in a file name.
+      if (!id.includes('\u0000'))
+        plantFileConversation(`conversations/${id}.json`, { id });
+      const response = await s.mark('ada', target(id), V1);
+      expect(response.status, JSON.stringify(id)).toBe(404);
+    }
+  });
 });

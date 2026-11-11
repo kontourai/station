@@ -197,6 +197,8 @@ describe('useAcknowledgeConversationMutation (the inbox open path)', () => {
         .mutateAsync({
           conversationId: 'c1',
           updatedAt: new Date(10).toISOString(),
+          // The content version this client rendered.
+          readVersion: 10,
         })
         .catch((error: unknown) => error);
     });
@@ -224,5 +226,40 @@ describe('useAcknowledgeConversationMutation (the inbox open path)', () => {
       seenVersion: 0,
       unread: true,
     });
+  });
+
+  test('without a rendered content version the row waits for the server: `updatedAt` cannot say what was read', async () => {
+    _setApiBase(API);
+    let answer!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () => new Promise<Response>((resolve) => (answer = resolve)),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = seededClient({ version: 10, seenVersion: 0, unread: true });
+    const { result } = renderHook(() => useAcknowledgeConversationMutation(), {
+      wrapper: wrapperFor(client),
+    });
+    let outcome!: Promise<unknown>;
+    act(() => {
+      outcome = result.current.mutateAsync({
+        conversationId: 'c1',
+        updatedAt: new Date(10).toISOString(),
+      });
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(String(init.body))).toEqual({
+      updatedAt: new Date(10).toISOString(),
+    });
+    expect(cachedReadState(client)).toEqual({
+      version: 10,
+      seenVersion: 0,
+      unread: true,
+    });
+    answer(jsonResponse({ success: true }));
+    await expect(outcome).resolves.toBeUndefined();
   });
 });

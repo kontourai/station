@@ -296,19 +296,23 @@ export async function listConversationInventory(
 /**
  * Marks the exact version of a globally-addressable conversation as opened.
  * `updatedAt` must be the value returned by the inventory, never a client
- * wall-clock timestamp, so a later turn becomes unseen again deterministically.
+ * wall-clock timestamp: it is the "last viewed" record. `readVersion` is the
+ * content version the client rendered (`readState.version`); the server
+ * marks exactly that content read. Without it the server maps `updatedAt`
+ * conservatively (#3075).
  */
 export async function acknowledgeConversation(
   apiBase: string,
   conversationId: string,
   updatedAt: string,
   opts?: ClientRequestOptions,
+  readVersion?: number,
 ): Promise<void> {
   const response = await mutateJson(
     `${apiBase}/api/conversations/${encodeURIComponent(conversationId)}/acknowledgement`,
     'POST',
     opts,
-    { updatedAt },
+    { updatedAt, ...(readVersion === undefined ? {} : { readVersion }) },
   );
   const result = await readConversationEnvelope<never>(response);
   if (!result.success) {

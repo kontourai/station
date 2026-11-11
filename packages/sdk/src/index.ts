@@ -486,6 +486,7 @@ export {
   type ACPRegistryInstallAgentReceipt,
   type ACPRegistryInstallRequest,
   type AcceptFlowExceptionInput,
+  type AcknowledgeConversationVariables,
   type AcpSlashCommandDescriptor,
   type AdoptOrchestrationSessionIntent,
   AdoptSessionError,

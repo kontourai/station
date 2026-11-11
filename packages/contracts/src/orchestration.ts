@@ -1938,7 +1938,13 @@ export interface TerminalProcessDetail {
 
 /** See {@link ConversationListItem.readState}. */
 export interface ConversationReadState {
-  /** This conversation's current version: epoch ms of its `updatedAt`. */
+  /**
+   * This conversation's current content version (#3075): a monotonic
+   * number that moves only when readable transcript content is appended,
+   * never on lifecycle bookkeeping. Opaque: compare it only with versions
+   * of the same conversation, and acknowledge it as rendered
+   * (`readVersion`).
+   */
   version: number;
   /** The highest version the caller has been shown, never above `version`. */
   seenVersion: number;
@@ -1952,7 +1958,7 @@ export interface ConversationReadState {
  * never "read"; the conversation itself is still listed.
  */
 export interface ConversationReadStateUnavailable {
-  /** This conversation's current version: epoch ms of its `updatedAt`. */
+  /** The inventory's own version for the item (epoch ms of `updatedAt`). */
   version: number;
   unavailable: true;
 }
@@ -2024,8 +2030,8 @@ export interface ConversationListItem {
   /**
    * #3075: the caller's read state, derived by the server
    * (`@kontourai/station-contracts/read-markers`). `version` is this item's
-   * current version (epoch ms of `updatedAt`), the value to send when
-   * marking it read. Absent when the server keeps no read state for the
+   * current content version, the value to send (as `readVersion`) when
+   * marking what was rendered read. Absent when the server keeps no read state for the
    * caller; `{ version, unavailable: true }` when it keeps one but could not
    * read it. Never guess it from `acknowledgedAt`.
    */

@@ -21,7 +21,10 @@ import {
   conversationAcknowledgementKey,
   type IsOwnerDevice,
 } from '../orchestration/conversation-acknowledgement-store.js';
-import type { ReadMarkerStore } from './read-marker-store.js';
+import type {
+  ReadMarkerBaseline,
+  ReadMarkerStore,
+} from './read-marker-store.js';
 
 /**
  * Whose read state a request reads and writes (#3075).
@@ -56,16 +59,19 @@ export function readMarkerPersonKey(input: {
 }
 
 /**
- * An agent conversation's versions, in epoch ms (#3075 owner review).
- * `version` is its CONTENT version: it moves only when something a person
- * would read arrives (a turn finishing, ending unfinished or failing), never
- * on lifecycle bookkeeping such as the `session.exited` a Station stop
- * writes. It is what `readState` reports and what a mark is bounded by.
- * `acknowledgeableUntil` is the inventory `updatedAt` a client shows and
- * acknowledges with; it is at or after `version`.
+ * An agent conversation's versions (#3075 owner design). `version` is its
+ * CONTENT version: it moves only when readable transcript content is
+ * appended, never on lifecycle bookkeeping. It is what `readState` reports,
+ * what a client acknowledges as rendered, and what a mark is bounded by.
+ * `space` says what it counts: `content` is the event store's monotonic
+ * sequence (runtime conversations), `time` the epoch ms of a file-backed
+ * conversation's own `updatedAt`, which has no lifecycle events.
+ * `acknowledgeableUntil` is the inventory `updatedAt` (epoch ms) a client
+ * shows; it bounds the last-viewed record only.
  */
 export interface AgentConversationVersion {
   readonly version: number;
+  readonly space: 'content' | 'time';
   readonly acknowledgeableUntil: number;
 }
 
@@ -89,6 +95,16 @@ export interface AgentConversationVersionSource {
   versionsOf(
     items: readonly AgentConversationVersionItem[],
   ): ReadonlyMap<string, AgentConversationVersion>;
+  /**
+   * An older client's acknowledgement carries only the inventory
+   * `updatedAt` it showed: the content version it could have seen then,
+   * mapped conservatively (never content persisted after that view), or
+   * `undefined` when nothing can be claimed.
+   */
+  contentVersionAsOfView(
+    conversationId: string,
+    updatedAt: string,
+  ): number | undefined;
 }
 
 /** A room the caller may read: its marker key and current sequence. */
@@ -142,6 +158,7 @@ interface Resolved {
   latestVersion: number;
   countable: boolean;
   /** Agent conversations: see {@link AgentConversationVersion}. */
+  space?: AgentConversationVersion['space'];
   acknowledgeableUntil?: number;
 }
 
@@ -154,12 +171,13 @@ export interface ReadMarkerServiceDeps {
    * not a person.
    */
   personKeyFor(c: ReadMarkerRequestContext): string | undefined;
-  /** Agent-conversation markers: the inventory's own acknowledgement store. */
-  conversations: Pick<
-    ConversationAcknowledgementStore,
-    'getMany' | 'acknowledge'
-  >;
-  /** Room markers and the baseline. */
+  /**
+   * The inventory's "last viewed" record (`acknowledgedAt`, Home's Just
+   * finished), written alongside an acknowledgement and never read for
+   * unread.
+   */
+  conversations: Pick<ConversationAcknowledgementStore, 'acknowledge'>;
+  /** Every read marker, and the baselines. */
   store: ReadMarkerStore;
   /**
    * Called once each time a person's marker actually moves forward, with
@@ -174,12 +192,6 @@ export interface ReadMarkerServiceDeps {
 
 const AGENT_PREFIX = 'agent-conversation:';
 
-/** Epoch ms of a stored acknowledgement version, or 0 when it does not parse. */
-export function acknowledgedVersion(value: string | undefined): number {
-  const at = value === undefined ? Number.NaN : Date.parse(value);
-  return Number.isSafeInteger(at) && at > 0 ? at : 0;
-}
-
 /**
  * Server-kept read state (#3075). Owns the three rules the contract states:
  * markers belong to the request's person, only move forward, and never pass
@@ -189,7 +201,7 @@ export class ReadMarkerService {
   constructor(private readonly deps: ReadMarkerServiceDeps) {}
 
   /** When read state began being kept; see `ReadMarkerStore.baseline`. */
-  baseline(): number {
+  baseline(): ReadMarkerBaseline {
     return this.deps.store.baseline();
   }
 
@@ -223,6 +235,7 @@ export class ReadMarkerService {
               : {
                   key: `${AGENT_PREFIX}${target.conversationId}`,
                   latestVersion: versions.version,
+                  space: versions.space,
                   acknowledgeableUntil: versions.acknowledgeableUntil,
                   countable: false,
                 };
@@ -246,40 +259,22 @@ export class ReadMarkerService {
     resolved: readonly (Resolved | undefined)[],
   ): Map<string, number> {
     const keys = resolved.flatMap((item) => (item ? [item.key] : []));
-    const conversationIds = keys.flatMap((key) =>
-      key.startsWith(AGENT_PREFIX) ? [key.slice(AGENT_PREFIX.length)] : [],
-    );
-    const result = new Map(
-      this.deps.store.getMany(
-        person,
-        keys.filter((key) => !key.startsWith(AGENT_PREFIX)),
-      ),
-    );
-    const acknowledged = this.deps.conversations.getMany(
-      person,
-      conversationIds,
-    );
-    for (const id of conversationIds)
-      result.set(
-        `${AGENT_PREFIX}${id}`,
-        acknowledgedVersion(acknowledged.get(id)),
-      );
-    return result;
+    return new Map(this.deps.store.getMany(person, keys));
   }
 
   private state(
     target: ReadMarkerTarget,
     item: Resolved,
     stored: number,
-    baseline: number,
+    baseline: ReadMarkerBaseline,
   ): ReadMarkerState {
     return deriveReadMarkerState({
       target,
       latestVersion: item.latestVersion,
-      // Agent conversations never read below the baseline.
+      // Agent conversations never read below the baseline of their space.
       seenVersion:
         target.kind === 'agent-conversation'
-          ? Math.max(stored, baseline)
+          ? Math.max(stored, baselineIn(baseline, item.space))
           : stored,
       countable: item.countable,
     });
@@ -333,43 +328,35 @@ export class ReadMarkerService {
     version: number,
   ): ReadMarkerState {
     const before = this.seen(person, [resolved]).get(resolved.key) ?? 0;
-    if (target.kind === 'agent-conversation') {
-      // The acknowledgement store keeps the later of the two versions.
-      this.deps.conversations.acknowledge({
-        userId: person,
-        conversationId: target.conversationId,
-        updatedAt: new Date(version).toISOString(),
-      });
-    } else {
-      this.deps.store.advance({
-        principalId: person,
-        key: resolved.key,
-        version,
-        now: this.deps.now?.() ?? new Date(),
-      });
-    }
+    this.deps.store.advance({
+      principalId: person,
+      key: resolved.key,
+      version,
+      now: this.deps.now?.() ?? new Date(),
+    });
     const after = this.seen(person, [resolved]).get(resolved.key) ?? 0;
     if (after > before) this.deps.onChanged?.(person);
     return this.state(target, resolved, after, this.baseline());
   }
 
   /**
-   * `POST /api/conversations/:id/acknowledgement` (#3075): the client sends
-   * the inventory `updatedAt` it showed, so the bound is that version
-   * (`acknowledgeableUntil`), not the content version: a stop moves
-   * `updatedAt` past the content, and opening the conversation then must not
-   * be refused. The stored record is that inventory version, which covers
-   * all the content it showed. Refuses a version the conversation has not
-   * reached, keeps the inherited write under the
-   * inventory's own key (`inheritedKey`, which `acknowledgedAt` and Home's
-   * Just finished read), and moves the caller's person marker when that is a
-   * different key (a hosted member). `undefined` when the caller cannot read
-   * the conversation; `state` is absent for a caller that names no person.
+   * `POST /api/conversations/:id/acknowledgement` (#3075). Two records:
+   *
+   * - The "last viewed" record under the inventory's own key (`inheritedKey`,
+   *   `acknowledgedAt`, Home's Just finished): the `updatedAt` the client
+   *   showed, refused above the current `updatedAt`. Never read for unread.
+   * - The person's read marker: the content version the client rendered
+   *   (`readVersion`), refused above the current one. An older client that
+   *   sends only `updatedAt` gets the content version as of that view,
+   *   mapped conservatively, so content persisted after it stays unread.
+   *
+   * `undefined` when the caller cannot read the conversation; `state` is
+   * absent for a caller that names no person.
    */
   async acknowledgeConversation(
     c: ReadMarkerRequestContext,
     conversationId: string,
-    version: number,
+    view: { updatedAt: string; readVersion?: number },
     inheritedKey: string,
   ): Promise<{ state?: ReadMarkerState } | undefined> {
     const target: ReadMarkerTarget = {
@@ -378,18 +365,52 @@ export class ReadMarkerService {
     };
     const [resolved] = await this.resolve([target], c.req.raw);
     if (!resolved) return undefined;
+    const viewedAt = Date.parse(view.updatedAt);
     const until = resolved.acknowledgeableUntil ?? resolved.latestVersion;
-    if (version > until) throw new ReadMarkerFutureVersionError(version, until);
+    if (viewedAt > until)
+      throw new ReadMarkerFutureVersionError(viewedAt, until);
+    if (
+      view.readVersion !== undefined &&
+      view.readVersion > resolved.latestVersion
+    )
+      throw new ReadMarkerFutureVersionError(
+        view.readVersion,
+        resolved.latestVersion,
+      );
     const person = this.deps.personKeyFor(c);
-    if (person !== inheritedKey)
-      this.deps.conversations.acknowledge({
-        userId: inheritedKey,
-        conversationId,
-        updatedAt: new Date(version).toISOString(),
-      });
-    return person
-      ? { state: this.advance(person, target, resolved, version) }
-      : {};
+    const rendered = person
+      ? (view.readVersion ??
+        (resolved.space === 'time'
+          ? viewedAt
+          : this.deps.agentConversations?.contentVersionAsOfView(
+              conversationId,
+              view.updatedAt,
+            )))
+      : undefined;
+    // The read marker first: the last-viewed record is secondary, and a
+    // failure writing it must not leave content unmarked.
+    const state =
+      person === undefined
+        ? undefined
+        : rendered === undefined
+          ? this.state(
+              target,
+              resolved,
+              this.seen(person, [resolved]).get(resolved.key) ?? 0,
+              this.baseline(),
+            )
+          : this.advance(
+              person,
+              target,
+              resolved,
+              Math.min(rendered, resolved.latestVersion),
+            );
+    this.deps.conversations.acknowledge({
+      userId: inheritedKey,
+      conversationId,
+      updatedAt: new Date(viewedAt).toISOString(),
+    });
+    return state ? { state } : {};
   }
 
   /**
@@ -405,18 +426,30 @@ export class ReadMarkerService {
     if (!person) return undefined;
     const versions = this.deps.agentConversations?.versionsOf(items);
     if (!versions) return undefined;
-    const acknowledged = this.deps.conversations.getMany(person, [
-      ...versions.keys(),
-    ]);
+    const seen = this.deps.store.getMany(
+      person,
+      [...versions.keys()].map((id) => `${AGENT_PREFIX}${id}`),
+    );
     const baseline = this.baseline();
     return new Map(
-      [...versions].map(([id, { version }]) => {
+      [...versions].map(([id, { version, space }]) => {
         const seenVersion = Math.min(
-          Math.max(acknowledgedVersion(acknowledged.get(id)), baseline),
+          Math.max(
+            seen.get(`${AGENT_PREFIX}${id}`) ?? 0,
+            baselineIn(baseline, space),
+          ),
           version,
         );
         return [id, { version, seenVersion, unread: version > seenVersion }];
       }),
     );
   }
+}
+
+/** The baseline in a conversation's own version space. */
+function baselineIn(
+  baseline: ReadMarkerBaseline,
+  space: AgentConversationVersion['space'] | undefined,
+): number {
+  return space === 'time' ? baseline.time : baseline.sequence;
 }

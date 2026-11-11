@@ -339,9 +339,16 @@ export async function fetchConversationInventory(
 export async function acknowledgeConversation(
   conversationId: string,
   updatedAt: string,
+  readVersion?: number,
 ): Promise<void> {
   const apiBase = await _getApiBase();
-  await acknowledgeConversationRaw(apiBase, conversationId, updatedAt);
+  await acknowledgeConversationRaw(
+    apiBase,
+    conversationId,
+    updatedAt,
+    undefined,
+    readVersion,
+  );
 }
 
 export async function renameConversation(
@@ -552,26 +559,37 @@ export function useConversationInventoryQuery(
   };
 }
 
+/**
+ * `updatedAt` is the inventory version shown (the "last viewed" record);
+ * `readVersion` the content version rendered (`readState.version`), which
+ * is what the server marks read.
+ */
+export interface AcknowledgeConversationVariables {
+  conversationId: string;
+  updatedAt: string;
+  readVersion?: number;
+}
+
 export function useAcknowledgeConversationMutation(
-  options?: MutationOptions<
-    void,
-    { conversationId: string; updatedAt: string }
-  >,
+  options?: MutationOptions<void, AcknowledgeConversationVariables>,
 ) {
   const queryClient = useQueryClient();
   const inventoryKey = conversationQueries.inventory().queryKey;
   return useMutation<
     void,
     Error,
-    { conversationId: string; updatedAt: string },
+    AcknowledgeConversationVariables,
     InventorySnapshot | undefined
   >({
-    mutationFn: ({ conversationId, updatedAt }) =>
-      acknowledgeConversation(conversationId, updatedAt),
+    mutationFn: ({ conversationId, updatedAt, readVersion }) =>
+      acknowledgeConversation(conversationId, updatedAt, readVersion),
     // #3075: the row reads as read the moment it is opened, by the server's
-    // own rule; a refusal restores it.
-    onMutate: ({ conversationId, updatedAt }) =>
-      markInventoryRead(queryClient, conversationId, Date.parse(updatedAt)),
+    // own rule; a refusal restores it. Only the rendered content version can
+    // say what was read; without one the server's answer decides.
+    onMutate: ({ conversationId, readVersion }) =>
+      readVersion === undefined
+        ? undefined
+        : markInventoryRead(queryClient, conversationId, readVersion),
     onSuccess: (data, variables) => {
       options?.onSuccess?.(data, variables);
     },

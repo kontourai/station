@@ -913,6 +913,7 @@ import {
   readMarkerPersonKey,
 } from '../../services/read-markers/read-marker-service.js';
 import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
+import { upgradeReadMarkerStore } from '../../services/read-markers/read-marker-upgrade.js';
 import {
   projectRoomVersionSource,
   taskRoomVersionSource,
@@ -2370,12 +2371,26 @@ export function configureRuntimeRoutes(
     context.environmentSecurityService.deviceHasOwnerStanding(deviceId);
   const readMarkerPersonKeyFor = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-  ) =>
-    readMarkerPersonKey({
+  ) => {
+    // A device admitted with owner standing acts as the owner for the life
+    // of its request. Standing is revalidated here, on every resolution, so a
+    // stream opened before the operator narrowed, rebound or revoked the
+    // device stops carrying the owner's read state at once (#3075 review).
+    const admitted = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      admitted?.standing === 'owner-device' &&
+      'credential' in admitted &&
+      !context.environmentSecurityService.credentialHasOwnerStanding(
+        admitted.credential,
+      )
+    )
+      return undefined;
+    return readMarkerPersonKey({
       authority: conversationReadAuthorityForContext(c),
       principal: () => resolveOrchestrationRequestPrincipal(c),
       isOwnerDevice: readMarkerOwnerDevice,
     });
+  };
   const conversationReadAuthorityForRequest = (request: Request) => {
     const authority = conversationRequestAuthorities.get(request);
     if (!authority) {
@@ -11865,16 +11880,43 @@ export function configureRuntimeRoutes(
     }),
   );
   // #3075: one server-kept read marker per (person, conversation) for agent
-  // conversations, Project rooms and Task rooms. Agent conversations use the
-  // inventory's own acknowledgement store and per-person key, so the
-  // inventory, its acknowledgement route and the read-marker routes are one
-  // fact under one identity.
+  // conversations, Project rooms and Task rooms, in the read-marker store.
+  // An agent conversation's marker is a content version from the event
+  // store's projection; the inventory's acknowledgement store keeps only the
+  // "last viewed" record Home's Just finished reads.
   const conversationAcknowledgements = new FileConversationAcknowledgementStore(
     context.configLoader.getProjectHomeDir(),
     ownerDevicePredicate(() =>
       context.environmentSecurityService.devicePairing.listDevices(),
     ),
   );
+  const requireOrchestrationEventStore = () => {
+    const store = context.orchestrationEventStore;
+    if (!store)
+      throw new Error('Conversation content versions are unavailable');
+    return store;
+  };
+  const readMarkerStore = new FileReadMarkerStore(
+    context.configLoader.getProjectHomeDir(),
+    undefined,
+    () => context.orchestrationEventStore?.currentGlobalSequence() ?? 0,
+  );
+  // A first-format store converts once, before anything reads it.
+  if (context.orchestrationEventStore)
+    try {
+      upgradeReadMarkerStore({
+        store: readMarkerStore,
+        acknowledgements: conversationAcknowledgements,
+        events: context.orchestrationEventStore,
+        now: new Date(),
+      });
+    } catch (error) {
+      // Left unconverted, the store is refused (read state unavailable),
+      // never read as "read"; the next start tries again.
+      context.logger.warn('Read marker upgrade failed', {
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+    }
   const readMarkers = new ReadMarkerService({
     personKeyFor: (c) =>
       readMarkerPersonKeyFor(
@@ -11884,22 +11926,23 @@ export function configureRuntimeRoutes(
     onChanged: (personKey) =>
       context.eventBus.emit(SERVER_EVENTS.READ_MARKERS_CHANGED, { personKey }),
     conversations: conversationAcknowledgements,
-    store: new FileReadMarkerStore(context.configLoader.getProjectHomeDir()),
+    store: readMarkerStore,
     agentConversations: createAgentConversationVersionSource({
       memoryAdapters: context.memoryAdapters,
       sessionConversationReader: context.orchestrationService,
       eventStore: context.orchestrationService,
       authorityFor: conversationReadAuthorityForRequest,
-      // #3075: the content version (not `updatedAt`, which a stop moves).
-      // Without the event store there is no content version to read: the
-      // inventory then reports the read state unavailable, never "read".
+      // #3075: the content-version projection (never `updatedAt`, which a
+      // stop moves). Without the event store there is no content version
+      // to read: the inventory then reports the read state unavailable.
       conversationContent: {
-        readConversationContentTimes: (ids) => {
-          const store = context.orchestrationEventStore;
-          if (!store)
-            throw new Error('Conversation content times are unavailable');
-          return store.readConversationContentTimes(ids);
-        },
+        readConversationContentVersions: (ids) =>
+          requireOrchestrationEventStore().readConversationContentVersions(ids),
+        conversationContentVersionAsOfView: (id, updatedAt) =>
+          requireOrchestrationEventStore().conversationContentVersionAsOfView(
+            id,
+            updatedAt,
+          ),
       },
     }),
     projectRooms: projectRoomVersionSource(projectRoomService),

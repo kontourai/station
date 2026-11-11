@@ -832,11 +832,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [inboxItems, inventoryById],
   );
   const acknowledgeTaskConversation = useCallback(
-    (item: { id: string; conversationUpdatedAt?: string }) => {
+    (item: {
+      id: string;
+      conversationUpdatedAt?: string;
+      readVersion?: number;
+    }) => {
       if (!item.conversationUpdatedAt) return;
       acknowledgeConversation.mutate({
         conversationId: item.id,
         updatedAt: item.conversationUpdatedAt,
+        ...(item.readVersion === undefined
+          ? {}
+          : { readVersion: item.readVersion }),
       });
     },
     [acknowledgeConversation],
