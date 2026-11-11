@@ -783,11 +783,13 @@ settles once room history shows a message with its intent ID. The unsent draft
 (text, reply target and Agent recipient) is kept per room in the same tab's
 session storage, keyed by the shell's reload partition rather than its
 per-reload authority epoch; a restored recipient must still be an available
-Agent, shown under its current catalog name. A new `@agent` ask never reuses a
-retained Agent intent, which only an explicit retry sends; its acknowledgement
-clears the draft only if the draft is unchanged since the ask. A retained
-request that never got a handle can be abandoned, which keeps the current draft
-and warns that the original may already have run. Changing Project, discovered actor or reload partition
+Agent, shown under its current catalog name. While an Agent request is
+unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
+messages still send. A new `@agent` ask never reuses a retained Agent intent,
+which only an explicit retry sends, and its acknowledgement clears the draft
+only if the draft is unchanged since that ask. A retained request that never got
+a handle can be abandoned after a confirmation; the current draft is kept and
+the original may already have run. Changing Project, discovered actor or reload partition
 retires the prior draft.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
