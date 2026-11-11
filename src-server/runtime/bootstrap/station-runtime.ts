@@ -4,7 +4,10 @@ import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-li
 import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
 import { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
-import { getBrandingProvider } from '../../providers/registries/registry.js';
+import {
+  getBrandingProvider,
+  listProviders,
+} from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -247,6 +250,7 @@ import { composeTaskBriefSource } from '../../services/projects/task-brief-sourc
 import { composeTaskDispatcher } from '../../services/projects/task-dispatch-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
 import {
   sessionExitWorktreeMetadata,
   terminalWorktreeStateForExit,
@@ -1281,6 +1285,11 @@ export class StationRuntime {
   private readonly taskFollowUps = new TaskFollowUpStoreHolder(() =>
     taskFollowUpStorePath(this.configLoader.getProjectHomeDir()),
   );
+  /**
+   * #4771: what became of each worktree Session's output. Absent without an
+   * orchestration store; Session-exit cleanup then records nothing.
+   */
+  private worktreeOutputSettlements?: WorktreeOutputSettlementService;
   private ptyAdapter!: IPtyAdapter;
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
@@ -2009,6 +2018,16 @@ export class StationRuntime {
       });
       subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
       const worktreeProvisioningService = new WorktreeProvisioningService();
+      const settlementStore =
+        this.orchestrationEventStore?.worktreeOutputSettlementStore();
+      this.worktreeOutputSettlements = settlementStore
+        ? new WorktreeOutputSettlementService({
+            store: settlementStore,
+            worktrees: worktreeProvisioningService,
+            pullRequestProviders: () =>
+              listProviders('pullRequest').map((entry) => entry.provider),
+          })
+        : undefined;
       this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
         const event = serverEvent.data?.event as
@@ -2107,11 +2126,10 @@ export class StationRuntime {
               exitCode: event.exitCode,
               events: detail.events,
             });
-            await worktreeProvisioningService.finalize({
-              metadata,
-              terminalState,
-              sessionId,
-            });
+            const exit = { metadata, terminalState, sessionId };
+            await (this.worktreeOutputSettlements
+              ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
+              : worktreeProvisioningService.finalize(exit));
           })
           .catch((error) => {
             this.logger.warn('Failed to finalize worktree on session exit', {
@@ -5444,6 +5462,7 @@ export class StationRuntime {
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
       taskFollowUps: this.taskFollowUps,
+      worktreeOutputSettlements: () => this.worktreeOutputSettlements,
       ptyAdapter: this.ptyAdapter,
       scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,

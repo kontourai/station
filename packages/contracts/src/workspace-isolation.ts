@@ -65,3 +65,127 @@ export interface WorktreeSessionMetadata {
 export type WorkspaceIsolationMetadata =
   | { mode: 'shared' }
   | WorktreeSessionMetadata;
+
+/**
+ * #4771: what became of a worktree Session's output, recorded at most once.
+ *
+ * - `discarded`: a person asked; Station removed the worktree and the branch
+ *   it created for that Session.
+ * - `kept`: derived, never asserted. The base's current tip contained the
+ *   worktree branch's head commit when it was recorded. A squash merge does
+ *   not contain the head commit, so it is never `kept`; see `released`.
+ * - `released`: a pull request whose head branch and head commit match the
+ *   worktree branch was open or merged when it was recorded.
+ * - `cleaned-up-without-decision`: the Session's cleanup policy removed the
+ *   worktree and no decision had been recorded.
+ */
+export type WorktreeOutputOutcome =
+  | 'discarded'
+  | 'kept'
+  | 'released'
+  | 'cleaned-up-without-decision';
+
+/**
+ * Who settled it, derived by Station from the request's authenticated
+ * principal (or Station's own cleanup policy), never named by the caller.
+ */
+export type WorktreeOutputSettlementActor =
+  | { kind: 'person'; id: string }
+  | { kind: 'station'; id: 'worktree-cleanup-policy' };
+
+/** The forge's own answer about the pull request a `released` names. */
+export interface WorktreeOutputPullRequestEvidence {
+  provider: string;
+  host: string;
+  repository: { owner: string; name: string };
+  ref: string;
+  url: string;
+  /** The forge's state when recorded: `OPEN` or `MERGED`. */
+  state: string;
+  sourceBranch: string;
+  targetBranch: string;
+  headSha: string;
+}
+
+/** What Station checked or did; which fields appear depends on the outcome. */
+export interface WorktreeOutputSettlementEvidence {
+  /** `kept`: the base ref's tip that contained the head commit. */
+  containingCommit?: string;
+  /** `released`: the pull request read from the forge. */
+  pullRequest?: WorktreeOutputPullRequestEvidence;
+  /** `discarded`: the worktree had uncommitted or untracked changes. */
+  hadUncommittedChanges?: boolean;
+  /** `discarded`: the request accepted losing those changes. */
+  acceptedUncommittedLoss?: boolean;
+  /** `discarded`: whether this settlement's own Git effect removed each. */
+  removedWorktree?: boolean;
+  removedBranch?: boolean;
+  /**
+   * `discarded`: the branch gained a commit after the head was recorded, so
+   * it was kept rather than deleted.
+   */
+  branchMoved?: boolean;
+  /** `cleaned-up-without-decision`: the Session's terminal state. */
+  terminalState?: 'completed' | 'failed' | 'cancelled';
+}
+
+/**
+ * One worktree Session's settlement. `pending` exists only for a discard
+ * whose Git effect may have started; it is never a decided outcome.
+ */
+export interface WorktreeOutputSettlement {
+  sessionId: string;
+  state: 'pending' | 'settled';
+  outcome: WorktreeOutputOutcome;
+  actor: WorktreeOutputSettlementActor;
+  requestKey: string;
+  repoPath: string;
+  worktreePath: string;
+  branch: string;
+  baseRef: string;
+  /** The commit the worktree started from; absent on older records. */
+  baseCommit?: string;
+  /** The worktree branch's head commit the decision was made on. */
+  headCommit?: string;
+  evidence: WorktreeOutputSettlementEvidence;
+  requestedAt: string;
+  settledAt?: string;
+}
+
+/** The body a person sends to settle; Station derives everything else. */
+export type WorktreeOutputSettlementRequest =
+  | {
+      requestKey: string;
+      outcome: 'discarded';
+      /** Required to discard a worktree with uncommitted or untracked changes. */
+      acceptUncommittedLoss?: boolean;
+    }
+  | { requestKey: string; outcome: 'kept' }
+  | {
+      requestKey: string;
+      outcome: 'released';
+      pullRequest: {
+        provider: string;
+        host: string;
+        repository: { owner: string; name: string };
+        ref: string;
+      };
+    };
+
+/** Why a settlement request was refused; nothing was recorded or removed. */
+export type WorktreeOutputSettlementRefusal =
+  | 'already-settled'
+  | 'request-key-mismatch'
+  | 'settlement-pending'
+  | 'not-a-worktree-session'
+  | 'task-owned-worktree'
+  | 'worktree-missing'
+  | 'unsafe-repository-config'
+  | 'uncommitted-changes'
+  | 'branch-moved'
+  | 'no-new-commits'
+  | 'base-unresolvable'
+  | 'base-does-not-contain-head'
+  | 'pull-request-unavailable'
+  | 'pull-request-not-open-or-merged'
+  | 'pull-request-mismatch';

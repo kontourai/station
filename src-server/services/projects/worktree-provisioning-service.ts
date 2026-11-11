@@ -91,6 +91,36 @@ function unsafeConfigDetail(keys: readonly string[]): string {
   return `The repository's own config ${parts.join(' and ')}; the worktree was not touched.`;
 }
 
+const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/** #4771: a Session worktree's state, read for a settlement. */
+export type SessionWorktreeInspection =
+  | { kind: 'present'; head: string; dirty: boolean }
+  /** Not in place: its folder or its registration on its branch is gone. */
+  | { kind: 'missing' }
+  | { kind: 'unsafe-config'; detail: string };
+
+/** #4771: what discarding a Session's worktree did, or why it did nothing. */
+export type SessionWorktreeDiscard =
+  | {
+      kind: 'discarded';
+      removedWorktree: boolean;
+      removedBranch: boolean;
+      branchMoved: boolean;
+      hadUncommittedChanges: boolean;
+    }
+  | {
+      kind: 'refused';
+      reason: 'uncommitted-changes' | 'branch-moved' | 'unsafe-config';
+      detail: string;
+    };
+
+const UNCOMMITTED_REFUSAL = {
+  kind: 'refused',
+  reason: 'uncommitted-changes',
+  detail: 'The worktree has uncommitted or untracked changes.',
+} as const;
+
 /** #4507: what finalizing a Task-owned worktree did. */
 export type TaskWorktreeFinalization =
   | { outcome: 'removed' | 'missing' }
@@ -1017,6 +1047,320 @@ export class WorktreeProvisioningService {
     return { outcome: 'removed' };
   }
 
+  /**
+   * #4771: whether a Session's own worktree is untouched by any removal: its
+   * folder exists and git registers it on the Session's branch. Throws for
+   * metadata not bound to the Session.
+   */
+  async isSessionWorktreeIntact(
+    metadata: WorktreeSessionMetadata,
+    sessionId: string,
+  ): Promise<boolean> {
+    assertWorktreeMetadataSessionBinding(metadata, sessionId);
+    return (
+      existsSync(metadata.path) &&
+      (await this.cleanupTargetRegistered(metadata))
+    );
+  }
+
+  /**
+   * #4771: the facts a settlement of a Session's worktree is judged on: the
+   * branch's head commit and whether the checkout has uncommitted or
+   * untracked changes. `status` runs through Station's judged copy of the
+   * repository's config, as finalization does (#2411).
+   */
+  async inspectSessionWorktree(
+    metadata: WorktreeSessionMetadata,
+    sessionId: string,
+  ): Promise<SessionWorktreeInspection> {
+    if (!(await this.isSessionWorktreeIntact(metadata, sessionId)))
+      return { kind: 'missing' };
+    const opened = await this.openCheckedForFinalization(metadata);
+    if ('kept' in opened)
+      return {
+        kind: 'unsafe-config',
+        detail: ('detail' in opened.kept && opened.kept.detail) || '',
+      };
+    const { repository, worktree } = opened;
+    try {
+      const head = await this.ownBranchTip(repository, metadata.branch);
+      if (head.kind !== 'tip') return head;
+      return {
+        kind: 'present',
+        head: head.commit,
+        dirty: await this.hasUncommittedChanges(worktree),
+      };
+    } finally {
+      await worktree.dispose();
+      await repository.dispose();
+    }
+  }
+
+  /**
+   * #4771: whether `baseRef`'s current tip contains `commit`, read now in the
+   * worktree's repository. Replacement objects are ignored, so a replace ref
+   * cannot make an unrelated commit look contained.
+   */
+  async baseContainment(
+    metadata: WorktreeSessionMetadata,
+    commit: string,
+  ): Promise<
+    | { kind: 'contained' | 'not-contained'; baseTip: string }
+    | { kind: 'unresolvable' }
+  > {
+    const repo = ['-C', metadata.repoPath];
+    const env = { GIT_NO_REPLACE_OBJECTS: '1' };
+    const tip = await this.git.run(
+      [
+        ...repo,
+        'rev-parse',
+        '--verify',
+        '--quiet',
+        '--end-of-options',
+        `${metadata.baseRef}^{commit}`,
+      ],
+      { allowCodes: [0, 1, 128], env },
+    );
+    const baseTip = tip.stdout.trim();
+    if (tip.code !== 0 || !FULL_COMMIT.test(baseTip))
+      return { kind: 'unresolvable' };
+    const ancestor = await this.git.run(
+      [...repo, 'merge-base', '--is-ancestor', commit, baseTip],
+      { allowCodes: [0, 1], env },
+    );
+    return {
+      kind: ancestor.code === 0 ? 'contained' : 'not-contained',
+      baseTip,
+    };
+  }
+
+  /**
+   * #4771: removes exactly the worktree and branch Station created for this
+   * Session, and nothing else. Converges: a worktree or branch already gone
+   * is not an error. The branch is deleted only at `expectedHead`, the head
+   * the decision was made on; any refusal happens before anything is
+   * removed.
+   */
+  async discardSessionWorktree(request: {
+    metadata: WorktreeSessionMetadata;
+    sessionId: string;
+    expectedHead: string;
+    acceptUncommittedLoss: boolean;
+  }): Promise<SessionWorktreeDiscard> {
+    const { metadata } = request;
+    assertWorktreeMetadataSessionBinding(metadata, request.sessionId);
+    const registered = await this.cleanupTargetRegistered(metadata);
+    let repository: LiveRepository;
+    try {
+      repository = await this.ownRepository(
+        metadata.repoPath,
+        metadata.repoPath,
+        { newWorktree: true },
+      );
+    } catch (error) {
+      if (error instanceof RepositoryConfigRefusedError)
+        return {
+          kind: 'refused',
+          reason: 'unsafe-config',
+          detail: unsafeConfigDetail(error.keys),
+        };
+      throw error;
+    }
+    try {
+      const tip = await this.ownBranchTip(repository, metadata.branch);
+      if (tip.kind === 'unsafe-config')
+        return { kind: 'refused', reason: 'unsafe-config', detail: tip.detail };
+      const moved = tip.kind === 'tip' && tip.commit !== request.expectedHead;
+      // Moved while the worktree is still in place: nothing is removed. Once
+      // an earlier attempt removed the worktree, the branch's new commits
+      // are kept and the rest converges.
+      if (moved && registered && existsSync(metadata.path))
+        return {
+          kind: 'refused',
+          reason: 'branch-moved',
+          detail: `Branch ${metadata.branch} moved since its head was recorded.`,
+        };
+      let hadUncommittedChanges = false;
+      if (registered) {
+        const removed = await this.removeOwnWorktree(
+          repository,
+          metadata,
+          request.acceptUncommittedLoss,
+        );
+        if (removed.kind === 'refused') return removed;
+        hadUncommittedChanges = removed.hadUncommittedChanges;
+      }
+      const branch =
+        tip.kind === 'tip' && !moved
+          ? await this.deleteOwnBranch(repository, metadata.branch, tip.commit)
+          : { removed: false, moved };
+      return {
+        kind: 'discarded',
+        removedWorktree: registered,
+        removedBranch: branch.removed,
+        branchMoved: branch.moved,
+        hadUncommittedChanges,
+      };
+    } finally {
+      await repository.dispose();
+    }
+  }
+
+  /** #4771: the branch's tip, refusing a branch that is a symbolic ref. */
+  private async ownBranchTip(
+    repository: LiveRepository,
+    branch: string,
+  ): Promise<
+    | { kind: 'tip'; commit: string }
+    | { kind: 'missing' }
+    | { kind: 'unsafe-config'; detail: string }
+  > {
+    const repo = ['-C', repository.top, ...repository.repoArgs];
+    const env = repository.env;
+    const ref = `refs/heads/${branch}`;
+    // A symbolic ref would make every check below, and the deletion, reach
+    // the branch it points to (see `finalizeForTask`).
+    const symbolic = await this.git.run([...repo, 'symbolic-ref', '-q', ref], {
+      allowCodes: [0, 1, 128],
+      env,
+    });
+    if (symbolic.code === 0)
+      return {
+        kind: 'unsafe-config',
+        detail: `Branch ${branch} is a symbolic ref to ${symbolic.stdout.trim()}.`,
+      };
+    const tip = await this.git.run(
+      [...repo, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+      { allowCodes: [0, 1, 128], env },
+    );
+    const commit = tip.stdout.trim();
+    return tip.code === 0 && FULL_COMMIT.test(commit)
+      ? { kind: 'tip', commit }
+      : { kind: 'missing' };
+  }
+
+  private async hasUncommittedChanges(
+    worktree: LiveRepository,
+  ): Promise<boolean> {
+    const changes = await this.git.run(
+      [
+        '-C',
+        worktree.top,
+        ...worktree.repoArgs,
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+      ],
+      { env: worktree.env },
+    );
+    return changes.stdout.trim() !== '';
+  }
+
+  /**
+   * #4771: `worktree remove`, forced only when the request accepted losing
+   * uncommitted changes. A registration whose folder is already gone is
+   * pruned by the same command.
+   */
+  private async removeOwnWorktree(
+    repository: LiveRepository,
+    metadata: WorktreeSessionMetadata,
+    acceptUncommittedLoss: boolean,
+  ): Promise<
+    | { kind: 'removed'; hadUncommittedChanges: boolean }
+    | Extract<SessionWorktreeDiscard, { kind: 'refused' }>
+  > {
+    let hadUncommittedChanges = false;
+    if (existsSync(metadata.path)) {
+      let worktree: LiveRepository;
+      try {
+        worktree = await this.ownRepository(metadata.path, metadata.path, {});
+      } catch (error) {
+        if (error instanceof RepositoryConfigRefusedError)
+          return {
+            kind: 'refused',
+            reason: 'unsafe-config',
+            detail: unsafeConfigDetail(error.keys),
+          };
+        throw error;
+      }
+      try {
+        hadUncommittedChanges = await this.hasUncommittedChanges(worktree);
+      } finally {
+        await worktree.dispose();
+      }
+      if (hadUncommittedChanges && !acceptUncommittedLoss)
+        return UNCOMMITTED_REFUSAL;
+    }
+    const removed = await this.git.run(
+      [
+        '-C',
+        repository.top,
+        ...repository.repoArgs,
+        'worktree',
+        'remove',
+        ...(acceptUncommittedLoss ? ['--force'] : []),
+        metadata.path,
+      ],
+      { allowCodes: [0, 128], env: repository.env },
+    );
+    if (removed.code === 0) return { kind: 'removed', hadUncommittedChanges };
+    // Without `--force`, git itself refuses a worktree that gained a change
+    // after the check above; the change is kept.
+    if (/modified or untracked files/.test(removed.stderr))
+      return UNCOMMITTED_REFUSAL;
+    throw new Error(
+      `git worktree remove failed: ${removed.stderr.trim() || removed.stdout.trim()}`,
+    );
+  }
+
+  /**
+   * #4771: deletes the branch only while it still points at `tip`, against
+   * the repository's real git directory (see `finalizeForTask`).
+   */
+  private async deleteOwnBranch(
+    repository: LiveRepository,
+    branch: string,
+    tip: string,
+  ): Promise<{ removed: boolean; moved: boolean }> {
+    const deleted = await this.git.run(
+      [
+        '--git-dir',
+        repository.commonDir,
+        'update-ref',
+        '--no-deref',
+        '-d',
+        `refs/heads/${branch}`,
+        tip,
+      ],
+      { allowCodes: [0, 1, 128] },
+    );
+    if (deleted.code === 0) return { removed: true, moved: false };
+    if (/but expected/.test(deleted.stderr))
+      return { removed: false, moved: true };
+    throw new Error(
+      `git update-ref failed: ${deleted.stderr.trim() || `git exited ${deleted.code}`}`,
+    );
+  }
+
+  /** #4771: the branch head a Session's cleanup is about to remove, if readable. */
+  async readSessionBranchHead(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<string | undefined> {
+    const head = await this.git.run(
+      [
+        '-C',
+        metadata.repoPath,
+        'rev-parse',
+        '--verify',
+        '--quiet',
+        `refs/heads/${metadata.branch}^{commit}`,
+      ],
+      { allowCodes: [0, 1, 128] },
+    );
+    const commit = head.stdout.trim();
+    return head.code === 0 && FULL_COMMIT.test(commit) ? commit : undefined;
+  }
+
   async provision(
     request: WorktreeProvisionRequest,
   ): Promise<WorktreeSessionMetadata | null> {
@@ -1128,6 +1472,21 @@ export class WorktreeProvisioningService {
   private async assertRegisteredCleanupTarget(
     metadata: WorktreeSessionMetadata,
   ): Promise<void> {
+    if (!(await this.cleanupTargetRegistered(metadata))) {
+      throw new Error(
+        'Worktree cleanup target is not registered to its session branch',
+      );
+    }
+  }
+
+  /**
+   * Whether git registers this exact path on this exact branch in the
+   * metadata's own repository. Throws for metadata whose repository or path
+   * shape is not Station's; answers `false` only for "not registered".
+   */
+  private async cleanupTargetRegistered(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<boolean> {
     const repoRoot = (
       await this.git.run([
         '-C',
@@ -1160,16 +1519,10 @@ export class WorktreeProvisioningService {
       '--porcelain',
     ]);
     const entries = parseWorktreeList(registered.stdout);
-    if (
-      !entries.some(
-        (entry) =>
-          entry.path === expectedPath && entry.branch === metadata.branch,
-      )
-    ) {
-      throw new Error(
-        'Worktree cleanup target is not registered to its session branch',
-      );
-    }
+    return entries.some(
+      (entry) =>
+        entry.path === expectedPath && entry.branch === metadata.branch,
+    );
   }
 
   /**
