@@ -1,5 +1,38 @@
 [
   {
+    "timestampUtc": "2026-11-11T11:00:54Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261111.1",
+    "sha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+    "artifactBuiltAt": "2026-11-11T10:03:35.623Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42998652773",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42998652773)"
+    ],
+    "changelog": {
+      "previousSha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+      "groups": {
+        "feat": [
+          "[#4782](https://github.com/kontourai/station/pull/4782) feat(doctor): report confinement mechanism and confined credential per engine (#4774)"
+        ],
+        "fix": [
+          "[#4779](https://github.com/kontourai/station/pull/4779) fix(ui): label every plain retry button \"Retry\"; land the outbox hand-off fix missing from #4776"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4783](https://github.com/kontourai/station/pull/4783) refactor(ui): give the Project page the shared section navigation"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-11-11T10:08:32Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261111.42998652773",
