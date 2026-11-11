@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-11-11T18:24:10Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261111.43074100998",
+    "sha": "e5b5bd24e1ae4e588e3466e979188e014ddd0354",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43074100998",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261111.43074100998 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+      "groups": {
+        "feat": [
+          "[#4784](https://github.com/kontourai/station/pull/4784) feat(coordinator): put Houston behind the Coordinator chat Feature Preview and explain it on Home",
+          "[#4778](https://github.com/kontourai/station/pull/4778) feat!: retire the strands-runtime flag, show the Knowledge conversations setting, stop Flow links dead-ending"
+        ],
+        "fix": [
+          "[#4786](https://github.com/kontourai/station/pull/4786) fix(ui): shared status, empty state, dialog and section header across Connections, onboarding and Tasks"
+        ],
+        "ci": [
+          "[#4787](https://github.com/kontourai/station/pull/4787) ci(confinement): run the Seatbelt kernel legs on main pushes that touch confinement code (#4772)"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-11-11T11:00:57Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261111.1",
