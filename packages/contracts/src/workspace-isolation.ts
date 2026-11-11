@@ -70,10 +70,12 @@ export type WorkspaceIsolationMetadata =
  * #4771: what became of a worktree Session's output, recorded at most once.
  *
  * - `discarded`: a person asked; Station removed the worktree it created for
- *   that Session, and its branch unless the branch had moved on or was
- *   checked out somewhere else (then the branch is kept and the evidence
- *   says why). Files the repository ignores are removed with the worktree
- *   without needing `acceptUncommittedLoss`; the evidence counts them.
+ *   that Session and its branch. A discard is refused, before anything is
+ *   removed, while the branch has moved on or another checkout has it. Only
+ *   when completing an earlier discard whose worktree is already gone is the
+ *   branch kept in those cases, and the evidence says why (`branchKept`).
+ *   Files the repository ignores are removed with the worktree without
+ *   needing `acceptUncommittedLoss`; the evidence counts them.
  * - `kept`: derived, never asserted. The base's current tip contained the
  *   worktree branch's head commit when it was recorded. A squash merge does
  *   not contain the head commit, so it is never `kept`; see `released`.
@@ -121,17 +123,28 @@ export interface WorktreeOutputSettlementEvidence {
   /** `discarded`: the request accepted losing those changes. */
   acceptedUncommittedLoss?: boolean;
   /**
-   * `discarded`: how many ignored entries (files, or whole directories as
-   * git reports them) the worktree held when it was removed. Ignored files
-   * are removed without `acceptUncommittedLoss`.
+   * `discarded`: how many ignored paths `git status` listed in the worktree
+   * when it was removed. Every untracked path is listed, so an ignored
+   * directory counts each file in it. Ignored files are removed without
+   * `acceptUncommittedLoss`.
    */
   ignoredEntries?: number;
   /**
-   * `discarded` and `cleaned-up-without-decision`: whether the worktree and
-   * the branch were gone afterwards because of this settlement's own effect.
+   * `discarded`: whether this settlement's own Git effect removed the
+   * worktree registration and deleted the branch (`false` when it was
+   * already gone, or kept).
    */
   removedWorktree?: boolean;
   removedBranch?: boolean;
+  /**
+   * `cleaned-up-without-decision`: what was observed after the cleanup
+   * policy ran. It says what is gone, not who removed it; `unknown` when git
+   * could not tell.
+   */
+  afterCleanup?: {
+    worktree: 'present' | 'absent' | 'unknown';
+    branch: 'present' | 'absent' | 'unknown';
+  };
   /**
    * `discarded`: why the branch was kept: it gained a commit after the head
    * was recorded (`moved`), or another checkout has it checked out

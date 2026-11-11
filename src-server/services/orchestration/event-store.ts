@@ -188,7 +188,10 @@ import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migratio
 import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrations/025-conversation-history-title-source.js';
 import { migrateContextSummaryBoundaries } from '../../domain/migrations/026-context-summary-boundaries.js';
 import { TASK_WRITE_BACK_MIGRATION } from '../../domain/migrations/026-task-write-back.js';
-import { WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION } from '../../domain/migrations/029-worktree-output-settlements.js';
+import {
+  ensureWorktreeOutputSettlementOwnerColumn,
+  WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION,
+} from '../../domain/migrations/029-worktree-output-settlements.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -3086,6 +3089,7 @@ export class EventStore {
       this.db.exec(TASK_WRITE_BACK_MIGRATION);
       // #4771: what became of each worktree Session's output.
       this.db.exec(WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION);
+      ensureWorktreeOutputSettlementOwnerColumn(this.db);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
       this.db

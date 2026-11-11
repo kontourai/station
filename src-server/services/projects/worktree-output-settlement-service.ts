@@ -13,7 +13,7 @@ import type {
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
 import {
-  exactProcessIdentity,
+  lookupProcessBirthFingerprintCachedAsync,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
 import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
@@ -23,6 +23,7 @@ import type {
 } from '../orchestration/worktree-output-settlement-store.js';
 import { readPullRequestByIdentity } from '../pull-requests/pull-request-identity-read.js';
 import {
+  cleanupPolicyForTerminalState,
   type SessionWorktreeDiscard,
   type SessionWorktreeInspection,
   sessionExitWorktreeMetadata,
@@ -48,6 +49,7 @@ export type WorktreeOutputSettlementResult =
 
 type SettlementWorktrees = Pick<
   WorktreeProvisioningService,
+  | 'observeSessionWorktree'
   | 'isSessionWorktreeIntact'
   | 'inspectSessionWorktree'
   | 'baseContainment'
@@ -168,6 +170,21 @@ export function sessionWorktreeForSettlement(
   return metadata ? { kind: 'session', metadata } : { kind: 'none' };
 }
 
+/**
+ * This process's birth fingerprint, read once without blocking the event
+ * loop: it never changes while the process lives. A failed read is retried
+ * on the next use rather than kept.
+ */
+let ownBirth: Promise<string | null> | undefined;
+async function ownProcessBirth(): Promise<string | null> {
+  ownBirth ??= lookupProcessBirthFingerprintCachedAsync(process.pid).catch(
+    () => null,
+  );
+  const birth = await ownBirth;
+  if (!birth) ownBirth = undefined;
+  return birth;
+}
+
 /** `undefined` once `deadlineMs` passes; a late answer is dropped. */
 function withinDeadline<T>(
   pending: Promise<T>,
@@ -252,10 +269,17 @@ export class WorktreeOutputSettlementService {
     terminalState: WorktreeTerminalState;
   }): Promise<'removed' | 'preserved'> {
     return this.queue.run(input.sessionId, async () => {
-      const problem = await this.deps.worktrees.sessionWorktreeRemovalProblem(
-        input.metadata,
-      );
-      if (problem) throw new Error(problem);
+      // Only a policy that removes the worktree needs a path git may
+      // remove; one that preserves it leaves it untouched either way.
+      if (
+        cleanupPolicyForTerminalState(input.metadata, input.terminalState) ===
+        'cleanup'
+      ) {
+        const problem = await this.deps.worktrees.sessionWorktreeRemovalProblem(
+          input.metadata,
+        );
+        if (problem) throw new Error(problem);
+      }
       const decided = this.deps.store.read(input.sessionId) !== undefined;
       const head = decided
         ? undefined
@@ -278,13 +302,10 @@ export class WorktreeOutputSettlementService {
     head: string | undefined,
   ): Promise<void> {
     // Cleanup's `branch -D` is allowed to fail (a branch checked out
-    // elsewhere), so what is gone is read back, not assumed.
-    const branchLeft = await this.deps.worktrees
-      .readSessionBranchHead(input.metadata)
-      .catch(() => 'unknown');
-    const worktreeLeft = await this.deps.worktrees
-      .isSessionWorktreeIntact(input.metadata, input.sessionId)
-      .catch(() => true);
+    // elsewhere), so what is gone is observed, not assumed.
+    const afterCleanup = await this.deps.worktrees
+      .observeSessionWorktree(input.metadata)
+      .catch(() => ({ worktree: 'unknown', branch: 'unknown' }) as const);
     const at = this.now().toISOString();
     this.deps.store.insert({
       requestDigest: CLEANUP_REQUEST_KEY,
@@ -295,11 +316,7 @@ export class WorktreeOutputSettlementService {
         actor: { kind: 'station', id: 'worktree-cleanup-policy' },
         requestKey: CLEANUP_REQUEST_KEY,
         ...(head ? { headCommit: head } : {}),
-        evidence: {
-          terminalState: input.terminalState,
-          removedWorktree: !worktreeLeft,
-          removedBranch: branchLeft === undefined,
-        },
+        evidence: { terminalState: input.terminalState, afterCleanup },
         requestedAt: at,
         settledAt: at,
       },
@@ -387,19 +404,14 @@ export class WorktreeOutputSettlementService {
     return stored.owner !== undefined && this.liveness(stored.owner) === 'dead';
   }
 
-  private processOwner(): OwnerIdentity {
-    if (!this.owner) {
-      const exact = exactProcessIdentity(process.pid);
-      this.owner = exact
-        ? {
-            id: this.ownerId,
-            pid: process.pid,
-            identityKind: 'exact',
-            birth: exact.start,
-          }
-        : { id: this.ownerId, pid: process.pid, identityKind: 'unverified' };
-    }
-    return this.owner;
+  private async processOwner(): Promise<OwnerIdentity> {
+    if (this.owner) return this.owner;
+    const birth = await ownProcessBirth();
+    const owner: OwnerIdentity = birth
+      ? { id: this.ownerId, pid: process.pid, identityKind: 'exact', birth }
+      : { id: this.ownerId, pid: process.pid, identityKind: 'unverified' };
+    if (birth) this.owner = owner;
+    return owner;
   }
 
   private async discard(
@@ -423,7 +435,7 @@ export class WorktreeOutputSettlementService {
     if (!input.stillAuthorized()) return AUTHORITY_CHANGED;
     const pending = this.deps.store.insert({
       requestDigest: digest,
-      owner: this.processOwner(),
+      owner: await this.processOwner(),
       record: {
         ...this.identity(input.sessionId, input.metadata),
         state: 'pending',
@@ -517,7 +529,7 @@ export class WorktreeOutputSettlementService {
     if (containment.kind === 'unresolvable')
       return refused(
         'base-unresolvable',
-        `${input.metadata.baseRef} does not resolve to a commit in the repository.`,
+        `${input.metadata.baseRef} does not name a local or remote-tracking branch in the repository.`,
       );
     if (containment.baseBranch === input.metadata.branch)
       return refused(
@@ -527,11 +539,11 @@ export class WorktreeOutputSettlementService {
     if (containment.kind === 'not-contained')
       return refused(
         'base-does-not-contain-head',
-        `${containment.baseBranch ?? input.metadata.baseRef} (${containment.baseTip}) does not contain ${inspection.head}. A squash or rebase merge does not contain the branch head; record such a merge as released with its pull request.`,
+        `${containment.baseBranch} (${containment.baseTip}) does not contain ${inspection.head}. A squash or rebase merge does not contain the branch head; record such a merge as released with its pull request.`,
       );
     return this.recordSettled(input, digest, inspection.head, {
       containingCommit: containment.baseTip,
-      ...(containment.baseBranch ? { baseBranch: containment.baseBranch } : {}),
+      baseBranch: containment.baseBranch,
     });
   }
 

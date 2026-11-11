@@ -116,7 +116,10 @@ test('a Session exit that removes its worktree with no decision records cleaned-
       actor: { kind: 'station', id: 'worktree-cleanup-policy' },
       branch: metadata.branch,
       headCommit: head,
-      evidence: { terminalState: 'completed' },
+      evidence: {
+        terminalState: 'completed',
+        afterCleanup: { worktree: 'absent', branch: 'absent' },
+      },
     });
     expect(existsSync(metadata.path)).toBe(false);
   } finally {

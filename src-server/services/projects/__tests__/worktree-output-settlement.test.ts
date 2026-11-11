@@ -832,7 +832,10 @@ describe('cleanup policy without a decision (#4771)', () => {
       outcome: 'cleaned-up-without-decision',
       actor: { kind: 'station', id: 'worktree-cleanup-policy' },
       headCommit: a.head,
-      evidence: { terminalState: 'completed' },
+      evidence: {
+        terminalState: 'completed',
+        afterCleanup: { worktree: 'absent', branch: 'absent' },
+      },
     });
     // A later discard cannot rewrite it as a person's decision.
     expect(
@@ -1188,7 +1191,7 @@ describe('cleanup records what is actually gone (#4771)', () => {
     expect(service.read('session-a')).toBeUndefined();
   });
 
-  test('a branch the cleanup could not delete is recorded as kept', async () => {
+  test('a branch the cleanup could not delete is recorded as still present', async () => {
     const { repo, service } = fixture();
     const a = await sessionWorktree(repo, 'session-a', { cleanup: true });
     git(
@@ -1209,7 +1212,7 @@ describe('cleanup records what is actually gone (#4771)', () => {
     expect(branchExists(repo, a.metadata.branch)).toBe(true);
     expect(service.read('session-a')).toMatchObject({
       outcome: 'cleaned-up-without-decision',
-      evidence: { removedWorktree: true, removedBranch: false },
+      evidence: { afterCleanup: { worktree: 'absent', branch: 'present' } },
     });
   });
 });
@@ -1326,5 +1329,123 @@ describe('a base that moved with an edit to the same file (#4771)', () => {
         evidence: { containingCommit: merged, baseBranch: 'main' },
       },
     });
+  });
+});
+
+describe('what names the base (#4771)', () => {
+  const keepAgainst = (
+    service: WorktreeOutputSettlementService,
+    a: { metadata: WorktreeSessionMetadata },
+    baseRef: string,
+  ) =>
+    service.settle({
+      sessionId: 'session-a',
+      metadata: { ...a.metadata, baseRef },
+      actor: OWNER,
+      stillAuthorized: allowed,
+      request: { requestKey: `kept-${baseRef}`, outcome: 'kept' },
+    });
+
+  test('every spelling of a detached HEAD is detached', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'checkout', '--quiet', '--detach', a.head);
+
+    expect(await keepAgainst(service, a, '@')).toMatchObject({
+      kind: 'refused',
+      reason: 'base-detached',
+    });
+    // `head` names `.git/HEAD` only where the filesystem folds case; on a
+    // case-sensitive one it names nothing. Either way nothing is kept.
+    const foldsCase = existsSync(join(repo, '.git', 'head'));
+    expect(await keepAgainst(service, a, 'head')).toMatchObject({
+      kind: 'refused',
+      reason: foldsCase ? 'base-detached' : 'base-unresolvable',
+    });
+    expect(service.read('session-a')).toBeUndefined();
+  });
+
+  test('a tag with the branch name does not stand in for the branch', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'tag', 'main', a.head);
+
+    expect(await keepAgainst(service, a, 'main')).toMatchObject({
+      kind: 'refused',
+      reason: 'base-does-not-contain-head',
+    });
+    expect(service.read('session-a')).toBeUndefined();
+  });
+
+  test('a commit id or a tag names no branch to keep onto', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'tag', 'v1', a.head);
+
+    for (const baseRef of [a.head, 'v1', 'refs/tags/v1'])
+      expect(await keepAgainst(service, a, baseRef)).toMatchObject({
+        kind: 'refused',
+        reason: 'base-unresolvable',
+      });
+    expect(service.read('session-a')).toBeUndefined();
+  });
+});
+
+describe('registrations of the branch elsewhere (#4771)', () => {
+  test('one git reports prunable does not count; a locked one does', async () => {
+    for (const locked of [false, true]) {
+      const { parent, repo, service } = fixture();
+      const a = await sessionWorktree(repo, 'session-a');
+      const other = join(parent, locked ? 'locked-copy' : 'gone-copy');
+      git(
+        repo,
+        'worktree',
+        'add',
+        '--quiet',
+        '--force',
+        ...(locked ? ['--lock'] : []),
+        other,
+        a.metadata.branch,
+      );
+      rmSync(other, { recursive: true, force: true });
+
+      const result = await discardBy(service, a);
+      if (locked) {
+        expect(result).toMatchObject({
+          kind: 'refused',
+          reason: 'branch-checked-out-elsewhere',
+        });
+        expect(existsSync(a.metadata.path)).toBe(true);
+      } else {
+        expect(result).toMatchObject({
+          kind: 'recorded',
+          settlement: {
+            evidence: { removedWorktree: true, removedBranch: true },
+          },
+        });
+      }
+    }
+  });
+});
+
+describe('Session exit under the preserve policy (#4771)', () => {
+  test('a symlinked worktree path is left untouched, quietly', async () => {
+    const { parent, repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    expect(a.metadata.cleanupPolicy).toBe('preserve');
+    mkdirSync(join(parent, 'moved'));
+    const moved = join(parent, 'moved', basename(a.metadata.path));
+    renameSync(a.metadata.path, moved);
+    symlinkSync(moved, a.metadata.path);
+
+    expect(
+      await service.finalizeSessionExit({
+        sessionId: 'session-a',
+        metadata: a.metadata,
+        terminalState: 'completed',
+      }),
+    ).toBe('preserved');
+    expect(existsSync(join(moved, 'session-a.txt'))).toBe(true);
+    expect(service.read('session-a')).toBeUndefined();
   });
 });

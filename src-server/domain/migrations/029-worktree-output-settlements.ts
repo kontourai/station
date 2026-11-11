@@ -46,3 +46,28 @@ BEGIN
   SELECT RAISE(ABORT, 'a settled worktree output is final');
 END;
 `;
+
+/**
+ * A database created by an earlier build of this migration has the table
+ * without `owner_json`, and `CREATE TABLE IF NOT EXISTS` leaves it so. Add the
+ * column once; another EventStore may add it first.
+ */
+export function ensureWorktreeOutputSettlementOwnerColumn(db: {
+  prepare(sql: string): { all(): unknown[] };
+  exec(sql: string): void;
+}): void {
+  const hasColumn = () =>
+    (
+      db
+        .prepare('PRAGMA table_info(worktree_output_settlements)')
+        .all() as Array<{ name?: unknown }>
+    ).some((column) => column.name === 'owner_json');
+  if (hasColumn()) return;
+  try {
+    db.exec(
+      'ALTER TABLE worktree_output_settlements ADD COLUMN owner_json TEXT CHECK (owner_json IS NULL OR (json_valid(owner_json) AND length(owner_json) <= 1024))',
+    );
+  } catch (error) {
+    if (!hasColumn()) throw error;
+  }
+}

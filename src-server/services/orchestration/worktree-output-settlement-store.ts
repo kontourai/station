@@ -1,4 +1,4 @@
-import type { OwnerIdentity } from '@kontourai/monument';
+import { type OwnerIdentity, parseOwnerIdentity } from '@kontourai/monument';
 import type {
   WorktreeOutputSettlement,
   WorktreeOutputSettlementEvidence,
@@ -67,6 +67,19 @@ interface Row {
   owner_json: string | null;
 }
 
+/**
+ * Strictly decoded, as Monument decodes its own owners: a malformed owner is
+ * dropped, and an intent with no owner is never judged abandoned.
+ */
+function ownerFromRow(json: string | null): { owner?: OwnerIdentity } {
+  if (!json) return {};
+  try {
+    return { owner: parseOwnerIdentity(JSON.parse(json)) };
+  } catch {
+    return {};
+  }
+}
+
 function fromRow(row: Row): StoredWorktreeOutputSettlement {
   const actor: WorktreeOutputSettlement['actor'] =
     row.actor_kind === 'station'
@@ -74,9 +87,7 @@ function fromRow(row: Row): StoredWorktreeOutputSettlement {
       : { kind: 'person', id: row.actor_id };
   return {
     requestDigest: row.request_digest,
-    ...(row.owner_json
-      ? { owner: JSON.parse(row.owner_json) as OwnerIdentity }
-      : {}),
+    ...ownerFromRow(row.owner_json),
     record: {
       sessionId: row.session_id,
       state: row.state,

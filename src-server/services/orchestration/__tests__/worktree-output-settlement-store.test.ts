@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { WorktreeOutputSettlement } from '@kontourai/station-contracts/workspace-isolation';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION } from '../../../domain/migrations/029-worktree-output-settlements.js';
 import { EventStore } from '../event-store.js';
 
 const makeTempDir = trackTempDirs();
@@ -140,5 +141,65 @@ describe('worktree output settlement store over real orchestration SQLite (#4771
       store.insert({ requestDigest: 'sha256:a', record: pendingKept }),
     ).toThrow(/CHECK constraint/);
     expect(store.read('session-a')).toBeUndefined();
+  });
+});
+
+describe('a database made by the first build of migration 029 (#4771)', () => {
+  test('gains the owner column on open, and a pending intent keeps its owner', async () => {
+    const path = join(makeTempDir('worktree-settlement-old-'), 'orch.sqlite');
+    const firstBuild = WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION.replace(
+      /^\s*owner_json .*\n/m,
+      '',
+    );
+    expect(firstBuild).not.toContain('owner_json');
+    const old = new DatabaseSync(path);
+    old.exec(firstBuild);
+    old.close();
+
+    const events = new EventStore(path);
+    closers.push(async () => {
+      await events.close();
+    });
+    const store = events.worktreeOutputSettlementStore();
+    const owner = {
+      id: 'writer',
+      pid: 4242,
+      identityKind: 'exact',
+      birth: 'birth-1',
+    } as const;
+    const pending = record({
+      state: 'pending',
+      outcome: 'discarded',
+      requestKey: 'discard-1',
+      evidence: {},
+    });
+    delete pending.settledAt;
+    expect(
+      store.insert({ requestDigest: 'sha256:a', owner, record: pending }).kind,
+    ).toBe('inserted');
+    expect(store.read('session-a')?.owner).toEqual(owner);
+  });
+
+  test('a malformed stored owner is dropped, never judged', () => {
+    const { path, store } = setup();
+    const pending = record({
+      state: 'pending',
+      outcome: 'discarded',
+      requestKey: 'discard-1',
+      evidence: {},
+    });
+    delete pending.settledAt;
+    store.insert({ requestDigest: 'sha256:a', record: pending });
+    const raw = new DatabaseSync(path);
+    closers.push(() => raw.close());
+    raw
+      .prepare(
+        'UPDATE worktree_output_settlements SET owner_json = ? WHERE session_id = ?',
+      )
+      .run(
+        JSON.stringify({ id: 'x', pid: -1, identityKind: 'exact' }),
+        'session-a',
+      );
+    expect(store.read('session-a')?.owner).toBeUndefined();
   });
 });

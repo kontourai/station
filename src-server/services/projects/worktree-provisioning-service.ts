@@ -644,7 +644,7 @@ function assertWorktreePathPolicy(input: {
   assertContainedPath(worktreeBaseDir, worktreePath, 'path');
 }
 
-function cleanupPolicyForTerminalState(
+export function cleanupPolicyForTerminalState(
   metadata: WorktreeSessionMetadata,
   terminalState: WorktreeTerminalState,
 ): WorktreeCleanupPolicy {
@@ -1193,10 +1193,13 @@ export class WorktreeProvisioningService {
   }
 
   /**
-   * #4771: the branch `baseRef` names now (a detached `HEAD` names none) and
-   * whether its tip contains `commit`, read in the worktree's repository.
-   * Replacement objects are ignored, so a replace ref cannot make an
-   * unrelated commit look contained.
+   * #4771: the branch `baseRef` names now and whether its tip contains
+   * `commit`, read in the worktree's repository. A base must name a local or
+   * remote-tracking branch: a branch name is read as `refs/heads/<name>`, so
+   * a tag of the same name cannot stand in for it; any spelling of `HEAD` is
+   * the branch it has checked out, and detached when it has none. A tag or a
+   * commit id names no branch to keep onto. Replacement objects are ignored,
+   * so a replace ref cannot make an unrelated commit look contained.
    */
   async baseContainment(
     metadata: WorktreeSessionMetadata,
@@ -1205,56 +1208,99 @@ export class WorktreeProvisioningService {
     | {
         kind: 'contained' | 'not-contained';
         baseTip: string;
-        baseBranch?: string;
+        baseBranch: string;
       }
     | { kind: 'unresolvable' }
     | { kind: 'detached' }
   > {
     const repo = ['-C', metadata.repoPath];
     const env = { GIT_NO_REPLACE_OBJECTS: '1' };
-    const named = await this.git.run(
-      [
-        ...repo,
-        'rev-parse',
-        '--symbolic-full-name',
-        '--end-of-options',
-        metadata.baseRef,
-      ],
-      { allowCodes: [0, 128], env },
-    );
-    // `--end-of-options` is echoed on its own line before the name.
-    const fullName =
-      named.code === 0 ? (named.stdout.trim().split('\n').at(-1) ?? '') : '';
-    if (metadata.baseRef === 'HEAD' && fullName === 'HEAD')
-      return { kind: 'detached' };
-    const baseBranch = fullName.startsWith('refs/heads/')
-      ? fullName.slice('refs/heads/'.length)
-      : undefined;
-    // The branch itself, not `HEAD` again: the checkout may switch between
-    // the two reads.
-    const tip = await this.git.run(
-      [
-        ...repo,
-        'rev-parse',
-        '--verify',
-        '--quiet',
-        '--end-of-options',
-        `${baseBranch ? fullName : metadata.baseRef}^{commit}`,
-      ],
-      { allowCodes: [0, 1, 128], env },
-    );
-    const baseTip = tip.stdout.trim();
-    if (tip.code !== 0 || !FULL_COMMIT.test(baseTip))
-      return { kind: 'unresolvable' };
+    const base = await this.resolveBaseBranch(metadata);
+    if (base.kind !== 'branch') return base;
     const ancestor = await this.git.run(
-      [...repo, 'merge-base', '--is-ancestor', commit, baseTip],
+      [...repo, 'merge-base', '--is-ancestor', commit, base.tip],
       { allowCodes: [0, 1], env },
     );
     return {
       kind: ancestor.code === 0 ? 'contained' : 'not-contained',
-      baseTip,
-      ...(baseBranch ? { baseBranch } : {}),
+      baseTip: base.tip,
+      baseBranch: base.name,
     };
+  }
+
+  /** #4771: see {@link baseContainment}. */
+  private async resolveBaseBranch(
+    metadata: WorktreeSessionMetadata,
+  ): Promise<
+    | { kind: 'branch'; name: string; tip: string }
+    | { kind: 'unresolvable' }
+    | { kind: 'detached' }
+  > {
+    const ref = metadata.baseRef;
+    const named = ref.startsWith('refs/')
+      ? undefined
+      : await this.refTip(metadata, `refs/heads/${ref}`);
+    if (named) return { kind: 'branch', name: ref, tip: named };
+    const fullName = ref.startsWith('refs/')
+      ? ref
+      : await this.symbolicFullName(metadata, ref);
+    const branch = /^refs\/(?:heads|remotes)\/(.+)$/.exec(fullName)?.[1];
+    if (branch) {
+      const tip = await this.refTip(metadata, fullName);
+      return tip
+        ? { kind: 'branch', name: branch, tip }
+        : { kind: 'unresolvable' };
+    }
+    // `HEAD`, `@` or (on a case-insensitive filesystem) `head` while the
+    // checkout is detached: a name that is not a full ref.
+    return fullName && !fullName.startsWith('refs/')
+      ? { kind: 'detached' }
+      : { kind: 'unresolvable' };
+  }
+
+  private async symbolicFullName(
+    metadata: WorktreeSessionMetadata,
+    ref: string,
+  ): Promise<string> {
+    const named = await this.git.run(
+      [
+        '-C',
+        metadata.repoPath,
+        'rev-parse',
+        '--symbolic-full-name',
+        '--end-of-options',
+        ref,
+      ],
+      { allowCodes: [0, 128], env: { GIT_NO_REPLACE_OBJECTS: '1' } },
+    );
+    // `--end-of-options` is echoed on its own line before the name.
+    return named.code === 0
+      ? (named.stdout.trim().split('\n').at(-1) ?? '').replace(
+          /^--end-of-options$/,
+          '',
+        )
+      : '';
+  }
+
+  /** The commit a full ref name points at, or `undefined`. */
+  private async refTip(
+    metadata: WorktreeSessionMetadata,
+    fullName: string,
+  ): Promise<string | undefined> {
+    const tip = await this.git.run(
+      [
+        '-C',
+        metadata.repoPath,
+        'rev-parse',
+        '--verify',
+        '--quiet',
+        '--end-of-options',
+        `${fullName}^{commit}`,
+      ],
+      { allowCodes: [0, 1, 128], env: { GIT_NO_REPLACE_OBJECTS: '1' } },
+    );
+    const commit = tip.stdout.trim();
+    return tip.code === 0 && FULL_COMMIT.test(commit) ? commit : undefined;
   }
 
   /**
@@ -1558,6 +1604,46 @@ export class WorktreeProvisioningService {
     return head.code === 0 && FULL_COMMIT.test(commit) ? commit : undefined;
   }
 
+  /**
+   * #4771: what is left of a Session's worktree and branch, observed now.
+   * Nothing here says who removed them; `unknown` when git could not tell.
+   */
+  async observeSessionWorktree(metadata: WorktreeSessionMetadata): Promise<{
+    worktree: 'present' | 'absent' | 'unknown';
+    branch: 'present' | 'absent' | 'unknown';
+  }> {
+    const branch = await this.git.run(
+      [
+        '-C',
+        metadata.repoPath,
+        'rev-parse',
+        '--verify',
+        '--quiet',
+        `refs/heads/${metadata.branch}^{commit}`,
+      ],
+      { allowCodes: [0, 1, 128] },
+    );
+    let worktree: 'present' | 'absent' | 'unknown';
+    try {
+      worktree =
+        lstatOrMissing(metadata.path) ||
+        (await this.cleanupTargetRegistered(metadata))
+          ? 'present'
+          : 'absent';
+    } catch {
+      worktree = 'unknown';
+    }
+    return {
+      worktree,
+      branch:
+        branch.code === 0
+          ? 'present'
+          : branch.code === 1
+            ? 'absent'
+            : 'unknown',
+    };
+  }
+
   async provision(
     request: WorktreeProvisionRequest,
   ): Promise<WorktreeSessionMetadata | null> {
@@ -1731,7 +1817,9 @@ export class WorktreeProvisioningService {
     );
     return {
       registered: onBranch.some((entry) => entry.path === expectedPath),
-      elsewhere: onBranch.some((entry) => entry.path !== expectedPath),
+      elsewhere: onBranch.some(
+        (entry) => entry.path !== expectedPath && !entry.prunable,
+      ),
     };
   }
 
@@ -2033,8 +2121,9 @@ export class WorktreeProvisioningService {
 
 function parseWorktreeList(
   output: string,
-): Array<{ path: string; branch?: string }> {
-  const entries: Array<{ path: string; branch?: string }> = [];
+): Array<{ path: string; branch?: string; prunable: boolean }> {
+  const entries: Array<{ path: string; branch?: string; prunable: boolean }> =
+    [];
   for (const block of output.trim().split('\n\n').filter(Boolean)) {
     const values = new Map(
       block.split('\n').map((line) => {
@@ -2044,7 +2133,14 @@ function parseWorktreeList(
     );
     const path = values.get('worktree');
     const branch = values.get('branch')?.replace(/^refs\/heads\//, '');
-    if (path) entries.push({ path: canonicalizePath(path), branch });
+    // `prunable`: git itself reports the checkout's folder gone. A locked
+    // registration is never reported prunable, even with its folder gone.
+    if (path)
+      entries.push({
+        path: canonicalizePath(path),
+        branch,
+        prunable: values.has('prunable'),
+      });
   }
   return entries;
 }

@@ -2639,15 +2639,6 @@ export class StationRuntime {
   }
 
   /**
-   * Read through accessors, never off the field: several runtime suites build
-   * a partial instance with `Object.create(StationRuntime.prototype)` and
-   * assign only the fields they need, so a class field only a real constructor
-   * populates reads `undefined` there — and `setTimeout(fn, undefined)` fires
-   * on the next tick, which would silently turn every wait-mode mutation in
-   * those suites into an instant abandonment. Same reason the activation
-   * index above is lazily initialized at its use sites.
-   */
-  /**
    * Whether a Session with a running turn works in `path` or below it. Read
    * when asked, never at construction (#4507, #4771).
    */
@@ -2664,6 +2655,15 @@ export class StationRuntime {
       });
   }
 
+  /**
+   * Read through accessors, never off the field: several runtime suites build
+   * a partial instance with `Object.create(StationRuntime.prototype)` and
+   * assign only the fields they need, so a class field only a real constructor
+   * populates reads `undefined` there — and `setTimeout(fn, undefined)` fires
+   * on the next tick, which would silently turn every wait-mode mutation in
+   * those suites into an instant abandonment. Same reason the activation
+   * index above is lazily initialized at its use sites.
+   */
   private activationDeadlineMs(): number {
     return (
       this.agentConfigurationActivationDeadlineMs ??
