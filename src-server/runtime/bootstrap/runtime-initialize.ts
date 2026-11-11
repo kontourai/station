@@ -441,15 +441,7 @@ export async function initializeRuntime(
   // Keep this tiny forwarding seam stable, then install the real catalog
   // authority below before adapter streams can emit usage events.
   let usagePricingSnapshotCapture: UsagePricingSnapshotCapture | undefined;
-  const features = (process.env.STATION_FEATURES || '')
-    .split(',')
-    .filter(Boolean);
-  // SUNSET(#3909): delete once the persisted `runtime` setting is the only
-  // runtime selector, or Strands is the default.
-  if (features.includes('strands-runtime')) {
-    appConfig.runtime = 'strands';
-  }
-
+  // The persisted `runtime` setting is the only runtime selector (#3909).
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
     runtime === 'strands'

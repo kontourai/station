@@ -61,7 +61,8 @@ shares the session list: live stream updates invalidate it, with a 60-second
 safety poll even while the stream is connected. Project sections refresh about
 every fifteen seconds. Failed reads show Retry rather than an empty success. Attention can
 report that an underlying source is unavailable. Links open the owning feature;
-review and approve requests there. A Board never approves work on your behalf.
+review and approve requests there. A Flow gate item links to its run console only
+while this device's Flow preview is on. A Board never approves work on your behalf.
 
 ## Build through chat
 
