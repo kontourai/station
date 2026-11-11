@@ -4733,7 +4733,11 @@ own the dock, Activity, attached-session and coding-tab conversation composition
 Record density changes framing; the adapters retain read-only access and explicit
 continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
 receives owner/member/guest history projections and paging ports without changing
-their publication or redaction rules. [useInboxPanelController](../../src-ui/src/components/chat-dock/useInboxPanelController.ts)
+their publication or redaction rules. Project and Task rooms render through one
+[RoomConversation](../../src-ui/src/components/room/RoomConversation.tsx) list
+(author/day grouping, follow-to-latest, held reader position) and one
+[RoomComposer](../../src-ui/src/components/room/RoomComposer.tsx); the Task room
+hands its admitted records to the list through SharedTaskHistoryList's list port. [useInboxPanelController](../../src-ui/src/components/chat-dock/useInboxPanelController.ts)
 owns activation currency, search, snooze, dismissal and undo for both Inbox shells.
 
 The owning connection also scopes the managed approval-policy summary; remote

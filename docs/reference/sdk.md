@@ -776,9 +776,12 @@ invalidate queries, `presence` updates participants, and `revoked` or terminal
 include the API authority, local Project ID, and room ID for history.
 
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
-session storage before sending. A lost acknowledgement or reload offers an
-explicit retry of that exact payload and UUID; it never automatically resends.
-Changing authority, Project, or discovered actor retires the prior draft.
+session storage before sending. Until it is confirmed, the message waits in the
+conversation; a lost acknowledgement or reload offers an explicit retry of that
+exact payload and UUID and never resends automatically. The retained intent
+settles once room history shows a message with its intent ID. The unsent draft
+is kept per room in the same tab's session storage. Changing authority, Project,
+or discovered actor retires the prior draft.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
