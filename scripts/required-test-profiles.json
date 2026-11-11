@@ -1,0 +1,228 @@
+{
+  "seatbelt-kernel": {
+    "description": "Kernel legs of the Seatbelt confinement profile (#2494, #4772). They run only on a macOS host where sandbox-exec applies the production profile, and are skipped elsewhere.",
+    "files": {
+      "src-server/security/confinement/__tests__/seatbelt.process.test.ts": {
+        "mustPass": [
+          [
+            "Seatbelt profile under the real kernel",
+            "the probe ran the production profile, not a stand-in"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a write in the workspace is allowed; a write outside it is denied"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree can commit twice and read its status"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree may not write a shared hook"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree may not write the shared config"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree may not write shared info"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree may not move main"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree may not create another branch"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree may not repoint the .git pointer file"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree may not write config.worktree"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace still cannot write its hooks, config or info"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "secret stores and Station data are unreadable; Station installs stay readable"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the operator's login Keychain is hidden from the confined process"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the operator's Claude config is not writable; the Station-owned one is"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot write a Codex project config (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot write a Claude project settings file (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot write Claude local settings (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot move a prepared directory into place (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot create it in another case (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot write a Codex config in a subdirectory a later session may start in (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot write Claude settings in a subdirectory, in another case (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the workspace engine configuration is read-only: a confined process cannot prepare one in its temp directory and move it into the workspace (#3800)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the session temp directory is writable and the confined env points at it"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree can commit but not stash: refs/stash is shared, by design (L1)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace can stash and switch to an existing branch"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "an SSH key is unreadable, however it is spelled"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "AWS credentials is unreadable, however it is spelled"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the gh login is unreadable, however it is spelled"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the operator's Claude credential file is unreadable, however it is spelled"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "Station's runtime home is unreadable, however it is spelled"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "Station's root, outside the runtime home is unreadable, however it is spelled"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a hidden file cannot be hard-linked or cloned into the workspace"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a hard link made outside the sandbox beforehand is readable: an accepted residual"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a granted path does not grant its sibling that shares the prefix"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a denied git path is denied in another case"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree's git directory keeps its commondir read-only (R1)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree's git directory keeps its gitdir read-only (R1)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree's git directory keeps its a config read-only (R1)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a linked worktree's git directory keeps its hooks read-only (R1)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace cannot change another worktree's commondir (R2)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace cannot change another worktree's gitdir (R2)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace cannot change a submodule's config (R2)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace cannot change a commondir redirect (R2)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace cannot change object alternates (R2)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a checkout whose .git is inside the workspace cannot change a renamed .git (R2)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a .git emptied from inside is never replaced by a pointer file or given config (R2)"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a setuid program cannot be run from inside"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "signals reach only processes inside the sandbox"
+          ]
+        ],
+        "mayRuntimeSkip": [
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "an app in the workspace cannot be launched outside the sandbox"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when the probe app does not launch even unconfined, so the denial would prove nothing. Whether LaunchServices opens an unsigned bundle on a hosted runner is not established; a skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "the login Keychain is unreachable through the security tool"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when the host user has no readable login Keychain item to compare against. A fresh hosted runner user is not expected to have one; a skip is recorded, a failure is not accepted."
+          }
+        ],
+        "notRequired": [
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined"
+            ],
+            "reason": "Guarded by test.skipIf(!claudeExecutable): it needs Claude Code on PATH, which a hosted macOS runner does not have, so requiring it would fail every hosted run. It still runs on a developer Mac with claude on PATH."
+          }
+        ]
+      }
+    }
+  }
+}

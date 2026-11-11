@@ -406,6 +406,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
 | [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
+| [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | — | **Tool: Seatbelt kernel legs** | manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
 | [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
 | [`source-availability.yml`](../../.github/workflows/source-availability.yml) | Source availability | **Main: Source availability** | main pushes. |
@@ -2800,6 +2801,55 @@ new review heuristics to blocking rules only after measured catch evidence.
 | New UI component/hook | Focused component/hook test; Playwright only for a browser-owned claim |
 | Bug fix | Regression test that fails without the fix |
 | Refactor | Existing tests still pass (no new tests needed) |
+
+### Tests that must run on a specific host
+
+A test that skips where its host is missing still passes, so a green run
+can hide that it proved nothing. Where a test's claim needs a particular
+host, pin its ids in `scripts/required-test-profiles.json` and check the run
+with `scripts/check-required-tests-ran.mjs` (#4772):
+
+```sh
+npx vitest run --root . <test-file> --reporter=default --reporter=json \
+  --outputFile.json=<report.json>
+node scripts/check-required-tests-ran.mjs --profile-name <name> --report <report.json>
+```
+
+It reads the Vitest JSON report and matches each id exactly: the file
+relative to the checkout plus the full describe and test title path. It
+exits 0 only when every `mustPass` id is present once and passed, and every
+`mayRuntimeSkip` id is present once and either passed or skipped after the
+test started (`ctx.skip()` in its body or a `beforeEach` hook; the reporter
+records a duration only for a test that started). Exit 1 names each id that
+was absent, skipped, failed or duplicated. Exit 2, with one line, means an
+input is unusable: the report or profile file is missing, unreadable, a
+directory or another non-regular file such as a FIFO, empty or malformed, a
+profile entry is invalid (a `mayRuntimeSkip` or `notRequired` entry needs a
+nonempty `reason`), or the arguments are wrong, including a flag given more
+than once. The check reads only the pinned ids, not the run's
+overall result, so it complements the test step's own exit status and does
+not replace it. `notRequired` entries only record a deliberate exclusion and
+are not checked. Renaming a pinned test therefore
+fails the check; `scripts/__tests__/check-required-tests-ran.test.ts` also
+collects the real file, without running a test body, wherever the corpus
+runs it, and fails unless the profile classifies exactly the tests the file
+registers, so a new leg or a deleted profile entry fails too.
+
+The `seatbelt-kernel` profile pins the kernel legs of
+`src-server/security/confinement/__tests__/seatbelt.process.test.ts`:
+
+- **Where they run:** a macOS host where `sandbox-exec` applies the production
+  profile, meaning a developer Mac, or the dispatch-only
+  [`Tool: Seatbelt kernel legs`](../../.github/workflows/seatbelt-kernel.yml)
+  workflow on a hosted macOS runner, which then runs the check.
+- **Where they do not:** every pull-request, merge-queue and corpus lane.
+  Those run on Linux or Windows, where the whole suite skips and the skip
+  passes. No automatic trigger runs the macOS workflow yet.
+- **Allowed to skip at runtime:** the app-launch and `security`-tool Keychain
+  legs skip when the host cannot provide their positive control. They must
+  still be present and must not fail.
+- **Not required:** the live Claude Code handshake runs only where `claude`
+  is on PATH, which a hosted runner does not have.
 
 ### Connected Agents Checklist
 
