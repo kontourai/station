@@ -18,6 +18,11 @@ import type { ApiRequestScope } from '../client/http';
 import type { ConnectionReadTarget } from '../connection-read-target';
 import { captureConnectionReadTarget } from '../connection-read-target';
 import {
+  type InventorySnapshot,
+  markInventoryRead,
+  restoreInventory,
+} from '../inventory-read-state';
+import {
   type MutationOptions,
   PERSISTED_QUERY_GC_TIME_MS,
   type QueryConfig,
@@ -32,6 +37,7 @@ import type {
   ConversationMessage,
   ConversationSummary,
 } from './chatRuntimeTypes';
+import { readMarkerQueries } from './readMarkers';
 import type { NormalizedSessionSummary } from './sessionSummaryNormalize';
 
 export type {
@@ -553,21 +559,31 @@ export function useAcknowledgeConversationMutation(
   >,
 ) {
   const queryClient = useQueryClient();
+  const inventoryKey = conversationQueries.inventory().queryKey;
   return useMutation<
     void,
     Error,
-    { conversationId: string; updatedAt: string }
+    { conversationId: string; updatedAt: string },
+    InventorySnapshot | undefined
   >({
     mutationFn: ({ conversationId, updatedAt }) =>
       acknowledgeConversation(conversationId, updatedAt),
+    // #3075: the row reads as read the moment it is opened, by the server's
+    // own rule; a refusal restores it.
+    onMutate: ({ conversationId, updatedAt }) =>
+      markInventoryRead(queryClient, conversationId, Date.parse(updatedAt)),
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: conversationQueries.inventory().queryKey,
-      });
       options?.onSuccess?.(data, variables);
     },
-    onError: (error, variables) => {
+    onError: (error, variables, snapshot) => {
+      restoreInventory(queryClient, snapshot);
       options?.onError?.(error as Error, variables);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: inventoryKey });
+      void queryClient.invalidateQueries({
+        queryKey: readMarkerQueries.all(),
+      });
     },
   });
 }

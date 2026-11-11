@@ -481,7 +481,6 @@ export type ChatUIState = {
   status?: 'idle' | 'sending' | 'error' | 'queued';
   isProcessingStep?: boolean;
   error?: string | null;
-  hasUnread: boolean;
   abortController?: AbortController;
   /**
    * a Stop request is in flight for this session. Set before the
@@ -1084,7 +1083,6 @@ export function createDefaultChatState(
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     providerOptions: {},
     orchestrationSessionStarted: false,
     createdAt,
@@ -1228,7 +1226,6 @@ export function hydrateActiveChats(
         : {}),
       ...(unsentMessages.length ? { unsentMessages } : {}),
       inputHistory: stringList(session.inputHistory),
-      hasUnread: false,
       agentSlug: session.agentSlug,
       stationBinding,
       stationBindingLegacy:

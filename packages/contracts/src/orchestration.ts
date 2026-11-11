@@ -1936,6 +1936,16 @@ export interface TerminalProcessDetail {
   history: string;
 }
 
+/** See {@link ConversationListItem.readState}. */
+export interface ConversationReadState {
+  /** This conversation's current version: epoch ms of its `updatedAt`. */
+  version: number;
+  /** The highest version the caller has been shown, never above `version`. */
+  seenVersion: number;
+  /** `version > seenVersion`. */
+  unread: boolean;
+}
+
 /**
  * S2 of #1302 (conversation-surface consolidation): one item shape for the
  * global conversation-inventory endpoint (`GET /api/conversations`), folding
@@ -1995,8 +2005,19 @@ export interface ConversationListItem {
   acceptedModel?: string;
   /** Server-resolved Station/Environment namespace for this conversation. */
   environmentId?: string;
-  /** Version of this conversation that the current user has opened. */
+  /**
+   * The stored "last viewed" version this caller's person key holds. A raw
+   * fact: read {@link readState} for whether the conversation is unread.
+   */
   acknowledgedAt?: string;
+  /**
+   * #3075: the caller's read state, derived by the server
+   * (`@kontourai/station-contracts/read-markers`). `version` is this item's
+   * current version (epoch ms of `updatedAt`), the value to send when
+   * marking it read. Absent when the server keeps no read state for the
+   * caller; never guess it from `acknowledgedAt`.
+   */
+  readState?: ConversationReadState;
   /**
    * Whether the conversation has an open turn. When `activity` is present
    * this is exactly `activity.openTurn !== undefined`.

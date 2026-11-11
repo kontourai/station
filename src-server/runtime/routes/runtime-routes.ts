@@ -10,6 +10,10 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { resolveProjectCheckoutStaleThresholds } from '@kontourai/station-contracts/project-checkout-freshness';
+import {
+  READ_MARKER_MARK_PATH,
+  READ_MARKER_SUMMARY_PATH,
+} from '@kontourai/station-contracts/read-markers';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseTaskGateEvaluationReference,
@@ -439,6 +443,7 @@ import {
 import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import { createConversationWorkStateRoutes } from '../../routes/chat/conversation-work-state.js';
 import {
+  createAgentConversationVersionSource,
   createConversationRoutes,
   createGlobalConversationRoutes,
 } from '../../routes/chat/conversations.js';
@@ -601,6 +606,7 @@ import {
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
+import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
@@ -801,6 +807,7 @@ import type { ActionOperationService } from '../../services/operations/action-op
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import {
+  conversationAcknowledgementKey,
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
@@ -902,6 +909,12 @@ import { ConversationPullRequestLinkStore } from '../../services/pull-requests/c
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
+import { ReadMarkerService } from '../../services/read-markers/read-marker-service.js';
+import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
+import {
+  projectRoomVersionSource,
+  taskRoomVersionSource,
+} from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import {
   conversationAutomationsFrom,
@@ -11829,6 +11842,50 @@ export function configureRuntimeRoutes(
       current: isRequestPrincipalCurrent,
     }),
   );
+  // #3075: one server-kept read marker per (person, conversation) for agent
+  // conversations, Project rooms and Task rooms. Agent conversations use the
+  // inventory's own acknowledgement store and per-person key, so the
+  // inventory, its acknowledgement route and the read-marker routes are one
+  // fact under one identity.
+  const conversationAcknowledgements = new FileConversationAcknowledgementStore(
+    context.configLoader.getProjectHomeDir(),
+    ownerDevicePredicate(() =>
+      context.environmentSecurityService.devicePairing.listDevices(),
+    ),
+  );
+  const readMarkers = new ReadMarkerService({
+    personKeyFor: (c) =>
+      conversationAcknowledgementKey(
+        conversationReadAuthorityForRequest(c.req.raw),
+        conversationAcknowledgements.isOwnerDevice,
+      ),
+    conversations: conversationAcknowledgements,
+    store: new FileReadMarkerStore(context.configLoader.getProjectHomeDir()),
+    agentConversations: createAgentConversationVersionSource({
+      memoryAdapters: context.memoryAdapters,
+      sessionConversationReader: context.orchestrationService,
+      eventStore: context.orchestrationService,
+      authorityFor: conversationReadAuthorityForRequest,
+    }),
+    projectRooms: projectRoomVersionSource(projectRoomService),
+    taskRooms: taskRoomVersionSource({
+      history: (input) =>
+        projectTaskRoomRuntime
+          ? projectTaskRoomRuntime.history(input)
+          : Promise.resolve({ kind: 'unavailable' as const }),
+    }),
+  });
+  // Each target is re-read under the caller's own authority: the conversation
+  // inventory needs the bound read authority, and the Task room runtime the
+  // cached request principal. Bound per classified POST leaf, as `/api/board`
+  // is, because an all-method `use` would register unclassified routes.
+  const readMarkerPaths = [READ_MARKER_SUMMARY_PATH, READ_MARKER_MARK_PATH];
+  context.app.on('POST', readMarkerPaths, bindConversationReadAuthority);
+  context.app.on('POST', readMarkerPaths, primeRoomRequestPrincipal);
+  context.app.route(
+    '/api/read-markers',
+    createReadMarkerRoutes({ service: readMarkers }),
+  );
   context.app.route(
     '/api/conversations',
     createGlobalConversationRoutes(
@@ -11838,12 +11895,7 @@ export function configureRuntimeRoutes(
       context.createMemoryAdapter,
       context.orchestrationService,
       undefined,
-      new FileConversationAcknowledgementStore(
-        context.configLoader.getProjectHomeDir(),
-        ownerDevicePredicate(() =>
-          context.environmentSecurityService.devicePairing.listDevices(),
-        ),
-      ),
+      conversationAcknowledgements,
       conversationReadAuthorityForRequest,
       context.orchestrationService,
       (query, signal) =>
@@ -11855,6 +11907,7 @@ export function configureRuntimeRoutes(
           peerCredentialStore,
         ),
       context.environmentSecurityService,
+      readMarkers,
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps

@@ -1187,6 +1187,128 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
   });
 });
 
+/**
+ * #3075: idle conversations whose titles run from short to long, so some
+ * land on the phone inbox's two-line boundary, where a wider (bolder) title
+ * would re-wrap and grow its row.
+ */
+function readStateWork(unread: boolean) {
+  const words =
+    'Review the unread marker design for project channels task rooms and every paired phone before the release goes out'.split(
+      ' ',
+    );
+  return {
+    items: Array.from({ length: 16 }, (_, index) =>
+      item({
+        id: `conversation-${index}`,
+        title: words.slice(0, 3 + index).join(' '),
+        unread,
+        readVersion: 1,
+      }),
+    ),
+    facts: new Map() as WorkFactsById,
+  };
+}
+
+describe.skipIf(!chromiumAvailable)('unread row geometry (#3075)', () => {
+  let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+  beforeAll(async () => {
+    browser = await chromium.launch();
+  });
+  afterAll(async () => {
+    await browser?.close();
+  });
+  afterEach(() => cleanup());
+
+  test('unread draws a bold title and a dot, and moves no row, title or line in the panel or the phone inbox', async () => {
+    const cases = [
+      {
+        label: 'panel',
+        markup: (work: ReturnType<typeof readStateWork>) =>
+          panelMarkup(undefined, undefined, work),
+        viewport: { width: 1440, height: 2400 },
+        dot: '6px',
+      },
+      {
+        label: 'phone',
+        markup: (work: ReturnType<typeof readStateWork>) =>
+          sheetMarkup(undefined, undefined, work),
+        viewport: { width: 390, height: 2400 },
+        dot: '8px',
+      },
+    ];
+    for (const { label, markup, viewport, dot } of cases) {
+      const read = markup(readStateWork(false));
+      const unread = markup(readStateWork(true));
+      // The fixture must contain what it claims to compare.
+      expect(read, label).not.toContain('data-unread');
+      expect(unread, label).toContain('data-unread');
+      const pg = await browser.newPage({ viewport });
+      try {
+        const measure = async (html: string) => {
+          await pg.setContent(page(html));
+          await settle(pg);
+          return pg.locator('[data-testid="inbox-row"]').evaluateAll((rows) =>
+            rows.map((row) => {
+              const box = (element: Element | null) => {
+                const rect = element?.getBoundingClientRect();
+                return rect
+                  ? [rect.left, rect.top, rect.width, rect.height]
+                  : null;
+              };
+              const title = row.querySelector('.inbox-row__title');
+              const before = title ? getComputedStyle(title, '::before') : null;
+              return {
+                geometry: {
+                  row: box(row),
+                  title: box(title),
+                  text: box(row.querySelector('.inbox-row__title-text')),
+                  meta: box(row.querySelector('.inbox-row__meta')),
+                  status: box(
+                    row.querySelector('[data-testid="inbox-row-status"]'),
+                  ),
+                },
+                weight: title ? getComputedStyle(title).fontWeight : null,
+                dot:
+                  before && before.content !== 'none'
+                    ? {
+                        width: before.width,
+                        background: before.backgroundColor,
+                      }
+                    : null,
+              };
+            }),
+          );
+        };
+        const before = await measure(read);
+        const after = await measure(unread);
+        expect(before.length, label).toBe(16);
+        expect(
+          after.map((row) => row.geometry),
+          `${label}: geometry`,
+        ).toEqual(before.map((row) => row.geometry));
+        // The two-line boundary is actually exercised on the phone.
+        if (label === 'phone') {
+          const heights = new Set(before.map((row) => row.geometry.row?.[3]));
+          expect(heights.size, 'phone has one- and two-line titles').toBe(2);
+        }
+        for (const row of before) {
+          expect(row.weight, `${label} read weight`).toBe('500');
+          expect(row.dot, `${label} read dot`).toBeNull();
+        }
+        for (const row of after) {
+          expect(row.weight, `${label} unread weight`).toBe('700');
+          expect(row.dot?.width, `${label} unread dot`).toBe(dot);
+          expect(row.dot?.background).not.toBe('rgba(0, 0, 0, 0)');
+        }
+      } finally {
+        await pg.close();
+      }
+    }
+  });
+});
+
 test.skipIf(chromiumAvailable)(
   'inbox row geometry — Chromium not installed, cannot verify (#3043)',
   () => {

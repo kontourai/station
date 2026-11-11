@@ -331,7 +331,6 @@ export const ConversationReader = memo(function ConversationReader({
       error: null,
       createdAt: 0,
       updatedAt: 0,
-      hasUnread: false,
       orchestrationTurnOpen: isStreaming,
     }),
     [

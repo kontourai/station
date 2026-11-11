@@ -1272,6 +1272,13 @@ export interface StationCapabilityFlags {
    */
   sessionInventoryInputRead?: boolean;
   /**
+   * #3075: `POST /api/read-markers/summary` and `POST /api/read-markers/mark`
+   * read and advance the caller's server-kept read state for agent
+   * conversations, Project rooms and Task rooms. A host without them
+   * answers 404, so a client gates on this flag.
+   */
+  readMarkers?: boolean;
+  /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).

@@ -71,6 +71,12 @@ import {
 } from '../../services/orchestration/conversation-fork-context.js';
 import { readConversationContextSeedPin } from '../../services/orchestration/conversation-handoff-module.js';
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
+import {
+  type AgentConversationVersionSource,
+  acknowledgedVersion,
+  ReadMarkerFutureVersionError,
+  type ReadMarkerService,
+} from '../../services/read-markers/read-marker-service.js';
 import type { SummaryRelatedEvidenceObservation } from '../../services/session-summary/conversation-intent-summary-source.js';
 import { AuthoritativeConversationIntentSummarySource } from '../../services/session-summary/conversation-intent-summary-source.js';
 import {
@@ -2469,6 +2475,188 @@ export function createConversationRoutes(
   return app;
 }
 
+interface ConversationForkProvenanceReader {
+  readConversationForkProvenance(conversationId: string): {
+    forkedFrom?: ConversationForkProvenance;
+    forkedTo: ConversationForkProvenance[];
+  };
+  readConversationForkProvenanceBatch?(conversationIds: readonly string[]): Map<
+    string,
+    {
+      forkedFrom?: ConversationForkProvenance;
+      forkedTo: ConversationForkProvenance[];
+    }
+  >;
+}
+
+interface ConversationInventoryDeps {
+  memoryAdapters: Map<string, FileMemoryAdapter>;
+  sessionConversationReader: Pick<
+    SessionMessageReader,
+    'successorConversationId'
+  > & {
+    listConversationHistoryPage(
+      authority: SessionReadAuthority,
+      options: { limit: number; cursor?: string },
+    ): Promise<{
+      items: ConversationListItem[];
+      hasMore: boolean;
+      nextCursor?: string;
+    }>;
+  };
+  eventStore?: ConversationForkProvenanceReader;
+}
+
+/**
+ * One page of the caller's conversation inventory, without read state. The
+ * inventory route and the read-marker version source (#3075) both read
+ * through here, so "the version the inbox shows" has exactly one derivation.
+ * Hosted requests read only the cursor-paged, authority-scoped runtime index;
+ * personal requests also fold in one bounded page of local file records.
+ */
+export async function readConversationInventoryPage(
+  {
+    memoryAdapters,
+    sessionConversationReader,
+    eventStore,
+  }: ConversationInventoryDeps,
+  authority: SessionReadAuthority,
+  query: { limit: number; cursor?: string },
+): Promise<{
+  items: ConversationListItem[];
+  hasMore: boolean;
+  nextCursor?: string;
+  historyItemCount: number;
+}> {
+  const hosted = isHostedSessionReadAuthority(authority);
+  const historyPage =
+    await sessionConversationReader.listConversationHistoryPage(
+      authority,
+      query,
+    );
+  const sessionItems = historyPage.items.map((item) => ({
+    ...item,
+    agentSlug: publicAgentIdFromRuntimeKey(item.agentSlug),
+  }));
+  const storePage = hosted
+    ? { items: [], hasMore: false }
+    : await _listPersonalFileConversationItems(
+        memoryAdapters,
+        authority.userId,
+        query.limit,
+        sessionConversationReader,
+      );
+  const byId = new Map(
+    [...storePage.items, ...sessionItems].map((item) => [item.id, item]),
+  );
+  const combined = [...byId.values()]
+    .sort(compareConversationRecency)
+    .slice(0, query.limit);
+  const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
+    combined.map((item) => item.id),
+  );
+  const items = combined.map((item): ConversationListItem => {
+    const forkProvenance =
+      provenanceById?.get(item.id) ??
+      eventStore?.readConversationForkProvenance(item.id);
+    return {
+      ...item,
+      referenceEligibility: hosted
+        ? {
+            eligible: false as const,
+            reason: 'destination-visibility-unavailable' as const,
+          }
+        : {
+            eligible: true as const,
+            visibility: 'personal-private' as const,
+          },
+      ...(forkProvenance ? { forkProvenance } : {}),
+    };
+  });
+  return {
+    items,
+    hasMore:
+      historyPage.hasMore || storePage.hasMore || byId.size > items.length,
+    ...(hosted && historyPage.nextCursor
+      ? { nextCursor: historyPage.nextCursor }
+      : {}),
+    historyItemCount: historyPage.items.length,
+  };
+}
+
+/** An inventory item's read-marker version: epoch ms of its `updatedAt`. */
+export function conversationReadVersion(
+  item: Pick<ConversationListItem, 'updatedAt'>,
+): number | undefined {
+  const version = Date.parse(item.updatedAt);
+  return Number.isSafeInteger(version) && version >= 0 ? version : undefined;
+}
+
+/**
+ * The inventory's derived read state (#3075): the stored acknowledgement,
+ * never below the baseline (when read state began being kept), compared
+ * with the item's own version.
+ */
+function conversationReadState(
+  item: Pick<ConversationListItem, 'updatedAt'>,
+  acknowledgedAt: string | undefined,
+  baseline: number,
+): ConversationListItem['readState'] {
+  const version = conversationReadVersion(item);
+  if (version === undefined) return undefined;
+  const seenVersion = Math.min(
+    Math.max(acknowledgedVersion(acknowledgedAt), baseline),
+    version,
+  );
+  return { version, seenVersion, unread: version > seenVersion };
+}
+
+/**
+ * The agent-conversation version source for read markers (#3075): the
+ * caller's own first inventory page (the window the inbox renders), falling
+ * back to the authority-checked point read for an older runtime conversation.
+ * A conversation the caller cannot read answers no version.
+ */
+export function createAgentConversationVersionSource(
+  deps: ConversationInventoryDeps & {
+    sessionConversationReader: Pick<
+      SessionMessageReader,
+      'readSessionConversation'
+    >;
+    authorityFor(request: Request): SessionReadAuthority;
+  },
+): AgentConversationVersionSource {
+  return {
+    async latestVersions(conversationIds, request) {
+      const result = new Map<string, number>();
+      if (conversationIds.length === 0) return result;
+      const authority = deps.authorityFor(request);
+      const page = await readConversationInventoryPage(deps, authority, {
+        limit: 100,
+      });
+      const wanted = new Set(conversationIds);
+      for (const item of page.items) {
+        const version = conversationReadVersion(item);
+        if (wanted.has(item.id) && version !== undefined)
+          result.set(item.id, version);
+      }
+      for (const id of wanted) {
+        if (result.has(id)) continue;
+        const conversation =
+          await deps.sessionConversationReader.readSessionConversation(
+            id,
+            authority,
+          );
+        const version = conversation
+          ? conversationReadVersion(conversation)
+          : undefined;
+        if (version !== undefined) result.set(id, version);
+      }
+      return result;
+    },
+  };
+}
+
 /**
  * Global conversation lookup — resolves a conversation ID across all agents/projects.
  */
@@ -2508,21 +2696,7 @@ export function createGlobalConversationRoutes(
   acknowledgementStore?: ConversationAcknowledgementStore,
   /** See `createConversationRoutes` for the request-scoped authority rule. */
   getSessionReadAuthority?: (request: Request) => SessionReadAuthority,
-  eventStore?: {
-    readConversationForkProvenance(conversationId: string): {
-      forkedFrom?: ConversationForkProvenance;
-      forkedTo: ConversationForkProvenance[];
-    };
-    readConversationForkProvenanceBatch?(
-      conversationIds: readonly string[],
-    ): Map<
-      string,
-      {
-        forkedFrom?: ConversationForkProvenance;
-        forkedTo: ConversationForkProvenance[];
-      }
-    >;
-  },
+  eventStore?: ConversationForkProvenanceReader,
   /** Remote peers report only their own server-authorized excerpts. */
   searchRemoteMessages?: (
     query: string,
@@ -2560,6 +2734,12 @@ export function createGlobalConversationRoutes(
    * unknown.
    */
   principalSecurity?: CurrentRuntimeRequestPrincipalSecurity,
+  /**
+   * #3075: server-kept read state. When wired, inventory items carry
+   * `readState` and an acknowledgement is refused past the conversation's
+   * current version. Unwired, items carry no `readState`, never a guessed one.
+   */
+  readMarkers?: Pick<ReadMarkerService, 'mark' | 'baseline'>,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -2689,36 +2869,15 @@ export function createGlobalConversationRoutes(
           400,
         );
       }
-      const historyPage =
-        await sessionConversationReader.listConversationHistoryPage(
-          authority,
-          pageQuery.data,
-        );
+      const page = await readConversationInventoryPage(
+        { memoryAdapters, sessionConversationReader, eventStore },
+        authority,
+        pageQuery.data,
+      );
       conversationOps.add(1, {
         operation: 'history_page',
-        outcome: historyPage.items.length > 0 ? 'available' : 'empty',
+        outcome: page.historyItemCount > 0 ? 'available' : 'empty',
       });
-      const sessionItems = historyPage.items.map((item) => ({
-        ...item,
-        agentSlug: publicAgentIdFromRuntimeKey(item.agentSlug),
-      }));
-      const storePage = hosted
-        ? { items: [], hasMore: false }
-        : await _listPersonalFileConversationItems(
-            memoryAdapters,
-            authority.userId,
-            pageQuery.data.limit,
-            sessionConversationReader,
-          );
-      const byId = new Map(
-        [...storePage.items, ...sessionItems].map((item) => [item.id, item]),
-      );
-      const combined = [...byId.values()]
-        .sort(compareConversationRecency)
-        .slice(0, pageQuery.data.limit);
-      const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
-        combined.map((item) => item.id),
-      );
       const acknowledgementKey = conversationAcknowledgementKey(
         authority,
         acknowledgementStore?.isOwnerDevice,
@@ -2726,27 +2885,22 @@ export function createGlobalConversationRoutes(
       const acknowledgements = acknowledgementKey
         ? acknowledgementStore?.getMany(
             acknowledgementKey,
-            combined.map((item) => item.id),
+            page.items.map((item) => item.id),
           )
         : undefined;
-      const data = combined.map((item) => {
+      // #3075: the derived answer every surface reads. `acknowledgedAt`
+      // stays the stored fact it is derived from.
+      const baseline = acknowledgements ? readMarkers?.baseline() : undefined;
+      const data = page.items.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
-        const forkProvenance =
-          provenanceById?.get(item.id) ??
-          eventStore?.readConversationForkProvenance(item.id);
+        const readState =
+          baseline === undefined
+            ? undefined
+            : conversationReadState(item, acknowledgedAt, baseline);
         return {
           ...item,
-          referenceEligibility: hosted
-            ? {
-                eligible: false as const,
-                reason: 'destination-visibility-unavailable' as const,
-              }
-            : {
-                eligible: true as const,
-                visibility: 'personal-private' as const,
-              },
           ...(acknowledgedAt ? { acknowledgedAt } : {}),
-          ...(forkProvenance ? { forkProvenance } : {}),
+          ...(readState ? { readState } : {}),
         };
       });
 
@@ -2759,11 +2913,8 @@ export function createGlobalConversationRoutes(
         success: true,
         data: {
           items: data,
-          hasMore:
-            historyPage.hasMore || storePage.hasMore || byId.size > data.length,
-          ...(hosted && historyPage.nextCursor
-            ? { nextCursor: historyPage.nextCursor }
-            : {}),
+          hasMore: page.hasMore,
+          ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
         },
       });
     } catch (error: unknown) {
@@ -2837,12 +2988,39 @@ export function createGlobalConversationRoutes(
         403,
       );
     }
-    acknowledgementStore.acknowledge({
-      userId: acknowledgementKey,
-      conversationId,
-      updatedAt: new Date(parsedUpdatedAt).toISOString(),
-    });
-    return c.json({ success: true });
+    if (!readMarkers) {
+      acknowledgementStore.acknowledge({
+        userId: acknowledgementKey,
+        conversationId,
+        updatedAt: new Date(parsedUpdatedAt).toISOString(),
+      });
+      return c.json({ success: true });
+    }
+    // #3075: the same monotonic write, through the one service that also
+    // refuses a version the conversation has not reached: the server does
+    // not take the client's word for what it was shown.
+    try {
+      const state = await readMarkers.mark(
+        c,
+        { kind: 'agent-conversation', conversationId },
+        parsedUpdatedAt,
+      );
+      if (!state)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      return c.json({ success: true, data: state });
+    } catch (error) {
+      if (error instanceof ReadMarkerFutureVersionError)
+        return c.json(
+          {
+            success: false,
+            code: error.code,
+            error: error.message,
+            latestVersion: error.latestVersion,
+          },
+          409,
+        );
+      throw error;
+    }
   });
 
   // Resolve a picker row before a tab exists.  This keeps discovery,

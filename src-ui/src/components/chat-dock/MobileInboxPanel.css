@@ -130,6 +130,20 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+/* #3075: a two-layer title (InboxRow.css) clamps on its layers, so the bold
+   copy keeps deciding the height in both read states. */
+.mobile-inbox .inbox-row__title[data-title] {
+  display: grid;
+  align-content: start;
+}
+.mobile-inbox .inbox-row__title[data-title] > .inbox-row__title-text,
+.mobile-inbox .inbox-row__title[data-title]::after {
+  display: -webkit-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .mobile-inbox .inbox-row__project-context {
   grid-column: 3;
   grid-row: 2;

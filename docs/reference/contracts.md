@@ -2278,6 +2278,45 @@ but does not retroactively redact text already published in the Room.
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
 
+## Read marker contracts
+
+`@kontourai/station-contracts/read-markers` defines unread state that the
+server keeps (#3075). The server stores one marker per person and
+conversation: the highest version that person has been shown. It covers agent
+conversations, Project rooms and Task rooms. The
+[service](../../src-server/services/read-markers/read-marker-service.ts) enforces
+three rules:
+
+- The marker belongs to the request's person: the key the conversation
+  inventory already files "last viewed" under (`conversationAcknowledgementKey`).
+  The local operator and their own unbound paired devices are one person, so
+  reading on one clears unread on the others. A hosted Station keys by tenant.
+  No body field names a person.
+- Marking read keeps the higher of the stored and requested versions. An older
+  or repeated mark changes nothing.
+- A version above the conversation's current version is refused
+  (`read_marker_future_version`, HTTP 409). This applies to
+  `POST /api/conversations/:id/acknowledgement` too.
+
+Versions are the conversation's own sequence. An agent conversation uses the
+epoch milliseconds of its inventory `updatedAt` (`readState.version` on
+`GET /api/conversations`). Its marker is the inventory's own acknowledgement,
+so `acknowledgedAt` is the stored fact and `readState` the derived answer. A
+Project room uses its `checkpoint.lastSeq`. A Task room uses
+`checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
+new marker. Nothing recorded what anyone had seen before read state was kept.
+Agent conversations therefore read as seen up to the time the
+[store](../../src-server/services/read-markers/read-marker-store.ts) was created;
+anything that changes after that becomes unread normally.
+
+`parseReadMarkerSummaryRequest` refuses more than
+`READ_MARKER_SUMMARY_MAX_TARGETS` (100) targets rather than truncating. A target
+the caller cannot read is `{ target, unavailable: true }`, whether or not it
+exists. Room items carry `unreadCount` (every record after the marker,
+capped at `READ_MARKER_UNREAD_COUNT_CAP`). Agent conversations carry no count:
+their version is a time. There is no "mentions me" field yet: structured
+mentions (#4799) do not exist, so nothing could compute one.
+
 ## Project knowledge registration ownership
 
 `ProjectStartIntent` names initial `workspace | knowledge | connections | blank`

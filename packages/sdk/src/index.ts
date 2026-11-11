@@ -1520,6 +1520,13 @@ export {
   usePullRequestQuery,
   usePullRequestsQuery,
 } from './query-domains/pullRequests';
+export {
+  fetchReadMarkerSummary,
+  markRead,
+  readMarkerQueries,
+  useMarkReadMutation,
+  useReadMarkerSummaryQuery,
+} from './query-domains/readMarkers';
 export type {
   SetupImportItem,
   SetupImportPreview,

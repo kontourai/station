@@ -2166,6 +2166,40 @@ they are not all reported as bad requests.
 
 ---
 
+## Read markers
+
+The [read marker routes](../../src-server/routes/read-markers/read-marker-routes.ts)
+read and advance the caller's own unread state for agent conversations, Project
+rooms and Task rooms ([contracts](contracts.md#read-marker-contracts)). The
+handshake advertises them as `readMarkers`. Both are `orchestration:read` for
+paired devices: each writes only the caller's markers, and each target is
+re-read under the caller's own conversation or room authority.
+
+```http
+POST /api/read-markers/summary
+{ "targets": [{ "kind": "agent-conversation", "conversationId": "…" },
+              { "kind": "project-room", "projectSlug": "launch", "roomId": "…" },
+              { "kind": "task-room", "taskId": "…" }] }
+```
+
+The response holds one item per target, in request order:
+`{ target, latestVersion, seenVersion, unread, unreadCount? }`, or
+`{ target, unavailable: true }`. More than 100 targets is a 400 with
+`read_marker_too_many_targets`.
+
+```http
+POST /api/read-markers/mark
+{ "target": { "kind": "agent-conversation", "conversationId": "…" }, "version": 1794414034117 }
+```
+
+The response is the resulting state. An older version answers the stored
+state and changes nothing. A version above the current one is a 409 with
+`read_marker_future_version` and `latestVersion`. A conversation the caller
+cannot read is a 404, and a caller that is not a person a 403.
+`GET /api/conversations` items carry the same answer as `readState`, and
+`POST /api/conversations/:id/acknowledgement` writes the same marker under the
+same rules.
+
 ## Conversation Management
 
 The [conversation routes](../../src-server/routes/chat/conversations.ts) combine

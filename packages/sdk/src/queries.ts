@@ -608,6 +608,13 @@ export {
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
 export {
+  fetchReadMarkerSummary,
+  markRead,
+  readMarkerQueries,
+  useMarkReadMutation,
+  useReadMarkerSummaryQuery,
+} from './query-domains/readMarkers';
+export {
   fetchIndependentReviewReceipts,
   reviewEvidenceQueryKey,
   useReviewEvidenceQuery,

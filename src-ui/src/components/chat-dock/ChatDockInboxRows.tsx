@@ -16,10 +16,15 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
 import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
+import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useInboxSwipe } from '../../hooks/useInboxSwipe';
 import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
+import {
+  isCurrentInboxItem,
+  rowReadsUnread,
+} from '../../views/home/conversation-read-state';
 import {
   draftDiscardThreadId,
   draftSessionIds,
@@ -404,6 +409,12 @@ function InboxCommandButton({
 interface InboxRowProps {
   item: HomeWorkItem;
   isCurrent: boolean;
+  /**
+   * #3075: this row's conversation is the one on screen (the host's answer:
+   * pane open, not covered). With window focus it is being read, so it
+   * never reads as unread. Absent: not on screen.
+   */
+  onScreen?: boolean;
   isSnoozed: boolean;
   /** Live-tab membership for hosts offering tab close rather than dismissal. */
   isOpenChat: boolean;
@@ -528,9 +539,29 @@ function useHasUnsentComposerDraft(item: HomeWorkItem): boolean {
   );
 }
 
+/**
+ * The row title. Unread sets it bold (#3075), and a weight change must not
+ * move anything: a bolder title is wider, so it could re-wrap a two-line
+ * phone title or shift an ellipsis. The title therefore always takes the
+ * size of its bold rendering (an invisible bold copy, `data-title`, laid in
+ * the same grid cell by CSS), whichever weight is showing.
+ */
+function InboxRowTitle({ title }: { title: string }) {
+  return (
+    <strong
+      className="chat-dock-inbox__title inbox-row__title"
+      title={title}
+      data-title={title}
+    >
+      <span className="inbox-row__title-text">{title}</span>
+    </strong>
+  );
+}
+
 export function InboxRow({
   item,
   isCurrent,
+  onScreen,
   isSnoozed,
   isOpenChat,
   now,
@@ -576,6 +607,11 @@ export function InboxRow({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const hasUnsentDraft = useHasUnsentComposerDraft(item);
+  // #3075: the server's read state. The current chat in a focused window is
+  // being read as its output lands, so it never reads as unread here (the
+  // dock is telling the server the same thing).
+  const documentFocused = useDocumentFocused();
+  const unread = rowReadsUnread(item, Boolean(onScreen) && documentFocused);
   // The ONE status read (#3042): the line here and the lane this row was
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
@@ -786,6 +822,7 @@ export function InboxRow({
         .join(' ')}
       style={swipe.style}
       data-testid="inbox-row"
+      data-unread={unread ? '' : undefined}
       data-row-key={rowKey ?? item.id}
       data-status-rung={status.rung}
       data-lane={status.lane}
@@ -859,7 +896,7 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}${unread ? ', unread' : ''}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is
@@ -885,12 +922,7 @@ export function InboxRow({
             <span className="inbox-row__slim-status" data-tone={status.tone}>
               <InboxRowStatusGlyph rung={status.rung} />
             </span>
-            <strong
-              className="chat-dock-inbox__title inbox-row__title"
-              title={item.title}
-            >
-              {item.title}
-            </strong>
+            <InboxRowTitle title={item.title} />
             {hasUnsentDraft && <DraftMarker />}
             {/* Provenance survives the one-line size: a remote row must
                 never read as local work. */}
@@ -961,12 +993,7 @@ export function InboxRow({
                 </span>
               )}
             </span>
-            <strong
-              className="chat-dock-inbox__title inbox-row__title"
-              title={item.title}
-            >
-              {item.title}
-            </strong>
+            <InboxRowTitle title={item.title} />
             <InboxRowStatusLine id={statusId} status={status} now={now} />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
@@ -1117,9 +1144,7 @@ function InboxTaskRow({
       data-row-key={item.id}
     >
       <span className="inbox-row__task-label">Task · {item.projectLabel}</span>
-      <strong className="inbox-row__title" title={item.title}>
-        {item.title}
-      </strong>
+      <InboxRowTitle title={item.title} />
       <InboxRowStatusLine id={id} status={status} now={now} />
       <div className="inbox-row__task-actions">
         <Button
@@ -1175,6 +1200,12 @@ export interface InboxGroupListProps {
   /** Namespace for the group-label element ids (two hosts, one document). */
   idPrefix: string;
   activeChatSessionId: string | null;
+  /**
+   * #3075: whether the active chat is on screen beside this list (the
+   * desktop dock), so its row is being read. Absent: it is not (a phone
+   * inbox covers the chat).
+   */
+  activeChatOnScreen?: boolean;
   openChatIds: ReadonlySet<string>;
   now: number;
   /**
@@ -1234,6 +1265,7 @@ export function InboxGroupList({
   groups,
   idPrefix,
   activeChatSessionId,
+  activeChatOnScreen = false,
   openChatIds,
   now,
   collapsible,
@@ -1264,8 +1296,7 @@ export function InboxGroupList({
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const [swipedFor, setSwipedFor] = useState<string | null>(null);
   const isCurrent = (item: HomeWorkItem) =>
-    item.chatSessionId === activeChatSessionId ||
-    item.orchestrationThreadId === activeChatSessionId;
+    isCurrentInboxItem(item, activeChatSessionId);
   /** The rows a group actually renders, including the current row beyond page one. */
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
     const collapsed =
@@ -1320,6 +1351,7 @@ export function InboxGroupList({
         key={item.id}
         item={item}
         isCurrent={isCurrent(item)}
+        onScreen={activeChatOnScreen && isCurrent(item)}
         isSnoozed={group.id === 'snoozed'}
         isOpenChat={Boolean(
           item.chatSessionId && openChatIds.has(item.chatSessionId),

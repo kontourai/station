@@ -815,6 +815,27 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // #3075: the caller's own read markers. Both are POSTs only because a batch
+  // body does not fit a query string; they read or advance the requesting
+  // person's markers and nothing else, and each target is re-authorized
+  // through its own conversation or room read. A read-only paired phone must
+  // reach them, or reading there could never clear unread anywhere.
+  {
+    id: '/api/read-markers/summary:read',
+    method: 'POST',
+    prefix: '/api/read-markers/summary',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/read-markers/mark:own',
+    method: 'POST',
+    prefix: '/api/read-markers/mark',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
   // return bounded projections — hashed transport keys, outcome codes and
   // ids, never a payload or secret. The shared ledger is operator management,

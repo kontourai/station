@@ -1,5 +1,6 @@
 import { useAcknowledgeConversationMutation } from '@kontourai/station-sdk';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
+import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import {
   type HomeWorkItem,
   isTerminalLifecycle,
@@ -7,7 +8,11 @@ import {
 
 type AcknowledgeableItem = Pick<
   HomeWorkItem,
-  'id' | 'lifecycleLabel' | 'conversationUpdatedAt' | 'acknowledgedAt'
+  | 'id'
+  | 'lifecycleLabel'
+  | 'conversationUpdatedAt'
+  | 'acknowledgedAt'
+  | 'unread'
 >;
 
 /**
@@ -20,6 +25,11 @@ type AcknowledgeableItem = Pick<
  *   inventory refresh: that view is what later puts it in "Just finished"
  *   when it finishes after the person looked away.
  * - Nothing already on record at or past this version is sent again.
+ *
+ * #3075: when the server reports read state (`unread`), it alone decides:
+ * every version it calls unread is recorded while the chat is on screen, so
+ * a second device sees it read even while the turn is still running. A host
+ * that reports none keeps the comparison above.
  */
 export function visibleConversationAcknowledgement(
   item: AcknowledgeableItem | undefined,
@@ -27,6 +37,7 @@ export function visibleConversationAcknowledgement(
 ): string | undefined {
   const version = item?.conversationUpdatedAt;
   if (!item || !version) return undefined;
+  if (item.unread !== undefined) return item.unread ? version : undefined;
   const versionAt = Date.parse(version);
   if (!Number.isFinite(versionAt)) return undefined;
   if (item.acknowledgedAt !== undefined && item.acknowledgedAt >= versionAt) {
@@ -37,16 +48,10 @@ export function visibleConversationAcknowledgement(
   return version;
 }
 
-function subscribeVisibility(onChange: () => void) {
-  document.addEventListener('visibilitychange', onChange);
-  return () => document.removeEventListener('visibilitychange', onChange);
-}
-
-const documentVisible = () => document.visibilityState === 'visible';
-
 /**
  * Records "last viewed" for the chat the pane is showing while the pane is
- * open and the page is in the foreground. `paneVisible` is the caller's
+ * open and its window is focused (#3075: a chat on screen in a window the
+ * person is not using stays unread). `paneVisible` is the caller's
  * answer for its own chrome (dock open, not covered by the phone's task
  * switcher).
  */
@@ -55,12 +60,8 @@ export function useAcknowledgeVisibleConversation(
   paneVisible: boolean,
 ): void {
   const { mutate } = useAcknowledgeConversationMutation();
-  const pageVisible = useSyncExternalStore(
-    subscribeVisibility,
-    documentVisible,
-    () => false,
-  );
-  const visible = paneVisible && pageVisible;
+  const focused = useDocumentFocused();
+  const visible = paneVisible && focused;
   const viewedWhileLive = useRef(new Set<string>());
   const sent = useRef<string | null>(null);
 

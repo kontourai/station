@@ -2189,6 +2189,29 @@ Renames a conversation and invalidates that agent's conversation list on success
 
 Deletes a conversation, invalidates that agent's conversation list, and removes its cached message query on success.
 
+### Read markers
+
+Unread state is kept by the server (see
+[read marker contracts](contracts.md#read-marker-contracts)). Conversation
+inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
+rather than comparing `acknowledgedAt` yourself.
+
+- `useAcknowledgeConversationMutation()` marks an agent conversation read at
+  the inventory `updatedAt` it showed. The cached row reads as read at once; if
+  the server refuses, the row is restored and the mutation rejects.
+- `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
+  the same immediate update for an agent conversation.
+- `useReadMarkerSummaryQuery(targets, config?)` reads up to 100 agent
+  conversations, Project rooms (`{ kind: 'project-room', projectSlug,
+  roomId }`) and Task rooms (`{ kind: 'task-room', taskId }`) in one request.
+  It is disabled for an empty list.
+- `markRead(apiBase, target, version)` and
+  `fetchReadMarkerSummary(apiBase, targets)` are the same calls without React
+  Query. `readMarkerQueries` owns the cache keys.
+
+Gate the summary and mark calls on the handshake's `readMarkers` flag: an
+older host answers them 404.
+
 ### `useCreateProjectMutation(requestScope?)`
 
 `useCreateProjectMutation(requestScope?)` accepts an optional captured host
