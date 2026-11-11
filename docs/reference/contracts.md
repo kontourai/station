@@ -2287,11 +2287,15 @@ conversations, Project rooms and Task rooms. The
 [service](../../src-server/services/read-markers/read-marker-service.ts) enforces
 three rules:
 
-- The marker belongs to the request's person: the key the conversation
-  inventory already files "last viewed" under (`conversationAcknowledgementKey`).
-  The local operator and their own unbound paired devices are one person, so
-  reading on one clears unread on the others. A hosted Station keys by tenant.
-  No body field names a person.
+- The marker belongs to the request's person
+  ([`readMarkerPersonKey`](../../src-server/services/read-markers/read-marker-service.ts)).
+  On a personal Station that is the key the conversation inventory already
+  files "last viewed" under (`conversationAcknowledgementKey`): the local
+  operator and their own unbound paired devices are one person, so reading on
+  one clears unread on the others. On a hosted Station it is the verified
+  person inside the tenant, so one member reading never clears another's; a
+  request that carries only the tenant has no read state and is refused. No
+  body field names a person.
 - Marking read keeps the higher of the stored and requested versions. An older
   or repeated mark changes nothing.
 - A version above the conversation's current version is refused
@@ -2308,6 +2312,11 @@ new marker. Nothing recorded what anyone had seen before read state was kept.
 Agent conversations therefore read as seen up to the time the
 [store](../../src-server/services/read-markers/read-marker-store.ts) was created;
 anything that changes after that becomes unread normally.
+
+A marker that moves emits `read-markers:changed` (scoped). The orchestration
+event stream forwards it only to that person's own streams, with an empty
+payload, and each open client re-reads its inventory and summaries. The marker
+store decodes strictly: a corrupt store is refused, never read as "read".
 
 `parseReadMarkerSummaryRequest` refuses more than
 `READ_MARKER_SUMMARY_MAX_TARGETS` (100) targets rather than truncating. A target

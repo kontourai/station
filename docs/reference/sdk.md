@@ -2210,7 +2210,9 @@ rather than comparing `acknowledgedAt` yourself.
   Query. `readMarkerQueries` owns the cache keys.
 
 Gate the summary and mark calls on the handshake's `readMarkers` flag: an
-older host answers them 404.
+older host answers them 404. Open clients of the same person refresh on their
+own: the shared orchestration event stream invalidates the inventory and
+read-marker queries when that person's marker moves.
 
 ### `useCreateProjectMutation(requestScope?)`
 

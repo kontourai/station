@@ -2195,7 +2195,11 @@ POST /api/read-markers/mark
 The response is the resulting state. An older version answers the stored
 state and changes nothing. A version above the current one is a 409 with
 `read_marker_future_version` and `latestVersion`. A conversation the caller
-cannot read is a 404, and a caller that is not a person a 403.
+cannot read is a 404, and a caller that is not a person a 403 (on a hosted
+Station, a request that carries only the tenant). A marker store that does
+not decode is a 503, never an answer of "read". A marker that moves is
+announced as `read-markers:changed` on that person's own
+`GET /api/orchestration/events` streams, with an empty payload.
 `GET /api/conversations` items carry the same answer as `readState`, and
 `POST /api/conversations/:id/acknowledgement` writes the same marker under the
 same rules.
