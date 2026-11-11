@@ -895,6 +895,10 @@ was not recorded. A summary or transcript handle alone does not establish a
 returned result. An existing completion notice is corrected when a later
 structured tool return arrives from the same Station and child.
 
+A background shell command an engine started (or a monitor watching one) is
+not a subagent: its card shows a terminal mark, the command line and, once it
+ends, its exit code, and a group counts it as a background command.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
