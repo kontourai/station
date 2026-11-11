@@ -254,6 +254,22 @@
               "a direct TCP connection to this host's own non-loopback address is refused by the kernel"
             ],
             "reason": "Skips at runtime (ctx.skip) when the host has no non-loopback IPv4 address, so there is no outside address of its own to compare against; the documentation-address leg proves the refusal on every host. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a connection to the broker port over IPv6 loopback is refused by the kernel"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when the host cannot listen on ::1 at the broker port, so there is no IPv6 listener to compare against. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when /usr/bin/swiftc cannot build the probe (no Swift toolchain), or when nsurlsessiond does not deliver the upload even unconfined, so a missing request inside would prove nothing. A skip is recorded, a failure is not accepted."
           }
         ],
         "notRequired": [

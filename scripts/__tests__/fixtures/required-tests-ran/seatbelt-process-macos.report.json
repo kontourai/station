@@ -3,8 +3,8 @@
   "numPassedTestSuites": 3,
   "numFailedTestSuites": 0,
   "numPendingTestSuites": 0,
-  "numTotalTests": 60,
-  "numPassedTests": 60,
+  "numTotalTests": 62,
+  "numPassedTests": 62,
   "numFailedTests": 0,
   "numPendingTests": 0,
   "numTodoTests": 0,
@@ -24,7 +24,7 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1794422495022,
+  "startTime": 1794428145396,
   "success": true,
   "testResults": [
     {
@@ -34,7 +34,7 @@
           "fullName": "Seatbelt profile under the real kernel the probe ran the production profile, not a stand-in",
           "status": "passed",
           "title": "the probe ran the production profile, not a stand-in",
-          "duration": 0.9082080000000587,
+          "duration": 0.5405000000000655,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -44,7 +44,7 @@
           "fullName": "Seatbelt profile under the real kernel a write in the workspace is allowed; a write outside it is denied",
           "status": "passed",
           "title": "a write in the workspace is allowed; a write outside it is denied",
-          "duration": 37.356042,
+          "duration": 25.18395799999996,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -54,7 +54,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree can commit twice and read its status",
           "status": "passed",
           "title": "a linked worktree can commit twice and read its status",
-          "duration": 511.94487500000014,
+          "duration": 431.346958,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -64,7 +64,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write a shared hook",
           "status": "passed",
           "title": "a linked worktree may not write a shared hook",
-          "duration": 66.26295800000003,
+          "duration": 56.13941699999987,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -74,7 +74,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write the shared config",
           "status": "passed",
           "title": "a linked worktree may not write the shared config",
-          "duration": 176.78591699999993,
+          "duration": 134.40891699999997,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -84,7 +84,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write shared info",
           "status": "passed",
           "title": "a linked worktree may not write shared info",
-          "duration": 73.03983300000004,
+          "duration": 47.21445799999992,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -94,7 +94,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not move main",
           "status": "passed",
           "title": "a linked worktree may not move main",
-          "duration": 175.41700000000014,
+          "duration": 127.66425000000004,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -104,7 +104,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not create another branch",
           "status": "passed",
           "title": "a linked worktree may not create another branch",
-          "duration": 162.407958,
+          "duration": 123.73995799999989,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -114,7 +114,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not repoint the .git pointer file",
           "status": "passed",
           "title": "a linked worktree may not repoint the .git pointer file",
-          "duration": 70.19012500000008,
+          "duration": 44.21354199999996,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -124,7 +124,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write config.worktree",
           "status": "passed",
           "title": "a linked worktree may not write config.worktree",
-          "duration": 75.14550000000008,
+          "duration": 43.92833399999995,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -134,7 +134,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace still cannot write its hooks, config or info",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace still cannot write its hooks, config or info",
-          "duration": 358.12020900000016,
+          "duration": 234.5239160000001,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -144,7 +144,7 @@
           "fullName": "Seatbelt profile under the real kernel secret stores and Station data are unreadable; Station installs stay readable",
           "status": "passed",
           "title": "secret stores and Station data are unreadable; Station installs stay readable",
-          "duration": 73.18433300000015,
+          "duration": 55.15945899999997,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -154,7 +154,7 @@
           "fullName": "Seatbelt profile under the real kernel the operator's login Keychain is hidden from the confined process",
           "status": "passed",
           "title": "the operator's login Keychain is hidden from the confined process",
-          "duration": 13.041291000000001,
+          "duration": 9.756583000000091,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -164,7 +164,7 @@
           "fullName": "Seatbelt profile under the real kernel the operator's Claude config is not writable; the Station-owned one is",
           "status": "passed",
           "title": "the operator's Claude config is not writable; the Station-owned one is",
-          "duration": 52.11016699999982,
+          "duration": 35.78733299999999,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -174,7 +174,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write a Codex project config (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write a Codex project config (#3800)",
-          "duration": 43.269374999999854,
+          "duration": 26.473834000000124,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -184,7 +184,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write a Claude project settings file (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write a Claude project settings file (#3800)",
-          "duration": 42.73804100000007,
+          "duration": 28.195832999999766,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -194,7 +194,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write Claude local settings (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write Claude local settings (#3800)",
-          "duration": 43.68783399999984,
+          "duration": 26.111209000000144,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -204,7 +204,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot move a prepared directory into place (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot move a prepared directory into place (#3800)",
-          "duration": 45.08525000000009,
+          "duration": 28.897500000000036,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -214,7 +214,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot create it in another case (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot create it in another case (#3800)",
-          "duration": 51.80416600000035,
+          "duration": 26.09529100000009,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -224,7 +224,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write a Codex config in a subdirectory a later session may start in (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write a Codex config in a subdirectory a later session may start in (#3800)",
-          "duration": 39.06283399999984,
+          "duration": 33.661209000000326,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -234,7 +234,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write Claude settings in a subdirectory, in another case (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write Claude settings in a subdirectory, in another case (#3800)",
-          "duration": 38.17037500000015,
+          "duration": 26.60024999999996,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -244,7 +244,7 @@
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot prepare one in its temp directory and move it into the workspace (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot prepare one in its temp directory and move it into the workspace (#3800)",
-          "duration": 43.657917,
+          "duration": 27.91191600000002,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -254,7 +254,7 @@
           "fullName": "Seatbelt profile under the real kernel the session temp directory is writable and the confined env points at it",
           "status": "passed",
           "title": "the session temp directory is writable and the confined env points at it",
-          "duration": 18.066667000000052,
+          "duration": 12.093083000000206,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -264,7 +264,7 @@
           "fullName": "Seatbelt profile under the real kernel the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined",
           "status": "passed",
           "title": "the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined",
-          "duration": 380.4112500000001,
+          "duration": 365.96116699999993,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -274,7 +274,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree can commit but not stash: refs/stash is shared, by design (L1)",
           "status": "passed",
           "title": "a linked worktree can commit but not stash: refs/stash is shared, by design (L1)",
-          "duration": 370.49866599999996,
+          "duration": 288.97179099999994,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -284,7 +284,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace can stash and switch to an existing branch",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace can stash and switch to an existing branch",
-          "duration": 570.374084,
+          "duration": 506.7856670000001,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -294,7 +294,7 @@
           "fullName": "Seatbelt profile under the real kernel an SSH key is unreadable, however it is spelled",
           "status": "passed",
           "title": "an SSH key is unreadable, however it is spelled",
-          "duration": 87.76991700000053,
+          "duration": 62.21970800000008,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -304,7 +304,7 @@
           "fullName": "Seatbelt profile under the real kernel AWS credentials is unreadable, however it is spelled",
           "status": "passed",
           "title": "AWS credentials is unreadable, however it is spelled",
-          "duration": 92.58358399999997,
+          "duration": 71.09412500000008,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -314,7 +314,7 @@
           "fullName": "Seatbelt profile under the real kernel the gh login is unreadable, however it is spelled",
           "status": "passed",
           "title": "the gh login is unreadable, however it is spelled",
-          "duration": 82.96762500000023,
+          "duration": 73.09204199999976,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -324,7 +324,7 @@
           "fullName": "Seatbelt profile under the real kernel the operator's Claude credential file is unreadable, however it is spelled",
           "status": "passed",
           "title": "the operator's Claude credential file is unreadable, however it is spelled",
-          "duration": 84.86866700000064,
+          "duration": 60.79041700000016,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -334,7 +334,7 @@
           "fullName": "Seatbelt profile under the real kernel Station's runtime home is unreadable, however it is spelled",
           "status": "passed",
           "title": "Station's runtime home is unreadable, however it is spelled",
-          "duration": 89.88237500000014,
+          "duration": 53.357916999999816,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -344,7 +344,7 @@
           "fullName": "Seatbelt profile under the real kernel Station's root, outside the runtime home is unreadable, however it is spelled",
           "status": "passed",
           "title": "Station's root, outside the runtime home is unreadable, however it is spelled",
-          "duration": 87.12029200000052,
+          "duration": 58.955417000000125,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -354,7 +354,7 @@
           "fullName": "Seatbelt profile under the real kernel a hidden file cannot be hard-linked or cloned into the workspace",
           "status": "passed",
           "title": "a hidden file cannot be hard-linked or cloned into the workspace",
-          "duration": 46.57191700000021,
+          "duration": 37.050792,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -364,7 +364,7 @@
           "fullName": "Seatbelt profile under the real kernel a hard link made outside the sandbox beforehand is readable: an accepted residual",
           "status": "passed",
           "title": "a hard link made outside the sandbox beforehand is readable: an accepted residual",
-          "duration": 26.691874999999527,
+          "duration": 16.773791000000074,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -374,7 +374,7 @@
           "fullName": "Seatbelt profile under the real kernel a granted path does not grant its sibling that shares the prefix",
           "status": "passed",
           "title": "a granted path does not grant its sibling that shares the prefix",
-          "duration": 17.35595899999953,
+          "duration": 11.681332999999995,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -384,7 +384,7 @@
           "fullName": "Seatbelt profile under the real kernel a denied git path is denied in another case",
           "status": "passed",
           "title": "a denied git path is denied in another case",
-          "duration": 20.21362500000032,
+          "duration": 12.622124999999869,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -394,7 +394,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its commondir read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its commondir read-only (R1)",
-          "duration": 48.08137499999975,
+          "duration": 35.04600000000028,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -404,7 +404,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its gitdir read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its gitdir read-only (R1)",
-          "duration": 52.82920800000011,
+          "duration": 30.901875000000018,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -414,7 +414,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its a config read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its a config read-only (R1)",
-          "duration": 43.90283399999953,
+          "duration": 31.422250000000076,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -424,7 +424,7 @@
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its hooks read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its hooks read-only (R1)",
-          "duration": 42.77033399999982,
+          "duration": 29.644291000000067,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -434,7 +434,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change another worktree's commondir (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change another worktree's commondir (R2)",
-          "duration": 39.59029200000077,
+          "duration": 24.503332999999657,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -444,7 +444,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change another worktree's gitdir (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change another worktree's gitdir (R2)",
-          "duration": 43.60762500000055,
+          "duration": 24.170333000000028,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -454,7 +454,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change a submodule's config (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change a submodule's config (R2)",
-          "duration": 42.60383400000046,
+          "duration": 26.827792000000045,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -464,7 +464,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change a commondir redirect (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change a commondir redirect (R2)",
-          "duration": 35.25608299999931,
+          "duration": 23.764875000000302,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -474,7 +474,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change object alternates (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change object alternates (R2)",
-          "duration": 35.29662499999995,
+          "duration": 23.93816699999934,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -484,7 +484,7 @@
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change a renamed .git (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change a renamed .git (R2)",
-          "duration": 37.44304100000045,
+          "duration": 24.204208000000108,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -494,7 +494,7 @@
           "fullName": "Seatbelt profile under the real kernel a .git emptied from inside is never replaced by a pointer file or given config (R2)",
           "status": "passed",
           "title": "a .git emptied from inside is never replaced by a pointer file or given config (R2)",
-          "duration": 140.6095839999998,
+          "duration": 98.1455420000002,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -504,7 +504,7 @@
           "fullName": "Seatbelt profile under the real kernel an app in the workspace cannot be launched outside the sandbox",
           "status": "passed",
           "title": "an app in the workspace cannot be launched outside the sandbox",
-          "duration": 10437.015542000001,
+          "duration": 10955.037416,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -514,7 +514,7 @@
           "fullName": "Seatbelt profile under the real kernel a setuid program cannot be run from inside",
           "status": "passed",
           "title": "a setuid program cannot be run from inside",
-          "duration": 15.21387500000128,
+          "duration": 21.886708,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -524,7 +524,7 @@
           "fullName": "Seatbelt profile under the real kernel the login Keychain is unreachable through the security tool",
           "status": "passed",
           "title": "the login Keychain is unreachable through the security tool",
-          "duration": 36.035374999999476,
+          "duration": 48.4502080000002,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -534,7 +534,7 @@
           "fullName": "Seatbelt profile under the real kernel signals reach only processes inside the sandbox",
           "status": "passed",
           "title": "signals reach only processes inside the sandbox",
-          "duration": 25.40350000000035,
+          "duration": 35.43304100000023,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -547,7 +547,7 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) the spawn is the restricted profile: one rule, to the broker port, and the proxy points at it",
           "status": "passed",
           "title": "the spawn is the restricted profile: one rule, to the broker port, and the proxy points at it",
-          "duration": 32.740334000000075,
+          "duration": 32.98529199999939,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -560,7 +560,7 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a direct TCP connection to another loopback port is refused by the kernel",
           "status": "passed",
           "title": "a direct TCP connection to another loopback port is refused by the kernel",
-          "duration": 55.70858399999997,
+          "duration": 55.89708400000018,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -573,7 +573,7 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a direct TCP connection to an outside address is refused by the kernel",
           "status": "passed",
           "title": "a direct TCP connection to an outside address is refused by the kernel",
-          "duration": 31.240750000000844,
+          "duration": 33.40600000000086,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -586,7 +586,7 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a direct TCP connection to this host's own non-loopback address is refused by the kernel",
           "status": "passed",
           "title": "a direct TCP connection to this host's own non-loopback address is refused by the kernel",
-          "duration": 56.03379099999984,
+          "duration": 55.45604100000128,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -599,7 +599,7 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a Unix socket at a known path is refused by the kernel",
           "status": "passed",
           "title": "a Unix socket at a known path is refused by the kernel",
-          "duration": 62.494666999999026,
+          "duration": 60.32195899999897,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -612,7 +612,33 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a UDP datagram is refused by the kernel",
           "status": "passed",
           "title": "a UDP datagram is refused by the kernel",
-          "duration": 57.95150000000103,
+          "duration": 55.56566699999894,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)"
+          ],
+          "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a connection to the broker port over IPv6 loopback is refused by the kernel",
+          "status": "passed",
+          "title": "a connection to the broker port over IPv6 loopback is refused by the kernel",
+          "duration": 64.39075000000048,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)"
+          ],
+          "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker",
+          "status": "passed",
+          "title": "a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker",
+          "duration": 3574.992,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -625,7 +651,7 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a connection through the broker to an allowed host is tunnelled to it",
           "status": "passed",
           "title": "a connection through the broker to an allowed host is tunnelled to it",
-          "duration": 35.38654199999837,
+          "duration": 52.453833999999915,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -638,7 +664,7 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) a connection through the broker to a host that is not allowed gets 403, and is recorded",
           "status": "passed",
           "title": "a connection through the broker to a host that is not allowed gets 403, and is recorded",
-          "duration": 35.95979100000113,
+          "duration": 34.98149999999805,
           "failureMessages": [],
           "meta": {},
           "tags": []
@@ -651,14 +677,14 @@
           "fullName": "Seatbelt profile under the real kernel with a restricted network (#4769) the installed Claude Code answers its handshake inside the restricted profile, and its model request reaches the model endpoint only through the broker",
           "status": "passed",
           "title": "the installed Claude Code answers its handshake inside the restricted profile, and its model request reaches the model endpoint only through the broker",
-          "duration": 242.1698749999996,
+          "duration": 169.59437500000058,
           "failureMessages": [],
           "meta": {},
           "tags": []
         }
       ],
-      "startTime": 1794422495948,
-      "endTime": 1794422511809.17,
+      "startTime": 1794428146147,
+      "endTime": 1794428164994.5945,
       "status": "passed",
       "message": "",
       "name": "/station/src-server/security/confinement/__tests__/seatbelt.process.test.ts"
