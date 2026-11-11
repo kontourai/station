@@ -807,7 +807,6 @@ import type { ActionOperationService } from '../../services/operations/action-op
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import {
-  conversationAcknowledgementKey,
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
@@ -909,7 +908,10 @@ import { ConversationPullRequestLinkStore } from '../../services/pull-requests/c
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
-import { ReadMarkerService } from '../../services/read-markers/read-marker-service.js';
+import {
+  ReadMarkerService,
+  readMarkerPersonKey,
+} from '../../services/read-markers/read-marker-service.js';
 import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
 import {
   projectRoomVersionSource,
@@ -2358,6 +2360,19 @@ export function configureRuntimeRoutes(
         : undefined,
     );
   };
+  // #3075: whose read state a request reads and writes, for the read-marker
+  // service and the orchestration stream that announces its changes.
+  const readMarkerOwnerDevice = ownerDevicePredicate(() =>
+    context.environmentSecurityService.devicePairing.listDevices(),
+  );
+  const readMarkerPersonKeyFor = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ) =>
+    readMarkerPersonKey({
+      authority: conversationReadAuthorityForContext(c),
+      principal: () => resolveOrchestrationRequestPrincipal(c),
+      isOwnerDevice: readMarkerOwnerDevice,
+    });
   const conversationReadAuthorityForRequest = (request: Request) => {
     const authority = conversationRequestAuthorities.get(request);
     if (!authority) {
@@ -7415,6 +7430,10 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      readMarkerPersonKey: (c) =>
+        readMarkerPersonKeyFor(
+          c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+        ),
       generalEventProducer: (c, stream, write, authority) =>
         generalEventProducer(c, stream, write, authority),
       ...(delegationResults ? { delegationResults } : {}),
@@ -11855,10 +11874,12 @@ export function configureRuntimeRoutes(
   );
   const readMarkers = new ReadMarkerService({
     personKeyFor: (c) =>
-      conversationAcknowledgementKey(
-        conversationReadAuthorityForRequest(c.req.raw),
-        conversationAcknowledgements.isOwnerDevice,
+      readMarkerPersonKeyFor(
+        c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
       ),
+    // Each of that person's open clients re-reads (orchestration `/events`).
+    onChanged: (personKey) =>
+      context.eventBus.emit(SERVER_EVENTS.READ_MARKERS_CHANGED, { personKey }),
     conversations: conversationAcknowledgements,
     store: new FileReadMarkerStore(context.configLoader.getProjectHomeDir()),
     agentConversations: createAgentConversationVersionSource({

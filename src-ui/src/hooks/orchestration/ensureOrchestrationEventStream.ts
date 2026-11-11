@@ -47,6 +47,29 @@ import {
 } from './streamQueryClientRegistry';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
+/**
+ * #3075: the inventory and read-marker queries this stream's Station and
+ * authority own. Unscoped keys belong to the current connection; scoped ones
+ * must name this API base and, when known, this authority.
+ */
+function invalidateReadState(
+  client: QueryClient,
+  apiBase: string,
+  authority: string | undefined,
+): void {
+  void client.invalidateQueries({
+    predicate: (query) => {
+      const [root, base, scope] = query.queryKey as unknown[];
+      if (root === 'read-markers') return true;
+      if (root !== 'conversation-inventory') return false;
+      if (query.queryKey.length === 1) return true;
+      return (
+        base === apiBase && (authority === undefined || scope === authority)
+      );
+    },
+  });
+}
+
 interface OwnedStream {
   connection: FetchSseConnection;
   legacyGeneral?: FetchSseConnection;
@@ -991,6 +1014,20 @@ function connectOrchestrationEventStream(
           // `lastEventAt` into a second silence detector; the watchdog's
           // narrower progress derivation is serialized on that projection.
           requestSessionReadModelRefresh(apiBase);
+        } else if (raw.event === SERVER_EVENTS.READ_MARKERS_CHANGED) {
+          // #3075: this person read something on another client. Re-read the
+          // server's answer; the frame itself says nothing more.
+          const client = currentStreamQueryClient(
+            apiBase,
+            station?.requestScope.authorityKey,
+          );
+          if (client)
+            invalidateReadState(
+              client,
+              apiBase,
+              station?.requestScope.authorityKey ??
+                currentStreamAuthorityKey(apiBase, client),
+            );
         }
       },
       // `fetchSSE` owns transient retry. Keep its single-flight entry until it

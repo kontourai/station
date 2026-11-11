@@ -113,8 +113,15 @@ describe('useAcknowledgeVisibleConversation with server read state (#3075)', () 
       conversationId: 'c1',
       updatedAt: '2026-10-28T10:02:00.000Z',
     });
-    // Already read on the server: nothing to send, whatever the client has.
-    rerender({ item: { ...finished, unread: false } });
+    // Read on the server and this version already on record: nothing to
+    // send. ("Read" alone may be the baseline; see the next describe.)
+    rerender({
+      item: {
+        ...finished,
+        unread: false,
+        acknowledgedAt: Date.parse(finished.conversationUpdatedAt!),
+      },
+    });
     expect(mutate).toHaveBeenCalledTimes(2);
   });
 
@@ -132,5 +139,42 @@ describe('useAcknowledgeVisibleConversation with server read state (#3075)', () 
       conversationId: 'c1',
       updatedAt: '2026-10-28T10:05:00.000Z',
     });
+  });
+});
+
+describe('the last-viewed record stays independent of the baseline (#3075 review)', () => {
+  beforeEach(() => mutate.mockClear());
+
+  it('a finished thread the server reads as seen (baseline) but whose last view predates its finish is still recorded when shown', () => {
+    renderHook(() =>
+      useAcknowledgeVisibleConversation(
+        {
+          ...finished,
+          unread: false,
+          acknowledgedAt: Date.parse('2026-10-28T10:01:00.000Z'),
+        },
+        true,
+      ),
+    );
+    // Without this record Home's "Just finished" (acknowledgedAt < finish)
+    // would keep the thread there however often it is viewed.
+    expect(mutate).toHaveBeenCalledExactlyOnceWith({
+      conversationId: 'c1',
+      updatedAt: '2026-10-28T10:05:00.000Z',
+    });
+  });
+
+  it('a version already on record is still not sent again', () => {
+    renderHook(() =>
+      useAcknowledgeVisibleConversation(
+        {
+          ...finished,
+          unread: false,
+          acknowledgedAt: Date.parse('2026-10-28T10:05:00.000Z'),
+        },
+        true,
+      ),
+    );
+    expect(mutate).not.toHaveBeenCalled();
   });
 });

@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { useConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
 import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useDocumentFocused } from '../../hooks/useDocumentFocused';
@@ -409,12 +410,6 @@ function InboxCommandButton({
 interface InboxRowProps {
   item: HomeWorkItem;
   isCurrent: boolean;
-  /**
-   * #3075: this row's conversation is the one on screen (the host's answer:
-   * pane open, not covered). With window focus it is being read, so it
-   * never reads as unread. Absent: not on screen.
-   */
-  onScreen?: boolean;
   isSnoozed: boolean;
   /** Live-tab membership for hosts offering tab close rather than dismissal. */
   isOpenChat: boolean;
@@ -561,7 +556,6 @@ function InboxRowTitle({ title }: { title: string }) {
 export function InboxRow({
   item,
   isCurrent,
-  onScreen,
   isSnoozed,
   isOpenChat,
   now,
@@ -611,7 +605,8 @@ export function InboxRow({
   // being read as its output lands, so it never reads as unread here (the
   // dock is telling the server the same thing).
   const documentFocused = useDocumentFocused();
-  const unread = rowReadsUnread(item, Boolean(onScreen) && documentFocused);
+  const onScreen = useConversationOnScreen(item);
+  const unread = rowReadsUnread(item, onScreen && documentFocused);
   // The ONE status read (#3042): the line here and the lane this row was
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
@@ -1200,12 +1195,6 @@ export interface InboxGroupListProps {
   /** Namespace for the group-label element ids (two hosts, one document). */
   idPrefix: string;
   activeChatSessionId: string | null;
-  /**
-   * #3075: whether the active chat is on screen beside this list (the
-   * desktop dock), so its row is being read. Absent: it is not (a phone
-   * inbox covers the chat).
-   */
-  activeChatOnScreen?: boolean;
   openChatIds: ReadonlySet<string>;
   now: number;
   /**
@@ -1265,7 +1254,6 @@ export function InboxGroupList({
   groups,
   idPrefix,
   activeChatSessionId,
-  activeChatOnScreen = false,
   openChatIds,
   now,
   collapsible,
@@ -1351,7 +1339,6 @@ export function InboxGroupList({
         key={item.id}
         item={item}
         isCurrent={isCurrent(item)}
-        onScreen={activeChatOnScreen && isCurrent(item)}
         isSnoozed={group.id === 'snoozed'}
         isOpenChat={Boolean(
           item.chatSessionId && openChatIds.has(item.chatSessionId),

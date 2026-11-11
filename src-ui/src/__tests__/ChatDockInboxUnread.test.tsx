@@ -10,6 +10,7 @@
 
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -18,6 +19,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { conversationOnScreenStore } from '../contexts/conversation-on-screen-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { withConversationInventory } from '../views/home/conversation-inventory-facts';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -95,6 +97,7 @@ const rowOf = (name: RegExp) =>
   screen.getByRole('button', { name }).closest('[data-testid="inbox-row"]');
 
 let focused = true;
+const dock = Symbol('test-dock');
 
 describe('inbox unread state comes from the server', () => {
   beforeEach(() => {
@@ -104,6 +107,7 @@ describe('inbox unread state comes from the server', () => {
     vi.spyOn(document, 'hasFocus').mockImplementation(() => focused);
   });
   afterEach(() => {
+    act(() => conversationOnScreenStore.release(dock));
     cleanup();
     vi.restoreAllMocks();
   });
@@ -138,9 +142,10 @@ describe('inbox unread state comes from the server', () => {
       seenVersion: 0,
       unread: true,
     });
+    // The dock publishes its chat as on screen while its pane shows it.
+    act(() => conversationOnScreenStore.publish(dock, 'current'));
     const onScreen = renderPanel([current], {
       activeChatSessionId: 'current',
-      activeChatOnScreen: true,
     });
     expect(
       screen.getByRole('button', { name: /^current title, station/ }),
@@ -150,15 +155,16 @@ describe('inbox unread state comes from the server', () => {
     focused = false;
     const unfocused = renderPanel([current], {
       activeChatSessionId: 'current',
-      activeChatOnScreen: true,
     });
     expect(
       screen.getByRole('button', { name: /^current title, unread, station/ }),
     ).not.toBeNull();
     unfocused.unmount();
 
-    // Focused, but the list covers the chat (a phone inbox).
+    // Focused, but the list covers the chat (a phone inbox): the dock
+    // withdraws its on-screen answer.
     focused = true;
+    act(() => conversationOnScreenStore.release(dock));
     renderPanel([current], { activeChatSessionId: 'current' });
     expect(
       screen.getByRole('button', { name: /^current title, unread, station/ }),

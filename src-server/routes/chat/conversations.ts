@@ -15,6 +15,7 @@ import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contra
 import type {
   ConversationListItem,
   ConversationOpenResolution,
+  ConversationReadState,
 } from '@kontourai/station-contracts/orchestration';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
@@ -73,7 +74,6 @@ import { readConversationContextSeedPin } from '../../services/orchestration/con
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
 import {
   type AgentConversationVersionSource,
-  acknowledgedVersion,
   ReadMarkerFutureVersionError,
   type ReadMarkerService,
 } from '../../services/read-markers/read-marker-service.js';
@@ -2593,22 +2593,34 @@ export function conversationReadVersion(
 }
 
 /**
- * The inventory's derived read state (#3075): the stored acknowledgement,
- * never below the baseline (when read state began being kept), compared
- * with the item's own version.
+ * A personal file-backed conversation past the inventory window (#3075
+ * review): the point read the inventory list would have made, under the same
+ * ownership rule (`_listPersonalFileConversationItems` reads the caller's
+ * `userId` within each adapter's own resource, skipping a conversation a
+ * successor has taken over) and the same version (`updatedAt`). Hosted
+ * Stations have no file conversations here; another owner's is `undefined`.
  */
-function conversationReadState(
-  item: Pick<ConversationListItem, 'updatedAt'>,
-  acknowledgedAt: string | undefined,
-  baseline: number,
-): ConversationListItem['readState'] {
-  const version = conversationReadVersion(item);
-  if (version === undefined) return undefined;
-  const seenVersion = Math.min(
-    Math.max(acknowledgedVersion(acknowledgedAt), baseline),
-    version,
-  );
-  return { version, seenVersion, unread: version > seenVersion };
+async function ownedFileConversationVersion(
+  deps: ConversationInventoryDeps,
+  authority: SessionReadAuthority,
+  conversationId: string,
+): Promise<number | undefined> {
+  if (isHostedSessionReadAuthority(authority)) return undefined;
+  if (
+    deps.sessionConversationReader.successorConversationId?.(conversationId) !==
+    undefined
+  )
+    return undefined;
+  for (const [slug, adapter] of deps.memoryAdapters) {
+    const conversation = await adapter.getConversation(conversationId);
+    if (
+      conversation &&
+      conversation.userId === authority.userId &&
+      (conversation.resourceId || slug) === slug
+    )
+      return conversationReadVersion(conversation);
+  }
+  return undefined;
 }
 
 /**
@@ -2649,7 +2661,7 @@ export function createAgentConversationVersionSource(
           );
         const version = conversation
           ? conversationReadVersion(conversation)
-          : undefined;
+          : await ownedFileConversationVersion(deps, authority, id);
         if (version !== undefined) result.set(id, version);
       }
       return result;
@@ -2739,7 +2751,10 @@ export function createGlobalConversationRoutes(
    * `readState` and an acknowledgement is refused past the conversation's
    * current version. Unwired, items carry no `readState`, never a guessed one.
    */
-  readMarkers?: Pick<ReadMarkerService, 'mark' | 'baseline'>,
+  readMarkers?: Pick<
+    ReadMarkerService,
+    'acknowledgeConversation' | 'conversationReadStates'
+  >,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -2888,15 +2903,26 @@ export function createGlobalConversationRoutes(
             page.items.map((item) => item.id),
           )
         : undefined;
-      // #3075: the derived answer every surface reads. `acknowledgedAt`
-      // stays the stored fact it is derived from.
-      const baseline = acknowledgements ? readMarkers?.baseline() : undefined;
+      // #3075: the derived answer every surface reads, from the caller's own
+      // person key. `acknowledgedAt` stays the inherited stored fact.
+      let readStates: ReadonlyMap<string, ConversationReadState> | undefined;
+      try {
+        readStates = readMarkers?.conversationReadStates(
+          c,
+          page.items.flatMap((item) => {
+            const version = conversationReadVersion(item);
+            return version === undefined ? [] : [{ id: item.id, version }];
+          }),
+        );
+      } catch (error) {
+        // Unreadable read state is reported as none, never as "read".
+        logger.warn('Conversation read state unavailable', {
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+      }
       const data = page.items.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
-        const readState =
-          baseline === undefined
-            ? undefined
-            : conversationReadState(item, acknowledgedAt, baseline);
+        const readState = readStates?.get(item.id);
         return {
           ...item,
           ...(acknowledgedAt ? { acknowledgedAt } : {}),
@@ -2997,17 +3023,22 @@ export function createGlobalConversationRoutes(
       return c.json({ success: true });
     }
     // #3075: the same monotonic write, through the one service that also
-    // refuses a version the conversation has not reached: the server does
-    // not take the client's word for what it was shown.
+    // refuses a version the conversation has not reached (the server does
+    // not take the client's word for what it was shown) and moves the
+    // caller's own read marker.
     try {
-      const state = await readMarkers.mark(
+      const outcome = await readMarkers.acknowledgeConversation(
         c,
-        { kind: 'agent-conversation', conversationId },
+        conversationId,
         parsedUpdatedAt,
+        acknowledgementKey,
       );
-      if (!state)
+      if (!outcome)
         return c.json({ success: false, error: 'Conversation not found' }, 404);
-      return c.json({ success: true, data: state });
+      return c.json({
+        success: true,
+        ...(outcome.state ? { data: outcome.state } : {}),
+      });
     } catch (error) {
       if (error instanceof ReadMarkerFutureVersionError)
         return c.json(

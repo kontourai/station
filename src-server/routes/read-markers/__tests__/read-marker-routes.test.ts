@@ -5,10 +5,17 @@
  * store in a temporary directory. Only the conversation/room readers below
  * the version sources are fixtures.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
+import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   READ_MARKER_REFUSAL_CODES,
   READ_MARKER_SUMMARY_MAX_TARGETS,
@@ -16,20 +23,22 @@ import {
   type ReadMarkerTarget,
 } from '@kontourai/station-contracts/read-markers';
 import {
+  parseHostedTenantRegistry,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
+  tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { FileStorageNotFoundError } from '../../../domain/project-file-transactions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
-import {
-  conversationAcknowledgementKey,
-  FileConversationAcknowledgementStore,
-} from '../../../services/orchestration/conversation-acknowledgement-store.js';
+import { FileConversationAcknowledgementStore } from '../../../services/orchestration/conversation-acknowledgement-store.js';
 import { ProjectRoomRefusal } from '../../../services/projects/project-room-store.js';
-import { ReadMarkerService } from '../../../services/read-markers/read-marker-service.js';
+import {
+  ReadMarkerService,
+  readMarkerPersonKey,
+} from '../../../services/read-markers/read-marker-service.js';
 import {
   FileReadMarkerStore,
   READ_MARKER_STORE_FILE,
@@ -112,6 +121,18 @@ function station(
     };
     /** When the store is first created; epoch 0 unless a test says otherwise. */
     baseline?: string;
+    /**
+     * A hosted Station with tenant `alpha`. The test header names a verified
+     * person, or `tenant-only` for a request carrying only the tenant.
+     */
+    hosted?: boolean;
+    /** Personal file-backed conversations, as a memory adapter holds them. */
+    fileConversations?: Array<{
+      id: string;
+      userId: string;
+      resourceId: string;
+      updatedAt: string;
+    }>;
   } = {},
 ) {
   const conversations = options.conversations ?? new Map([['c1', T1]]);
@@ -123,12 +144,55 @@ function station(
       : person === 'owner-alias'
         ? 'owner-alias'
         : `human:test:${person}`;
+  const hostedRegistry = parseHostedTenantRegistry({
+    schemaVersion: 1,
+    tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+  });
   const authorityFor = (request: Request): SessionReadAuthority =>
-    sessionReadAuthorityFromRequest(
-      principalOf(personOf(request) || 'nobody'),
-      undefined,
-      undefined,
-    );
+    options.hosted
+      ? sessionReadAuthorityFromRequest(
+          personOf(request) === 'tenant-only'
+            ? 'tenant:alpha'
+            : principalOf(personOf(request) || 'nobody'),
+          { tenantId: tenantId('alpha') },
+          hostedRegistry,
+        )
+      : sessionReadAuthorityFromRequest(
+          principalOf(personOf(request) || 'nobody'),
+          undefined,
+          undefined,
+        );
+  /** The request's resolved principal, as the runtime resolver reports it. */
+  const principalFor = (request: Request): PrincipalRef =>
+    personOf(request) === 'tenant-only'
+      ? { id: 'tenant:alpha', kind: 'tenant', display: 'alpha' }
+      : {
+          id: principalOf(personOf(request) || 'nobody'),
+          kind: 'human',
+          display: personOf(request) || 'nobody',
+        };
+  const fileConversations = options.fileConversations ?? [];
+  const fileAdapter = {
+    getConversation: vi.fn(
+      async (id: string) =>
+        fileConversations.find((entry) => entry.id === id) ?? null,
+    ),
+    queryConversations: vi.fn(
+      async (query: { userId: string; resourceId: string }) =>
+        fileConversations
+          .filter(
+            (entry) =>
+              entry.userId === query.userId &&
+              entry.resourceId === query.resourceId,
+          )
+          .map((entry) => ({ ...entry, title: entry.id, createdAt: T1 })),
+    ),
+    getMessages: vi.fn(async () => []),
+  };
+  const memoryAdapters = new Map(
+    fileConversations.length > 0 ? [['default', fileAdapter as never]] : [],
+  );
+  const changed: string[] = [];
   const reader = {
     listConversationHistoryPage: vi.fn(
       async (authority: SessionReadAuthority) => ({
@@ -156,14 +220,18 @@ function station(
   const service = new ReadMarkerService({
     store,
     conversations: acknowledgements,
-    // As the runtime wires it: the inventory's own per-person key. No test
-    // person is a caller that is not a person.
+    // As the runtime wires it (`readMarkerPersonKey`). No test person is a
+    // caller that is not one.
     personKeyFor: (c) =>
       c.req.header('x-test-person')
-        ? conversationAcknowledgementKey(authorityFor(c.req.raw))
+        ? readMarkerPersonKey({
+            authority: authorityFor(c.req.raw),
+            principal: () => principalFor(c.req.raw),
+          })
         : undefined,
+    onChanged: (personKey: string) => changed.push(personKey),
     agentConversations: createAgentConversationVersionSource({
-      memoryAdapters: new Map(),
+      memoryAdapters,
       sessionConversationReader: reader,
       authorityFor,
     }),
@@ -217,7 +285,7 @@ function station(
   app.route(
     '/api/conversations',
     createGlobalConversationRoutes(
-      new Map(),
+      memoryAdapters,
       { getConversation: () => null },
       logger,
       undefined,
@@ -243,6 +311,8 @@ function station(
   return {
     conversations,
     options,
+    changed,
+    principalFor,
     mark: (
       person: string | undefined,
       target: ReadMarkerTarget,
@@ -616,5 +686,115 @@ describe('one marker per person', () => {
       (await s.inventory('owner-alias')).get('c1')?.readState?.unread,
     ).toBe(false);
     expect((await s.inventory('ada')).get('c1')?.readState?.unread).toBe(true);
+  });
+});
+
+describe('review fixes (#4813)', () => {
+  test('hosted: one person reading marks it read for them only, and a tenant-only caller has no read state', async () => {
+    const s = station({
+      hosted: true,
+      room: { roomId: 'room-1', lastSeq: 4, members: ['alice', 'bob'] },
+    });
+    const room: ReadMarkerTarget = {
+      kind: 'project-room',
+      projectSlug: 'alpha',
+      roomId: 'room-1',
+    };
+    expect((await s.mark('alice', room, 4)).status).toBe(200);
+    expect((await s.mark('alice', c1, V1)).status).toBe(200);
+    const bob = await json(await s.summary('bob', [room, c1]));
+    expect(
+      bob.data.items.map((item: { unread: boolean }) => item.unread),
+    ).toEqual([true, true]);
+    expect((await s.inventory('bob')).get('c1')?.readState?.unread).toBe(true);
+    const alice = await json(await s.summary('alice', [room, c1]));
+    expect(
+      alice.data.items.map((item: { unread: boolean }) => item.unread),
+    ).toEqual([false, false]);
+    // Only the tenant is known: not a person, so no person's read state.
+    expect((await s.mark('tenant-only', room, 4)).status).toBe(403);
+    expect((await s.summary('tenant-only', [room])).status).toBe(403);
+  });
+
+  test('a successful advance announces the change for that person; a no-op does not', async () => {
+    const s = station({
+      room: { roomId: 'room-1', lastSeq: 4, members: ['ada'] },
+    });
+    const room: ReadMarkerTarget = {
+      kind: 'project-room',
+      projectSlug: 'alpha',
+      roomId: 'room-1',
+    };
+    await s.mark('ada', c1, V1);
+    await s.mark('ada', room, 3);
+    await s.mark('ada', room, 2);
+    await s.mark('ada', c1, V1);
+    expect(s.changed).toEqual(['human:test:ada', 'human:test:ada']);
+  });
+
+  test("an owned file-backed conversation past the inventory window can still be marked; another owner's cannot", async () => {
+    const s = station({
+      conversations: new Map(
+        Array.from({ length: 100 }, (_, i) => [`recent-${i}`, T2] as const),
+      ),
+      fileConversations: [
+        {
+          id: 'old-file',
+          userId: 'human:test:ada',
+          resourceId: 'default',
+          updatedAt: T1,
+        },
+        {
+          id: 'bos-file',
+          userId: 'human:test:bo',
+          resourceId: 'default',
+          updatedAt: T1,
+        },
+      ],
+    });
+    const old: ReadMarkerTarget = {
+      kind: 'agent-conversation',
+      conversationId: 'old-file',
+    };
+    const mark = await s.mark('ada', old, V1);
+    expect(mark.status).toBe(200);
+    expect((await json(mark)).data).toMatchObject({
+      seenVersion: V1,
+      unread: false,
+    });
+    expect((await s.acknowledge('ada', 'old-file', T1)).status).toBe(200);
+    expect(
+      (
+        await s.mark(
+          'ada',
+          { kind: 'agent-conversation', conversationId: 'bos-file' },
+          V1,
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  test('a corrupt marker store is refused, never read as "read"', async () => {
+    const s = station({
+      room: { roomId: 'room-1', lastSeq: 4, members: ['ada'] },
+    });
+    writeFileSync(
+      join(dir, READ_MARKER_STORE_FILE),
+      JSON.stringify({
+        version: 1,
+        createdAt: 0,
+        markers: {
+          'human:test:ada': { 'project-room:room-1': { v: 'bad', at: T1 } },
+        },
+      }),
+    );
+    const response = await s.summary('ada', [
+      { kind: 'project-room', projectSlug: 'alpha', roomId: 'room-1' },
+    ]);
+    expect(response.status).toBe(503);
+    expect(await json(response)).toEqual({
+      success: false,
+      error: 'Read state is unavailable.',
+    });
   });
 });

@@ -1,3 +1,5 @@
+import type { ConversationReadState } from '@kontourai/station-contracts/orchestration';
+import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   deriveReadMarkerState,
   READ_MARKER_REFUSAL_CODES,
@@ -7,8 +9,48 @@ import {
   type ReadMarkerTarget,
   ReadMarkerTooManyTargetsError,
 } from '@kontourai/station-contracts/read-markers';
-import type { ConversationAcknowledgementStore } from '../orchestration/conversation-acknowledgement-store.js';
+import {
+  isHostedSessionReadAuthority,
+  type SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
+import {
+  type ConversationAcknowledgementStore,
+  conversationAcknowledgementKey,
+  type IsOwnerDevice,
+} from '../orchestration/conversation-acknowledgement-store.js';
 import type { ReadMarkerStore } from './read-marker-store.js';
+
+/**
+ * Whose read state a request reads and writes (#3075).
+ *
+ * A personal Station uses the conversation inventory's own person key
+ * (`conversationAcknowledgementKey`): the local operator and their unbound
+ * paired devices are one person. A hosted Station's inventory key is the
+ * tenant alone, which would make one member's reading clear unread for every
+ * member, so read markers there are keyed by the verified person inside the
+ * tenant. A hosted request that carries only the tenant names no person and
+ * has no read state (`undefined`); so does a principal that cannot be
+ * resolved.
+ */
+export function readMarkerPersonKey(input: {
+  authority: SessionReadAuthority;
+  principal: () => PrincipalRef;
+  isOwnerDevice?: IsOwnerDevice;
+}): string | undefined {
+  if (!isHostedSessionReadAuthority(input.authority))
+    return conversationAcknowledgementKey(input.authority, input.isOwnerDevice);
+  const tenantId = input.authority.tenantExecutionContext?.tenantId;
+  if (!tenantId) return undefined;
+  let principal: PrincipalRef;
+  try {
+    principal = input.principal();
+  } catch {
+    return undefined;
+  }
+  return principal.kind === 'human'
+    ? `tenant:${tenantId}#${principal.id}`
+    : undefined;
+}
 
 /**
  * Current versions of the caller's agent conversations. Batched: one summary
@@ -90,6 +132,11 @@ export interface ReadMarkerServiceDeps {
   >;
   /** Room markers and the baseline. */
   store: ReadMarkerStore;
+  /**
+   * Called once each time a person's marker actually moves forward, with
+   * their person key, so their other clients can re-read.
+   */
+  onChanged?: (personKey: string) => void;
   agentConversations?: AgentConversationVersionSource;
   projectRooms?: RoomVersionSource<ProjectRoomTarget>;
   taskRooms?: RoomVersionSource<TaskRoomTarget>;
@@ -247,6 +294,17 @@ export class ReadMarkerService {
     if (!resolved) return undefined;
     if (version > resolved.latestVersion)
       throw new ReadMarkerFutureVersionError(version, resolved.latestVersion);
+    return this.advance(person, target, resolved, version);
+  }
+
+  /** Moves `person`'s marker forward and announces it if it moved. */
+  private advance(
+    person: string,
+    target: ReadMarkerTarget,
+    resolved: Resolved,
+    version: number,
+  ): ReadMarkerState {
+    const before = this.seen(person, [resolved]).get(resolved.key) ?? 0;
     if (target.kind === 'agent-conversation') {
       // The acknowledgement store keeps the later of the two versions.
       this.deps.conversations.acknowledge({
@@ -262,12 +320,76 @@ export class ReadMarkerService {
         now: this.deps.now?.() ?? new Date(),
       });
     }
-    const seen = this.seen(person, [resolved]);
-    return this.state(
-      target,
-      resolved,
-      seen.get(resolved.key) ?? 0,
-      this.baseline(),
+    const after = this.seen(person, [resolved]).get(resolved.key) ?? 0;
+    if (after > before) this.deps.onChanged?.(person);
+    return this.state(target, resolved, after, this.baseline());
+  }
+
+  /**
+   * `POST /api/conversations/:id/acknowledgement` (#3075): refuses a version
+   * the conversation has not reached, keeps the inherited write under the
+   * inventory's own key (`inheritedKey`, which `acknowledgedAt` and Home's
+   * Just finished read), and moves the caller's person marker when that is a
+   * different key (a hosted member). `undefined` when the caller cannot read
+   * the conversation; `state` is absent for a caller that names no person.
+   */
+  async acknowledgeConversation(
+    c: ReadMarkerRequestContext,
+    conversationId: string,
+    version: number,
+    inheritedKey: string,
+  ): Promise<{ state?: ReadMarkerState } | undefined> {
+    const target: ReadMarkerTarget = {
+      kind: 'agent-conversation',
+      conversationId,
+    };
+    const [resolved] = await this.resolve([target], c.req.raw);
+    if (!resolved) return undefined;
+    if (version > resolved.latestVersion)
+      throw new ReadMarkerFutureVersionError(version, resolved.latestVersion);
+    const person = this.deps.personKeyFor(c);
+    if (person !== inheritedKey)
+      this.deps.conversations.acknowledge({
+        userId: inheritedKey,
+        conversationId,
+        updatedAt: new Date(version).toISOString(),
+      });
+    return person
+      ? { state: this.advance(person, target, resolved, version) }
+      : {};
+  }
+
+  /**
+   * The caller's derived read state for inventory items, from their person
+   * key; `undefined` when the caller is not a person (no read state, never
+   * a guessed one).
+   */
+  conversationReadStates(
+    c: ReadMarkerRequestContext,
+    items: readonly { id: string; version: number }[],
+  ): ReadonlyMap<string, ConversationReadState> | undefined {
+    const person = this.deps.personKeyFor(c);
+    if (!person) return undefined;
+    const acknowledged = this.deps.conversations.getMany(
+      person,
+      items.map((item) => item.id),
+    );
+    const baseline = this.baseline();
+    return new Map(
+      items.map((item) => {
+        const seenVersion = Math.min(
+          Math.max(acknowledgedVersion(acknowledged.get(item.id)), baseline),
+          item.version,
+        );
+        return [
+          item.id,
+          {
+            version: item.version,
+            seenVersion,
+            unread: item.version > seenVersion,
+          },
+        ];
+      }),
     );
   }
 }

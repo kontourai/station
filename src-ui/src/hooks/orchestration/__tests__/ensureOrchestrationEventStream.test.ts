@@ -126,6 +126,45 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     }
   });
 
+  test('#3075: a read-marker change re-reads the inventory and read-marker queries for this stream’s authority only', () => {
+    const apiBase = 'https://read-markers-changed.example.test';
+    const client = new QueryClient();
+    const matching = [
+      ['conversation-inventory'],
+      ['conversation-inventory', apiBase, 'current'],
+      ['read-markers', 'summary', ['agent-conversation:c1']],
+    ];
+    const foreign = [
+      ['conversation-inventory', apiBase, 'retired'],
+      ['conversation-inventory', 'https://other.example.test', 'current'],
+      ['orchestration-sessions', apiBase, 'current'],
+    ];
+    const releaseScope = registerOrchestrationStreamQueryClient(
+      apiBase,
+      client,
+      'current',
+    );
+    const release = ensureOrchestrationEventStream(apiBase, client);
+    try {
+      for (const key of [...matching, ...foreign]) client.setQueryData(key, []);
+      capturedOnMessage()({ event: 'read-markers:changed', data: '{}' });
+      for (const key of matching)
+        expect(
+          client.getQueryState(key)?.isInvalidated,
+          JSON.stringify(key),
+        ).toBe(true);
+      for (const key of foreign)
+        expect(
+          client.getQueryState(key)?.isInvalidated,
+          JSON.stringify(key),
+        ).toBe(false);
+    } finally {
+      release();
+      releaseScope();
+      client.clear();
+    }
+  });
+
   test('keeps the owned stream single-flight while its transport retries a transient failure', () => {
     ensureOrchestrationEventStream('http://api-1848-transient');
     expect(mocks.fetchSSE).toHaveBeenCalledOnce();

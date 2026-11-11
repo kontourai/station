@@ -1,5 +1,6 @@
 import { chatBelongsToStation } from '../../connections/station-state';
 import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
+import { usePublishConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import '../chat/TaskShaping.css';
@@ -1715,6 +1716,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const activeChatOnScreen =
     isPaneOpen && !(isMobile && mobileInboxOpen) && !showNewChatModal;
   useAcknowledgeVisibleConversation(activeTaskItem, activeChatOnScreen);
+  // #3075: every surface that draws a work row reads which one is on screen.
+  usePublishConversationOnScreen(
+    activeChatOnScreen ? (importedSessionId ?? activeSessionId) : null,
+  );
   // #3075: the header's unread count is the inbox rows' own server answer.
   const documentFocused = useDocumentFocused();
   const inboxActiveChatId = importedSessionId ?? activeSessionId;
@@ -3996,7 +4001,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         workFacts,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
-                        activeChatOnScreen,
                         openChatSessionIds: openInboxChatSessionIds,
                         onFocusChat: focusSessionInPane,
                         onOpenConversation:

@@ -26,10 +26,11 @@ type AcknowledgeableItem = Pick<
  *   when it finishes after the person looked away.
  * - Nothing already on record at or past this version is sent again.
  *
- * #3075: when the server reports read state (`unread`), it alone decides:
- * every version it calls unread is recorded while the chat is on screen, so
- * a second device sees it read even while the turn is still running. A host
- * that reports none keeps the comparison above.
+ * #3075: every version the server calls `unread` is recorded while the chat
+ * is on screen, so a second device sees it read even mid-turn. Otherwise the
+ * last-viewed rule above still decides: "read" may come from the baseline
+ * (history before read state was kept), and Home's Just finished compares
+ * the recorded view with the finish time, so that record must still be made.
  */
 export function visibleConversationAcknowledgement(
   item: AcknowledgeableItem | undefined,
@@ -37,7 +38,8 @@ export function visibleConversationAcknowledgement(
 ): string | undefined {
   const version = item?.conversationUpdatedAt;
   if (!item || !version) return undefined;
-  if (item.unread !== undefined) return item.unread ? version : undefined;
+  // The server says unread: record it, every version, while on screen.
+  if (item.unread === true) return version;
   const versionAt = Date.parse(version);
   if (!Number.isFinite(versionAt)) return undefined;
   if (item.acknowledgedAt !== undefined && item.acknowledgedAt >= versionAt) {

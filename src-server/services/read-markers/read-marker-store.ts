@@ -55,6 +55,38 @@ export interface ReadMarkerStore {
   baseline(): number;
 }
 
+const isSafeVersion = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Strict decode: a store whose shape is not exactly this is corrupt and is
+ * refused (`JsonFileStoreCorruptionError`), never read as "read". A version
+ * that is not a non-negative safe integer would otherwise become NaN and
+ * compare as seen.
+ */
+export function decodeReadMarkerStore(text: string): ReadMarkerStoreData {
+  const parsed: unknown = JSON.parse(text);
+  if (!isRecord(parsed) || parsed.version !== STORE_VERSION)
+    throw new Error('Unsupported read marker store version');
+  if (parsed.createdAt !== undefined && !isSafeVersion(parsed.createdAt))
+    throw new Error('Invalid read marker store baseline');
+  if (!isRecord(parsed.markers))
+    throw new Error('Invalid read marker store markers');
+  for (const forPerson of Object.values(parsed.markers)) {
+    if (!isRecord(forPerson)) throw new Error('Invalid read marker person');
+    for (const marker of Object.values(forPerson))
+      if (
+        !isRecord(marker) ||
+        !isSafeVersion(marker.v) ||
+        typeof marker.at !== 'string'
+      )
+        throw new Error('Invalid read marker');
+  }
+  return parsed as unknown as ReadMarkerStoreData;
+}
+
 export class FileReadMarkerStore implements ReadMarkerStore {
   private readonly store: JsonFileStore<ReadMarkerStoreData>;
 
@@ -81,7 +113,7 @@ export class FileReadMarkerStore implements ReadMarkerStore {
   }
 
   baseline(): number {
-    return this.store.read().createdAt ?? 0;
+    return this.store.read(decodeReadMarkerStore).createdAt ?? 0;
   }
 
   getMany(
@@ -90,7 +122,9 @@ export class FileReadMarkerStore implements ReadMarkerStore {
   ): ReadonlyMap<string, number> {
     const result = new Map<string, number>();
     if (keys.length === 0) return result;
-    const forPerson = this.store.read().markers[principalId];
+    const forPerson = this.store.read(decodeReadMarkerStore).markers[
+      principalId
+    ];
     if (!forPerson) return result;
     for (const key of keys) {
       const marker = Object.hasOwn(forPerson, key) ? forPerson[key] : undefined;
@@ -112,7 +146,7 @@ export class FileReadMarkerStore implements ReadMarkerStore {
   }): number {
     if (!Number.isSafeInteger(version) || version < 0)
       throw new RangeError('A read marker version is a non-negative integer');
-    const data = this.store.read();
+    const data = this.store.read(decodeReadMarkerStore);
     const forPerson = data.markers[principalId] ?? {};
     const stored = Object.hasOwn(forPerson, key)
       ? forPerson[key]?.v

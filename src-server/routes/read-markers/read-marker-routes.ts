@@ -25,6 +25,10 @@ import {
 import { Hono } from 'hono';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import {
+  JsonFileStoreCorruptionError,
+  JsonFileStoreReadLimitError,
+} from '../../services/infra/json-store.js';
+import {
   ReadMarkerFutureVersionError,
   ReadMarkerNoPersonError,
   type ReadMarkerService,
@@ -54,7 +58,7 @@ export function createReadMarkerRoutes(deps: {
   // Every refusal answers an authored sentence, never a caught `.message`
   // (route-error-egress-gate): the typed errors below only choose which.
   const refuse = (
-    c: { json: (body: unknown, status: 400 | 403 | 409) => Response },
+    c: { json: (body: unknown, status: 400 | 403 | 409 | 503) => Response },
     error: unknown,
   ): Response => {
     if (error instanceof ReadMarkerTooManyTargetsError)
@@ -86,6 +90,15 @@ export function createReadMarkerRoutes(deps: {
       return c.json(
         { success: false, error: 'Only a person has read state' },
         403,
+      );
+    // A store that does not decode is refused, never read as "read".
+    if (
+      error instanceof JsonFileStoreCorruptionError ||
+      error instanceof JsonFileStoreReadLimitError
+    )
+      return c.json(
+        { success: false, error: 'Read state is unavailable.' },
+        503,
       );
     // A deterministic authz refusal, answered like `/api/me/layouts` does.
     if (error instanceof PrincipalUnresolvedError)

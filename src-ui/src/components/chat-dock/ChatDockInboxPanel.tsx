@@ -26,8 +26,6 @@ import {
 export interface ChatDockInboxPanelProps {
   items: HomeWorkItem[];
   activeChatSessionId: string | null;
-  /** See `InboxGroupListProps.activeChatOnScreen`. */
-  activeChatOnScreen?: boolean;
   openChatSessionIds: string[];
   onFocusChat: (id: string) => void;
   /** station#1297: rehydrates a session with no live tab into the chat
@@ -96,7 +94,6 @@ export interface ChatDockInboxPanelProps {
 function ChatDockInboxPanelImpl({
   items,
   activeChatSessionId,
-  activeChatOnScreen,
   openChatSessionIds,
   onFocusChat,
   onOpenConversation,
@@ -245,7 +242,6 @@ function ChatDockInboxPanelImpl({
             groups={groups}
             idPrefix="chat-dock-inbox"
             activeChatSessionId={activeChatSessionId}
-            activeChatOnScreen={activeChatOnScreen}
             openChatIds={openChatIds}
             now={now}
             agents={agents}
