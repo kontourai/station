@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-11T11:00:57Z | nightly-desktop | 0.1.11-nightly.20261111.1 | `d4292a6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42998652773) |
 | 2026-11-11T11:00:54Z | nightly-android | 0.1.11-nightly.20261111.1 | `d4292a6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42998652773) |
 | 2026-11-11T10:08:32Z | nightly-npm | 0.11.0-nightly.20261111.42998652773 | `d4292a6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42998652773) |
 | 2026-11-11T03:33:26Z | nightly-desktop | 0.1.11-nightly.20261111 | `db39099` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42944787833) |
@@ -460,6 +461,29 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-11T11:00:57Z · nightly-desktop · 0.1.11-nightly.20261111.1
+
+- Ship SHA: `d4292a6bd18d1d97b54b05df3019e715c492cb48`
+- Artifact built at: `2026-11-11T10:04:04.236Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 42998652773)
+
+### Changelog
+
+Commits since `db39099` ([full sha](https://github.com/kontourai/station/commit/db39099bdf65812c547186bb3c1b818a249c55a7)):
+
+**Features**
+
+- [#4782](https://github.com/kontourai/station/pull/4782) feat(doctor): report confinement mechanism and confined credential per engine (#4774)
+
+**Fixes**
+
+- [#4779](https://github.com/kontourai/station/pull/4779) fix(ui): label every plain retry button "Retry"; land the outbox hand-off fix missing from #4776
+
+**Other**
+
+- [#4783](https://github.com/kontourai/station/pull/4783) refactor(ui): give the Project page the shared section navigation
 
 ## 2026-11-11T11:00:54Z · nightly-android · 0.1.11-nightly.20261111.1
 
