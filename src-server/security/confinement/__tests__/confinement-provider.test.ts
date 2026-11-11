@@ -11,6 +11,7 @@ import { codexSandboxConfinementProvider } from '../../../providers/adapters/cod
 import {
   assertRequiredConfinementObserved,
   type ConfinementProvider,
+  confinedNetworkPlan,
   observedConfinementRecord,
   readConfinementRecord,
   requiredConfinementLevel,
@@ -242,5 +243,150 @@ describe('readConfinementRecord', () => {
     ['no policy basis', { ...valid, policyBasis: undefined }],
   ])('is not one with %s', (_label, value) => {
     expect(readConfinementRecord(value)).toBeUndefined();
+  });
+});
+
+describe('#4769: a restricted network policy', () => {
+  const RESTRICTED = {
+    policy: 'restricted',
+    allowedHosts: ['registry.npmjs.org'],
+  } as const;
+  const wrapper = (restrictsNetwork: boolean) =>
+    provider({
+      mechanism: restrictsNetwork ? 'seatbelt' : 'bubblewrap',
+      engagement: 'spawn-wrapper',
+      engines: ['claude'],
+      restrictsNetwork,
+      networkRestrictionUnavailable: 'test: cannot restrict',
+    });
+
+  test('a required start resolves only a provider that can restrict the network, and its plan carries the policy', () => {
+    const resolved = resolveConfinement({
+      ...WORKSPACE_NEVER,
+      providers: [wrapper(false), wrapper(true)],
+      network: () => RESTRICTED,
+    });
+    expect(resolved.plan).toMatchObject({
+      mechanism: 'seatbelt',
+      network: RESTRICTED,
+    });
+    // The plan holds its own copy of the host list.
+    expect(resolved.plan?.network?.allowedHosts).not.toBe(
+      RESTRICTED.allowedHosts,
+    );
+  });
+
+  test('a required start with only providers that cannot restrict the network is refused, naming each reason', () => {
+    expect(() =>
+      resolveConfinement({
+        ...WORKSPACE_NEVER,
+        providers: [wrapper(false)],
+        network: () => RESTRICTED,
+      }),
+    ).toThrow(
+      /requires os-profile confinement with a restricted network .*\(bubblewrap: test: cannot restrict\)/,
+    );
+    // A provider that does not declare it cannot restrict.
+    expect(() =>
+      resolveConfinement({
+        ...WORKSPACE_NEVER,
+        providers: [
+          provider({
+            mechanism: 'seatbelt',
+            engagement: 'spawn-wrapper',
+            engines: ['claude'],
+          }),
+        ],
+        network: () => RESTRICTED,
+      }),
+    ).toThrow(/seatbelt: it cannot restrict the network/);
+  });
+
+  test('a start that requires no confinement never reads the policy, and its plan carries none', () => {
+    let reads = 0;
+    const resolved = resolveConfinement({
+      ...WORKSPACE_NEVER,
+      appliedMode: 'auto',
+      engine: 'codex',
+      providers: [codexSandboxConfinementProvider],
+      network: () => {
+        reads += 1;
+        return RESTRICTED;
+      },
+    });
+    expect(reads).toBe(0);
+    expect(resolved.plan).toBeDefined();
+    expect(resolved.plan).not.toHaveProperty('network');
+  });
+
+  test('the setting is opt-in: absent or full leaves the network open', () => {
+    expect(confinedNetworkPlan(undefined)).toBeUndefined();
+    expect(confinedNetworkPlan({ mode: 'full' })).toBeUndefined();
+    expect(
+      confinedNetworkPlan({
+        mode: 'restricted',
+        allowedHosts: [
+          'registry.npmjs.org',
+          '*.github.com',
+          '[2001:db8::1]:8443',
+        ],
+      }),
+    ).toEqual({
+      policy: 'restricted',
+      allowedHosts: [
+        'registry.npmjs.org',
+        '*.github.com',
+        '[2001:db8::1]:8443',
+      ],
+    });
+  });
+
+  test.each([
+    ['a value that is not a setting', { mode: 'restricted' }],
+    ['an unknown mode', { mode: 'loopback' }],
+    ['null', null],
+    [
+      'an entry the broker cannot read',
+      { mode: 'restricted', allowedHosts: ['https://registry.npmjs.org'] },
+    ],
+  ])(
+    'a policy with %s refuses the start instead of running it open',
+    (_label, value) => {
+      expect(() => confinedNetworkPlan(value)).toThrow(
+        expect.objectContaining({
+          name: 'ConfinementRefusedError',
+          code: 'confinement_mechanism_unavailable',
+        }),
+      );
+    },
+  );
+
+  test('the record states a restricted network, and reads back only that value', () => {
+    const plan = {
+      requiredLevel: 'os-profile',
+      policyBasis: 'workspace-floor',
+      mechanism: 'seatbelt',
+      level: 'os-profile',
+      workspaceAccess: 'mounted',
+      network: RESTRICTED,
+    } as const;
+    const record = observedConfinementRecord(
+      plan,
+      'confined',
+      [],
+      'restricted',
+    );
+    expect(record.network).toBe('restricted');
+    expect(JSON.stringify(record)).not.toContain('registry.npmjs.org');
+    expect(
+      observedConfinementRecord(plan, 'confined', [], 'full'),
+    ).not.toHaveProperty('network');
+    expect(readConfinementRecord(record)).toEqual(record);
+    expect(
+      readConfinementRecord({ ...record, network: 'full' }),
+    ).toBeUndefined();
+    expect(
+      readConfinementRecord({ ...record, network: 'open' }),
+    ).toBeUndefined();
   });
 });

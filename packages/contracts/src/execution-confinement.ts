@@ -157,6 +157,78 @@ export interface ExecutionConfinementRecord {
    * `no-mechanism`.
    */
   fallback?: ConfinementFallbackReason;
+  /**
+   * #4769: `restricted` when the started process could reach only Station's
+   * loopback egress broker, read from the profile it was spawned with.
+   * Absent when its network was not restricted (the default policy, a start
+   * with no Station-built mechanism, a fallback, or a record written before
+   * #4769): the network was open.
+   */
+  network?: 'restricted';
+}
+
+/**
+ * #4769: a confined start's restricted network. The process reaches only
+ * Station's loopback egress broker, which admits the engine's own model
+ * endpoint (derived from the resolved connection at spawn) and
+ * `allowedHosts`, and refuses every other host.
+ */
+export interface ConfinementNetworkPlan {
+  policy: 'restricted';
+  /** Allowed-host entries as the policy lists them. */
+  allowedHosts: readonly string[];
+}
+
+/**
+ * #4769: the Station setting `confinedNetwork`. Absent, or `full`, leaves a
+ * confined start's network open, as before. `restricted` limits every start
+ * that requires confinement (`os-profile` or stronger) to the egress
+ * broker; the operator's own `host` starts are not confined and are
+ * unaffected.
+ *
+ * Each `allowedHosts` entry is `host`, `host:port`, `*.domain` (every
+ * subdomain, not the domain itself) or an IP literal (IPv6 in brackets),
+ * with port 443 unless one is named.
+ */
+export type ConfinedNetworkSetting =
+  | { mode: 'full' }
+  | { mode: 'restricted'; allowedHosts: readonly string[] };
+
+/** The most `allowedHosts` entries the setting may list. */
+export const MAX_CONFINED_NETWORK_ALLOWED_HOSTS = 256;
+/** The longest `allowedHosts` entry the setting may hold. */
+export const MAX_CONFINED_NETWORK_HOST_ENTRY_LENGTH = 261;
+
+/**
+ * The `confinedNetwork` setting read from a stored value, or `undefined`
+ * when the value is not one. Only the shape is checked here; each entry's
+ * host syntax is checked by the broker that enforces it, and a start whose
+ * policy holds an entry the broker cannot read is refused.
+ */
+export function parseConfinedNetworkSetting(
+  value: unknown,
+): ConfinedNetworkSetting | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const setting = value as Record<string, unknown>;
+  const keys = Object.keys(setting);
+  if (setting.mode === 'full')
+    return keys.length === 1 ? { mode: 'full' } : undefined;
+  if (setting.mode !== 'restricted') return undefined;
+  const hosts = setting.allowedHosts;
+  if (
+    keys.some((key) => key !== 'mode' && key !== 'allowedHosts') ||
+    !Array.isArray(hosts) ||
+    hosts.length > MAX_CONFINED_NETWORK_ALLOWED_HOSTS ||
+    !hosts.every(
+      (host) =>
+        typeof host === 'string' &&
+        host.length > 0 &&
+        host.length <= MAX_CONFINED_NETWORK_HOST_ENTRY_LENGTH,
+    )
+  )
+    return undefined;
+  return { mode: 'restricted', allowedHosts: [...(hosts as string[])] };
 }
 
 /**
@@ -172,6 +244,11 @@ export interface ConfinementPlan {
   /** The level `mechanism` provides. */
   level: Exclude<ConfinementLevel, 'host'>;
   workspaceAccess: ConfinementWorkspaceAccess;
+  /**
+   * #4769: present when the start's policy restricts the network; only a
+   * provider that can restrict it resolves such a plan.
+   */
+  network?: ConfinementNetworkPlan;
 }
 
 /**
@@ -262,6 +339,17 @@ export type ConfinementPreflightCredential =
     }
   | { state: 'not-applicable'; reason: string };
 
+/**
+ * #4769: whether this mechanism can restrict a confined start's network to
+ * Station's egress broker on this host. `available` only when the mechanism
+ * can and is available here; the reason says why not otherwise. Whether the
+ * start's model endpoint can be derived is decided at start.
+ */
+export interface ConfinementPreflightRestrictedNetwork {
+  state: 'available' | 'unavailable';
+  reason: string;
+}
+
 /** One engine's host-level confinement facts, for one mechanism. */
 export interface EngineConfinementPreflight {
   /** An engine id: see {@link CONFINEMENT_PREFLIGHT_ENGINE_PATTERN}. */
@@ -277,6 +365,8 @@ export interface EngineConfinementPreflight {
    * content-free state from `station doctor --json`.
    */
   confinedAuthentication: ConfinementPreflightCredential;
+  /** #4769: absent from a Station that predates restricted networks. */
+  restrictedNetwork?: ConfinementPreflightRestrictedNetwork;
 }
 
 /**
@@ -395,6 +485,19 @@ function parsePreflightCredential(
   }
 }
 
+/** `undefined` when absent, `null` when present but not one. */
+function parsePreflightRestrictedNetwork(
+  value: unknown,
+): ConfinementPreflightRestrictedNetwork | undefined | null {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entry = value as Record<string, unknown>;
+  return (entry.state === 'available' || entry.state === 'unavailable') &&
+    preflightText(entry.reason)
+    ? { state: entry.state, reason: entry.reason }
+    : null;
+}
+
 /**
  * A confinement preflight read back from a Station, or `undefined` when the
  * value is not one (an unknown state, an over-long reason, too many
@@ -424,6 +527,9 @@ export function parseConfinementPreflight(
     const confinedAuthentication = parsePreflightCredential(
       engine.confinedAuthentication,
     );
+    const restrictedNetwork = parsePreflightRestrictedNetwork(
+      engine.restrictedNetwork,
+    );
     if (
       typeof engine.engine !== 'string' ||
       !CONFINEMENT_PREFLIGHT_ENGINE_PATTERN.test(engine.engine) ||
@@ -434,7 +540,8 @@ export function parseConfinementPreflight(
       typeof engine.mechanismState !== 'string' ||
       !PREFLIGHT_MECHANISM_STATES.has(engine.mechanismState) ||
       !preflightText(engine.mechanismReason) ||
-      !confinedAuthentication
+      !confinedAuthentication ||
+      restrictedNetwork === null
     )
       return undefined;
     engines.push({
@@ -445,6 +552,7 @@ export function parseConfinementPreflight(
         engine.mechanismState as ConfinementPreflightMechanismState,
       mechanismReason: engine.mechanismReason,
       confinedAuthentication,
+      ...(restrictedNetwork ? { restrictedNetwork } : {}),
     });
   }
   return { engines, decidedAtStart };

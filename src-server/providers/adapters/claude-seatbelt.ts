@@ -35,6 +35,11 @@ import type {
   ConfinementSpawnSpec,
   PendingConfinementPosture,
 } from '../../security/confinement/confinement-provider.js';
+import type {
+  EgressBroker,
+  EgressTarget,
+} from '../../security/confinement/egress-broker.js';
+import { normalizeEgressHost } from '../../security/confinement/egress-broker.js';
 import {
   canonicalPath,
   discoverSeatbeltGitLayout,
@@ -395,6 +400,94 @@ export async function prepareConfinedClaudeLaunch(input: {
   };
 }
 
+/** #4769: Claude Code's API when no base URL is configured. */
+export const CLAUDE_DEFAULT_MODEL_ENDPOINT: EgressTarget = {
+  host: 'api.anthropic.com',
+  port: 443,
+};
+
+/** Claude Code's switches to a cloud provider's model API. */
+const CLAUDE_CLOUD_PROVIDER_KEYS = [
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+] as const;
+
+function enabled(value: string | undefined): boolean {
+  const text = value?.trim().toLowerCase();
+  return Boolean(text) && text !== '0' && text !== 'false' && text !== 'no';
+}
+
+/**
+ * #4769: the model endpoint a Claude engine spawned with `env` reaches,
+ * derived from the resolved connection's environment, never typed by hand:
+ * an `https:` `ANTHROPIC_BASE_URL` (a gateway or Station's model-proxy
+ * route), else Anthropic's API. A cloud provider's API (Bedrock, Vertex,
+ * Foundry) needs hosts this does not derive, and a plain-HTTP base URL is
+ * not tunnelled by `CONNECT`, so each is refused with the reason.
+ */
+export function claudeModelEndpoint(
+  env: Readonly<Record<string, string | undefined>>,
+): { endpoint: EgressTarget } | { refusal: string } {
+  const cloud = CLAUDE_CLOUD_PROVIDER_KEYS.find((key) => enabled(env[key]));
+  if (cloud)
+    return {
+      refusal: `A restricted network cannot derive the model endpoint of a Claude connection that uses a cloud provider (${cloud}).`,
+    };
+  const base = env.ANTHROPIC_BASE_URL?.trim();
+  if (!base) return { endpoint: { ...CLAUDE_DEFAULT_MODEL_ENDPOINT } };
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return {
+      refusal:
+        "A restricted network cannot read the Claude connection's ANTHROPIC_BASE_URL.",
+    };
+  }
+  if (url.protocol !== 'https:')
+    return {
+      refusal:
+        "A restricted network tunnels HTTPS only, and the Claude connection's ANTHROPIC_BASE_URL is not an https: URL.",
+    };
+  const host = normalizeEgressHost(url.hostname);
+  if (!host)
+    return {
+      refusal:
+        "A restricted network cannot read the host of the Claude connection's ANTHROPIC_BASE_URL.",
+    };
+  return { endpoint: { host, port: url.port ? Number(url.port) : 443 } };
+}
+
+/** The proxy variables a restricted engine is pointed at the broker with. */
+const PROXY_KEYS = [
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+  'ALL_PROXY',
+  'https_proxy',
+  'http_proxy',
+  'all_proxy',
+] as const;
+
+/**
+ * #4769: `env` with every proxy variable pointed at the egress broker on
+ * `port`, and any proxy exclusion removed: an excluded host would be dialled
+ * directly, which the profile refuses. Claude Code's non-essential traffic
+ * (telemetry, error reports, update checks) is turned off, since its hosts
+ * are not allowed and would only add refusals.
+ */
+export function restrictedNetworkEnv(
+  env: Readonly<Record<string, string>>,
+  port: number,
+): Record<string, string> {
+  const next: Record<string, string> = { ...env };
+  delete next.NO_PROXY;
+  delete next.no_proxy;
+  for (const key of PROXY_KEYS) next[key] = `http://127.0.0.1:${port}`;
+  next.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
+  return next;
+}
+
 /**
  * The engine spawn sent through `provider.confine`: only allowed ambient
  * variables and the operator's `configuredKeys` pass (`confinedEnvAllows`);
@@ -403,6 +496,12 @@ export async function prepareConfinedClaudeLaunch(input: {
  * not strip it itself), so nothing points at the operator's Keychain
  * namespace. Whatever `confine` returns is what is spawned. `pending` is the
  * provider's own pending posture for that spawn.
+ *
+ * #4769: with `egress`, the network is restricted to that broker: the proxy
+ * variables point at it (`restrictedNetworkEnv`), the broker admits the
+ * model endpoint derived from the environment actually spawned
+ * (`claudeModelEndpoint`, which throws when it cannot be derived), and the
+ * provider is asked for `network: 'broker'`.
  */
 export function confinedClaudeSpawn(
   provider: ConfinementProvider<SeatbeltEvidence>,
@@ -411,6 +510,7 @@ export function confinedClaudeSpawn(
     'workspace' | 'configDir' | 'tmpDir' | 'grants'
   >,
   configuredKeys: ReadonlySet<string> = new Set(),
+  egress?: { broker: Pick<EgressBroker, 'port' | 'setModelEndpoint'> },
 ): {
   wrap: ClaudeSpawnWrap;
   pending: () => PendingConfinementPosture<SeatbeltEvidence> | undefined;
@@ -427,13 +527,22 @@ export function confinedClaudeSpawn(
         env[key] = value;
     env.CLAUDE_CONFIG_DIR = launch.configDir;
     env.TMPDIR = launch.tmpDir;
+    let spawnEnv: Record<string, string> = env;
+    if (egress) {
+      const model = claudeModelEndpoint(env);
+      if ('refusal' in model) throw new Error(model.refusal);
+      egress.broker.setModelEndpoint(model.endpoint);
+      spawnEnv = restrictedNetworkEnv(env, egress.broker.port);
+    }
     const confined = provider.confine({
       command: spawn.command,
       args: spawn.args,
       cwd: launch.workspace,
-      env,
+      env: spawnEnv,
       grants: launch.grants,
-      network: 'full',
+      ...(egress
+        ? { network: 'broker' as const, brokerPort: egress.broker.port }
+        : { network: 'full' as const }),
     });
     pending = confined.pending;
     return {

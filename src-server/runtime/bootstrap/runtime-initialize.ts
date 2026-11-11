@@ -57,6 +57,7 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
+import { confinedNetworkPlan } from '../../security/confinement/confinement-provider.js';
 import {
   createRuntimeNativeForkReadAdmissionDomain,
   type NativeForkReadAdmissionDomain,
@@ -694,6 +695,10 @@ export async function initializeRuntime(
     // grant unconfined, from their next turn.
     isFullAccessGrantorCurrent: (deviceId) =>
       deps.environmentSecurityService.deviceHoldsFullAccess(deviceId),
+    // #4769: read at each start that requires confinement, so a changed
+    // policy applies from the next such start.
+    confinedNetworkPolicy: async () =>
+      confinedNetworkPlan((await configLoader.loadAppConfig()).confinedNetwork),
     // Bedrock and Ollama are Station-engine model-provider implementations,
     // not public engine connections. Keep them available for dispatch without
     // publishing them through the registry that feeds New Chat inventory.

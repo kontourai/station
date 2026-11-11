@@ -255,6 +255,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the pinned legs passed. The live Claude handshake runs only on a Mac with
   // `claude` on PATH.
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+  // #4769: real `sandbox-exec` children under the restricted-network profile
+  // (direct TCP, a Unix socket and UDP refused; the egress broker reached)
+  // and one bounded live Claude turn through the broker to a local stand-in;
+  // skips loudly where Seatbelt cannot apply. Pinned, with the legs above,
+  // as the `seatbelt-kernel` profile.
+  'src-server/security/confinement/__tests__/seatbelt-network.process.test.ts',
   // #4770: real `bwrap` kernel probes (git, hidden paths, namespaces) and
   // one bounded live Claude handshake (`claude` on PATH, else the Agent
   // SDK's own binary); skips loudly where the production bubblewrap sandbox

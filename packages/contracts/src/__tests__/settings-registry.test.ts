@@ -123,6 +123,8 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
       [
         'agentConnections',
         'approvalGuardian',
+        // #4769 — the confined-session network policy; no Settings row yet.
+        'confinedNetwork',
         // station#1500 slice 2.5 — the scoped contribution map.
         'contribution',
         'distributionProfile',
@@ -301,6 +303,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // Confirmed against `claudeArtifactsSpawnEnv` (`=== true`) in
         // claude-adapter.ts — absent is off.
         'claudeArtifactsEnabled',
+        // #4769: confirmed against `confinedNetworkPlan`, which reads an
+        // absent value as an open network.
+        'confinedNetwork',
         'defaultChatFontSize',
         'defaultMaxTurns',
         // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`

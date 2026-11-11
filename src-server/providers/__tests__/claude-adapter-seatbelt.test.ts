@@ -9,6 +9,7 @@
  * side is `seatbelt.process.test.ts`.
  */
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -105,6 +106,25 @@ const BUBBLEWRAP_PLAN: ConfinementPlan = {
   ...SEATBELT_PLAN,
   mechanism: 'bubblewrap',
 };
+/** #4769: a Seatbelt plan under a restricted network policy. */
+const RESTRICTED_PLAN: ConfinementPlan = {
+  ...SEATBELT_PLAN,
+  network: { policy: 'restricted', allowedHosts: ['registry.npmjs.org'] },
+};
+
+/** Sends `request` to a loopback port and reads until the socket closes. */
+function exchange(port: number, request: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, '127.0.0.1');
+    let text = '';
+    socket.on('data', (chunk) => {
+      text += chunk.toString('latin1');
+    });
+    socket.on('close', () => resolve(text));
+    socket.on('error', reject);
+    socket.write(request);
+  });
+}
 
 /** Masks every credential an ambient environment could carry. */
 const NO_CREDENTIAL = {
@@ -955,6 +975,137 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     expect(FakeClaudeChild.newest!.spawnArgs.command).toBe('/usr/bin/bwrap');
     expect(query.setPermissionMode).not.toHaveBeenCalled();
     await expect(adapter.hasSession('bubblewrap-failed')).resolves.toBe(false);
+  });
+
+  test('#4769: a restricted plan spawns the broker-only profile, points the engine at its broker, records it, and reports a refusal once', async () => {
+    createAdapter({
+      connectionEnv: { ...FAKE_ENV_CREDENTIAL, NO_PROXY: '*' },
+    });
+    const handshake = deferred<unknown>();
+    const query = startingQuery(handshake.promise);
+    const starting = startConfined('restricted', {
+      confinementPlan: RESTRICTED_PLAN,
+    });
+    await vi.waitFor(() =>
+      expect(query.initializationResult).toHaveBeenCalled(),
+    );
+    const child = FakeClaudeChild.newest!;
+    const profile = child.spawnArgs.args[1]!;
+    expect(profile).not.toContain('(allow network*)');
+    const port = Number(
+      /\(allow network-outbound \(remote tcp "localhost:(\d+)"\)\)/.exec(
+        profile,
+      )?.[1],
+    );
+    expect(port).toBeGreaterThan(0);
+    const env = spawnedEnv();
+    expect(env.HTTPS_PROXY).toBe(`http://127.0.0.1:${port}`);
+    expect(env.HTTP_PROXY).toBe(`http://127.0.0.1:${port}`);
+    expect(env).not.toHaveProperty('NO_PROXY');
+    expect(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1');
+    handshake.resolve({});
+    await starting;
+    expect((await started('restricted')).stationConfinementRecord).toEqual({
+      level: 'os-profile',
+      required: true,
+      posture: 'confined',
+      mechanism: 'seatbelt',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+      writeGrants: ['station-config', 'station-temp', 'workspace'],
+      network: 'restricted',
+    });
+    // The session's broker refuses a host its policy does not list, and the
+    // person is told once, with the host and port and nothing else.
+    for (let attempt = 0; attempt < 2; attempt += 1)
+      expect(
+        await exchange(port, 'CONNECT exfil.example:443 HTTP/1.1\r\n\r\n'),
+      ).toMatch(/^HTTP\/1\.1 403/);
+    await vi.waitFor(() =>
+      expect(
+        events.filter(
+          (event) =>
+            event.method === 'runtime.warning' &&
+            (event as { code?: string }).code === 'confined_network_denied',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          threadId: 'restricted',
+          message: expect.stringContaining('exfil.example:443'),
+          details: { reason: 'not-allowed', host: 'exfil.example', port: 443 },
+        }),
+      ]),
+    );
+    // Stopping the session closes its broker.
+    await adapter.stopSession('restricted');
+    await vi.waitFor(() =>
+      expect(exchange(port, 'x')).rejects.toMatchObject({
+        code: 'ECONNREFUSED',
+      }),
+    );
+  });
+
+  test('#4769: a restricted start whose provider spawned an open network is configured-but-failed: refused', async () => {
+    const real = createSeatbeltConfinementProvider();
+    // A provider that drops the restriction it was asked for.
+    const confine = (spec: Parameters<typeof real.confine>[0]) =>
+      real.confine({ ...spec, network: 'full' });
+    createAdapter({ provider: { ...real, confine } });
+    const query = startingQuery(Promise.resolve({}));
+    const refused = await startConfined('opened', {
+      confinementPlan: RESTRICTED_PLAN,
+    }).catch((error: unknown) => error);
+    expect(refused).toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_not_observed',
+      message: expect.stringContaining('(configured-but-failed)'),
+    });
+    expect(FakeClaudeChild.newest!.spawnArgs.args[1]).toContain(
+      '(allow network*)',
+    );
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    await expect(adapter.hasSession('opened')).resolves.toBe(false);
+  });
+
+  test('#4769: a restricted start is refused before spawning when its model endpoint or an allowed host cannot be read', async () => {
+    createAdapter({
+      connectionEnv: { ...FAKE_ENV_CREDENTIAL, CLAUDE_CODE_USE_BEDROCK: '1' },
+    });
+    await expect(
+      startConfined('bedrock', { confinementPlan: RESTRICTED_PLAN }),
+    ).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('CLAUDE_CODE_USE_BEDROCK'),
+    });
+    createAdapter({
+      connectionEnv: {
+        ...FAKE_ENV_CREDENTIAL,
+        ANTHROPIC_BASE_URL: 'http://gateway.example:4000',
+      },
+    });
+    await expect(
+      startConfined('plain-http', { confinementPlan: RESTRICTED_PLAN }),
+    ).rejects.toMatchObject({
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('HTTPS only'),
+    });
+    createAdapter();
+    await expect(
+      startConfined('bad-host', {
+        confinementPlan: {
+          ...SEATBELT_PLAN,
+          network: {
+            policy: 'restricted',
+            allowedHosts: ['https://x.example'],
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('https://x.example'),
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   test('readiness says, on macOS, whether a confined credential exists, without a login', async () => {

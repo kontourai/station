@@ -48,7 +48,10 @@ import {
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
-import { CONFINED_FULL_ACCESS_UNAVAILABLE_CODE } from '@kontourai/station-contracts/provider-failure';
+import {
+  CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
+  CONFINED_NETWORK_DENIED_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
@@ -101,6 +104,13 @@ import {
   fallbackConfinementRecord,
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
+import {
+  type EgressBroker,
+  type EgressDecisionRecord,
+  type EgressHostRule,
+  parseEgressHostRule,
+  startEgressBroker,
+} from '../../security/confinement/egress-broker.js';
 import {
   canonicalPath,
   type SeatbeltEvidence,
@@ -257,6 +267,7 @@ import {
   type ClaudeSpawnWrapMechanism,
   CONFINED_CLAUDE_CREDENTIAL_SETUP,
   type ConfinedClaudeLaunch,
+  claudeModelEndpoint,
   claudeSpawnWrapLabel,
   claudeSpawnWrapProvider,
   confinedClaudeConfigDir,
@@ -1224,7 +1235,15 @@ interface SeatbeltStart {
   appHomeEnv: Record<string, string>;
   /** Variables the operator configured for this engine; they pass as set. */
   configuredKeys: ReadonlySet<string>;
+  /**
+   * #4769: the session's egress broker, when its plan restricts the network.
+   * Closed by `launch.cleanup`, with the session's temp directory.
+   */
+  egress?: { broker: EgressBroker };
 }
+
+/** #4769: the distinct refused hosts a session reports, one warning each. */
+const MAX_REPORTED_NETWORK_DENIALS = 20;
 
 /**
  * Whether the engine refuses a spawn granted `allowDangerouslySkipPermissions`
@@ -1868,12 +1887,43 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ),
         fallback: fallback ?? 'workspace-too-broad',
       };
-    const launch = await prepareConfinedClaudeLaunch({
+    // #4769: a restricted network is refused before anything is prepared
+    // when its policy or the model endpoint cannot be read.
+    const allowedHosts = plan.network
+      ? this.restrictedNetworkRules(plan, {
+          ...(context.augmentedEnv ?? process.env),
+          ...context.connectionEnv,
+          ...context.appHomeEnv,
+        })
+      : undefined;
+    const prepared = await prepareConfinedClaudeLaunch({
       workspace: decision.workspace,
       configDir: decision.configDir,
       stationHome,
       mechanism: plan.mechanism,
     });
+    let launch = prepared;
+    let egress: SeatbeltStart['egress'];
+    if (allowedHosts) {
+      let broker: EgressBroker;
+      try {
+        broker = await startEgressBroker({
+          allowedHosts,
+          onDecision: this.networkDenialReporter(input.threadId),
+        });
+      } catch (error) {
+        prepared.cleanup();
+        throw error;
+      }
+      egress = { broker };
+      launch = {
+        ...prepared,
+        cleanup: () => {
+          prepared.cleanup();
+          void broker.close();
+        },
+      };
+    }
     // The secure-store override is dropped by the spawn wrapper, from
     // whichever layer it comes, not here.
     return {
@@ -1884,6 +1934,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           this.options.seatbeltProvider ??
           claudeSpawnWrapProvider(plan.mechanism),
         launch,
+        ...(egress ? { egress } : {}),
         appHomeEnv: {
           ...context.appHomeEnv,
           CLAUDE_CONFIG_DIR: launch.configDir,
@@ -1894,6 +1945,100 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ]),
       },
     };
+  }
+
+  /**
+   * #4769: the allowed-host rules of a plan that restricts the network, or
+   * a refusal (nothing started) when the policy lists an entry the broker
+   * cannot read, or the model endpoint cannot be derived from the
+   * environment this start would spawn with.
+   */
+  private restrictedNetworkRules(
+    plan: ConfinementPlan,
+    env: Readonly<Record<string, string | undefined>>,
+  ): EgressHostRule[] {
+    const rules: EgressHostRule[] = [];
+    for (const entry of plan.network?.allowedHosts ?? []) {
+      const rule = parseEgressHostRule(entry);
+      if (!rule)
+        throw new ConfinementRefusedError(
+          'confinement_mechanism_unavailable',
+          `This claude session requires a restricted network, and this Station's confined network policy lists an allowed host Station cannot read (${JSON.stringify(entry.slice(0, 80))}). Nothing started.`,
+        );
+      rules.push(rule);
+    }
+    const model = claudeModelEndpoint(env);
+    if ('refusal' in model)
+      throw new ConfinementRefusedError(
+        'confinement_mechanism_unavailable',
+        `This claude session requires a restricted network. ${model.refusal} Nothing started.`,
+      );
+    return rules;
+  }
+
+  /**
+   * #4769: reports each refused connection of a restricted session as a
+   * `runtime.warning` (host, port and reason; never a payload or path), the
+   * simplest existing path to the person until #2495 turns sandbox denials
+   * into approval cards. Each distinct refusal is reported once, and at most
+   * {@link MAX_REPORTED_NETWORK_DENIALS} per session; the broker keeps every
+   * record either way.
+   */
+  private networkDenialReporter(
+    threadId: string,
+  ): (record: EgressDecisionRecord) => void {
+    const reported = new Set<string>();
+    let capped = false;
+    return (record) => {
+      if (record.verdict !== 'denied') return;
+      const key = `${record.reason}|${record.host ?? ''}|${record.port ?? ''}`;
+      if (reported.has(key) || capped) return;
+      if (reported.size >= MAX_REPORTED_NETWORK_DENIALS) {
+        capped = true;
+        this.publishNetworkDenial(
+          threadId,
+          `Further blocked connections in this session are not reported one by one (the first ${MAX_REPORTED_NETWORK_DENIALS} were).`,
+          { reason: 'reporting-capped' },
+        );
+        return;
+      }
+      reported.add(key);
+      const target =
+        record.host !== undefined ? `${record.host}:${record.port}` : undefined;
+      const message =
+        record.reason === 'not-allowed' && target
+          ? `Blocked a connection to ${target}: it is not an allowed host for confined sessions on this Station.`
+          : record.reason === 'non-public-address' && target
+            ? `Blocked a connection to ${target}: it resolves to a private or local address.`
+            : record.reason === 'unresolved' && target
+              ? `Blocked a connection to ${target}: the name did not resolve.`
+              : record.reason === 'method-not-allowed'
+                ? `Blocked a plain HTTP request${target ? ` to ${target}` : ''}: a confined session reaches allowed hosts over HTTPS only.`
+                : 'Blocked a malformed or unfinished request to the network broker.';
+      this.publishNetworkDenial(threadId, message, {
+        reason: record.reason,
+        ...(record.host !== undefined ? { host: record.host } : {}),
+        ...(record.port !== undefined ? { port: record.port } : {}),
+      });
+    };
+  }
+
+  private publishNetworkDenial(
+    threadId: string,
+    message: string,
+    details: Record<string, unknown>,
+  ): void {
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      message,
+      code: CONFINED_NETWORK_DENIED_CODE,
+      details,
+    });
   }
 
   /**
@@ -1929,17 +2074,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     } finally {
       if (timer) clearTimeout(timer);
     }
-    const posture = pending
+    const observed = pending
       ? pending.observe({
           spawned: engineProcess.spawned(),
           handshake,
           bounds: seatbelt.launch.bounds,
         })
       : 'configured-but-failed';
+    // #4769: a plan that restricts the network is confined only when the
+    // profile spawned restricts it.
+    const network = pending?.network?.();
+    const posture =
+      seatbelt.plan.network && network !== 'restricted'
+        ? 'configured-but-failed'
+        : observed;
     const confinementRecord = observedConfinementRecord(
       seatbelt.plan,
       posture,
       seatbelt.launch.writeGrants,
+      network,
     );
     if (posture === 'confined') return confinementRecord;
     await this.abandonSeatbeltStart(record, sdkQuery, engineProcess, seatbelt);
@@ -2286,6 +2439,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           seatbelt.provider,
           seatbelt.launch,
           seatbelt.configuredKeys,
+          seatbelt.egress,
         )
       : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';

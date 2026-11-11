@@ -3,6 +3,7 @@ import type {
   ConfinementFallbackReason,
   ConfinementLevel,
   ConfinementMechanism,
+  ConfinementNetworkPlan,
   ConfinementPlan,
   ConfinementPolicyBasis,
   ConfinementPosture,
@@ -11,12 +12,14 @@ import type {
   ConfinementWriteGrant,
   ExecutionConfinementRecord,
 } from '@kontourai/station-contracts/execution-confinement';
+import { parseConfinedNetworkSetting } from '@kontourai/station-contracts/execution-confinement';
 import type {
   ApprovalMode,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
+import { parseEgressHostRule } from './egress-broker.js';
 
 /**
  * #2494: one interface for every confinement mechanism. See
@@ -42,6 +45,11 @@ import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
  * - `hidden`: trees or files the process may not read at all.
  * - `readable`: trees inside a hidden one that stay readable (the writable
  *   grants are readable without being listed here).
+ *
+ * `network` is what the process may reach: `full` is unrestricted; `broker`
+ * (#4769) is only the loopback egress broker listening on `brokerPort`
+ * (`egress-broker.ts`). No provider builds `none` or `loopback`; each
+ * refuses them, as each refuses `broker` unless it can restrict the network.
  */
 export interface ConfinementSpawnSpec {
   command: string;
@@ -57,7 +65,9 @@ export interface ConfinementSpawnSpec {
     writeDeniedNames?: readonly string[];
     hidden?: readonly string[];
   };
-  network: 'none' | 'loopback' | 'full';
+  network: 'none' | 'loopback' | 'full' | 'broker';
+  /** The egress broker's loopback port; required for `broker`. */
+  brokerPort?: number;
 }
 
 /**
@@ -67,6 +77,13 @@ export interface ConfinementSpawnSpec {
  */
 export interface PendingConfinementPosture<Evidence> {
   observe(evidence: Evidence | undefined): ConfinementPosture;
+  /**
+   * #4769: what the confined spawn's own arguments let the process reach,
+   * read from what `confine` built (and, once `observe` returns `confined`,
+   * what was spawned), never from the spec it was asked for. Absent for a
+   * provider that does not govern the network.
+   */
+  network?(): 'full' | 'restricted';
 }
 
 export interface ConfinedSpawn<Evidence> {
@@ -92,6 +109,16 @@ export interface ConfinementProvider<Evidence = unknown> {
   readonly engagement: 'engine-native' | 'spawn-wrapper';
   /** The engines whose sessions it can confine; absent is every engine. */
   readonly engines?: readonly EngineId[];
+  /**
+   * #4769: whether `confine` can restrict the network to the egress broker
+   * (`network: 'broker'`). A start whose policy restricts the network
+   * resolves only a provider that can; absent is false.
+   */
+  readonly restrictsNetwork?: boolean;
+  /**
+   * #4769: why it cannot restrict the network, for a refusal that names it.
+   */
+  readonly networkRestrictionUnavailable?: string;
   /** Whether it can apply on this host, and why. */
   availability(): ConfinementAvailability;
   confine(spec: ConfinementSpawnSpec): ConfinedSpawn<Evidence>;
@@ -168,6 +195,12 @@ export interface ConfinementResolutionInput {
   isolationMode: WorkspaceIsolationMode;
   providers: readonly ConfinementProvider[];
   platform?: NodeJS.Platform;
+  /**
+   * #4769: the confined network policy, read only for a start that requires
+   * confinement. Restricted, it resolves only a provider that can restrict
+   * the network, and the plan carries it.
+   */
+  network?: () => ConfinementNetworkPlan | undefined;
 }
 
 export interface ConfinementResolution {
@@ -196,6 +229,7 @@ function planFor(
   provider: ConfinementProvider,
   requiredLevel: ConfinementLevel,
   policyBasis: ConfinementPolicyBasis,
+  network?: ConfinementNetworkPlan,
 ): ConfinementPlan {
   return {
     requiredLevel,
@@ -203,6 +237,14 @@ function planFor(
     mechanism: provider.mechanism,
     level: provider.level,
     workspaceAccess: provider.workspaceAccess,
+    ...(network
+      ? {
+          network: {
+            policy: network.policy,
+            allowedHosts: [...network.allowedHosts],
+          },
+        }
+      : {}),
   };
 }
 
@@ -219,6 +261,10 @@ function planFor(
  *   adapter does for Seatbelt). A spawn-wrapper naming no engine is refused
  *   rather than resolved and silently not applied. With none, the start is
  *   refused (fail closed) and the refusal names the missing mechanism.
+ * - Required, under a restricted network policy (#4769): only a provider
+ *   that can restrict the network to the egress broker resolves, and the
+ *   plan carries the policy. With none, the start is refused, naming why
+ *   each provider cannot.
  */
 export function resolveConfinement(
   input: ConfinementResolutionInput,
@@ -245,8 +291,10 @@ export function resolveConfinement(
       ...(native ? { plan: planFor(native, requiredLevel, policyBasis) } : {}),
     };
   }
+  const network = input.network?.();
   const reasons: string[] = [];
   let incompatible = false;
+  let networkRefusals = 0;
   for (const provider of applicable) {
     if (LEVEL_RANK[provider.level] < LEVEL_RANK[requiredLevel]) continue;
     const availability = provider.availability();
@@ -270,17 +318,32 @@ export function resolveConfinement(
       );
       continue;
     }
+    if (network && provider.restrictsNetwork !== true) {
+      networkRefusals += 1;
+      reasons.push(
+        `${provider.mechanism}: ${provider.networkRestrictionUnavailable ?? 'it cannot restrict the network'}`,
+      );
+      continue;
+    }
     return {
       requiredLevel,
       policyBasis,
-      plan: planFor(provider, requiredLevel, policyBasis),
+      plan: planFor(provider, requiredLevel, policyBasis, network),
     };
   }
+  // Every provider that applies was refused only for the network, so the
+  // refusal names the policy, not a missing mechanism.
+  const networkOnly = networkRefusals > 0 && networkRefusals === reasons.length;
   const missing = expectedMechanism(
     requiredLevel,
     input.platform ?? process.platform,
   );
   const detail = reasons.length > 0 ? ` (${reasons.join('; ')})` : '';
+  if (networkOnly)
+    throw new ConfinementRefusedError(
+      'confinement_mechanism_unavailable',
+      `This ${input.engine} session requires ${requiredLevel} confinement with a restricted network (this Station's confined network policy), and no mechanism available to it can restrict the network${detail}. Nothing started.`,
+    );
   throw incompatible
     ? new ConfinementRefusedError(
         'confinement_workspace_incompatible',
@@ -290,6 +353,36 @@ export function resolveConfinement(
         'confinement_mechanism_unavailable',
         `This ${input.engine} session requires ${requiredLevel} confinement, which needs ${missing}; none is available to it on this host${detail}. Nothing started.`,
       );
+}
+
+/**
+ * #4769: the network plan a start that requires confinement gets from this
+ * Station's `confinedNetwork` setting (`value`, as loaded, managed policy
+ * applied): `undefined` (the network open) when it is absent or `full`; the
+ * restricted plan otherwise. A value that is not a setting, or that lists an
+ * entry the broker cannot read, refuses the start rather than running it
+ * open or with a narrower list than written.
+ */
+export function confinedNetworkPlan(
+  value: unknown,
+): ConfinementNetworkPlan | undefined {
+  if (value === undefined) return undefined;
+  const setting = parseConfinedNetworkSetting(value);
+  const unreadable = setting
+    ? setting.mode === 'restricted'
+      ? setting.allowedHosts.find((entry) => !parseEgressHostRule(entry))
+      : undefined
+    : value;
+  if (unreadable !== undefined)
+    throw new ConfinementRefusedError(
+      'confinement_mechanism_unavailable',
+      setting
+        ? `This Station's confined network policy lists an allowed host Station cannot read (${JSON.stringify(String(unreadable).slice(0, 80))}), so a session that requires confinement cannot start. Nothing started.`
+        : "This Station's confined network policy (`confinedNetwork`) is not valid, so a session that requires confinement cannot start. Nothing started.",
+    );
+  return setting?.mode === 'restricted'
+    ? { policy: 'restricted', allowedHosts: [...setting.allowedHosts] }
+    : undefined;
 }
 
 /** The record a start with no engaged mechanism writes before it starts. */
@@ -317,6 +410,8 @@ export function observedConfinementRecord(
   plan: ConfinementPlan,
   observed: ConfinementPosture,
   writeGrants?: readonly ConfinementWriteGrant[],
+  /** #4769: what the spawned profile let the process reach (`pending.network`). */
+  network?: 'full' | 'restricted',
 ): ExecutionConfinementRecord {
   const required = plan.requiredLevel !== 'host';
   if (observed === 'no-mechanism')
@@ -335,6 +430,7 @@ export function observedConfinementRecord(
     workspaceAccess: plan.workspaceAccess,
     policyBasis: plan.policyBasis,
     ...(writeGrants ? { writeGrants: [...writeGrants] } : {}),
+    ...(network === 'restricted' ? { network } : {}),
   };
 }
 
@@ -419,7 +515,9 @@ export function readConfinementRecord(
           (grant) => typeof grant === 'string' && WRITE_GRANTS.has(grant),
         ))) ||
     (record.fallback !== undefined &&
-      (typeof record.fallback !== 'string' || !FALLBACKS.has(record.fallback)))
+      (typeof record.fallback !== 'string' ||
+        !FALLBACKS.has(record.fallback))) ||
+    (record.network !== undefined && record.network !== 'restricted')
   )
     return undefined;
   return {
@@ -437,5 +535,6 @@ export function readConfinementRecord(
     ...(record.fallback
       ? { fallback: record.fallback as ConfinementFallbackReason }
       : {}),
+    ...(record.network === 'restricted' ? { network: 'restricted' } : {}),
   };
 }

@@ -46,6 +46,36 @@ function reasonText(text: string): string {
   return sanitizeFreeText(text, MAX_CONFINEMENT_PREFLIGHT_REASON_LENGTH);
 }
 
+/**
+ * #4769: whether `provider` can restrict a confined start's network on this
+ * host: it must be able to (`restrictsNetwork`) and be available here.
+ */
+function restrictedNetworkFor(
+  provider: ConfinementProvider,
+  availability: ReturnType<ConfinementProvider['availability']>,
+): EngineConfinementPreflight['restrictedNetwork'] {
+  if (provider.restrictsNetwork !== true)
+    return {
+      state: 'unavailable',
+      reason: reasonText(
+        provider.networkRestrictionUnavailable ??
+          `${provider.mechanism} cannot restrict the network`,
+      ),
+    };
+  return availability.available
+    ? {
+        state: 'available',
+        reason:
+          "A restricted start reaches only Station's egress broker, which admits the engine's model endpoint and the allowed hosts.",
+      }
+    : {
+        state: 'unavailable',
+        reason: reasonText(
+          `${provider.mechanism} is unavailable here: ${availability.reason}`,
+        ),
+      };
+}
+
 async function credentialFor(
   engine: string,
   checks: ConfinementPreflightInput['credentialChecks'],
@@ -99,6 +129,7 @@ export async function confinementPreflight(
           engine,
           input.credentialChecks,
         ),
+        restrictedNetwork: restrictedNetworkFor(provider, availability),
       });
     }
   }
