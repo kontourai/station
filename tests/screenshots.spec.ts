@@ -3511,29 +3511,32 @@ function roomConversationScreens(): Screen[] {
             });
             await expect(roomRegion).toBeVisible();
             // Presence faces sit side by side; initials never overlap (#4810 review 8).
-            const faces = await roomRegion
-              .locator('.project-room__faces > .task-room-avatar')
-              .evaluateAll((nodes) =>
-                nodes.map((node) => {
-                  const box = node.getBoundingClientRect();
-                  return {
-                    x: box.x,
-                    y: box.y,
-                    width: box.width,
-                    height: box.height,
-                  };
-                }),
-              );
-            expect(faces.length).toBeGreaterThan(1);
-            for (let index = 1; index < faces.length; index += 1)
-              expect(
-                overlaps(faces[index - 1]!, faces[index]!),
-                'presence faces overlap',
-              ).toBe(false);
+            const expectSeparateFaces = async () => {
+              const faces = await roomRegion
+                .locator('.project-room__faces > .task-room-avatar')
+                .evaluateAll((nodes) =>
+                  nodes.map((node) => {
+                    const box = node.getBoundingClientRect();
+                    return {
+                      x: box.x,
+                      y: box.y,
+                      width: box.width,
+                      height: box.height,
+                    };
+                  }),
+                );
+              expect(faces.length).toBeGreaterThan(1);
+              for (let index = 1; index < faces.length; index += 1)
+                expect(
+                  overlaps(faces[index - 1]!, faces[index]!),
+                  'presence faces overlap',
+                ).toBe(false);
+            };
             if (scene === 'empty') {
               await expect(
                 roomRegion.getByText('Start a chat with your project team.'),
               ).toBeVisible();
+              await expectSeparateFaces();
               return;
             }
             const conversation = roomRegion.getByRole('list', {
@@ -3639,6 +3642,7 @@ function roomConversationScreens(): Screen[] {
                 expect(covered, 'jump control covers message text').toEqual([]);
               }
             }
+            await expectSeparateFaces();
           },
           async cleanup() {
             await fixture?.cleanup();
