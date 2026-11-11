@@ -59,8 +59,8 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
 - `coordinator_picture_read` and `coordinator_picture_update` for the bound
-  designated coordinator, when the **Coordinator working picture** preview is
-  enabled. They keep short, person-scoped notes about readable conversations;
+  designated coordinator, when the **Coordinator chat** and **Coordinator
+  working picture** previews are enabled. They keep short, person-scoped notes about readable conversations;
   Station rechecks source access on reads and updates. Notes are the
   coordinator's account, not authoritative live status. See [Houston's
   working picture](../user/houston.md#working-picture).
