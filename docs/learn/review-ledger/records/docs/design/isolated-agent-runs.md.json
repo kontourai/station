@@ -28,7 +28,9 @@
 
     "src-server/routes/orchestration/worktree-output-settlement.ts",
 
-    "src-server/services/projects/__tests__/worktree-output-settlement.test.ts"
+    "src-server/services/projects/__tests__/worktree-output-settlement.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-worktree-settlement.test.ts"
   ],
 
   "checks": [
