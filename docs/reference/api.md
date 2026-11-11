@@ -2203,6 +2203,12 @@ starting with a letter or digit), and the stored record must carry exactly
 that id; anything else is a 404. A marker that moves is
 announced as `read-markers:changed` on that person's own
 `GET /api/orchestration/events` streams, with an empty payload.
+An agent conversation's version is its content version: the time of its newest
+finished, unfinished or failed turn, never its `updatedAt`, which a Station
+stop also moves. `POST /api/conversations/:id/acknowledgement` takes the
+`updatedAt` the client showed and refuses only one above the current
+`updatedAt`. `POST /api/read-markers/mark` takes `readState.version` and
+refuses one above it.
 `GET /api/conversations` items carry the same answer as `readState`, or
 `{ version, unavailable: true }` when the caller's read state cannot be read;
 the conversations are listed either way.

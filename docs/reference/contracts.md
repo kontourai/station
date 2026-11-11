@@ -2303,9 +2303,19 @@ three rules:
   (`read_marker_future_version`, HTTP 409). This applies to
   `POST /api/conversations/:id/acknowledgement` too.
 
-Versions are the conversation's own sequence. An agent conversation uses the
-epoch milliseconds of its inventory `updatedAt` (`readState.version` on
-`GET /api/conversations`). Its marker lives in the inventory's acknowledgement
+Versions are content versions: they move only when something a person would
+read arrives, never on lifecycle bookkeeping. An agent conversation's version
+(`readState.version` on `GET /api/conversations`) is the epoch milliseconds of
+its newest content event: a `turn.completed`, `turn.aborted` or `runtime.error`
+on any Session in its lineage
+([`readConversationContentTimes`](../../src-server/services/orchestration/event-store.ts)).
+Its inventory `updatedAt` also moves on bookkeeping such as the
+`session.exited` a Station stop writes, so it is never the read version. It
+only bounds the acknowledgement a client sends, which is the `updatedAt` it
+showed. A file-backed conversation has no lifecycle events and uses its own
+`updatedAt`. Markers recorded against `updatedAt` before this are already in
+the same epoch-millisecond space and at or after the content they covered, so
+none reads unread after an upgrade. Its marker lives in the inventory's acknowledgement
 store under the person's key. On a personal Station that is the inventory's own
 acknowledgement, so `acknowledgedAt` is the stored fact and `readState` the
 derived answer. On a hosted Station `acknowledgedAt` stays the tenant's "last

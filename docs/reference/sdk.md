@@ -2194,7 +2194,8 @@ Deletes a conversation, invalidates that agent's conversation list, and removes 
 Unread state is kept by the server (see
 [read marker contracts](contracts.md#read-marker-contracts)). Conversation
 inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
-rather than comparing `acknowledgedAt` yourself. `{ version, unavailable: true }`
+rather than comparing `acknowledgedAt` or `updatedAt` yourself. `version` is
+the conversation's content version, not its `updatedAt`. `{ version, unavailable: true }`
 means the server could not read it: show it as unknown, never as read.
 
 - `useAcknowledgeConversationMutation()` marks an agent conversation read at
