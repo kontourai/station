@@ -5225,10 +5225,9 @@ conversation is another person's. `DELETE` removes it (`undesignated`). The
 user id is the request principal's; a request that may be an agent's is
 refused (403 `person-approval-required`). A hosted Station answers 503
 `coordinator_unavailable` and withdraws the `coordinatorSession` capability.
-While the `coordinator-session` Feature Preview is off, every route here,
-`DELETE` and the picture routes included, answers 404
-`feature_preview_disabled` with that `previewId`; the stored designation is
-kept.
+While the `coordinator-session` Feature Preview is off, every route here
+except `DELETE` answers 404 `feature_preview_disabled`; the stored designation
+is kept.
 With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
 `wakes` is `blocked` when the coordinator's last turn has ended but its
 turn boundary is still held, so the inbox would hold a wake indefinitely

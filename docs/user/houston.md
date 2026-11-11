@@ -43,10 +43,13 @@ auto-approvals, still applies.
 
 ## Turn Houston off
 
-Turning **Coordinator chat** off keeps which chat is your Houston, so turning it
-back on restores it. While it is off that chat is an ordinary chat: Station
-records nothing for it, does not send messages already waiting for it (they are
-not sent later either), and does not give it Station's tools.
+Turning **Coordinator chat** off keeps which chat is your Houston, and turning
+it back on restores it. While it is off, that chat is an ordinary chat: Station
+records nothing for it, sends it no messages and gives it no Station tools. The
+app then shows no Houston controls; to remove your Houston, call
+[`DELETE /api/orchestration/coordinator`](../reference/api.md#a-persons-coordinator-session)
+as yourself, or turn the preview on, choose **Stop using as Houston**, and turn
+it off again.
 
 ## When Houston is woken
 

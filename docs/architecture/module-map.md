@@ -2013,14 +2013,11 @@ wakes are blocked (#4051: last turn ended, boundary still held) and whether
 the live Session still lacks the Station tools.
 The turn replays the person's dispatch actor and an internal client origin.
 
-Everything above waits on the default-off `coordinator-session` Feature
-Preview, read at each branch. While it is off the routes refuse
-(`feature_preview_disabled`), nothing is recorded, waiting items are dropped at
-their next flush, a queued wake is refused at placement
-(`coordinator_preview_disabled`, its items not re-sent), and the designated
-chat gets no coordinator tools or credentials. Designations are kept. The
-preview is bound in `station-runtime.ts`, where the Session tool grant is
-composed, and handed to the routes, the wake, Station Control caller records
+The default-off `coordinator-session` Feature Preview gates all of this, read
+at each branch. While it is off, the routes refuse (DELETE excepted), nothing is
+recorded or sent, waiting items are dropped, and the designated chat gets no
+coordinator tools or credentials; designations are kept. `station-runtime.ts`
+binds it and hands it to the routes, the wake, Station Control caller records
 and Project supervision.
 
 The default-off coordinator-picture preview, which also needs
@@ -2052,10 +2049,10 @@ coordinator's engine once, on ACP and a Claude-provider seam),
 `coordinator.routes.test.ts`, `session-agent-resolution.test.ts`, and
 `coordinator-tools-successor.test.ts` (real service and store with a fake
 Codex adapter; it does not establish live provider behavior). The preview's
-seams: the same suites, `runtime-initialize-coordinator-preview.test.ts`,
-`station-runtime-coordinator-preview.test.ts` and
-`context-efficiency-runtime.test.ts`; the `runtime-routes.ts` hand-off to the
-wake is not under test.
+wiring: `runtime-routes-coordinator-preview.test.ts`,
+`station-runtime-coordinator-preview.test.ts`,
+`runtime-initialize-coordinator-preview.test.ts` and
+`context-efficiency-runtime.test.ts`.
 
 ## WorkClaimStore
 
