@@ -621,8 +621,8 @@ the scope to (for one tied to an account, that the account is enabled and
 was not signed out everywhere since the message was queued); otherwise the message is `refused` (`not_permitted` or
 `device_not_permitted`) and nothing is sent. Station's own coordinator wakes
 (#3628) are also checked against their sender's policy at that moment, and a
-refused one carries `coordinator_retired`, `coordinator_wake_expired` or
-`coordinator_source_unreadable`; a person's messages have no such policy. It never stores a full-access
+refused one carries `coordinator_retired`, `coordinator_wake_expired`,
+`coordinator_source_unreadable` or `coordinator_preview_disabled`; a person's messages have no such policy. It never stores a full-access
 grant: an engine restarted to take a held message starts confined. Each
 message keeps its `clientTurnId`, so the
 [delivery lookup](#find-out-what-became-of-a-send) follows it, and Station

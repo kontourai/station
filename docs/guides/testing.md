@@ -406,7 +406,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
 | [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
-| [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | — | **Tool: Seatbelt kernel legs** | manual dispatch. |
+| [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
 | [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
 | [`source-availability.yml`](../../.github/workflows/source-availability.yml) | Source availability | **Main: Source availability** | main pushes. |
@@ -2839,12 +2839,15 @@ The `seatbelt-kernel` profile pins the kernel legs of
 `src-server/security/confinement/__tests__/seatbelt.process.test.ts`:
 
 - **Where they run:** a macOS host where `sandbox-exec` applies the production
-  profile, meaning a developer Mac, or the dispatch-only
-  [`Tool: Seatbelt kernel legs`](../../.github/workflows/seatbelt-kernel.yml)
-  workflow on a hosted macOS runner, which then runs the check.
+  profile, meaning a developer Mac, or the
+  [`Main: Seatbelt kernel legs`](../../.github/workflows/seatbelt-kernel.yml)
+  workflow on a hosted macOS runner, which then runs the check. That workflow
+  runs on pushes to `main` that touch the confinement code, the check, its
+  profiles or the workflow, and on manual dispatch.
 - **Where they do not:** every pull-request, merge-queue and corpus lane.
   Those run on Linux or Windows, where the whole suite skips and the skip
-  passes. No automatic trigger runs the macOS workflow yet.
+  passes. A regression in these legs therefore shows after merge, on the
+  `main` push that introduced it, not on its pull request.
 - **Allowed to skip at runtime:** the app-launch and `security`-tool Keychain
   legs skip when the host cannot provide their positive control. They must
   still be present and must not fail.

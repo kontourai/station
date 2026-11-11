@@ -117,7 +117,8 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   delegatedInputAnswers: true,
   // #3628: the person's coordinator Session, src-server/routes/orchestration/
   // coordinator.ts. Hosted deployments withdraw it: see
-  // servesCoordinatorSession.
+  // servesCoordinatorSession. Like `sessionPersonReads`, a static fact: the
+  // off `coordinator-session` preview answers with its own typed refusal.
   coordinatorSession: true,
   // #3427: the person-facing Session reads under
   // `/api/orchestration/session-reads` (`station sessions wait|digest`,
