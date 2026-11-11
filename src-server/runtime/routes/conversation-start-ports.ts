@@ -58,7 +58,7 @@ export interface RecordedActorContinuation {
  * Thrown before anything starts, so the inbox records a clean refusal with
  * this code and the message is never sent without its file.
  */
-export class QueuedAttachmentUnavailableError extends Error {
+class QueuedAttachmentUnavailableError extends Error {
   readonly code = QUEUED_ATTACHMENT_UNAVAILABLE_CODE;
   constructor() {
     super('A file held with this queued message is no longer stored.');

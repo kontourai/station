@@ -589,9 +589,14 @@ function LiveConversationBody({
     useConversationController(activeSession);
   const secondaryActions =
     station && station.routeKind !== 'host' ? undefined : dockSecondaryActions;
+  // Read only when it decides something: a turn is running and the draft
+  // holds files. Every other render sends nothing.
   const queueTakesFiles = useFollowUpAttachmentsSupport(
     apiBase,
     !station || station.routeKind === 'host',
+    turnInFlight &&
+      (chatInput.attachments.length > 0 ||
+        (chatInput.attachmentStages?.length ?? 0) > 0),
   );
   const targetAgents = useAgentsQuery({
     enabled: Boolean(station),
