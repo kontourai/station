@@ -24,6 +24,7 @@ import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
   isCurrentInboxItem,
+  rowReadStateUnknown,
   rowReadsUnread,
 } from '../../views/home/conversation-read-state';
 import {
@@ -607,6 +608,7 @@ export function InboxRow({
   const documentFocused = useDocumentFocused();
   const onScreen = useConversationOnScreen(item);
   const unread = rowReadsUnread(item, onScreen && documentFocused);
+  const readUnknown = rowReadStateUnknown(item, onScreen && documentFocused);
   // The ONE status read (#3042): the line here and the lane this row was
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
@@ -818,6 +820,7 @@ export function InboxRow({
       style={swipe.style}
       data-testid="inbox-row"
       data-unread={unread ? '' : undefined}
+      data-read-unknown={readUnknown ? '' : undefined}
       data-row-key={rowKey ?? item.id}
       data-status-rung={status.rung}
       data-lane={status.lane}
@@ -891,7 +894,7 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}${unread ? ', unread' : ''}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}${unread ? ', unread' : readUnknown ? ', read status unknown' : ''}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is

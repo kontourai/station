@@ -1947,6 +1947,17 @@ export interface ConversationReadState {
 }
 
 /**
+ * See {@link ConversationListItem.readState}: the caller is a person, but
+ * their read state could not be read (a store that does not decode). Unknown,
+ * never "read"; the conversation itself is still listed.
+ */
+export interface ConversationReadStateUnavailable {
+  /** This conversation's current version: epoch ms of its `updatedAt`. */
+  version: number;
+  unavailable: true;
+}
+
+/**
  * S2 of #1302 (conversation-surface consolidation): one item shape for the
  * global conversation-inventory endpoint (`GET /api/conversations`), folding
  * both legs the per-agent endpoint already unions — the orchestration
@@ -2015,9 +2026,10 @@ export interface ConversationListItem {
    * (`@kontourai/station-contracts/read-markers`). `version` is this item's
    * current version (epoch ms of `updatedAt`), the value to send when
    * marking it read. Absent when the server keeps no read state for the
-   * caller; never guess it from `acknowledgedAt`.
+   * caller; `{ version, unavailable: true }` when it keeps one but could not
+   * read it. Never guess it from `acknowledgedAt`.
    */
-  readState?: ConversationReadState;
+  readState?: ConversationReadState | ConversationReadStateUnavailable;
   /**
    * Whether the conversation has an open turn. When `activity` is present
    * this is exactly `activity.openTurn !== undefined`.

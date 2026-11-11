@@ -14,6 +14,7 @@ import { SearchGlyph } from '../icons/Glyph';
 import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import { InboxGroupList, type InboxGroupListProps } from './ChatDockInboxRows';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { InboxScopeFilter } from './InboxScopeFilter';
 import {
   type InboxPanelControllerOptions,
@@ -248,6 +249,7 @@ export function MobileInboxPanel({
             )}
           </p>
         )}
+        <ReadStatusNote items={tasks} />
         <InboxGroupList
           key={controller.stateKey}
           swipeActions={swipeActions}

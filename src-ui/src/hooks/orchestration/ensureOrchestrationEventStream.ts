@@ -52,22 +52,37 @@ import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
  * authority own. Unscoped keys belong to the current connection; scoped ones
  * must name this API base and, when known, this authority.
  */
-function invalidateReadState(
+function isReadStateQuery(
+  queryKey: readonly unknown[],
+  apiBase: string,
+  authority: string | undefined,
+): boolean {
+  const [root, base, scope] = queryKey;
+  if (root === 'read-markers') return true;
+  if (root !== 'conversation-inventory') return false;
+  if (queryKey.length === 1) return true;
+  return base === apiBase && (authority === undefined || scope === authority);
+}
+
+/**
+ * #3075 review: this person read something on another client. Every cached
+ * read-state query is marked stale at once, which fetches nothing, so a
+ * surface mounted later reads fresh; the active ones are re-read through the
+ * inventory's own refresh ({@link requestConversationInventoryRefresh}): at
+ * most one now and one at the end of its window however many marks arrive,
+ * after any read in flight settles, never cancelling it.
+ */
+function requestReadStateRefresh(
   client: QueryClient,
   apiBase: string,
   authority: string | undefined,
 ): void {
   void client.invalidateQueries({
-    predicate: (query) => {
-      const [root, base, scope] = query.queryKey as unknown[];
-      if (root === 'read-markers') return true;
-      if (root !== 'conversation-inventory') return false;
-      if (query.queryKey.length === 1) return true;
-      return (
-        base === apiBase && (authority === undefined || scope === authority)
-      );
-    },
+    predicate: (query) => isReadStateQuery(query.queryKey, apiBase, authority),
+    refetchType: 'none',
   });
+  sessionReadModelRefreshState(apiBase).readMarkersOwed = true;
+  requestConversationInventoryRefresh(apiBase);
 }
 
 interface OwnedStream {
@@ -386,9 +401,15 @@ function requestConversationInventoryRefresh(apiBase: string): void {
     );
     if (!client) return;
     const queryKey = streamQueryPrefix('conversation-inventory', apiBase);
-    if (client.isFetching({ queryKey, type: 'active' }) > 0) {
+    // Owed read-marker summaries are re-read in this same pass, so they wait
+    // for their own reads in flight too.
+    const busy = () =>
+      client.isFetching({ queryKey, type: 'active' }) > 0 ||
+      (state.readMarkersOwed &&
+        client.isFetching({ queryKey: ['read-markers'], type: 'active' }) > 0);
+    if (busy()) {
       const stop = client.getQueryCache().subscribe(() => {
-        if (client.isFetching({ queryKey, type: 'active' }) > 0) return;
+        if (busy()) return;
         stop();
         state.inventoryAwaitingSettle = undefined;
         requestConversationInventoryRefresh(apiBase);
@@ -408,6 +429,13 @@ function requestConversationInventoryRefresh(apiBase: string): void {
       },
       { cancelRefetch: false },
     );
+    if (state.readMarkersOwed) {
+      state.readMarkersOwed = false;
+      void client.invalidateQueries(
+        { queryKey: ['read-markers'], type: 'active' },
+        { cancelRefetch: false },
+      );
+    }
   };
   const elapsed = Date.now() - state.inventoryLastAt;
   if (elapsed >= CONVERSATION_INVENTORY_REFRESH_WINDOW_MS) run();
@@ -1022,7 +1050,7 @@ function connectOrchestrationEventStream(
             station?.requestScope.authorityKey,
           );
           if (client)
-            invalidateReadState(
+            requestReadStateRefresh(
               client,
               apiBase,
               station?.requestScope.authorityKey ??

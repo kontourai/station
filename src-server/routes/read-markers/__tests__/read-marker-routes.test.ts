@@ -7,13 +7,14 @@
  */
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
@@ -31,6 +32,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { FileStorageNotFoundError } from '../../../domain/project-file-transactions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { FileConversationAcknowledgementStore } from '../../../services/orchestration/conversation-acknowledgement-store.js';
@@ -126,6 +128,11 @@ function station(
      * person, or `tenant-only` for a request carrying only the tenant.
      */
     hosted?: boolean;
+    /**
+     * The real file memory adapter over this test's directory, so a
+     * conversation id reaches the real path mapping (`agents/default/...`).
+     */
+    realFileMemory?: boolean;
     /** Personal file-backed conversations, as a memory adapter holds them. */
     fileConversations?: Array<{
       id: string;
@@ -190,7 +197,11 @@ function station(
     getMessages: vi.fn(async () => []),
   };
   const memoryAdapters = new Map(
-    fileConversations.length > 0 ? [['default', fileAdapter as never]] : [],
+    options.realFileMemory
+      ? [['default', new FileMemoryAdapter({ projectHomeDir: dir })]]
+      : fileConversations.length > 0
+        ? [['default', fileAdapter as never]]
+        : [],
   );
   const changed: string[] = [];
   const reader = {
@@ -795,6 +806,127 @@ describe('review fixes (#4813)', () => {
     expect(await json(response)).toEqual({
       success: false,
       error: 'Read state is unavailable.',
+    });
+  });
+});
+
+/** Writes a conversation record under `agents/default/memory/<relative>`. */
+function plantFileConversation(relative: string, record: { id: string }) {
+  const path = join(dir, 'agents', 'default', 'memory', relative);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(
+    path,
+    JSON.stringify({
+      resourceId: 'default',
+      userId: 'human:test:ada',
+      title: record.id,
+      metadata: {},
+      createdAt: T1,
+      updatedAt: T1,
+      ...record,
+    }),
+  );
+}
+
+describe('delta review fixes (#4813)', () => {
+  test('a file conversation id is one parsed path segment inside its directory, and the record must carry that id', async () => {
+    const s = station({
+      realFileMemory: true,
+      // Pushes every file conversation past the first inventory page, so
+      // each id below reaches the point lookup.
+      conversations: new Map(
+        Array.from({ length: 100 }, (_, i) => [`recent-${i}`, T2] as const),
+      ),
+    });
+    plantFileConversation('escaped.json', { id: '../escaped' });
+    plantFileConversation('conversations/sub/escaped.json', {
+      id: 'sub/escaped',
+    });
+    plantFileConversation('conversations/real-1.json', { id: 'other-1' });
+    plantFileConversation('conversations/default:1794.json', {
+      id: 'default:1794',
+    });
+    const target = (conversationId: string): ReadMarkerTarget => ({
+      kind: 'agent-conversation',
+      conversationId,
+    });
+    for (const id of ['../escaped', 'sub/escaped', 'real-1', '..', '.']) {
+      const response = await s.mark('ada', target(id), V1);
+      expect(response.status, id).toBe(404);
+    }
+    // The router decodes `..%2Fescaped` to `../escaped` before the route.
+    expect((await s.acknowledge('ada', '../escaped', T1)).status).toBe(404);
+    // A double-encoded separator stays literal and is refused, not decoded.
+    expect((await s.acknowledge('ada', '..%2Fescaped', T1)).status).toBe(404);
+    const summary = await s.summary('ada', [
+      target('../escaped'),
+      target('real-1'),
+    ]);
+    expect((await json(summary)).data.items).toEqual([
+      { target: target('../escaped'), unavailable: true },
+      { target: target('real-1'), unavailable: true },
+    ]);
+    expect(storedMarkers()['human:test:ada'] ?? {}).toEqual({});
+    // A real id, with the engine's colon, still resolves past the window.
+    const real = await s.mark('ada', target('default:1794'), V1);
+    expect(real.status).toBe(200);
+    expect(storedMarkers()['human:test:ada']).toEqual({
+      'default:1794': T1,
+    });
+  });
+
+  test('one person’s corrupt marker is theirs alone: another person keeps their read state and everyone keeps their conversations', async () => {
+    const s = station({
+      room: { roomId: 'room-1', lastSeq: 4, members: ['ada', 'bo'] },
+    });
+    expect((await s.acknowledge('ada', 'c1', T1)).status).toBe(200);
+    writeFileSync(
+      join(dir, READ_MARKER_STORE_FILE),
+      JSON.stringify({
+        version: 1,
+        createdAt: 0,
+        markers: {
+          'human:test:bo': { 'project-room:room-1': { v: 'bad', at: T1 } },
+        },
+      }),
+    );
+    const room = { kind: 'project-room', projectSlug: 'alpha', roomId: 'room-1' };
+    expect((await s.inventory('ada')).get('c1')?.readState).toEqual({
+      version: V1,
+      seenVersion: V1,
+      unread: false,
+    });
+    expect((await s.summary('ada', [room])).status).toBe(200);
+    // Bo's own room marker is refused, never read as "read" ...
+    expect((await s.summary('bo', [room])).status).toBe(503);
+    // ... and his conversation read state does not depend on it.
+    expect((await s.inventory('bo')).get('c1')?.readState).toEqual({
+      version: V1,
+      seenVersion: 0,
+      unread: true,
+    });
+  });
+
+  test.each([
+    [
+      'a marker store nobody can decode',
+      READ_MARKER_STORE_FILE,
+      JSON.stringify({ version: 1, createdAt: 'x', markers: {} }),
+    ],
+    [
+      'an acknowledgement store nobody can decode',
+      'conversation-acknowledgements.json',
+      '{"version":',
+    ],
+  ])('%s reads as unknown for everyone, never as read, and the conversations stay listed', async (_name, file, text) => {
+    const s = station();
+    expect((await s.acknowledge('ada', 'c1', T1)).status).toBe(200);
+    writeFileSync(join(dir, file), text);
+    const inventory = await s.inventory('ada');
+    expect([...inventory.keys()]).toEqual(['c1']);
+    expect(inventory.get('c1')?.readState).toEqual({
+      version: V1,
+      unavailable: true,
     });
   });
 });

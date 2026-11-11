@@ -79,6 +79,11 @@ export interface HomeWorkItem {
   /** The inventory version `unread` was computed for (epoch ms). */
   readVersion?: number;
   /**
+   * #3075 review: the server keeps read state for this person but could not
+   * read it. Unknown: neither `unread` nor read.
+   */
+  readStateUnavailable?: true;
+  /**
    * Epoch ms the work entered its current terminal state, from the server's
    * `lifecycleChangedAt` (#4266). Absent for live work and for hosts that do
    * not report it; `finishedAtOf` then falls back to `updatedAt`.

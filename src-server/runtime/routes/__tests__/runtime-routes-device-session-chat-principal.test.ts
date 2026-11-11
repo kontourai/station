@@ -108,6 +108,7 @@ import {
 } from '../../../services/operations/action-operation-service.js';
 import { attachmentBlobRefFor } from '../../../services/orchestration/attachment-blob-store.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
+import { PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY } from '../../../services/orchestration/conversation-acknowledgement-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -364,6 +365,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         pairing.identifyDevice(credential),
       credentialHasOwnerStanding: (credential: string) =>
         pairing.credentialHasOwnerStanding(credential),
+      deviceHasOwnerStanding: (deviceId: string) =>
+        pairing.deviceHasOwnerStanding(deviceId),
       canSharePersonalConversation: (requester: string, owner: string) =>
         pairing.canSharePersonalConversation(requester, owner),
       credentialLocality: (credential: string) =>
@@ -2443,6 +2446,127 @@ describe('device-session chat principal resolution over the REAL auth path (stat
 
     await roomRuntime.close();
     store.close();
+  });
+
+  /**
+   * #3075 review: a person's read-marker changes go to that person's own
+   * streams. On a personal Station the owner's key is shared only with a
+   * device that holds owner standing (`DevicePairingService
+   * .deviceHasOwnerStanding`); a read-only visitor device is its own person.
+   * Real credentials, real pairing store, the runtime's own `/events` route.
+   */
+  test('#3075 review: a read-only visitor device never receives the owner’s read-marker changes; an owner-standing device does', async () => {
+    const eventBus = new EventBus();
+    const { app, pairing, paired } = await setup(
+      'device',
+      true,
+      undefined,
+      false,
+      false,
+      { eventBus, ownerDeviceStanding: true },
+    );
+    const offer = pairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: pairingScopePresetString('read-only'),
+    });
+    const request = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Visitor phone',
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login: 'visitor@github' },
+    });
+    pairing.confirmRequest(request.requestId, operatorApproval);
+    const visitor = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    // The fixture's two devices are what the rule tells apart.
+    expect(pairing.deviceHasOwnerStanding(paired.device.id)).toBe(true);
+    expect(pairing.deviceHasOwnerStanding(visitor.device.id)).toBe(false);
+
+    const aborts: AbortController[] = [];
+    const open = async (credential: string) => {
+      const abort = new AbortController();
+      aborts.push(abort);
+      const response = await app.request(
+        '/api/orchestration/events',
+        {
+          headers: { Authorization: `Bearer ${credential}` },
+          signal: abort.signal,
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      const until = async (marker: string) => {
+        const deadline = Date.now() + 8_000;
+        while (!text.includes(marker)) {
+          const chunk = await Promise.race([
+            reader.read(),
+            new Promise<'timeout'>((resolve) =>
+              setTimeout(
+                () => resolve('timeout'),
+                Math.max(0, deadline - Date.now()),
+              ),
+            ),
+          ]);
+          if (chunk === 'timeout')
+            throw new Error(
+              `Missing stream marker ${marker}; received ${JSON.stringify(text.slice(0, 400))}`,
+            );
+          if (chunk.done) throw new Error(`Stream ended before ${marker}`);
+          text += decoder.decode(chunk.value, { stream: true });
+        }
+        const seen = text;
+        text = '';
+        return seen;
+      };
+      await until('orchestration:caughtUp');
+      return { until, cancel: () => reader.cancel().catch(() => undefined) };
+    };
+    // Every stream reads this frame (its payload is empty); it bounds each
+    // read below, so "nothing arrived" is observed, not assumed.
+    const FENCE = `event: ${SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED}`;
+    const liveness = (marker: string) =>
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED, {
+        threadId: marker,
+        canRead: () => true,
+      });
+    const owner = await open(paired.credential);
+    const guest = await open(visitor.credential);
+    try {
+      eventBus.emit(SERVER_EVENTS.READ_MARKERS_CHANGED, {
+        personKey: PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
+      });
+      liveness('after-owner-change');
+      expect(await owner.until(FENCE), 'owner device, owner change').toContain(
+        `event: ${SERVER_EVENTS.READ_MARKERS_CHANGED}`,
+      );
+      expect(await guest.until(FENCE), 'visitor, owner change').not.toContain(
+        SERVER_EVENTS.READ_MARKERS_CHANGED,
+      );
+
+      // The visitor's own marker still reaches it: its stream is not deaf.
+      eventBus.emit(SERVER_EVENTS.READ_MARKERS_CHANGED, {
+        personKey: `human:device:${visitor.device.id}`,
+      });
+      liveness('after-visitor-change');
+      expect(await guest.until(FENCE), 'visitor, own change').toContain(
+        `event: ${SERVER_EVENTS.READ_MARKERS_CHANGED}`,
+      );
+      expect(await owner.until(FENCE), 'owner device, visitor change').not.toContain(
+        SERVER_EVENTS.READ_MARKERS_CHANGED,
+      );
+    } finally {
+      for (const abort of aborts) abort.abort();
+      await owner.cancel();
+      await guest.cancel();
+    }
   });
 
   // station#4529, found building #4537's paired-device journey coverage: the

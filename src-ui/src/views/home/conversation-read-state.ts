@@ -25,3 +25,15 @@ export function rowReadsUnread(
 ): boolean {
   return item.unread === true && !beingRead;
 }
+
+/**
+ * #3075 review: whether a row reads as "read state unknown" right now: the
+ * server could not read this person's read state. Never shown as read or
+ * unread; the conversation on screen needs neither.
+ */
+export function rowReadStateUnknown(
+  item: Pick<HomeWorkItem, 'readStateUnavailable'>,
+  beingRead: boolean,
+): boolean {
+  return item.readStateUnavailable === true && !beingRead;
+}

@@ -51,9 +51,11 @@ export function withConversationInventory<T extends HomeWorkItem>(
       ...item,
       conversationUpdatedAt: conversation.updatedAt,
       ...(acknowledgedAt !== undefined ? { acknowledgedAt } : {}),
-      ...(readState
-        ? { unread: readState.unread, readVersion: readState.version }
-        : {}),
+      ...(readState === undefined
+        ? {}
+        : 'unavailable' in readState
+          ? { readStateUnavailable: true as const }
+          : { unread: readState.unread, readVersion: readState.version }),
       ...(terminalAt !== undefined ? { terminalAt } : {}),
       ...(executionProviders.length > 0 ? { executionProviders } : {}),
     };

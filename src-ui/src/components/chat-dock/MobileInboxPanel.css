@@ -133,7 +133,10 @@
 /* #3075: the row leads with its identity mark, so the unread dot hangs in
    the row's outer margin, left of the mark (the same place the title's
    first line sits vertically), never over the mark or the text. */
-.mobile-inbox .inbox-row[data-unread] .inbox-row__title[data-title]::before {
+.mobile-inbox .inbox-row[data-unread] .inbox-row__title[data-title]::before,
+.mobile-inbox
+  .inbox-row[data-read-unknown]
+  .inbox-row__title[data-title]::before {
   left: calc(
     var(--k-space-1) /
     2 -

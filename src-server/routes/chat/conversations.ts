@@ -16,6 +16,7 @@ import type {
   ConversationListItem,
   ConversationOpenResolution,
   ConversationReadState,
+  ConversationReadStateUnavailable,
 } from '@kontourai/station-contracts/orchestration';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
@@ -2593,19 +2594,36 @@ export function conversationReadVersion(
 }
 
 /**
+ * A file conversation id, parsed as one whole file-name segment (#3075
+ * review): an alphanumeric first character, then alphanumerics, `.`, `_`,
+ * `-` and the engine prefix's `:` (`codex:<id>`, `<agent>:<time>`). Nothing
+ * with a separator, a `%` escape or a leading dot parses, so `..`, `a/b`,
+ * `..\b` and an encoded separator name no file. `undefined` when it does not
+ * parse.
+ */
+const FILE_CONVERSATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+function parseFileConversationId(value: string): string | undefined {
+  return FILE_CONVERSATION_ID.test(value) ? value : undefined;
+}
+
+/**
  * A personal file-backed conversation past the inventory window (#3075
  * review): the point read the inventory list would have made, under the same
  * ownership rule (`_listPersonalFileConversationItems` reads the caller's
  * `userId` within each adapter's own resource, skipping a conversation a
- * successor has taken over) and the same version (`updatedAt`). Hosted
- * Stations have no file conversations here; another owner's is `undefined`.
+ * successor has taken over) and the same version (`updatedAt`). The id must
+ * parse as one file name, and the record read must carry exactly that id.
+ * Hosted Stations have no file conversations here; another owner's is
+ * `undefined`.
  */
 async function ownedFileConversationVersion(
   deps: ConversationInventoryDeps,
   authority: SessionReadAuthority,
-  conversationId: string,
+  requestedId: string,
 ): Promise<number | undefined> {
   if (isHostedSessionReadAuthority(authority)) return undefined;
+  const conversationId = parseFileConversationId(requestedId);
+  if (conversationId === undefined) return undefined;
   if (
     deps.sessionConversationReader.successorConversationId?.(conversationId) !==
     undefined
@@ -2615,6 +2633,7 @@ async function ownedFileConversationVersion(
     const conversation = await adapter.getConversation(conversationId);
     if (
       conversation &&
+      conversation.id === conversationId &&
       conversation.userId === authority.userId &&
       (conversation.resourceId || slug) === slug
     )
@@ -2897,28 +2916,49 @@ export function createGlobalConversationRoutes(
         authority,
         acknowledgementStore?.isOwnerDevice,
       );
-      const acknowledgements = acknowledgementKey
-        ? acknowledgementStore?.getMany(
-            acknowledgementKey,
-            page.items.map((item) => item.id),
-          )
-        : undefined;
+      // #3075 review: a store that does not decode never takes the
+      // conversations down with it. Without the stored fact the item carries
+      // no `acknowledgedAt` (no view on record), and its read state below
+      // reads as unknown.
+      let acknowledgements: ReadonlyMap<string, string> | undefined;
+      try {
+        acknowledgements = acknowledgementKey
+          ? acknowledgementStore?.getMany(
+              acknowledgementKey,
+              page.items.map((item) => item.id),
+            )
+          : undefined;
+      } catch (error) {
+        logger.warn('Conversation acknowledgements unavailable', {
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+      }
       // #3075: the derived answer every surface reads, from the caller's own
       // person key. `acknowledgedAt` stays the inherited stored fact.
-      let readStates: ReadonlyMap<string, ConversationReadState> | undefined;
+      const versioned = page.items.flatMap((item) => {
+        const version = conversationReadVersion(item);
+        return version === undefined ? [] : [{ id: item.id, version }];
+      });
+      let readStates:
+        | ReadonlyMap<
+            string,
+            ConversationReadState | ConversationReadStateUnavailable
+          >
+        | undefined;
       try {
-        readStates = readMarkers?.conversationReadStates(
-          c,
-          page.items.flatMap((item) => {
-            const version = conversationReadVersion(item);
-            return version === undefined ? [] : [{ id: item.id, version }];
-          }),
-        );
+        readStates = readMarkers?.conversationReadStates(c, versioned);
       } catch (error) {
-        // Unreadable read state is reported as none, never as "read".
+        // Unreadable read state is unknown, never "read" and never absent
+        // (which reads as "no read state is kept").
         logger.warn('Conversation read state unavailable', {
           error: error instanceof Error ? error.name : 'unknown',
         });
+        readStates = new Map(
+          versioned.map(({ id, version }) => [
+            id,
+            { version, unavailable: true as const },
+          ]),
+        );
       }
       const data = page.items.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);

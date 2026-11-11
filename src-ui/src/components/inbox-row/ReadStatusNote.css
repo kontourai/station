@@ -1,0 +1,32 @@
+/* #3075 review: an unobtrusive degrade note, never the ErrorState primitive:
+   the conversations are all there, only their read status is unknown. */
+.read-status-note {
+  margin: var(--k-space-1) 0;
+  padding: 0 var(--k-space-2);
+  color: var(--text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.read-status-note__retry {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--k-action, var(--k-brand));
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.read-status-note__retry:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (pointer: coarse) {
+  .read-status-note__retry {
+    min-height: 44px;
+    padding: 0 var(--k-space-2);
+  }
+}

@@ -17,6 +17,7 @@ import {
   InboxGroupList,
   type InboxGroupListProps,
 } from './ChatDockInboxRows';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { InboxScopeFilter } from './InboxScopeFilter';
 import {
   type InboxPanelControllerOptions,
@@ -217,6 +218,7 @@ function ChatDockInboxPanelImpl({
             }
           />
         )}
+        <ReadStatusNote items={items} />
         {!hasAnyItems && query.trim() ? (
           <FilteredEmpty
             query={query}

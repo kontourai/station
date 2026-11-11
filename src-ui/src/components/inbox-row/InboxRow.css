@@ -162,7 +162,8 @@
   font-weight: 700;
 }
 
-.inbox-row[data-unread] .inbox-row__title[data-title]::before {
+.inbox-row[data-unread] .inbox-row__title[data-title]::before,
+.inbox-row[data-read-unknown] .inbox-row__title[data-title]::before {
   content: "";
   position: absolute;
   /* Centred on the first title line (line-height 1.35). */
@@ -172,6 +173,15 @@
   height: var(--inbox-row-unread-dot);
   border-radius: 50%;
   background: var(--k-action, var(--k-brand));
+}
+
+/* #3075 review: read status unknown (the server could not read it). A hollow
+   ring in the dot's place, the title at its read weight: it claims neither
+   read nor unread, and the panel's note says why once. */
+.inbox-row[data-read-unknown] .inbox-row__title[data-title]::before {
+  box-sizing: border-box;
+  border: 1px solid var(--text-muted);
+  background: transparent;
 }
 
 /* The ONE status line. Icon and word always; colour only reinforces them. */
@@ -449,11 +459,13 @@
 
 /* A slim row leads with its status glyph, so its dot sits in the row's own
    gutter, centred on the single line, where a card's dot sits. */
-.inbox-row--slim[data-unread] .inbox-row__title[data-title]::before {
+.inbox-row--slim[data-unread] .inbox-row__title[data-title]::before,
+.inbox-row--slim[data-read-unknown] .inbox-row__title[data-title]::before {
   content: none;
 }
 
-.inbox-row--slim[data-unread]::before {
+.inbox-row--slim[data-unread]::before,
+.inbox-row--slim[data-read-unknown]::before {
   content: "";
   position: absolute;
   top: calc(50% - var(--inbox-row-unread-dot) / 2);
@@ -469,6 +481,12 @@
   border-radius: 50%;
   background: var(--k-action, var(--k-brand));
   pointer-events: none;
+}
+
+.inbox-row--slim[data-read-unknown]::before {
+  box-sizing: border-box;
+  border: 1px solid var(--text-muted);
+  background: transparent;
 }
 
 .inbox-row__slim-status {

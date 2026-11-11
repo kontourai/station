@@ -1,6 +1,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { JsonFileStore } from '../infra/json-store.js';
+import {
+  JsonFileStore,
+  JsonFileStoreCorruptionError,
+} from '../infra/json-store.js';
 
 const STORE_VERSION = 1 as const;
 /** Oldest-touched markers beyond this are dropped; a dropped one reads unread. */
@@ -18,8 +21,11 @@ interface ReadMarkerStoreData {
   version: typeof STORE_VERSION;
   /** Epoch ms this store was first written; see {@link ReadMarkerStore.baseline}. */
   createdAt?: number;
-  /** person key -> marker key -> marker. */
-  markers: Record<string, Record<string, StoredMarker>>;
+  /**
+   * person key -> marker key -> marker. Each person's record is decoded only
+   * when that person is read or written ({@link decodePersonMarkers}).
+   */
+  markers: Record<string, unknown>;
 }
 
 /**
@@ -61,10 +67,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * Strict decode: a store whose shape is not exactly this is corrupt and is
- * refused (`JsonFileStoreCorruptionError`), never read as "read". A version
- * that is not a non-negative safe integer would otherwise become NaN and
- * compare as seen.
+ * Strict decode of the store's envelope: a store whose version, baseline or
+ * markers map is not exactly this is corrupt for everyone and is refused
+ * (`JsonFileStoreCorruptionError`), never read as "read". It is one file, so
+ * a broken envelope cannot be scoped to one person.
  */
 export function decodeReadMarkerStore(text: string): ReadMarkerStoreData {
   const parsed: unknown = JSON.parse(text);
@@ -74,24 +80,46 @@ export function decodeReadMarkerStore(text: string): ReadMarkerStoreData {
     throw new Error('Invalid read marker store baseline');
   if (!isRecord(parsed.markers))
     throw new Error('Invalid read marker store markers');
-  for (const forPerson of Object.values(parsed.markers)) {
-    if (!isRecord(forPerson)) throw new Error('Invalid read marker person');
-    for (const marker of Object.values(forPerson))
-      if (
-        !isRecord(marker) ||
-        !isSafeVersion(marker.v) ||
-        typeof marker.at !== 'string'
-      )
-        throw new Error('Invalid read marker');
-  }
   return parsed as unknown as ReadMarkerStoreData;
+}
+
+/**
+ * Strict decode of one person's markers. A record that is not exactly this
+ * is corrupt for that person only: their reads and writes are refused, never
+ * read as "read", and everyone else's markers stay available. A version that
+ * is not a non-negative safe integer would otherwise become NaN and compare
+ * as seen.
+ */
+function decodePersonMarkers(
+  path: string,
+  value: unknown,
+): Record<string, StoredMarker> {
+  if (value === undefined) return {};
+  if (!isRecord(value))
+    throw new JsonFileStoreCorruptionError(
+      path,
+      new Error('Invalid read marker person'),
+    );
+  for (const marker of Object.values(value))
+    if (
+      !isRecord(marker) ||
+      !isSafeVersion(marker.v) ||
+      typeof marker.at !== 'string'
+    )
+      throw new JsonFileStoreCorruptionError(
+        path,
+        new Error('Invalid read marker'),
+      );
+  return value as Record<string, StoredMarker>;
 }
 
 export class FileReadMarkerStore implements ReadMarkerStore {
   private readonly store: JsonFileStore<ReadMarkerStoreData>;
+  private readonly path: string;
 
   constructor(dataDir: string, now: () => Date = () => new Date()) {
     const path = join(dataDir, READ_MARKER_STORE_FILE);
+    this.path = path;
     const fresh = !existsSync(path) && !existsSync(`${path}.previous`);
     // A torn write is never acceptable; losing the newest mark to a power cut
     // is: the room reads unread again, the safe direction.
@@ -122,10 +150,10 @@ export class FileReadMarkerStore implements ReadMarkerStore {
   ): ReadonlyMap<string, number> {
     const result = new Map<string, number>();
     if (keys.length === 0) return result;
-    const forPerson = this.store.read(decodeReadMarkerStore).markers[
-      principalId
-    ];
-    if (!forPerson) return result;
+    const forPerson = this.personMarkers(
+      this.store.read(decodeReadMarkerStore),
+      principalId,
+    );
     for (const key of keys) {
       const marker = Object.hasOwn(forPerson, key) ? forPerson[key] : undefined;
       if (marker) result.set(key, marker.v);
@@ -147,7 +175,7 @@ export class FileReadMarkerStore implements ReadMarkerStore {
     if (!Number.isSafeInteger(version) || version < 0)
       throw new RangeError('A read marker version is a non-negative integer');
     const data = this.store.read(decodeReadMarkerStore);
-    const forPerson = data.markers[principalId] ?? {};
+    const forPerson = this.personMarkers(data, principalId);
     const stored = Object.hasOwn(forPerson, key)
       ? forPerson[key]?.v
       : undefined;
@@ -165,6 +193,18 @@ export class FileReadMarkerStore implements ReadMarkerStore {
       },
     });
     return version;
+  }
+
+  private personMarkers(
+    data: ReadMarkerStoreData,
+    principalId: string,
+  ): Record<string, StoredMarker> {
+    return decodePersonMarkers(
+      this.path,
+      Object.hasOwn(data.markers, principalId)
+        ? data.markers[principalId]
+        : undefined,
+    );
   }
 }
 

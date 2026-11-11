@@ -9,6 +9,8 @@
  */
 
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
+import { conversationQueries } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -16,6 +18,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
@@ -189,6 +192,47 @@ describe('inbox unread state comes from the server', () => {
     );
     await waitFor(() =>
       expect(onAcknowledgeConversation).toHaveBeenCalledWith(fresh),
+    );
+  });
+
+  it('a row whose read state the server could not read shows as unknown, never as read, with one quiet retry', async () => {
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const lost = fromServer('lost', {
+      version: VERSION,
+      unavailable: true,
+    } as unknown as ConversationListItem['readState']);
+    render(
+      <QueryClientProvider client={client}>
+        <ChatDockInboxPanel
+          items={[lost, fromServer('known', { version: VERSION, seenVersion: VERSION, unread: false })]}
+          activeChatSessionId={null}
+          openChatSessionIds={['lost', 'known']}
+          onFocusChat={vi.fn()}
+          onOpenConversation={vi.fn()}
+          onOpenSession={vi.fn()}
+          onCloseChat={vi.fn()}
+          onOpenHistory={vi.fn()}
+          now={NOW}
+        />
+      </QueryClientProvider>,
+    );
+    expect(lost).not.toHaveProperty('unread');
+    const name = /^lost title, read status unknown, station/;
+    expect(screen.getByRole('button', { name })).not.toBeNull();
+    const row = rowOf(name);
+    expect(row?.hasAttribute('data-unread')).toBe(false);
+    expect(row?.hasAttribute('data-read-unknown')).toBe(true);
+    expect(rowOf(/^known title, station/)?.hasAttribute('data-read-unknown')).toBe(false);
+    // One note for the surface, not one per row.
+    const notes = screen.getAllByRole('status').filter((node) =>
+      node.textContent?.includes('Read status unavailable'),
+    );
+    expect(notes).toHaveLength(1);
+    fireEvent.click(within(notes[0]!).getByRole('button', { name: 'Retry' }));
+    expect(invalidate).toHaveBeenCalledWith(
+      { queryKey: conversationQueries.inventory().queryKey },
+      { cancelRefetch: false },
     );
   });
 });

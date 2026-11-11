@@ -2361,10 +2361,13 @@ export function configureRuntimeRoutes(
     );
   };
   // #3075: whose read state a request reads and writes, for the read-marker
-  // service and the orchestration stream that announces its changes.
-  const readMarkerOwnerDevice = ownerDevicePredicate(() =>
-    context.environmentSecurityService.devicePairing.listDevices(),
-  );
+  // service and the orchestration stream that announces its changes. A paired
+  // device shares the owner's read state only while it holds owner standing,
+  // the pairing service's own rule (`deviceHasOwnerStanding`): a read-only,
+  // delegated or person-bound device is its own person, and never receives
+  // the owner's read-marker changes (#3075 review).
+  const readMarkerOwnerDevice = (deviceId: string) =>
+    context.environmentSecurityService.deviceHasOwnerStanding(deviceId);
   const readMarkerPersonKeyFor = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
   ) =>
