@@ -174,6 +174,8 @@ function record(sequence: number, agent = false): ProjectTaskRoomBrowserRecord {
 afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
+  // Thread drafts persist per tab (useRoomDraft); each test starts clean.
+  sessionStorage.clear();
   mocks.upload.mockReset().mockResolvedValue([
     {
       id: '00000000-0000-4000-8000-000000000001',

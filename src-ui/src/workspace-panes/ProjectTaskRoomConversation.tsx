@@ -35,6 +35,7 @@ import {
   RoomConversation,
   type RoomConversationRow,
 } from '../components/room/RoomConversation';
+import { useRoomDraft } from '../components/room/useRoomDraft';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -154,7 +155,19 @@ export function ProjectTaskRoomConversation({
     capabilities?.historyRead,
   );
   const [thread, setThread] = useState<string>();
-  const [reply, setReply] = useState('');
+  // A thread's unsent reply survives leaving the Task and a reload; keyed
+  // by Station authority, Task and Session so it never reaches another agent.
+  const [reply, setReply] = useRoomDraft(
+    thread && scope
+      ? JSON.stringify([
+          'task-thread',
+          scope.apiBase,
+          scope.authorityKey,
+          taskId,
+          thread,
+        ])
+      : undefined,
+  );
   const replyAttachments = useTaskRoomAttachments(
     taskId,
     taskCreatedAt ?? '',
