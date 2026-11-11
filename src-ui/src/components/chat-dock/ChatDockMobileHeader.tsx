@@ -3,7 +3,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
-import { useId, useRef, useState } from 'react';
+import { useContext, useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import {
@@ -21,6 +21,7 @@ import './ChatDockHeader.css';
 import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
+import { MobileDockHeaderLeadingContext } from './MobileDockHeaderLeading';
 import { MobileSheetPending } from './MobileSheetPending';
 
 const loadChatDockMobileOverflowSheet = () =>
@@ -181,6 +182,7 @@ export function ChatDockMobileHeader({
   onNewChat,
   overflow,
 }: ChatDockMobileHeaderProps) {
+  const hostLeading = useContext(MobileDockHeaderLeadingContext);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const [isProjectOpen, setIsProjectOpen] = useState(false);
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
@@ -209,6 +211,7 @@ export function ChatDockMobileHeader({
       data-testid="chat-dock-mobile-header"
     >
       <div className="chat-dock__mobile-leading">
+        {hostLeading}
         {showDrawerToggle ? (
           <button
             type="button"

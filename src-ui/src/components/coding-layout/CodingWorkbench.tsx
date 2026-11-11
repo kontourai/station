@@ -76,6 +76,7 @@ import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspac
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
+import { MobileDockHeaderLeadingContext } from '../chat-dock/MobileDockHeaderLeading';
 import { inboxToggleLabel } from '../chat-dock/inbox-toggle-label';
 import { Dialog } from '../Dialog';
 import {
@@ -1141,6 +1142,35 @@ export function CodingWorkbench({
   const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
   const inboxEdgeName = inboxToggleLabel(false, inboxNeedsYou);
   const chatBar = centerChat && page === 'chat';
+  const mobileChatPage = isMobile && centerChat && page === 'chat';
+  // The phone's tool picker. On the Chat page it rides at the start of the
+  // chat's own header (glyph and caret only, named for a screen reader);
+  // drilled into a tool it stays in this bar beside the way back to Chat.
+  const toolTrigger = (
+    <button
+      type="button"
+      className={`choice-trigger coding-workbench__tool-trigger${mobileChatPage ? ' coding-workbench__tool-trigger--compact' : ''}`}
+      ref={(node) => {
+        currentCrumbRef.current = node;
+      }}
+      aria-label={`Switch tool, current: ${page === 'drill-in' ? drillInLabel : 'Chat'}`}
+      title={mobileChatPage ? 'Switch tool' : undefined}
+      aria-haspopup="dialog"
+      aria-expanded={toolPickerOpen}
+      data-no-dock-drag=""
+      onClick={() => setToolPickerOpen(true)}
+    >
+      {page === 'drill-in' && drilledIn ? (
+        railGlyph(drilledIn.descriptorId, drillInLabel)
+      ) : (
+        <MessageGlyph />
+      )}
+      {mobileChatPage ? null : (
+        <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
+      )}
+      <ArrowDownGlyph className="choice-caret" />
+    </button>
+  );
   const [barStart, setBarStart] = useState<HTMLElement | null>(null);
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
@@ -1285,7 +1315,12 @@ export function CodingWorkbench({
       }
     >
       <div className="coding-workbench__main">
-        <div className="coding-workbench__bar">
+        <div
+          className="coding-workbench__bar"
+          // Phone, Chat page: the chat's own header carries the tool picker
+          // and its Inbox button, so this bar would be a row of nothing.
+          hidden={mobileChatPage || undefined}
+        >
           {/* The rail is last in the tab order (bar, Chat, the open panel,
               then the rail); a reader who wants a tool first skips to it. */}
           {!isMobile && (
@@ -1314,30 +1349,12 @@ export function CodingWorkbench({
               <Button
                 variant="ghost"
                 className="coding-workbench__mobile-back"
-                onClick={page === 'drill-in' ? returnToChatPage : openInbox}
+                onClick={returnToChatPage}
               >
                 <ArrowLeftGlyph />
-                {page === 'drill-in' ? 'Chat' : 'Inbox'}
+                Chat
               </Button>
-              <button
-                type="button"
-                className="choice-trigger coding-workbench__tool-trigger"
-                ref={(node) => {
-                  currentCrumbRef.current = node;
-                }}
-                aria-label={`Switch tool, current: ${page === 'drill-in' ? drillInLabel : 'Chat'}`}
-                aria-haspopup="dialog"
-                aria-expanded={toolPickerOpen}
-                onClick={() => setToolPickerOpen(true)}
-              >
-                {page === 'drill-in' && drilledIn ? (
-                  railGlyph(drilledIn.descriptorId, drillInLabel)
-                ) : (
-                  <MessageGlyph />
-                )}
-                <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+              {toolTrigger}
             </nav>
           ) : (
             <nav
@@ -1402,7 +1419,7 @@ export function CodingWorkbench({
               ref={setBarTrailing}
             />
           ) : null}
-          {browserExperienceEnabled && browserPreviewAvailability ? (
+          {browserExperienceEnabled && browserPreviewAvailability && !isMobile ? (
             <Button
               variant="ghost"
               size="sm"
@@ -1462,12 +1479,16 @@ export function CodingWorkbench({
               {...pageState('chat', page === 'chat')}
             >
               {centerChat ? (
-                <CenterChat
-                  slots={chatBarSlots}
-                  onScreen={page === 'chat'}
-                  onPresentationTitleChange={setChatTitle}
-                  onInboxNeedsYouChange={setInboxNeedsYou}
-                />
+                <MobileDockHeaderLeadingContext.Provider
+                  value={mobileChatPage ? toolTrigger : null}
+                >
+                  <CenterChat
+                    slots={chatBarSlots}
+                    onScreen={page === 'chat'}
+                    onPresentationTitleChange={setChatTitle}
+                    onInboxNeedsYouChange={setInboxNeedsYou}
+                  />
+                </MobileDockHeaderLeadingContext.Provider>
               ) : (
                 <DockChatNotice />
               )}

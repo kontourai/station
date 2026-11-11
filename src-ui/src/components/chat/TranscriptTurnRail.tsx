@@ -193,6 +193,12 @@ interface TranscriptTurnRailProps {
   readonly nextTurn: number | undefined;
   readonly onStep: (turnIndex: number) => void;
   readonly touchControls: boolean;
+  /**
+   * Touch only: whether the steps are drawn. They float over the text, so
+   * they show only while the reader has scrolled away from the latest
+   * message, the same moment Scroll to bottom appears.
+   */
+  readonly touchStepsShown?: boolean;
 }
 
 /**
@@ -240,6 +246,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   nextTurn,
   onStep,
   touchControls,
+  touchStepsShown = true,
 }: TranscriptTurnRailProps) {
   const hostRef = useRef<HTMLFieldSetElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -396,6 +403,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
       className="transcript-turn-rail-host"
       ref={hostRef}
       data-touch-controls={touchControls || undefined}
+      data-touch-steps-hidden={(touchControls && !touchStepsShown) || undefined}
       aria-label="Turn navigation"
     >
       <button

@@ -656,6 +656,11 @@ and calls still waiting on a grant stay outside the fold, and so does the last n
 follows the last call. While the turn is live it keeps the shape it streamed
 with. Messages with anchored subagents keep their original tool runs at every
 width, preserving each child card's expansion and keyboard focus during resizing.
+A call that spawned child work is drawn as that child's card, not also as its
+own tool row or inside an activity summary. A Claude background shell command
+(`local_bash`, including one a Monitor launched) is child work of kind
+`command`/`monitor`, not a subagent: its card shows a terminal mark, the
+command line and its exit code, with no model, instructions or transcript.
 Adjacent tool calls and visible reasoning share an activity summary on every
 screen size, live and settled. A brain glyph marks reasoning and mixed groups;
 the summary counts reasoning steps separately from tools. Opening the group
@@ -724,8 +729,11 @@ message row starts a turn.
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
-  They appear on hover or keyboard focus on desktop and retain 44px targets on
-  narrow screens, with a reserved gutter so they do not cover message text.
+  They appear on hover or keyboard focus on desktop. On touch they keep 44px
+  targets but reserve no gutter: they float stacked in the transcript's
+  bottom-right corner only while the reader has scrolled away from the latest
+  message (when **Scroll to bottom** appears), and a step with no turn to go
+  to is not drawn.
   **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request

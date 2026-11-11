@@ -1,5 +1,6 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
+  ChildWorkKind,
   ChildWorkModel,
   ChildWorkSummarySource,
   ChildWorkTerminalDisplayStatus,
@@ -341,6 +342,8 @@ export type ChatBackgroundTask = {
   toolCallId?: string;
   description?: string;
   subagentType?: string;
+  /** What sort of work it is (`childWorkKindOf`): an agent, a command or a monitor. */
+  workKind?: ChildWorkKind;
   /** #3163: the child's own reported model, when its engine reported one. */
   model?: ChildWorkModel;
   backgrounded?: boolean;
