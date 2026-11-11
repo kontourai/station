@@ -612,6 +612,38 @@ test('answers that fit do not show an expansion control', () => {
   expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
 });
 
+test('a thread reply draft survives leaving the Task and stays with its own thread', () => {
+  const second = record(2, true);
+  mocks.records = [
+    record(1, true),
+    {
+      ...second,
+      actor: { ...second.actor, label: 'Builder' },
+      execution: { sessionId: 'session-2', turnId: 'turn-2' },
+    },
+  ];
+  const first = mount();
+  const replyIn = (index: number) =>
+    fireEvent.click(
+      within(
+        screen.getByRole('list', { name: 'Task room history' }),
+      ).getAllByRole('button', { name: 'Reply in thread' })[index],
+    );
+  const field = () =>
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply to this agent',
+    });
+  replyIn(0);
+  fireEvent.change(field(), { target: { value: 'Half-written follow-up' } });
+  first.unmount();
+  mount();
+  replyIn(0);
+  expect(field().value).toBe('Half-written follow-up');
+  fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
+  replyIn(1);
+  expect(field().value).toBe('');
+});
+
 test('cancel retains a thread draft, while confirmed discard cannot carry it to another agent', async () => {
   mocks.realGuard = true;
   const second = record(2, true);
