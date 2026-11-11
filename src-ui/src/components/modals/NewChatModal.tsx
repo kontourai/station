@@ -1570,7 +1570,7 @@ export function NewChatModal({
                     }
                   }}
                 >
-                  Try again
+                  Retry
                 </Button>
               }
             />
@@ -2021,7 +2021,7 @@ export function NewChatModal({
                       void refreshSetup().catch(() => undefined);
                     }}
                   >
-                    Try again
+                    Retry
                   </Button>
                 )}
               </p>

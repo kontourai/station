@@ -27,6 +27,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, promisifyRequest, set, update } from 'idb-keyval';
 import type { ChatStationBindingV1 } from '../connections/station-connection';
 import type { FileAttachment } from '../types';
+import { registerAcceptedTurnSettler } from './outboundAcceptedTurnObservations';
 import { requestPersistentStorage } from './persistentStorage';
 
 export type OutboundDispatchStatus =
@@ -3323,6 +3324,15 @@ export function _setOutboundQueueStorage(
   drainInFlight.clear();
   liveClaimOf.clear();
 }
+
+// The stream snapshot publishes what the server reports open; this module
+// settles from it, including what was published before it loaded.
+registerAcceptedTurnSettler(({ records, observedAt, station }) => {
+  void completeAcceptedTurnsNotOpen(records, observedAt, station).catch(() => {
+    // The row stays as it was, for its terminal event or the next snapshot;
+    // the outbox reports its own storage outage.
+  });
+});
 
 /** Test-only: drop the cross-tab channel so one test's stub cannot outlive it. */
 export function _resetOutboundQueueChangeChannel(): void {

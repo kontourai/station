@@ -313,7 +313,7 @@ export function GuestProjectAccessView({
         <h4>People and access</h4>
         <p role="alert">People and access is unavailable.</p>
         <div className="account-entry__actions">
-          <Button onClick={() => void refreshReads()}>Try again</Button>
+          <Button onClick={() => void refreshReads()}>Retry</Button>
         </div>
       </section>
     );

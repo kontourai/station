@@ -291,7 +291,7 @@ export default function FilePreviewContent({
             <Empty
               label="Preview unavailable"
               description="Station could not load the PDF viewer. Download the file, or try again."
-              action={<Button onClick={retry}>Try again</Button>}
+              action={<Button onClick={retry}>Retry</Button>}
             />
           </>
         )}

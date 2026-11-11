@@ -126,7 +126,7 @@ export function MemberProjectPage({
                       !requestScope.isCurrent() || sharedWork.isFetching
                     }
                   >
-                    Try again
+                    Retry
                   </Button>
                 }
               />

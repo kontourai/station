@@ -378,7 +378,7 @@ export function AgentsWorkspacePane() {
         description="Delegated tasks come from this Station's session list, which did not answer."
         action={
           <Button size="sm" onClick={retry}>
-            Try again
+            Retry
           </Button>
         }
       />
@@ -411,7 +411,7 @@ export function AgentsWorkspacePane() {
           <p className="agents-pane__note" role="status">
             Delegated tasks could not be loaded.{' '}
             <Button size="sm" variant="link" onClick={retry}>
-              Try again
+              Retry
             </Button>
           </p>
         )}
@@ -419,7 +419,7 @@ export function AgentsWorkspacePane() {
           <p className="agents-pane__note" role="status">
             Delegated tasks may be out of date: the last refresh failed.{' '}
             <Button size="sm" variant="link" onClick={retry}>
-              Try again
+              Retry
             </Button>
           </p>
         )}

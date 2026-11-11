@@ -342,7 +342,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         duration: 0,
         recallText: 'The local Station could not restart.',
         actions: [
-          { label: 'Try again', onClick: () => handleRestartBundledServer() },
+          { label: 'Retry', onClick: () => handleRestartBundledServer() },
         ],
       });
       if (noticeId) restartNoticeId.current = noticeId;

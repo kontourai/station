@@ -3607,11 +3607,11 @@ const SCREENS: Screen[] = [
             'Connection request failed',
           );
           await expect(
-            dialog.getByRole('button', { name: 'Try again', exact: true }),
+            dialog.getByRole('button', { name: 'Retry', exact: true }),
           ).toBeVisible();
           expect(
             await contrastRatio(
-              dialog.getByRole('button', { name: 'Try again', exact: true }),
+              dialog.getByRole('button', { name: 'Retry', exact: true }),
             ),
           ).toBeGreaterThanOrEqual(4.5);
         } finally {

@@ -347,7 +347,7 @@ export function LocalUiSessionGate({
           <RetryAttempt attempt={identityAttempt} />
           <ElapsedWait startedAt={accessStartedAt} />
           <button type="button" onClick={() => window.location.reload()}>
-            Try again
+            Retry
           </button>
         </main>
       );
@@ -411,7 +411,7 @@ export function LocalUiSessionGate({
           Station is temporarily unavailable. Reconnecting automatically.
         </p>
         <Button onClick={() => recheckSession()} disabled={checkingRecovery}>
-          Try again
+          Retry
         </Button>
       </main>
     );

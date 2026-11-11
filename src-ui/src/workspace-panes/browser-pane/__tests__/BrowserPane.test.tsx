@@ -728,7 +728,7 @@ describe('BrowserPane honest states', () => {
     ).toBeTruthy();
     expect(screen.queryByLabelText('Address')).toBeNull();
     expect(screen.getByText(/grant you Project admin access/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test.each([
@@ -738,7 +738,7 @@ describe('BrowserPane honest states', () => {
     renderPane({ 'GET /api/browser/projects/alpha/access': refuse(403, code) });
     expect(await screen.findByText(title)).toBeTruthy();
     expect(screen.getByText(guidance)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('a live session mounts the live view on its surface', async () => {
@@ -2240,7 +2240,7 @@ describe('BrowserPane on a phone-width pane (Duo audit)', () => {
     expect(
       await screen.findByText('Local servers could not be read'),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(
       await screen.findByText('Local servers appear here once shared'),
     ).toBeTruthy();

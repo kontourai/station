@@ -173,7 +173,7 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
                       className="button"
                       onClick={() => void bootHistory.refetch()}
                     >
-                      Try again
+                      Retry
                     </button>
                   }
                 />
