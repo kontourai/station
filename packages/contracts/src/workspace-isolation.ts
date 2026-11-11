@@ -174,6 +174,8 @@ export type WorktreeOutputSettlementRequest =
 
 /** Why a settlement request was refused; nothing was recorded or removed. */
 export type WorktreeOutputSettlementRefusal =
+  /** The caller lost its authority over the Session while Station checked. */
+  | 'authority-changed'
   | 'already-settled'
   | 'request-key-mismatch'
   | 'settlement-pending'

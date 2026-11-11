@@ -30,7 +30,7 @@ function fixture(
     requestedAt: '2026-11-11T00:00:00.000Z',
     settledAt: '2026-11-11T00:00:00.000Z',
   };
-  const settle = vi.fn(async () => ({
+  const settle = vi.fn(async (_input: { stillAuthorized: () => boolean }) => ({
     kind: 'recorded' as const,
     settlement: recorded,
   }));
@@ -129,6 +129,11 @@ describe('worktree output settlement route (#4771)', () => {
         }),
       }),
     );
+    // The service asks again before any effect; losing access answers no.
+    const { stillAuthorized } = f.settle.mock.calls[0][0];
+    expect(stillAuthorized()).toBe(true);
+    f.disown();
+    expect(stillAuthorized()).toBe(false);
   });
 
   test('refuses a caller-asserted actor and settles nothing', async () => {

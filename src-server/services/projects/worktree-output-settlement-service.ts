@@ -52,6 +52,12 @@ interface SettleInput {
   /** Derived by the caller from the request's authenticated principal. */
   actor: { kind: 'person'; id: string };
   request: WorktreeOutputSettlementRequest;
+  /**
+   * The caller's authority over the Session, asked again after Station's
+   * Git and forge reads and immediately before anything is recorded or
+   * removed.
+   */
+  stillAuthorized: () => boolean;
 }
 
 /** The request key every cleanup-policy record carries; one per Session. */
@@ -69,6 +75,11 @@ const refused = (
 });
 
 const lower = (value: string) => value.toLowerCase();
+
+const AUTHORITY_CHANGED = refused(
+  'authority-changed',
+  'Your access to this Session changed; nothing was recorded or removed.',
+);
 
 /**
  * What a replay must repeat exactly: the outcome and every input that
@@ -250,6 +261,7 @@ export class WorktreeOutputSettlementService {
         'A discard of this worktree started and has not been recorded yet; only completing it can settle this Session.',
         record,
       );
+    if (!input.stillAuthorized()) return AUTHORITY_CHANGED;
     return this.completeDiscard(
       input.metadata,
       existing,
@@ -270,6 +282,7 @@ export class WorktreeOutputSettlementService {
         'uncommitted-changes',
         'The worktree has uncommitted or untracked changes; send acceptUncommittedLoss to discard them.',
       );
+    if (!input.stillAuthorized()) return AUTHORITY_CHANGED;
     const pending = this.deps.store.insert({
       requestDigest: digest,
       record: {
@@ -453,6 +466,7 @@ export class WorktreeOutputSettlementService {
     head: string,
     evidence: WorktreeOutputSettlementEvidence,
   ): WorktreeOutputSettlementResult {
+    if (!input.stillAuthorized()) return AUTHORITY_CHANGED;
     const at = this.now().toISOString();
     const inserted = this.deps.store.insert({
       requestDigest: digest,

@@ -56,6 +56,7 @@ const settlementRequestSchema = z.discriminatedUnion('outcome', [
 ]);
 
 const REFUSAL_STATUS: Record<WorktreeOutputSettlementRefusal, 404 | 409> = {
+  'authority-changed': 404,
   'already-settled': 409,
   'request-key-mismatch': 409,
   'settlement-pending': 409,
@@ -152,6 +153,13 @@ export function createWorktreeOutputSettlementRoutes(deps: {
       metadata: worktree.metadata,
       actor: { kind: 'person', id: authority.userId },
       request: parsed.request,
+      stillAuthorized: () =>
+        deps.current(c.req.raw) &&
+        deps.orchestration.canUserMutateSession(
+          id,
+          authority.userId,
+          authority.tenantExecutionContext,
+        ),
     });
     if (result.kind === 'refused')
       return refusal(c, result.reason, result.detail, result.settlement);

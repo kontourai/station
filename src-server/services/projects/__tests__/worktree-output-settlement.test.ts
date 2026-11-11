@@ -51,6 +51,7 @@ const branchExists = (repo: string, branch: string) => {
 };
 
 const OWNER = { kind: 'person', id: 'human:test:owner' } as const;
+const allowed = () => true;
 const OTHER = { kind: 'person', id: 'human:test:other' } as const;
 
 function repository() {
@@ -166,6 +167,7 @@ describe('discard (#4771)', () => {
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OWNER,
+      stillAuthorized: allowed,
       request: { requestKey: 'discard-1', outcome: 'discarded' },
     });
 
@@ -227,6 +229,7 @@ describe('discard (#4771)', () => {
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OWNER,
+      stillAuthorized: allowed,
       request: { requestKey: 'discard-1', outcome: 'discarded' },
     });
     expect(refusedResult).toMatchObject({
@@ -240,6 +243,7 @@ describe('discard (#4771)', () => {
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OWNER,
+      stillAuthorized: allowed,
       request: {
         requestKey: 'discard-2',
         outcome: 'discarded',
@@ -262,6 +266,37 @@ describe('discard (#4771)', () => {
   });
 });
 
+describe('authority is asked again before any effect (#4771)', () => {
+  test('a caller that lost access to the Session records and removes nothing', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a');
+    git(repo, 'merge', '--quiet', '--no-ff', '-m', 'merge', a.metadata.branch);
+    let asked = 0;
+    const revoked = () => {
+      asked += 1;
+      return false;
+    };
+    for (const request of [
+      { requestKey: 'discard-1', outcome: 'discarded' as const },
+      { requestKey: 'kept-1', outcome: 'kept' as const },
+    ])
+      expect(
+        await service.settle({
+          sessionId: 'session-a',
+          metadata: a.metadata,
+          actor: OWNER,
+          stillAuthorized: revoked,
+          request,
+        }),
+      ).toMatchObject({ kind: 'refused', reason: 'authority-changed' });
+
+    expect(asked).toBe(2);
+    expect(service.read('session-a')).toBeUndefined();
+    expect(existsSync(a.metadata.path)).toBe(true);
+    expect(branchExists(repo, a.metadata.branch)).toBe(true);
+  });
+});
+
 describe('kept is derived from the base, never asserted (#4771)', () => {
   test('is refused until the base contains the head, then records the containing commit', async () => {
     const { repo, service } = fixture();
@@ -271,6 +306,7 @@ describe('kept is derived from the base, never asserted (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey, outcome: 'kept' },
       });
 
@@ -312,6 +348,7 @@ describe('kept is derived from the base, never asserted (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey: 'kept-1', outcome: 'kept' },
       }),
     ).toMatchObject({ kind: 'refused', reason: 'base-does-not-contain-head' });
@@ -321,6 +358,7 @@ describe('kept is derived from the base, never asserted (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: {
           requestKey: 'released-1',
           outcome: 'released',
@@ -352,6 +390,7 @@ describe('kept is derived from the base, never asserted (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey: 'kept-1', outcome: 'kept' },
       }),
     ).toMatchObject({ kind: 'refused', reason: 'no-new-commits' });
@@ -368,6 +407,7 @@ describe('released needs the forge to agree (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: {
           requestKey: 'released-1',
           outcome: 'released',
@@ -418,6 +458,7 @@ describe('at most one outcome per Session (#4771)', () => {
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OWNER,
+      stillAuthorized: allowed,
       request: { requestKey: 'kept-1', outcome: 'kept' },
     });
     expect(first.kind).toBe('recorded');
@@ -427,6 +468,7 @@ describe('at most one outcome per Session (#4771)', () => {
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OTHER,
+      stillAuthorized: allowed,
       request: { requestKey: 'discard-1', outcome: 'discarded' },
     });
 
@@ -450,6 +492,7 @@ describe('at most one outcome per Session (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey: 'discard-1', outcome: 'discarded' },
       });
     const first = await discard();
@@ -467,6 +510,7 @@ describe('at most one outcome per Session (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: {
           requestKey: 'discard-1',
           outcome: 'discarded',
@@ -486,6 +530,7 @@ describe('at most one outcome per Session (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey: 'kept-1', outcome: 'kept' },
       });
     expect((await kept()).kind).toBe('recorded');
@@ -532,6 +577,7 @@ describe('a crash between the Git effect and the record converges (#4771)', () =
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OWNER,
+      stillAuthorized: allowed,
       request: { requestKey: 'discard-1', outcome: 'discarded' as const },
     };
 
@@ -583,6 +629,7 @@ describe('a crash between the Git effect and the record converges (#4771)', () =
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey: 'discard-1', outcome: 'discarded' },
       }),
     ).rejects.toThrow(/process stopped/);
@@ -591,6 +638,7 @@ describe('a crash between the Git effect and the record converges (#4771)', () =
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OTHER,
+      stillAuthorized: allowed,
       request: { requestKey: 'discard-2', outcome: 'discarded' },
     });
     expect(completed).toMatchObject({
@@ -631,6 +679,7 @@ describe('a crash between the Git effect and the record converges (#4771)', () =
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey: 'kept-1', outcome: 'kept' },
       }),
     ).toMatchObject({
@@ -667,6 +716,7 @@ describe('cleanup policy without a decision (#4771)', () => {
         sessionId: 'session-a',
         metadata: a.metadata,
         actor: OWNER,
+        stillAuthorized: allowed,
         request: { requestKey: 'discard-1', outcome: 'discarded' },
       }),
     ).toMatchObject({ kind: 'refused', reason: 'already-settled' });
@@ -680,6 +730,7 @@ describe('cleanup policy without a decision (#4771)', () => {
       sessionId: 'session-a',
       metadata: a.metadata,
       actor: OWNER,
+      stillAuthorized: allowed,
       request: { requestKey: 'kept-1', outcome: 'kept' },
     });
     const kept = service.read('session-a');

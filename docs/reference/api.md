@@ -82,8 +82,10 @@ Session must have started in a worktree of its own.
 
 A new record answers 201 with `data:{status:'recorded', settlement}`; a replay
 of the same request key and request, or a discard that completed an earlier
-half-done one, answers 200 with `status:'existing'`. A refusal answers 409 (404
-for a Session without its own worktree) with a `code` such as
+half-done one, answers 200 with `status:'existing'`. Session authority is
+checked again after Station's Git and forge reads, immediately before anything
+is recorded or removed. A refusal answers 409 (404 for a Session without its
+own worktree, or `authority-changed`) with a `code` such as
 `already-settled`, `request-key-mismatch`, `settlement-pending`,
 `uncommitted-changes`, `base-does-not-contain-head`, `no-new-commits`,
 `pull-request-mismatch` or `task-owned-worktree`, and the record in the way
