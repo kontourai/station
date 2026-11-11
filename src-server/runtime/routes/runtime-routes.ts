@@ -11890,6 +11890,17 @@ export function configureRuntimeRoutes(
       sessionConversationReader: context.orchestrationService,
       eventStore: context.orchestrationService,
       authorityFor: conversationReadAuthorityForRequest,
+      // #3075: the content version (not `updatedAt`, which a stop moves).
+      // Without the event store there is no content version to read: the
+      // inventory then reports the read state unavailable, never "read".
+      conversationContent: {
+        readConversationContentTimes: (ids) => {
+          const store = context.orchestrationEventStore;
+          if (!store)
+            throw new Error('Conversation content times are unavailable');
+          return store.readConversationContentTimes(ids);
+        },
+      },
     }),
     projectRooms: projectRoomVersionSource(projectRoomService),
     taskRooms: taskRoomVersionSource({

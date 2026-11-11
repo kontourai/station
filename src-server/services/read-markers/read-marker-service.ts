@@ -1,4 +1,7 @@
-import type { ConversationReadState } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationListItem,
+  ConversationReadState,
+} from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   deriveReadMarkerState,
@@ -53,6 +56,26 @@ export function readMarkerPersonKey(input: {
 }
 
 /**
+ * An agent conversation's versions, in epoch ms (#3075 owner review).
+ * `version` is its CONTENT version: it moves only when something a person
+ * would read arrives (a turn finishing, ending unfinished or failing), never
+ * on lifecycle bookkeeping such as the `session.exited` a Station stop
+ * writes. It is what `readState` reports and what a mark is bounded by.
+ * `acknowledgeableUntil` is the inventory `updatedAt` a client shows and
+ * acknowledges with; it is at or after `version`.
+ */
+export interface AgentConversationVersion {
+  readonly version: number;
+  readonly acknowledgeableUntil: number;
+}
+
+/** An inventory item, as the version source reads its versions. */
+export type AgentConversationVersionItem = Pick<
+  ConversationListItem,
+  'id' | 'source' | 'updatedAt'
+>;
+
+/**
  * Current versions of the caller's agent conversations. Batched: one summary
  * request reads the caller's inventory once, not once per conversation. A
  * conversation the caller cannot read is absent from the answer.
@@ -61,7 +84,11 @@ export interface AgentConversationVersionSource {
   latestVersions(
     conversationIds: readonly string[],
     request: Request,
-  ): Promise<ReadonlyMap<string, number>>;
+  ): Promise<ReadonlyMap<string, AgentConversationVersion>>;
+  /** The versions of inventory items the caller has already read. */
+  versionsOf(
+    items: readonly AgentConversationVersionItem[],
+  ): ReadonlyMap<string, AgentConversationVersion>;
 }
 
 /** A room the caller may read: its marker key and current sequence. */
@@ -114,6 +141,8 @@ interface Resolved {
   key: string;
   latestVersion: number;
   countable: boolean;
+  /** Agent conversations: see {@link AgentConversationVersion}. */
+  acknowledgeableUntil?: number;
 }
 
 export interface ReadMarkerServiceDeps {
@@ -183,19 +212,18 @@ export class ReadMarkerService {
             conversationIds,
             request,
           )
-        : new Map<string, number>();
+        : new Map<string, AgentConversationVersion>();
     return Promise.all(
       targets.map(async (target): Promise<Resolved | undefined> => {
         switch (target.kind) {
           case 'agent-conversation': {
-            const latestVersion = conversationVersions.get(
-              target.conversationId,
-            );
-            return latestVersion === undefined
+            const versions = conversationVersions.get(target.conversationId);
+            return versions === undefined
               ? undefined
               : {
                   key: `${AGENT_PREFIX}${target.conversationId}`,
-                  latestVersion,
+                  latestVersion: versions.version,
+                  acknowledgeableUntil: versions.acknowledgeableUntil,
                   countable: false,
                 };
           }
@@ -326,8 +354,13 @@ export class ReadMarkerService {
   }
 
   /**
-   * `POST /api/conversations/:id/acknowledgement` (#3075): refuses a version
-   * the conversation has not reached, keeps the inherited write under the
+   * `POST /api/conversations/:id/acknowledgement` (#3075): the client sends
+   * the inventory `updatedAt` it showed, so the bound is that version
+   * (`acknowledgeableUntil`), not the content version: a stop moves
+   * `updatedAt` past the content, and opening the conversation then must not
+   * be refused. The stored record is that inventory version, which covers
+   * all the content it showed. Refuses a version the conversation has not
+   * reached, keeps the inherited write under the
    * inventory's own key (`inheritedKey`, which `acknowledgedAt` and Home's
    * Just finished read), and moves the caller's person marker when that is a
    * different key (a hosted member). `undefined` when the caller cannot read
@@ -345,8 +378,8 @@ export class ReadMarkerService {
     };
     const [resolved] = await this.resolve([target], c.req.raw);
     if (!resolved) return undefined;
-    if (version > resolved.latestVersion)
-      throw new ReadMarkerFutureVersionError(version, resolved.latestVersion);
+    const until = resolved.acknowledgeableUntil ?? resolved.latestVersion;
+    if (version > until) throw new ReadMarkerFutureVersionError(version, until);
     const person = this.deps.personKeyFor(c);
     if (person !== inheritedKey)
       this.deps.conversations.acknowledge({
@@ -361,34 +394,28 @@ export class ReadMarkerService {
 
   /**
    * The caller's derived read state for inventory items, from their person
-   * key; `undefined` when the caller is not a person (no read state, never
-   * a guessed one).
+   * key and each item's content version; `undefined` when the caller is not
+   * a person (no read state, never a guessed one).
    */
   conversationReadStates(
     c: ReadMarkerRequestContext,
-    items: readonly { id: string; version: number }[],
+    items: readonly AgentConversationVersionItem[],
   ): ReadonlyMap<string, ConversationReadState> | undefined {
     const person = this.deps.personKeyFor(c);
     if (!person) return undefined;
-    const acknowledged = this.deps.conversations.getMany(
-      person,
-      items.map((item) => item.id),
-    );
+    const versions = this.deps.agentConversations?.versionsOf(items);
+    if (!versions) return undefined;
+    const acknowledged = this.deps.conversations.getMany(person, [
+      ...versions.keys(),
+    ]);
     const baseline = this.baseline();
     return new Map(
-      items.map((item) => {
+      [...versions].map(([id, { version }]) => {
         const seenVersion = Math.min(
-          Math.max(acknowledgedVersion(acknowledged.get(item.id)), baseline),
-          item.version,
+          Math.max(acknowledgedVersion(acknowledged.get(id)), baseline),
+          version,
         );
-        return [
-          item.id,
-          {
-            version: item.version,
-            seenVersion,
-            unread: item.version > seenVersion,
-          },
-        ];
+        return [id, { version, seenVersion, unread: version > seenVersion }];
       }),
     );
   }

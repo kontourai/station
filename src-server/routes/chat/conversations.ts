@@ -74,6 +74,8 @@ import {
 import { readConversationContextSeedPin } from '../../services/orchestration/conversation-handoff-module.js';
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
 import {
+  type AgentConversationVersion,
+  type AgentConversationVersionItem,
   type AgentConversationVersionSource,
   ReadMarkerFutureVersionError,
   type ReadMarkerService,
@@ -2655,34 +2657,81 @@ export function createAgentConversationVersionSource(
       'readSessionConversation'
     >;
     authorityFor(request: Request): SessionReadAuthority;
+    /** The event store's content times (`readConversationContentTimes`). */
+    conversationContent: {
+      readConversationContentTimes(
+        conversationIds: readonly string[],
+      ): ReadonlyMap<string, string>;
+    };
   },
 ): AgentConversationVersionSource {
+  /**
+   * A runtime conversation's content version is the time of its newest
+   * content event (0 before its first reply); its inventory `updatedAt` also
+   * moves on lifecycle bookkeeping, so it bounds acknowledgements only. A
+   * file-backed conversation has no lifecycle events: its own `updatedAt`
+   * is both.
+   */
+  const versionsOf = (
+    items: readonly AgentConversationVersionItem[],
+  ): Map<string, AgentConversationVersion> => {
+    const runtimeIds = items.flatMap((item) =>
+      item.source === 'runtime' ? [item.id] : [],
+    );
+    const contentTimes =
+      deps.conversationContent.readConversationContentTimes(runtimeIds);
+    const result = new Map<string, AgentConversationVersion>();
+    for (const item of items) {
+      const acknowledgeableUntil = conversationReadVersion(item);
+      if (acknowledgeableUntil === undefined) continue;
+      if (item.source !== 'runtime') {
+        result.set(item.id, {
+          version: acknowledgeableUntil,
+          acknowledgeableUntil,
+        });
+        continue;
+      }
+      const contentAt = contentTimes.get(item.id);
+      const content = contentAt === undefined ? 0 : Date.parse(contentAt);
+      if (!Number.isSafeInteger(content) || content < 0) continue;
+      result.set(item.id, {
+        version: Math.min(content, acknowledgeableUntil),
+        acknowledgeableUntil,
+      });
+    }
+    return result;
+  };
   return {
+    versionsOf,
     async latestVersions(conversationIds, request) {
-      const result = new Map<string, number>();
+      const result = new Map<string, AgentConversationVersion>();
       if (conversationIds.length === 0) return result;
       const authority = deps.authorityFor(request);
       const page = await readConversationInventoryPage(deps, authority, {
         limit: 100,
       });
       const wanted = new Set(conversationIds);
-      for (const item of page.items) {
-        const version = conversationReadVersion(item);
-        if (wanted.has(item.id) && version !== undefined)
-          result.set(item.id, version);
-      }
+      const found: AgentConversationVersionItem[] = page.items.filter((item) =>
+        wanted.has(item.id),
+      );
+      const seen = new Set(found.map((item) => item.id));
       for (const id of wanted) {
-        if (result.has(id)) continue;
+        if (seen.has(id)) continue;
         const conversation =
           await deps.sessionConversationReader.readSessionConversation(
             id,
             authority,
           );
-        const version = conversation
-          ? conversationReadVersion(conversation)
-          : await ownedFileConversationVersion(deps, authority, id);
-        if (version !== undefined) result.set(id, version);
+        if (conversation) {
+          // The point read is the runtime conversation's own record.
+          found.push({ ...conversation, source: 'runtime' });
+          continue;
+        }
+        const version = await ownedFileConversationVersion(deps, authority, id);
+        if (version !== undefined)
+          result.set(id, { version, acknowledgeableUntil: version });
       }
+      for (const [id, versions] of versionsOf(found)) result.set(id, versions);
       return result;
     },
   };
@@ -2935,10 +2984,6 @@ export function createGlobalConversationRoutes(
       }
       // #3075: the derived answer every surface reads, from the caller's own
       // person key. `acknowledgedAt` stays the inherited stored fact.
-      const versioned = page.items.flatMap((item) => {
-        const version = conversationReadVersion(item);
-        return version === undefined ? [] : [{ id: item.id, version }];
-      });
       let readStates:
         | ReadonlyMap<
             string,
@@ -2946,18 +2991,22 @@ export function createGlobalConversationRoutes(
           >
         | undefined;
       try {
-        readStates = readMarkers?.conversationReadStates(c, versioned);
+        readStates = readMarkers?.conversationReadStates(c, page.items);
       } catch (error) {
         // Unreadable read state is unknown, never "read" and never absent
         // (which reads as "no read state is kept").
         logger.warn('Conversation read state unavailable', {
           error: error instanceof Error ? error.name : 'unknown',
         });
+        // The version reported is the inventory's own; nothing finer could
+        // be read either.
         readStates = new Map(
-          versioned.map(({ id, version }) => [
-            id,
-            { version, unavailable: true as const },
-          ]),
+          page.items.flatMap((item) => {
+            const version = conversationReadVersion(item);
+            return version === undefined
+              ? []
+              : [[item.id, { version, unavailable: true as const }]];
+          }),
         );
       }
       const data = page.items.map((item) => {

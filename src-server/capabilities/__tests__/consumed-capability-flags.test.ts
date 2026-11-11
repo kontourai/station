@@ -339,7 +339,9 @@ const CONSUMED_FLAGS: Record<
       conversations: new FileConversationAcknowledgementStore(home),
       store: new FileReadMarkerStore(home),
       agentConversations: {
-        latestVersions: async () => new Map([['c1', 10]]),
+        latestVersions: async () =>
+          new Map([['c1', { version: 10, acknowledgeableUntil: 10 }]]),
+        versionsOf: () => new Map(),
       },
     });
     const routes = new Hono().route(

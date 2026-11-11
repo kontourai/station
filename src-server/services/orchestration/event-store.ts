@@ -11319,6 +11319,45 @@ export class EventStore {
       : undefined;
   }
 
+  /**
+   * #3075: each conversation's content time, the `created_at` of the newest
+   * event that is something a person would read (a turn finishing, ending
+   * unfinished or failing), across every Session in its lineage. Lifecycle
+   * bookkeeping (`session.exited` when Station stops, state changes) never
+   * moves it, unlike the history row's `updated_at`. A conversation with no
+   * such event is absent. Callers pass the ids of one bounded page.
+   */
+  readConversationContentTimes(
+    conversationIds: readonly string[],
+  ): Map<string, string> {
+    const result = new Map<string, string>();
+    if (conversationIds.length === 0) return result;
+    // Per Session, newest first by sequence through `idx_events_thread`; the
+    // unary `+` keeps the planner off the method index, which would walk
+    // every content event in the store.
+    const rows = this.db
+      .prepare(
+        `SELECT cs.conversation_id AS conversation_id,
+                MAX((
+                  SELECT e.created_at FROM orchestration_events e
+                  WHERE e.thread_id = cs.session_id
+                    AND +e.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
+                  ORDER BY e.sequence DESC
+                  LIMIT 1
+                )) AS content_at
+         FROM orchestration_conversation_sessions cs
+         WHERE cs.conversation_id IN (${conversationIds.map(() => '?').join(', ')})
+         GROUP BY cs.conversation_id`,
+      )
+      .all(...conversationIds) as {
+      conversation_id: string;
+      content_at: string | null;
+    }[];
+    for (const row of rows)
+      if (row.content_at) result.set(row.conversation_id, row.content_at);
+    return result;
+  }
+
   listConversationHistoryPage(options: {
     ownerUserId: string;
     tenantId?: string;

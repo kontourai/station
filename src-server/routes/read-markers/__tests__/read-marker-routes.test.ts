@@ -84,6 +84,19 @@ function conversation(id: string, updatedAt: string): ConversationListItem {
   };
 }
 
+/**
+ * An inventory item as the wire carries it: `readState` is either the known
+ * answer or `{ version, unavailable: true }`, so a test reads either field.
+ */
+type InventoryItem = Omit<ConversationListItem, 'readState'> & {
+  readState?: {
+    version: number;
+    seenVersion?: number;
+    unread?: boolean;
+    unavailable?: true;
+  };
+};
+
 let dir: string;
 /** Everything either marker store holds: room markers and acknowledgements. */
 const storedMarkers = () => {
@@ -245,6 +258,17 @@ function station(
       memoryAdapters,
       sessionConversationReader: reader,
       authorityFor,
+      // These fixtures have no lifecycle bookkeeping: each runtime
+      // conversation's content time is its `updatedAt`.
+      conversationContent: {
+        readConversationContentTimes: (ids) =>
+          new Map(
+            ids.flatMap((id) => {
+              const at = conversations.get(id);
+              return at ? [[id, at] as const] : [];
+            }),
+          ),
+      },
     }),
     projectRooms: projectRoomVersionSource({
       async discover(request, slug) {
@@ -349,8 +373,8 @@ function station(
           headers: { 'x-test-person': person },
         }),
       );
-      return new Map<string, ConversationListItem>(
-        body.data.items.map((item: ConversationListItem) => [item.id, item]),
+      return new Map<string, InventoryItem>(
+        body.data.items.map((item: InventoryItem) => [item.id, item]),
       );
     },
   };
