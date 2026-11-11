@@ -5953,7 +5953,9 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
   never a silently truncated page; use the terminal socket for larger replay.
-  `reset: true` means retention removed the resume point.
+  `reset: true` means retention removed the resume point. A record with
+  `resize: {cols, rows}` and empty `data` is the size the output after it
+  was written for.
   The server generates the UUID; a terminal from another Project or binding is
   refused even if the caller can access both Projects.
 - `POST /:terminalId/input` takes `{data, bindingKey?}` (at most 64 KiB of input).
@@ -6093,9 +6095,12 @@ admitted before the upgrade:
    base64url ticket valid for 30 seconds and redeemable once. An older host
    answers 404 (treat as unsupported); refusal is 403; more than eight
    unredeemed tickets per identity is 429.
-2. Open the socket offering two subprotocols, `station.terminal.v1` and
-   `station.terminal.ticket.<ticket>`. The server selects only
-   `station.terminal.v1` and sends `{type: "authenticated", protocolVersion: 1}`.
+2. Open the socket offering the version subprotocols, `station.terminal.v2`
+   then `station.terminal.v1`, and `station.terminal.ticket.<ticket>`. The
+   server selects only a version, the newest offered (a host older than
+   version 2 selects `station.terminal.v1`), and sends `{type:
+   "authenticated", protocolVersion: 1}`. Version 2 adds resize frames
+   (below); read the selected subprotocol to know which you got.
    A missing, reused, expired or malformed ticket gets HTTP 401 before any
    socket exists; the browser Origin allowlist is not consulted, because the
    ticket carries the HTTP admission decision. Query strings and unknown paths
@@ -6154,8 +6159,13 @@ Project/binding authority through TerminalSessions.
   It must name the current acknowledgement or an actually sent record.
   Future, backward and unsent acknowledgements return `invalid-ack`.
 
-Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output),
-uint32 channel, uint64 sequence, followed by UTF-8 bytes. Sequences must fit a
+Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output,
+`3` resize), uint32 channel, uint64 sequence, followed by UTF-8 bytes. A
+resize frame (version 2 only) carries two uint16 values, columns then rows:
+the terminal's size from that sequence on, as its journal recorded it when
+the PTY was resized. A view replays the output after it at that size. It is
+acknowledged like output, holds one of the 128 frame slots and costs no
+credit. On version 1 the same sequence arrives as an empty output frame. Sequences must fit a
 JavaScript safe integer. Input starts at one per channel and increments by one;
 duplicates, gaps and input before replay acknowledgement return
 `terminal-refused`. A current observer's complete mouse/focus reports return

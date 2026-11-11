@@ -1039,18 +1039,26 @@ suite with the launch builder's cases: package managers' batch shims run
 through cmd.exe, and an approved command reaches cmd with its quotes as shown
 (#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
 runs each terminal process suite in a Vitest invocation of its own after the
-other files, so a forked worker that dies (an open,
-intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
+other files, so a forked worker that dies (the fault tracked in #4626) hides no
 other suite's results; every invocation runs, and any failure fails the floor
 without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
 exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
 the Windows verification artifact retains those records even when the floor
 fails. The observer does not consume worker exceptions or change verdicts.
-The adapter suite also runs in the floor: its owned children cover concurrent
-native exits/resizes, paused silent-reader retirement, and vendor cancellation.
-Issue #4626 records the captured access violation, handle-table reproduction,
-and dependency repair; retained source/binary receipts establish each run's
-qualification. A ConPTY cannot change
+A failed invocation also leaves its crash evidence in
+`.kontourai/verification-output/windows-portable-floor/`, which the job uploads:
+how each Vitest worker ended and whether Vitest had asked it to stop, Node
+fatal-error reports, and the Application log's crash entries since it started
+(#4626). Only the Application log's exact `NoMatchingEventsFound` error becomes
+an empty event list. An unavailable or refused log read remains an error in
+the evidence; it does not establish that no crash events occurred. The focused
+collector cases execute the generated PowerShell with a substituted event
+provider, rather than reading the machine's Application log.
+The adapter suite also runs in the floor: its owned children cover
+concurrent native exits/resizes, paused silent-reader retirement, and vendor
+cancellation. Issue #4626 records the captured access violation, handle-table
+reproduction, and dependency repair; retained source/binary receipts establish
+each run's qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or

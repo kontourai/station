@@ -106,6 +106,92 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
   });
 });
 
+/** A node-pty stand-in whose output and exit the test drives. */
+function drivenPty() {
+  const data = new Set<(data: string) => void>();
+  const exits = new Set<(event: { exitCode: number }) => void>();
+  const pty = {
+    pid: 4243,
+    onData: vi.fn((cb: (data: string) => void) => {
+      data.add(cb);
+      return { dispose: () => data.delete(cb) };
+    }),
+    onExit: vi.fn((cb: (event: { exitCode: number }) => void) => {
+      exits.add(cb);
+      return { dispose: () => exits.delete(cb) };
+    }),
+    write: vi.fn(),
+    resize: vi.fn(),
+    kill: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+  };
+  // A stand-in for the module's spawn only.
+  const nodePty = { spawn: () => pty } as never;
+  const adapter = new NodePtyAdapter(() => Promise.resolve(nodePty));
+  return {
+    adapter,
+    output: (text: string) => {
+      for (const cb of [...data]) cb(text);
+    },
+    exit: () => {
+      for (const cb of [...exits]) cb({ exitCode: 0 });
+    },
+  };
+}
+
+describe('termination report (#4626)', () => {
+  // Its fake taskkill call must not reach a later test's execFile history,
+  // even when an assertion here fails.
+  afterEach(() => {
+    vi.mocked(execFile).mockReset();
+  });
+
+  test('says whether the exit event and output have arrived', async () => {
+    const { adapter, output, exit } = drivenPty();
+    const proc = await adapter.spawn(SPAWN_INPUT);
+    expect(proc.describeTermination?.()).toBe(
+      'no exit event yet; last output never',
+    );
+    output('x');
+    proc.pause?.();
+    expect(proc.describeTermination?.()).toMatch(
+      /^no exit event yet; last output \d+ ms ago; output paused$/,
+    );
+    proc.resume?.();
+    exit();
+    expect(proc.describeTermination?.()).toMatch(
+      /^exit event \d+ ms ago; last output \d+ ms ago$/,
+    );
+  });
+
+  test.runIf(process.platform === 'win32')(
+    'a Windows ending reports the tree kill and an exit that has not followed it',
+    async () => {
+      const { adapter, exit } = drivenPty();
+      const proc = await adapter.spawn(SPAWN_INPUT);
+      // No real taskkill: the fake pid could name a real process.
+      vi.mocked(execFile).mockImplementationOnce(((
+        _file: string,
+        _args: string[],
+        _options: object,
+        callback: (error: Error | null) => void,
+      ) => {
+        setTimeout(() => callback(null), 20);
+        return new ChildProcess();
+      }) as never);
+      const ending = proc.terminate!();
+      await vi.waitFor(() =>
+        expect(proc.describeTermination?.()).toMatch(
+          /^taskkill exited 0 after \d+ ms; no exit event yet; last output never$/,
+        ),
+      );
+      exit();
+      await ending;
+    },
+  );
+});
+
 describe('pending native PTY startup admission', () => {
   afterEach(() => {
     workloads.prepare.mockReset();

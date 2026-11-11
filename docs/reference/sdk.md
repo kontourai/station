@@ -58,7 +58,7 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
+resize, reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
 `restart({subdirectory?})`, `close()` and `detach()`. `restart` runs the
 session's program again under the same id (a shell, an agent tab, or a package
 script resolved again by name) and resolves with `{restartedAfterSeq}`; the new
@@ -71,7 +71,10 @@ a promise that settles once it has; the host is credited for that output only
 after every such listener settled it, oldest first, so a fast program waits
 for its slowest view instead of queueing unbounded output in front of it.
 Unsubscribing releases what a listener still owed; a reconnect starts its
-credit afresh.
+credit afresh. `resize(cols, rows, sequence)` reports, in order with output,
+the size the terminal had from that point on, as its host recorded it; it is
+retained for later subscribers like output. A host older than resize records
+sends none.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
@@ -158,7 +161,16 @@ renderer and input modules behind it are internal and may change.
 Pass a `session` implementing `TerminalViewSession`: `state`, `readOnly`,
 `subscribe(listener)`, `write(bytes)` and `resize(cols, rows)`. The listener's
 `output(bytes, kind)` receives PTY output in order; `kind: 'replay'` marks output
-from before this attachment. It returns a promise that settles once the view's
+from before this attachment. Optional `resize(cols, rows, kind)` gives a
+recorded size and `replayed()` says earlier output has all arrived: the view
+parses replayed output at the size it was written for, so a screen the
+program repainted after a resize does not land on lines that had scrolled,
+then returns to its own size. An incremental reconnect uses the last recorded
+size received before disconnect, even when the program exited or failed while
+offline. A reset, replacement session or full rebuild from retained history
+discards that cache and reconstructs it from the retained size records. Output
+before the first available size record uses the view's size.
+The output listener returns a promise that settles once the view's
 emulator parsed that output; a session should not hand the view more until it
 does (the SDK store's sessions wait). A view holds at most 4 MiB it has not
 parsed: past that it resets its screen and subscribes again, replaying what the
@@ -174,8 +186,9 @@ session. A view refits whenever its box changes (a window resize, a pane
 splitter, moving between dock regions, a phone keyboard or rotation, a
 devicePixelRatio change): the grid and renderer follow at once, and the
 latest size reaches the session at most every 100 ms. The scrollbar sits in
-the inset, so scrollback appearing never takes columns from the grid. Handing a mounted view a different session (a reconnect, a fresh
-attachment of the same terminal) first resets its emulator to a fresh terminal,
+the inset, so scrollback appearing never takes columns from the grid. Handing
+a mounted view a different session object (including a fresh attachment of the
+same terminal) first resets its emulator to a fresh terminal,
 because the new attachment replays its terminal from the oldest retained
 output; the history is drawn once. A session `reset` does the same.
 
