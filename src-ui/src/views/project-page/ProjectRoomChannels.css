@@ -5,6 +5,11 @@
   flex: 1 1 0;
   min-width: 0;
 }
+/* A trailing action (Open room) sits on the name's row, not centered
+   against the name and topic together. */
+.project-room__header:has(> .project-room__title .room-channel) {
+  align-items: flex-start;
+}
 .room-channel {
   display: flex;
   flex-direction: column;
@@ -99,14 +104,18 @@
   color: var(--k-text);
 }
 .room-channel__topic {
+  /* Two lines before truncating: a phone header has room for little else. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   margin: 0;
   min-width: 0;
   overflow: hidden;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .room-channel__notice {
   margin: 0;
