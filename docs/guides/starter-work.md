@@ -66,7 +66,7 @@ and assigned Agent when known. Select its title or **Open Task** to enter its
 Task Room. **Details** opens inspection and dispatch controls; the optional board
 continues to group Tasks by status. The list separates **Now** (ready, active,
 blocked or awaiting review), **Backlog**, and **History**. These views do not
-change status. **Refresh tasks** reads current Task records.
+change status. **Refresh Tasks** reads current Task records.
 Status is not a percentage complete or proof that an Agent is running. A
 connected GitHub issue offers **Start Task**, which creates a Task with its
 description and latest comments in the shared document, or opens its existing
