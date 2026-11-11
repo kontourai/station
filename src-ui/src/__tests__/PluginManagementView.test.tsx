@@ -210,17 +210,17 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
 
   // SHELL-09's own fix for this was itself inverted: `PluginEmptyState` was
   // passed unconditionally as `SplitPaneLayout`'s `emptyContent`, which
-  // bypasses the shell's own double-empty guard, and its "No plugin selected"
+  // bypasses the shell's own double-empty guard, and its "Nothing selected"
   // rendered anyway when the list was genuinely empty — beside the list
   // pane's own "No plugins installed yet".
-  test('no plugins installed renders one empty message, not "No plugin selected" too', () => {
+  test('no plugins installed renders one empty message, not "Nothing selected" too', () => {
     render(<PluginManagementView onNavigate={vi.fn()} />);
 
     expect(screen.getByText('No plugins installed yet')).toBeTruthy();
-    expect(screen.queryByText('No plugin selected')).toBeNull();
+    expect(screen.queryByText('Nothing selected')).toBeNull();
   });
 
-  test('with plugins installed and none selected, the detail pane says "No plugin selected"', () => {
+  test('with plugins installed and none selected, the detail pane says "Nothing selected"', () => {
     viewModel = baseViewModel({
       items: [{ id: 'a', name: 'Alpha' }],
       filtered: [{ name: 'alpha' }],
@@ -228,7 +228,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
     render(<PluginManagementView onNavigate={vi.fn()} />);
 
     expect(screen.queryByText('No plugins installed yet')).toBeNull();
-    expect(screen.getByText('No plugin selected')).toBeTruthy();
+    expect(screen.getByText('Nothing selected')).toBeTruthy();
   });
 
   // `PluginManagementView` never passed `searchValue`, so
@@ -249,7 +249,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
     expect(
       screen.getByText('Nothing in plugins matches “zzz-does-not-match”'),
     ).toBeTruthy();
-    expect(screen.queryByText('No plugin selected')).toBeNull();
+    expect(screen.queryByText('Nothing selected')).toBeNull();
   });
 });
 

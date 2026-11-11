@@ -186,7 +186,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       expect(
         screen.queryByText('Add a model connection to power chats and agents.'),
       ).toBeNull();
-      expect(screen.queryByText('No model connection selected')).toBeNull();
+      expect(screen.queryByText('Nothing selected')).toBeNull();
       // The quickstart/detected-actions panel still stands alone.
       expect(
         screen.getByRole('button', { name: /Add detected Ollama/ }),
@@ -278,9 +278,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         ),
       ).toBeTruthy();
       // a connection exists but is filtered off the list, so the detail
-      // panel's "No model connection selected" is ALSO suppressed now — it
+      // panel's "Nothing selected" is ALSO suppressed now — it
       // would otherwise be a second message on top of FilteredEmpty.
-      expect(screen.queryByText('No model connection selected')).toBeNull();
+      expect(screen.queryByText('Nothing selected')).toBeNull();
       // The (always-useful, unfiltered) provider stack overview still
       // shows the real connection regardless of the list's search.
       expect(
@@ -288,7 +288,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       ).toBeTruthy();
     });
 
-    test('populated, nothing selected: the detail panel says "No model connection selected" exactly once', () => {
+    test('populated, nothing selected: the detail panel says "Nothing selected" exactly once', () => {
       modelConnections = [
         {
           id: 'bedrock-prod',
@@ -305,9 +305,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
       expect(screen.queryByText('No model connections yet')).toBeNull();
-      expect(screen.getAllByText('No model connection selected')).toHaveLength(
-        1,
-      );
+      expect(screen.getAllByText('Nothing selected')).toHaveLength(1);
     });
 
     // modelConnections is EMPTY (nothing exists regardless of the

@@ -130,7 +130,6 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
           ) : undefined
         }
         emptyIcon={<AgentGlyph />}
-        emptyTitle="No agent selected"
         emptyDescription="Select an agent to edit, or create a new one."
         emptyContent={emptyContent}
       >

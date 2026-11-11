@@ -54,7 +54,7 @@ export function PluginEmptyState({
       {filteredPlugins.length > 0 && (
         <Empty
           variant="prominent"
-          label="No plugin selected"
+          label="Nothing selected"
           description="Select a plugin from the list to see what it adds."
         />
       )}

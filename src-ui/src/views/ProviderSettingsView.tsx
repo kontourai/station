@@ -551,7 +551,7 @@ export function ProviderSettingsView({
           {llmEmbeddingProviders.length > 0 && items.length > 0 && (
             <Empty
               variant="compact"
-              label="No model connection selected"
+              label="Nothing selected"
               description="Select a model connection to review its status and setup."
             />
           )}
