@@ -8,6 +8,12 @@
 }
 
 .read-status-note__retry {
+  /* The shared touch floor (index.css): 44px on phones, compact elsewhere. */
+  display: inline-flex;
+  align-items: center;
+  min-width: var(--touch-target-min, auto);
+  min-height: var(--touch-target-min, auto);
+  justify-content: center;
   padding: 0;
   border: 0;
   background: transparent;
@@ -22,11 +28,4 @@
   outline: var(--k-focus-ring-width, 2px) solid var(--k-focus-ring);
   outline-offset: 2px;
   border-radius: var(--k-radius-sm);
-}
-
-@media (pointer: coarse) {
-  .read-status-note__retry {
-    min-height: 44px;
-    padding: 0 var(--k-space-2);
-  }
 }
