@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
@@ -96,7 +97,7 @@ function fixture() {
           text: body.text,
           ...(body.replyTo ? { replyTo: body.replyTo } : {}),
           roomId,
-          messageId: crypto.randomUUID(),
+          messageId: randomCorrelationId(),
           seq: 1,
           actor,
           createdAt: '2026-11-11T12:00:00.000Z',
@@ -107,7 +108,7 @@ function fixture() {
           agentId: body.agentId,
           text: body.text,
           roomId,
-          requestId: crypto.randomUUID(),
+          requestId: randomCorrelationId(),
           actor,
           state: 'started',
           createdAt: '2026-11-11T12:00:00.000Z',
