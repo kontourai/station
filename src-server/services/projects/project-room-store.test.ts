@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
@@ -378,7 +379,10 @@ describe('ProjectRoomStore durable boundaries', () => {
  * them (#4792): DDL copied from that writer, records serialized in its key
  * order, `PRAGMA user_version` left at 0.
  */
-function writeSingleRoomFixture(home: string) {
+function writeSingleRoomFixture(
+  home: string,
+  options: { recordRoomId?: string } = {},
+) {
   const db = openPrivateSqlite(
     join(home, 'security', 'project-rooms.sqlite'),
     'Project rooms',
@@ -398,7 +402,10 @@ function writeSingleRoomFixture(home: string) {
     db.prepare('INSERT INTO project_rooms VALUES (?, ?, ?)').run(
       scopeKey,
       roomId,
-      JSON.stringify({ scope: { ...scope }, roomId }),
+      JSON.stringify({
+        scope: { ...scope },
+        roomId: options.recordRoomId ?? roomId,
+      }),
     );
     const messages = [1, 2].map((seq) => {
       const value = { intentId: randomUUID(), text: `legacy ${seq}` };
@@ -636,6 +643,102 @@ describe('ProjectRoomStore channels (#4792)', () => {
       ).toThrow('invalid');
     } finally {
       runtime.close();
+    }
+  });
+});
+
+describe('ProjectRoomStore migration review fixes (#4792)', () => {
+  const roomsPath = (home: string) =>
+    join(home, 'security', 'project-rooms.sqlite');
+  const tables = (db: DatabaseSync) =>
+    (
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+        )
+        .all() as { name: string }[]
+    ).map((row) => row.name);
+  it('re-checks the version under the migration lock and never downgrades a newer schema', () => {
+    const home = makeTempDir('project-room-race-');
+    writeSingleRoomFixture(home);
+    const db = openPrivateSqlite(roomsPath(home), 'Project rooms');
+    const other = openPrivateSqlite(roomsPath(home), 'Project rooms');
+    let interleaved = false;
+    // Another Station commits a newer schema after this opener read version
+    // 0 but before it holds the migration write lock.
+    const racing = new Proxy(db, {
+      get(target, property) {
+        if (property === 'exec')
+          return (sql: string) => {
+            if (!interleaved && sql === 'BEGIN IMMEDIATE') {
+              interleaved = true;
+              other.exec('PRAGMA user_version=2');
+            }
+            return target.exec(sql);
+          };
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    try {
+      expect(() => new ProjectRoomStore(racing)).toThrow(
+        'Project rooms database version is not supported',
+      );
+      expect(interleaved).toBe(true);
+      expect(
+        Number(other.prepare('PRAGMA user_version').get()?.user_version),
+      ).toBe(2);
+      expect(tables(other)).not.toContain('project_room_channels');
+    } finally {
+      db.close();
+      other.close();
+    }
+  });
+  it('refuses a newer schema before creating any table', () => {
+    const home = makeTempDir('project-room-newer-');
+    const db = openPrivateSqlite(roomsPath(home), 'Project rooms');
+    db.exec('PRAGMA user_version=2');
+    db.close();
+    expect(() => createProjectRoomRuntime(home)).toThrow(
+      'Project rooms database version is not supported',
+    );
+    const check = openPrivateSqlite(roomsPath(home), 'Project rooms');
+    try {
+      expect(tables(check)).toEqual([]);
+    } finally {
+      check.close();
+    }
+  });
+  it('does not adopt a legacy room whose record names a different room, and keeps it refused', () => {
+    const home = makeTempDir('project-room-corrupt-');
+    const legacy = writeSingleRoomFixture(home, {
+      recordRoomId: randomUUID(),
+    });
+    const runtime = createProjectRoomRuntime(home);
+    try {
+      const { store } = runtime;
+      expect(() => store.listChannels(scope)).toThrow('invalid');
+      expect(() => store.lookupRoom(scope, legacy.roomId)).toThrow('invalid');
+      expect(() =>
+        store.append(
+          scope,
+          actor,
+          { intentId: randomUUID(), text: 'through the channel' },
+          current,
+          legacy.roomId,
+        ),
+      ).toThrow('invalid');
+    } finally {
+      runtime.close();
+    }
+    const check = openPrivateSqlite(roomsPath(home), 'Project rooms');
+    try {
+      expect(
+        check.prepare('SELECT COUNT(*) AS n FROM project_room_channels').get()
+          ?.n,
+      ).toBe(0);
+    } finally {
+      check.close();
     }
   });
 });

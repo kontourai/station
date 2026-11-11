@@ -163,6 +163,20 @@ function requestValue(value: unknown): ProjectRoomAgentRequest {
   assertRequestValue(value);
   return value;
 }
+/** A `project_rooms` row, checked whole against its SQL identity columns. */
+function storedRoom(row: Row): ProjectRoomIdentity {
+  return decode(row, (value) => {
+    const v = object(value, ['roomId', 'scope']);
+    const scope = scopeValue(v.scope);
+    if (
+      !isProjectRoomUuid(v.roomId) ||
+      v.roomId !== row.room_id ||
+      key(scope) !== row.scope_key
+    )
+      corrupt();
+    return { roomId: v.roomId, scope };
+  });
+}
 /**
  * Schema versions: 0 is the single-room shape (`project_rooms` keyed by
  * scope). 1 adds `project_room_channels`; each Project's existing room becomes
@@ -204,14 +218,9 @@ export class ProjectRoomStore {
   }
   private pendingRoom: string | undefined;
   constructor(private readonly db: DatabaseSync) {
-    db.exec(`CREATE TABLE IF NOT EXISTS project_rooms (scope_key TEXT PRIMARY KEY, room_id TEXT NOT NULL UNIQUE, record TEXT NOT NULL) STRICT;
-      CREATE TABLE IF NOT EXISTS project_room_messages (room_id TEXT NOT NULL, seq INTEGER NOT NULL, message_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, seq), UNIQUE(room_id, author, intent_id)) STRICT;
-      CREATE TABLE IF NOT EXISTS project_room_notes (room_id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
-      CREATE TABLE IF NOT EXISTS project_room_requests (room_id TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, author, intent_id)) STRICT;
-      CREATE TABLE IF NOT EXISTS project_room_channels (room_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, name TEXT NOT NULL, record TEXT NOT NULL, UNIQUE(scope_key, name)) STRICT;`);
     this.migrate();
   }
-  private migrate() {
+  private schemaVersion() {
     const version = Number(
       this.db.prepare('PRAGMA user_version').get()?.user_version ?? 0,
     );
@@ -221,31 +230,37 @@ export class ProjectRoomStore {
       version > SCHEMA_VERSION
     )
       throw new Error('Project rooms database version is not supported');
-    const pending = () =>
-      this.db
-        .prepare(
-          'SELECT * FROM project_rooms WHERE room_id NOT IN (SELECT room_id FROM project_room_channels)',
-        )
-        .all();
-    // Checked on every open, not only from version 0: a room an older Station
-    // created after a downgrade is adopted on the next upgrade. The read keeps
-    // an up-to-date open from taking the writer lock.
-    if (version === SCHEMA_VERSION && pending().length === 0) return;
+    return version;
+  }
+  /**
+   * Refuses a newer schema before touching it, then creates tables and
+   * adopts channel-less rooms under the writer lock, re-reading the version
+   * there: another Station may have upgraded the file since the first read.
+   */
+  private migrate() {
+    // Before any DDL: a newer Station's file is refused, not modified.
+    if (this.schemaVersion() === SCHEMA_VERSION && this.current()) return;
     this.transaction(() => {
-      for (const row of pending()) {
-        let scope: ProjectMembershipScope;
+      // Re-read under the lock: a newer Station may have upgraded the file
+      // since the first read, and writing our version would downgrade it.
+      this.schemaVersion();
+      this.db.exec(`CREATE TABLE IF NOT EXISTS project_rooms (scope_key TEXT PRIMARY KEY, room_id TEXT NOT NULL UNIQUE, record TEXT NOT NULL) STRICT;
+      CREATE TABLE IF NOT EXISTS project_room_messages (room_id TEXT NOT NULL, seq INTEGER NOT NULL, message_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, seq), UNIQUE(room_id, author, intent_id)) STRICT;
+      CREATE TABLE IF NOT EXISTS project_room_notes (room_id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
+      CREATE TABLE IF NOT EXISTS project_room_requests (room_id TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, author, intent_id)) STRICT;
+      CREATE TABLE IF NOT EXISTS project_room_channels (room_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, name TEXT NOT NULL, record TEXT NOT NULL, UNIQUE(scope_key, name)) STRICT;`);
+      // Every open, not only from version 0: a room an older Station created
+      // after a downgrade is adopted on the next upgrade.
+      for (const row of this.pending()) {
+        let room: ProjectRoomIdentity;
         try {
-          scope = decode(row, (value) =>
-            scopeValue(object(value, ['roomId', 'scope']).scope),
-          );
+          room = storedRoom(row);
         } catch {
-          // A corrupt room stays unadopted; reads of that Project refuse it as
-          // they did before, and other Projects still open.
+          // A corrupt room stays unadopted and keeps being refused for its
+          // Project; other Projects still open.
           continue;
         }
         if (
-          !isProjectRoomUuid(row.room_id) ||
-          key(scope) !== row.scope_key ||
           this.db
             .prepare(
               'SELECT 1 FROM project_room_channels WHERE scope_key=? AND name=?',
@@ -254,13 +269,29 @@ export class ProjectRoomStore {
         )
           continue;
         this.insertChannel({
-          channelId: row.room_id,
-          scope,
+          channelId: room.roomId,
+          scope: room.scope,
           name: PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
         });
       }
       this.db.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
     });
+  }
+  /** Rooms without a channel row. */
+  private pending(): Row[] {
+    return this.db
+      .prepare(
+        'SELECT * FROM project_rooms WHERE room_id NOT IN (SELECT room_id FROM project_room_channels)',
+      )
+      .all();
+  }
+  /** At the current version with nothing to adopt, opening only reads. */
+  private current() {
+    try {
+      return this.pending().length === 0;
+    } catch {
+      return false; // A missing table is repaired under the writer lock.
+    }
   }
   private insertChannel(channel: StoredChannel) {
     this.db
@@ -308,6 +339,9 @@ export class ProjectRoomStore {
   ): ProjectRoomIdentity | null {
     scopeValue(scope);
     if (channelId !== undefined) {
+      // A channel belongs to the Project's room: a corrupt room record
+      // refuses every channel with it, and no room means no channels.
+      if (!this.lookupRoom(scope)) return null;
       const channel = this.lookupChannel(scope, channelId);
       return channel
         ? { roomId: channel.channelId, scope: { ...scope } }
@@ -317,18 +351,9 @@ export class ProjectRoomStore {
       .prepare('SELECT * FROM project_rooms WHERE scope_key=?')
       .get(key(scope));
     if (!row) return null;
-    return decode(row, (value) => {
-      const v = object(value, ['roomId', 'scope']);
-      const stored = scopeValue(v.scope);
-      if (
-        !isProjectRoomUuid(v.roomId) ||
-        v.roomId !== row.room_id ||
-        key(stored) !== row.scope_key ||
-        key(stored) !== key(scope)
-      )
-        corrupt();
-      return { roomId: v.roomId, scope: { ...scope } };
-    });
+    const room = storedRoom(row);
+    if (key(room.scope) !== key(scope)) corrupt();
+    return { roomId: room.roomId, scope: { ...scope } };
   }
   private room(
     scope: ProjectMembershipScope,
