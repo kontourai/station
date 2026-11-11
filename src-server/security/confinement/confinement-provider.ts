@@ -114,7 +114,7 @@ function expectedMechanism(
       return platform === 'darwin'
         ? 'a macOS Seatbelt profile'
         : platform === 'linux'
-          ? 'a bubblewrap or Landlock profile'
+          ? 'a bubblewrap sandbox'
           : `an operating-system sandbox for ${platform}`;
     case 'container':
       return 'a container runtime';
@@ -378,7 +378,7 @@ const POSTURES = new Set<string>([
   'no-mechanism',
   'configured-but-failed',
 ]);
-const MECHANISMS = new Set<string>(['codex-sandbox', 'seatbelt']);
+const MECHANISMS = new Set<string>(['codex-sandbox', 'seatbelt', 'bubblewrap']);
 const WRITE_GRANTS = new Set<string>([
   'workspace',
   'git-worktree',

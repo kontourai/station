@@ -828,8 +828,7 @@ model options are known. A respawn and a credential-profile restart
 (`withApprovalPostureForStart`) and an adoption resolve it the same way. A
 required level with no usable mechanism refuses the start before the engine is
 touched (`confinement_mechanism_unavailable`), and the refusal names the
-mechanism the host would need: Seatbelt on macOS, bubblewrap or Landlock on
-Linux. An unrequired start still engages an engine-native mechanism, so the
+mechanism the host would need: Seatbelt on macOS, bubblewrap on Linux. An unrequired start still engages an engine-native mechanism, so the
 record says what the engine reported running under. Every confinement refusal
 is a `SessionStartRefusedError`: the start boundary settles it, the command
 receipt is `rejected`, the closed code reaches the caller (also through a
@@ -1053,9 +1052,10 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
 
 - **Where it applies.** A `workspace` Claude start at `never` requires it.
   `ApprovalPosture` passes that `never` through at a start; the start resolves
-  the Seatbelt plan, or refuses where it cannot exist. On Linux, Windows, or a
+  the Seatbelt plan, or refuses where it cannot exist. On Windows, or a
   macOS without a working `/usr/bin/sandbox-exec`, the start is refused
-  (`confinement_mechanism_unavailable`), naming the mechanism. Availability
+  (`confinement_mechanism_unavailable`), naming the mechanism. On Linux the
+  start resolves Station's bubblewrap sandbox instead (below). Availability
   runs the production profile around `/usr/bin/true` once per process.
   `workspace` Claude starts at other modes and `host` starts are unchanged.
 - **The spawn.** The adapter's engine spawn
@@ -1261,8 +1261,130 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   needs that login run with the Keychain hidden. That is not built:
   environment credentials are the supported route.
 
-Not in this slice: the foreground chat handle's receipt, ACP, and Linux or
-Windows mechanisms.
+**Station's bubblewrap sandbox for Claude on Linux** (#4770,
+[bubblewrap.ts](../../src-server/security/confinement/bubblewrap.ts)). A
+`spawn-wrapper` `os-profile` provider for Claude only. Mechanism
+`bubblewrap`. The default provider list is per platform: Codex's sandbox,
+then bubblewrap on Linux or Seatbelt elsewhere (`defaultConfinementProviders`),
+so the preflight and a refusal name only the mechanism the host could have.
+The Claude adapter prepares the same Station-owned directories, environment
+allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
+
+- **Why bubblewrap, not Landlock.** Both work without privileges. Landlock
+  was rejected for three reasons:
+  - It only allows. A ruleset grants access beneath a directory, with no
+    deny rule, so granting the workspace grants everything under it. The
+    write denials Seatbelt keeps inside the workspace cannot be expressed:
+    a main checkout's `.git/config` and `hooks`, or a linked worktree's `.git`
+    pointer file. Without them a confined session can plant a hook or
+    `core.fsmonitor` that the operator's next unconfined `git` runs. A bind
+    mount can make an existing path read-only inside a writable one.
+  - It restricts the calling thread before `exec`, and Node runs nothing
+    between fork and exec. A runner would need a way to make the system
+    calls, and Station ships none on Linux:
+    - koffi, the FFI the repository declares, is pruned from the server
+      runtime off Windows (`koffi-off-windows` in
+      `scripts/lib/desktop-server-runtime.mjs`).
+    - Station's own container image has no `python3`.
+    - `setpriv --landlock-access` needs util-linux 2.40, newer than Ubuntu
+      24.04 and Debian 12 ship.
+    - A compiled helper needs a per-architecture build and signing in the
+      release pipeline.
+    A runner written in Node would also restrict only the thread that makes
+    the call.
+  - It cannot hide a path from reads without listing every sibling.
+
+  bubblewrap is an executable that sets up its sandbox and then execs the
+  command, like `sandbox-exec`, so the spawn, the probe and the posture work
+  as they do for Seatbelt. It needs unprivileged user namespaces. Ubuntu
+  23.10 and later restrict those through AppArmor
+  (`kernel.apparmor_restrict_unprivileged_userns`) unless the executable has
+  a profile that allows them. Docker's default seccomp profile refuses them.
+  bubblewrap is not installed everywhere. Where it cannot apply, the start
+  is refused with bubblewrap's own reason. It never starts unconfined.
+- **Where it applies.** A `workspace` Claude start at `never` on Linux.
+  Availability needs Linux, an executable `/usr/bin/bwrap` (a fixed path,
+  never `PATH`), and a probe run once per process. The probe runs the
+  production arguments, with the real hidden list, around `/bin/sh` in a
+  throwaway directory. The shell must be able to write the workspace, and
+  must be refused four things: a write outside it, the content of a hidden
+  directory's file, the content of a hidden file, and a write to the `.git`
+  pointer file.
+- **The sandbox.** It runs in a new user, PID and IPC namespace, may not
+  create a nested user namespace, gets a new session, and ends with
+  Station's process. Then, in order, later mounts covering earlier ones:
+  - The whole filesystem read-only, a private `/dev`, and a `/proc` that
+    shows only the sandbox's own processes.
+  - Each hidden path that exists: a directory as an empty read-only mount,
+    a file as `/dev/null`.
+  - Station's installs re-opened read-only, then the write grants bound
+    writable.
+  - The workspace's `.git` read-only, and an existing `.codex` or `.claude`
+    directory (in any case) at the root of a write grant read-only.
+
+  A grant of a single file, an exact-path deny, a missing write grant, or a
+  denied path that only its whole grant could cover is refused, never
+  narrowed or widened.
+- **Grants.** The write kinds are `workspace`, `station-temp` and
+  `station-config`, read back from the arguments bubblewrap is given. No
+  git kind is granted. A mount covers a path that exists. Git updates a
+  branch by writing `<ref>.lock` beside the ref and renaming it over the
+  ref, which needs the whole `refs/heads` directory, and so every other
+  branch (EXECUTED: with the ref and log bound writable, `git commit`
+  failed on `refs/heads/feature.lock`, `Read-only file system`). Granting
+  a linked worktree's git directory and objects without the ref would let it
+  stage but never commit. Its absent `config.worktree` could also not be
+  protected without creating it. So the workspace's `.git` stays read-only
+  in both layouts. A confined session can run `git status`, diff and log,
+  but cannot stage or commit.
+- **The posture.** It is `confined` only when three things hold. The spawn
+  seam recorded `/usr/bin/bwrap` with exactly these arguments. The engine
+  answered its handshake over that process's stdout (bubblewrap execs it
+  only after the sandbox is in place). The arguments it was spawned with are
+  in bounds: they start with the namespace and read-only-root options, every
+  writable mount is one of the three grants, and the workspace's `.git` is
+  mounted read-only after the workspace. Anything else is
+  `configured-but-failed`, and the start is refused before or after the
+  spawn exactly as for Seatbelt.
+- **Read denials compared with Seatbelt.**
+
+  | Seatbelt | bubblewrap |
+  | --- | --- |
+  | Secret stores, `~/.claude.json`, the engines' credential files, Station's root and runtime home: reads refused | Matched for paths that exist at the start, as empty content rather than a refused read. A path created after the start is readable. |
+  | `~/Library/Keychains` hidden | Not applicable on Linux. The login keyring (`~/.local/share/keyrings`) and the runtime directory (`/run/user/<uid>`, which holds the session bus and the keyring's SSH agent socket) are hidden instead. |
+  | Station's `installs` readable | Matched. |
+  | A hidden file through a symlink, another case, a firmlink | Matched through a symlink, `/proc/self/root` and `..`. Linux file systems are case-sensitive. |
+  | A hard link to a hidden file made inside | Matched: refused. |
+  | A hard link made outside beforehand | Same residual: readable. |
+- **Write denials compared with Seatbelt.**
+
+  | Seatbelt | bubblewrap |
+  | --- | --- |
+  | Workspace, session temp, Station configuration directory writable | Matched. |
+  | A linked worktree's git directory, the objects and its own branch ref writable | Not granted: no staging or commits. |
+  | git `hooks`, `config`, `info`, `commondir`, alternates, pointer files denied | Stronger: the workspace's whole `.git` is read-only, and the shared repository is outside every grant. |
+  | `.codex` and `.claude` denied at any depth, in any case | Partly: only an existing one at a grant root. Creating one anywhere, or writing an existing nested one, is allowed (the same gap Codex has on Linux, above). |
+  | Signals only within the sandbox | Matched by the PID namespace: outside processes are not visible. |
+  | A setuid program refused | Matched: `no_new_privs`. |
+- **Residuals.** The network is open, as for Seatbelt (#4769). Unix sockets
+  outside the hidden paths stay connectable: an `ssh-agent` socket under
+  `/tmp`, an abstract socket. `/dev` is a private writable memory file
+  system, which reaches nothing outside the sandbox. The optional
+  `claude-confined-credential` readiness entry is still macOS-only;
+  `station doctor` reports the confined credential on Linux.
+- **Tests.**
+  [bubblewrap.process.test.ts](../../src-server/security/confinement/__tests__/bubblewrap.process.test.ts)
+  runs the production arguments under the real kernel, including a live
+  Claude Code handshake observed `confined`. It skips loudly where the
+  sandbox cannot apply. Its ids are pinned as the `linux-bubblewrap-kernel`
+  profile, and the dispatch-only
+  [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
+  workflow runs it on a hosted Ubuntu runner. EXECUTED: Linux 7.2.12
+  (OrbStack, aarch64, Landlock ABI 10 present and unused), bubblewrap 0.8.0,
+  git 2.39.5, 46 of 46 passed.
+
+Not in this slice: the foreground chat handle's receipt, ACP, and Windows
+mechanisms.
 
 ## 5. Migration of persisted chats
 

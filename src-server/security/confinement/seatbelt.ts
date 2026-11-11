@@ -402,6 +402,20 @@ export function seatbeltConfigRoot(stationHome: string): string {
 /** A confined session's temp directory name: `session-<owner pid>-<random>`. */
 const SESSION_DIR = /^session-(\d+)-[A-Za-z0-9]{6}$/;
 
+/**
+ * Whether `path` is a confined session's own temp directory: directly in
+ * `stationHome`'s confined-session root, named `session-<pid>-<random>`.
+ */
+export function isConfinedSessionTempDir(
+  path: string,
+  stationHome: string,
+): boolean {
+  return (
+    dirname(path) === seatbeltTempRoot(stationHome) &&
+    SESSION_DIR.test(basename(path))
+  );
+}
+
 /** The prefix `mkdtemp` completes for a session owned by `pid`. */
 export function seatbeltSessionDirPrefix(pid: number = process.pid): string {
   return `session-${pid}-`;

@@ -224,5 +224,204 @@
         ]
       }
     }
+  },
+  "linux-bubblewrap-kernel": {
+    "description": "Kernel legs of the Linux bubblewrap confinement sandbox (#4770, #4772). They run only on a Linux host where bwrap applies the production sandbox (unprivileged user namespaces allowed), and are skipped elsewhere. The live Claude handshake uses `claude` on PATH or the Agent SDK's own binary for the platform, which dependencies:ci installs, so it is required too.",
+    "files": {
+      "src-server/security/confinement/__tests__/bubblewrap.process.test.ts": {
+        "mustPass": [
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the probe ran the production sandbox, not a stand-in"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a write in the workspace is allowed; a write outside it is denied"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree's git metadata is read-only: status works, staging and committing are refused (a stated difference)"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write a shared hook"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write the shared config"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write shared info"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not move main"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not create another branch"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not repoint the .git pointer file"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not remove the .git pointer file"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write config.worktree"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not repoint its commondir"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write object alternates"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot write a hook"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot write its config"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot write info"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot add a commondir redirect"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot add object alternates"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot repoint another worktree's gitdir"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot add a submodule's config"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot create a branch"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot rename the .git"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot remove the .git"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace still has a writable workspace"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "secret stores and Station data do not reveal their content; Station installs stay readable"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an SSH key does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "AWS credentials does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the gh login does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a netrc file does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the operator's Claude credential file does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "Station's runtime home does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "Station's root, outside the runtime home does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the operator's Claude config is not writable; the Station-owned one is"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot write its settings"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot add local settings"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot rename it away"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot remove it"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a new engine configuration directory can be created in the workspace: a stated difference from Seatbelt"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the session temp directory is writable and the confined env points at it"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "processes outside the sandbox are invisible and cannot be signalled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the confined process runs with no_new_privs, so a setuid program gains nothing"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hidden file cannot be hard-linked into the workspace"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hard link made outside the sandbox beforehand is readable: an accepted residual"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a granted path does not grant its sibling that shares the prefix"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the installed Claude Code answers its handshake from inside the sandbox, and the provider observes it confined"
+          ]
+        ],
+        "mayRuntimeSkip": [
+          {
+            "test": [
+              "bubblewrap sandbox under the real kernel",
+              "a nested user namespace cannot be created inside, so the mounts cannot be rearranged"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when `unshare --user` cannot create a user namespace even outside the sandbox (util-linux missing, or a host policy), so the refusal inside would prove nothing. A skip is recorded, a failure is not accepted."
+          }
+        ],
+        "notRequired": []
+      }
+    }
   }
 }

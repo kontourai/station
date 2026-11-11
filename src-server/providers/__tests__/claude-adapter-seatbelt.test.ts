@@ -1,6 +1,6 @@
 /**
- * #2494: the Claude adapter's Seatbelt seam. A start whose plan names
- * `seatbelt` must spawn its engine through the provider's `confine`, take
+ * #2494: the Claude adapter's Seatbelt seam (and, #4770, the same seam for
+ * a plan naming `bubblewrap`). A start whose plan names `seatbelt` must spawn its engine through the provider's `confine`, take
  * its posture from the provider's `pending.observe` once the engine has
  * answered its handshake, and only then run at full access. Every other
  * start is untouched. The real adapter and the real spawn wrapper run here
@@ -101,6 +101,10 @@ const SEATBELT_PLAN: ConfinementPlan = {
   level: 'os-profile',
   workspaceAccess: 'mounted',
 };
+const BUBBLEWRAP_PLAN: ConfinementPlan = {
+  ...SEATBELT_PLAN,
+  mechanism: 'bubblewrap',
+};
 
 /** Masks every credential an ambient environment could carry. */
 const NO_CREDENTIAL = {
@@ -168,6 +172,8 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     options: {
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
+      /** Inject nothing: the adapter picks the server's own provider. */
+      serverProvider?: true;
       appHomeDir?: string;
       resolveMcpOAuth?: EngineMcpOAuthResolver;
     } = {},
@@ -190,7 +196,12 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       confinementHandshakeTimeoutMs: 2_000,
       getConnectionEnv: async () =>
         options.connectionEnv ?? FAKE_ENV_CREDENTIAL,
-      seatbeltProvider: options.provider ?? createSeatbeltConfinementProvider(),
+      ...(options.serverProvider
+        ? {}
+        : {
+            seatbeltProvider:
+              options.provider ?? createSeatbeltConfinementProvider(),
+          }),
     });
     events = [];
     void (async () => {
@@ -825,6 +836,74 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
     });
+  });
+
+  test('#4770: a plan naming bubblewrap spawns through bwrap with the server’s own provider, lifted only once observed', async () => {
+    createAdapter({ serverProvider: true });
+    const handshake = deferred<unknown>();
+    const query = startingQuery(handshake.promise);
+    const starting = startConfined('bubblewrap', {
+      confinementPlan: BUBBLEWRAP_PLAN,
+    });
+    await vi.waitFor(() =>
+      expect(query.initializationResult).toHaveBeenCalled(),
+    );
+    const child = FakeClaudeChild.newest!;
+    expect(child.spawnArgs.command).toBe('/usr/bin/bwrap');
+    const args = child.spawnArgs.args;
+    expect(args.slice(0, 3)).toEqual([
+      '--unshare-user',
+      '--unshare-pid',
+      '--unshare-ipc',
+    ]);
+    expect(args[args.indexOf('--') + 1]).toBe(FAKE_CLAUDE_COMMAND);
+    expect(args).toEqual(
+      expect.arrayContaining(['--bind', workspace, workspace]),
+    );
+    expect(spawnedEnv().CLAUDE_CONFIG_DIR).toBe(
+      join(stationHome, 'confined-homes', 'claude'),
+    );
+    expect(query.options).toMatchObject({
+      permissionMode: 'acceptEdits',
+      allowDangerouslySkipPermissions: true,
+    });
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    expect(announced('bubblewrap')).toBe(false);
+
+    handshake.resolve({});
+    await starting;
+    expect(query.setPermissionMode).toHaveBeenCalledExactlyOnceWith(
+      'bypassPermissions',
+    );
+    expect((await started('bubblewrap')).stationConfinementRecord).toEqual({
+      level: 'os-profile',
+      required: true,
+      posture: 'confined',
+      mechanism: 'bubblewrap',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+      writeGrants: ['station-config', 'station-temp', 'workspace'],
+    });
+  });
+
+  test('#4770: a bubblewrap start whose engine never answers is refused, with no unconfined fallback spawn', async () => {
+    createAdapter({ serverProvider: true });
+    const query = startingQuery(
+      Promise.reject(new Error('Claude Code process exited with code 1')),
+    );
+    await expect(
+      startConfined('bubblewrap-failed', { confinementPlan: BUBBLEWRAP_PLAN }),
+    ).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_not_observed',
+      message: expect.stringContaining(
+        'not observed inside its bubblewrap profile (configured-but-failed)',
+      ),
+    });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe('/usr/bin/bwrap');
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    await expect(adapter.hasSession('bubblewrap-failed')).resolves.toBe(false);
   });
 
   test('readiness says, on macOS, whether a confined credential exists, without a login', async () => {

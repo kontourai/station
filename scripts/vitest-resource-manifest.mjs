@@ -255,6 +255,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the pinned legs passed. The live Claude handshake runs only on a Mac with
   // `claude` on PATH.
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+  // #4770: real `bwrap` kernel probes (git, hidden paths, namespaces) and
+  // one bounded live Claude handshake (`claude` on PATH, else the Agent
+  // SDK's own binary); skips loudly where the production bubblewrap sandbox
+  // cannot apply (macOS, Windows, a Linux host without bwrap or without
+  // unprivileged user namespaces). A skip still passes. Where a hosted Linux
+  // corpus lane can apply it, the legs run there and must pass; nothing in
+  // the corpus fails if they skip. The dispatch-only
+  // `.github/workflows/bubblewrap-kernel.yml` installs bubblewrap and fails
+  // unless the legs pinned in scripts/required-test-profiles.json passed.
+  'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
   // The stale-session reaper case spawns one short-lived Node child to obtain
   // a pid that has exited.
   'src-server/security/confinement/__tests__/seatbelt.test.ts',

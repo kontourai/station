@@ -72,7 +72,13 @@ export type ConfinementMechanism =
    * (`sandbox-exec`), observed once the engine answers its startup handshake
    * from inside it.
    */
-  | 'seatbelt';
+  | 'seatbelt'
+  /**
+   * A bubblewrap (`bwrap`) sandbox Station applies around the engine process
+   * on Linux, observed the same way: bubblewrap execs the engine only after
+   * its mounts and namespaces are in place.
+   */
+  | 'bubblewrap';
 
 /**
  * What a confinement profile lets the process write, by kind. Content-free:
@@ -138,7 +144,8 @@ export interface ExecutionConfinementRecord {
   policyBasis: ConfinementPolicyBasis;
   /**
    * What the applied profile lets the process write, when the mechanism is
-   * one Station builds (a Seatbelt profile). Absent for an engine's own
+   * one Station builds (a Seatbelt profile or a bubblewrap sandbox). Absent
+   * for an engine's own
    * sandbox, whose grants Station reads back rather than writes.
    */
   writeGrants?: readonly ConfinementWriteGrant[];
@@ -293,7 +300,11 @@ export const MAX_CONFINEMENT_PREFLIGHT_ENGINES = 16;
  */
 const CONFINEMENT_PREFLIGHT_ENGINE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
-const PREFLIGHT_MECHANISMS = new Set<string>(['codex-sandbox', 'seatbelt']);
+const PREFLIGHT_MECHANISMS = new Set<string>([
+  'codex-sandbox',
+  'seatbelt',
+  'bubblewrap',
+]);
 const PREFLIGHT_LEVELS = new Set<string>([
   'os-profile',
   'container',

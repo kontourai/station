@@ -20,6 +20,16 @@ attachment path. Have the host administrator repair the narrow executable
 policy and verify a sandboxed launch. Do not disable the sandbox or global
 AppArmor restrictions to make a readiness check pass.
 
+Station's own confinement of Claude on Linux (#4770) uses the same
+mechanism: a workspace full-access Claude session runs inside a bubblewrap
+sandbox, and is refused, naming bubblewrap's reason, where `/usr/bin/bwrap`
+is missing or cannot create its user namespace. Install the distribution's
+`bubblewrap` package. Where Ubuntu restricts unprivileged user namespaces,
+give `/usr/bin/bwrap` an AppArmor profile that allows them, as for the
+browser (see [the browser workspace guide](browser-workspace.md)), rather
+than turning the restriction off. `station doctor` reports whether the
+sandbox applies on the Station's host.
+
 Station's generated Linux user service uses `PrivateTmp=false` and retains
 `NoNewPrivileges=true`. On Ubuntu, a user service's private temporary mount
 namespace can inherit AppArmor's `unprivileged_userns` confinement, preventing

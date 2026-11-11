@@ -2851,6 +2851,31 @@ The `seatbelt-kernel` profile pins the kernel legs of
 - **Not required:** the live Claude Code handshake runs only where `claude`
   is on PATH, which a hosted runner does not have.
 
+The `linux-bubblewrap-kernel` profile pins the kernel legs of
+`src-server/security/confinement/__tests__/bubblewrap.process.test.ts`
+(#4770):
+
+- **Where they run:** a Linux host where `/usr/bin/bwrap` applies the
+  production sandbox, which needs unprivileged user namespaces. That means a
+  developer's Linux machine, a container started with
+  `--security-opt seccomp=unconfined --security-opt apparmor=unconfined
+  --security-opt systempaths=unconfined` (Docker's defaults refuse the
+  namespaces and the new `/proc`), or the dispatch-only
+  [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
+  workflow. That workflow installs bubblewrap on a hosted Ubuntu runner,
+  gives `/usr/bin/bwrap` an AppArmor profile allowing user namespaces when
+  Ubuntu restricts them, and then runs the check. Run it in a container from
+  a copy of the checkout with a Linux `node_modules` installed there, never
+  the host's.
+- **Where they do not:** macOS and Windows lanes skip the whole suite. A
+  hosted Linux corpus lane runs the legs only if bubblewrap applies there;
+  no corpus lane checks that they did not skip.
+- **Allowed to skip at runtime:** the nested user namespace leg skips when
+  `unshare --user` cannot create one even outside the sandbox.
+- **Required, unlike on macOS:** the live Claude Code handshake. It uses
+  `claude` on PATH, or else the Agent SDK's own binary for the platform,
+  which `npm run dependencies:ci` installs.
+
 ### Connected Agents Checklist
 
 - Adapter changes update the provider contract tests in `src-server/providers/__tests__/`

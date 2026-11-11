@@ -1,0 +1,500 @@
+{
+  "numTotalTestSuites": 2,
+  "numPassedTestSuites": 2,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 46,
+  "numPassedTests": 46,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1794406353437,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel the probe ran the production sandbox, not a stand-in",
+          "status": "passed",
+          "title": "the probe ran the production sandbox, not a stand-in",
+          "duration": 4.536305999999968,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a write in the workspace is allowed; a write outside it is denied",
+          "status": "passed",
+          "title": "a write in the workspace is allowed; a write outside it is denied",
+          "duration": 9.171987999999999,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree's git metadata is read-only: status works, staging and committing are refused (a stated difference)",
+          "status": "passed",
+          "title": "a linked worktree's git metadata is read-only: status works, staging and committing are refused (a stated difference)",
+          "duration": 6.710354999999993,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write a shared hook",
+          "status": "passed",
+          "title": "a linked worktree may not write a shared hook",
+          "duration": 6.0091449999999895,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write the shared config",
+          "status": "passed",
+          "title": "a linked worktree may not write the shared config",
+          "duration": 6.342311999999993,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write shared info",
+          "status": "passed",
+          "title": "a linked worktree may not write shared info",
+          "duration": 5.421267,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not move main",
+          "status": "passed",
+          "title": "a linked worktree may not move main",
+          "duration": 5.979269999999985,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not create another branch",
+          "status": "passed",
+          "title": "a linked worktree may not create another branch",
+          "duration": 6.09218599999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not repoint the .git pointer file",
+          "status": "passed",
+          "title": "a linked worktree may not repoint the .git pointer file",
+          "duration": 6.822479999999985,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not remove the .git pointer file",
+          "status": "passed",
+          "title": "a linked worktree may not remove the .git pointer file",
+          "duration": 6.331394999999986,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write config.worktree",
+          "status": "passed",
+          "title": "a linked worktree may not write config.worktree",
+          "duration": 6.243020000000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not repoint its commondir",
+          "status": "passed",
+          "title": "a linked worktree may not repoint its commondir",
+          "duration": 5.795227000000011,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a linked worktree may not write object alternates",
+          "status": "passed",
+          "title": "a linked worktree may not write object alternates",
+          "duration": 6.27272899999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot write a hook",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot write a hook",
+          "duration": 6.026853000000017,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot write its config",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot write its config",
+          "duration": 5.684602000000041,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot write info",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot write info",
+          "duration": 5.228724999999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot add a commondir redirect",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot add a commondir redirect",
+          "duration": 5.591394000000037,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot add object alternates",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot add object alternates",
+          "duration": 5.539517999999987,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot repoint another worktree's gitdir",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot repoint another worktree's gitdir",
+          "duration": 5.986145000000022,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot add a submodule's config",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot add a submodule's config",
+          "duration": 6.191228000000024,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot create a branch",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot create a branch",
+          "duration": 6.113603000000012,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot rename the .git",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot rename the .git",
+          "duration": 5.912435999999957,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace cannot remove the .git",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace cannot remove the .git",
+          "duration": 5.582310000000007,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a checkout whose .git is inside the workspace still has a writable workspace",
+          "status": "passed",
+          "title": "a checkout whose .git is inside the workspace still has a writable workspace",
+          "duration": 3.8379710000000387,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel secret stores and Station data do not reveal their content; Station installs stay readable",
+          "status": "passed",
+          "title": "secret stores and Station data do not reveal their content; Station installs stay readable",
+          "duration": 15.776552000000038,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel an SSH key does not reveal its content, however it is spelled",
+          "status": "passed",
+          "title": "an SSH key does not reveal its content, however it is spelled",
+          "duration": 13.565502000000038,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel AWS credentials does not reveal its content, however it is spelled",
+          "status": "passed",
+          "title": "AWS credentials does not reveal its content, however it is spelled",
+          "duration": 12.176788999999985,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel the gh login does not reveal its content, however it is spelled",
+          "status": "passed",
+          "title": "the gh login does not reveal its content, however it is spelled",
+          "duration": 17.343264999999974,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a netrc file does not reveal its content, however it is spelled",
+          "status": "passed",
+          "title": "a netrc file does not reveal its content, however it is spelled",
+          "duration": 32.239688,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel the operator's Claude credential file does not reveal its content, however it is spelled",
+          "status": "passed",
+          "title": "the operator's Claude credential file does not reveal its content, however it is spelled",
+          "duration": 38.94412699999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel Station's runtime home does not reveal its content, however it is spelled",
+          "status": "passed",
+          "title": "Station's runtime home does not reveal its content, however it is spelled",
+          "duration": 24.968790000000013,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel Station's root, outside the runtime home does not reveal its content, however it is spelled",
+          "status": "passed",
+          "title": "Station's root, outside the runtime home does not reveal its content, however it is spelled",
+          "duration": 13.12025099999994,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel the operator's Claude config is not writable; the Station-owned one is",
+          "status": "passed",
+          "title": "the operator's Claude config is not writable; the Station-owned one is",
+          "duration": 8.200860000000034,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot write its settings",
+          "status": "passed",
+          "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot write its settings",
+          "duration": 3.2358860000000504,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot add local settings",
+          "status": "passed",
+          "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot add local settings",
+          "duration": 3.1463019999999915,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot rename it away",
+          "status": "passed",
+          "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot rename it away",
+          "duration": 3.324386000000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel an existing engine configuration directory at the workspace root is read-only: a confined process cannot remove it",
+          "status": "passed",
+          "title": "an existing engine configuration directory at the workspace root is read-only: a confined process cannot remove it",
+          "duration": 2.8744259999999713,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a new engine configuration directory can be created in the workspace: a stated difference from Seatbelt",
+          "status": "passed",
+          "title": "a new engine configuration directory can be created in the workspace: a stated difference from Seatbelt",
+          "duration": 3.610720000000015,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel the session temp directory is writable and the confined env points at it",
+          "status": "passed",
+          "title": "the session temp directory is writable and the confined env points at it",
+          "duration": 3.103093999999942,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel processes outside the sandbox are invisible and cannot be signalled",
+          "status": "passed",
+          "title": "processes outside the sandbox are invisible and cannot be signalled",
+          "duration": 7.75160900000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a nested user namespace cannot be created inside, so the mounts cannot be rearranged",
+          "status": "passed",
+          "title": "a nested user namespace cannot be created inside, so the mounts cannot be rearranged",
+          "duration": 4.4853480000000445,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel the confined process runs with no_new_privs, so a setuid program gains nothing",
+          "status": "passed",
+          "title": "the confined process runs with no_new_privs, so a setuid program gains nothing",
+          "duration": 4.096888000000035,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a hidden file cannot be hard-linked into the workspace",
+          "status": "passed",
+          "title": "a hidden file cannot be hard-linked into the workspace",
+          "duration": 7.147605999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a hard link made outside the sandbox beforehand is readable: an accepted residual",
+          "status": "passed",
+          "title": "a hard link made outside the sandbox beforehand is readable: an accepted residual",
+          "duration": 4.552013999999986,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel a granted path does not grant its sibling that shares the prefix",
+          "status": "passed",
+          "title": "a granted path does not grant its sibling that shares the prefix",
+          "duration": 3.1728429999999435,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["bubblewrap sandbox under the real kernel"],
+          "fullName": "bubblewrap sandbox under the real kernel the installed Claude Code answers its handshake from inside the sandbox, and the provider observes it confined",
+          "status": "passed",
+          "title": "the installed Claude Code answers its handshake from inside the sandbox, and the provider observes it confined",
+          "duration": 728.8243750000001,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1794406353925,
+      "endTime": 1794406355024.8245,
+      "status": "passed",
+      "message": "",
+      "name": "/station/src-server/security/confinement/__tests__/bubblewrap.process.test.ts"
+    }
+  ]
+}

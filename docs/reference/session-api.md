@@ -409,9 +409,9 @@ carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own
 `session.started`: the level, whether it was required, the posture the engine
 reported applying at that start (`confined`, `no-mechanism` or
-`configured-but-failed`), the mechanism (`codex-sandbox` or `seatbelt`),
-workspace access and policy basis. A Seatbelt record also lists the kinds of
-writes its profile grants (`writeGrants`). A start that asked for confinement
+`configured-but-failed`), the mechanism (`codex-sandbox`, `seatbelt` or
+`bubblewrap`), workspace access and policy basis. A Seatbelt or bubblewrap
+record also lists the kinds of writes its profile grants (`writeGrants`). A start that asked for confinement
 but ran at Auto with none engaged names why in `fallback`
 (`confined-credential-unavailable`, `config-root-pinned`,
 `resume-bound-elsewhere` or `workspace-too-broad`). It
