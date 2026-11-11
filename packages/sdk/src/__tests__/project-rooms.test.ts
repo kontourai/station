@@ -6,9 +6,13 @@ import {
   setClientRequestTimeout,
 } from '../client/http';
 import {
+  createProjectRoomChannel,
   discoverProjectRoom,
   fetchProjectRoomHistory,
   initializeProjectRoom,
+  listProjectRoomChannels,
+  ProjectRoomProtocolError,
+  updateProjectRoomChannel,
   parseProjectRoomMessageIntent,
   saveProjectRoomNote,
   sendProjectRoomMessage,
@@ -388,4 +392,86 @@ test('a room body cannot publish after its captured authority becomes stale', as
   await rejected;
   expect(transport).toHaveBeenCalledOnce();
   expect(resolver).toHaveBeenCalledOnce();
+});
+
+test('channel calls address /channels and per-room calls keep /room for the default channel', async () => {
+  const channelId = '44444444-4444-4444-8444-444444444444';
+  const urls: string[] = [];
+  const bodies: unknown[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(`${init?.method ?? 'GET'} ${url}`);
+      if (init?.body) bodies.push(JSON.parse(String(init.body)));
+      if (url.endsWith('/channels') && init?.method === 'POST')
+        return ok({ channelId, name: 'design', isDefault: false });
+      if (url.endsWith(`/channels/${channelId}`) && init?.method === 'PATCH')
+        return ok({ channelId, name: 'ux', topic: 'Flows', isDefault: false });
+      if (url.endsWith('/channels'))
+        return ok({
+          channels: [
+            { channelId: roomId, name: 'general', isDefault: true },
+            { channelId, name: 'design', isDefault: false },
+          ],
+        });
+      if (url.includes(`/channels/${channelId}`))
+        return ok({
+          ...view,
+          roomId: channelId,
+          checkpoint: { roomId: channelId, lastSeq: 0 },
+        });
+      return ok(view);
+    }),
+  );
+  const channelGuards = {
+    expectedProjectId: 'project',
+    expectedActorId: actor.id,
+  };
+  expect(await listProjectRoomChannels(requestScope, 'team')).toHaveLength(2);
+  await createProjectRoomChannel(requestScope, 'team', {
+    ...channelGuards,
+    name: 'design',
+  });
+  await updateProjectRoomChannel(requestScope, 'team', channelId, {
+    ...channelGuards,
+    name: 'ux',
+    topic: 'Flows',
+  });
+  await discoverProjectRoom(requestScope, 'team', 'project');
+  await discoverProjectRoom(
+    requestScope,
+    'team',
+    'project',
+    undefined,
+    channelId,
+  );
+  expect(urls).toEqual([
+    'GET https://room.example/api/projects/team/channels',
+    'POST https://room.example/api/projects/team/channels',
+    `PATCH https://room.example/api/projects/team/channels/${channelId}`,
+    'GET https://room.example/api/projects/team/room',
+    `GET https://room.example/api/projects/team/channels/${channelId}`,
+  ]);
+  expect(bodies).toEqual([
+    { ...channelGuards, name: 'design' },
+    { ...channelGuards, name: 'ux', topic: 'Flows' },
+  ]);
+  // A room answering for another channel is refused.
+  await expect(
+    discoverProjectRoom(
+      requestScope,
+      'team',
+      'project',
+      undefined,
+      '55555555-5555-4555-8555-555555555555',
+    ),
+  ).rejects.toBeInstanceOf(ProjectRoomProtocolError);
+  // Invalid names never reach the network.
+  await expect(
+    createProjectRoomChannel(requestScope, 'team', {
+      ...channelGuards,
+      name: 'Design Team',
+    }),
+  ).rejects.toThrow();
+  expect(urls).toHaveLength(6);
 });

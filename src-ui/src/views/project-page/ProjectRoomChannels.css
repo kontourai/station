@@ -1,0 +1,288 @@
+/* Channel header: `# name` as the switcher trigger, the topic under it. */
+.room-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.room-channel__line {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.room-channel__name {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--k-text-lg);
+  font-weight: 650;
+  letter-spacing: var(--k-tracking-tight);
+  line-height: var(--k-leading-tight);
+}
+.room-channel__trigger,
+.room-channel__static {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--k-text);
+}
+.room-channel__trigger {
+  min-height: 44px;
+  /* The hover wash extends past the text; the text stays on the content edge. */
+  margin-inline-start: calc(-1 * var(--k-space-2));
+  padding: 0 var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--k-dur) var(--k-ease);
+}
+.room-channel__trigger:hover {
+  background: var(--k-panel-raised);
+}
+.room-channel__trigger:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: 0;
+}
+.room-channel__hash {
+  flex: none;
+  color: var(--k-text-faint);
+  font-weight: 400;
+}
+.room-channel__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-channel__caret {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-inline-start: var(--k-space-1);
+  color: var(--k-text-muted);
+}
+.room-channel__trigger[aria-expanded="true"] .room-channel__caret {
+  transform: rotate(180deg);
+}
+.room-channel .room-channel__settings {
+  flex: none;
+  color: var(--k-text-muted);
+}
+.room-channel__topic {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-channel__notice {
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}
+.room-channel .skeleton-block,
+.room-channel [aria-busy] {
+  min-width: 8rem;
+}
+
+/* The switcher and forms: anchored under the name on desktop, a bottom sheet
+   on phones. Geometry follows the shared anchored-sheet pattern. */
+.room-channel-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--k-space-3);
+}
+.room-channel-panel {
+  --room-channel-panel-width: min(300px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  width: var(--room-channel-panel-width);
+  max-height: min(480px, calc(100dvh - 24px));
+  overflow-y: auto;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel);
+  box-shadow: var(--k-elevation-overlay, var(--k-shadow));
+  color: var(--k-text);
+}
+.room-channel-panel--form {
+  --room-channel-panel-width: min(360px, calc(100vw - 24px));
+}
+.room-channel-overlay[data-anchored] .room-channel-panel {
+  position: fixed;
+  top: calc(var(--responsive-anchor-bottom, 0px) + 6px);
+  left: clamp(
+    12px,
+    var(--responsive-anchor-left, 12px),
+    calc(100vw - var(--room-channel-panel-width) - 12px)
+  );
+  max-height: min(
+    480px,
+    max(180px, calc(100dvh - var(--responsive-anchor-bottom, 0px) - 20px))
+  );
+}
+.room-channel-overlay[data-anchored][data-anchor-side="above"]
+  .room-channel-panel {
+  top: auto;
+  bottom: calc(100dvh - var(--responsive-anchor-top, 100dvh) + 6px);
+  max-height: min(
+    480px,
+    max(180px, calc(var(--responsive-anchor-top, 100dvh) - 20px))
+  );
+}
+.room-channel-overlay[data-sheet] {
+  align-items: flex-end;
+  padding: 0;
+  background: color-mix(in oklab, var(--k-bg) 55%, transparent);
+}
+.room-channel-overlay[data-sheet] .room-channel-panel {
+  --room-channel-panel-width: 100%;
+  max-height: min(80dvh, 640px);
+  border-width: var(--k-border-thin) 0 0;
+  border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Channel list: a chat app's list, current channel highlighted. */
+.room-channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0 var(--k-space-2) var(--k-space-2);
+  list-style: none;
+}
+.room-channel-list__item,
+.room-channel-list__new {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: 0;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-text-muted);
+  font: inherit;
+  font-size: var(--k-text-md);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--k-dur) var(--k-ease),
+    color var(--k-dur) var(--k-ease);
+}
+.room-channel-list__item .room-channel__hash {
+  width: 1ch;
+}
+.room-channel-list__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-channel-list__item:hover,
+.room-channel-list__new:hover {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+.room-channel-list__item[aria-current="true"] {
+  background: var(--k-active-soft);
+  color: var(--k-text);
+  font-weight: 600;
+}
+.room-channel-list__item[aria-current="true"] .room-channel__hash {
+  color: var(--k-active);
+}
+.room-channel-list__item:focus-visible,
+.room-channel-list__new:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: -2px;
+}
+.room-channel-list--archived {
+  padding-top: 0;
+}
+.room-channel-list--archived .room-channel-list__item:not([aria-current]) {
+  color: var(--k-text-faint);
+}
+.room-channel-list__archived {
+  padding: 0 var(--k-space-2) var(--k-space-1);
+}
+.room-channel-list__archived > button {
+  min-height: 44px;
+  padding-inline: var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.room-channel-list__footer {
+  margin-top: auto;
+  padding: var(--k-space-2);
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+.room-channel-list__plus {
+  width: 1ch;
+  color: var(--k-text-faint);
+  font-size: var(--k-text-lg);
+  line-height: 1;
+}
+
+/* Create, rename, topic and archive. */
+.room-channel-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  padding: var(--k-space-2) var(--k-space-4) var(--k-space-4);
+}
+.room-channel-form .control {
+  min-height: 44px;
+  font-size: var(--k-text-md);
+}
+.room-channel-form__name {
+  position: relative;
+}
+.room-channel-form__name .room-channel__hash {
+  position: absolute;
+  top: 50%;
+  left: var(--k-space-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.room-channel-form__name .control {
+  padding-inline-start: calc(var(--k-space-3) + 1ch + var(--k-space-1));
+}
+.room-channel-form__note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+.room-channel-form__error {
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}
+.room-channel-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--k-space-2);
+}
+.room-channel-form__actions > button {
+  min-height: 44px;
+}
+.room-channel-overlay[data-sheet] .room-channel-form__actions > button {
+  flex: 1 1 0;
+}

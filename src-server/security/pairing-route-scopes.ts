@@ -4798,6 +4798,42 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/projects/:slug/room/agents/:requestId/reconcile',
     },
+    // Named channels (#4792): the same per-room actions, addressed per channel.
+    // Create, rename, topic and archive compose the room's `edit` tier.
+    { method: 'GET', path: '/api/projects/:slug/channels' },
+    { method: 'POST', path: '/api/projects/:slug/channels' },
+    { method: 'PATCH', path: '/api/projects/:slug/channels/:channelId' },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    { method: 'PUT', path: '/api/projects/:slug/channels/:channelId/note' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/presence',
+    },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/reconcile',
+    },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a
     // lease runs builds on this host, so it stays at the family's operate

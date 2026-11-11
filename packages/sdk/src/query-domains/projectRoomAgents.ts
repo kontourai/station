@@ -14,6 +14,8 @@ export function useProjectRoomAgent(
   slug: string,
   guard: ProjectRoomGuards,
   enabled: boolean,
+  /** The channel the requests live in; absent means the default room. */
+  channelId?: string,
 ) {
   const catalog = useQuery({
     queryKey: [
@@ -36,7 +38,14 @@ export function useProjectRoomAgent(
         | { requestId: string; action: 'inspect' | 'reconcile' | 'cancel' },
     ) => {
       if (!enabled) throw new Error('Room Agent authority changed.');
-      return projectRoomAgentRequest(scope, slug, guard, operation);
+      return projectRoomAgentRequest(
+        scope,
+        slug,
+        guard,
+        operation,
+        undefined,
+        channelId,
+      );
     },
   });
   return { catalog, request };

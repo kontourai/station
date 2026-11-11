@@ -4,8 +4,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import {
   isProjectRoomUuid,
+  PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
   PROJECT_ROOM_LIMITS as LIMITS,
   type ProjectRoomActor,
+  type ProjectRoomChannel,
+  type ProjectRoomChannelCreateInput,
+  type ProjectRoomChannelUpdateInput,
   type ProjectRoomAgentRequest,
   type ProjectRoomAgentRequestInput,
   type ProjectRoomAppendInput,
@@ -16,6 +20,9 @@ import {
   type ProjectRoomNoteInput,
   parseProjectRoomAgentRequestInput,
   parseProjectRoomAppendInput,
+  parseProjectRoomChannel,
+  parseProjectRoomChannelCreateInput,
+  parseProjectRoomChannelUpdateInput,
   parseProjectRoomNoteInput,
 } from '@kontourai/station-contracts/project-room';
 import {
@@ -26,7 +33,13 @@ import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 
 export class ProjectRoomRefusal extends Error {
   constructor(
-    readonly code: 'conflict' | 'not_found' | 'capacity' | 'invalid',
+    readonly code:
+      | 'conflict'
+      | 'not_found'
+      | 'capacity'
+      | 'invalid'
+      | 'duplicate'
+      | 'archived',
   ) {
     super(`Project room ${code}`);
   }
@@ -150,6 +163,17 @@ function requestValue(value: unknown): ProjectRoomAgentRequest {
   assertRequestValue(value);
   return value;
 }
+/**
+ * Schema versions: 0 is the single-room shape (`project_rooms` keyed by
+ * scope). 1 adds `project_room_channels`; each Project's existing room becomes
+ * its `#general` channel and keeps its room id, so its messages, note and
+ * Agent requests stay where they are.
+ */
+const SCHEMA_VERSION = 1;
+/** A channel as stored: the contract shape without the derived `isDefault`. */
+type StoredChannel = Omit<ProjectRoomChannel, 'isDefault'> & {
+  scope: ProjectMembershipScope;
+};
 export class ProjectRoomStore {
   private listeners = new Map<string, Set<() => void>>();
   subscribe(roomId: string, callback: () => void) {
@@ -183,7 +207,70 @@ export class ProjectRoomStore {
     db.exec(`CREATE TABLE IF NOT EXISTS project_rooms (scope_key TEXT PRIMARY KEY, room_id TEXT NOT NULL UNIQUE, record TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS project_room_messages (room_id TEXT NOT NULL, seq INTEGER NOT NULL, message_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, seq), UNIQUE(room_id, author, intent_id)) STRICT;
       CREATE TABLE IF NOT EXISTS project_room_notes (room_id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
-      CREATE TABLE IF NOT EXISTS project_room_requests (room_id TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, author, intent_id)) STRICT;`);
+      CREATE TABLE IF NOT EXISTS project_room_requests (room_id TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, author, intent_id)) STRICT;
+      CREATE TABLE IF NOT EXISTS project_room_channels (room_id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, name TEXT NOT NULL, record TEXT NOT NULL, UNIQUE(scope_key, name)) STRICT;`);
+    this.migrate();
+  }
+  private migrate() {
+    const version = Number(
+      this.db.prepare('PRAGMA user_version').get()?.user_version ?? 0,
+    );
+    if (
+      !Number.isSafeInteger(version) ||
+      version < 0 ||
+      version > SCHEMA_VERSION
+    )
+      throw new Error('Project rooms database version is not supported');
+    const pending = () =>
+      this.db
+        .prepare(
+          'SELECT * FROM project_rooms WHERE room_id NOT IN (SELECT room_id FROM project_room_channels)',
+        )
+        .all();
+    // Checked on every open, not only from version 0: a room an older Station
+    // created after a downgrade is adopted on the next upgrade. The read keeps
+    // an up-to-date open from taking the writer lock.
+    if (version === SCHEMA_VERSION && pending().length === 0) return;
+    this.transaction(() => {
+      for (const row of pending()) {
+        let scope: ProjectMembershipScope;
+        try {
+          scope = decode(row, (value) =>
+            scopeValue(object(value, ['roomId', 'scope']).scope),
+          );
+        } catch {
+          // A corrupt room stays unadopted; reads of that Project refuse it as
+          // they did before, and other Projects still open.
+          continue;
+        }
+        if (
+          !isProjectRoomUuid(row.room_id) ||
+          key(scope) !== row.scope_key ||
+          this.db
+            .prepare(
+              'SELECT 1 FROM project_room_channels WHERE scope_key=? AND name=?',
+            )
+            .get(row.scope_key, PROJECT_ROOM_DEFAULT_CHANNEL_NAME)
+        )
+          continue;
+        this.insertChannel({
+          channelId: row.room_id,
+          scope,
+          name: PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
+        });
+      }
+      this.db.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
+    });
+  }
+  private insertChannel(channel: StoredChannel) {
+    this.db
+      .prepare('INSERT INTO project_room_channels VALUES (?, ?, ?, ?)')
+      .run(
+        channel.channelId,
+        key(channel.scope),
+        channel.name,
+        JSON.stringify(channel),
+      );
   }
   private transaction<T>(run: () => T, readOnly = false): T {
     this.db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
@@ -214,8 +301,18 @@ export class ProjectRoomStore {
     )
       throw new ProjectRoomRefusal('invalid');
   }
-  lookupRoom(scope: ProjectMembershipScope): ProjectRoomIdentity | null {
+  /** The default room without `channelId`; otherwise that channel's room. */
+  lookupRoom(
+    scope: ProjectMembershipScope,
+    channelId?: string,
+  ): ProjectRoomIdentity | null {
     scopeValue(scope);
+    if (channelId !== undefined) {
+      const channel = this.lookupChannel(scope, channelId);
+      return channel
+        ? { roomId: channel.channelId, scope: { ...scope } }
+        : null;
+    }
     const row = this.db
       .prepare('SELECT * FROM project_rooms WHERE scope_key=?')
       .get(key(scope));
@@ -233,10 +330,170 @@ export class ProjectRoomStore {
       return { roomId: v.roomId, scope: { ...scope } };
     });
   }
-  private room(scope: ProjectMembershipScope): ProjectRoomIdentity {
-    const room = this.lookupRoom(scope);
+  private room(
+    scope: ProjectMembershipScope,
+    channelId?: string,
+  ): ProjectRoomIdentity {
+    const room = this.lookupRoom(scope, channelId);
     if (!room) throw new ProjectRoomRefusal('not_found');
     return room;
+  }
+  /** A room that accepts new content: an archived channel serves history only. */
+  private writableRoom(
+    scope: ProjectMembershipScope,
+    channelId?: string,
+  ): ProjectRoomIdentity {
+    const room = this.room(scope, channelId);
+    if (this.lookupChannel(scope, room.roomId)?.archivedAt)
+      throw new ProjectRoomRefusal('archived');
+    return room;
+  }
+  private storedChannel(row: Row): StoredChannel {
+    return decode(row, (value) => {
+      const v = object(value, [
+        'channelId',
+        'scope',
+        'name',
+        'topic',
+        'archivedAt',
+      ]);
+      const { scope: storedScope, ...fields } = v;
+      const scope = scopeValue(storedScope);
+      const { isDefault: _, ...channel } = parseProjectRoomChannel({
+        ...fields,
+        isDefault: false,
+      });
+      if (
+        channel.channelId !== row.room_id ||
+        channel.name !== row.name ||
+        key(scope) !== row.scope_key
+      )
+        corrupt();
+      return { ...channel, scope };
+    });
+  }
+  private lookupChannel(
+    scope: ProjectMembershipScope,
+    channelId: string,
+  ): StoredChannel | null {
+    if (!isProjectRoomUuid(channelId)) return null;
+    const row = this.db
+      .prepare(
+        'SELECT * FROM project_room_channels WHERE room_id=? AND scope_key=?',
+      )
+      .get(channelId, key(scope));
+    return row ? this.storedChannel(row) : null;
+  }
+  private publicChannel(
+    channel: StoredChannel,
+    defaultRoomId: string | undefined,
+  ): ProjectRoomChannel {
+    const { scope: _, ...value } = channel;
+    return { ...value, isDefault: value.channelId === defaultRoomId };
+  }
+  /** The Project's channels, default first, then by name; empty before the room opens. */
+  listChannels(scope: ProjectMembershipScope): ProjectRoomChannel[] {
+    scopeValue(scope);
+    return this.transaction(() => {
+      const defaultRoomId = this.lookupRoom(scope)?.roomId;
+      if (!defaultRoomId) return [];
+      const rows = this.db
+        .prepare(
+          'SELECT * FROM project_room_channels WHERE scope_key=? ORDER BY name LIMIT ?',
+        )
+        .all(key(scope), LIMITS.channelsPerProject + 1);
+      if (rows.length > LIMITS.channelsPerProject) corrupt();
+      const channels = rows.map((row) =>
+        this.publicChannel(this.storedChannel(row), defaultRoomId),
+      );
+      if (!channels.some((channel) => channel.isDefault)) corrupt();
+      return [
+        ...channels.filter((channel) => channel.isDefault),
+        ...channels.filter((channel) => !channel.isDefault),
+      ];
+    }, true);
+  }
+  private assertNameFree(
+    scope: ProjectMembershipScope,
+    name: string,
+    except?: string,
+  ) {
+    const row = this.db
+      .prepare(
+        'SELECT room_id FROM project_room_channels WHERE scope_key=? AND name=?',
+      )
+      .get(key(scope), name);
+    if (row && row.room_id !== except)
+      throw new ProjectRoomRefusal('duplicate');
+  }
+  createChannel(
+    scope: ProjectMembershipScope,
+    input: ProjectRoomChannelCreateInput,
+    assertCurrent: ProjectRoomAssertCurrent,
+  ): ProjectRoomChannel {
+    scopeValue(scope);
+    const value = parseProjectRoomChannelCreateInput(input);
+    return this.transaction(() => {
+      // Channels hang off the Project's opened room.
+      const defaultRoomId = this.room(scope).roomId;
+      const count = Number(
+        this.db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM project_room_channels WHERE scope_key=?',
+          )
+          .get(key(scope))?.count,
+      );
+      if (count >= LIMITS.channelsPerProject)
+        throw new ProjectRoomRefusal('capacity');
+      this.assertNameFree(scope, value.name);
+      const channel: StoredChannel = {
+        channelId: randomUUID(),
+        scope: { ...scope },
+        ...value,
+      };
+      assertSynchronousCurrent(assertCurrent);
+      this.insertChannel(channel);
+      return this.publicChannel(channel, defaultRoomId);
+    });
+  }
+  updateChannel(
+    scope: ProjectMembershipScope,
+    channelId: string,
+    input: ProjectRoomChannelUpdateInput,
+    assertCurrent: ProjectRoomAssertCurrent,
+  ): ProjectRoomChannel {
+    scopeValue(scope);
+    const value = parseProjectRoomChannelUpdateInput(input);
+    return this.transaction(() => {
+      const defaultRoomId = this.room(scope).roomId;
+      const current = this.lookupChannel(scope, channelId);
+      if (!current) throw new ProjectRoomRefusal('not_found');
+      if (value.archived && current.channelId === defaultRoomId)
+        throw new ProjectRoomRefusal('invalid');
+      if (value.name !== undefined)
+        this.assertNameFree(scope, value.name, current.channelId);
+      const { topic, archivedAt, ...rest } = current;
+      const nextTopic = value.topic === undefined ? topic : value.topic;
+      const nextArchivedAt =
+        value.archived === undefined
+          ? archivedAt
+          : value.archived
+            ? (archivedAt ?? new Date().toISOString())
+            : undefined;
+      const next: StoredChannel = {
+        ...rest,
+        ...(value.name === undefined ? {} : { name: value.name }),
+        ...(nextTopic == null ? {} : { topic: nextTopic }),
+        ...(nextArchivedAt === undefined ? {} : { archivedAt: nextArchivedAt }),
+      };
+      assertSynchronousCurrent(assertCurrent);
+      this.db
+        .prepare(
+          'UPDATE project_room_channels SET name=?, record=? WHERE room_id=? AND scope_key=?',
+        )
+        .run(next.name, JSON.stringify(next), next.channelId, key(scope));
+      return this.publicChannel(next, defaultRoomId);
+    });
   }
   ensureRoom(
     scope: ProjectMembershipScope,
@@ -254,6 +511,11 @@ export class ProjectRoomStore {
       this.db
         .prepare('INSERT INTO project_rooms VALUES (?, ?, ?)')
         .run(key(scope), room.roomId, JSON.stringify(room));
+      this.insertChannel({
+        channelId: room.roomId,
+        scope: { ...scope },
+        name: PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
+      });
       return room;
     });
   }
@@ -311,11 +573,12 @@ export class ProjectRoomStore {
     actor: ProjectRoomActor,
     input: ProjectRoomAppendInput,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ): ProjectRoomMessage {
     this.assertActor(actor);
     const value = parseProjectRoomAppendInput(input);
     return this.transaction(() => {
-      const { roomId } = this.room(scope);
+      const { roomId } = this.writableRoom(scope, channelId);
       const payload = JSON.stringify(value);
       const existing = this.db
         .prepare(
@@ -368,6 +631,7 @@ export class ProjectRoomStore {
     scope: ProjectMembershipScope,
     after = 0,
     limit: number = LIMITS.defaultPageSize,
+    channelId?: string,
   ): ProjectRoomHistory {
     if (
       !Number.isSafeInteger(after) ||
@@ -379,7 +643,7 @@ export class ProjectRoomStore {
       throw new ProjectRoomRefusal('invalid');
     // One read transaction keeps the page and its checkpoint on the same snapshot.
     return this.transaction(() => {
-      const identity = this.room(scope);
+      const identity = this.room(scope, channelId);
       const { roomId } = identity;
       const lastSeq = Number(
         this.db
@@ -419,8 +683,11 @@ export class ProjectRoomStore {
       };
     }, true);
   }
-  getNote(scope: ProjectMembershipScope): ProjectRoomNote | null {
-    const roomId = this.room(scope).roomId;
+  getNote(
+    scope: ProjectMembershipScope,
+    channelId?: string,
+  ): ProjectRoomNote | null {
+    const roomId = this.room(scope, channelId).roomId;
     const row = this.db
       .prepare('SELECT * FROM project_room_notes WHERE room_id=?')
       .get(roomId);
@@ -437,12 +704,13 @@ export class ProjectRoomStore {
     actor: ProjectRoomActor,
     input: ProjectRoomNoteInput,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ): ProjectRoomNote {
     this.assertActor(actor);
     const value = parseProjectRoomNoteInput(input);
     return this.transaction(() => {
-      const { roomId } = this.room(scope);
-      const current = this.getNote(scope);
+      const { roomId } = this.writableRoom(scope, channelId);
+      const current = this.getNote(scope, channelId);
       if ((current?.revision ?? 0) !== value.expectedRevision)
         throw new ProjectRoomRefusal('conflict');
       for (const id of value.sourceMessageIds) this.message(roomId, id);
@@ -469,11 +737,12 @@ export class ProjectRoomStore {
     actor: ProjectRoomActor,
     input: ProjectRoomAgentRequestInput,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ): ProjectRoomAgentRequest {
     this.assertActor(actor);
     const value = parseProjectRoomAgentRequestInput(input);
     return this.transaction(() => {
-      const { roomId } = this.room(scope);
+      const { roomId } = this.writableRoom(scope, channelId);
       const payload = JSON.stringify(value);
       const existing = this.db
         .prepare(
@@ -525,12 +794,13 @@ export class ProjectRoomStore {
   getRequest(
     scope: ProjectMembershipScope,
     requestId: string,
+    channelId?: string,
   ): ProjectRoomAgentRequest {
     const row = this.db
       .prepare(
         'SELECT * FROM project_room_requests WHERE room_id=? AND request_id=?',
       )
-      .get(this.room(scope).roomId, requestId);
+      .get(this.room(scope, channelId).roomId, requestId);
     if (!row) throw new ProjectRoomRefusal('not_found');
     return this.storedRequest(row);
   }
@@ -540,9 +810,10 @@ export class ProjectRoomStore {
     allowed: ProjectRoomAgentRequest['state'][],
     update: Partial<ProjectRoomAgentRequest>,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ): ProjectRoomAgentRequest {
     return this.transaction(() => {
-      const current = this.getRequest(scope, id);
+      const current = this.getRequest(scope, id, channelId);
       if (
         !allowed.includes(current.state) ||
         (update.sessionId &&
@@ -576,6 +847,7 @@ export class ProjectRoomStore {
     scope: ProjectMembershipScope,
     id: string,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ) {
     return this.transition(
       scope,
@@ -583,6 +855,7 @@ export class ProjectRoomStore {
       ['reserved'],
       { state: 'started' },
       assertCurrent,
+      channelId,
     );
   }
   bindSession(
@@ -590,10 +863,11 @@ export class ProjectRoomStore {
     id: string,
     sessionId: string,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ) {
     if (!sessionId.trim() || Buffer.byteLength(sessionId) > 256)
       throw new ProjectRoomRefusal('invalid');
-    const current = this.getRequest(scope, id);
+    const current = this.getRequest(scope, id, channelId);
     if (current.sessionId && current.sessionId !== sessionId)
       throw new ProjectRoomRefusal('conflict');
     return this.transition(
@@ -602,6 +876,7 @@ export class ProjectRoomStore {
       ['started'],
       { sessionId },
       assertCurrent,
+      channelId,
     );
   }
   finishPublished(
@@ -609,20 +884,23 @@ export class ProjectRoomStore {
     id: string,
     messageId: string,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ) {
-    this.message(this.room(scope).roomId, messageId);
+    this.message(this.room(scope, channelId).roomId, messageId);
     return this.transition(
       scope,
       id,
       ['started', 'uncertain'],
       { state: 'published', publishedMessageId: messageId },
       assertCurrent,
+      channelId,
     );
   }
   markUncertain(
     scope: ProjectMembershipScope,
     id: string,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ) {
     return this.transition(
       scope,
@@ -630,12 +908,14 @@ export class ProjectRoomStore {
       ['started'],
       { state: 'uncertain' },
       assertCurrent,
+      channelId,
     );
   }
   cancelRequest(
     scope: ProjectMembershipScope,
     id: string,
     assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
   ) {
     return this.transition(
       scope,
@@ -643,6 +923,7 @@ export class ProjectRoomStore {
       ['reserved', 'started', 'uncertain'],
       { state: 'cancelled' },
       assertCurrent,
+      channelId,
     );
   }
 }

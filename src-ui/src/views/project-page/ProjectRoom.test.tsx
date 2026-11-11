@@ -137,6 +137,12 @@ function fixture() {
         }
         return response;
       }
+      if (url.pathname === '/api/projects/team/channels')
+        return ok({
+          channels: provisioned
+            ? [{ channelId: roomId, name: 'general', isDefault: true }]
+            : [],
+        });
       if (url.pathname.endsWith('/init')) {
         initializationBodies.push(body);
         if (failInitialization) {

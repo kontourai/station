@@ -9435,7 +9435,14 @@ export function configureRuntimeRoutes(
       module: roomAgentRuntime.module,
       observe: (authority, handle) =>
         roomPublication!.watch(authority, handle.requestId),
-      withAuthority: async (request, slug, action, guard, operation) => {
+      withAuthority: async (
+        request,
+        slug,
+        action,
+        guard,
+        operation,
+        channelId,
+      ) => {
         const result = await roomAccess.withAction(
           request,
           slug,
@@ -9446,7 +9453,7 @@ export function configureRuntimeRoutes(
               if (
                 guard &&
                 (scope.localProjectId !== guard.expectedProjectId ||
-                  roomStore.store.lookupRoom(scope)?.roomId !==
+                  roomStore.store.lookupRoom(scope, channelId)?.roomId !==
                     guard.expectedRoomId)
               )
                 throw new ProjectRoomRefusal('conflict');
@@ -9477,6 +9484,7 @@ export function configureRuntimeRoutes(
                 ok: true as const,
                 value: await operation({
                   scope,
+                  ...(channelId === undefined ? {} : { channelId }),
                   requester,
                   executionRoot,
                   assertCurrent: current,
