@@ -180,7 +180,7 @@
    read nor unread, and the panel's note says why once. */
 .inbox-row[data-read-unknown] .inbox-row__title[data-title]::before {
   box-sizing: border-box;
-  border: 1px solid var(--text-muted);
+  border: 1px solid var(--k-text-faint);
   background: transparent;
 }
 
@@ -485,7 +485,7 @@
 
 .inbox-row--slim[data-read-unknown]::before {
   box-sizing: border-box;
-  border: 1px solid var(--text-muted);
+  border: 1px solid var(--k-text-faint);
   background: transparent;
 }
 

@@ -3,7 +3,7 @@
 .read-status-note {
   margin: var(--k-space-1) 0;
   padding: 0 var(--k-space-2);
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   font-size: var(--k-text-sm);
 }
 
@@ -21,7 +21,7 @@
 .read-status-note__retry:focus-visible {
   outline: var(--k-focus-ring-width, 2px) solid var(--k-focus-ring);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--k-radius-sm);
 }
 
 @media (pointer: coarse) {
