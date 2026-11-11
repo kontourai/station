@@ -49,6 +49,7 @@ import { PrincipalUnresolvedError } from '../services/identity/principal-resolve
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
+  restrictedNetworkRouteWithheld,
   SCOPED_THREAD_COMMAND_FIELD,
   type StationControlDispatchTarget,
   type StationControlRefusal,
@@ -152,6 +153,13 @@ export interface StationControlAuthorityGuardOptions {
     conversationIds: readonly (string | undefined)[];
     toolNames: readonly string[];
   }): Promise<string | undefined>;
+  /**
+   * #4769: whether a session's latest start ran with a restricted network.
+   * Such a caller is refused every route whose tools are all withheld from
+   * restricted sessions (`restrictedNetworkRouteWithheld`). Absent: no
+   * session is restricted. A throw refuses.
+   */
+  networkRestrictedSession?(sessionId: string): boolean;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -464,6 +472,26 @@ export function createStationControlAuthorityGuard(
         body,
       ),
     });
+    if (
+      !refusal &&
+      caller &&
+      options.networkRestrictedSession &&
+      restrictedNetworkRouteWithheld(method, path)
+    ) {
+      let restricted = true;
+      try {
+        restricted = options.networkRestrictedSession(caller.sessionId);
+      } catch {
+        // Unknown: refused.
+      }
+      if (restricted) {
+        const withheld = stationControlRefusal(
+          'station_control_network_restricted',
+        );
+        options.onRefusal?.(withheld, method, path);
+        return c.json(stationControlRefusalBody(withheld), 403);
+      }
+    }
     if (!refusal && caller && options.untrustedContentGate) {
       const toolNames = untrustedContentGatedTools(method, path);
       if (toolNames.length > 0) {

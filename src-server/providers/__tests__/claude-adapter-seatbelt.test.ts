@@ -69,6 +69,7 @@ vi.mock('../auth/cli-auth.js', () => ({
   runCliCommand: vi.fn(async () => null),
 }));
 
+import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   type ConfinementProvider,
   ConfinementRefusedError,
@@ -84,6 +85,7 @@ import {
   sessionTempRoot,
   sessionTmpRoot,
 } from '../../services/infra/session-tmpdir.js';
+import { RESTRICTED_NETWORK_STATION_CONTROL_TOOLS } from '../../tools/station-control-policy.js';
 import {
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -194,6 +196,8 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     options: {
       /** Serve Station's in-process browser to agent sessions. */
       stationBrowser?: true;
+      /** Records the tools each in-process station-control server was given. */
+      stationControl?: (allowedTools: readonly string[] | undefined) => void;
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
       /** Inject nothing: the adapter picks the server's own provider. */
@@ -207,6 +211,18 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       logNetworkDecision: (details) => decisionLog.push(details),
       ...(options.stationBrowser
         ? { createInProcessStationBrowser: () => ({}) as never }
+        : {}),
+      ...(options.stationControl
+        ? {
+            createInProcessStationControl: (
+              _threadId: string,
+              _tenant?: unknown,
+              allowedTools?: readonly string[],
+            ) => {
+              options.stationControl!(allowedTools);
+              return { connect: vi.fn(), close: vi.fn() } as never;
+            },
+          }
         : {}),
       resolveMcpOAuth: options.resolveMcpOAuth,
       revokeStationControlCallerToken: revokeStationControlMcpToken,
@@ -1214,6 +1230,52 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     // Refused before the transcript is forked or an engine spawned.
     expect(mockForkSession).not.toHaveBeenCalled();
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test('#4769: a restricted session gets station-control without the tools that act outside its sandbox (devices, previews, delegation, settings)', async () => {
+    const given: Array<readonly string[] | undefined> = [];
+    createAdapter({ stationControl: (tools) => given.push(tools) });
+    const toolServers = [
+      {
+        id: 'station-control',
+        transport: 'stdio' as const,
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+      },
+    ];
+    for (const [threadId, plan] of [
+      ['control-open', SEATBELT_PLAN],
+      ['control-restricted', RESTRICTED_PLAN],
+    ] as const) {
+      startingQuery(Promise.resolve({}));
+      await startConfined(threadId, {
+        confinementPlan: plan,
+        agent: { slug: 'agent', toolServers },
+      });
+    }
+    // Unrestricted: every tool, as before.
+    expect(given[0]).toBeUndefined();
+    const restricted = given[1]!;
+    expect(restricted.length).toBeGreaterThan(0);
+    for (const withheld of [
+      'device_open',
+      'device_input',
+      'device_open_url',
+      'device_launch_app',
+      'html_preview',
+      'html_render',
+      'send_message',
+      'delegate_task',
+      'update_config',
+      'install_skill',
+    ])
+      expect(restricted, withheld).not.toContain(withheld);
+    expect(restricted).toContain('task_record');
+    expect(
+      restricted.every((name) =>
+        RESTRICTED_NETWORK_STATION_CONTROL_TOOLS.has(name),
+      ),
+    ).toBe(true);
   });
 
   test("#4769: a restricted session is not given Station's in-process browser, which runs outside the sandbox", async () => {

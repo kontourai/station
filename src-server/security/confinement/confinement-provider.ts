@@ -12,7 +12,10 @@ import type {
   ConfinementWriteGrant,
   ExecutionConfinementRecord,
 } from '@kontourai/station-contracts/execution-confinement';
-import { parseConfinedNetworkSetting } from '@kontourai/station-contracts/execution-confinement';
+import {
+  parseConfinedNetworkSetting,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from '@kontourai/station-contracts/execution-confinement';
 import type {
   ApprovalMode,
   StationConfinement,
@@ -550,4 +553,32 @@ export function readConfinementRecord(
       : {}),
     ...(record.network === 'restricted' ? { network: 'restricted' } : {}),
   };
+}
+
+/**
+ * #4769: whether `sessionId`'s latest start ran with a restricted network,
+ * read from the confinement record on its stored `session.started` (the
+ * started process's record, never the caller's say-so). No store, or no
+ * record: not restricted.
+ */
+export function sessionNetworkRestricted(
+  store:
+    | {
+        latestEventByMethod(
+          threadId: string,
+          method: 'session.started',
+        ): { payload: unknown } | undefined;
+      }
+    | undefined,
+  sessionId: string,
+): boolean {
+  const metadata = (
+    store?.latestEventByMethod(sessionId, 'session.started')?.payload as
+      | { metadata?: Record<string, unknown> }
+      | undefined
+  )?.metadata;
+  return (
+    readConfinementRecord(metadata?.[STATION_CONFINEMENT_RECORD_METADATA_KEY])
+      ?.network === 'restricted'
+  );
 }

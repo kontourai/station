@@ -14,8 +14,8 @@
  * Events to unconfined applications or attacks on the operator's other
  * processes through broadly allowed Mach services. Its network is open,
  * unless the start's policy restricts it (#4769): then the only outbound
- * connection allowed is TCP to the egress broker's loopback port
- * (`seatbeltNetworkRules`).
+ * connection allowed is IPv4 TCP to this host's own addresses at the egress
+ * broker's port, and Mach lookups are an allow-list (`seatbeltNetworkRules`).
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -380,11 +380,14 @@ const SEATBELT_RESTRICTED_MACH_RULES: readonly string[] = [
  * is open, as it always was. With one:
  *
  * - The only network operation allowed is an outbound IPv4 TCP connection to
- *   that port on loopback (`tcp4`: SBPL names loopback `localhost`, and
- *   `tcp` would also admit `[::1]:<port>`, which the broker does not hold).
- *   Under `(deny default)` every other connect is refused by the kernel,
- *   including one to a Unix socket (the DNS resolver's included), UDP, and
- *   another loopback port such as Station's own.
+ *   that port on one of this host's own addresses. SBPL accepts only
+ *   `localhost` or `*` as the host (an explicit `127.0.0.1` is refused when
+ *   the profile is compiled), and `localhost` matches every address of this
+ *   host, its LAN address included, not only loopback. The broker listens
+ *   on `127.0.0.1` alone; `tcp4` keeps out `[::1]:<port>`, which `tcp` would
+ *   admit. Under `(deny default)` every other connect is refused by the
+ *   kernel, including one to a Unix socket (the DNS resolver's included),
+ *   UDP, another port such as Station's own, and every other host.
  * - Mach lookups are limited to {@link SEATBELT_RESTRICTED_MACH_SERVICES}:
  *   a service that makes requests for its caller (a background `URLSession`
  *   in `nsurlsessiond`) would otherwise carry them outside the sandbox.

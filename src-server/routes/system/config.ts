@@ -856,6 +856,20 @@ export function createConfigRoutes(
       // its shape or any allowed host is not one the broker can read; stored,
       // it would refuse every start that requires confinement. `null` clears it.
       if (Object.hasOwn(body as object, 'confinedNetwork')) {
+        // #4769: an agent may not change the policy that confines agents,
+        // its own session's included; the operator can, in person.
+        if (requestMayBeAnAgent(c.req.raw)) {
+          logRefusal('confined_network_agent_not_granted');
+          return c.json(
+            {
+              success: false,
+              code: COMMAND_NOT_GRANTED_CODE,
+              error:
+                'An agent cannot change the confined network policy. The operator can, with PUT /config/app or station config set.',
+            },
+            403,
+          );
+        }
         const value = (body as Record<string, unknown>).confinedNetwork;
         if (value !== null && value !== undefined) {
           const problem = appConfigSemanticError({ confinedNetwork: value });

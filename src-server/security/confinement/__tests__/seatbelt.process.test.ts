@@ -1173,6 +1173,21 @@ describe.skipIf(!probe.ok)(
         }
       });
 
+      test('a Mach service outside the allow-list is refused: configd answers scutil outside the profile and not inside it', async () => {
+        // No toolchain needed: `scutil --dns` asks configd (a Mach service
+        // the restricted profile does not list) for the resolver setup.
+        const outside = spawnSync('/usr/sbin/scutil', ['--dns'], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+        });
+        expect(outside.status).toBe(0);
+        expect(outside.stdout).toContain('resolver #');
+        const inside = await confinedCommand('/usr/sbin/scutil', ['--dns']);
+        expect(inside.status, inside.line).not.toBe(0);
+        expect(inside.line).not.toContain('resolver #');
+      });
+
       test('a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker', async (ctx) => {
         // The reviewed escape (#4769): a background session hands the
         // request to a daemon that runs outside the sandbox.

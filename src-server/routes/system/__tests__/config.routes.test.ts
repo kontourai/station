@@ -492,6 +492,55 @@ describe('Config Routes', () => {
     );
   });
 
+  test('#4769: an agent cannot change the confined network policy, not even to widen its own; the operator can', async () => {
+    const loader = createMockConfigLoader();
+    const app = new Hono();
+    let agent = true;
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(
+        c.req.raw,
+        agent
+          ? {
+              kind: 'internal',
+              credential: 'internal-test',
+              authority: 'operator-credential',
+              source: 'bearer',
+            }
+          : {
+              kind: 'credential',
+              credential: 'operator-test',
+              authority: 'operator-credential',
+              source: 'bearer',
+            },
+      );
+      await next();
+    });
+    app.route('/', createConfigRoutes(loader as any, mockLogger));
+    const put = (confinedNetwork: unknown) =>
+      app.request('/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confinedNetwork }),
+      });
+    for (const value of [
+      { mode: 'full' },
+      { mode: 'restricted', allowedHosts: ['exfil.example'] },
+      null,
+    ]) {
+      const refused = await put(value);
+      expect(refused.status, JSON.stringify(value)).toBe(403);
+      expect((await json(refused)).error).toContain(
+        'cannot change the confined network policy',
+      );
+    }
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    agent = false;
+    expect((await put({ mode: 'full' })).status).toBe(200);
+    expect(loader.updateAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ confinedNetwork: { mode: 'full' } }),
+    );
+  });
+
   test('PUT /app rejects injected legacy credential application authority', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(loader as any, mockLogger);

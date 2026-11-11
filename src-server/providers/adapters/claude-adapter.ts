@@ -140,6 +140,7 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
+import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   childProcessEnvironment,
@@ -787,6 +788,8 @@ type ClaudeSessionRecord = {
   coordinatorControlGeneration?: number;
   coordinatorKnowledgeGeneration?: number;
   stationControlBuiltin: boolean;
+  /** #4769: the start's plan restricted the network. */
+  networkRestricted?: true;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
   activeTurnId?: string;
@@ -2619,6 +2622,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (server) =>
           server.id === 'station-knowledge' && server.coordinatorDerived,
       )?.coordinatorGeneration,
+      ...(input.confinementPlan?.network
+        ? { networkRestricted: true as const }
+        : {}),
       stationControlBuiltin:
         input.agent?.toolServers?.some(
           (server) =>
@@ -2988,11 +2994,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         !this.options.isCoordinatorSession?.(threadId)
       )
         throw refuse();
-      const selected = control.disabledTools?.length
+      const agentSelected = control.disabledTools?.length
         ? (control.allowedTools ?? control.toolNames ?? []).filter(
             (name) => !control.disabledTools!.includes(name),
           )
         : control.allowedTools;
+      // #4769: as at the start, a restricted session keeps its narrow set.
+      const selected = record.networkRestricted
+        ? restrictedNetworkStationControlTools(agentSelected)
+        : agentSelected;
       if (
         control.coordinatorDerived &&
         control.coordinatorGeneration === undefined
@@ -4328,11 +4338,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const control = toolServers.find(
       (server) => server.id === 'station-control',
     );
-    const selectedControlTools = control?.disabledTools?.length
+    const agentSelectedControlTools = control?.disabledTools?.length
       ? (control.allowedTools ?? control.toolNames ?? []).filter(
           (name) => !control.disabledTools!.includes(name),
         )
       : control?.allowedTools;
+    // #4769: a restricted session gets only the tools that keep Station from
+    // acting outside its sandbox for it (no device, preview or delegation).
+    const selectedControlTools = input.confinementPlan?.network
+      ? restrictedNetworkStationControlTools(agentSelectedControlTools)
+      : agentSelectedControlTools;
     const knowledge = toolServers.find(
       (server) => server.id === 'station-knowledge',
     );

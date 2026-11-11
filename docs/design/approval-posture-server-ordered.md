@@ -1507,8 +1507,10 @@ connections to Station's egress broker. Domain shapes are in
   is refused: it never falls back open. The Claude fallbacks to Auto
   (`confined-credential-unavailable`, `workspace-too-broad`,
   `resume-bound-elsewhere`, `config-root-pinned`) are refused under a
-  restricted policy, naming the reason ("the network cannot be restricted
-  for this start"), instead of running at Auto with nothing engaged.
+  restricted policy, naming the reason ("This claude session requires a
+  restricted network, which cannot be applied to this start: <reason>
+  (<code>). Nothing started."), instead of running at Auto with nothing
+  engaged.
 - **Resolution.** `withConfinement` reads the policy only for a start whose
   required level is above `host`: a fresh start, a respawn or
   credential-profile restart, and an adoption all pass through it. An
@@ -1565,13 +1567,16 @@ connections to Station's egress broker. Domain shapes are in
 - **Seatbelt.** Two changes, both only in restricted mode:
   - The open-network rule `(allow network*)` is replaced, in place, by
     `(allow network-outbound (remote tcp4 "localhost:<port>"))`. SBPL accepts
-    only `localhost` or `*` as a host there, and `tcp` would also admit
+    only `localhost` or `*` as a host there: an explicit `127.0.0.1` is
+    refused when the profile is compiled ("host must be * or localhost").
+    `localhost` matches every address of this host at that port, its LAN
+    address included, not only loopback (EXECUTED: a `0.0.0.0:<port>`
+    listener was reached through the LAN address). `tcp` would also admit
     `[::1]:<port>`, which the broker does not hold (EXECUTED: an unrelated
-    listener on `[::1]:<broker port>` was reachable with `tcp` and is refused
-    with `tcp4`). Under `(deny default)` the kernel refuses every other
-    connect with `EPERM`: another loopback port (Station's own), any outside
-    address, IPv6 loopback, a Unix socket at a known path (an SSH agent's),
-    and UDP.
+    listener there was reachable with `tcp` and is refused with `tcp4`).
+    Under `(deny default)` the kernel refuses every other connect with
+    `EPERM`: another port (Station's own), any other host, IPv6 loopback, a
+    Unix socket at a known path (an SSH agent's), and UDP.
   - Mach lookups become an allow-list: `(deny mach-lookup)` after
     `(allow mach*)`, then only `com.apple.bsd.dirhelper`,
     `com.apple.diagnosticd`, `com.apple.logd`,
@@ -1632,23 +1637,43 @@ connections to Station's egress broker. Domain shapes are in
   network and is available on the host, otherwise `unavailable` with the
   reason; `station doctor` shows it as a `Restricted network` row.
 - **Residuals.**
-  - Station's own tools run in Station's process, outside the sandbox:
-    - Station's browser (`station-browser`, Station's Chromium) navigates
-      wherever it is told, so a restricted session is not given it.
-    - `terminal_run` runs a command outside the sandbox only once a person
-      approves that run.
-    - Install tools (`install_skill`, `install_registry_integration`) are
-      operator or person-only and refuse a confined session's caller.
-    - The model-catalog probe is Station's own request to the connection's
-      endpoint; the session does not choose where it goes.
-    - Delegation (`send_message` and the dispatch routes) starts other
-      sessions, which resolve their own confinement: one that requires
-      confinement is restricted or refused like any other, but one at Auto
-      or Ask is not network-restricted. A delegated Claude child cannot have
-      its prompts answered and is refused them (#2933); a Codex child at Auto
-      runs in Codex's own sandbox, whose network the operator's Codex
-      configuration decides (off unless enabled). Not closed here (REASONED,
-      not probed).
+  - Station's own tools run in Station's process, outside the sandbox. A
+    restricted session's station-control server is given only the tools on
+    `RESTRICTED_NETWORK_STATION_CONTROL_TOOLS` (reads, changes to Station's
+    own records, actions a person completes or approves, and notices to the
+    person), and the station-control guard refuses (`403
+    station_control_network_restricted`) any route whose tools are all
+    withheld when the calling session's latest start record says `network:
+    'restricted'`. Withheld:
+    - Station's browser (`station-browser`, Station's Chromium), which
+      navigates wherever it is told; the session is not given that server
+      either.
+    - The device tools, which drive a simulator, emulator or phone with its
+      own network; the device route also refuses such a caller
+      (`device-network-restricted`).
+    - `html_render` and `html_preview` (Station's Chromium).
+    - Starting, steering or reading other sessions (`send_message`,
+      `delegate_task`, `fork_conversation`, `run_independent_review` and the
+      Task tools): a child at Auto or Ask would not be network-restricted.
+    - Operator-scope changes a session acting for the operator could
+      otherwise make: `update_config` (an agent may not change
+      `confinedNetwork` through any channel either), Agents, skills, jobs,
+      integrations, providers, plugins, SSH environments, knowledge
+      reindexing and migration, pull-request guides.
+
+    Kept and gated otherwise: `terminal_run` runs a command outside the
+    sandbox only once a person approves that run; `propose_job` and
+    `propose_plugin_install` are completed by a person; `notify_user` reaches
+    the person's own devices. Reads that make Station fetch on its own
+    behalf (`list_models`, `list_registry_skills`, `check_plugin_updates`,
+    the Project S3 reads of configured buckets) send nothing the session
+    chooses beyond an object key in the operator's own bucket. The
+    model-catalog probe is Station's own request to the connection's
+    endpoint.
+  - The broker rule admits this host's own addresses at the broker's port,
+    so another local program listening there on a non-loopback address (the
+    broker holds only `127.0.0.1`) would be reachable. Local only: another
+    host at that port is refused.
   - The Mach allow-list keeps user and group lookups, which on a Mac bound to
     a directory service can query that server; no request content is the
     caller's beyond a user or group name.
@@ -1679,10 +1704,16 @@ connections to Station's egress broker. Domain shapes are in
   ([config.routes.test.ts](../../src-server/routes/system/__tests__/config.routes.test.ts));
   the adapter wiring, fallback and adoption refusals and the withheld browser
   ([claude-adapter-seatbelt.test.ts](../../src-server/providers/__tests__/claude-adapter-seatbelt.test.ts));
-  and eleven kernel legs nested in
+  the guard's and device route's refusals and the pinned tool classification
+  ([station-control-authority-guard.routes.test.ts](../../src-server/security/__tests__/station-control-authority-guard.routes.test.ts),
+  [device-agent.routes.test.ts](../../src-server/routes/__tests__/device-agent.routes.test.ts),
+  [station-control-policy.test.ts](../../src-server/tools/__tests__/station-control-policy.test.ts));
+  and twelve kernel legs nested in
   [seatbelt.process.test.ts](../../src-server/security/confinement/__tests__/seatbelt.process.test.ts)
   (`with a restricted network (#4769)`), among them the background
-  `URLSession` upload and the IPv6 loopback leg, pinned in the
+  `URLSession` upload, a toolchain-free Mach leg (`scutil --dns` answered
+  by `configd` outside the profile and refused inside it) and the IPv6
+  loopback leg, pinned in the
   `seatbelt-kernel` profile.
 
 Not in this slice: the foreground chat handle's receipt, ACP, and Windows

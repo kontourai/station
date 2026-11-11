@@ -1220,8 +1220,12 @@ yet; with a connection that uses Bedrock, Vertex or Foundry; and where it
 would otherwise run at Auto (no confined credential, a folder too broad to
 confine, a resume recorded elsewhere, an adoption). Tools inside the session
 reach the listed hosts over HTTPS only, through the proxy variables Station
-sets; `ssh` and plain HTTP are blocked. Other sessions it starts through
-Station resolve their own confinement. See
+sets; `ssh` and plain HTTP are blocked. Station also does not let such a
+session drive a device, render HTML previews, start or steer other
+sessions, or change Station's settings, since each would act outside its
+sandbox; an agent can never change `confinedNetwork`. A session that is
+started at Auto or Ask, by anyone or anything, runs with an open network:
+only confined sessions are restricted. See
 [restricted network](../design/approval-posture-server-ordered.md#restricted-network-4769).
 
 A Codex session that does not run as `host` (started by you in person, or
