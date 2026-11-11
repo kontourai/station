@@ -2596,27 +2596,19 @@ export function conversationReadVersion(
 }
 
 /**
- * A file conversation id that names exactly one file (#3075 review). The id
- * contract is otherwise the existing one (`createChatConversationId` embeds
- * the person id, such as `human:tailscale-serve:casey@example.test`), so
- * only what could name another path is refused: a path separator (`/`,
- * `\`), a `.` or `..` segment, NUL, or a percent-encoded separator a later
- * decode could turn into one. `undefined` when refused.
+ * A file conversation id that names exactly one file (#3075 review): the
+ * existing id contract (`parseConversationIdSegment`, which keeps ids such
+ * as `createChatConversationId`'s `human:tailscale-serve:casey@example.test`
+ * and refuses separators, `.`/`..` and control characters including NUL),
+ * plus a percent-encoded separator a later decode could turn into one.
+ * `undefined` when refused.
  */
 const ENCODED_SEPARATOR = /%(?:2f|5c)/i;
 function parseFileConversationId(value: string): string | undefined {
-  if (
-    value.length === 0 ||
-    value.length > 512 ||
-    value === '.' ||
-    value === '..' ||
-    value.includes('/') ||
-    value.includes('\\') ||
-    value.includes('\u0000') ||
-    ENCODED_SEPARATOR.test(value)
-  )
-    return undefined;
-  return value;
+  const segment = parseConversationIdSegment(value);
+  return segment === null || ENCODED_SEPARATOR.test(segment)
+    ? undefined
+    : segment;
 }
 
 /**
