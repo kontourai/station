@@ -1031,6 +1031,8 @@ describe('the coordinator-session preview', () => {
     h.delivery.observe(item(1));
     expect(store.coordinatorStore().waitingItems(OWNER)).toHaveLength(1);
     on = false;
+    // Seen while off: not recorded.
+    expect(h.delivery.observe(item(2))).toEqual([]);
     h.advance(COORDINATOR_WAKE_COALESCE_MS);
     expect(h.submitted).toEqual([]);
     expect(store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
@@ -1040,6 +1042,13 @@ describe('the coordinator-session preview', () => {
     expect(h.submitted).toEqual([]);
     // Still a designation: nothing about it changed.
     expect(store.coordinatorStore().designation(OWNER)).toBeDefined();
+    // Nothing dropped while off used up the hourly limit.
+    expect(COORDINATOR_WAKE_MAX_PER_HOUR).toBe(12);
+    for (let n = 3; n < 3 + COORDINATOR_WAKE_MAX_PER_HOUR; n++) {
+      h.delivery.observe(item(n));
+      h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    }
+    expect(h.submitted).toHaveLength(COORDINATOR_WAKE_MAX_PER_HOUR);
   });
 
   test('a wake a restart cut short is not handed over while it is off', () => {
