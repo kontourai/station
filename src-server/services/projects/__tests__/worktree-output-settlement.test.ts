@@ -1249,3 +1249,82 @@ describe('the forge read is bounded (#4771)', () => {
     });
   });
 });
+
+describe('the intent precedes the Git effect (#4771)', () => {
+  test('the pending intent is already recorded when the removal runs', async () => {
+    const worktrees = new WorktreeProvisioningService();
+    const discard = worktrees.discardSessionWorktree.bind(worktrees);
+    const seen: Array<ReturnType<WorktreeOutputSettlementStore['read']>> = [];
+    let store!: WorktreeOutputSettlementStore;
+    worktrees.discardSessionWorktree = async (request) => {
+      seen.push(store.read('session-a'));
+      return discard(request);
+    };
+    const fixed = fixture({ worktrees });
+    store = fixed.store;
+    const a = await sessionWorktree(fixed.repo, 'session-a');
+
+    expect((await discardBy(fixed.service, a)).kind).toBe('recorded');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.record).toMatchObject({
+      state: 'pending',
+      outcome: 'discarded',
+      requestKey: 'discard-1',
+      headCommit: a.head,
+    });
+  });
+});
+
+describe('a base that moved with an edit to the same file (#4771)', () => {
+  test('kept is refused until a merge that resolves the overlap contains the head', async () => {
+    const { repo, service } = fixture();
+    const a = await sessionWorktree(repo, 'session-a', { commit: false });
+    writeFileSync(
+      join(a.metadata.path, 'README.md'),
+      'project, Session edit\n',
+    );
+    git(a.metadata.path, 'commit', '--quiet', '-am', 'session edit');
+    const head = git(a.metadata.path, 'rev-parse', 'HEAD');
+    writeFileSync(join(repo, 'README.md'), 'project, base edit\n');
+    git(repo, 'commit', '--quiet', '-am', 'base edit');
+    const keep = (requestKey: string) =>
+      service.settle({
+        sessionId: 'session-a',
+        metadata: a.metadata,
+        actor: OWNER,
+        stillAuthorized: allowed,
+        request: { requestKey, outcome: 'kept' },
+      });
+
+    expect(await keep('kept-1')).toMatchObject({
+      kind: 'refused',
+      reason: 'base-does-not-contain-head',
+    });
+    expect(service.read('session-a')).toBeUndefined();
+
+    // The merge conflicts on README.md; the person resolves it.
+    expect(() =>
+      git(
+        repo,
+        'merge',
+        '--quiet',
+        '--no-ff',
+        '-m',
+        'merge',
+        a.metadata.branch,
+      ),
+    ).toThrow();
+    writeFileSync(join(repo, 'README.md'), 'project, both edits\n');
+    git(repo, 'add', 'README.md');
+    git(repo, 'commit', '--quiet', '--no-edit');
+    const merged = git(repo, 'rev-parse', 'HEAD');
+
+    expect(await keep('kept-2')).toMatchObject({
+      kind: 'recorded',
+      settlement: {
+        headCommit: head,
+        evidence: { containingCommit: merged, baseBranch: 'main' },
+      },
+    });
+  });
+});
