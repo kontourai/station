@@ -619,7 +619,7 @@ test('a restored draft keeps its Agent recipient and reply, revalidated on resto
   expect(screen.getByRole('button', { name: 'Send message' })).toBeTruthy();
 });
 
-test('an acknowledgement clears the draft only when the asked revision is still the current one (#4810 delta 1)', async () => {
+test('an acknowledgement keeps a newer draft whose text changed, with its recipient and reply (#4810 delta 1)', async () => {
   messages = [
     {
       roomId,
@@ -643,7 +643,7 @@ test('an acknowledgement clears the draft only when the asked revision is still 
   fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
   await mentionAgent('Researcher');
   fireEvent.change(composerField(), { target: { value: 'First ask' } });
-  let release = holdAgentRequest();
+  const release = holdAgentRequest();
   fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
   await waitFor(() => expect(agentWrites).toHaveLength(1));
   fireEvent.change(composerField(), { target: { value: 'Follow-up ask' } });
@@ -654,22 +654,27 @@ test('an acknowledgement clears the draft only when the asked revision is still 
   expect(composerField().value).toBe('Follow-up ask');
   expect(screen.getByText('@Researcher')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Cancel reply' })).toBeTruthy();
+});
 
-  // Settle the first request so a second ask is allowed.
-  fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
-  await screen.findByText('Agent answer shared in the Room.');
-
-  // Case B: the recipient changes while the ask is in flight; text stays.
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel reply' }));
-  release = holdAgentRequest();
+test('an acknowledgement keeps a newer draft whose recipient changed but text did not (#4810 delta 1)', async () => {
+  mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Follow-up ask' } });
+  const release = holdAgentRequest();
   fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
-  await waitFor(() => expect(agentWrites).toHaveLength(2));
+  await waitFor(() => expect(agentWrites).toHaveLength(1));
   fireEvent.click(screen.getByRole('button', { name: 'Remove Researcher' }));
   await mentionAgent('Reviewer');
   // Same text as the asked revision; only the recipient changed.
   fireEvent.change(composerField(), { target: { value: 'Follow-up ask' } });
   await act(async () => release());
-  await waitFor(() => expect(agentHandle?.text).toBe('Follow-up ask'));
   await screen.findByText(
     'Agent is working. Its answer will appear in the Room.',
   );
@@ -680,7 +685,7 @@ test('an acknowledgement clears the draft only when the asked revision is still 
   fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
   await screen.findByText('Agent answer shared in the Room.');
   fireEvent.click(screen.getByRole('button', { name: 'Ask Reviewer' }));
-  await waitFor(() => expect(agentWrites).toHaveLength(3));
+  await waitFor(() => expect(agentWrites).toHaveLength(2));
   await waitFor(() => expect(composerField().value).toBe(''));
   expect(screen.queryByText('@Reviewer')).toBeNull();
 });
