@@ -763,7 +763,9 @@ test('while an Agent request is unsettled, Ask is disabled and a follow-up draft
   await waitFor(() => expect(agentWrites).toHaveLength(1));
   // A follow-up typed while the first ask is pending, then an attempt to ask.
   fireEvent.change(composerField(), { target: { value: 'Follow-up' } });
-  fireEvent.click(screen.getByRole('button', { name: /Researcher/ }));
+  fireEvent.click(
+    screen.getByRole('button', { name: /^(Ask|Waiting for) Researcher/ }),
+  );
   await act(async () => release());
   await screen.findByText(
     'Agent is working. Its answer will appear in the Room.',
