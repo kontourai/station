@@ -130,6 +130,16 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+/* #3075: the row leads with its identity mark, so the unread dot hangs in
+   the row's outer margin, left of the mark (the same place the title's
+   first line sits vertically), never over the mark or the text. */
+.mobile-inbox .inbox-row[data-unread] .inbox-row__title[data-title]::before {
+  left: calc(
+    var(--k-space-1) /
+    2 -
+    (var(--k-space-3) + var(--k-space-6) + var(--k-space-2))
+  );
+}
 /* #3075: a two-layer title (InboxRow.css) clamps on its layers, so the bold
    copy keeps deciding the height in both read states. */
 .mobile-inbox .inbox-row__title[data-title] {
