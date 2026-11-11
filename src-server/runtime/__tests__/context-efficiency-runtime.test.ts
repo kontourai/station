@@ -431,6 +431,7 @@ test('project supervision also needs the coordinator-session preview, and its ro
   const logger = createLogger({ name: 'context-runtime-supervision-test' });
   const app = new Hono(),
     previews = new FeaturePreviewRegistry(home, logger);
+  const readTaskView = vi.fn(() => null);
   const context = {
     app,
     orchestrationEventStore: store,
@@ -445,7 +446,7 @@ test('project supervision also needs the coordinator-session preview, and its ro
       description: 'test',
     }),
     logger,
-    taskGraphService: { readTaskView: () => null },
+    taskGraphService: { readTaskView },
   } as unknown as ConfigureRuntimeRoutesContext;
   const runtime = composeContextEfficiencyRuntime(context, {
     hosted: false,
@@ -478,7 +479,31 @@ test('project supervision also needs the coordinator-session preview, and its ro
     code: 'feature_preview_disabled',
     previewId: 'coordinator-session',
   });
+  // A supervision configured earlier is not observed while it is off.
+  store.projectSupervisionStore().configure(
+    {
+      projectId: 'project-1',
+      taskId: 'task-1',
+      taskCreatedAt: '1',
+      ownerUserId: 'human:local:owner',
+      coordinatorConversationId: 'chat-a',
+      state: 'active',
+      policy: {
+        maxWakes: 1,
+        maxNoProgressWakes: 1,
+        minIntervalMs: 1000,
+        stopAt: Date.now() + 3600_000,
+      },
+    },
+    0,
+    () => true,
+  );
+  readTaskView.mockClear();
+  await runtime.reconcile();
+  expect(readTaskView).not.toHaveBeenCalled();
   await previews.setEnabled('coordinator-session', true);
+  await runtime.reconcile();
+  expect(readTaskView).toHaveBeenCalled();
   // Past both previews, the ordinary Task check answers.
   expect(await (await read()).json()).toEqual({
     success: false,
