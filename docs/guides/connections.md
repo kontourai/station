@@ -1175,8 +1175,12 @@ settings, `CLAUDE_*` and `ANTHROPIC_*`, the git author and committer
 identity, and `EDITOR`/`VISUAL`. Everything else in Station's environment is
 dropped: `GH_TOKEN`, `NPM_TOKEN`, cloud keys, and toolchain variables such as
 `NVM_DIR`, `JAVA_HOME`, `GOPATH` or `PYENV_ROOT` (set them in the
-connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
-push with your SSH agent. Under Seatbelt (macOS), in a linked worktree
+connection's `env` if its tools need them). It does not inherit
+`SSH_AUTH_SOCK`, but on macOS it can still connect to an SSH agent socket
+whose path it can find, so do not rely on confinement to keep your agent
+from it there. On Linux the sandbox has its own `/tmp` and hides the
+runtime directory, so an agent socket in either is not reachable; one
+elsewhere (outside the home folder and `/run`) still is. Under Seatbelt (macOS), in a linked worktree
 it can commit to its own branch, but `git stash`, `fetch` and `pull` are
 refused: they write shared refs (`refs/stash`, remote-tracking refs,
 `packed-refs`) that it may not change. In a folder whose `.git` is inside

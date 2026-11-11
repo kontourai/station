@@ -2876,7 +2876,9 @@ The `linux-bubblewrap-kernel` profile pins the kernel legs of
   Docker socket leg skips when no Docker socket exists that the user can
   connect to outside it. To run the Docker leg in a container, serve a
   root-owned socket at `/run/docker.sock` for a `docker` group the test user
-  belongs to.
+  belongs to. The DNS leg skips when the host cannot resolve a name outside
+  the sandbox either. The suite's fixtures live under `/var/tmp`, outside the
+  sandbox's private `/tmp`.
 - **Required, unlike on macOS:** the live Claude Code handshake. It uses
   `claude` on PATH, or else the Agent SDK's own binary for the platform,
   which `npm run dependencies:ci` installs.

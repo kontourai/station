@@ -1307,12 +1307,14 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   never `PATH`) of version 0.8.0 or later (`--disable-userns`), and a probe
   run once per process. An older bubblewrap is refused with its version
   named. The probe runs the production arguments, with the real hidden
-  list, around `/bin/sh` in a throwaway directory, with the session's temp
-  and configuration directories inside a hidden Station home as a start
-  mounts them. The shell must be able to write the workspace and the temp
-  directory. It must be refused a write outside the workspace, a write to
-  the hidden home outside its grants, the content of a hidden directory's
-  file and of a hidden file, and a write to the `.git` pointer file.
+  list, around `/bin/sh` in a throwaway directory (under `/var/tmp` where
+  it can be, outside the sandbox's own `/tmp`), with the session's temp and
+  configuration directories inside a hidden Station home as a start mounts
+  them. The shell must be able to write the workspace and the temp
+  directory, and must be refused the content of a hidden directory's file
+  and of a hidden file and a write to the `.git` pointer file. No write it
+  makes outside the workspace, or to the hidden home outside its grants,
+  may reach the host.
 - **Workspaces it refuses.** Besides the Seatbelt rule (home folder,
   Station's data, a hidden folder), a workspace inside a path the sandbox
   hides, or containing one, falls back to Auto as `workspace-too-broad`. A
@@ -1322,19 +1324,40 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
 - **The sandbox.** It runs in a new user, PID and IPC namespace, may not
   create a nested user namespace, gets a new session, and ends with
   Station's process. Then, in order, later mounts covering earlier ones:
-  - The whole filesystem read-only, a private `/dev`, and a `/proc` that
-    shows only the sandbox's own processes.
-  - Each hidden path that exists: a directory as an empty read-only mount,
-    a file or socket as `/dev/null`.
+  - The whole filesystem read-only, a private `/dev`, a `/proc` that shows
+    only the sandbox's own processes, and a private, writable, in-memory
+    `/tmp`. Nothing in the host's `/tmp` is visible: X11 and `ssh-agent`
+    sockets there, other processes' files, and anything created there later.
+  - The directory holding each hidden path is shadowed, never the path
+    itself. A mount over a file follows the directory entry it covered, so
+    when the host replaced that entry (a rename over `~/.git-credentials`,
+    `~/.netrc` or `~/.claude.json`, or a daemon unlinking and creating its
+    socket again) the new one showed through (EXECUTED in review). Each
+    nearest existing parent of a hidden path (in practice the home folder,
+    `/run` and a `DOCKER_HOST` socket's directory) becomes an empty memory
+    file system, and every entry the host has there at the start is mounted
+    back read-only, except the hidden ones. Symbolic links are re-created
+    as themselves. A directory on the way to a hidden path (`~/.config`,
+    `~/.claude`, `/run/user`) is shadowed the same way. A hidden path under
+    `/tmp` needs nothing.
   - Station's installs re-opened read-only, then the write grants bound
-    writable.
+    writable. Each shadow is made read-only last.
   - The workspace's `.git` read-only whenever it exists, even when its
     layout cannot be read, and an existing `.codex` or `.claude` directory
     (in any case) at the root of a write grant read-only.
 
-  A grant of a single file, an exact-path deny, a missing write grant, or a
-  denied path that only its whole grant could cover is refused, never
-  narrowed or widened.
+  A grant of a single file, an exact-path deny, a missing write grant, a
+  hidden path inside a write grant, a denied path that only its whole grant
+  could cover, or a `.git` that is a symbolic link (the link itself could be
+  replaced) is refused, never narrowed or widened. A refusal found while the
+  arguments are built is named in the start's refusal message.
+
+  So inside the sandbox a hidden entry is absent whatever the host later
+  does to it, an entry the host creates later in a shadowed directory is
+  absent too, a visible file the host replaces stays the old one, and a
+  directory mounted back keeps showing the host's current contents.
+  Anything under the host's `/tmp` other than the grants is absent, which
+  includes a workspace's git directory there.
 - **Grants.** The write kinds are `workspace`, `station-temp` and
   `station-config`, read back from the arguments bubblewrap is given. No
   git metadata is writable in this change, by choice: the workspace's
@@ -1361,8 +1384,8 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
 
   | Seatbelt | bubblewrap |
   | --- | --- |
-  | Secret stores, `~/.claude.json`, the engines' credential files, Station's root and runtime home: reads refused | Matched for paths that exist at the start. A file in a hidden directory does not exist inside; a hidden file is `/dev/null` on a `nodev` mount, so opening it is refused (`Permission denied`). A path created after the start is readable. |
-  | `~/Library/Keychains` hidden | Not applicable on Linux. Hidden instead: the login keyring (`~/.local/share/keyrings`); the runtime directory (`/run/user/<uid>`: session bus, keyring SSH agent, rootless Docker or Podman); `~/.docker/run`; the Docker, Podman and containerd sockets under `/run`; the system bus socket; the X11 sockets (`/tmp/.X11-unix`) and `~/.Xauthority`. A read-only mount does not stop `connect()`, and the process keeps its user's groups (`docker`), so these daemon sockets are hidden, not just read-only. |
+  | Secret stores, `~/.claude.json`, the engines' credential files, Station's root and runtime home: reads refused | Absent inside (no such file), including when the host replaces or creates them during the session, as long as their directory is not itself replaced (below). |
+  | `~/Library/Keychains` hidden | Not applicable on Linux. Hidden instead: the login keyring (`~/.local/share/keyrings`); the runtime directory (`/run/user/<uid>`, and one `XDG_RUNTIME_DIR` names elsewhere: session bus, keyring SSH agent, rootless Docker or Podman); `~/.docker/run`; the Docker, Podman and containerd sockets under `/run`, and the socket a `unix://` `DOCKER_HOST` names; the system bus socket; `~/.Xauthority`; and everything in the host's `/tmp` (X11 and `ssh-agent` sockets). A read-only mount does not stop `connect()`, and the process keeps its user's groups (`docker`), so these sockets are absent, not just read-only. |
   | Station's `installs` readable | Matched. |
   | A hidden file through a symlink, another case, a firmlink | Matched through a symlink, `/proc/self/root` and `..`. Linux file systems are case-sensitive. |
   | A hard link to a hidden file made inside | Matched: refused. |
@@ -1387,11 +1410,18 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
     deny the name the way Seatbelt does. Closing it needs an owner decision
     (for example refusing such a start, or another mechanism). A kernel test
     pins the current behaviour.
-  - **Sockets and network.** The network is open until #4769, and the
-    network namespace is shared. Abstract Unix sockets stay connectable: a
-    session bus or X11 server listening on one is reachable, and
-    `/proc/net/unix` lists them. Unix sockets outside the hidden paths stay
-    connectable too, such as an `ssh-agent` socket under `/tmp`.
+  - **What stays reachable.** The network is open until #4769, and the
+    network namespace is shared, so abstract Unix sockets stay connectable:
+    a session bus or X11 server listening on one is reachable, and
+    `/proc/net/unix` lists them. Unix sockets stay connectable outside the
+    home folder, `/run`, `/tmp` and the hidden paths (an agent or daemon
+    socket in another directory), and inside a directory mounted back from
+    a shadow (such as `/run/systemd`), including one created there later.
+  - **A hidden directory replaced as a whole.** A hidden directory is absent
+    because its parent is shadowed; a directory mounted back from a shadow
+    shows the host's live contents. A hidden directory that has no shadowed
+    parent (only one directly under `/`) is covered by an empty mount, which
+    the host replacing that directory would detach.
   - `/dev` is a private writable memory file system, which reaches nothing
     outside the sandbox.
   - The optional `claude-confined-credential` readiness entry is still
@@ -1400,15 +1430,18 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   [bubblewrap.process.test.ts](../../src-server/security/confinement/__tests__/bubblewrap.process.test.ts)
   runs the production arguments under the real kernel, including a live
   Claude Code handshake observed `confined`, a socket listening at a hidden
-  path that refuses a connection from inside, and the host's Docker socket
-  (where this user can reach one outside). It skips loudly where the
+  path that refuses a connection from inside, the host's Docker socket
+  (where this user can reach one outside), a hidden home file the host
+  replaces by rename mid-session, a hidden socket the host unlinks and
+  creates again mid-session, a socket under the host's `/tmp` at the start
+  and created mid-session, and DNS resolution inside. It skips loudly where the
   sandbox cannot apply. Its ids are pinned as the `linux-bubblewrap-kernel`
   profile, and the dispatch-only
   [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
   workflow runs it on a hosted Ubuntu runner. EXECUTED: Linux 7.2.12
   (OrbStack, aarch64, Landlock ABI 10 present and unused), bubblewrap 0.8.0,
-  git 2.39.5, with a root-owned Docker socket for the `docker` group: 49 of
-  49 passed.
+  git 2.39.5, with a root-owned Docker socket for the `docker` group: 53 of
+  53 passed.
 
 Not in this slice: the foreground chat handle's receipt, ACP, and Windows
 mechanisms.
