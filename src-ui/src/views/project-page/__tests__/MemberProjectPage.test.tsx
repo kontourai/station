@@ -11,7 +11,13 @@ import type {
   ToolLibraryView,
 } from '@kontourai/station-contracts/tool-library';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 const authority = vi.hoisted(() => ({
@@ -679,7 +685,13 @@ test('member pages through its authorized history, keeps rows on page failure, a
   fireEvent.click(
     screen.getByRole('button', { name: 'Load earlier messages' }),
   );
-  fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+  // Another failed read on this page offers a Retry too: ask the history's.
+  const historyFailure = (
+    await screen.findByText('Couldn’t load more history.')
+  ).closest<HTMLElement>('[role="alert"]');
+  fireEvent.click(
+    within(historyFailure!).getByRole('button', { name: 'Retry' }),
+  );
   expect(
     screen.getByRole('list', { name: 'Shared history records' }).textContent,
   ).toContain('First shared decision');
