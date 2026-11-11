@@ -61,7 +61,7 @@ or at the forge.
 
 | Outcome | Recorded when | Git effect |
 | --- | --- | --- |
-| `discarded` | A person asks. | Station removes the worktree it created for that Session, and its branch unless the branch moved on or is checked out elsewhere. Nothing else. |
+| `discarded` | A person asks. | Station removes the worktree and branch it created for that Session, and nothing else. It is refused while the branch has moved on or is checked out elsewhere; only completing an earlier discard whose worktree is already gone keeps the branch then. |
 | `kept` | The base ref's current tip contains the branch head commit. | None. Station does not merge. |
 | `released` | The forge reports an `OPEN` or `MERGED` pull request whose head branch and head commit equal the worktree branch's. | None. |
 | `cleaned-up-without-decision` | The Session-exit cleanup policy removed the worktree and no settlement existed. | The cleanup policy's own removal. |
@@ -69,9 +69,13 @@ or at the forge.
 `kept` is derived, never asserted: a request to record it is refused with
 `base-does-not-contain-head` unless `git merge-base --is-ancestor` finds the
 branch head in the base ref's tip, resolved at request time with replacement
-objects disabled. The default `baseRef` is `HEAD`: it is resolved to the branch
-the repository's checkout has checked out now, and that branch is recorded as
-`baseBranch`. A detached checkout names no branch (`base-detached`), and a
+objects disabled. The base must name a local or remote-tracking branch, recorded
+as `baseBranch`; a branch name is read as `refs/heads/<name>`, so a tag of the
+same name cannot stand in for it, and a tag or a commit id is refused
+(`base-unresolvable`). The default `baseRef` is `HEAD`: any spelling of it
+(`HEAD`, `@`, or `head` where the filesystem folds case) is resolved to the
+branch the repository's checkout has checked out now. A detached checkout
+names no branch (`base-detached`), and a
 checkout of the Session's own branch would contain its head trivially
 (`base-is-session-branch`); both are refused. A fast-forward merge, whose
 containing commit is the head itself, is kept. A squash or rebase merge creates new commits, so the base
@@ -111,7 +115,8 @@ A discard is refused while the worktree has uncommitted or untracked changes
 unless the request sets `acceptUncommittedLoss`, which the record keeps.
 Files the repository ignores are removed without that acceptance (requiring
 it would make every worktree with build output need it); the record counts
-them as `ignoredEntries`. A discard is also refused, before anything is
+the ignored paths `git status` listed as `ignoredEntries` (every file in an
+ignored directory counts). A discard is also refused, before anything is
 removed, while another checkout has the Session's branch checked out
 (`branch-checked-out-elsewhere`), or while the branch has moved past the head
 just inspected (`branch-moved`). Station never hands git a worktree path that
@@ -134,11 +139,14 @@ requester).
 
 **Cleanup policy.** Session-exit cleanup records
 `cleaned-up-without-decision` only when it removed the worktree and no
-settlement existed; a decision made first stands. The record reads back
-whether the worktree and branch are gone (cleanup's branch deletion may fail,
-for a branch checked out elsewhere). Unlike a discard, it writes no intent
-first: a crash between that removal and its record leaves no record. Cleanup
-is not run on a worktree path that is a symlink or holds another repository.
+settlement existed; a decision made first stands. Its `afterCleanup` evidence
+is what Station observed afterwards (`present`, `absent`, or `unknown` when
+git could not tell), not who removed it: cleanup's branch deletion may fail
+for a branch checked out elsewhere, and a folder deleted before the Session
+exited is observed absent too. Unlike a discard, it writes no intent first: a
+crash between that removal and its record leaves no record. A cleanup policy
+that would remove the worktree does not run on a path that is a symlink or
+holds another repository; a preserve policy leaves it untouched.
 
 **Scope and limits.** Task-owned worktrees ([#4507](task-dispatcher.md#workspace-isolation))
 are shared by a Task's Sessions and are refused here (`task-owned-worktree`).
@@ -147,7 +155,10 @@ Station does not apply output onto a base that has moved, and records
 Session run one at a time within a Station service; across processes, one
 row per Session makes the recorded outcome at most one, and a pending intent
 is taken over only from a process that is provably gone, or by its own
-request key. Two processes can still both read and verify before either
+request key. Two processes retrying the same request key at once can both
+run the discard's Git steps; the branch deletion only at the recorded head
+and the single pending row keep the result to one discard, and one of them
+may answer with an error rather than the record. Two processes can still both read and verify before either
 records; the second then finds the first's row and is refused. The
 [real Git tests](../../src-server/services/projects/__tests__/worktree-output-settlement.test.ts)
 cover discard ownership, uncommitted and ignored changes, a branch checked out

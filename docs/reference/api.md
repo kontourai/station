@@ -80,9 +80,15 @@ callers are refused. The strict body is one of
 an `actor` is refused with 400: the actor is the request's principal. The
 Session must have started in a worktree of its own, and no turn may be running
 in it. A discard removes files the repository ignores without
-`acceptUncommittedLoss`; the record counts them (`ignoredEntries`). It keeps
-the branch when the branch moved on or another checkout has it, and says so
-(`branchKept`).
+`acceptUncommittedLoss`; the record counts the ignored paths `git status`
+listed (`ignoredEntries`). A discard is refused while the branch has moved on
+or another checkout has it; only when it completes an earlier discard whose
+worktree is already gone does it keep the branch in those cases, and the
+record says so (`branchKept`). A `kept` base must name a local or
+remote-tracking branch: a branch name is read as that branch even when a tag
+shares it, any spelling of `HEAD` is the branch it has checked out, and a
+detached checkout, a tag or a commit id is refused. The cleanup record's
+`afterCleanup` reports what was observed gone afterwards, not who removed it.
 
 A new record answers 201 with `data:{status:'recorded', settlement}`; a replay
 of the same request key and request, or a discard that completed an earlier
