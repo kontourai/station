@@ -464,4 +464,63 @@ describe('coordinator-session preview', () => {
     await registry.setEnabled('coordinator-session', false);
     expect((await call('GET')).status).toBe(404);
   });
+
+  test('a designation whose body arrives after the preview was turned off is refused', async () => {
+    const registry = new FeaturePreviewRegistry(
+      makeTempDir('coordinator-preview-race-'),
+      logger,
+    );
+    const preview = registry.bind({
+      id: 'coordinator-session',
+      label: 'Coordinator chat',
+      description: 'test',
+    });
+    await registry.setEnabled('coordinator-session', true);
+    const store = new EventStore(
+      join(makeTempDir('coordinator-routes-race-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    const hono = new Hono().route(
+      '/api/orchestration',
+      createCoordinatorRoutes({
+        store: store.coordinatorStore(),
+        preview,
+        person: () => ({
+          userId: 'owner',
+          mayRead: () => true,
+          mayMutate: () => true,
+        }),
+        dispatchActor: () => ({ userId: 'owner' }),
+      }),
+    );
+    let finish!: () => void;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        finish = () => {
+          controller.enqueue(
+            new TextEncoder().encode(
+              JSON.stringify({ conversationId: 'chat-a' }),
+            ),
+          );
+          controller.close();
+        };
+      },
+    });
+    const inFlight = hono.fetch(
+      new Request('http://station.test/api/orchestration/coordinator', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body,
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' }),
+    );
+    await registry.setEnabled('coordinator-session', false);
+    finish();
+    const response = await inFlight;
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: 'feature_preview_disabled',
+    });
+    expect(store.coordinatorStore().designations()).toEqual([]);
+  });
 });
