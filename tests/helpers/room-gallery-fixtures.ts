@@ -1,0 +1,645 @@
+import { readFileSync } from 'node:fs';
+import { createServer, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type {
+  ProjectTaskRoomBrowserHistory,
+  ProjectTaskRoomBrowserLiveSnapshot,
+  ProjectTaskRoomBrowserRecord,
+} from '@kontourai/station-contracts/project-task-room-browser';
+import { TASK_ROOM_WORK_VERSION } from '@kontourai/station-contracts/task-room-work';
+import type { Page, Route } from '@playwright/test';
+import { rejectUnexpectedFixtureRequest } from './fixture-audit';
+
+/**
+ * Room conversation gallery fixtures (#4791). Each value is the exact shape
+ * the browser projections parse: `@kontourai/station-sdk/project-rooms`
+ * (strict zod over `project-room-browser`) for the Project room and
+ * `parseProjectTaskRoomBrowserHistory` / the live snapshot for the Task room.
+ * Times are fixed instants so a capture never depends on its wall clock; they
+ * sit between 13:00 and 17:00 UTC so the day dividers fall on the same dates
+ * from UTC-8 through UTC+6.
+ */
+
+const ROOM_ID = '7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a10';
+const VIEWER = { id: 'person:maya', displayName: 'Maya Chen', kind: 'person' };
+const JONAS = { id: 'person:jonas', displayName: 'Jonas Berg', kind: 'person' };
+const PRIYA = {
+  id: 'person:priya',
+  displayName: 'Priya Natarajan',
+  kind: 'person',
+};
+const SCOUT = { id: 'agent:scout', displayName: 'Scout', kind: 'agent' };
+type RoomActor = typeof VIEWER;
+
+function uuid(seed: number, prefix = 'a1') {
+  const hex = seed.toString(16).padStart(12, '0');
+  return `${prefix}${'0'.repeat(6)}-0000-4000-8000-${hex}`;
+}
+
+function at(day: number, hour: number, minute: number) {
+  return new Date(Date.UTC(2026, 10, 2 + day, hour, minute, 0)).toISOString();
+}
+
+interface ProjectLine {
+  actor: RoomActor;
+  at: string;
+  text: string;
+  /** The 1-based sequence of the message this replies to. */
+  replyTo?: number;
+}
+
+const SHORT: ProjectLine[] = [
+  {
+    actor: JONAS,
+    at: at(1, 14, 2),
+    text: 'Morning! The pricing page copy is ready for review.',
+  },
+  {
+    actor: JONAS,
+    at: at(1, 14, 3),
+    text: 'I kept the three tiers and moved the FAQ under the table.',
+  },
+  {
+    actor: SCOUT,
+    at: at(1, 14, 6),
+    text: 'I checked the draft against the plan limits in `pricing.yaml`. Two numbers differ:\n\n- **Team** lists 10 seats; the plan allows **15**.\n- **Business** says 30-day history; the plan keeps **90 days**.',
+  },
+  {
+    actor: VIEWER,
+    at: at(1, 14, 11),
+    text: 'Good catch. Jonas, can you update both before we ship?',
+  },
+];
+
+function longHistory(): ProjectLine[] {
+  const lines: ProjectLine[] = [
+    {
+      actor: PRIYA,
+      at: at(0, 13, 4),
+      text: 'Kicking off the onboarding revamp in this room.',
+    },
+    {
+      actor: PRIYA,
+      at: at(0, 13, 5),
+      text: 'Goal: a new teammate sends their first message in under two minutes.',
+    },
+    {
+      actor: JONAS,
+      at: at(0, 13, 20),
+      text: 'Love it. I can take the empty states.',
+    },
+    {
+      actor: VIEWER,
+      at: at(0, 13, 31),
+      text: 'I will pair on the welcome flow.',
+    },
+    {
+      actor: SCOUT,
+      at: at(0, 13, 40),
+      text: 'Here is what new members hit today:\n\n1. An empty room with no prompt.\n2. A composer that sends only on Cmd+Enter.\n3. No way to tell agents from people.\n\nThe second one breaks on phones.',
+    },
+    { actor: PRIYA, at: at(0, 15, 2), text: 'That matches what support sees.' },
+    {
+      actor: JONAS,
+      at: at(1, 13, 9),
+      text: 'First pass of the empty state is up.',
+    },
+    { actor: JONAS, at: at(1, 13, 10), text: 'Copy is placeholder for now.' },
+    {
+      actor: JONAS,
+      at: at(1, 13, 12),
+      text: 'Screens are in the design file under **Rooms / Empty**.',
+    },
+    {
+      actor: VIEWER,
+      at: at(1, 13, 30),
+      text: 'Looks clean. Can the prompt mention @ for agents?',
+    },
+    { actor: JONAS, at: at(1, 13, 33), text: 'Yes, adding it.', replyTo: 10 },
+    { actor: PRIYA, at: at(1, 14, 48), text: 'Reminder: design review at 3.' },
+    {
+      actor: SCOUT,
+      at: at(1, 16, 1),
+      text: 'Summary of the review:\n\n- Ship grouped messages and day dividers first.\n- Keep timestamps short; full time on hover.\n- Agents get a square avatar, people a round one.\n\n```text\nOwner: Jonas  Due: Friday\n```',
+    },
+  ];
+  for (let index = 0; index < 30; index += 1) {
+    const author = [VIEWER, JONAS, PRIYA, JONAS][index % 4];
+    lines.push({
+      actor: author,
+      at: at(1, 16, 10 + index),
+      text: [
+        'Pushed the next round of fixes.',
+        'Checking it on my phone now.',
+        'Copy looks good to me.',
+        'One more tweak and we are done for today.',
+      ][index % 4],
+    });
+  }
+  // The last screen: a new day, grouped runs, an agent group and a reply.
+  lines.push(
+    {
+      actor: JONAS,
+      at: at(2, 13, 2),
+      text: 'Morning! The avatar changes are live.',
+    },
+    {
+      actor: JONAS,
+      at: at(2, 13, 3),
+      text: 'People are circles and agents are squares now, 36px on desktop and 32 on phones.',
+    },
+    {
+      actor: JONAS,
+      at: at(2, 13, 4),
+      text: 'Can someone check it on a phone?',
+    },
+    { actor: VIEWER, at: at(2, 13, 20), text: 'On it.' },
+    {
+      actor: VIEWER,
+      at: at(2, 13, 22),
+      text: 'Looks great on mine. The day dividers read clearly in dark mode too.',
+    },
+    {
+      actor: SCOUT,
+      at: at(2, 13, 40),
+      text: 'All 12 onboarding checks pass on the latest build.',
+    },
+    {
+      actor: SCOUT,
+      at: at(2, 13, 41),
+      text: 'Slowest step: the first sync at **1.4s**, down from 2.9s.',
+    },
+    {
+      actor: PRIYA,
+      at: at(2, 13, 58),
+      text: 'Great. Let’s ship it tomorrow morning.',
+    },
+  );
+  lines.push({
+    actor: JONAS,
+    at: at(2, 14, 2),
+    text: 'Release notes are in the doc.',
+    // Sequence numbers are 1-based: this replies to Scout's second message.
+    replyTo: lines.length - 1,
+  });
+  return lines;
+}
+
+export type ProjectRoomScene =
+  | 'empty'
+  | 'short'
+  | 'long'
+  | 'failed-send'
+  | 'new-messages'
+  | 'mention';
+
+function projectLines(scene: ProjectRoomScene): ProjectLine[] {
+  if (scene === 'empty') return [];
+  if (scene === 'long' || scene === 'new-messages') return longHistory();
+  return SHORT;
+}
+
+/** Arrive after the reader scrolls up in the new-messages scene. */
+const ARRIVALS: ProjectLine[] = [
+  { actor: JONAS, at: at(2, 16, 4), text: 'Release notes are drafted.' },
+  { actor: JONAS, at: at(2, 16, 5), text: 'Can someone give them a read?' },
+  {
+    actor: SCOUT,
+    at: at(2, 16, 7),
+    text: 'Read them. Two links point at the old docs path; everything else checks out.',
+  },
+];
+
+function projectMessage(line: ProjectLine, seq: number) {
+  return {
+    intentId: uuid(seq, 'b1'),
+    text: line.text,
+    ...(line.replyTo ? { replyTo: uuid(line.replyTo, 'c1') } : {}),
+    roomId: ROOM_ID,
+    messageId: uuid(seq, 'c1'),
+    seq,
+    actor: line.actor,
+    createdAt: line.at,
+  };
+}
+
+/**
+ * Installs the Project room's read, presence and event routes for one scene.
+ * `deliver()` (new-messages only) publishes the arrivals through the room's
+ * own `changed` event on a held-open stream.
+ */
+export async function installProjectRoomFixture(
+  page: Page,
+  input: {
+    slug: string;
+    projectId: string;
+    scene: ProjectRoomScene;
+  },
+) {
+  const { slug, projectId, scene } = input;
+  const lines = [...projectLines(scene)];
+  let delivered = false;
+  const messages = () =>
+    (delivered ? [...lines, ...ARRIVALS] : lines).map((line, index) =>
+      projectMessage(line, index + 1),
+    );
+  const scope = {
+    stationId: 'station:gallery',
+    localProjectId: projectId,
+    localProjectSlug: slug,
+    portableProjectId: `portable-${slug}`,
+  };
+  const presence = [JONAS, SCOUT].map((actor, index) => ({
+    clientId: uuid(index + 1, 'd1'),
+    actor,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  }));
+  // The room's event stream is a real, open SSE response from this local
+  // server: a fulfilled body would end the stream, which the room rightly
+  // shows as a dropped connection. `deliver()` pushes a `changed` frame, the
+  // way a live Station announces new rows.
+  const streams = new Set<ServerResponse>();
+  const events = createServer((_request, response) => {
+    response.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-store',
+    });
+    response.write(': open\n\n');
+    streams.add(response);
+    response.on('close', () => streams.delete(response));
+  });
+  await new Promise<void>((resolve) => events.listen(0, '127.0.0.1', resolve));
+  const eventsUrl = `http://127.0.0.1:${(events.address() as AddressInfo).port}/events`;
+  const base = `**/api/projects/${encodeURIComponent(slug)}/room`;
+  const handlers: [string, (route: Route) => Promise<void> | void][] = [
+    [
+      base,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        const all = messages();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              scope,
+              roomId: ROOM_ID,
+              capabilities: {
+                view: true,
+                discuss: true,
+                edit: true,
+                execute: true,
+              },
+              checkpoint: { roomId: ROOM_ID, lastSeq: all.length },
+              note: null,
+              actor: VIEWER,
+              presence,
+            },
+          },
+        });
+      },
+    ],
+    [
+      `${base}/messages*`,
+      (route) => {
+        const request = route.request();
+        if (request.method() === 'POST') {
+          if (scene === 'failed-send')
+            return route.fulfill({
+              status: 503,
+              json: {
+                success: false,
+                error: 'Station is restarting.',
+                code: 'service_unavailable',
+              },
+            });
+          return rejectUnexpectedFixtureRequest(route);
+        }
+        if (request.method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        const url = new URL(request.url());
+        const after = Number(url.searchParams.get('after') ?? 0);
+        const limit = Number(url.searchParams.get('limit') ?? 25);
+        const all = messages();
+        const page = all.filter(
+          (message) => message.seq > after && message.seq <= after + limit,
+        );
+        const last = page.at(-1)?.seq ?? after;
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              scope,
+              roomId: ROOM_ID,
+              messages: page,
+              checkpoint: { roomId: ROOM_ID, lastSeq: all.length },
+              nextAfter:
+                last < Math.min(all.length, after + limit) ? last : null,
+            },
+          },
+        });
+      },
+    ],
+    [
+      `${base}/presence`,
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({ json: { success: true, data: presence } });
+      },
+    ],
+    [
+      `${base}/events`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.continue({ url: eventsUrl });
+      },
+    ],
+  ];
+  for (const [pattern, handler] of handlers) await page.route(pattern, handler);
+  return {
+    arrivals: ARRIVALS.length,
+    /** Adds the arrivals to later reads and announces them on the stream. */
+    deliver() {
+      delivered = true;
+      const frame = `event: changed\ndata: ${JSON.stringify({ roomId: ROOM_ID, lastSeq: lines.length + ARRIVALS.length })}\n\n`;
+      for (const stream of streams) stream.write(frame);
+    },
+    async cleanup() {
+      for (const stream of streams) stream.end();
+      await new Promise<void>((resolve) => events.close(() => resolve()));
+      for (const [pattern, handler] of handlers)
+        await page.unroute(pattern, handler);
+    },
+  };
+}
+
+const DIGESTS = { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) };
+const CHECKPOINT = {
+  checkpointDigest: 'c'.repeat(64),
+  retainedAnchorSeq: 0,
+  retainedAnchorDigest: 'd'.repeat(64),
+};
+const IMAGE_ID = '5f2c7e1a-3b4d-4c6e-8f90-1a2b3c4d5e6f';
+/** A real phone screenshot from the repo stands in for a shared image. */
+const IMAGE_PNG = readFileSync(
+  new URL(
+    '../../docs/design/media/browser-device-ux-browser-390.png',
+    import.meta.url,
+  ),
+);
+
+type TaskRecordInput = Omit<
+  ProjectTaskRoomBrowserRecord,
+  'digests' | 'integrity' | 'sequence'
+>;
+const human = (
+  name: string,
+  occurredAt: string,
+  text: string,
+  extra: Partial<TaskRecordInput> = {},
+): TaskRecordInput => ({
+  actor: {
+    kind: 'human',
+    label: name,
+    id: `person:${name.split(' ')[0].toLowerCase()}`,
+    standing: name === 'Maya Chen' ? 'operator' : 'member',
+  },
+  occurredAt,
+  body: { kind: 'human-message', text },
+  ...extra,
+});
+const agent = (
+  occurredAt: string,
+  text: string,
+  sessionId: string,
+  turnId: string,
+): TaskRecordInput => ({
+  actor: { kind: 'agent', label: 'Scout', id: 'agent:scout' },
+  occurredAt,
+  execution: { sessionId, turnId },
+  body: { kind: 'human-message', text },
+});
+
+export type TaskRoomScene = 'thread' | 'working';
+
+function taskRecords(scene: TaskRoomScene): TaskRecordInput[] {
+  if (scene === 'thread')
+    return [
+      human(
+        'Priya Natarajan',
+        at(2, 13, 2),
+        'Here is the crash from the beta build.',
+        {
+          body: {
+            kind: 'human-message',
+            text: 'Here is the crash from the beta build.',
+            attachments: [
+              {
+                id: IMAGE_ID,
+                kind: 'image',
+                name: 'crash-report.png',
+                mimeType: 'image/png',
+                size: IMAGE_PNG.byteLength,
+              },
+            ],
+          },
+        },
+      ),
+      human(
+        'Priya Natarajan',
+        at(2, 13, 3),
+        'It happens right after sign-in on Android.',
+      ),
+      human('Maya Chen', at(2, 13, 9), '**@Scout** can you find the cause?'),
+      agent(
+        at(2, 13, 14),
+        'The crash comes from `SessionStore.restore()` reading a token before the keystore is unlocked.\n\n**Fix:** wait for `onUnlocked` before restoring.\n\n```kotlin\nkeystore.onUnlocked { store.restore() }\n```',
+        'session-thread',
+        'turn-1',
+      ),
+      human('Maya Chen', at(2, 13, 20), 'Does this also cover tablets?', {
+        threadSessionId: 'session-thread',
+      }),
+      agent(
+        at(2, 13, 22),
+        'Yes. Tablets use the same keystore path.',
+        'session-thread',
+        'turn-2',
+      ),
+      human(
+        'Jonas Berg',
+        at(2, 13, 31),
+        'Shipping the fix in the next build.',
+        {
+          threadSessionId: 'session-thread',
+        },
+      ),
+      human(
+        'Jonas Berg',
+        at(2, 13, 40),
+        'Thanks both, that unblocks the release.',
+      ),
+    ];
+  return [
+    human(
+      'Maya Chen',
+      at(2, 14, 1),
+      '**@Scout** run the onboarding checks on the latest build.',
+    ),
+    {
+      actor: { kind: 'agent', label: 'Scout', id: 'agent:scout' },
+      occurredAt: at(2, 14, 30),
+      system: true,
+      body: {
+        kind: 'live-work-finished',
+        sessionId: 'session-failed',
+        outcome: 'failed',
+      },
+    },
+    human('Maya Chen', at(2, 14, 33), 'Retrying with the staging config.'),
+    human(
+      'Jonas Berg',
+      at(2, 14, 40),
+      'While that runs: the copy review is done.',
+    ),
+  ];
+}
+
+function taskHistory(scene: TaskRoomScene): ProjectTaskRoomBrowserHistory {
+  const records = taskRecords(scene).map((record, index) => ({
+    ...record,
+    sequence: index + 1,
+    digests: DIGESTS,
+    integrity: 'L0' as const,
+  }));
+  return {
+    kind: 'available',
+    records,
+    checkpoint: { throughSeq: records.length, ...CHECKPOINT },
+    hasMore: false,
+    integrity: 'L0',
+  };
+}
+
+/**
+ * Installs the Task room's history, live stream, agent-request and attachment
+ * routes over a real Task. Discovery, capabilities, agent options and the
+ * document stay with the Station.
+ */
+export async function installTaskRoomFixture(
+  page: Page,
+  input: {
+    taskId: string;
+    taskCreatedAt: string;
+    projectId: string;
+    scene: TaskRoomScene;
+  },
+) {
+  const { taskId, taskCreatedAt, projectId, scene } = input;
+  const encoded = encodeURIComponent(taskId);
+  const live: ProjectTaskRoomBrowserLiveSnapshot = {
+    generation: 'gallery-generation',
+    viewerActorId: 'person:maya',
+    scope: { projectId, taskId },
+    state: 'active',
+    participants:
+      scene === 'working'
+        ? [
+            {
+              actor: { actorId: 'agent:scout', kind: 'agent', label: 'Scout' },
+              work: {
+                sessionId: 'session-running',
+                workName: 'Onboarding checks',
+                workState: 'working',
+                startedAt: Date.now() - 4 * 60_000,
+              },
+              publication: 'published',
+            },
+          ]
+        : [],
+    panes: [],
+    cursors: [],
+  };
+  const revision = `swsr-v1:${'a'.repeat(64)}`;
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const handlers: [string, (route: Route) => Promise<void> | void][] = [
+    [
+      `**/api/tasks/${encoded}/room/history*`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: { success: true, data: taskHistory(scene) },
+        });
+      },
+    ],
+    [
+      `**/api/tasks/${encoded}/room/events*`,
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        const snapshot = {
+          type: 'snapshot',
+          generation: live.generation,
+          viewerActorId: live.viewerActorId,
+          live,
+          document: { kind: 'snapshot', revision, floor: revision, text: '' },
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body: `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`,
+        });
+        await held;
+      },
+    ],
+    [
+      `**/api/tasks/${encoded}/room/agent-requests`,
+      async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        const response = await route.fetch();
+        const body = await response.json();
+        if (scene === 'working' && body?.success && body.data?.records)
+          body.data.records.push({
+            version: TASK_ROOM_WORK_VERSION,
+            taskId,
+            projectId,
+            taskCreatedAt,
+            operationId: uuid(1, 'e1'),
+            requesterId: 'person:maya',
+            agentId: 'scout',
+            prompt: 'Run the onboarding checks on the latest build.',
+            sessionId: 'session-failed',
+            createdAt: at(2, 14, 1),
+            state: 'dispatched',
+          });
+        return route.fulfill({ response, json: body });
+      },
+    ],
+    [
+      `**/api/tasks/${encoded}/room/attachments/*`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          status: 200,
+          contentType: 'image/png',
+          body: IMAGE_PNG,
+        });
+      },
+    ],
+  ];
+  for (const [pattern, handler] of handlers) await page.route(pattern, handler);
+  return {
+    async cleanup() {
+      release?.();
+      for (const [pattern, handler] of handlers)
+        await page.unroute(pattern, handler);
+    },
+  };
+}

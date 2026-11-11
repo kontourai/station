@@ -27,7 +27,7 @@ import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { formatDateTime, relativeTimeAgo } from '../../../utils/relativeTime';
 import { describeStationFailure } from '../../../utils/stationFailure';
-import { RoomAvatar } from '../../../workspace-panes/ProjectTaskRoomPresence';
+import { RoomAvatar } from '../../../components/room/RoomAvatar';
 import { useReviewContext } from './ReviewContext';
 import { copyReviewThreadLink, copyReviewThreadsForAgent } from './review-copy';
 import {

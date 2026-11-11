@@ -1,0 +1,271 @@
+/* The one room composer (#4793). The field grows with its text to eight
+   lines (five on a phone), then scrolls; the send button is round. */
+.room-composer {
+  --room-line: calc(var(--k-text-md) + var(--k-space-2));
+  --room-send-size: calc(var(--k-space-6) + var(--k-space-1));
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  min-width: 0;
+  padding: var(--k-space-2) var(--k-space-4) var(--k-space-4);
+  transition: margin-bottom var(--motion-base) var(--k-ease);
+}
+
+.room-composer__frame {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  transition:
+    border-color var(--motion-fast) var(--k-ease),
+    box-shadow var(--motion-fast) var(--k-ease);
+}
+
+.room-composer__frame:has(textarea:focus) {
+  border-color: var(--k-focus);
+  box-shadow: 0 0 0 1px var(--k-focus);
+}
+
+.room-composer__frame--drop {
+  border-style: dashed;
+  border-color: var(--k-focus);
+}
+
+.room-composer__above {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.room-composer__drop {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.room-composer__attachments {
+  min-width: 0;
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3) 0;
+  border: 0;
+}
+
+/* Specific enough to win over surface-wide textarea rules. */
+.room-composer textarea.room-composer__field {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: calc(var(--room-line) + var(--k-space-3) * 2);
+  max-height: calc(var(--room-line) * 8 + var(--k-space-3) * 2);
+  margin: 0;
+  padding: var(--k-space-3) var(--k-space-3) var(--k-space-1);
+  overflow-y: auto;
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text);
+  font: var(--k-text-md) / var(--room-line) var(--k-font-ui);
+  resize: none;
+}
+
+.room-composer textarea.room-composer__field:focus,
+.room-composer textarea.room-composer__field:focus-visible {
+  /* The frame owns the focus indicator (as the chat capsule does), so the
+     shell's global !important textarea ring would draw a second one. */
+  border: 0;
+  outline: none !important;
+  box-shadow: none;
+}
+
+.room-composer textarea.room-composer__field::placeholder {
+  color: var(--k-text-faint);
+}
+
+.room-composer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+  padding: 0 var(--k-space-2) var(--k-space-2);
+}
+
+.room-composer__bar .button:not(.room-composer__send, .icon-button) {
+  flex: 0 0 auto;
+  min-height: calc(var(--k-space-6) - var(--k-space-1));
+  white-space: nowrap;
+  border-color: transparent;
+  background: transparent;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.room-composer__bar
+  > .button:not(.room-composer__send, .icon-button):hover:not(:disabled) {
+  color: var(--k-text);
+  background: color-mix(in oklab, var(--k-text) 6%, transparent);
+}
+
+.room-composer__bar .room-composer__tool {
+  color: var(--k-text-muted);
+}
+
+.room-composer__bar .room-composer__send {
+  display: inline-grid;
+  place-items: center;
+  width: var(--room-send-size);
+  height: var(--room-send-size);
+  min-width: var(--room-send-size);
+  min-height: var(--room-send-size);
+  margin-inline-start: auto;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.room-composer__bar .room-composer__send svg {
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+}
+
+.room-composer__bar .room-composer__send:disabled {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--k-text) 8%, transparent);
+  color: var(--k-text-faint);
+}
+
+.room-composer__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  max-width: 100%;
+  padding: 0 0 0 var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: color-mix(in oklab, var(--k-brand) 12%, transparent);
+  color: var(--k-text);
+}
+
+.room-composer__chip strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-composer__short {
+  display: none;
+}
+
+.room-composer__status {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.room-composer__status[role="alert"] {
+  color: var(--k-negative);
+}
+
+/* The @ list floats above the frame so the conversation keeps its height. */
+.room-mention-picker {
+  position: absolute;
+  right: var(--k-space-4);
+  bottom: calc(100% - var(--k-space-1));
+  left: var(--k-space-4);
+  z-index: var(--k-z-popover, 30);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(var(--k-space-6) * 9);
+  overflow-y: auto;
+  padding: var(--k-space-1);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel-raised);
+  box-shadow: var(--k-elevation-overlay, var(--k-shadow));
+}
+
+.room-mention-picker .button.room-mention-picker__option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--k-space-3);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--k-space-1) var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text);
+  text-align: start;
+}
+
+.room-mention-picker .room-mention-picker__option[aria-selected="true"],
+.room-mention-picker .room-mention-picker__option:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--k-focus) 14%, transparent);
+}
+
+.room-mention-picker__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.room-mention-picker__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  font-weight: 600;
+}
+
+.room-mention-picker__description,
+.room-mention-picker__note {
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Phone layout: `useIsMobile` (MOBILE_MEDIA_QUERY) sets the class. */
+.room-composer--compact .room-mention-picker {
+  right: var(--k-space-3);
+  left: var(--k-space-3);
+}
+
+.room-composer.room-composer--compact {
+  --room-send-size: 44px;
+  padding: var(--k-space-2) var(--k-space-3)
+    calc(var(--k-space-3) + env(safe-area-inset-bottom, 0px));
+}
+
+.room-composer--compact textarea.room-composer__field {
+  max-height: calc(var(--room-line) * 5 + var(--k-space-3) * 2);
+}
+
+.room-composer--compact .room-composer__bar .button,
+.room-composer--compact .room-composer__bar .icon-button,
+.room-composer--compact .room-composer__chip .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.room-composer--compact .room-composer__bar .room-composer__tool {
+  --icon-button-size: 44px;
+}
+
+.room-composer--compact .room-composer__long {
+  display: none;
+}
+
+.room-composer--compact .room-composer__short {
+  display: inline;
+}

@@ -7,6 +7,7 @@ import {
   isProjectRoomAccessError,
   type ProjectRoomAgentHandle,
   type ProjectRoomAgentIntent,
+  type ProjectRoomBrowserView,
   type ProjectRoomMessageIntent,
   ProjectRoomProtocolError,
   parseProjectRoomAgentIntent,
@@ -15,12 +16,36 @@ import {
   useProjectRoomAgent,
 } from '@kontourai/station-sdk/project-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type Ref,
+  type RefObject,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
-import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { Dialog } from '../../components/Dialog';
-import { Empty, SkeletonBlock } from '../../components/state';
+import { IconButton } from '../../components/IconButton';
+import { ReturnGlyph } from '../../components/icons/Glyph';
+import { RoomAvatar } from '../../components/room/RoomAvatar';
+import { RoomComposer } from '../../components/room/RoomComposer';
+import {
+  RoomConversation,
+  type RoomConversationRow,
+} from '../../components/room/RoomConversation';
+import {
+  type RoomMentionCandidate,
+  RoomMentionPicker,
+  useRoomMention,
+} from '../../components/room/RoomMentionPicker';
+import { useRoomDraft } from '../../components/room/useRoomDraft';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
 
@@ -50,6 +75,9 @@ export function ProjectRoom(props: ProjectRoomProps) {
         sessionStorage.removeItem(
           `station-project-room:${previous.current}:agent`,
         );
+        sessionStorage.removeItem(
+          `station-room-draft:project:${previous.current}`,
+        );
       } catch {
         /* Sending requires successful storage separately. */
       }
@@ -61,9 +89,81 @@ export function ProjectRoom(props: ProjectRoomProps) {
       key={key}
       {...props}
       storageKey={`station-project-room:${key}`}
+      draftKey={`project:${key}`}
     />
   );
 }
+/**
+ * The full room fills the layout viewport below its own top and above the
+ * dock, so its composer stays on screen. The dock's band is the shell's dock
+ * slot plus the safe area (the parts of `--dock-bottom-clearance` that are not
+ * the keyboard; RoomComposer lifts itself over the keyboard), read through a
+ * probe because the properties are unresolved calc()s until something uses
+ * them.
+ */
+function useFillPageHeight(
+  ref: RefObject<HTMLElement | null>,
+  enabled: boolean,
+) {
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!enabled || !element) return;
+    const update = () => {
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        'position:absolute;visibility:hidden;pointer-events:none;height:calc(var(--dock-slot-size, 0px) + var(--safe-bottom, 0px))';
+      element.append(probe);
+      const clearance = probe.getBoundingClientRect().height;
+      probe.remove();
+      // Where the room starts with every ancestor scrolled to its top.
+      let top = element.getBoundingClientRect().top;
+      for (let node = element.parentElement; node; node = node.parentElement)
+        top += node.scrollTop;
+      const below = parseFloat(
+        getComputedStyle(element.closest('.project-page__layout') ?? element)
+          .paddingBottom,
+      );
+      element.style.height = `${Math.max(
+        ROOM_MIN_HEIGHT_PX,
+        Math.floor(
+          window.innerHeight -
+            clearance -
+            top -
+            (Number.isFinite(below) ? below : 0),
+        ),
+      )}px`;
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      element.style.height = '';
+    };
+  }, [ref, enabled]);
+}
+const ROOM_MIN_HEIGHT_PX = 320;
+
+type RoomMessage = NonNullable<
+  ReturnType<typeof useProjectRoom>['history']['data']
+>['pages'][number]['messages'][number];
+
+/**
+ * Messages already shown for this room. The history window is keyed by the
+ * room's latest sequence, so each new message starts a fresh query; keeping
+ * the rows already read stops the list from emptying and losing the reader's
+ * place while the new window loads.
+ */
+function useRoomMessages(roomId: string | undefined, fetched: RoomMessage[]) {
+  const retained = useRef<{ roomId?: string; byId: Map<string, RoomMessage> }>({
+    byId: new Map(),
+  });
+  if (retained.current.roomId !== roomId)
+    retained.current = { roomId, byId: new Map() };
+  for (const message of fetched)
+    retained.current.byId.set(message.messageId, message);
+  return [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq);
+}
+
 function ProjectRoomSession({
   slug,
   projectId,
@@ -71,13 +171,16 @@ function ProjectRoomSession({
   variant = 'full',
   onOpenRoom,
   storageKey,
-}: ProjectRoomProps & { storageKey: string }) {
+  draftKey,
+}: ProjectRoomProps & { storageKey: string; draftKey: string }) {
   const editorId = useId();
   const composer = useRef<HTMLTextAreaElement>(null);
+  const section = useRef<HTMLElement>(null);
+  const compact = useIsMobile();
   const room = useProjectRoom(requestScope, slug, projectId);
   const view = room.discovery.data;
   const [tab, setTab] = useState<'conversation' | 'notes'>('conversation');
-  const [text, setText] = useState('');
+  const [text, setText] = useRoomDraft(draftKey);
   const [replyTo, setReplyTo] = useState<string>();
   const [proposal, setProposal] = useState<ProjectRoomMessageIntent>();
   const [restored, setRestored] = useState(false);
@@ -94,12 +197,15 @@ function ProjectRoomSession({
       mounted.current = false;
     };
   }, []);
+  useFillPageHeight(section, variant === 'full' && !!view);
   const clearProposal = () => {
     sessionStorage.removeItem(storageKey);
     setProposal(undefined);
   };
+  // The message draft is kept per room (`useRoomDraft`), so leaving only
+  // asks about what would be lost: an unconfirmed send or a notes draft.
   const { guard, DiscardModal } = useUnsavedGuard(
-    !!text || !!proposal || !!noteDraft,
+    !!proposal || !!noteDraft,
     () => {
       try {
         clearProposal();
@@ -128,11 +234,6 @@ function ProjectRoomSession({
         return;
       }
       setProposal(input);
-      setText(input.text);
-      setReplyTo(input.replyTo);
-      setNotice(
-        'A previous send has no confirmed acknowledgement. Check the conversation, then retry the same message if needed.',
-      );
     } catch {
       setNotice('The retained message could not be recovered.');
     }
@@ -149,7 +250,7 @@ function ProjectRoomSession({
     } catch {
       /* Content is already hidden and sending stopped. */
     }
-  }, [room.stopped, storageKey]);
+  }, [room.stopped, storageKey, setText]);
   useEffect(() => {
     if (view && (!view.capabilities.discuss || !view.capabilities.execute)) {
       try {
@@ -177,10 +278,32 @@ function ProjectRoomSession({
       setNotice('The person using this room changed. Start a new message.');
     }
     discoveredActor.current = actorId;
-  }, [actorId, storageKey]);
-  async function send() {
+  }, [actorId, storageKey, setText]);
+  const messages = useRoomMessages(
+    room.stopped ? undefined : view?.roomId,
+    room.history.data?.pages.flatMap((page) => page.messages) ?? [],
+  );
+  // A send whose acknowledgement was lost is settled once the room shows it.
+  const committed =
+    !!proposal &&
+    messages.some(
+      (message) =>
+        message.intentId === proposal.intentId &&
+        message.actor.id === proposal.expectedActorId,
+    );
+  useEffect(() => {
+    if (!committed || room.send.isPending) return;
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      /* The proposal is settled either way. */
+    }
+    setProposal(undefined);
+  }, [committed, room.send.isPending, storageKey]);
+  async function send(retry?: ProjectRoomMessageIntent) {
     if (!view || room.stopped || !restored || room.send.isPending) return;
-    const input = proposal ?? {
+    if (proposal && !retry) return;
+    const input = retry ?? {
       expectedRoomId: view.roomId,
       expectedProjectId: projectId,
       expectedActorId: view.actor.id,
@@ -198,19 +321,27 @@ function ProjectRoomSession({
       );
       return;
     }
+    if (!retry) {
+      // The message now lives in the conversation as a pending row.
+      setText('');
+      setReplyTo(undefined);
+    }
+    setNotice('');
     try {
       await room.send.mutateAsync(input);
       if (!mounted.current) return;
       clearProposal();
-      setText('');
-      setReplyTo(undefined);
-      setNotice('');
     } catch {
-      if (mounted.current)
-        setNotice(
-          'Send not confirmed. Check the conversation before retrying this exact message.',
-        );
+      /* The pending row turns into "Send not confirmed" with Retry. */
     }
+  }
+  function discardProposal() {
+    if (!proposal) return;
+    const retained = proposal;
+    clearProposal();
+    // Nothing typed is lost: an empty composer takes the text back.
+    setText((current) => current || retained.text);
+    setReplyTo((current) => current ?? retained.replyTo);
   }
   async function saveNote() {
     if (!view || !noteDraft) return;
@@ -247,7 +378,7 @@ function ProjectRoomSession({
   if (room.unprovisioned)
     return (
       <section className="project-room" aria-label="Project room">
-        <h3># Project room</h3>
+        <h3 className="project-room__title"># Project room</h3>
         {room.initialize.isError && (
           <p role="alert">
             Opening was not confirmed. Check access, then try again.
@@ -271,11 +402,11 @@ function ProjectRoomSession({
   if (room.discovery.isError)
     return (
       <section className="project-room" aria-label="Project room">
-        <p role="alert">
-          Room unavailable. Check your connection and Project access, then try
-          again.
-        </p>
-        <Button onClick={room.recover}>Retry</Button>
+        <ErrorState
+          variant="compact"
+          title="Room unavailable. Check your connection and Project access."
+          action={<Button onClick={room.recover}>Retry</Button>}
+        />
       </section>
     );
   if (!view)
@@ -284,13 +415,6 @@ function ProjectRoomSession({
         <SkeletonBlock count={2} label="Loading room" />
       </section>
     );
-  const messages = [
-    ...new Map(
-      (room.history.data?.pages.flatMap((page) => page.messages) ?? []).map(
-        (message) => [message.messageId, message],
-      ),
-    ).values(),
-  ].sort((a, b) => a.seq - b.seq);
   const visibleMessages = variant === 'preview' ? messages.slice(-5) : messages;
   const participants = [
     ...new Map(
@@ -300,51 +424,137 @@ function ProjectRoomSession({
     ).values(),
   ];
   const noteText = noteDraft?.markdown ?? view.note?.markdown ?? '';
-  const selectedReply = messages.find(
-    (message) => message.messageId === replyTo,
+  const authorOf = (messageId?: string) =>
+    messages.find((message) => message.messageId === messageId)?.actor
+      .displayName ?? 'an earlier message';
+  const replyContext = (messageId: string) => (
+    <span className="project-room__reply">
+      <ReturnGlyph /> Replying to <strong>{authorOf(messageId)}</strong>
+    </span>
   );
+  const rows: RoomConversationRow[] = visibleMessages.map((message) => ({
+    id: message.messageId,
+    kind: 'message',
+    author: {
+      id: message.actor.id,
+      label: message.actor.displayName,
+      agent: message.actor.kind === 'agent',
+    },
+    at: message.createdAt,
+    reply: !!message.replyTo,
+    context: message.replyTo ? replyContext(message.replyTo) : undefined,
+    text: message.text,
+    own: message.actor.id === view.actor.id,
+    actions: view.capabilities.discuss ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={room.send.isPending}
+        aria-label={`Reply to ${message.actor.displayName}`}
+        onClick={() => {
+          setReplyTo(message.messageId);
+          composer.current?.focus();
+        }}
+      >
+        <ReturnGlyph /> Reply
+      </Button>
+    ) : undefined,
+  }));
+  if (proposal && !committed)
+    rows.push({
+      id: `proposal:${proposal.intentId}`,
+      kind: 'message',
+      author: {
+        id: view.actor.id,
+        label: view.actor.displayName,
+        agent: view.actor.kind === 'agent',
+      },
+      reply: !!proposal.replyTo,
+      context: proposal.replyTo ? replyContext(proposal.replyTo) : undefined,
+      text: proposal.text,
+      own: true,
+      tone: room.send.isPending ? 'pending' : 'failed',
+      footer: room.send.isPending ? (
+        <span className="project-room__delivery">Sending…</span>
+      ) : (
+        <span className="project-room__delivery project-room__delivery--failed">
+          <span>Send not confirmed.</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Retry same message"
+            onClick={() => void send(proposal)}
+          >
+            Retry
+          </Button>
+          <Button variant="ghost" size="sm" onClick={discardProposal}>
+            Discard
+          </Button>
+        </span>
+      ),
+    });
   return (
     <section
-      className={`project-room project-room--${variant}`}
+      ref={section}
+      className={`project-room project-room--${variant}${compact ? ' project-room--compact' : ''}`}
       aria-label="Project room"
     >
       <header className="project-room__header">
-        <div className="project-room__title">
-          <h3># Project room</h3>
+        <h3 className="project-room__title"># Project room</h3>
+        <div
+          className="project-room__presence"
+          role="status"
+          aria-label="People here"
+        >
+          {participants.length ? (
+            <>
+              <span className="project-room__faces" aria-hidden="true">
+                {participants.slice(0, 3).map((actor) => (
+                  <RoomAvatar
+                    key={actor.id}
+                    name={actor.displayName}
+                    agent={actor.kind === 'agent'}
+                  />
+                ))}
+              </span>
+              <span className="project-room__names">
+                {participants.map((actor) => actor.displayName).join(', ')}
+              </span>
+            </>
+          ) : (
+            <span className="project-room__names">Just you</span>
+          )}
         </div>
+        <nav className="project-room__tabs" aria-label="Room views">
+          <Button
+            size="sm"
+            active={tab === 'conversation'}
+            aria-pressed={tab === 'conversation'}
+            onClick={() => guard(() => setTab('conversation'))}
+          >
+            Conversation
+          </Button>
+          <Button
+            size="sm"
+            active={tab === 'notes'}
+            aria-pressed={tab === 'notes'}
+            onClick={() => guard(() => setTab('notes'))}
+          >
+            Notes
+          </Button>
+        </nav>
         {variant === 'preview' && onOpenRoom && (
-          <Button onClick={onOpenRoom}>Open room</Button>
+          <Button size="sm" onClick={onOpenRoom}>
+            Open room
+          </Button>
         )}
       </header>
-      <div
-        className="project-room__presence"
-        role="status"
-        aria-label="People here"
-      >
-        {participants.length
-          ? participants.map((actor) => actor.displayName).join(', ')
-          : 'No one else is here right now.'}
-      </div>
-      <nav className="project-room__tabs" aria-label="Room views">
-        <Button
-          active={tab === 'conversation'}
-          aria-pressed={tab === 'conversation'}
-          onClick={() => guard(() => setTab('conversation'))}
-        >
-          Conversation
-        </Button>
-        <Button
-          active={tab === 'notes'}
-          aria-pressed={tab === 'notes'}
-          onClick={() => guard(() => setTab('notes'))}
-        >
-          Notes
-        </Button>
-      </nav>
       {room.streamError && (
-        <p role="status">
+        <p role="status" className="project-room__notice">
           Live updates are interrupted.{' '}
           <Button
+            size="sm"
+            variant="ghost"
             onClick={() => {
               void room.discovery.refetch();
               void room.history.refetch();
@@ -354,90 +564,66 @@ function ProjectRoomSession({
           </Button>
         </p>
       )}
-      {notice && <p role="status">{notice}</p>}
+      {notice && (
+        <p role="status" className="project-room__notice">
+          {notice}
+        </p>
+      )}
       {tab === 'conversation' ? (
         <>
-          {variant === 'full' && room.history.hasNextPage && (
-            <Button
-              pending={room.history.isFetchingNextPage}
-              onClick={() => {
-                void room.history.fetchNextPage();
-              }}
-            >
-              Load older messages
-            </Button>
-          )}
-          {room.history.isError ? (
-            <p role="alert">
-              History could not be loaded.{' '}
-              <Button
-                onClick={() => {
-                  void room.history.refetch();
-                }}
-              >
-                Retry
-              </Button>
-            </p>
-          ) : room.history.isPending ? (
-            <SkeletonBlock count={2} label="Loading chat" />
-          ) : (
-            !messages.length && (
-              <Empty
-                variant="compact"
-                label="Start a chat with your project team."
-              />
-            )
-          )}
-          <ol className="project-room__messages" aria-label="Conversation">
-            {visibleMessages.map((message) => (
-              <li key={message.messageId} className="project-room__message">
-                <div className="project-room__byline">
-                  <strong>{message.actor.displayName}</strong>
-                  {message.actor.kind === 'agent' && <span>Agent</span>}
-                  <time dateTime={message.createdAt}>
-                    {new Date(message.createdAt).toLocaleString()}
-                  </time>
-                </div>
-                {message.replyTo && (
-                  <p className="project-room__reply">
-                    Reply to{' '}
-                    {messages.find((m) => m.messageId === message.replyTo)
-                      ?.actor.displayName ?? 'an earlier message'}
-                  </p>
-                )}
-                {message.actor.kind === 'agent' ? (
-                  <div className="project-room__answer">
-                    <LazyMarkdown>{message.text}</LazyMarkdown>
-                  </div>
-                ) : (
-                  <p className="project-room__text">{message.text}</p>
-                )}
-                {view.capabilities.discuss && (
-                  <Button
-                    variant="ghost"
-                    disabled={!!proposal || room.send.isPending}
-                    aria-label={`Reply to ${message.actor.displayName}`}
-                    onClick={() => setReplyTo(message.messageId)}
-                  >
-                    Reply
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ol>
-          {view.capabilities.discuss && view.capabilities.execute && (
-            <ProjectRoomAgentPanel
-              key={`${view.roomId}:${view.actor.id}`}
-              requestScope={requestScope}
+          <RoomConversation
+            label="Conversation"
+            className="project-room__conversation"
+            rows={rows}
+            loading={room.history.isPending}
+            status={
+              room.history.isError ? (
+                <ErrorState
+                  variant="compact"
+                  title="History could not be loaded."
+                  action={
+                    <Button onClick={() => void room.history.refetch()}>
+                      Retry
+                    </Button>
+                  }
+                />
+              ) : room.history.isPending && !messages.length ? (
+                <SkeletonBlock count={2} label="Loading chat" />
+              ) : undefined
+            }
+            empty={
+              room.history.isError ? undefined : (
+                <Empty
+                  variant="compact"
+                  label="Start a chat with your project team."
+                />
+              )
+            }
+            hasOlder={variant === 'full' && !!room.history.hasNextPage}
+            loadingOlder={room.history.isFetchingNextPage}
+            onLoadOlder={() => {
+              void room.history.fetchNextPage();
+            }}
+          />
+          {view.capabilities.discuss ? (
+            <ProjectRoomComposer
+              id={`message-${editorId}`}
+              view={view}
               slug={slug}
               projectId={projectId}
-              roomId={view.roomId}
-              actorId={view.actor.id}
-              storageKey={`${storageKey}:agent`}
-              prompt={text}
-              checkpointSeq={view.checkpoint.lastSeq}
+              requestScope={requestScope}
+              storageKey={storageKey}
+              text={text}
+              setText={setText}
               replyTo={replyTo}
-              blocked={!restored || !!proposal || room.send.isPending}
+              replyAuthor={replyTo ? authorOf(replyTo) : undefined}
+              cancelReply={() => setReplyTo(undefined)}
+              participants={participants}
+              restored={restored}
+              blocked={!!proposal || room.send.isPending}
+              sending={room.send.isPending}
+              composer={composer}
+              send={() => void send()}
               prepareRecap={() => {
                 setText(`Recap Project ${slug} (Project ID: ${projectId}; Room ID: ${view.roomId}).
 
@@ -454,86 +640,10 @@ Report observed freshness and coverage, including timestamps or checkpoints when
                 void room.history.refetch();
               }}
             />
-          )}
-          {view.capabilities.discuss ? (
-            <form
-              className="project-room__composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void send();
-              }}
-            >
-              {replyTo && (
-                <div>
-                  Replying to{' '}
-                  {selectedReply?.actor.displayName ?? 'an earlier message'}{' '}
-                  <Button
-                    type="button"
-                    disabled={!!proposal}
-                    onClick={() => setReplyTo(undefined)}
-                  >
-                    Cancel reply
-                  </Button>
-                </div>
-              )}
-              <label htmlFor={`message-${editorId}`}>Message the project</label>
-              <textarea
-                ref={composer}
-                id={`message-${editorId}`}
-                value={text}
-                readOnly={!!proposal || room.send.isPending}
-                onChange={(event) => setText(event.target.value)}
-                placeholder="Share an update or ask the team…"
-                onKeyDown={(event) => {
-                  if (
-                    (event.metaKey || event.ctrlKey) &&
-                    event.key === 'Enter'
-                  ) {
-                    event.preventDefault();
-                    void send();
-                  }
-                }}
-              />
-              <ActionRow
-                className="project-room__actions"
-                overflowLabel="More message actions"
-                primary={
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    pending={room.send.isPending}
-                    pendingLabel="Sending…"
-                    disabled={
-                      !restored ||
-                      !text.trim() ||
-                      new TextEncoder().encode(text).length >
-                        PROJECT_ROOM_LIMITS.textBytes
-                    }
-                  >
-                    {proposal ? 'Retry same message' : 'Send message'}
-                  </Button>
-                }
-                secondary={
-                  proposal ? (
-                    <Button
-                      type="button"
-                      onClick={() =>
-                        guard(() => {
-                          clearProposal();
-                          setText('');
-                          setReplyTo(undefined);
-                          setNotice('');
-                        })
-                      }
-                    >
-                      Discard retained message
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </form>
           ) : (
-            <p>You can read this conversation.</p>
+            <p className="project-room__notice">
+              You can read this conversation.
+            </p>
           )}
         </>
       ) : (
@@ -619,6 +729,251 @@ Report observed freshness and coverage, including timestamps or checkpoints when
   );
 }
 
+/** The Project room's adapter over the shared `RoomComposer` and `@` picker. */
+function ProjectRoomComposer({
+  id,
+  view,
+  slug,
+  projectId,
+  requestScope,
+  storageKey,
+  text,
+  setText,
+  replyTo,
+  replyAuthor,
+  cancelReply,
+  participants,
+  restored,
+  blocked,
+  sending,
+  composer,
+  send,
+  prepareRecap,
+  refresh,
+}: {
+  id: string;
+  view: ProjectRoomBrowserView;
+  slug: string;
+  projectId: string;
+  requestScope: ApiRequestScope;
+  storageKey: string;
+  text: string;
+  setText(value: string | ((current: string) => string)): void;
+  replyTo?: string;
+  replyAuthor?: string;
+  cancelReply(): void;
+  participants: ProjectRoomBrowserView['actor'][];
+  restored: boolean;
+  blocked: boolean;
+  sending: boolean;
+  composer: RefObject<HTMLTextAreaElement | null>;
+  send(): void;
+  prepareRecap(): void;
+  refresh(): void;
+}) {
+  const agents = view.capabilities.execute;
+  const catalog = useProjectRoomAgent(
+    requestScope,
+    slug,
+    {
+      expectedRoomId: view.roomId,
+      expectedProjectId: projectId,
+      expectedActorId: view.actor.id,
+    },
+    agents,
+  ).catalog;
+  const [recipient, setRecipient] = useState<{ id: string; name: string }>();
+  const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
+  const agentPanel = useRef<{ ask(agentId: string): void }>(null);
+  const candidates: RoomMentionCandidate[] = [
+    ...participants
+      .filter((actor) => actor.id !== view.actor.id && actor.kind === 'person')
+      .map((actor) => ({
+        id: actor.id,
+        name: actor.displayName,
+        agent: false,
+        description: 'Here now',
+        ready: true,
+      })),
+    ...(agents &&
+    catalog.isSuccess &&
+    catalog.data?.catalogState !== 'reconciling'
+      ? (catalog.data?.agents ?? []).map((agent) => ({
+          id: agent.slug,
+          name: agent.name,
+          agent: true,
+          handle: agent.slug,
+          ready: agent.available !== false,
+          unavailableReason: 'Unavailable right now',
+        }))
+      : []),
+  ];
+  const mention = useRoomMention({
+    candidates,
+    enabled: !blocked && !recipient,
+    onPick(candidate, query) {
+      if (candidate.agent) {
+        setRecipient({ id: candidate.id, name: candidate.name });
+        setText(
+          (current) => current.slice(0, query.start) + current.slice(query.end),
+        );
+      } else
+        setText(
+          (current) =>
+            `${current.slice(0, query.start)}@${candidate.name} ${current.slice(query.end)}`,
+        );
+      composer.current?.focus();
+    },
+  });
+  const tooLong =
+    new TextEncoder().encode(text).length > PROJECT_ROOM_LIMITS.textBytes;
+  const canSend = restored && !blocked && !!text.trim() && !tooLong;
+  return (
+    <>
+      {agents && view.capabilities.discuss && (
+        <ProjectRoomAgentPanel
+          key={`${view.roomId}:${view.actor.id}`}
+          requestScope={requestScope}
+          slug={slug}
+          projectId={projectId}
+          roomId={view.roomId}
+          actorId={view.actor.id}
+          storageKey={`${storageKey}:agent`}
+          prompt={text}
+          checkpointSeq={view.checkpoint.lastSeq}
+          replyTo={replyTo}
+          blocked={!restored || blocked}
+          toolsSlot={toolsSlot}
+          askRef={agentPanel}
+          onAsked={() => {
+            setText('');
+            setRecipient(undefined);
+            cancelReply();
+          }}
+          prepareRecap={prepareRecap}
+          refresh={refresh}
+        />
+      )}
+      <RoomComposer
+        id={id}
+        label="Message the project"
+        placeholder="Message # Project room"
+        value={text}
+        onValueChange={(value, caret) => {
+          setText(value);
+          mention.find(value, caret);
+        }}
+        onSend={() => {
+          if (recipient) agentPanel.current?.ask(recipient.id);
+          else send();
+        }}
+        canSend={canSend}
+        pending={sending}
+        sendLabel={recipient ? `Ask ${recipient.name}` : 'Send message'}
+        textareaRef={composer}
+        inputProps={{
+          'aria-controls': mention.open ? `${id}-mentions` : undefined,
+          'aria-activedescendant':
+            mention.open && mention.filtered.length
+              ? `${id}-mentions-option-${mention.selected}`
+              : undefined,
+          'aria-describedby': `${id}-help`,
+          onKeyDown: mention.onKeyDown,
+          onClick: (event) =>
+            mention.find(
+              event.currentTarget.value,
+              event.currentTarget.selectionStart,
+            ),
+        }}
+        above={
+          replyTo || recipient ? (
+            <>
+              {replyTo && (
+                <span className="room-composer__chip">
+                  Replying to <strong>{replyAuthor}</strong>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={blocked}
+                    onClick={cancelReply}
+                  >
+                    Cancel reply
+                  </Button>
+                </span>
+              )}
+              {recipient && (
+                <span className="room-composer__chip">
+                  Asking <strong>@{recipient.name}</strong>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Remove ${recipient.name}`}
+                    onClick={() => setRecipient(undefined)}
+                  >
+                    Remove
+                  </Button>
+                </span>
+              )}
+            </>
+          ) : undefined
+        }
+        tools={
+          <>
+            <IconButton
+              aria-label="Mention a person or agent"
+              title="Mention a person or agent"
+              className="room-composer__tool"
+              disabled={blocked || !!recipient}
+              onClick={() => {
+                const field = composer.current;
+                const caret = field?.selectionStart ?? text.length;
+                const before = text.slice(0, caret);
+                const insert = before && !/\s$/.test(before) ? ' @' : '@';
+                const next = before + insert + text.slice(caret);
+                setText(next);
+                mention.openAt(caret + insert.length - 1);
+                field?.focus();
+              }}
+            >
+              <span aria-hidden="true">@</span>
+            </IconButton>
+            <span ref={setToolsSlot} className="room-composer__slot" />
+          </>
+        }
+        below={
+          <>
+            <RoomMentionPicker
+              id={`${id}-mentions`}
+              state={mention}
+              loading={agents && catalog.isPending}
+              failed={agents && catalog.isError}
+              onClearQuery={() => {
+                const query = mention.mention;
+                if (!query) return;
+                setText(
+                  (current) =>
+                    `${current.slice(0, query.start)}@${current.slice(query.end)}`,
+                );
+                mention.openAt(query.start);
+                composer.current?.focus();
+              }}
+            />
+            <p className="sr-only" id={`${id}-help`}>
+              Enter to send, Shift+Enter for a new line. Type @ to mention a
+              person or agent.
+            </p>
+            {tooLong && (
+              <p className="room-composer__status" role="alert">
+                This message is too long to send.
+              </p>
+            )}
+          </>
+        }
+      />
+    </>
+  );
+}
+
 function ProjectRoomAgentPanel({
   requestScope,
   slug,
@@ -632,6 +987,9 @@ function ProjectRoomAgentPanel({
   blocked,
   prepareRecap,
   refresh,
+  toolsSlot,
+  askRef,
+  onAsked,
 }: {
   requestScope: ApiRequestScope;
   slug: string;
@@ -645,6 +1003,12 @@ function ProjectRoomAgentPanel({
   blocked: boolean;
   prepareRecap(): void;
   refresh(): void;
+  /** The composer's tool bar: Recap and Bring an Agent render there. */
+  toolsSlot: HTMLElement | null;
+  /** Lets an @agent pick in the composer ask through this same request path. */
+  askRef: Ref<{ ask(agentId: string): void }>;
+  /** An @agent request was accepted; the composer clears its draft. */
+  onAsked(): void;
 }) {
   const guard = {
     expectedRoomId: roomId,
@@ -704,21 +1068,25 @@ function ProjectRoomAgentPanel({
     agent.catalog.data?.catalogState !== 'reconciling'
       ? (agent.catalog.data?.agents.filter((a) => a.available !== false) ?? [])
       : [];
-  async function act(action: 'request' | 'inspect' | 'reconcile' | 'cancel') {
+  async function act(
+    action: 'request' | 'inspect' | 'reconcile' | 'cancel',
+    mentioned?: string,
+  ) {
     if (!ready || stopped || busy.current) return;
     let saved = retained;
+    const chosen = mentioned ?? agentId;
     if (!saved) {
       if (
         action !== 'request' ||
         blocked ||
-        !available.some((a) => a.slug === agentId)
+        !available.some((a) => a.slug === chosen)
       )
         return;
       saved = {
         intent: parseProjectRoomAgentIntent({
           ...guard,
           intentId: randomCorrelationId(),
-          agentId,
+          agentId: chosen,
           text: prompt,
           ...(replyTo ? { replyTo } : {}),
         }),
@@ -754,6 +1122,7 @@ function ProjectRoomAgentPanel({
       sessionStorage.setItem(storageKey, JSON.stringify(next));
       setOpen(false);
       setNotice('');
+      if (mentioned) onAsked();
       if (result.state === 'published') refresh();
     } catch (error) {
       if (!mounted.current) return;
@@ -782,6 +1151,10 @@ function ProjectRoomAgentPanel({
   useLayoutEffect(() => {
     requestAction.current = act;
   });
+  useImperativeHandle(askRef, () => ({
+    ask: (mentionedAgent: string) =>
+      void requestAction.current('request', mentionedAgent),
+  }));
   // biome-ignore lint/correctness/useExhaustiveDependencies: settlement wakes the latest checkpoint skipped while the request ref was busy.
   useEffect(() => {
     if (!retained?.requestId || stopped || terminal || busy.current) return;
@@ -797,8 +1170,51 @@ function ProjectRoomAgentPanel({
     settlementVersion,
   ]);
 
+  const tools = retained ? null : (
+    <>
+      <Button
+        size="sm"
+        aria-label="Recap Project"
+        disabled={blocked || !ready || stopped || !!prompt || !!replyTo}
+        title={
+          prompt || replyTo
+            ? 'Keep or clear your current draft and reply before preparing a recap.'
+            : 'Prepare a recap prompt to review before asking an Agent.'
+        }
+        onClick={() => {
+          if (blocked || !ready || stopped || retained || prompt || replyTo)
+            return;
+          prepareRecap();
+        }}
+      >
+        <span className="room-composer__long">Recap Project</span>
+        <span className="room-composer__short" aria-hidden="true">
+          Recap
+        </span>
+      </Button>
+      <Button
+        size="sm"
+        aria-label="Bring an Agent"
+        disabled={
+          blocked ||
+          !ready ||
+          stopped ||
+          !prompt.trim() ||
+          new TextEncoder().encode(prompt).length >
+            PROJECT_ROOM_LIMITS.textBytes
+        }
+        onClick={() => setOpen(true)}
+      >
+        <span className="room-composer__long">Bring an Agent</span>
+        <span className="room-composer__short" aria-hidden="true">
+          Agent
+        </span>
+      </Button>
+    </>
+  );
   return (
     <div className="project-room__agent">
+      {toolsSlot ? createPortal(tools, toolsSlot) : tools}
       {notice && <p role="status">{notice}</p>}
       {handle && (
         <p role="status">
@@ -873,39 +1289,7 @@ function ProjectRoomAgentPanel({
               : []
           }
         />
-      ) : (
-        <div className="project-room__actions">
-          <Button
-            size="sm"
-            disabled={blocked || !ready || stopped || !!prompt || !!replyTo}
-            title={
-              prompt || replyTo
-                ? 'Keep or clear your current draft and reply before preparing a recap.'
-                : 'Prepare a recap prompt to review before asking an Agent.'
-            }
-            onClick={() => {
-              if (blocked || !ready || stopped || retained || prompt || replyTo)
-                return;
-              prepareRecap();
-            }}
-          >
-            Recap Project
-          </Button>
-          <Button
-            disabled={
-              blocked ||
-              !ready ||
-              stopped ||
-              !prompt.trim() ||
-              new TextEncoder().encode(prompt).length >
-                PROJECT_ROOM_LIMITS.textBytes
-            }
-            onClick={() => setOpen(true)}
-          >
-            Bring an Agent
-          </Button>
-        </div>
-      )}
+      ) : null}
       {open && (
         <Dialog
           title="Bring an Agent"

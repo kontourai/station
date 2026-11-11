@@ -417,7 +417,7 @@ test('an unpublished answer remains visible with full-run access when the live t
   mocks.running = true;
   mocks.failedAnswer = true;
   mount();
-  expect(screen.getByText("Answer couldn't be posted ·")).toBeTruthy();
+  expect(screen.getByText("Answer couldn't be posted")).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open full run' }));
   expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
   expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
@@ -544,44 +544,41 @@ test('failed agent requests retain a quiet line and retry the original request i
   );
 });
 
-test('new messages follow only the message scroller and preserve a reader who scrolled up', () => {
+test('new messages follow only the room scroller, and a reader who scrolled up stays put and sees the count', () => {
   mocks.records = [record(1)];
   const view = mount();
   const list = screen
     .getByRole('list', { name: 'Task room history' })
-    .closest<HTMLElement>('.task-room-messages')!;
+    .closest<HTMLElement>('.room-conversation__scroller')!;
   Object.defineProperties(list, {
     scrollHeight: { configurable: true, value: 1000 },
     clientHeight: { configurable: true, value: 200 },
   });
-  list.scrollTop = 800;
-  fireEvent.scroll(list);
-  mocks.records = [record(1), record(2)];
-  view.rerender(
-    <QueryClientProvider client={new QueryClient()}>
-      <ProjectTaskRoomConversation
-        taskId="task-1"
-        projectSlug="project"
-        taskCreatedAt="2026-10-01T00:00:00.000Z"
-      />
-    </QueryClientProvider>,
-  );
+  const rerender = (count: number) => {
+    mocks.records = Array.from({ length: count }, (_, index) =>
+      record(index + 1),
+    );
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProjectTaskRoomConversation
+          taskId="task-1"
+          projectSlug="project"
+          taskCreatedAt="2026-10-01T00:00:00.000Z"
+        />
+      </QueryClientProvider>,
+    );
+  };
+  rerender(2);
   expect(list.scrollTop).toBe(1000);
+  // A reader gesture, then the scroll it causes.
+  fireEvent.wheel(list, { deltaY: -600 });
   list.scrollTop = 100;
   fireEvent.scroll(list);
-  mocks.records = [record(1), record(2), record(3)];
-  view.rerender(
-    <QueryClientProvider client={new QueryClient()}>
-      <ProjectTaskRoomConversation
-        taskId="task-1"
-        projectSlug="project"
-        taskCreatedAt="2026-10-01T00:00:00.000Z"
-      />
-    </QueryClientProvider>,
-  );
+  rerender(4);
   expect(list.scrollTop).toBe(100);
-  fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }));
+  fireEvent.click(screen.getByRole('button', { name: /2 new messages/ }));
   expect(list.scrollTop).toBe(1000);
+  expect(screen.queryByRole('button', { name: /new message/ })).toBeNull();
 });
 
 test('thread Enter sends while Shift+Enter and IME keep the reply draft', async () => {

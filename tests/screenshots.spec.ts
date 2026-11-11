@@ -23,6 +23,12 @@ import {
   type GalleryUiAudit,
 } from './helpers/gallery-ui-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
+import {
+  installProjectRoomFixture,
+  installTaskRoomFixture,
+  type ProjectRoomScene,
+  type TaskRoomScene,
+} from './helpers/room-gallery-fixtures';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
@@ -3379,7 +3385,198 @@ function projectRepositorySourceScreens(): Screen[] {
   );
 }
 
+/**
+ * Room conversation scenes (#4791): the Project room and the Task room
+ * rendered by their real components over browser-projection fixtures
+ * (tests/helpers/room-gallery-fixtures.ts), at 390 and 1440 in both themes.
+ * Reactions have no scene: no room contract carries them yet, and a scene
+ * must not draw state nothing computes. The reactions child adds both.
+ */
+const ROOM_SCENES = [
+  { scene: 'empty', room: 'project' },
+  { scene: 'short', room: 'project' },
+  { scene: 'long', room: 'project' },
+  { scene: 'new-messages', room: 'project' },
+  { scene: 'failed-send', room: 'project' },
+  { scene: 'mention', room: 'project' },
+  { scene: 'thread', room: 'task' },
+  { scene: 'working', room: 'task' },
+] as const satisfies readonly (
+  | { scene: ProjectRoomScene; room: 'project' }
+  | { scene: TaskRoomScene; room: 'task' }
+)[];
+
+function roomConversationScreens(): Screen[] {
+  return ROOM_SCENES.flatMap(({ scene, room }) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      [DESKTOP, MOBILE].map((viewport): Screen => {
+        const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const slug = `gallery-room-${scene}-${theme}-${viewport.width}`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        let created = false;
+        let fixture:
+          | Awaited<ReturnType<typeof installProjectRoomFixture>>
+          | undefined;
+        let cleanupTask: (() => Promise<void>) | undefined;
+        const screen: Screen = {
+          name: `room-${room === 'task' ? 'task-' : ''}${scene}-${theme}-${width}`,
+          title: `${room === 'task' ? 'Task' : 'Project'} room, ${scene} — ${theme}, ${viewport.width}px`,
+          path: `/projects/${slug}?section=room`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const response = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              { data: { name: 'Onboarding revamp', slug } },
+            );
+            expect(response.ok()).toBe(true);
+            created = true;
+            const project = (await response.json()).data;
+            if (room === 'project') {
+              fixture = await installProjectRoomFixture(page, {
+                slug,
+                projectId: project.id,
+                scene,
+              });
+              return;
+            }
+            const task = await request.post(
+              `${resolveE2EApiBase()}/api/tasks`,
+              {
+                data: {
+                  projectId: slug,
+                  title: 'Fix the Android sign-in crash',
+                  createdBy: 'user',
+                },
+              },
+            );
+            expect(task.ok()).toBe(true);
+            const createdTask = (await task.json()).data;
+            const installed = await installTaskRoomFixture(page, {
+              taskId: createdTask.id,
+              taskCreatedAt: createdTask.createdAt,
+              projectId: project.id,
+              scene,
+            });
+            cleanupTask = installed.cleanup;
+            screen.path = `/tasks/${encodeURIComponent(createdTask.id)}?taskView=conversation`;
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            if (room === 'task') {
+              await expect(
+                page.getByRole('list', { name: 'Task room history' }),
+              ).toBeVisible();
+              if (scene === 'thread')
+                await expect(
+                  page.getByRole('img', { name: 'crash-report.png' }),
+                ).toBeVisible();
+              if (scene === 'working')
+                await expect(
+                  page.getByRole('button', { name: 'Watch' }),
+                ).toBeVisible();
+              return;
+            }
+            const roomRegion = page.getByRole('region', {
+              name: 'Project room',
+            });
+            await expect(roomRegion).toBeVisible();
+            if (scene === 'empty') {
+              await expect(
+                roomRegion.getByText('Start a chat with your project team.'),
+              ).toBeVisible();
+              return;
+            }
+            const conversation = roomRegion.getByRole('list', {
+              name: 'Conversation',
+            });
+            await expect(
+              conversation
+                .getByText('Good catch', { exact: false })
+                .or(
+                  conversation.getByText('ship it tomorrow', { exact: false }),
+                ),
+            ).toBeVisible();
+            const composer = roomRegion.getByRole('textbox', {
+              name: /^Message/,
+            });
+            if (scene === 'failed-send') {
+              await composer.fill('Can we move the review to 4pm?');
+              await roomRegion.getByRole('button', { name: /^Send/ }).click();
+              await expect(
+                roomRegion.getByRole('button', { name: /Retry/ }),
+              ).toBeVisible();
+            }
+            if (scene === 'mention') {
+              await composer.click();
+              await composer.pressSequentially('@');
+            }
+            if (scene === 'new-messages' && fixture) {
+              const box = await roomRegion
+                .locator('.room-conversation__scroller')
+                .boundingBox();
+              expect(box).not.toBeNull();
+              await page.mouse.move(
+                box!.x + box!.width / 2,
+                box!.y + box!.height / 2,
+              );
+              // Far enough to stop following, near enough to see the divider.
+              await page.mouse.wheel(0, -240);
+              await expect(
+                roomRegion.getByRole('button', { name: /Jump to latest/ }),
+              ).toBeVisible();
+              fixture.deliver();
+              await expect(
+                conversation.getByText('Release notes are drafted.'),
+              ).toHaveCount(1);
+              const jump = roomRegion.getByRole('button', {
+                name: `${fixture.arrivals} new messages`,
+                exact: false,
+              });
+              await expect(jump).toBeVisible();
+              // Read down to the divider without reaching the end.
+              const divider = conversation.locator('.room-divider--unread');
+              for (let step = 0; step < 12; step += 1) {
+                if (await divider.isVisible()) {
+                  const shown = await divider.evaluate((element) => {
+                    const box = element.getBoundingClientRect();
+                    const port = element
+                      .closest('.room-conversation__scroller')!
+                      .getBoundingClientRect();
+                    return box.bottom <= port.bottom - 64;
+                  });
+                  if (shown) break;
+                }
+                await page.mouse.wheel(0, 60);
+                await page.waitForTimeout(80);
+              }
+              await expect(divider).toBeInViewport();
+              await expect(jump).toBeVisible();
+            }
+          },
+          async cleanup() {
+            await fixture?.cleanup();
+            await cleanupTask?.();
+            if (created) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+        return screen;
+      }),
+    ),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...roomConversationScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),

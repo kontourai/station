@@ -97,6 +97,11 @@
       "reason": "The containing chat-input__capsule draws the visible 2px focus ring while its textarea is focused; composer browser tests verify that replacement indicator."
     },
     {
+      "path": "src-ui/src/components/room/RoomComposer.css",
+      "selector": ".room-composer textarea.room-composer__field:focus, .room-composer textarea.room-composer__field:focus-visible",
+      "reason": "The room composer frame draws a 2px focus border while its field is focused (.room-composer__frame:has(textarea:focus)); the room-mention gallery scenes show it at 390 and 1440."
+    },
+    {
       "path": "src-ui/src/index.css",
       "selector": ".form-group input:focus, .form-group textarea:focus, .form-group select:focus",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."

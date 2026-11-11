@@ -39,6 +39,7 @@ let provisioned: boolean;
 let failInitialization: boolean;
 let initializationBodies: unknown[];
 let loseAck: boolean;
+let failWrite: boolean;
 let conflict: boolean;
 let writes: Array<Record<string, unknown>>;
 let streams: ReadableStreamDefaultController<Uint8Array>[];
@@ -177,6 +178,10 @@ function fixture() {
       if (url.pathname.endsWith('/presence')) return ok([]);
       if (url.pathname.endsWith('/messages') && init?.method === 'POST') {
         writes.push(body);
+        if (failWrite) {
+          failWrite = false;
+          throw new TypeError('Station unreachable');
+        }
         let message = messages.find((m) => m.intentId === body.intentId);
         if (!message) {
           message = {
@@ -288,6 +293,7 @@ beforeEach(() => {
   failInitialization = false;
   initializationBodies = [];
   loseAck = false;
+  failWrite = false;
   conflict = false;
   note = null;
   selectedAuthority = 'one';
@@ -306,10 +312,14 @@ afterEach(() => {
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
 });
-test('reload offers exact retained retry without automatically resending, then authority switch retires it', async () => {
-  loseAck = true;
+const roomStorage = () =>
+  Object.keys(sessionStorage).filter((key) =>
+    key.startsWith('station-project-room:'),
+  );
+test('an unsent message waits in the conversation, survives reload for an exact retry, then authority switch retires it', async () => {
+  failWrite = true;
   const a = mount();
-  const composer = await screen.findByRole('textbox', {
+  const composer = await screen.findByRole<HTMLTextAreaElement>('textbox', {
     name: 'Message the project',
   });
   await waitFor(() =>
@@ -328,6 +338,10 @@ test('reload offers exact retained retry without automatically resending, then a
   fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
   await screen.findByText(/Send not confirmed/);
   expect(writes).toHaveLength(1);
+  // The text moved into the conversation as a failed row; the field is free.
+  const conversation = screen.getByRole('list', { name: 'Conversation' });
+  expect(within(conversation).getByText('Team update')).toBeTruthy();
+  expect(composer.value).toBe('');
   expect(
     screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
       .disabled,
@@ -336,30 +350,21 @@ test('reload offers exact retained retry without automatically resending, then a
   const b = mount();
   await screen.findByRole('button', { name: 'Retry same message' });
   expect(writes).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Recap Project' }));
-  expect(
-    screen.getByRole<HTMLTextAreaElement>('textbox', {
-      name: 'Message the project',
-    }).value,
-  ).toBe('Team update');
   fireEvent.click(screen.getByRole('button', { name: 'Retry same message' }));
   await waitFor(() => expect(writes).toHaveLength(2));
   expect(writes[1]).toEqual(writes[0]);
   await waitFor(() =>
-    expect(b.client.getMutationCache().getAll().at(-1)?.state.error).toBeNull(),
-  );
-  await waitFor(() =>
     expect(
-      screen.getByRole<HTMLTextAreaElement>('textbox', {
-        name: 'Message the project',
-      }).value,
-    ).toBe(''),
+      screen.queryByRole('button', { name: 'Retry same message' }),
+    ).toBeNull(),
   );
   expect(
-    screen.getByRole<HTMLButtonElement>('button', { name: 'Bring an Agent' })
-      .disabled,
-  ).toBe(true);
-  loseAck = true;
+    within(screen.getByRole('list', { name: 'Conversation' })).getAllByText(
+      'Team update',
+    ),
+  ).toHaveLength(1);
+  expect(roomStorage()).toEqual([]);
+  failWrite = true;
   fireEvent.change(
     screen.getByRole('textbox', { name: 'Message the project' }),
     { target: { value: 'Old authority proposal' } },
@@ -383,7 +388,35 @@ test('reload offers exact retained retry without automatically resending, then a
       }).value,
     ).toBe(''),
   );
+  expect(screen.queryByText('Old authority proposal')).toBeNull();
   expect(sessionStorage.length).toBe(0);
+});
+test('a send whose acknowledgement was lost settles once the room shows its intent', async () => {
+  loseAck = true;
+  mount();
+  fireEvent.change(
+    await screen.findByRole('textbox', { name: 'Message the project' }),
+    { target: { value: 'Committed but unacknowledged' } },
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Send message' })
+        .disabled,
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  // The server committed the intent; history shows it, so nothing is retried.
+  await waitFor(() => expect(roomStorage()).toEqual([]));
+  expect(
+    screen.queryByRole('button', { name: 'Retry same message' }),
+  ).toBeNull();
+  expect(
+    within(screen.getByRole('list', { name: 'Conversation' })).getAllByText(
+      'Committed but unacknowledged',
+    ),
+  ).toHaveLength(1);
+  expect(writes).toHaveLength(1);
 });
 test('shared notes preserve the draft on CAS conflict and dirty navigation asks before leaving', async () => {
   note = {
@@ -507,7 +540,9 @@ test('loads older history and explicitly requests an available Agent with actual
     ),
   ).toBe('/api/knowledge/roots/project/records/policy');
   expect(screen.queryByText('Update 1')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Load older messages' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Load earlier messages' }),
+  );
   await screen.findByText('Update 1');
   expect(screen.getByText('Agent')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Reply to Researcher' }));
@@ -548,7 +583,7 @@ test('loads older history and explicitly requests an available Agent with actual
   expect(writes).toHaveLength(0);
 });
 
-test('preview opens the full room without replacing its draft and tabs guard shared notes', async () => {
+test('preview opens the full room without replacing its draft, and the draft survives a tab switch', async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -579,12 +614,18 @@ test('preview opens the full room without replacing its draft and tabs guard sha
   ).toBe('Keep this draft');
   expect(screen.getByRole('button', { name: 'Bring an Agent' })).toBeTruthy();
   expect(screen.queryByLabelText('Room menu')).toBeNull();
+  // The draft is kept per room, so switching tabs asks nothing and loses nothing.
   fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
-  expect(screen.getByRole('dialog')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: /^Discard$/ }));
+  expect(screen.queryByRole('dialog')).toBeNull();
   expect(
     screen.getByRole('textbox', { name: 'Notes (Markdown)' }),
   ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation' }));
+  expect(
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Message the project',
+    }).value,
+  ).toBe('Keep this draft');
 });
 
 test('an unprovisioned room requires an explicit open and keeps failed initialization retryable', async () => {
@@ -641,7 +682,7 @@ Report observed freshness and coverage, including timestamps or checkpoints when
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(agentWrites).toEqual([]);
   expect(writes).toEqual([]);
-  expect(sessionStorage.length).toBe(0);
+  expect(roomStorage()).toEqual([]);
   const reviewedPrompt = `${prompt}\n\nFocus on open blockers.`;
   fireEvent.change(composer, { target: { value: reviewedPrompt } });
   fireEvent.click(screen.getByRole('button', { name: 'Bring an Agent' }));
