@@ -990,6 +990,35 @@ intent and grant no permission.
 | `POST /agents/:requestId/reconcile` | guards | inspect completion and publish the authorized selected answer once; does not relaunch |
 | `POST /agents/:requestId/cancel` | guards | cancel request and fence later publication |
 
+### Named channels
+
+A Project's room is divided into named channels. `/room` addresses the
+default channel, `#general`; every per-room operation above except `POST /init`
+is also served at `/api/projects/:slug/channels/:channelId`, where `channelId`
+is that channel's room UUID. Messages, the shared note and Agent requests
+belong to one channel. A host that predates channels answers 404 for these paths.
+
+| Method and path | Input | Result |
+| --- | --- | --- |
+| `GET /channels` | none | `{ channels }`: default first, then by name; empty before the room opens. Needs `view` |
+| `POST /channels` | `{ expectedProjectId, expectedActorId, name, topic? }` | the created channel. Needs `edit` |
+| `PATCH /channels/:channelId` | the same guards plus at least one of `name`, `topic` (`null` clears), `archived` | the updated channel. Needs `edit` |
+
+A channel is `{ channelId, name, topic?, archivedAt?, isDefault }`. Names are
+1–80 characters of lowercase ASCII letters and digits in hyphen-separated runs
+(`design`, `launch-plan`); they are parsed exactly, never normalized, and are
+unique within the Project, archived channels included (`409
+project_room_duplicate`). Topics are one line of at most 250 bytes. A Project
+holds at most 50 channels, archived ones included (`429 project_room_capacity`).
+Past either limit the server refuses rather than truncating. An archived channel
+serves discovery and history, but refuses messages, note edits and Agent
+requests (`409 project_room_archived`). The default channel can be renamed but
+not archived.
+
+Upgrading moves each Project's existing room into `#general` with its room UUID,
+history, note and Agent requests unchanged. Rooms created by an older Station
+after the upgrade are adopted the next time the store opens.
+
 Reads, discussion, note editing and execution require their distinct current
 Project actions plus transport permission. Agent requests also require current
 host execution permission and the selected Project execution root. Membership

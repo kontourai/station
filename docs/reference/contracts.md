@@ -2275,6 +2275,19 @@ publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
 no such lock spans provider execution. Unsharing can withhold a pending answer,
 but does not retroactively redact text already published in the Room.
 
+A Project's room holds named channels (`ProjectRoomChannel`): each channel is
+one room, and its `channelId` is that room's `roomId`. The existing room is
+the default channel, named `PROJECT_ROOM_DEFAULT_CHANNEL_NAME` (`general`).
+`PROJECT_ROOM_LIMITS` bounds channels per Project (`channelsPerProject`, 50,
+archived included), name length (`channelNameLength`, 80) and topic size
+(`channelTopicBytes`, 250). `parseProjectRoomChannelName` accepts lowercase
+ASCII letters and digits in hyphen-separated runs and refuses anything else,
+including a name one character past the limit; it never trims, lowercases or
+truncates. `projectRoomChannelNameProblem` and `projectRoomChannelTopicProblem`
+name the reason (`empty`, `too_long`, `format`) so a client can explain it
+inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInput`
+(`topic: null` clears) and `parseProjectRoomChannelList` are the wire parsers.
+
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
 

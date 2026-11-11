@@ -775,8 +775,34 @@ invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
 
+`useProjectRoom(scope, slug, projectId, channelId?)` addresses one channel.
+Without `channelId` it is the default channel at `/room`, with the same request
+paths and cache keys as before channels. With it, every read, write, presence
+call and the event stream use `/channels/:channelId`, and the cache root is
+`projectRoomChannelKey(...)`, which shares no prefix with the default room's
+key, so leaving one channel never clears another's cache. Each React-free
+per-room client (`discoverProjectRoom`, `fetchProjectRoomHistory`,
+`sendProjectRoomMessage`, `saveProjectRoomNote`, `setProjectRoomPresence`,
+`subscribeProjectRoom`, `projectRoomAgentRequest`) takes the same optional
+trailing `channelId`, and `useProjectRoomAgent` takes it as its last argument.
+
+`useProjectRoomChannels(scope, slug, projectId)` lists the Project's channels
+(`listProjectRoomChannels`) and exposes `create` and `update` mutations
+(`createProjectRoomChannel`, `updateProjectRoomChannel`). Both send the
+discovered `expectedProjectId` and `expectedActorId` guards and refresh the list
+on success. `unsupported` is true when the host answers 404 for the list: it
+predates channels, so show only the default room. Clients check names and
+topics with the contract parsers before sending; the server's refusal codes
+(`project_room_duplicate`, `project_room_capacity`, `project_room_archived`)
+arrive as `StationHttpError.code`.
+
+The embeddable `ProjectRoom` UI shows the current channel's `# name` and topic
+in its header. The name opens a channel list (an anchored panel on desktop, a
+sheet on phones) with the current channel marked and archived channels folded
+away; people with `edit` also get New channel there and Rename, Topic and
+Archive in the header's settings menu. An archived channel is read-only.
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
-session storage before sending. A lost acknowledgement or reload offers an
+session storage before sending, per channel. A lost acknowledgement or reload offers an
 explicit retry of that exact payload and UUID; it never automatically resends.
 Changing authority, Project, or discovered actor retires the prior draft.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
