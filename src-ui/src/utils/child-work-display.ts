@@ -77,10 +77,13 @@ export function childWorkGroupLabel(
   const count = items.length;
   if (kinds.size === 1) {
     const [kind] = kinds;
-    if (kind === 'agent') return count === 1 ? '1 subagent' : `${count} subagents`;
+    if (kind === 'agent')
+      return count === 1 ? '1 subagent' : `${count} subagents`;
     if (kind === 'monitor')
       return count === 1 ? '1 monitor' : `${count} monitors`;
-    return count === 1 ? '1 background command' : `${count} background commands`;
+    return count === 1
+      ? '1 background command'
+      : `${count} background commands`;
   }
   return `${count} background tasks`;
 }
@@ -102,7 +105,8 @@ export function childWorkResultText(
   if (!summary || summary === title.trim()) return undefined;
   if (childWorkKindOf(item) !== 'agent') {
     const match = CLAUDE_COMMAND_SUMMARY.exec(summary);
-    if (match) return match[1] !== undefined ? `Exit code ${match[1]}` : undefined;
+    if (match)
+      return match[1] !== undefined ? `Exit code ${match[1]}` : undefined;
   }
   return summary;
 }

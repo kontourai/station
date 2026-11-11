@@ -27,11 +27,11 @@ import { writeLayoutSessionPanels } from '../../../lib/layout-panels-record';
 import { createFilePreviewPaneInstance } from '../../../workspace-panes/filePreviewPaneInstance';
 import { usePaneHeadSlots } from '../../../workspace-panes/PaneHeadSlots';
 import { useRegionChromeSlots } from '../../../workspace-panes/RegionChromeSlots';
-import { MobileDockHeaderLeadingContext } from '../../chat-dock/MobileDockHeaderLeading';
 import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
 import { ActionOverflowMenu } from '../../ActionOverflowMenu';
+import { MobileDockHeaderLeadingContext } from '../../chat-dock/MobileDockHeaderLeading';
 import { CodingWorkbench } from '../CodingWorkbench';
 import {
   resolveCodingStackLocation,

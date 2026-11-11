@@ -76,8 +76,8 @@ import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspac
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
-import { MobileDockHeaderLeadingContext } from '../chat-dock/MobileDockHeaderLeading';
 import { inboxToggleLabel } from '../chat-dock/inbox-toggle-label';
+import { MobileDockHeaderLeadingContext } from '../chat-dock/MobileDockHeaderLeading';
 import { Dialog } from '../Dialog';
 import {
   ArrowDownGlyph,
@@ -1419,7 +1419,9 @@ export function CodingWorkbench({
               ref={setBarTrailing}
             />
           ) : null}
-          {browserExperienceEnabled && browserPreviewAvailability && !isMobile ? (
+          {browserExperienceEnabled &&
+          browserPreviewAvailability &&
+          !isMobile ? (
             <Button
               variant="ghost"
               size="sm"

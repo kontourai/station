@@ -276,7 +276,9 @@ export function ChildWorkRow({
           {summary && (
             <p className="child-work-row__summary">
               <strong>
-                {isAgent ? childWorkSummaryLabel(item.result?.source) : 'Result'}
+                {isAgent
+                  ? childWorkSummaryLabel(item.result?.source)
+                  : 'Result'}
               </strong>
               {' · '}
               <span>{summary}</span>

@@ -2833,8 +2833,9 @@
 .message-details__lead :is(.message__model-claim, .message__model-badge) {
   padding: 2px 7px;
   border-radius: 4px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: var(--k-panel-raised);
+  /* The attribution chips' text colour, in canonical tokens. */
+  color: color-mix(in srgb, var(--k-text) 50%, var(--k-text-muted));
   font-family: inherit;
   font-size: var(--k-text-sm);
   font-style: normal;
@@ -2844,7 +2845,7 @@
   margin: 0;
 }
 .message-details__lead .message__model-claim-label {
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   font-weight: 400;
 }
 /* The bubble truncates a long Station label to fit its width cap; the sheet

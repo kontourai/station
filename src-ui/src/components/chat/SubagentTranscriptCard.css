@@ -321,7 +321,7 @@
   padding: var(--k-space-2);
   border-radius: var(--k-radius-sm);
   background: var(--k-panel);
-  font-family: var(--font-mono);
+  font-family: var(--k-font-mono);
   font-size: var(--k-text-xs);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

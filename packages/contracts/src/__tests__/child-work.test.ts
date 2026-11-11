@@ -11,12 +11,12 @@ import {
   childWorkDisplayStatus,
   childWorkForReporter,
   childWorkKey,
+  childWorkKindOf,
   childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
   parseChildWorkTranscriptRef,
   projectDelegateChildWork,
-  childWorkKindOf,
 } from '../child-work.js';
 
 const REPORTER = 'thread-1';

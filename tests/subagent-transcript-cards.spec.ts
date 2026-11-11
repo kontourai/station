@@ -775,9 +775,9 @@ test.describe('subagent transcript cards', () => {
     await expect(page.getByText(/^Ran \d+ commands?/)).toHaveCount(0);
     // Each command's title is drawn once: the card stands in for its call.
     for (const command of shellCommands)
-      await expect(
-        page.getByText(command.title, { exact: true }),
-      ).toHaveCount(1);
+      await expect(page.getByText(command.title, { exact: true })).toHaveCount(
+        1,
+      );
     await group.click();
     const card = page
       .getByTestId('subagent-card')
@@ -790,9 +790,9 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText(shellCommands[0]!.command)).toBeVisible();
     await expect(page.getByText('model not reported')).toHaveCount(0);
     await expect(page.getByText(/Instruction history/)).toHaveCount(0);
-    await expect(
-      page.locator('.background-tasks-banner__label'),
-    ).toHaveText(/^Background command running — Watch until merged/);
+    await expect(page.locator('.background-tasks-banner__label')).toHaveText(
+      /^Background command running — Watch until merged/,
+    );
     return card;
   }
 

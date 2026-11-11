@@ -1369,41 +1369,46 @@ describe('subagent transcript cards', () => {
   test.each([
     ['reported', 'command' as const],
     ['history', undefined],
-  ])('a background shell command (%s) is one command card, never a subagent', async (_name, workKind) => {
-    windowEvents.current = shellTurn(
-      [
-        {
-          id: 'toolu_bash_1',
-          title: 'Push empty commit to re-trigger CI',
-          command: 'git commit --allow-empty -m retrigger && git push',
-        },
-      ],
-      workKind,
-    );
-    renderTranscript();
-    const card = await findCard();
-    await within(card).findByText('Run finished');
-    // The card stands in for the Bash call: the title is drawn once.
-    expect(
-      screen.getAllByText('Push empty commit to re-trigger CI'),
-    ).toHaveLength(1);
-    // The engine's summary only restates the title; its exit code is the news.
-    expect(within(card).getByText('Exit code 0')).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { expanded: false }));
-    expect(within(card).getByText('Background command')).toBeTruthy();
-    expect(
-      within(card).getByText(
-        'git commit --allow-empty -m retrigger && git push',
-      ),
-    ).toBeTruthy();
-    expect(within(card).queryByText('model not reported')).toBeNull();
-    expect(within(card).queryByText('local_bash', { exact: false })).toBeNull();
-    expect(
-      within(card).queryByText(/Instruction history|Station instructions/),
-    ).toBeNull();
-    expect(within(card).queryByText('Provider summary')).toBeNull();
-    expect(unexpectedRequests).toEqual([]);
-  });
+  ])(
+    'a background shell command (%s) is one command card, never a subagent',
+    async (_name, workKind) => {
+      windowEvents.current = shellTurn(
+        [
+          {
+            id: 'toolu_bash_1',
+            title: 'Push empty commit to re-trigger CI',
+            command: 'git commit --allow-empty -m retrigger && git push',
+          },
+        ],
+        workKind,
+      );
+      renderTranscript();
+      const card = await findCard();
+      await within(card).findByText('Run finished');
+      // The card stands in for the Bash call: the title is drawn once.
+      expect(
+        screen.getAllByText('Push empty commit to re-trigger CI'),
+      ).toHaveLength(1);
+      // The engine's summary only restates the title; its exit code is the news.
+      expect(within(card).getByText('Exit code 0')).toBeTruthy();
+      fireEvent.click(within(card).getByRole('button', { expanded: false }));
+      expect(within(card).getByText('Background command')).toBeTruthy();
+      expect(
+        within(card).getByText(
+          'git commit --allow-empty -m retrigger && git push',
+        ),
+      ).toBeTruthy();
+      expect(within(card).queryByText('model not reported')).toBeNull();
+      expect(
+        within(card).queryByText('local_bash', { exact: false }),
+      ).toBeNull();
+      expect(
+        within(card).queryByText(/Instruction history|Station instructions/),
+      ).toBeNull();
+      expect(within(card).queryByText('Provider summary')).toBeNull();
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
 
   test('two background commands group as commands, counted in plain words', async () => {
     windowEvents.current = shellTurn(

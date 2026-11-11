@@ -195,7 +195,9 @@ export function SubagentTranscriptCard({
           </span>
           {expanded && !isAgent && (
             <span className="subagent-card__meta">
-              {workKind === 'monitor' ? 'Background monitor' : 'Background command'}
+              {workKind === 'monitor'
+                ? 'Background monitor'
+                : 'Background command'}
             </span>
           )}
           {expanded && isAgent && (
@@ -262,7 +264,9 @@ export function SubagentTranscriptCard({
           {summary ? (
             <div className="subagent-card__summary">
               <span className="subagent-card__note">
-                {isAgent ? childWorkSummaryLabel(item.result?.source) : 'Result'}
+                {isAgent
+                  ? childWorkSummaryLabel(item.result?.source)
+                  : 'Result'}
               </span>
               <LazyMarkdown>{summary}</LazyMarkdown>
             </div>
