@@ -1223,7 +1223,10 @@ reach the listed hosts over HTTPS only, through the proxy variables Station
 sets; `ssh` and plain HTTP are blocked. Station also does not let such a
 session drive a device, render HTML previews, start or steer other
 sessions, or change Station's settings, since each would act outside its
-sandbox; an agent can never change `confinedNetwork`. A session that is
+sandbox. Station's settings route refuses an agent that tries to change
+`confinedNetwork`; as for the terminal shell, an agent running on the host
+with a shell of its own could still edit Station's configuration files. A
+session that is
 started at Auto or Ask, by anyone or anything, runs with an open network:
 only confined sessions are restricted. See
 [restricted network](../design/approval-posture-server-ordered.md#restricted-network-4769).

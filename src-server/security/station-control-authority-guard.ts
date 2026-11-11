@@ -478,6 +478,10 @@ export function createStationControlAuthorityGuard(
       options.networkRestrictedSession &&
       restrictedNetworkRouteWithheld(method, path)
     ) {
+      // Fail closed: a reader that throws refuses this call, also for a
+      // session that started unrestricted. Only routes whose tools are all
+      // withheld reach here, and the caller resolver above already read the
+      // same store, so a broken store has normally failed before this.
       let restricted = true;
       try {
         restricted = options.networkRestrictedSession(caller.sessionId);

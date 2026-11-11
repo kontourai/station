@@ -223,9 +223,10 @@ Station checks an Agent's dispatch against its verified Session caller:
   global scope and cannot reach a conversation that runs unconfined (`host`).
 - A Session whose network Station restricts
   ([`confinedNetwork`](../reference/config.md#optional-fields)) is not given
-  the dispatch tools at all, nor the device, HTML-preview and settings tools;
-  the server refuses their routes for it with
-  `station_control_network_restricted` (#4769).
+  the dispatch tools at all, nor the device, HTML-preview and settings tools.
+  The server refuses it, with `station_control_network_restricted`, every
+  route owned only by withheld tools; a route a kept tool shares stays open
+  to the kept tool's calls (#4769).
 
 Here, `bound` describes verified caller assurance, not a selected approval mode.
 A plain folder target belongs to the deepest Project whose canonical working

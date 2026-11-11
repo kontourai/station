@@ -69,7 +69,10 @@ vi.mock('../auth/cli-auth.js', () => ({
   runCliCommand: vi.fn(async () => null),
 }));
 
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   type ConfinementProvider,
   ConfinementRefusedError,
@@ -85,7 +88,11 @@ import {
   sessionTempRoot,
   sessionTmpRoot,
 } from '../../services/infra/session-tmpdir.js';
-import { RESTRICTED_NETWORK_STATION_CONTROL_TOOLS } from '../../tools/station-control-policy.js';
+import {
+  RESTRICTED_NETWORK_STATION_CONTROL_TOOLS,
+  restrictedNetworkStationControlTools,
+  STATION_CONTROL_TOOL_POLICY,
+} from '../../tools/station-control-policy.js';
 import {
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -198,6 +205,8 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       stationBrowser?: true;
       /** Records the tools each in-process station-control server was given. */
       stationControl?: (allowedTools: readonly string[] | undefined) => void;
+      /** Further adapter options, as given. */
+      extra?: Partial<ConstructorParameters<typeof ClaudeAdapter>[0]>;
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
       /** Inject nothing: the adapter picks the server's own provider. */
@@ -208,6 +217,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
   ) {
     decisionLog = [];
     adapter = new ClaudeAdapter({
+      ...options.extra,
       logNetworkDecision: (details) => decisionLog.push(details),
       ...(options.stationBrowser
         ? { createInProcessStationBrowser: () => ({}) as never }
@@ -1234,13 +1244,32 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
 
   test('#4769: a restricted session gets station-control without the tools that act outside its sandbox (devices, previews, delegation, settings)', async () => {
     const given: Array<readonly string[] | undefined> = [];
-    createAdapter({ stationControl: (tools) => given.push(tools) });
+    const knowledge: Array<readonly string[] | undefined> = [];
+    createAdapter({
+      stationControl: (tools) => given.push(tools),
+      extra: {
+        createInProcessStationKnowledge: (
+          _threadId: string,
+          _tenant?: unknown,
+          allowedTools?: readonly string[],
+        ) => {
+          knowledge.push(allowedTools);
+          return { connect: vi.fn(), close: vi.fn() } as never;
+        },
+      },
+    });
     const toolServers = [
       {
         id: 'station-control',
         transport: 'stdio' as const,
         command: 'node',
         args: [builtinStationControlServerPath()],
+      },
+      {
+        id: 'station-knowledge',
+        transport: 'stdio' as const,
+        command: 'node',
+        args: [builtinStationKnowledgeServerPath()],
       },
     ];
     for (const [threadId, plan] of [
@@ -1276,6 +1305,77 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
         RESTRICTED_NETWORK_STATION_CONTROL_TOOLS.has(name),
       ),
     ).toBe(true);
+    // The knowledge server is held to the same allow-list.
+    expect(knowledge[0]).toBeUndefined();
+    expect(knowledge[1]).toEqual(restrictedNetworkStationControlTools());
+    expect(knowledge[1]).toContain('search_knowledge');
+  });
+
+  test('#4769: a coordinator session restricted at its start keeps the narrow station-control set when its tools are connected live', async () => {
+    const given = new Map<string, readonly string[] | undefined>();
+    createAdapter({
+      extra: {
+        isCoordinatorSession: () => true,
+        resolveCoordinatorStationControl: async () => ({
+          id: 'station-control',
+          transport: 'stdio' as const,
+          command: 'node',
+          args: [builtinStationControlServerPath()],
+          coordinatorDerived: true,
+          coordinatorGeneration: 0,
+        }),
+        createInProcessCoordinatorStationControl: (
+          threadId: string,
+          _tenant?: unknown,
+          allowedTools?: readonly string[],
+        ) => {
+          given.set(threadId, allowedTools);
+          return { connect: vi.fn(), close: vi.fn() } as never;
+        },
+      },
+    });
+    for (const [threadId, plan] of [
+      ['coordinator-open', SEATBELT_PLAN],
+      ['coordinator-restricted', RESTRICTED_PLAN],
+    ] as const) {
+      const query = startingQuery(Promise.resolve({})) as ReturnType<
+        typeof startingQuery
+      > & {
+        setMcpServers?: ReturnType<typeof vi.fn>;
+        mcpServerStatus?: ReturnType<typeof vi.fn>;
+      };
+      query.setMcpServers = vi.fn().mockResolvedValue({
+        added: ['station-control'],
+        removed: [],
+        errors: {},
+      });
+      query.mcpServerStatus = vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValue([
+          {
+            name: 'station-control',
+            source: 'sdk',
+            status: 'connected',
+            tools: Object.keys(STATION_CONTROL_TOOL_POLICY).map((name) => ({
+              name,
+            })),
+          },
+        ]);
+      await startConfined(threadId, {
+        confinementPlan: plan,
+        agent: { slug: 'agent', toolServers: [] },
+      });
+      // The live connection happens before the turn is dispatched; what the
+      // turn does after it is not under test.
+      void adapter.sendTurn({ threadId, input: 'go' }).catch(() => undefined);
+      await vi.waitFor(() => expect(given.has(threadId)).toBe(true));
+    }
+    expect(given.get('coordinator-open')).toBeUndefined();
+    const restricted = given.get('coordinator-restricted')!;
+    expect(restricted).toEqual(restrictedNetworkStationControlTools());
+    expect(restricted).not.toContain('device_open');
+    expect(restricted).not.toContain('delegate_task');
   });
 
   test("#4769: a restricted session is not given Station's in-process browser, which runs outside the sandbox", async () => {

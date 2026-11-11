@@ -82,6 +82,9 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
     const decided = await authorizeDeviceAgentCaller(access);
     if (!decided.ok) return c.json(decided);
     if (deps.networkRestrictedSession) {
+      // Fail closed: a reader that throws refuses the call, also for a
+      // session that started unrestricted (the caller resolution above read
+      // the same store, so a broken store has normally failed already).
       let restricted = true;
       try {
         restricted = deps.networkRestrictedSession(decided.authority.sessionId);

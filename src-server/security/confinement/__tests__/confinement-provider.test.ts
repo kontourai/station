@@ -5,18 +5,26 @@
  * parsing. The start path, the Codex adapter and the delegation route own
  * the integration evidence.
  */
+
+import { join } from 'node:path';
 import type { ConfinementMechanism } from '@kontourai/station-contracts/execution-confinement';
-import { describe, expect, test } from 'vitest';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { afterAll, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { codexSandboxConfinementProvider } from '../../../providers/adapters/codex-confinement.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   assertRequiredConfinementObserved,
   type ConfinementProvider,
   confinedNetworkPlan,
+  fallbackConfinementRecord,
   loadConfinedNetworkPlan,
+  noMechanismConfinementRecord,
   observedConfinementRecord,
   readConfinementRecord,
   requiredConfinementLevel,
   resolveConfinement,
+  sessionNetworkRestricted,
 } from '../confinement-provider.js';
 
 function provider(
@@ -409,5 +417,116 @@ describe('#4769: a restricted network policy', () => {
     expect(
       readConfinementRecord({ ...record, network: 'open' }),
     ).toBeUndefined();
+  });
+});
+
+describe('#4769: whether a session started restricted, read from the real event store', () => {
+  const makeTempDir = trackTempDirs({ lifetime: 'file' });
+  const store = new EventStore(
+    join(makeTempDir('session-network-'), 'orchestration.sqlite'),
+  );
+  afterAll(() => store.close());
+  const PLAN = {
+    requiredLevel: 'os-profile',
+    policyBasis: 'workspace-floor',
+    mechanism: 'seatbelt',
+    level: 'os-profile',
+    workspaceAccess: 'mounted',
+  } as const;
+  const RESTRICTED_PLAN = {
+    ...PLAN,
+    network: { policy: 'restricted', allowedHosts: [] },
+  } as const;
+  let sequence = 0;
+  /** A `session.started` as the adapters write it. */
+  function started(threadId: string, metadata?: Record<string, unknown>) {
+    sequence += 1;
+    store.appendEvent({
+      eventId: `${threadId}-started-${sequence}`,
+      provider: 'claude',
+      threadId,
+      sessionId: threadId,
+      createdAt: new Date(Date.UTC(2026, 10, 11, 0, 0, sequence)).toISOString(),
+      method: 'session.started',
+      ...(metadata ? { metadata } : {}),
+    } as CanonicalRuntimeEvent);
+  }
+  const record = (value: unknown) => ({ stationConfinementRecord: value });
+
+  test('a start observed confined under the broker-only profile reads as restricted', () => {
+    started(
+      'restricted',
+      record(
+        observedConfinementRecord(
+          RESTRICTED_PLAN,
+          'confined',
+          [],
+          'restricted',
+        ),
+      ),
+    );
+    expect(sessionNetworkRestricted(store, 'restricted')).toBe(true);
+  });
+
+  test('an open confined start, a fallback, a host start, a start before #4769 and no start read as not restricted', () => {
+    started(
+      'open',
+      record(observedConfinementRecord(PLAN, 'confined', [], 'full')),
+    );
+    started(
+      'fallback',
+      record(fallbackConfinementRecord(RESTRICTED_PLAN, 'workspace-too-broad')),
+    );
+    started(
+      'host',
+      record(
+        noMechanismConfinementRecord({
+          requiredLevel: 'host',
+          policyBasis: 'operator-policy',
+        }),
+      ),
+    );
+    started('older', { cwd: '/x' });
+    for (const id of ['open', 'fallback', 'host', 'older', 'never-started'])
+      expect(sessionNetworkRestricted(store, id), id).toBe(false);
+    expect(sessionNetworkRestricted(undefined, 'restricted')).toBe(false);
+    // A record that is not one (a forged or corrupt value) is not restricted.
+    started('corrupt', record({ network: 'restricted' }));
+    expect(sessionNetworkRestricted(store, 'corrupt')).toBe(false);
+  });
+
+  test('the latest start wins, in either direction', () => {
+    started(
+      'opened-later',
+      record(
+        observedConfinementRecord(
+          RESTRICTED_PLAN,
+          'confined',
+          [],
+          'restricted',
+        ),
+      ),
+    );
+    started(
+      'opened-later',
+      record(observedConfinementRecord(PLAN, 'confined', [], 'full')),
+    );
+    expect(sessionNetworkRestricted(store, 'opened-later')).toBe(false);
+    started(
+      'restricted-later',
+      record(observedConfinementRecord(PLAN, 'confined', [], 'full')),
+    );
+    started(
+      'restricted-later',
+      record(
+        observedConfinementRecord(
+          RESTRICTED_PLAN,
+          'confined',
+          [],
+          'restricted',
+        ),
+      ),
+    );
+    expect(sessionNetworkRestricted(store, 'restricted-later')).toBe(true);
   });
 });

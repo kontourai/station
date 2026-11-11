@@ -1656,10 +1656,19 @@ connections to Station's egress broker. Domain shapes are in
       `delegate_task`, `fork_conversation`, `run_independent_review` and the
       Task tools): a child at Auto or Ask would not be network-restricted.
     - Operator-scope changes a session acting for the operator could
-      otherwise make: `update_config` (an agent may not change
-      `confinedNetwork` through any channel either), Agents, skills, jobs,
+      otherwise make: `update_config` (and `PUT /config/app` refuses any
+      agent's change to `confinedNetwork`; an agent on the host with a shell
+      of its own could still edit the configuration file, as for
+      `terminalShell`), Agents, skills, jobs,
       integrations, providers, plugins, SSH environments, knowledge
       reindexing and migration, pull-request guides.
+
+    The guard refuses only a route owned solely by withheld tools; a route a
+    kept tool shares stays open. Both readers fail closed: if the store read
+    throws, the call is refused, also for a session that started
+    unrestricted (the caller resolver reads the same store first, so a
+    broken store normally fails before this). The in-process
+    station-knowledge server is held to the same allow-list.
 
     Kept and gated otherwise: `terminal_run` runs a command outside the
     sandbox only once a person approves that run; `propose_job` and
@@ -1669,7 +1678,15 @@ connections to Station's egress broker. Domain shapes are in
     the Project S3 reads of configured buckets) send nothing the session
     chooses beyond an object key in the operator's own bucket. The
     model-catalog probe is Station's own request to the connection's
-    endpoint.
+    endpoint. Three kept tools send to hosts the broker does not cover:
+    - `search_knowledge` sends the agent's query text to the configured
+      embedding provider, a host the operator chose.
+    - `declare_pull_request` and `read_pull_request_guide` read the forge for
+      the Project's own repository.
+    - An approved `terminal_run` executes on the host with an open network,
+      and its approval card does not say the session is restricted
+      (carrying that to the card needs the run record to name the
+      session's network; not built).
   - The broker rule admits this host's own addresses at the broker's port,
     so another local program listening there on a non-loopback address (the
     broker holds only `127.0.0.1`) would be reachable. Local only: another

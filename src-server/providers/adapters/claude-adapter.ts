@@ -4382,7 +4382,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 this.options.createInProcessStationKnowledge!(
                   input.threadId,
                   tenantExecutionContext,
-                  allowedTools,
+                  // #4769: the same allow-list as station-control, so a
+                  // knowledge tool withheld later is withheld here too.
+                  input.confinementPlan?.network
+                    ? restrictedNetworkStationControlTools(allowedTools)
+                    : allowedTools,
                   ...(knowledge?.coordinatorDerived
                     ? [knowledge.coordinatorGeneration]
                     : []),
