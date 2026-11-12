@@ -1034,7 +1034,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
         },
         service as never,
       ),
-    ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+    ).rejects.toMatchObject({ code: 'create_request_conflict' });
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
   });
