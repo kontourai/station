@@ -7,6 +7,12 @@ import { buildHomeWorkItems } from '../../../views/home/home-view-model';
 import { buildWorkFacts } from '../../../views/home/work-facts';
 import { renderHomeWorkRow } from '../HomeWorkRow';
 
+// #4695: a running row reads its Session's plan; these rows report none.
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
+}));
+
 const LAST_PROGRESS_AT = '2026-08-24T12:00:00.000Z';
 
 /**
