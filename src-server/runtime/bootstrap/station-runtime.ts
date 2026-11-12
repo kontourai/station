@@ -223,7 +223,6 @@ import type { NotificationService } from '../../services/notifications/notificat
 import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { createRuntimeLifecycleOperationalEvent } from '../../services/operational-events/runtime-lifecycle-operational-event.js';
 import type { AttachedSessionFollowService } from '../../services/orchestration/attached-session-follow-service.js';
-import { ownerDevicePredicate } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -253,7 +252,6 @@ import {
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
-import { readMarkerMigrationRecipients } from '../../services/read-markers/read-marker-upgrade.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
@@ -1683,23 +1681,6 @@ export class StationRuntime {
       this.orchestrationDatabasePath = orchestrationDatabasePath;
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
-        undefined,
-        undefined,
-        undefined,
-        // #3075: who receives the read-state baseline, frozen with the
-        // content migration's cutoff. Owner-device records resolve through
-        // pairing, which `runInitialize` brings up; the migration waits for
-        // it there (`beginContentMigration`), with the cutoff taken here.
-        {
-          contentMigrationRecipients: () =>
-            readMarkerMigrationRecipients(
-              projectHomeDir,
-              ownerDevicePredicate(() =>
-                this.environmentSecurityService.devicePairing.listDevices(),
-              ),
-            ),
-          deferContentMigration: true,
-        },
       );
       this.orchestrationEventStore.bindSessionActivity(
         (threadId) =>
@@ -4243,9 +4224,6 @@ export class StationRuntime {
     // Identity/credential state is a startup invariant. Corrupt or unsafe
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
-    // #3075: pairing is up, so the recipients frozen with the cutoff resolve
-    // owner devices as requests will; this precedes every route.
-    this.orchestrationEventStore.beginContentMigration();
     this.logManagedCredentialSuspension();
     this.stationEnvironmentId = identity.environmentId;
     try {

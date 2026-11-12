@@ -5,8 +5,10 @@
  * store in a temporary directory. Only the conversation/room readers below
  * the version sources are fixtures.
  */
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
@@ -38,10 +40,7 @@ import {
   FileReadMarkerStore,
   READ_MARKER_STORE_FILE,
 } from '../../../services/read-markers/read-marker-store.js';
-import {
-  readMarkerMigrationRecipients,
-  upgradeReadMarkerStore,
-} from '../../../services/read-markers/read-marker-upgrade.js';
+import { upgradeReadMarkerStore } from '../../../services/read-markers/read-marker-upgrade.js';
 import {
   projectRoomVersionSource,
   taskRoomVersionSource,
@@ -72,7 +71,7 @@ function conversation(id: string, updatedAt: string): ConversationListItem {
   return {
     id,
     source: 'runtime',
-    agentSlug: 'default' as ConversationListItem['agentSlug'],
+    agentSlug: agentId('default'),
     title: id,
     createdAt: T1,
     updatedAt,
@@ -136,8 +135,6 @@ function station(
      * epoch-ms versions); epoch 0 unless a test says otherwise.
      */
     baseline?: string;
-    /** The people who had a record when read state began. */
-    established?: string[];
     /**
      * A hosted Station with tenant `alpha`. The test header names a verified
      * person, or `tenant-only` for a request carrying only the tenant.
@@ -160,12 +157,16 @@ function station(
   const conversations = options.conversations ?? new Map([['c1', T1]]);
   const personOf = (request: Request) =>
     request.headers.get('x-test-person') ?? '';
+  // `owner-phone` is a paired device with owner standing, `visitor-phone`
+  // one without; both reach the service as device principals.
   const principalOf = (person: string) =>
     person === 'operator'
       ? LOCAL_OPERATOR_PRINCIPAL_ID
       : person === 'owner-alias'
         ? 'owner-alias'
-        : `human:test:${person}`;
+        : person.endsWith('-phone')
+          ? `human:device:${person}`
+          : `human:test:${person}`;
   const hostedRegistry = parseHostedTenantRegistry({
     schemaVersion: 1,
     tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
@@ -241,13 +242,14 @@ function station(
   // The baseline in both spaces: the fixtures' versions are epoch ms.
   const baselineAt = options.baseline ? Date.parse(options.baseline) : 0;
   const store = new FileReadMarkerStore(dir);
-  // Read state begins as the runtime begins it, once per home.
-  if (store.pendingUpgrade())
-    store.completeUpgrade({
-      baselineSequence: baselineAt,
-      baselineTime: baselineAt,
-      establishedPrincipals: options.established ?? [],
-    });
+  // Read state begins as the runtime begins it, once per home, here at a
+  // cutoff and time both `baselineAt`.
+  upgradeReadMarkerStore({
+    store,
+    events: { contentUpgradeFence: () => baselineAt },
+    hosted: options.hosted === true,
+    now: new Date(baselineAt),
+  });
   const acknowledgements = new FileConversationAcknowledgementStore(dir);
   const service = new ReadMarkerService({
     store,
@@ -259,6 +261,7 @@ function station(
         ? readMarkerPersonKey({
             authority: authorityFor(c.req.raw),
             principal: () => principalFor(c.req.raw),
+            isOwnerDevice: (deviceId) => deviceId === 'owner-phone',
           })
         : undefined,
     onChanged: (personKey: string) => changed.push(personKey),
@@ -515,16 +518,17 @@ describe('POST /api/read-markers/mark', () => {
         ['c2', T2],
       ]),
       baseline: '2026-11-01T10:02:00.000Z',
-      // Ada had a record when read state began.
-      established: ['human:test:ada'],
     });
-    const before = await s.inventory('ada');
+    // The owner (the local operator) is the one person with a baseline.
+    const before = await s.inventory('operator');
     expect(before.get('c1')?.readState?.unread).toBe(false);
     expect(before.get('c2')?.readState?.unread).toBe(true);
 
-    const low = await s.mark('ada', c1, V1 - 1);
+    const low = await s.mark('operator', c1, V1 - 1);
     expect((await json(low)).data.unread).toBe(false);
-    expect((await s.inventory('ada')).get('c1')?.readState?.unread).toBe(false);
+    expect((await s.inventory('operator')).get('c1')?.readState?.unread).toBe(
+      false,
+    );
   });
 
   test('survives a reload: a new store over the same home reads the same markers', async () => {
@@ -1042,9 +1046,37 @@ describe('file conversation ids keep their contract (#4813 round 3)', () => {
   });
 });
 
-describe('the migration baseline belongs to established principals (#4813 fence round)', () => {
-  test('a person with a record before the upgrade keeps the baseline; a person first seen after it starts without', async () => {
-    // A first-format home: Ada has a record, Bob has none.
+describe('the migration baseline belongs to the personal owner alone (#4813 owner rule)', () => {
+  const history = new Map([
+    ['c1', T1],
+    ['c2', T2],
+  ]);
+
+  test('a device with owner standing keeps its read state; a visitor device and any other person start unread', async () => {
+    // Everyone below viewed c1 before the upgrade; none of that is sampled.
+    for (const userId of ['human:device:visitor-phone', 'human:test:ada'])
+      new FileConversationAcknowledgementStore(dir).acknowledge({
+        userId,
+        conversationId: 'c1',
+        updatedAt: T1,
+      });
+    const s = station({
+      conversations: history,
+      baseline: '2026-11-01T10:02:00.000Z',
+    });
+    for (const owner of ['owner-phone', 'operator'])
+      expect(
+        (await s.inventory(owner)).get('c1')?.readState?.unread,
+        owner,
+      ).toBe(false);
+    for (const other of ['visitor-phone', 'ada', 'bob'])
+      expect(
+        (await s.inventory(other)).get('c1')?.readState?.unread,
+        other,
+      ).toBe(true);
+  });
+
+  test('hosted: nobody has a baseline, including a person with a first-format record; their room markers carry over', async () => {
     writeFileSync(
       join(dir, READ_MARKER_STORE_FILE),
       JSON.stringify({
@@ -1057,43 +1089,20 @@ describe('the migration baseline belongs to established principals (#4813 fence 
         },
       }),
     );
-    upgradeReadMarkerStore({
-      store: new FileReadMarkerStore(dir),
-      // The recipient snapshot the event store froze with its cutoff.
-      events: {
-        contentUpgradeFence: () => V1,
-        contentMigrationRecipients: () =>
-          readMarkerMigrationRecipients(dir, () => false),
-      },
-      now: new Date(T2),
-    });
     const s = station({
       hosted: true,
-      room: { roomId: 'room-1', lastSeq: 3, members: ['ada', 'bob'] },
-      taskRoom: {
-        channelId: 'task-channel',
-        epoch: 1,
-        throughSeq: 4,
-        members: ['ada', 'bob'],
-      },
+      conversations: history,
+      baseline: '2026-11-01T10:02:00.000Z',
+      room: { roomId: 'room-1', lastSeq: 3, members: ['ada'] },
     });
     const room = {
       kind: 'project-room',
       projectSlug: 'alpha',
       roomId: 'room-1',
     };
-    const task = { kind: 'task-room', taskId: 'task-1' };
-    // The agent fence touches neither room's own sequence nor Ada's marker.
-    const adaRooms = await json(await s.summary('ada', [room, task]));
-    expect(
-      adaRooms.data.items.map((i: { unreadCount: number }) => i.unreadCount),
-    ).toEqual([1, 4]);
-    // Ada had a record: content up to the fence reads as it did before.
+    const adaRoom = await json(await s.summary('ada', [room]));
+    expect(adaRoom.data.items[0].unreadCount).toBe(1);
     expect((await s.inventory('ada')).get('c1')?.readState).toMatchObject({
-      unread: false,
-    });
-    // Bob was never seen: uncertain is unread.
-    expect((await s.inventory('bob')).get('c1')?.readState).toMatchObject({
       unread: true,
     });
   });

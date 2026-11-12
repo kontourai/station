@@ -8,6 +8,7 @@
  * Nothing else decides "unread": the old client `hasUnread` is gone.
  */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import { conversationQueries } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -54,7 +55,7 @@ function inventoryItem(
   return {
     id,
     source: 'runtime',
-    agentSlug: 'default' as ConversationListItem['agentSlug'],
+    agentSlug: agentId('default'),
     title: `${id} title`,
     createdAt: '2026-11-11T11:00:00.000Z',
     updatedAt: UPDATED_AT,
@@ -201,7 +202,7 @@ describe('inbox unread state comes from the server', () => {
     const lost = fromServer('lost', {
       version: VERSION,
       unavailable: true,
-    } as unknown as ConversationListItem['readState']);
+    });
     render(
       <QueryClientProvider client={client}>
         <ChatDockInboxPanel

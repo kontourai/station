@@ -206,20 +206,14 @@ export class FileConversationAcknowledgementStore
 {
   private readonly store: JsonFileStore<AcknowledgementStoreData>;
 
-  /** `maxReadBytes` refuses a larger file (`JsonFileStoreReadLimitError`). */
   constructor(
     dataDir: string,
     readonly isOwnerDevice?: IsOwnerDevice,
-    options: { maxReadBytes?: number } = {},
   ) {
     this.store = new JsonFileStore(
       join(dataDir, 'conversation-acknowledgements.json'),
       { version: STORE_VERSION, acknowledgements: {} },
-      {
-        durableAtomicWrite: true,
-        onCorruption: 'throw',
-        maxReadBytes: options.maxReadBytes,
-      },
+      { durableAtomicWrite: true, onCorruption: 'throw' },
     );
   }
 
@@ -234,14 +228,6 @@ export class FileConversationAcknowledgementStore
       );
     }
     return {};
-  }
-
-  /**
-   * Every key with a recorded view, for the one-time read-marker migration
-   * (#3075): each is an established principal.
-   */
-  principals(): string[] {
-    return Object.keys(this.readAcknowledgements());
   }
 
   /** One fresh snapshot per inventory read; never cache across requests. */

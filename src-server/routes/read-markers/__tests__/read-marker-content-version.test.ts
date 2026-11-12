@@ -33,10 +33,7 @@ import {
   FileReadMarkerStore,
   READ_MARKER_STORE_FILE,
 } from '../../../services/read-markers/read-marker-store.js';
-import {
-  readMarkerMigrationRecipients,
-  upgradeReadMarkerStore,
-} from '../../../services/read-markers/read-marker-upgrade.js';
+import { upgradeReadMarkerStore } from '../../../services/read-markers/read-marker-upgrade.js';
 import {
   createAgentConversationVersionSource,
   createGlobalConversationRoutes,
@@ -64,18 +61,7 @@ beforeEach(() => {
 
 /** One running Station over `dir`: event store, service and routes. */
 function boot() {
-  // As the runtime opens it: the read-state recipients are frozen with the
-  // content migration's cutoff.
-  const eventStore = new EventStore(
-    join(dir, 'orchestration.sqlite'),
-    undefined,
-    undefined,
-    undefined,
-    {
-      contentMigrationRecipients: () =>
-        readMarkerMigrationRecipients(dir, () => false),
-    },
-  );
+  const eventStore = new EventStore(join(dir, 'orchestration.sqlite'));
   const service = new OrchestrationService({
     adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
     eventBus: new EventBus(),
@@ -86,11 +72,12 @@ function boot() {
     sessionReadAuthorityFromRequest(OWNER, undefined, undefined);
   const acknowledgements = new FileConversationAcknowledgementStore(dir);
   const store = new FileReadMarkerStore(dir);
-  // As the runtime does at every start: read state begins once per home (a
-  // first-format store, or none).
+  // As the runtime does at every start on a personal Station: read state
+  // begins once per home (a first-format store, or none).
   upgradeReadMarkerStore({
     store,
     events: eventStore,
+    hosted: false,
     now: new Date('2026-11-12T00:00:00.000Z'),
   });
   const readMarkers = new ReadMarkerService({
@@ -684,7 +671,7 @@ function makeGenuinelyOld(createdAt: number): void {
   db.close();
 }
 
-test('a genuinely old home: the person who had viewed keeps reading what they saw, and content persisted after the cutoff is unread', async () => {
+test('a genuinely old home: the owner keeps reading what they saw, and content persisted after the cutoff is unread', async () => {
   let station = boot();
   await readConversation(station);
   station.eventStore.appendEvent({
@@ -732,7 +719,7 @@ test('a genuinely old home: the person who had viewed keeps reading what they sa
   }
 }, 60_000);
 
-test('a genuinely old home where nobody had a record reads unread after the upgrade, whatever the old time baseline', async () => {
+test("the owner keeps the baseline without any record: it is Station's fixed rule, never sampled from who had viewed", async () => {
   let station = boot();
   await readConversation(station);
   seedTurn(
@@ -755,8 +742,9 @@ test('a genuinely old home where nobody had a record reads unread after the upgr
   makeGenuinelyOld(Date.parse('2026-11-11T10:00:10.000Z'));
   station = boot();
   try {
+    // OWNER is a bare principal: the personal owner (`personal:owner`).
     expect((await station.inventory()).readState).toMatchObject({
-      unread: true,
+      unread: false,
     });
   } finally {
     await station.stop();

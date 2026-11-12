@@ -2,8 +2,8 @@ import { join } from 'node:path';
 import {
   JsonFileStore,
   JsonFileStoreCorruptionError,
-  JsonFileStoreReadLimitError,
 } from '../infra/json-store.js';
+import { PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY } from '../orchestration/conversation-acknowledgement-store.js';
 
 const STORE_VERSION = 2 as const;
 /** The first format: a time baseline only; agent conversation markers lived
@@ -23,23 +23,16 @@ interface StoredMarker {
 interface ReadMarkerStoreData {
   version: typeof STORE_VERSION;
   /**
-   * Epoch ms where read state began for file-backed conversations: when
-   * this store was first written, or the upgrade that converted it.
+   * The personal owner's baseline for file-backed conversations, in epoch
+   * ms: when read state began. Zero on a hosted Station.
    */
   createdAt: number;
   /**
-   * The event store's migration cutoff when read state began being kept:
-   * the baseline for runtime conversations, whose versions are content
-   * sequences.
+   * The personal owner's baseline for runtime conversations, whose versions
+   * are content sequences: the event store's migration cutoff. Zero on a
+   * hosted Station.
    */
   baselineSequence: number;
-  /**
-   * The person keys that had a record (an acknowledgement or a marker) when
-   * read state began. Only they read as seen up to the baselines; anyone
-   * else, including a person first seen later, starts without them.
-   * Absent reads as nobody: uncertain is unread.
-   */
-  establishedPrincipals?: string[];
   /**
    * person key -> marker key -> marker. Each person's record is decoded only
    * when that person is read or written ({@link decodePersonMarkers}).
@@ -83,11 +76,11 @@ export interface ReadMarkerStore {
     now: Date;
   }): number;
   /**
-   * Where read state began for `principalId`. A person who had a record when
-   * it began (an established principal) read everything up to the migration
-   * as seen, because before it there was no unread; an agent conversation
-   * therefore reads as seen through this point for them. Anyone else starts
-   * at zero: uncertain is unread.
+   * Where read state began for `principalId`. Only the personal owner
+   * (`personal:owner`, the key Station's own rules give the owner and their
+   * owner-standing devices) reads everything up to the migration as seen,
+   * because before it there was no unread. Every other key starts at zero:
+   * uncertain is unread.
    */
   baselineFor(principalId: string): ReadMarkerBaseline;
 }
@@ -108,32 +101,24 @@ export function decodeReadMarkerStore(text: string): ReadMarkerStoreData {
   const parsed: unknown = JSON.parse(text);
   if (!isRecord(parsed) || parsed.version !== STORE_VERSION)
     throw new Error('Unsupported read marker store version');
-  if (!isSafeVersion(parsed.createdAt))
+  const { createdAt, baselineSequence, markers } = parsed;
+  if (!isSafeVersion(createdAt))
     throw new Error('Invalid read marker store baseline');
-  if (!isSafeVersion(parsed.baselineSequence))
+  if (!isSafeVersion(baselineSequence))
     throw new Error('Invalid read marker store baseline sequence');
-  if (!isRecord(parsed.markers))
-    throw new Error('Invalid read marker store markers');
-  if (
-    parsed.establishedPrincipals !== undefined &&
-    !(
-      Array.isArray(parsed.establishedPrincipals) &&
-      parsed.establishedPrincipals.every((key) => typeof key === 'string')
-    )
-  )
-    throw new Error('Invalid read marker store established principals');
-  return parsed as unknown as ReadMarkerStoreData;
+  if (!isRecord(markers)) throw new Error('Invalid read marker store markers');
+  return { version: STORE_VERSION, createdAt, baselineSequence, markers };
 }
 
 function decodeLegacyReadMarkerStore(text: string): LegacyReadMarkerStoreData {
   const parsed: unknown = JSON.parse(text);
   if (!isRecord(parsed) || parsed.version !== LEGACY_STORE_VERSION)
     throw new Error('Not a first-format read marker store');
-  if (parsed.createdAt !== undefined && !isSafeVersion(parsed.createdAt))
+  const { createdAt, markers } = parsed;
+  if (createdAt !== undefined && !isSafeVersion(createdAt))
     throw new Error('Invalid read marker store baseline');
-  if (!isRecord(parsed.markers))
-    throw new Error('Invalid read marker store markers');
-  return parsed as unknown as LegacyReadMarkerStoreData;
+  if (!isRecord(markers)) throw new Error('Invalid read marker store markers');
+  return { version: LEGACY_STORE_VERSION, createdAt, markers };
 }
 
 /**
@@ -175,13 +160,9 @@ export class FileReadMarkerStore implements ReadMarkerStore {
   /**
    * A store that does not exist yet, like a first-format one, waits for
    * {@link completeUpgrade}: until then nobody has a baseline and every
-   * conversation reads unread, the safe direction. `maxReadBytes` refuses a
-   * larger file (`JsonFileStoreReadLimitError`).
+   * conversation reads unread, the safe direction.
    */
-  constructor(
-    dataDir: string,
-    { maxReadBytes }: { maxReadBytes?: number } = {},
-  ) {
+  constructor(dataDir: string) {
     const path = join(dataDir, READ_MARKER_STORE_FILE);
     this.path = path;
     // A torn write is never acceptable; losing the newest mark to a power cut
@@ -190,7 +171,6 @@ export class FileReadMarkerStore implements ReadMarkerStore {
       durableAtomicWrite: true,
       atomicWriteDurability: 'tear-safe',
       onCorruption: 'throw',
-      maxReadBytes,
     } as const;
     this.store = new JsonFileStore(
       path,
@@ -226,45 +206,27 @@ export class FileReadMarkerStore implements ReadMarkerStore {
 
   /**
    * Begins read state once (#3075 owner design), at the migration cutoff.
-   * Each established principal (`establishedPrincipals`: the recipient
-   * snapshot frozen with the cutoff) reads every runtime conversation's content
-   * up to `baselineSequence` and every file-backed one's up to
-   * `baselineTime` as seen, which is what they saw before server-kept unread
-   * existed. Everyone else starts without a baseline. Nothing is inferred
-   * from timestamps. Room markers carry over unchanged.
+   * The personal owner reads every runtime conversation's content up to
+   * `baselineSequence` and every file-backed one's up to `baselineTime` as
+   * seen, which is what they saw before server-kept unread existed; a
+   * hosted Station passes zeros. Nothing is inferred from timestamps. Room
+   * markers carry over unchanged.
    */
   completeUpgrade(input: {
     baselineSequence: number;
     baselineTime: number;
-    establishedPrincipals: readonly string[];
   }): void {
-    const legacy = this.legacy.read(decodeLegacyReadMarkerStore);
     this.store.write({
       version: STORE_VERSION,
-      createdAt: Math.max(legacy.createdAt ?? 0, input.baselineTime),
+      createdAt: input.baselineTime,
       baselineSequence: input.baselineSequence,
-      establishedPrincipals: [...new Set(input.establishedPrincipals)].sort(),
-      markers: legacy.markers,
+      markers: this.legacy.read(decodeLegacyReadMarkerStore).markers,
     });
-  }
-
-  /**
-   * The people a first-format store's markers name, for the recipient
-   * snapshot taken with the migration cutoff; none for a current store. A
-   * file past `maxReadBytes` is refused, never read as naming nobody.
-   */
-  legacyRecipients(): string[] {
-    try {
-      return Object.keys(this.legacy.read(decodeLegacyReadMarkerStore).markers);
-    } catch (error) {
-      if (error instanceof JsonFileStoreReadLimitError) throw error;
-      return [];
-    }
   }
 
   baselineFor(principalId: string): ReadMarkerBaseline {
     const data = this.store.read(decodeReadMarkerStore);
-    return data.establishedPrincipals?.includes(principalId)
+    return principalId === PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY
       ? { sequence: data.baselineSequence, time: data.createdAt }
       : { sequence: 0, time: 0 };
   }

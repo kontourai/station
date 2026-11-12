@@ -11900,12 +11900,16 @@ export function configureRuntimeRoutes(
     context.configLoader.getProjectHomeDir(),
   );
   // Read state begins once, before anything reads it: for a first-format
-  // store and for a home with none.
+  // store and for a home with none. Only a personal Station's owner gets a
+  // baseline; a hosted Station gives nobody one.
   if (context.orchestrationEventStore)
     try {
       upgradeReadMarkerStore({
         store: readMarkerStore,
         events: context.orchestrationEventStore,
+        hosted:
+          hostedTenantRegistry !== undefined ||
+          isHostedTenantExecutionRequired(),
         now: new Date(),
       });
     } catch (error) {

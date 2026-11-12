@@ -4,17 +4,15 @@
  * start resumes where it stopped instead of from zero. Completion records the
  * upgrade fence (the store's contiguous sequence prefix) in the same write.
  */
-import { writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { pathToFileURL } from 'node:url';
 import { beforeEach, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ReadMarkerService } from '../../read-markers/read-marker-service.js';
 import { FileReadMarkerStore } from '../../read-markers/read-marker-store.js';
-import {
-  readMarkerMigrationRecipients,
-  upgradeReadMarkerStore,
-} from '../../read-markers/read-marker-upgrade.js';
+import { upgradeReadMarkerStore } from '../../read-markers/read-marker-upgrade.js';
 import { FileConversationAcknowledgementStore } from '../conversation-acknowledgement-store.js';
 import { EventStore, THREAD_CONTENT_BACKFILL_BATCH } from '../event-store.js';
 
@@ -258,58 +256,118 @@ test('overlapping initializers: one completes, the other resumes and never moves
   }
 }, 60_000);
 
-test('a person first recorded after the cutoff, before an interrupted migration resumes, never inherits the baseline', async () => {
+test('a writer holding the lock fails the open before the cutoff is written; the next open migrates in full', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  oldHome(path, 50);
+  const peer = new DatabaseSync(path);
+  try {
+    expect(
+      () =>
+        new EventStore(path, undefined, undefined, {
+          threadContentMigrationStart: () => peer.exec('BEGIN IMMEDIATE'),
+        }),
+    ).toThrow(/locked|busy/i);
+    // Nothing was written: no cutoff to inherit, nothing half-done.
+    expect(progress(path)).toBeUndefined();
+  } finally {
+    peer.exec('ROLLBACK');
+    peer.close();
+  }
+  const retried = new EventStore(path);
+  try {
+    expect(retried.contentUpgradeFence()).toBe(50);
+    expect(projected(path, 'odd')).toBe(49);
+  } finally {
+    retried.close();
+  }
+}, 60_000);
+
+test('a writer holding the lock between batches fails the open mid-backfill; the next open resumes at the cursor with the same cutoff', () => {
   const path = join(dir, 'orchestration.sqlite');
   const events = THREAD_CONTENT_BACKFILL_BATCH * 2 + 123;
   oldHome(path, events);
-  const acknowledgements = new FileConversationAcknowledgementStore(dir);
-  acknowledgements.acknowledge({
-    userId: 'human:test:ada',
-    conversationId: 'viewed-before',
-    updatedAt: '2026-11-11T10:00:00.000Z',
-  });
-  // The runtime's recipients: everyone with a record, read with the cutoff.
-  const recipients = () => readMarkerMigrationRecipients(dir, () => false);
-  expect(
-    () =>
-      new EventStore(
-        path,
-        undefined,
-        undefined,
-        {
-          threadContentBackfillBatch: () => {
-            throw new Error('interrupted');
-          },
-        },
-        { contentMigrationRecipients: recipients },
-      ),
-  ).toThrow('interrupted');
-  expect(progress(path)).toMatchObject({
-    cutoff_sequence: events,
-    completed_at: null,
-  });
-  // Bob's first view, recorded while the migration was interrupted.
-  acknowledgements.acknowledge({
-    userId: 'human:test:bob',
-    conversationId: 'viewed-later',
-    updatedAt: '2026-11-11T10:01:00.000Z',
-  });
-  const resumed = new EventStore(path, undefined, undefined, undefined, {
-    contentMigrationRecipients: recipients,
+  const peer = new DatabaseSync(path);
+  try {
+    expect(
+      () =>
+        new EventStore(path, undefined, undefined, {
+          threadContentBackfillBatch: () => peer.exec('BEGIN IMMEDIATE'),
+        }),
+    ).toThrow(/locked|busy/i);
+    expect(progress(path)).toMatchObject({
+      cutoff_sequence: events,
+      cursor_sequence: THREAD_CONTENT_BACKFILL_BATCH,
+      completed_at: null,
+    });
+  } finally {
+    peer.exec('ROLLBACK');
+    peer.close();
+  }
+  const cursors: number[] = [];
+  const retried = new EventStore(path, undefined, undefined, {
+    threadContentBackfillBatch: (cursor) => {
+      cursors.push(cursor);
+    },
   });
   try {
-    const store = new FileReadMarkerStore(dir);
+    // Resumed from the committed cursor, never from zero.
+    expect(cursors[0]).toBe(THREAD_CONTENT_BACKFILL_BATCH * 2);
+    expect(retried.contentUpgradeFence()).toBe(events);
+    expect(progress(path)?.completed_at).not.toBeNull();
+  } finally {
+    retried.close();
+  }
+}, 60_000);
+
+test('a person whose first acknowledgement another process records after the store opens starts unread; only the owner keeps the baseline', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  oldHome(path, 50);
+  const acknowledgements = new FileConversationAcknowledgementStore(dir);
+  // Ada had a record before the upgrade; it earns her nothing.
+  acknowledgements.acknowledge({
+    userId: 'human:test:ada',
+    conversationId: 'history',
+    updatedAt: '2026-11-11T10:00:00.000Z',
+  });
+  const events = new EventStore(path);
+  try {
+    // Bob's first view, recorded by another process after the store opened.
+    const moduleUrl = pathToFileURL(
+      join(
+        process.cwd(),
+        'src-server/services/orchestration/conversation-acknowledgement-store.ts',
+      ),
+    ).href;
+    const peer = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '--input-type=module',
+        '-e',
+        `import { FileConversationAcknowledgementStore } from ${JSON.stringify(moduleUrl)};
+new FileConversationAcknowledgementStore(${JSON.stringify(dir)}).acknowledge({ userId: 'human:test:bob', conversationId: 'other', updatedAt: '2026-11-12T00:00:00.000Z' });`,
+      ],
+      { encoding: 'utf8', timeout: 20_000, windowsHide: true },
+    );
+    expect(peer.error, peer.stderr).toBeUndefined();
+    expect(peer.status, peer.stderr).toBe(0);
+    expect(
+      acknowledgements.getMany('human:test:bob', ['other']).get('other'),
+    ).toBe('2026-11-12T00:00:00.000Z');
+    const markers = new FileReadMarkerStore(dir);
     expect(
       upgradeReadMarkerStore({
-        store,
-        events: resumed,
+        store: markers,
+        events,
+        hosted: false,
         now: new Date('2026-11-12T00:00:00.000Z'),
       }),
     ).toBe(true);
     const odd = projected(path, 'odd');
     const stateFor = (person: string) =>
       new ReadMarkerService({
-        store,
+        store: markers,
         conversations: acknowledgements,
         personKeyFor: () => person,
         agentConversations: {
@@ -325,187 +383,10 @@ test('a person first recorded after the cutoff, before an interrupted migration 
       })
         .conversationReadStates({} as never, [])
         ?.get('history');
-    // Ada had a record when the cutoff was written: her baseline holds.
-    expect(stateFor('human:test:ada')).toMatchObject({ unread: false });
-    // Bob's first record came after it: his history reads unread.
+    expect(stateFor('personal:owner')).toMatchObject({ unread: false });
+    expect(stateFor('human:test:ada')).toMatchObject({ unread: true });
     expect(stateFor('human:test:bob')).toMatchObject({ unread: true });
   } finally {
-    resumed.close();
+    events.close();
   }
 }, 60_000);
-
-test('a migration begun without a recipient snapshot gives the baseline to nobody', () => {
-  const path = join(dir, 'orchestration.sqlite');
-  oldHome(path, 50);
-  new FileConversationAcknowledgementStore(dir).acknowledge({
-    userId: 'human:test:ada',
-    conversationId: 'viewed-before',
-    updatedAt: '2026-11-11T10:00:00.000Z',
-  });
-  // Opened with no recipients provider: the snapshot is missing.
-  const store = new EventStore(path);
-  try {
-    expect(store.contentUpgradeFence()).toBe(50);
-    expect(store.contentMigrationRecipients()).toBeUndefined();
-    const markers = new FileReadMarkerStore(dir);
-    expect(
-      upgradeReadMarkerStore({
-        store: markers,
-        events: store,
-        now: new Date('2026-11-12T00:00:00.000Z'),
-      }),
-    ).toBe(true);
-    // Even Ada, who had a record, starts without the baseline: unread.
-    expect(markers.baselineFor('human:test:ada')).toEqual({
-      sequence: 0,
-      time: 0,
-    });
-  } finally {
-    store.close();
-  }
-});
-
-test('an owner-device acknowledgement in a first-format store freezes the owner as the runtime resolves them', () => {
-  const path = join(dir, 'orchestration.sqlite');
-  oldHome(path, 50);
-  // A v1 home whose only record is the owner's phone.
-  writeFileSync(
-    join(dir, 'conversation-acknowledgements.json'),
-    JSON.stringify({
-      version: 1,
-      acknowledgements: {
-        'human:device:owner-phone': {
-          'viewed-before': '2026-11-11T10:00:00.000Z',
-        },
-      },
-    }),
-  );
-  // The owner-device predicate the runtime gives its acknowledgement store.
-  const ownerDevice = (id: string) => id === 'owner-phone';
-  const runtime = new FileConversationAcknowledgementStore(dir, ownerDevice);
-  expect(runtime.principals()).toEqual(['personal:owner']);
-  const events = new EventStore(path, undefined, undefined, undefined, {
-    contentMigrationRecipients: () =>
-      readMarkerMigrationRecipients(dir, ownerDevice),
-  });
-  try {
-    expect(events.contentMigrationRecipients()).toEqual(['personal:owner']);
-    const markers = new FileReadMarkerStore(dir);
-    expect(
-      upgradeReadMarkerStore({
-        store: markers,
-        events,
-        now: new Date('2026-11-12T00:00:00.000Z'),
-      }),
-    ).toBe(true);
-    const state = new ReadMarkerService({
-      store: markers,
-      conversations: runtime,
-      personKeyFor: () => 'personal:owner',
-      agentConversations: {
-        latestVersions: async () => new Map(),
-        versionsOf: () =>
-          new Map([
-            [
-              'history',
-              {
-                version: projected(path, 'odd'),
-                space: 'content',
-                acknowledgeableUntil: 0,
-              },
-            ],
-          ]),
-      },
-    })
-      .conversationReadStates({} as never, [])
-      ?.get('history');
-    expect(state).toMatchObject({ unread: false });
-  } finally {
-    events.close();
-  }
-});
-
-/** Freezes `people` as the recipients of a fresh migration. */
-let freezes = 0;
-function freeze(people: () => readonly string[]) {
-  freezes += 1;
-  const path = join(dir, `orchestration-${freezes}.sqlite`);
-  oldHome(path, 5);
-  const diagnostics: string[] = [];
-  const events = new EventStore(path, undefined, undefined, undefined, {
-    contentMigrationRecipients: people,
-    onContentMigrationDiagnostic: (reason) => diagnostics.push(reason),
-  });
-  try {
-    return { recipients: events.contentMigrationRecipients(), diagnostics };
-  } finally {
-    events.close();
-  }
-}
-
-const people = (count: number, keyLength = 12) =>
-  Array.from({ length: count }, (_, index) =>
-    `human:${String(index).padStart(keyLength - 6, '0')}`.slice(0, keyLength),
-  );
-
-test('the recipient snapshot admits its bounds exactly and refuses one past each, never truncating', () => {
-  // Pinned beside the constants: 1,000 people, 512-character keys.
-  expect(freeze(() => people(1000)).recipients).toHaveLength(1000);
-  const tooMany = freeze(() => people(1001));
-  expect(tooMany.recipients).toBeUndefined();
-  expect(tooMany.diagnostics).toHaveLength(1);
-
-  expect(freeze(() => people(1, 512)).recipients?.[0]).toHaveLength(512);
-  const tooLong = freeze(() => people(1, 513));
-  expect(tooLong.recipients).toBeUndefined();
-  expect(tooLong.diagnostics).toHaveLength(1);
-
-  // Within the count and key bounds, but over 256 KiB serialized.
-  const tooBig = freeze(() => people(1000, 512));
-  expect(tooBig.recipients).toBeUndefined();
-  expect(tooBig.diagnostics).toHaveLength(1);
-});
-
-test('a recipient source over 4 MiB is refused unread, freezing a missing snapshot', () => {
-  writeFileSync(
-    join(dir, 'conversation-acknowledgements.json'),
-    JSON.stringify({
-      version: 2,
-      acknowledgements: {
-        'personal:owner': { pad: 'x'.repeat(4 * 1024 * 1024) },
-      },
-    }),
-  );
-  const refused = freeze(() => readMarkerMigrationRecipients(dir, () => false));
-  expect(refused.recipients).toBeUndefined();
-  expect(refused.diagnostics).toHaveLength(1);
-});
-
-test('a deferred migration keeps the construction cutoff and samples recipients only when it begins', () => {
-  const path = join(dir, 'orchestration.sqlite');
-  oldHome(path, 50);
-  let ready = false;
-  const sampled: boolean[] = [];
-  const events = new EventStore(path, undefined, undefined, undefined, {
-    contentMigrationRecipients: () => {
-      sampled.push(ready);
-      return ready ? ['personal:owner'] : ['human:device:owner-phone'];
-    },
-    deferContentMigration: true,
-  });
-  try {
-    expect(progress(path)).toBeUndefined();
-    expect(events.contentUpgradeFence()).toBeUndefined();
-    // Appended before the migration begins: after the cutoff, so unread.
-    appendContent(events, 'during-boot');
-    ready = true;
-    events.beginContentMigration();
-    events.beginContentMigration();
-    expect(sampled).toEqual([true]);
-    expect(events.contentUpgradeFence()).toBe(50);
-    expect(events.contentMigrationRecipients()).toEqual(['personal:owner']);
-    expect(projected(path, 'odd')).toBeGreaterThan(50);
-  } finally {
-    events.close();
-  }
-});

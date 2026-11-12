@@ -494,14 +494,6 @@ const require = createRequire(import.meta.url);
 const logger = createLogger({ name: 'event-store' });
 
 /**
- * #3075 bounds on the recipient snapshot frozen with the content migration's
- * cutoff. Past any of them the snapshot is frozen missing, never truncated.
- */
-export const CONTENT_MIGRATION_RECIPIENTS_MAX = 1_000;
-export const CONTENT_MIGRATION_RECIPIENT_KEY_MAX_LENGTH = 512;
-export const CONTENT_MIGRATION_RECIPIENTS_MAX_BYTES = 256 * 1024;
-
-/**
  * #3561 review F1: an append's transaction ended while a co-commit
  * participant ran, so nothing of the append may be written. Thrown instead of
  * letting the remaining statements autocommit.
@@ -2620,10 +2612,6 @@ interface NativeForkNoticeCapture {
 }
 
 export class EventStore {
-  /** #3075: whether the content migration has run in this process. */
-  private contentMigrationBegun = false;
-  /** #3075: the cutoff a deferred content migration was taken at. */
-  private deferredContentCutoff: number | undefined;
   private nativeForkNoticeCapture?: NativeForkNoticeCapture;
   /** The Session inventory listing currently executing, for its SQL filter. */
   private inventoryTranscriptRead?: { threadId: string; highWater: number };
@@ -2775,26 +2763,10 @@ export class EventStore {
       sessionWorkItemSavepointOpen?: () => void;
       /** Unknown package-admission commit acknowledgement. */
       packageMcpCommit?: () => void;
+      /** Before the content migration writes or reads its cutoff. */
+      threadContentMigrationStart?: () => void;
       /** After each committed content-projection backfill batch. */
       threadContentBackfillBatch?: (cursor: number) => void;
-    } = {},
-    private readonly options: {
-      /**
-       * #3075: the people who had a read record when the content migration
-       * begins (acknowledgement and first-format marker keys). Read once, in
-       * the transaction that writes the cutoff, and frozen with it. Without
-       * it the snapshot is missing and nobody receives the baseline.
-       */
-      contentMigrationRecipients?: () => readonly string[];
-      /**
-       * Holds the content migration until {@link beginContentMigration}, for
-       * a recipients source that is not ready at construction (the runtime's
-       * owner-device records). The cutoff is still taken here, so nothing
-       * appended in between can fall inside it.
-       */
-      deferContentMigration?: boolean;
-      /** Why a recipient snapshot was frozen missing; logged when absent. */
-      onContentMigrationDiagnostic?: (reason: string) => void;
     } = {},
   ) {
     this.databasePath = dbPath;
@@ -3171,9 +3143,6 @@ export class EventStore {
       this.backfillConversationHistoryProjectSlugs();
       this.ensureConversationHistoryUpgrade();
       this.ensureThreadContentProjection();
-      if (this.options.deferContentMigration)
-        this.deferredContentCutoff = this.currentGlobalSequence();
-      else this.beginContentMigration();
       this.conversationSessionLineage =
         this.composeConversationSessionLineage();
       this.conversationSessionLineage.backfillLegacySessions();
@@ -11475,70 +11444,6 @@ export class EventStore {
   }
 
   /**
-   * #3075: the people frozen with the cutoff, who receive the migration
-   * baseline. `undefined` when the snapshot is missing (the migration began
-   * without a recipients provider) or unreadable: then nobody receives it.
-   */
-  contentMigrationRecipients(): string[] | undefined {
-    const row = this.db
-      .prepare(
-        'SELECT recipients FROM orchestration_thread_content_migration WHERE singleton = 1',
-      )
-      .get() as { recipients: string | null } | undefined;
-    if (typeof row?.recipients !== 'string') return undefined;
-    try {
-      const parsed: unknown = JSON.parse(row.recipients);
-      return Array.isArray(parsed) &&
-        parsed.every((key) => typeof key === 'string')
-        ? parsed
-        : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /**
-   * The recipient snapshot to freeze with the cutoff, or NULL. A snapshot
-   * past a bound, or a source that cannot be read, is frozen missing (nobody
-   * is established) with a diagnostic, never truncated: a partial list would
-   * still be a guess about who was seen.
-   */
-  private recipientSnapshot(): string | null {
-    const provider = this.options.contentMigrationRecipients;
-    if (!provider) return null;
-    const refuse = (reason: string): null => {
-      if (this.options.onContentMigrationDiagnostic)
-        this.options.onContentMigrationDiagnostic(reason);
-      else
-        logger.warn(
-          'Read-state recipients frozen missing; everyone starts unread',
-          { reason },
-        );
-      return null;
-    };
-    let recipients: string[];
-    try {
-      recipients = [...new Set(provider())].sort();
-    } catch (error) {
-      return refuse(
-        `source unreadable: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (recipients.length > CONTENT_MIGRATION_RECIPIENTS_MAX)
-      return refuse(`${recipients.length} recipients`);
-    if (
-      recipients.some(
-        (key) => key.length > CONTENT_MIGRATION_RECIPIENT_KEY_MAX_LENGTH,
-      )
-    )
-      return refuse('a recipient key is too long');
-    const snapshot = JSON.stringify(recipients);
-    if (Buffer.byteLength(snapshot) > CONTENT_MIGRATION_RECIPIENTS_MAX_BYTES)
-      return refuse(`${Buffer.byteLength(snapshot)} bytes`);
-    return snapshot;
-  }
-
-  /**
    * #3075: the content-version projection, and its migration from an
    * existing history.
    *
@@ -11550,6 +11455,11 @@ export class EventStore {
    * to the cutoff, and commits with its progress, so an interrupted start
    * resumes where it stopped. Content appended after the cutoff is projected
    * by its own append.
+   *
+   * It runs while the store opens. A failure (a writer holding the lock past
+   * `busy_timeout`, an interrupted batch) fails the open, which leaves no
+   * store; the next open reuses the durable cutoff and resumes at the
+   * committed cursor.
    */
   private ensureThreadContentProjection(): void {
     this.db.exec(
@@ -11562,30 +11472,11 @@ export class EventStore {
          cutoff_sequence INTEGER NOT NULL CHECK (cutoff_sequence >= 0),
          cursor_sequence INTEGER NOT NULL
            CHECK (cursor_sequence >= 0 AND cursor_sequence <= cutoff_sequence),
-         completed_at TEXT,
-         recipients TEXT
+         completed_at TEXT
        );`,
     );
-    const columns = this.db
-      .prepare('PRAGMA table_info(orchestration_thread_content_migration)')
-      .all() as { name: string }[];
-    if (!columns.some((column) => column.name === 'recipients'))
-      this.db.exec(
-        'ALTER TABLE orchestration_thread_content_migration ADD COLUMN recipients TEXT',
-      );
-  }
-
-  /**
-   * Runs the content migration ({@link ensureThreadContentProjection}) once:
-   * at construction, or, with `deferContentMigration`, when the runtime
-   * calls it after its recipients source is ready and before it serves a
-   * request. A deferred start uses the cutoff taken at construction.
-   */
-  beginContentMigration(): void {
-    if (this.contentMigrationBegun) return;
-    this.contentMigrationBegun = true;
-    // The cutoff and the recipient snapshot are written together, once, and
-    // never re-sampled: a resume or a second initializer reuses both.
+    this.faults.threadContentMigrationStart?.();
+    // The cutoff is written once: a resume or a second initializer reuses it.
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const begun = this.db
@@ -11597,13 +11488,10 @@ export class EventStore {
         this.db
           .prepare(
             `INSERT INTO orchestration_thread_content_migration
-               (singleton, cutoff_sequence, cursor_sequence, recipients)
-             VALUES (1, ?, 0, ?)`,
+               (singleton, cutoff_sequence, cursor_sequence)
+             VALUES (1, ?, 0)`,
           )
-          .run(
-            this.deferredContentCutoff ?? this.currentGlobalSequence(),
-            this.recipientSnapshot(),
-          );
+          .run(this.currentGlobalSequence());
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');

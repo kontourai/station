@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import {
   type InfiniteData,
@@ -48,7 +49,7 @@ function seededClient(readState: ConversationListItem['readState']) {
             {
               id: 'c1',
               source: 'runtime',
-              agentSlug: 'default' as ConversationListItem['agentSlug'],
+              agentSlug: agentId('default'),
               title: 'One',
               createdAt: '2026-11-01T00:00:00.000Z',
               updatedAt: '2026-11-01T00:00:10.000Z',
