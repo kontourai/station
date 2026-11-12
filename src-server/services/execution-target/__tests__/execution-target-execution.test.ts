@@ -111,6 +111,7 @@ describe('executeForegroundMessage', () => {
           agent: agentId('station'),
         },
         message: 'Remain restricted',
+        userId: 'owner',
         delegation: {
           mode: 'isolated-child' as const,
           depth: 1,

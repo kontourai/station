@@ -120,6 +120,7 @@ const CONSUMED_FLAGS: Record<
         },
       }),
     });
+    expect(response.status, await response.clone().text()).toBe(200);
     const delegation = execute.mock.calls[0]?.[0].delegation;
     return (
       response.status === 200 &&
@@ -219,11 +220,13 @@ const CONSUMED_FLAGS: Record<
         },
       },
     );
-    await app.request('/conversations/one/inbox', {
+    const response = await app.request('/conversations/one/inbox', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind: 'follow-up', key: 'one', message: 'Hello' }),
     });
+    if (!deployment.hosted)
+      expect(response.status, await response.text()).toBe(200);
     return submitted;
   },
   // GET /api/knowledge/memory/queue answers only where the Private memory
