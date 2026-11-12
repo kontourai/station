@@ -30,12 +30,14 @@ import { createSessionPersonActivityRoutes } from '../../routes/orchestration/se
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { isDelegatedToolAllowed } from '../../runtime/agents/delegation.js';
+import { createRequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import {
   resolveRuntimeConnectionRoutesEnabled,
   resolveRuntimeWebPushEnabled,
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
+import { isStationInternalRequest } from '../../services/browser/browser-request-origin.js';
 import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
@@ -101,7 +103,19 @@ const CONSUMED_FLAGS: Record<
     const routes = orchestrationRoutes(
       deployment,
       {},
-      { executeForegroundMessage: execute },
+      {
+        executeForegroundMessage: execute,
+        resolveRequestDelegation: createRequestDelegationResolver({
+          isInternalRequest: isStationInternalRequest,
+          resolveCaller: () => null,
+          startedMetadata: () => undefined,
+          sessionEngine: () => undefined,
+          loadAgentSpec: async () => {
+            throw new Error('No verified caller');
+          },
+          isRegistryDefaultAgent: async () => false,
+        }),
+      },
     );
     const response = await routes.request('/chat/delegated', {
       method: 'POST',
@@ -200,6 +214,8 @@ const CONSUMED_FLAGS: Record<
       deployment,
       {
         hasReadableSession: async () => true,
+        canUserReadSession: () => true,
+        conversationInputAdmissionRefusal: () => undefined,
         readCurrentConversationSession: async () => ({
           events: [
             {
@@ -226,7 +242,7 @@ const CONSUMED_FLAGS: Record<
       body: JSON.stringify({ kind: 'follow-up', key: 'one', message: 'Hello' }),
     });
     if (!deployment.hosted)
-      expect(response.status, await response.text()).toBe(200);
+      expect(response.status, await response.text()).toBe(202);
     return submitted;
   },
   // GET /api/knowledge/memory/queue answers only where the Private memory
