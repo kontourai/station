@@ -10800,6 +10800,13 @@ export function configureRuntimeRoutes(
             sessionId,
           );
         if (!binding) return undefined;
+        const ownerId =
+          context.orchestrationService.sessionRecordedOwnerId(sessionId);
+        if (!ownerId || isDeploymentAccountPrincipalId(ownerId))
+          throw new TaskCodeReviewError(
+            'forbidden',
+            'Task code review is unavailable for this Session owner.',
+          );
         const access =
           await projectTaskRoomRuntime?.sessionTaskContextAccess(sessionId);
         const task = context.taskGraphService.readTaskView(binding.taskId);
@@ -10922,6 +10929,10 @@ export function configureRuntimeRoutes(
         authorize: async (c, taskId, execute) => {
           if (!projectTaskRoomRuntime || !isRequestPrincipalCurrent(c.req.raw))
             return undefined;
+          const principal = resolveOrchestrationRequestPrincipal(
+            c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+          );
+          if (isDeploymentAccountPrincipalId(principal.id)) return undefined;
           assertTaskCodeReviewEnabled();
           const access = await projectTaskRoomRuntime.personTaskReviewAccess({
             taskId,
@@ -10941,12 +10952,7 @@ export function configureRuntimeRoutes(
             ? context.projectService.getProject(projectRef.slug)
             : undefined;
           if (!task || !project) return undefined;
-          const owner = sessionOwnerForRequest(
-            resolveOrchestrationRequestPrincipal(
-              c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-            ).id,
-            c.req.raw,
-          );
+          const owner = sessionOwnerForRequest(principal.id, c.req.raw);
           const directory = context.taskGraphService.taskWorkingDirectory(task);
           const assertCurrent = () => {
             assertTaskCodeReviewEnabled();
@@ -10979,6 +10985,14 @@ export function configureRuntimeRoutes(
             assertCurrent();
             const latest = context.taskGraphService.readTaskView(task.id);
             if (
+              !runtimeRequestPrincipalMayAccessHttpRoute(
+                c.req.raw,
+                context.environmentSecurityService,
+                {
+                  method: 'POST',
+                  path: `/api/tasks/${encodeURIComponent(taskId)}/review/code`,
+                },
+              ) ||
               !latest ||
               latest.agentId !== task.agentId ||
               latest.status === 'done' ||

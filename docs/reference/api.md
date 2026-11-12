@@ -7129,14 +7129,18 @@ for different work is 409 `review_request_conflict`; uncertain outcomes are not
 authorization for a new request ID.
 
 The read uses current Task person-review authority; submission also needs Task
-execution authority. Responses are `Cache-Control: no-store`. Hosted runtimes
+execution authority and the transport's POST permission. `canRequest` reflects
+both. Deployment-account principals cannot use either leaf, even alongside a
+valid operator or unbound Device credential; shared member code review is not
+enabled. Responses are `Cache-Control: no-store`. Hosted runtimes
 do not mount these routes. Older hosts return 404; clients must show unsupported
 host guidance. On personal hosts, disabling Task review refuses these code-review
 leaves with typed 404 `feature_preview_disabled`, `previewId: "task-review"`
 and the Feature previews `settingsPath`, before parsing a submission body.
 A bound Agent's existing Project independent-review request also derives its
-Task association from the server-owned execution binding. Callers cannot supply
-a Task association in the generic review body.
+Task association from the server-owned execution binding and requires a recorded
+non-account Session owner. Missing owners refuse. Callers cannot supply a Task
+association in the generic review body.
 
 Task/Project incarnation is retained in the review submission record before
 reviewer invocation. Task-associated submission rows use private schema version

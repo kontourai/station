@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   humanPrincipal,
@@ -9,6 +9,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
@@ -19,6 +20,8 @@ import { createProjectMembershipRuntime } from '../../../services/projects/proje
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { execGit } from '../../../utils/git-exec.js';
+import { createLogger } from '../../../utils/logger.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -64,8 +67,8 @@ const authority = {
   operator: async () => {},
 };
 
-async function fixture() {
-  const root = makeTempDir('task-room-members-');
+async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
+  const root = realpathSync(makeTempDir('task-room-members-'));
   const home = join(root, 'data');
   mkdirSync(join(home, 'security'), { recursive: true, mode: 0o700 });
   mkdirSync(join(root, 'home'));
@@ -74,7 +77,28 @@ async function fixture() {
   vi.stubEnv('STATION_ROOT', join(root, 'root'));
   vi.stubEnv('ALLOWED_ORIGINS', origin);
   const security = new EnvironmentSecurityService({ homeDir: home });
-  await security.initialize();
+  const { credential: operatorCredential } = await security.initialize();
+  const logger = createLogger({
+    name: 'task-room-members-test',
+    level: 'error',
+  });
+  const featurePreviews = new FeaturePreviewRegistry(home, logger);
+  await featurePreviews.setEnabled('task-review', true);
+  let checkout: string | undefined;
+  let head: string | undefined;
+  if (options.codeReviewCheckout) {
+    checkout = join(root, 'checkout');
+    mkdirSync(checkout);
+    const git = async (...args: string[]) =>
+      (await execGit(args, { cwd: checkout, timeout: 5000 })).stdout.trim();
+    await git('init', '-b', 'main');
+    await git('config', 'user.name', 'Room fixture');
+    await git('config', 'user.email', 'room@example.test');
+    writeFileSync(join(checkout, 'work.txt'), 'Task source\n');
+    await git('add', 'work.txt');
+    await git('commit', '-m', 'Task source');
+    head = await git('rev-parse', 'HEAD');
+  }
   const storage = new FileStorageAdapter(home);
   const manifests = new ProjectManifestStore(home, storage);
   const projects = new ProjectService(storage, manifests);
@@ -98,7 +122,7 @@ async function fixture() {
     store.close();
   });
   const graph = new TaskGraphService(home, {
-    resolveProjectWorkspace: () => undefined,
+    resolveProjectWorkspace: () => checkout,
   });
   const app = new Hono();
   const context = deepStub({
@@ -111,7 +135,9 @@ async function fixture() {
       loadAppConfig: async () => ({}),
       mutateAppConfig: async (mutate: (value: object) => object) => mutate({}),
     },
-    logger: { debug() {}, info() {}, warn() {}, error() {} },
+    logger,
+    featurePreviews,
+    agentService: deepStub({ listAgents: async () => [] }),
     projectMembership: membership.service,
     projectSharedTasks: membership.sharedTasks,
     deploymentAuthentication: accounts,
@@ -146,6 +172,7 @@ async function fixture() {
   const project = await projects.createProject({
     name: 'Review Project',
     slug: 'review-project',
+    ...(checkout ? { workingDirectory: checkout } : {}),
   });
   const { scope } = await membership.service.enable(
     project.slug,
@@ -286,6 +313,10 @@ async function fixture() {
     runtime,
     membership,
     security,
+    project,
+    checkout,
+    head,
+    operatorCredential,
     scope,
     task,
     privateTask,
@@ -293,6 +324,93 @@ async function fixture() {
     request,
   };
 }
+
+test('Task code review refuses account identity even with valid operator or unbound Device transport', async () => {
+  const f = await fixture({ codeReviewCheckout: true });
+  const pairing = f.security.devicePairing;
+  const offer = pairing.createOffer({
+    endpoint: origin,
+    scope: 'orchestration:read orchestration:operate',
+  });
+  const pending = pairing.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Personal review browser',
+    requesterPosition: 'unproven',
+    source: 'same-origin',
+  });
+  pairing.confirmRequest(pending.requestId, { kind: 'presented-credential' });
+  const paired = pairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: pending.requestId,
+  });
+  expect(
+    f.security.identifyDevice(paired.credential)?.principalBinding,
+  ).toBeUndefined();
+  const path = `/api/tasks/${f.task.id}/review/code`;
+  const readPath = `${path}?projectId=${f.project.id}&taskCreatedAt=${encodeURIComponent(f.task.createdAt)}`;
+  for (const credential of [f.operatorCredential, paired.credential]) {
+    const operatorRead = await f.app.request(`${origin}${readPath}`, {
+      headers: { Authorization: `Bearer ${credential}`, Origin: origin },
+    });
+    expect(operatorRead.status, await operatorRead.clone().text()).toBe(200);
+    expect(await operatorRead.json()).toMatchObject({
+      success: true,
+      data: {
+        canRequest: true,
+        requestsUnavailable: false,
+        workspace: { state: 'available', path: f.checkout, headSha: f.head },
+      },
+    });
+    const account = f.people[0]!;
+    for (const method of ['GET', 'POST']) {
+      const refused = await f.request(
+        account,
+        method === 'GET' ? readPath : path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${credential}`,
+            'Content-Type': 'application/json',
+          },
+          ...(method === 'POST'
+            ? {
+                body: JSON.stringify({
+                  requestId: 'member-code-review',
+                  projectId: f.project.id,
+                  projectCreatedAt: f.project.createdAt,
+                  taskCreatedAt: f.task.createdAt,
+                  baseSha: f.head,
+                  headSha: f.head,
+                  reviewerAgentSlug: 'reviewer',
+                }),
+              }
+            : {}),
+        },
+      );
+      expect(refused.status, await refused.clone().text()).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        success: false,
+        code: 'forbidden',
+      });
+    }
+  }
+  pairing.setDeviceScope(paired.device.id, ['orchestration:read'], {
+    kind: 'presented-credential',
+  });
+  const readOnly = await f.app.request(`${origin}${readPath}`, {
+    headers: { Authorization: `Bearer ${paired.credential}`, Origin: origin },
+  });
+  expect(readOnly.status, await readOnly.clone().text()).toBe(200);
+  expect(await readOnly.json()).toMatchObject({
+    data: {
+      canRequest: false,
+      requestUnavailableReason: 'execution-not-authorized',
+      workspace: { state: 'available', path: f.checkout, headSha: f.head },
+    },
+  });
+}, 60000);
 
 function readUntil(
   reader: ReadableStreamDefaultReader<Uint8Array>,
