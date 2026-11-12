@@ -1862,6 +1862,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/task-code-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task code review',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Real Task checkout observation plus explicitly controlled review transport-loss, freshness and failed-reviewer UI states; captures desktop and mobile in both themes without invoking a provider.',
+    exceptions: [],
+  },
+  {
     path: 'tests/basis-answer-lifecycle.spec.ts',
     bucket: 'extended',
     surface: 'Basis / exact answer retention',

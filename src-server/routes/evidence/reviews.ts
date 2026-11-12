@@ -4,7 +4,11 @@ import {
 } from '@kontourai/station-contracts/review-evidence';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
-import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
+import {
+  type ReviewEvidenceModule,
+  ReviewRequestConflictError,
+  type ReviewTaskBinding,
+} from '../../services/evidence/review-evidence-module.js';
 import type { SessionOwnerStamp } from '../../services/orchestration/session-owner-attribution.js';
 
 interface ReviewEvidenceRouteDeps {
@@ -15,6 +19,12 @@ interface ReviewEvidenceRouteDeps {
    */
   getOwner(context: Context): SessionOwnerStamp;
   getTenantExecutionContext(): TenantExecutionContext | undefined;
+  taskContext?(
+    context: Context,
+    request: IndependentReviewRequest,
+  ): Promise<
+    { taskBinding: ReviewTaskBinding; assertCurrent(): void } | undefined
+  >;
   reportError(operation: string, error: unknown): void;
 }
 
@@ -127,6 +137,7 @@ export function createReviewEvidenceRoutes(
     try {
       const owner = deps.getOwner(context);
       const userId = owner.ownerUserId;
+      const taskContext = await deps.taskContext?.(context, request);
       const status = await reviews.run(request, {
         requestedBy: { actorId: userId },
         userId,
@@ -134,7 +145,9 @@ export function createReviewEvidenceRoutes(
           ? { ownerAttribution: owner.ownerAttribution }
           : {}),
         tenantExecutionContext: deps.getTenantExecutionContext(),
+        ...taskContext,
       });
+      taskContext?.assertCurrent();
       const code =
         status.state === 'completed'
           ? 201
@@ -146,6 +159,18 @@ export function createReviewEvidenceRoutes(
       return context.json({ success: true, data: status }, code);
     } catch (error) {
       deps.reportError('route.run', error);
+      if (error instanceof ReviewRequestConflictError)
+        return context.json(
+          {
+            success: false,
+            error: {
+              code: 'review_request_conflict',
+              message:
+                'This review request is already bound to different work.',
+            },
+          },
+          409,
+        );
       return unavailable(context);
     }
   });

@@ -147,6 +147,19 @@ const starterQueryClient = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
+  useTaskCodeReviewQuery: () => ({
+    data: undefined,
+    error: new Error('Code review is unavailable in this Task-view fixture.'),
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  useRequestTaskCodeReviewMutation: () => ({
+    isPending: false,
+    isError: false,
+    mutateAsync: vi.fn(async () => {
+      throw new Error('Code review execution is outside this fixture.');
+    }),
+  }),
   telemetry: { track: vi.fn() },
   getJson: vi.fn(
     async () => new Response(JSON.stringify({ success: true, data: [] })),

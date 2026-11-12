@@ -23,6 +23,20 @@ import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { reviewEvidenceId } from './review-evidence-identity.js';
 
+export interface ReviewTaskBinding {
+  projectId: string;
+  projectCreatedAt: string;
+  taskId: string;
+  taskCreatedAt: string;
+}
+
+export class ReviewRequestConflictError extends Error {
+  constructor() {
+    super('Review request identity collision.');
+    this.name = 'ReviewRequestConflictError';
+  }
+}
+
 /**
  * A project with no configured `workingDirectory`. This is a normal state on
  * the Project contract (the field is optional), so the aggregate treats it as
@@ -85,6 +99,9 @@ interface ReviewExecutionContext {
   /** See `SessionOwnerStamp`: an unverified agent's review acts for no one. */
   ownerAttribution?: StartOwnerAttribution;
   tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
+  /** Server-derived association retained with submission admission, never receipt claims. */
+  taskBinding?: ReviewTaskBinding;
+  assertCurrent?: () => void;
 }
 
 export type ReviewExecutionOutcome =
@@ -132,6 +149,8 @@ export interface ReviewSubmissionStore {
   begin(input: {
     request: IndependentReviewRequest;
     startedAt: string;
+    taskBinding?: ReviewTaskBinding;
+    assertCurrent?: () => void;
   }): Promise<ReviewSubmissionAdmission>;
   invoking(input: {
     request: IndependentReviewRequest;
@@ -235,6 +254,7 @@ export class ReviewEvidenceModule {
   readonly #now: () => Date;
   readonly #timeoutMs: number;
   readonly #maxConcurrentReviewers: number;
+  readonly #inflightIdentities = new Map<string, string>();
   readonly #inflight = new Map<
     string,
     Promise<IndependentReviewRequestStatus>
@@ -275,14 +295,27 @@ export class ReviewEvidenceModule {
     context: ReviewExecutionContext,
   ): Promise<IndependentReviewRequestStatus> {
     const request = parseIndependentReviewRequest(value);
+    context.assertCurrent?.();
     const startedAt = this.#now().toISOString();
     const key = `${request.target.projectSlug}\0${request.requestId}`;
+    const identity = reviewEvidenceId({
+      request,
+      task: context.taskBinding ?? null,
+    });
     const inflight = this.#inflight.get(key);
-    if (inflight) return inflight;
+    if (inflight) {
+      if (this.#inflightIdentities.get(key) !== identity)
+        throw new ReviewRequestConflictError();
+      return inflight;
+    }
     const execution = this.#admitAndRun(request, context, startedAt).finally(
-      () => this.#inflight.delete(key),
+      () => {
+        this.#inflight.delete(key);
+        this.#inflightIdentities.delete(key);
+      },
     );
     this.#inflight.set(key, execution);
+    this.#inflightIdentities.set(key, identity);
     return execution;
   }
 
@@ -291,7 +324,14 @@ export class ReviewEvidenceModule {
     context: ReviewExecutionContext,
     startedAt: string,
   ): Promise<IndependentReviewRequestStatus> {
-    const admission = await this.#submissions.begin({ request, startedAt });
+    const admission = await this.#submissions.begin({
+      request,
+      startedAt,
+      ...(context.taskBinding ? { taskBinding: context.taskBinding } : {}),
+      ...(context.assertCurrent
+        ? { assertCurrent: context.assertCurrent }
+        : {}),
+    });
     if (admission.kind === 'existing') return admission.status;
     return this.#runAcquired(request, context, startedAt);
   }
@@ -375,6 +415,7 @@ export class ReviewEvidenceModule {
           })),
         ),
       ]);
+      context.assertCurrent?.();
       workspace = await this.#source.open(executableRequest.target);
       if (selected.target && !sameTarget(workspace.target, selected.target)) {
         throw new Error('review workspace target changed after routing');
@@ -388,6 +429,7 @@ export class ReviewEvidenceModule {
           'delta review base must be the exact head of its prior receipt',
         );
       }
+      context.assertCurrent?.();
       await this.#submissions.invoking({
         request,
         updatedAt: this.#now().toISOString(),

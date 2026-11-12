@@ -141,6 +141,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/services/evidence/__tests__/task-code-review-module.test.ts',
   // Reads the real tracked/untracked Git inventory and scans the UI AST corpus.
   'scripts/__tests__/conversation-boundary-gate.test.ts',
   // Two owned loopback runtime listeners with real Device grants and live streams.

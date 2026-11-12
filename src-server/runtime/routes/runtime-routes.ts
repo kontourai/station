@@ -464,6 +464,7 @@ import {
   createReviewEvidenceAggregateRoutes,
   createReviewEvidenceRoutes,
 } from '../../routes/evidence/reviews.js';
+import { createTaskCodeReviewRoutes } from '../../routes/evidence/task-code-reviews.js';
 import { createTrustBundleRoutes } from '../../routes/evidence/trust-bundles.js';
 import { createVeritasReadinessRoutes } from '../../routes/evidence/veritas-readiness.js';
 import { createWorkflowSidecarRoutes } from '../../routes/evidence/workflow-sidecars.js';
@@ -749,6 +750,10 @@ import {
   TaskAnswerSupportModule,
   TaskAnswerSupportStore,
 } from '../../services/evidence/task-answer-support-module.js';
+import {
+  TaskCodeReviewError,
+  TaskCodeReviewModule,
+} from '../../services/evidence/task-code-review-module.js';
 import { TrustBundleService } from '../../services/evidence/trust-bundle-service.js';
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
@@ -10682,6 +10687,11 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   });
+  const expandTildeProjectDirectoryIdentity = (directory: string | undefined) =>
+    JSON.stringify([
+      directory,
+      directory ? resolve(expandTilde(directory)) : null,
+    ]);
   const reviewObserver = {
     record(input: { operation: string; outcome: string; durationMs?: number }) {
       try {
@@ -10780,6 +10790,77 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/projects/:slug/reviews',
     createReviewEvidenceRoutes(reviewEvidence, {
+      taskContext: async (c, request) => {
+        if (isHostedTenantExecutionRequired()) return undefined;
+        const authority = stationControlRequestAuthority(c.req.raw);
+        if (authority?.kind !== 'caller') return undefined;
+        const sessionId = authority.caller.sessionId;
+        const binding =
+          context.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+            sessionId,
+          );
+        if (!binding) return undefined;
+        const access =
+          await projectTaskRoomRuntime?.sessionTaskContextAccess(sessionId);
+        const task = context.taskGraphService.readTaskView(binding.taskId);
+        const projectRef =
+          task &&
+          context.projectService
+            .listProjects()
+            .find(
+              (entry) =>
+                entry.id === task.projectId || entry.slug === task.projectId,
+            );
+        const project = projectRef
+          ? context.projectService.getProject(projectRef.slug)
+          : undefined;
+        if (
+          !access ||
+          access.kind !== 'granted' ||
+          !task ||
+          !project ||
+          project.slug !== request.target.projectSlug ||
+          request.implementerAgentSlug !== task.agentId
+        )
+          throw new TaskCodeReviewError(
+            'forbidden',
+            'The Task review binding is unavailable.',
+          );
+        const assertCurrent = () => {
+          const currentProject = context.projectService.getProject(
+            project.slug,
+          );
+          const currentTask = context.taskGraphService.readTaskView(task.id);
+          if (
+            !isRequestPrincipalCurrent(c.req.raw) ||
+            !access.write.beforeCommit() ||
+            !currentTask ||
+            currentTask.agentId !== task.agentId ||
+            currentTask.status === 'done' ||
+            currentTask.status === 'canceled' ||
+            !currentProject ||
+            currentProject.id !== project.id ||
+            currentProject.createdAt !== project.createdAt ||
+            expandTildeProjectDirectoryIdentity(
+              currentProject.workingDirectory,
+            ) !== expandTildeProjectDirectoryIdentity(project.workingDirectory)
+          )
+            throw new TaskCodeReviewError(
+              'forbidden',
+              'The Task review binding changed.',
+            );
+        };
+        assertCurrent();
+        return {
+          taskBinding: {
+            projectId: project.id,
+            projectCreatedAt: project.createdAt,
+            taskId: task.id,
+            taskCreatedAt: task.createdAt,
+          },
+          assertCurrent,
+        };
+      },
       getOwner: (c) =>
         sessionOwnerForRequest(
           resolveOrchestrationRequestPrincipal(
@@ -10792,6 +10873,130 @@ export function configureRuntimeRoutes(
         reviewObserver.diagnostic({ operation, error }),
     }),
   );
+  if (!isHostedTenantExecutionRequired()) {
+    const taskReviewPreview = context.featurePreviews.bind({
+      id: 'task-review',
+      label: 'Task review',
+      description:
+        'Review Task plans, outputs and Screens with anchored comments and send them to the lead agent.',
+    });
+    const assertTaskCodeReviewEnabled = () => {
+      if (
+        !taskReviewPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        })
+      )
+        throw new TaskCodeReviewError(
+          'feature_preview_disabled',
+          'Enable Task review in Settings → Advanced → Feature previews.',
+        );
+    };
+    const taskCodeReviews = new TaskCodeReviewModule({
+      reviews: reviewEvidence,
+      submissions: reviewStore,
+      baseCommit: (taskId) =>
+        context.taskGraphService.readTaskWorktree(taskId)?.baseCommit,
+      reviewers: async (project, implementer) =>
+        (await context.agentService.listAgents())
+          .filter(
+            (agent) =>
+              String(agent.slug) !== implementer &&
+              (agent.project === project.slug ||
+                (agent.project === undefined &&
+                  project.agents?.some(
+                    (id) => String(id) === String(agent.slug),
+                  ))) &&
+              agent.execution?.agentConnectionId === 'codex',
+          )
+          .map((agent) => ({ slug: String(agent.slug), name: agent.name })),
+      reportError: (error) =>
+        reviewObserver.diagnostic({ operation: 'task.read', error }),
+    });
+    context.app.route(
+      '/api/tasks',
+      createTaskCodeReviewRoutes({
+        module: taskCodeReviews,
+        reportError: (error) =>
+          reviewObserver.diagnostic({ operation: 'task.route', error }),
+        authorize: async (c, taskId, execute) => {
+          if (!projectTaskRoomRuntime || !isRequestPrincipalCurrent(c.req.raw))
+            return undefined;
+          assertTaskCodeReviewEnabled();
+          const access = await projectTaskRoomRuntime.personTaskReviewAccess({
+            taskId,
+            request: c.req.raw,
+          });
+          if (access.kind !== 'granted') return undefined;
+          const task = await context.taskGraphService.readTaskForOpen(taskId);
+          const projectRef =
+            task &&
+            context.projectService
+              .listProjects()
+              .find(
+                (entry) =>
+                  entry.id === task.projectId || entry.slug === task.projectId,
+              );
+          const project = projectRef
+            ? context.projectService.getProject(projectRef.slug)
+            : undefined;
+          if (!task || !project) return undefined;
+          const owner = sessionOwnerForRequest(
+            resolveOrchestrationRequestPrincipal(
+              c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+            ).id,
+            c.req.raw,
+          );
+          const directory = context.taskGraphService.taskWorkingDirectory(task);
+          const assertCurrent = () => {
+            assertTaskCodeReviewEnabled();
+            const currentProject = context.projectService.getProject(
+              project.slug,
+            );
+            const currentTask = context.taskGraphService.readTaskView(task.id);
+            if (
+              !isRequestPrincipalCurrent(c.req.raw) ||
+              !access.write.beforeCommit() ||
+              !currentProject ||
+              currentProject.id !== project.id ||
+              currentProject.createdAt !== project.createdAt ||
+              expandTildeProjectDirectoryIdentity(
+                currentProject.workingDirectory,
+              ) !==
+                expandTildeProjectDirectoryIdentity(project.workingDirectory) ||
+              !currentTask ||
+              currentTask.createdAt !== task.createdAt ||
+              currentTask.projectId !== task.projectId ||
+              context.taskGraphService.taskWorkingDirectory(currentTask) !==
+                directory
+            )
+              throw new TaskCodeReviewError(
+                'forbidden',
+                'Task access changed. Reopen this Task.',
+              );
+          };
+          const assertMayExecute = () => {
+            assertCurrent();
+            const latest = context.taskGraphService.readTaskView(task.id);
+            if (
+              !latest ||
+              latest.agentId !== task.agentId ||
+              latest.status === 'done' ||
+              latest.status === 'canceled' ||
+              !canUseTaskSource(context, task, owner.ownerUserId, true)
+            )
+              throw new TaskCodeReviewError(
+                'forbidden',
+                'This Task cannot start a review with your current access.',
+              );
+          };
+          assertCurrent();
+          if (execute) assertMayExecute();
+          return { task, project, owner, assertCurrent, assertMayExecute };
+        },
+      }),
+    );
+  }
   context.app.route(
     '/api/review-evidence',
     createReviewEvidenceAggregateRoutes(

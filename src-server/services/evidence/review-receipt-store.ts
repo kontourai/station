@@ -20,8 +20,10 @@ import {
   ReviewProjectWorkspaceMissingError,
   type ReviewReceiptReference,
   type ReviewReceiptStore,
+  ReviewRequestConflictError,
   type ReviewSubmissionAdmission,
   type ReviewSubmissionStore,
+  type ReviewTaskBinding,
 } from './review-evidence-module.js';
 
 const RECEIPT_DIRECTORY = join('.station', 'review-evidence', 'receipts');
@@ -46,7 +48,8 @@ interface RootIdentity {
 }
 
 interface StoredSubmission {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
+  taskBinding?: ReviewTaskBinding;
   requestId: string;
   projectSlug: string;
   requestSha256: string;
@@ -253,6 +256,8 @@ export class FileReviewReceiptStore
   async begin(input: {
     request: IndependentReviewRequest;
     startedAt: string;
+    taskBinding?: ReviewTaskBinding;
+    assertCurrent?: () => void;
   }): Promise<ReviewSubmissionAdmission> {
     const projectSlug = input.request.target.projectSlug;
     return this.#withProjectLock(projectSlug, async (root) => {
@@ -263,8 +268,12 @@ export class FileReviewReceiptStore
       );
       const requestSha256 = reviewEvidenceId(input.request);
       if (existing) {
-        if (existing.requestSha256 !== requestSha256) {
-          throw new Error('Review request identity collision.');
+        if (
+          existing.requestSha256 !== requestSha256 ||
+          canonicalReviewJson(existing.taskBinding ?? null) !==
+            canonicalReviewJson(input.taskBinding ?? null)
+        ) {
+          throw new ReviewRequestConflictError();
         }
         if (
           existing.state === 'running' &&
@@ -303,7 +312,8 @@ export class FileReviewReceiptStore
         );
       }
       const record: StoredSubmission = {
-        schemaVersion: 1,
+        schemaVersion: input.taskBinding ? 2 : 1,
+        ...(input.taskBinding ? { taskBinding: input.taskBinding } : {}),
         requestId: input.request.requestId,
         projectSlug,
         requestSha256,
@@ -314,9 +324,81 @@ export class FileReviewReceiptStore
         startedAt: input.startedAt,
         updatedAt: input.startedAt,
       };
-      await this.#writeSubmission(record, root);
+      input.assertCurrent?.();
+      await this.#writeSubmission(record, root, input.assertCurrent);
       return { kind: 'acquired' };
     });
+  }
+
+  async hasTaskRequest(
+    projectSlug: string,
+    requestId: string,
+    binding: ReviewTaskBinding,
+  ): Promise<boolean> {
+    return this.#withProjectLock(
+      projectSlug,
+      async (root) => {
+        const record = await this.#readSubmission(requestId, projectSlug, root);
+        if (!record) return false;
+        if (
+          canonicalReviewJson(record.taskBinding ?? null) !==
+          canonicalReviewJson(binding)
+        )
+          throw new ReviewRequestConflictError();
+        return true;
+      },
+      { lockTimeoutMs: READ_LOCK_TIMEOUT_MS },
+    );
+  }
+
+  async taskRequestIds(
+    projectSlug: string,
+    binding: ReviewTaskBinding,
+  ): Promise<{ requestIds: string[]; omitted: number }> {
+    return this.#withProjectLock(
+      projectSlug,
+      async (root) => {
+        const records: StoredSubmission[] = [];
+        for (const name of await this.#submissionNames(root)) {
+          const path = join(
+            await this.#receiptDirectory(root, false),
+            REQUEST_DIRECTORY,
+            name,
+          );
+          const value = JSON.parse(
+            await readJsonFileDescriptor(
+              path,
+              MAX_SUBMISSION_BYTES,
+              'Review request state',
+            ),
+          );
+          const record = parseStoredSubmission(
+            value,
+            value.requestId,
+            projectSlug,
+          );
+          if (
+            name !== `${reviewEvidenceId({ requestId: record.requestId })}.json`
+          )
+            throw new Error('Review request identity is invalid.');
+          if (
+            canonicalReviewJson(record.taskBinding ?? null) ===
+            canonicalReviewJson(binding)
+          )
+            records.push(record);
+        }
+        records.sort(
+          (a, b) =>
+            b.startedAt.localeCompare(a.startedAt) ||
+            a.requestId.localeCompare(b.requestId),
+        );
+        return {
+          requestIds: records.slice(0, 20).map((record) => record.requestId),
+          omitted: Math.max(0, records.length - 20),
+        };
+      },
+      { lockTimeoutMs: READ_LOCK_TIMEOUT_MS },
+    );
   }
 
   async invoking(input: {
@@ -612,14 +694,17 @@ export class FileReviewReceiptStore
   async #writeSubmission(
     record: StoredSubmission,
     root: RootIdentity,
+    assertCurrent?: () => void,
   ): Promise<void> {
     const path = await this.#submissionPath(record.requestId, root, true);
     const requestDirectoryIdentity = await captureRootIdentity(dirname(path));
     await publishJsonFileWithOwnedLock(path, record, {
       maxBytes: MAX_SUBMISSION_BYTES,
       label: 'Review request state',
-      beforeCommit: () =>
-        validatePublicationIdentity(root, requestDirectoryIdentity),
+      beforeCommit: async () => {
+        await validatePublicationIdentity(root, requestDirectoryIdentity);
+        assertCurrent?.();
+      },
     });
   }
 
@@ -856,10 +941,14 @@ function parseStoredSubmission(
     'cleanup',
     'failureReason',
     'unavailableLenses',
+    'taskBinding',
   ];
   if (
     Object.keys(input).some((key) => !allowed.includes(key)) ||
-    input.schemaVersion !== 1 ||
+    (input.schemaVersion !== 1 && input.schemaVersion !== 2) ||
+    (input.schemaVersion === 2
+      ? !validTaskBinding(input.taskBinding)
+      : input.taskBinding !== undefined) ||
     input.requestId !== requestId ||
     input.projectSlug !== projectSlug ||
     !RECEIPT_ID.test(String(input.requestSha256)) ||
@@ -912,6 +1001,21 @@ function parseStoredSubmission(
     throw new Error('Review request state is invalid.');
   }
   return input as unknown as StoredSubmission;
+}
+
+function validTaskBinding(value: unknown): value is ReviewTaskBinding {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  const keys = ['projectId', 'projectCreatedAt', 'taskId', 'taskCreatedAt'];
+  return (
+    Object.keys(row).length === keys.length &&
+    keys.every(
+      (key) =>
+        typeof row[key] === 'string' &&
+        row[key].length > 0 &&
+        row[key].length <= 256,
+    )
+  );
 }
 
 function validStoredAttachment(value: unknown): boolean {

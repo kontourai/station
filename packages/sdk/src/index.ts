@@ -1526,6 +1526,11 @@ export type {
   SetupImportReceipt,
 } from './query-domains/setupImports';
 export {
+  taskCodeReviewQueryKey,
+  useRequestTaskCodeReviewMutation,
+  useTaskCodeReviewQuery,
+} from './query-domains/taskCodeReview.js';
+export {
   fetchTaskCaptureContent,
   fetchTaskCaptureSessions,
   fetchTaskDeviceCaptureSessions,

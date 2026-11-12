@@ -77,6 +77,7 @@ import {
   type TaskExperienceId,
 } from './task-experiences';
 import { TaskCapabilityPath } from './task-workspace/TaskCapabilityPath';
+import { TaskCodeReviewPanel } from './task-workspace/TaskCodeReviewPanel';
 import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
 import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
@@ -712,6 +713,19 @@ function TaskWorkspaceContent({
             }}
           />
         )}
+        {reviewEnabled &&
+          supervisionAuthority &&
+          (graph.task.workspaceBinding?.repoRoot ||
+            graph.task.taskWorktree ||
+            graph.task.taskWorktreeUnknown) && (
+            <TaskCodeReviewPanel
+              key={`${supervisionAuthority.apiBase}:${supervisionAuthority.authorityKey}:${graph.task.id}:${graph.task.createdAt}`}
+              authority={supervisionAuthority}
+              taskId={graph.task.id}
+              taskCreatedAt={graph.task.createdAt}
+              visible={tab === 'Overview'}
+            />
+          )}
         {supervisionAuthority && (
           <TaskSupervisionPanel
             taskId={graph.task.id}
