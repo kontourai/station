@@ -1,6 +1,7 @@
 import {
   type IntegrationViewModel,
   useApplyIntegrationToolsMutation,
+  useConnectionUsedByQuery,
   useDeleteIntegrationMutation,
   useFeaturePreviewsQuery,
   useIntegrationQuery,
@@ -12,12 +13,26 @@ import {
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { getPathForView } from '../app-shell/routing';
+import { Button } from '../components/Button';
 import { SettingsGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
+import { UsedByList } from '../components/resource-hub/UsedByList';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
+import { useNavigation } from '../contexts/NavigationContext';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
+import type { NavigationView } from '../types';
+import {
+  connectionDependentCount,
+  connectionUsedByState,
+} from './connections-hub/connection-used-by';
 import { DeleteIntegrationModal } from './integrations/DeleteIntegrationModal';
 import { IntegrationEditorPanel } from './integrations/IntegrationEditorPanel';
+import {
+  checkAllSummary,
+  useCheckAllToolServers,
+} from './integrations/useCheckAllToolServers';
 import {
   filterIntegrationItems,
   formForSelectedIntegration,
@@ -284,10 +299,20 @@ export function IntegrationsView({
     setViewMode('form');
   };
 
+  const usedBy = useConnectionUsedByQuery({ staleTime: 30_000, retry: false });
   const items = useMemo(
-    () => filterIntegrationItems(integrations, search),
-    [integrations, search],
+    () =>
+      filterIntegrationItems(integrations, search, (id) =>
+        connectionDependentCount(usedBy.data, id),
+      ),
+    [integrations, search, usedBy.data],
   );
+  const checkAll = useCheckAllToolServers(integrations);
+  const { navigate } = useNavigation();
+  const openDependent = (view: NavigationView) => {
+    const path = getPathForView(view);
+    if (path) navigate(path);
+  };
 
   const isNew = selectedId === 'new';
   const renderedEditForm = formForSelectedIntegration(selectedId, editForm);
@@ -302,6 +327,33 @@ export function IntegrationsView({
     onDirtyChange?.(hasUnsavedIntegrationDraft);
   }, [hasUnsavedIntegrationDraft, onDirtyChange]);
 
+  // On its own route this view guards its edits; embedded, the host that
+  // asked for `onDirtyChange` does. A blank new form holds nothing to lose.
+  const guardsOwnEdits = !onDirtyChange;
+  const editsAtRisk =
+    guardsOwnEdits &&
+    renderedEditForm !== null &&
+    (isNew
+      ? viewMode === 'raw'
+        ? rawJson.trim() !== ''
+        : integrationDraftSignature(renderedEditForm) !==
+          integrationDraftSignature(blankIntegration())
+      : hasUnsavedIntegrationDraft);
+  const resetSelectionState = () => {
+    setEditForm(null);
+    setMessage(null);
+    setIsLocked(true);
+    setViewMode('form');
+    setRawJson('');
+    setRawError(null);
+  };
+  // Route changes ask by themselves; Discard drops the draft first, so the
+  // navigation continues from a clean editor.
+  const { DiscardModal } = useUnsavedGuard(editsAtRisk, () => {
+    resetSelectionState();
+    return true;
+  });
+
   return (
     <>
       <SplitPaneLayout
@@ -314,19 +366,39 @@ export function IntegrationsView({
         onRetry={() => void refetchIntegrations()}
         selectedId={selectedId}
         onSelect={(id) => {
-          // Secret inputs must disappear in the same event as selection changes;
-          // waiting for the next detail query or a mutation callback retains
-          // plaintext from the previously selected server in rendered state.
-          setEditForm(null);
+          if (id === selectedId) return;
+          // With edits at risk the route guard asks first, and its Discard
+          // clears the form. Otherwise secret inputs must disappear in the
+          // same event as the selection changes; waiting for the next detail
+          // query or a mutation callback retains plaintext from the
+          // previously selected server in rendered state.
+          if (!editsAtRisk) resetSelectionState();
           select(id);
-          setMessage(null);
-          setIsLocked(true);
         }}
         onDeselect={() => {
+          if (!editsAtRisk) {
+            setEditForm(null);
+            saveMutation.reset();
+          }
           deselect();
-          setEditForm(null);
-          saveMutation.reset();
         }}
+        headerActions={
+          <Button
+            onClick={() => void checkAll.run()}
+            disabled={checkAll.running || checkAll.nothingToCheck}
+          >
+            {checkAll.running ? 'Checking…' : 'Check all'}
+          </Button>
+        }
+        listIntro={
+          <div className="integrations-check-all" aria-live="polite">
+            {checkAll.result
+              ? checkAllSummary(checkAll.result).map((line) => (
+                  <p key={line}>{line}</p>
+                ))
+              : null}
+          </div>
+        }
         onSearch={setSearch}
         searchValue={search}
         listFilteredEmptyNoun="tool servers"
@@ -421,7 +493,18 @@ export function IntegrationsView({
             trustControlsEnabled={trustControlsEnabled}
           />
         )}
+        {renderedEditForm && !isNew && !renderedEditForm.builtin && (
+          <UsedByList
+            state={connectionUsedByState(
+              usedBy,
+              renderedEditForm.id,
+              openDependent,
+            )}
+            emptyDescription="Agents and Projects that add this server appear here."
+          />
+        )}
       </SplitPaneLayout>
+      <DiscardModal />
 
       <LazyBoundary
         load={loadSecretBindingsSection}

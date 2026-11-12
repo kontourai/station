@@ -1,9 +1,17 @@
 import type { IntegrationViewModel } from '@kontourai/station-sdk';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
+import { resourceRow } from '../../components/resource-hub/resource-row';
+import { toolServerProbeFact, toolServerStatus } from './tool-server-status';
 
+/**
+ * Tool server rows: the status as a badge, then what the last probe saw and
+ * how many Agents and Projects select the server. `usedByCount` answers
+ * `null` while that is unknown, so a row never claims nobody uses it.
+ */
 export function filterIntegrationItems(
   integrations: IntegrationViewModel[],
   search: string,
+  usedByCount: (id: string) => number | null = () => null,
 ) {
   return integrations
     .filter((integration) => {
@@ -16,47 +24,32 @@ export function filterIntegrationItems(
         integration.description?.toLowerCase().includes(query)
       );
     })
-    .map((integration) => ({
-      id: integration.id,
-      name: integration.displayName || integration.id,
-      subtitle: [
-        integration.enabled === false
-          ? 'Disabled'
-          : integration.probe
-            ? integration.probe.ok
-              ? `Connected · ${integration.probe.toolCount} ${integration.probe.toolCount === 1 ? 'tool' : 'tools'}`
-              : `Needs attention · ${integration.probe.error}`
-            : 'Not checked yet',
-        integration.description,
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      // The glyph replaces the bare status dot as the list icon, but
-      // connectivity stays visible: the dot moves alongside the glyph as a
-      // small corner badge rather than being dropped.
-      icon: (
-        <span className="integration-list-icon">
-          <IntegrationGlyph
-            id={integration.id}
-            displayName={integration.displayName}
-            icon={integration.icon}
-            iconUrl={integration.iconUrl}
-          />
-          <span
-            className={`status-dot status-dot--${integration.enabled === false ? 'disabled' : integration.probe?.ok ? 'connected' : 'disconnected'} integration-list-icon__status`}
-            title={
-              integration.enabled === false
-                ? 'Disabled'
-                : integration.probe?.ok
-                  ? 'Connected'
-                  : integration.probe
-                    ? 'Needs attention'
-                    : 'Not checked yet'
-            }
-          />
-        </span>
-      ),
-    }));
+    .map((integration) => {
+      const count = usedByCount(integration.id);
+      return resourceRow({
+        id: integration.id,
+        name: integration.displayName || integration.id,
+        status: toolServerStatus(integration),
+        facts: [
+          toolServerProbeFact(integration),
+          count === null
+            ? null
+            : count === 0
+              ? 'Not used yet'
+              : `Used by ${count}`,
+        ],
+        icon: (
+          <span className="integration-list-icon">
+            <IntegrationGlyph
+              id={integration.id}
+              displayName={integration.displayName}
+              icon={integration.icon}
+              iconUrl={integration.iconUrl}
+            />
+          </span>
+        ),
+      });
+    });
 }
 
 export function formToMcpJson(form: IntegrationViewModel): string {

@@ -104,19 +104,12 @@
   opacity: 0.6;
 }
 
-/* ── Integration list icon: glyph + connectivity badge (issue archive#691) ── */
+/* ── Integration list icon: the glyph; status is the row's badge ── */
 .integration-list-icon {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.integration-list-icon__status {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  box-shadow: 0 0 0 2px var(--bg-secondary);
 }
 
 .integration-health {
@@ -158,4 +151,18 @@
 /* The account status line sits directly above the sign-in scopes. */
 .integration-account__status {
   margin: 0 0 var(--k-space-4);
+}
+
+/* Check all's report, under the list header. Empty, it takes no space. */
+.integrations-check-all {
+  display: grid;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.integrations-check-all:empty {
+  position: absolute;
+}
+.integrations-check-all p {
+  margin: 0;
 }

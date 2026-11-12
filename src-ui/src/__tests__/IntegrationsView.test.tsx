@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let integrations: unknown[] = [];
@@ -10,6 +16,14 @@ const refetchIntegrations = vi.fn();
 let pathname = '/connections/tools';
 let detail: any;
 let trustPreview = false;
+const navigateMock = vi.fn();
+let reconnectAsync = vi.fn();
+let usedByQuery: {
+  data?: unknown;
+  error: unknown;
+  isError: boolean;
+  refetch: () => void;
+} = { data: undefined, error: null, isError: false, refetch: vi.fn() };
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   // The REAL save and trust-review hooks, so requests travel the real
@@ -33,7 +47,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
       : [],
   }),
   useDeleteIntegrationMutation: () => ({ mutate: vi.fn() }),
-  useReconnectIntegrationMutation: () => ({ mutate: vi.fn() }),
+  useReconnectIntegrationMutation: () => ({
+    mutate: vi.fn(),
+    mutateAsync: reconnectAsync,
+  }),
+  useConnectionUsedByQuery: () => usedByQuery,
   useSetIntegrationRenderPermissionMutation: () => ({ mutate: vi.fn() }),
   useSetIntegrationEnabledMutation: () => ({ mutate: vi.fn() }),
   useApplyIntegrationToolsMutation: () => ({ mutate: vi.fn() }),
@@ -45,7 +63,7 @@ vi.mock('../contexts/NavigationContext', () => {
   // memoized actions, no subscription). This mock answers both from one value.
   const navigation = () => ({
     pathname,
-    navigate: vi.fn(),
+    navigate: navigateMock,
   });
   return {
     useNavigation: (
@@ -305,7 +323,160 @@ describe('IntegrationsView (#771)', () => {
       tool.compareDocumentPosition(bindings) & Node.DOCUMENT_POSITION_FOLLOWING,
       'expected the tools list to render before advanced secret bindings',
     ).toBeTruthy();
-    expect(screen.getByText('Not checked yet')).toBeTruthy();
+    expect(screen.getByText('Saved — not verified')).toBeTruthy();
     expect(screen.queryByText('Never probed')).toBeNull();
+  });
+});
+
+describe('IntegrationsView: rows, Check all and the unsaved guard', () => {
+  const stdio = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    kind: 'mcp',
+    transport: 'stdio',
+    command: 'node',
+    displayName: id,
+    enabled: true,
+    probe: { ok: true, toolCount: 2, checkedAt: '2026-11-01T00:00:00Z' },
+    ...extra,
+  });
+
+  beforeEach(() => {
+    integrations = [];
+    integrationsError = null;
+    pathname = '/connections/tools';
+    detail = undefined;
+    navigateMock.mockReset();
+    reconnectAsync = vi.fn();
+    usedByQuery = {
+      data: undefined,
+      error: null,
+      isError: false,
+      refetch: vi.fn(),
+    };
+  });
+
+  test('rows count the Agents and Projects the server projection names', () => {
+    integrations = [stdio('docs')];
+    usedByQuery = {
+      ...usedByQuery,
+      data: {
+        dependents: [
+          {
+            connectionId: 'docs',
+            kind: 'agent',
+            slug: 'a',
+            name: 'A',
+            via: 'tool-server',
+          },
+          {
+            connectionId: 'docs',
+            kind: 'project',
+            slug: 'p',
+            name: 'P',
+            via: 'project-tools',
+          },
+          {
+            connectionId: 'other',
+            kind: 'agent',
+            slug: 'b',
+            name: 'B',
+            via: 'tool-server',
+          },
+        ],
+      },
+    };
+    renderView();
+    expect(screen.getByText(/Used by 2$/)).toBeTruthy();
+  });
+
+  test('Check all probes at most three at once and never a server that may ask to sign in', async () => {
+    integrations = [
+      stdio('one'),
+      stdio('two'),
+      stdio('three'),
+      stdio('four'),
+      stdio('five'),
+      stdio('off', { enabled: false }),
+      stdio('remote-new', {
+        transport: 'streamable-http',
+        endpoint: 'https://example.test/mcp',
+        probe: undefined,
+      }),
+      stdio('remote-oauth', {
+        transport: 'sse',
+        endpoint: 'https://example.test/sse',
+        probe: {
+          ok: true,
+          toolCount: 1,
+          checkedAt: '2026-11-01T00:00:00Z',
+          authorization: { state: 'authorized' },
+        },
+      }),
+      stdio('remote-open', {
+        transport: 'streamable-http',
+        endpoint: 'https://open.example.test/mcp',
+      }),
+      stdio('mine', { credentialOwnership: { owner: 'principal' } }),
+    ];
+    let inFlight = 0;
+    let peak = 0;
+    const releases: Array<() => void> = [];
+    reconnectAsync = vi.fn(
+      (id: string) =>
+        new Promise((resolve) => {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          releases.push(() => {
+            inFlight -= 1;
+            resolve({
+              id,
+              probe: {
+                ok: id !== 'two',
+                toolCount: 1,
+                checkedAt: '2026-11-02T00:00:00Z',
+              },
+            });
+          });
+        }),
+    );
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: 'Check all' }));
+    while (reconnectAsync.mock.calls.length < 6 || releases.length > 0) {
+      await waitFor(() => expect(releases.length).toBeGreaterThan(0));
+      releases.shift()!();
+      await Promise.resolve();
+    }
+    await waitFor(() =>
+      expect(screen.getByText('Checked 6; 1 failed: two.')).toBeTruthy(),
+    );
+    expect(peak).toBe(3);
+    expect(reconnectAsync.mock.calls.map(([id]) => id).sort()).toEqual(
+      ['five', 'four', 'one', 'remote-open', 'three', 'two'].sort(),
+    );
+    expect(
+      screen.getByText(
+        'Skipped 3 that may ask you to sign in: remote-new, remote-oauth, mine.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('leaving a server with unsaved edits asks first; Discard continues', async () => {
+    const { navigationStore } = await import('../contexts/navigation-store');
+    window.history.replaceState({}, '', '/connections/tools/docs');
+    pathname = '/connections/tools/docs';
+    navigateMock.mockImplementation((path: string) =>
+      navigationStore.navigate(path),
+    );
+    integrations = [stdio('docs'), stdio('other')];
+    detail = stdio('docs');
+    renderView();
+    fireEvent.change(screen.getByLabelText('Display Name'), {
+      target: { value: 'Docs (edited)' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^other/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Unsaved Changes' });
+    expect(window.location.pathname).toBe('/connections/tools/docs');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+    expect(window.location.pathname).toBe('/connections/tools/other');
   });
 });

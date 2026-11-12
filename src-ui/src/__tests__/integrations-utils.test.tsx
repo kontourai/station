@@ -99,59 +99,20 @@ describe('integrations utils', () => {
     expect(items[0].id).toBe('db');
   });
 
-  test('filterIntegrationItems keeps connectivity visible alongside the new glyph icon', () => {
-    const [connectedItem] = filterIntegrationItems([baseIntegration], '');
-    const { container: connectedContainer } = render(
-      connectedItem.icon as ReactElement,
+  test('filterIntegrationItems shows status as a badge beside the glyph, never as a bare dot', () => {
+    const [item] = filterIntegrationItems([baseIntegration], '');
+    const { container: icon } = render(item.icon as ReactElement);
+    // The glyph (manifest icon absent for baseIntegration) renders
+    // deterministic initials; status is no longer a dot on it.
+    expect(icon.textContent).toBe('DS');
+    expect(icon.querySelector('.status-dot')).toBeNull();
+    const { container: badge } = render(item.badge as ReactElement);
+    expect(badge.querySelector('.resource-status__badge')?.textContent).toBe(
+      'Ready',
     );
-    expect(
-      connectedContainer.querySelector('.status-dot--connected'),
-    ).toBeTruthy();
-    // The glyph (manifest icon absent for baseIntegration) still renders
-    // deterministic initials, not just the bare status dot.
-    expect(connectedContainer.textContent).toBe('DS');
-
-    const [disconnectedItem] = filterIntegrationItems(
-      [
-        {
-          ...baseIntegration,
-          connected: false,
-          probe: {
-            ok: false,
-            error: 'connection refused',
-            toolCount: 0,
-            checkedAt: '2026-08-14T18:00:00.000Z',
-          },
-        },
-      ],
-      '',
-    );
-    const { container: disconnectedContainer } = render(
-      disconnectedItem.icon as ReactElement,
-    );
-    expect(
-      disconnectedContainer.querySelector('.status-dot--disconnected'),
-    ).toBeTruthy();
-
-    // The third state. `enabled === false` emitted `status-dot--disabled`
-    // with no rule behind it, so a switched-off integration drew the bare
-    // 8px circle — the same glyph as nothing at all. Asserting the class is
-    // emitted is the half this file can prove; the rule now exists in
-    // editor-layout.css and is hollow rather than dimmed, so off and
-    // not-answering stop sharing a look.
-    const [disabledItem] = filterIntegrationItems(
-      [{ ...baseIntegration, id: 'disabled', enabled: false }],
-      '',
-    );
-    const { container: disabledContainer } = render(
-      disabledItem.icon as ReactElement,
-    );
-    expect(
-      disabledContainer.querySelector('.status-dot--disabled'),
-    ).toBeTruthy();
   });
 
-  test('names disabled, failed, and never-probed health without fabricating green', () => {
+  test('names disabled, failed, sign-in and never-probed status without fabricating green', () => {
     const items = filterIntegrationItems(
       [
         { ...baseIntegration, id: 'disabled', enabled: false },
@@ -165,14 +126,55 @@ describe('integrations utils', () => {
             checkedAt: '2026-08-14T18:00:00.000Z',
           },
         },
+        {
+          ...baseIntegration,
+          id: 'oauth',
+          transport: 'streamable-http',
+          probe: {
+            ok: false,
+            toolCount: 0,
+            checkedAt: '2026-08-14T18:00:00.000Z',
+            authorization: { state: 'awaiting-operator-consent' },
+          },
+        },
         { ...baseIntegration, id: 'unknown', probe: undefined },
       ],
       '',
     );
+    const labels = items.map(
+      (item) =>
+        render(item.badge as ReactElement).container.querySelector(
+          '.resource-status__badge',
+        )?.textContent,
+    );
+    expect(labels).toEqual([
+      'Disabled',
+      'Check failed',
+      'Sign in required',
+      'Saved — not verified',
+    ]);
+    // The failure reason travels with the badge, read once.
+    expect(
+      render(items[1]!.badge as ReactElement).container.textContent,
+    ).toContain('verbatim failure');
+  });
+
+  test('rows carry tool count, last probe and how many select the server', () => {
+    const counts: Record<string, number> = { docs: 2, db: 0 };
+    const items = filterIntegrationItems(
+      [
+        baseIntegration,
+        { ...baseIntegration, id: 'db' },
+        { ...baseIntegration, id: 'x' },
+      ],
+      '',
+      (id) => counts[id] ?? null,
+    );
     expect(items.map((item) => item.subtitle)).toEqual([
-      'Disabled · Searches docs',
-      'Needs attention · verbatim failure · Searches docs',
-      'Not checked yet · Searches docs',
+      `2 tools, checked ${new Date('2026-08-14T18:00:00.000Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · Used by 2`,
+      expect.stringMatching(/ · Not used yet$/),
+      // Unknown (loading, failed or withheld): no used-by claim at all.
+      expect.not.stringMatching(/Used by|Not used/),
     ]);
   });
 
