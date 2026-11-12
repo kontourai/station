@@ -30,7 +30,13 @@ can replace it. Put durable native customization in the owning configuration,
 template, or post-init script, and verify that a regenerated project retains it.
 
 `apply-android-native-bootstrap.mjs` restores the camera/voice permissions and optional
-camera/microphone features after initialization for every channel. Rear-camera
+camera/microphone features after initialization for every channel, and the
+MainActivity `image/*` `SEND`/`SEND_MULTIPLE` filter the media-intake plugin's
+share target needs. That filter sits on the generated activity, whose package
+follows each channel's identifier, so the plugin cannot declare it itself.
+It also gives MainActivity an `onNewIntent` that records the intent and
+offers it to that plugin's buffer, so a share that arrives before the plugin
+loads is kept. Rear-camera
 and autofocus requirements implied by Camera are explicitly optional too. The in-app QR scanner
 uses WebView `getUserMedia`; Android cannot show its runtime permission prompt
 unless the packaged manifest declares Camera. The Nightly staging job checks

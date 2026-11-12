@@ -23,6 +23,7 @@ import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ComposerChoice } from '../ComposerChoice';
+import { ClipboardImagePasteButton } from '../chat/ClipboardImagePasteButton';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
@@ -592,6 +593,16 @@ export function StartComposer({
           <div className="start-composer__actions">
             <span className="start-composer__tools">
               {files && <StartAttachButton onAdd={files.onAdd} />}
+              {files && (
+                <ClipboardImagePasteButton
+                  className="start-composer__tool"
+                  onFiles={(pasted) => {
+                    setFileError(null);
+                    files.onAdd(pasted);
+                  }}
+                  onMessage={setFileError}
+                />
+              )}
               {voice && (
                 <VoiceOrb
                   state={voice.state}

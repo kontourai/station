@@ -1,6 +1,7 @@
 import {
   type RefObject,
   useEffect,
+  useId,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -22,10 +23,12 @@ import {
  *
  * A module store rather than a context: panes and the floater mount under
  * different providers (a region host, a Layout, the chat dock), and a count
- * per key lets two panes showing one source both hold it.
+ * per key lets competing panes and floats elect one viewer.
  */
 
 const counts = new Map<string, number>();
+type Placement = 'pane' | 'inline' | 'float';
+const owners = new Map<string, Record<Placement, string[]>>();
 const listeners = new Set<() => void>();
 let version = 0;
 
@@ -50,7 +53,12 @@ export function announceShownSource(key: string): () => void {
 }
 
 export function isSourceShown(key: string): boolean {
-  return (counts.get(key) ?? 0) > 0;
+  const claims = owners.get(key);
+  return (
+    (counts.get(key) ?? 0) > 0 ||
+    (claims?.pane.length ?? 0) > 0 ||
+    (claims?.inline.length ?? 0) > 0
+  );
 }
 
 function subscribe(listener: () => void) {
@@ -106,4 +114,98 @@ export function useAnnounceShownSource(
     if (key === null || !onScreen) return;
     return announceShownSource(key);
   }, [key, onScreen]);
+}
+
+/** All eligible viewers register, including losers, so priority changes do not oscillate. */
+function useViewerClaim(
+  key: string | null,
+  placement: Placement,
+  eligible: boolean,
+) {
+  const owner = useId();
+  useSyncExternalStore(
+    subscribe,
+    () => version,
+    () => version,
+  );
+  useEffect(() => {
+    if (!key || !eligible) return;
+    const claims = owners.get(key) ?? { pane: [], inline: [], float: [] };
+    claims[placement].push(owner);
+    owners.set(key, claims);
+    emit();
+    return () => {
+      const current = owners.get(key);
+      if (!current) return;
+      current[placement] = current[placement].filter((id) => id !== owner);
+      if (
+        !current.pane.length &&
+        !current.inline.length &&
+        !current.float.length
+      )
+        owners.delete(key);
+      emit();
+    };
+  }, [key, placement, eligible, owner]);
+  const claims = key ? owners.get(key) : undefined;
+  const paneShown =
+    key !== null &&
+    ((counts.get(key) ?? 0) > 0 || (claims?.pane.length ?? 0) > 0);
+  const winner =
+    key && !(counts.get(key) ?? 0) && claims
+      ? (claims.pane[0] ?? claims.inline[0] ?? claims.float[0])
+      : undefined;
+  return { visible: eligible && winner === owner, paneShown };
+}
+
+function useOnScreen(
+  key: string | null,
+  ref: RefObject<Element | null>,
+): boolean {
+  const [observation, setObservation] = useState<{
+    key: string | null;
+    visible: boolean;
+  }>({
+    key: null,
+    visible: false,
+  });
+  useEffect(() => {
+    if (!key) return;
+    const element = ref.current;
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      setObservation({ key, visible: true });
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry) setObservation({ key, visible: entry.isIntersecting });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, key]);
+  return key !== null && observation.key === key && observation.visible;
+}
+
+/** Panes retain a stable observed stage even when another pane wins. */
+export function usePaneSourceVisibility(
+  key: string | null,
+  ref: RefObject<Element | null>,
+): boolean {
+  const onScreen = useOnScreen(key, ref);
+  return useViewerClaim(key, 'pane', onScreen).visible;
+}
+
+/** Inline yields to a pane, and only visible inline instances can win. */
+export function useInlineSourceVisibility(
+  key: string | null,
+  ref: RefObject<Element | null>,
+): { visible: boolean; paneShown: boolean; onScreen: boolean } {
+  const onScreen = useOnScreen(key, ref);
+  const claim = useViewerClaim(key, 'inline', onScreen);
+  return { ...claim, onScreen };
+}
+
+/** Browser floats yield to visible pane and inline viewers and to one another. */
+export function useFloatSourceVisibility(key: string | null): boolean {
+  return useViewerClaim(key, 'float', true).visible;
 }
