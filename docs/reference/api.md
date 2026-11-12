@@ -2712,9 +2712,11 @@ that is not an `http`/`https` URL, or a proxy the launch would refuse reads
 an unobserved route, not as the account.
 Access: `GET /api/connections/agents` and `GET /api/connections/agents/catalog`
 omit `origin` from an `ambient` observation whose `source` is `station` or
-`policy` unless the request is the operator in person (not an agent's request)
-or its pairing scope includes `access:manage`; the `kind` and `source` still say
-an override exists. Such an origin is host configuration. A `connection` origin
+`policy` unless the request is the operator in person or a request that is not
+an agent's and whose pairing scope includes `access:manage`; the `kind` and
+`source` still say an override exists. Default-scoped pairings include
+`access:manage`, so the origin is withheld from narrowed grants and agents, not
+from most paired devices. Such an origin is host configuration. A `connection` origin
 is the connection's own saved `config.env`, which these rows already return, so
 it is never withheld.
 

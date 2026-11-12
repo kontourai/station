@@ -138,7 +138,7 @@ describe('useResourceEditor', () => {
     expect([draft(), dirty()]).toEqual(['Server', 'false']);
   });
 
-  test('Discard waits while a save is in flight', () => {
+  test('Discard is refused while a save is in flight', () => {
     act(() => navigationStore.navigate('/connections/engines/a'));
     const { rerender } = render(
       <Editor source={{ id: 'a', name: 'Server' }} saving />,
