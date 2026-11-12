@@ -105,22 +105,35 @@ export function useComputerRows(
         : undefined);
   }, [connections]);
 
+  // At most one row is This Station: the one whose saved connection IS the
+  // active one, else the first that shares its (defined) environment id.
+  // Folded rows can resolve to the same connection, and an absent id matches
+  // nothing.
+  const thisStationRowId = useMemo(() => {
+    if (!activeConnection) return undefined;
+    const activeEnvironmentId = activeConnection.environmentId;
+    let sameEnvironment: string | undefined;
+    for (const environment of environments) {
+      const connection = connectionFor(environment);
+      if (!connection) continue;
+      if (connection.id === activeConnection.id) return environment.id;
+      if (
+        sameEnvironment === undefined &&
+        activeEnvironmentId &&
+        connection.environmentId === activeEnvironmentId
+      )
+        sameEnvironment = environment.id;
+    }
+    return sameEnvironment;
+  }, [activeConnection, connectionFor, environments]);
+
   const rows = useMemo(
     () =>
       buildComputerRows({
         environments,
         sshEnvironments,
         isManualEntry,
-        isThisStation: (environment) => {
-          const connection = connectionFor(environment);
-          return Boolean(
-            activeConnection &&
-              connection &&
-              (connection.id === activeConnection.id ||
-                (activeConnection.environmentId !== null &&
-                  connection.environmentId === activeConnection.environmentId)),
-          );
-        },
+        isThisStation: (environment) => environment.id === thisStationRowId,
         lastContact: (environment) => connectionFor(environment)?.lastSuccessAt,
         isPairedAuthorized: (environment) => {
           if (environment.environmentId) {
@@ -142,12 +155,12 @@ export function useComputerRows(
         ...(hideEndpoint ? { hideEndpoint } : {}),
       }),
     [
-      activeConnection,
       connectionFor,
       environments,
       hideEndpoint,
       pairedAuthorization,
       sshEnvironments,
+      thisStationRowId,
     ],
   );
 

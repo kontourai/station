@@ -394,6 +394,12 @@ export interface ToolServerProbeResult {
     group?: string;
     readOnly?: boolean;
   }[];
+  /**
+   * A digest of every tool this probe saw (name, description and input
+   * schema), so Check all can tell when what a server offers changed even
+   * when its tool names did not.
+   */
+  toolsDigest?: string;
   checkedAt: string;
   /** OAuth consent evidence attached to the existing probe/health projection. */
   authorization?:

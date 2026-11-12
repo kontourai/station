@@ -319,6 +319,40 @@ describe('ComputersSection', () => {
     expect(otherRow.textContent).not.toContain('Last reached');
   });
 
+  test('at most one row is This Station, and an absent environment id matches nothing', () => {
+    // Older saved records can lack the environment id entirely. Two such
+    // connections must not match each other through `undefined === undefined`.
+    const here = makeConnection({
+      environmentId: undefined as unknown as null,
+    });
+    const other = makeConnection({
+      id: 'conn-2',
+      name: 'Box C',
+      url: 'https://box-c.tailnet.ts.net',
+      environmentId: undefined as unknown as null,
+      endpoints: [
+        {
+          endpointVersion: 1,
+          id: 'endpoint-2',
+          url: 'https://box-c.tailnet.ts.net',
+          kind: 'tailnet-https',
+          priority: 100,
+        },
+      ],
+      selectedEndpointId: 'endpoint-2',
+    });
+    connectionsState.data = [here, other];
+    connectionsState.active = here;
+    const { container } = render(<ComputersSection />);
+    const rows = [
+      ...container.querySelectorAll('.connections-computers__row'),
+    ] as HTMLElement[];
+    expect(rows).toHaveLength(2);
+    expect(screen.getAllByText('This Station')).toHaveLength(1);
+    const otherRow = rows.find((row) => row.textContent?.includes('Box C'))!;
+    expect(within(otherRow).getByText('Paired device')).toBeTruthy();
+  });
+
   test('an SSH computer shows when it last connected, when recorded', () => {
     sshState.data = [sshView({ lastConnectedAt: '2026-11-02T09:00:00.000Z' })];
     render(<ComputersSection />);

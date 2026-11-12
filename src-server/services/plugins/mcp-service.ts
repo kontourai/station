@@ -8,6 +8,8 @@ import { stationControlAppCatalog } from '../../tools/station-control-mcp-server
 type Tool<_T = any> = any;
 
 import { type SpawnOptions, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type {
   IntegrationEngineCoverage,
@@ -144,6 +146,51 @@ function probeToolMetadata(connection: MCPConnection) {
         : undefined,
   }));
 }
+/** Every tool the probe saw, unbounded: a change to any one's description or
+ *  input schema changes the digest even when the names stay the same. */
+function probeToolsDigest(connection: MCPConnection): string {
+  const tools = connection.tools
+    .map((tool) => ({
+      name: tool.originalName,
+      description: tool.description ?? null,
+      inputSchema: tool.inputSchema ?? null,
+    }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return createHash('sha256')
+    .update(JSON.stringify(canonicalizeForDigest(tools)))
+    .digest('hex');
+}
+
+/** Whether a 401 names where to discover its OAuth authorization (the MCP
+ *  authorization spec's `resource_metadata`): a server that wants a sign-in,
+ *  not one that refused a static key. */
+function advertisesOAuth(response: Response): boolean {
+  return (
+    response.status === 401 &&
+    /\bresource_metadata\s*=/i.test(
+      response.headers.get('www-authenticate') ?? '',
+    )
+  );
+}
+
+/** A 403 refuses a credential the server already identified; it is not a
+ *  request to sign in. */
+function isForbidden(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    data?: unknown;
+  };
+  const data =
+    record.data && typeof record.data === 'object'
+      ? (record.data as { status?: unknown })
+      : undefined;
+  return (
+    record.status === 403 || record.statusCode === 403 || data?.status === 403
+  );
+}
+
 const CONTRIBUTED_INTEGRATION_DEFINITION = Symbol(
   'station.contributed-integration-definition',
 );
@@ -1274,6 +1321,24 @@ export class MCPService {
           ? this.createOAuthProvider(existing)
           : undefined;
       let oauthTransport: Transport | undefined;
+      // A check offers no credential to a server without a saved sign-in, so
+      // a 401 alone cannot tell an OAuth server from a refused API key. Only
+      // one that points at its OAuth discovery is recorded as needing a
+      // sign-in.
+      let oauthAdvertised = false;
+      // Read before connecting: a rejected token is marked as needing a
+      // sign-in during the attempt, after which `tokens()` reads none.
+      const hadSignIn =
+        checkOnly && oauthProvider
+          ? Boolean(await claim.run(() => oauthProvider.tokens()))
+          : false;
+      const observeOAuth =
+        (fetch: FetchLike): FetchLike =>
+        async (input, init) => {
+          const response = await fetch(input, init);
+          if (advertisesOAuth(response)) oauthAdvertised = true;
+          return response;
+        };
       try {
         const connection = await this.establishChild(existing, async (child) =>
           claim.connect(child, {
@@ -1283,7 +1348,9 @@ export class MCPService {
             ...(oauthProvider
               ? {
                   authorizationFetch: (fetch) =>
-                    oauthProvider.authorizationFetch(fetch),
+                    checkOnly
+                      ? observeOAuth(oauthProvider.authorizationFetch(fetch))
+                      : oauthProvider.authorizationFetch(fetch),
                 }
               : {}),
             onTransport: (value) => {
@@ -1302,6 +1369,7 @@ export class MCPService {
             .slice(0, PROBE_TOOL_NAME_LIMIT)
             .map((tool) => tool.name),
           tools: probeToolMetadata(connection),
+          toolsDigest: probeToolsDigest(connection),
           checkedAt,
         };
         await this.requireCurrentDefinition(claim, existing);
@@ -1335,14 +1403,17 @@ export class MCPService {
             probe: { ok: false, error: message, toolCount: 0, checkedAt },
           };
         }
-        if (checkOnly && oauthProvider && isSignInRequired(error)) {
+        const wantsSignIn =
+          checkOnly && isSignInRequired(error) && !isForbidden(error);
+        if (wantsSignIn && oauthProvider && (hadSignIn || oauthAdvertised)) {
           // A check never begins a sign-in: it records that one is needed.
+          // A server with neither a saved sign-in nor OAuth discovery (a
+          // static API key) takes the ordinary failure path below.
           const resourceIdentity = toolServerOAuthResourceIdentity(existing);
           if (!resourceIdentity)
             throw new Error('OAuth tool server endpoint is missing or invalid');
-          const stored = await claim.run(() => oauthProvider.tokens());
           toolServerProbes.add(1, { outcome: 'failure' });
-          const health = stored
+          const health = hadSignIn
             ? await this.saveAuthorizationHealth(
                 id,
                 resourceIdentity,
@@ -1489,6 +1560,7 @@ export class MCPService {
             .map((tool) => tool.name),
           checkedAt,
           tools: probeToolMetadata(connection),
+          toolsDigest: probeToolsDigest(connection),
           authorization: { state: 'authorized' },
         },
       };

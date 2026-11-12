@@ -93,7 +93,8 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   const needsAttention = (id: ConnectionSectionId): boolean => {
     // A store with no embedding model is a resting state (semantic search
     // off), like an unconnected computer: the Knowledge page says so.
-    if (id === 'knowledge') return Boolean(knowledge && !knowledge.vectorDb);
+    if (id === 'knowledge')
+      return Boolean(knowledge && !knowledge.vectorDb?.enabled);
     // CI-R3: `connected` is "an agent session currently holds a client",
     // which is false for every tool server — including the built-ins — until
     // a turn runs, so deriving attention from it put a warn dot on a healthy

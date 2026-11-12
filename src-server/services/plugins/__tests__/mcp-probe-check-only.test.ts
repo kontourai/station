@@ -12,6 +12,8 @@ import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { MCPService } from '../mcp-service.js';
+import { ToolServerCredentialStore } from '../tool-server-credential-store.js';
+import { StationToolServerOAuthProvider } from '../tool-server-oauth.js';
 
 const ORIGIN = 'https://check-only-fixture.example';
 let home: string;
@@ -19,6 +21,15 @@ let loader: ConfigLoader;
 let custody: MCPLocalConnectionCustody;
 let service: MCPService;
 let requests: string[];
+/** What the MCP endpoint answers; an OAuth server's 401 by default. */
+let mcpAnswer: () => Response;
+const oauthChallenge = () =>
+  new Response('authorization required', {
+    status: 401,
+    headers: {
+      'www-authenticate': `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp", scope="mcp"`,
+    },
+  });
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'station-probe-check-only-'));
@@ -45,6 +56,7 @@ beforeEach(async () => {
     custody,
   );
   requests = [];
+  mcpAnswer = oauthChallenge;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -78,13 +90,7 @@ beforeEach(async () => {
           token_endpoint_auth_method: 'none',
         });
       }
-      if (url.pathname === '/mcp')
-        return new Response('authorization required', {
-          status: 401,
-          headers: {
-            'www-authenticate': `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp", scope="mcp"`,
-          },
-        });
+      if (url.pathname === '/mcp') return mcpAnswer();
       return new Response('not found', { status: 404 });
     }),
   );
@@ -143,4 +149,57 @@ test('a check-only probe records that a sign-in is needed and begins none', asyn
       'http://127.0.0.1:43141/integrations/remote/oauth/callback?code=x&state=y',
     ),
   ).rejects.toThrow();
+});
+
+async function saveSignIn() {
+  await new StationToolServerOAuthProvider(
+    new ToolServerCredentialStore(home),
+    'remote',
+    `${ORIGIN}/mcp`,
+    'http://127.0.0.1:43141/integrations/remote/oauth/callback',
+  ).saveTokens({
+    access_token: 'still-valid',
+    token_type: 'Bearer',
+    expires_in: 3600,
+  });
+}
+
+test('a check-only 401 from a server with no OAuth (a refused API key) is an ordinary failure, not a sign-in', async () => {
+  mcpAnswer = () => new Response('bad key', { status: 401 });
+  const probed = await service.probeIntegration('remote', undefined, {
+    startSignIn: false,
+  });
+  expect(probed.probe).toMatchObject({ ok: false, toolCount: 0 });
+  expect(probed.probe?.error).toBeTruthy();
+  expect(probed.probe?.authorization).toBeUndefined();
+  const saved = (await loader.loadIntegration('remote')).probe;
+  expect(saved?.ok).toBe(false);
+  expect(saved?.authorization).toBeUndefined();
+  expect(requests).not.toContain('/register');
+});
+
+test('a check-only 403 with a working saved sign-in is not recorded as an expired sign-in', async () => {
+  await saveSignIn();
+  mcpAnswer = () => new Response('forbidden', { status: 403 });
+  const probed = await service.probeIntegration('remote', undefined, {
+    startSignIn: false,
+  });
+  expect(probed.probe).toMatchObject({ ok: false, toolCount: 0 });
+  expect(probed.probe?.authorization).toBeUndefined();
+  expect(
+    (await loader.loadIntegration('remote')).probe?.authorization,
+  ).toBeUndefined();
+});
+
+test('a check-only 401 with a saved sign-in records that the sign-in no longer works', async () => {
+  // The control for the 403 case: the saved sign-in alone marks the server
+  // as an OAuth server, with no discovery in the answer.
+  await saveSignIn();
+  mcpAnswer = () => new Response('expired', { status: 401 });
+  const probed = await service.probeIntegration('remote', undefined, {
+    startSignIn: false,
+  });
+  expect(probed.probe?.authorization).toMatchObject({
+    state: 'token-expired-refresh-failed',
+  });
 });

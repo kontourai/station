@@ -46,7 +46,9 @@ function summarize(
  * Check all: one server batch (`POST /integrations/check-all`) that probes
  * the configured tool servers three at a time and never begins a sign-in.
  * One batch at a time from here; another surface's request joins the batch
- * on the server. Leaving stops waiting for its answer.
+ * on the server. Leaving does not cancel the request: its answer still
+ * refreshes the tool server list (the mutation's own invalidation), and only
+ * this view's state stops updating.
  */
 export function useCheckAllToolServers(
   servers: readonly IntegrationViewModel[],
@@ -54,19 +56,24 @@ export function useCheckAllToolServers(
   const { mutateAsync } = useCheckAllIntegrationsMutation();
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<CheckAllResult | null>(null);
-  const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => pending.current?.abort(), []);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const run = useCallback(async () => {
     if (pending.current) return;
-    const controller = new AbortController();
-    pending.current = controller;
+    pending.current = true;
     setRunning(true);
     setResult(null);
     try {
-      const data = await mutateAsync({ signal: controller.signal });
-      if (!controller.signal.aborted) setResult(summarize(data, servers));
+      const data = await mutateAsync({});
+      if (mounted.current) setResult(summarize(data, servers));
     } catch (error: unknown) {
-      if (!controller.signal.aborted)
+      if (mounted.current)
         setResult({
           checked: 0,
           failed: [],
@@ -75,8 +82,8 @@ export function useCheckAllToolServers(
           error: `Check all could not run: ${userFacingErrorMessage(error)}`,
         });
     } finally {
-      pending.current = null;
-      if (!controller.signal.aborted) setRunning(false);
+      pending.current = false;
+      if (mounted.current) setRunning(false);
     }
   }, [mutateAsync, servers]);
   return {

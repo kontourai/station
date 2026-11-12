@@ -261,6 +261,40 @@ describe('ConnectionsSectionFrame', () => {
     expect(tab('Knowledge').textContent).toContain('1');
   });
 
+  test('a turned-off vector store marks Knowledge for attention; a turned-on one does not', () => {
+    // The status route reports a configured store even when it is turned
+    // off, so attention reads `enabled`, not the store's presence.
+    const store = (enabled: boolean) => ({
+      vectorDb: {
+        id: 'lancedb-builtin',
+        name: 'Station Built-In',
+        type: 'lancedb',
+        enabled,
+      },
+      embedding: null,
+      stats: { totalDocuments: 0, totalChunks: 0, projectCount: 0 },
+    });
+    state.knowledge = store(true);
+    const { rerender } = render(
+      <ConnectionsSectionFrame sectionId="knowledge">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(screen.queryByRole('tab', { name: /needs attention/i })).toBeNull();
+
+    state.knowledge = store(false);
+    rerender(
+      <ConnectionsSectionFrame sectionId="knowledge">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(
+      screen.getByRole('tab', { name: /Knowledge.*needs attention/i }),
+    ).toBeTruthy();
+    // A turned-off store is still a row the Knowledge page lists.
+    expect(tab('Knowledge').textContent).toContain('1');
+  });
+
   test('every section has exactly one add action, and Computers opens the chooser', () => {
     render(
       <ConnectionsSectionFrame sectionId="computers">

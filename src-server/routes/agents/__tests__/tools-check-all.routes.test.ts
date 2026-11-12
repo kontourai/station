@@ -8,7 +8,7 @@
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
-import { createToolRoutes } from '../tools.js';
+import { checkAllToolServers, createToolRoutes } from '../tools.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -167,5 +167,102 @@ describe('POST /check-all', () => {
     // Once it has finished, a new request runs a new batch.
     await h.settle(h.app.request('/check-all', { method: 'POST' }));
     expect(h.probeIntegration).toHaveBeenCalledTimes(2);
+  });
+  test('reloads when a tool changes its description or input schema under the same name', async () => {
+    const before = { ...passed(['read']), toolsDigest: 'digest-a' };
+    const after = { ...passed(['read']), toolsDigest: 'digest-b' };
+    const h = harness([remote('a', { probe: before })], {
+      a: remote('a', { probe: after }),
+    });
+    const response = h.app.request('/check-all', { method: 'POST' });
+    expect((await json(await h.settle(response))).data.reloaded).toBe(true);
+    expect(h.reinitialize).toHaveBeenCalledTimes(1);
+  });
+
+  test('reloads when only the tool count changes', async () => {
+    const h = harness([remote('a', { probe: passed(['read']) })], {
+      a: remote('a', { probe: { ...passed(['read']), toolCount: 2 } }),
+    });
+    const response = h.app.request('/check-all', { method: 'POST' });
+    expect((await json(await h.settle(response))).data.reloaded).toBe(true);
+  });
+
+  test('a server whose probe is never saved compares with its previous batch, not with nothing', async () => {
+    // A package-supplied server: the listing never carries its probe.
+    const listed = remote('pkg', { probe: undefined });
+    const h = harness([listed], {
+      pkg: remote('pkg', {
+        probe: { ...passed(['read']), toolsDigest: 'same' },
+      }),
+    });
+    const first = h.app.request('/check-all', { method: 'POST' });
+    expect((await json(await h.settle(first))).data.reloaded).toBe(true);
+    const second = h.app.request('/check-all', { method: 'POST' });
+    expect((await json(await h.settle(second))).data.reloaded).toBe(false);
+    expect(h.reinitialize).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('checkAllToolServers deadlines', () => {
+  const hung = () => new Promise<ToolDef>(() => {});
+
+  test('a probe that outlives its timeout reports timed out and the batch still finishes', async () => {
+    const probeIntegration = vi.fn(async (id: string) =>
+      id === 'slow' ? hung() : remote(id),
+    );
+    const reinitialize = vi.fn(async () => {});
+    const result = await checkAllToolServers(
+      {
+        listIntegrations: vi.fn(async () => [remote('slow'), remote('fast')]),
+        probeIntegration,
+      } as never,
+      reinitialize,
+      new Map(),
+      { probeTimeoutMs: 20 },
+    );
+    expect(result.results).toEqual([
+      {
+        id: 'slow',
+        outcome: 'failed',
+        error: 'The check timed out before the tool server answered.',
+      },
+      { id: 'fast', outcome: 'ready' },
+    ]);
+    // A timed-out probe records nothing, so it changes nothing.
+    expect(result.reloaded).toBe(false);
+  });
+
+  test("a server's own shorter startup timeout bounds its check", async () => {
+    const result = await checkAllToolServers(
+      {
+        listIntegrations: vi.fn(async () => [
+          remote('slow', { timeouts: { startupMs: 20 } }),
+        ]),
+        probeIntegration: vi.fn(hung),
+      } as never,
+      vi.fn(async () => {}),
+      new Map(),
+      { probeTimeoutMs: 60_000 },
+    );
+    expect(result.results[0]).toMatchObject({ id: 'slow', outcome: 'failed' });
+  });
+
+  test('servers that would start after the batch deadline are not probed', async () => {
+    const probeIntegration = vi.fn(hung);
+    const servers = ['a', 'b', 'c', 'd', 'e'].map((id) => remote(id));
+    const result = await checkAllToolServers(
+      {
+        listIntegrations: vi.fn(async () => servers),
+        probeIntegration,
+      } as never,
+      vi.fn(async () => {}),
+      new Map(),
+      { probeTimeoutMs: 60_000, deadlineMs: 30 },
+    );
+    // The first three run until the deadline; the rest never start.
+    expect(probeIntegration).toHaveBeenCalledTimes(3);
+    expect(result.results.map((entry) => entry.outcome)).toEqual(
+      Array(5).fill('failed'),
+    );
   });
 });

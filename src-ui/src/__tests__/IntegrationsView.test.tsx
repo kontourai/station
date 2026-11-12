@@ -438,19 +438,24 @@ describe('IntegrationsView: rows, Check all and the unsaved guard', () => {
     ).toBeTruthy();
   });
 
-  test('leaving while Check all runs stops waiting for its answer', async () => {
+  test('leaving while Check all runs does not cancel it', async () => {
     integrations = [stdio('one')];
     let signal: AbortSignal | undefined;
+    let answer!: (value: unknown) => void;
     checkAllAsync = vi.fn((variables: { signal?: AbortSignal }) => {
       signal = variables.signal;
-      return new Promise(() => {});
+      return new Promise((resolve) => {
+        answer = resolve;
+      });
     });
     const view = renderView();
     fireEvent.click(screen.getByRole('button', { name: 'Check all' }));
     await waitFor(() => expect(checkAllAsync).toHaveBeenCalledTimes(1));
-    expect(signal?.aborted).toBe(false);
     view.unmount();
-    expect(signal?.aborted).toBe(true);
+    // The batch's answer still refreshes the list (the hook's own test runs
+    // the real mutation); the request is never aborted.
+    expect(signal?.aborted ?? false).toBe(false);
+    answer({ reloaded: false, results: [{ id: 'one', outcome: 'ready' }] });
   });
 
   test('leaving a server with unsaved edits asks first; Discard continues', async () => {
