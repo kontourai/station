@@ -105,7 +105,7 @@ export function CompanionArchivePreparation({
           {receipt.phase === 'authenticated'
             ? `Archive bytes verified for ${receipt.version}. Installation is still unavailable.`
             : receipt.phase === 'failed'
-              ? 'Preparation failed. Downloaded files were kept. Prepare again to retry.'
+              ? 'Preparation failed; downloaded files were kept. Prepare again to retry.'
               : "Preparation started. Station hasn't confirmed it's still running."}
         </p>
       ) : null}

@@ -548,7 +548,7 @@ export function ProjectTasksSection({
       {starterLaunchProblem === 'retry-state-unavailable' && (
         <p role="status">
           Nothing was started. This device can’t reach its record of your
-          first-task setup. Try again later.
+          first-task setup; try again later.
         </p>
       )}
       {starterLaunchProblem === 'deferred' && (

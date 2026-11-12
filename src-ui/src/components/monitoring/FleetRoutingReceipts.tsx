@@ -173,8 +173,8 @@ export function FleetServeReceipts() {
                       : 'unidentified (no credential presented)'}
                   </p>
                   <p className="fleet-routing__digest">
-                    Request digest {receipt.promptDigest.slice(0, 12)}…. The
-                    request content is never recorded. Receipted by content
+                    Request digest {receipt.promptDigest.slice(0, 12)}… (the
+                    request content is never recorded). Receipted by content
                     digest {receipt.receiptId.slice(0, 12)}…, not signed.
                   </p>
                 </article>

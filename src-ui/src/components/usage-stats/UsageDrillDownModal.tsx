@@ -140,7 +140,7 @@ export function UsageDrillDownModal({
             {promptTotal !== undefined && (
               <StatCard
                 icon={<InboxGlyph />}
-                label="Prompt total"
+                label="Prompt Total"
                 value={promptTotal.toLocaleString()}
               />
             )}

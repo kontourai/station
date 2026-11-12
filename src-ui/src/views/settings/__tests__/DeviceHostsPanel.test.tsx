@@ -153,9 +153,9 @@ describe('Settings › Device hosts (#1973)', () => {
     });
     mount();
     await click(
-      await screen.findByRole('button', { name: 'Enable device hub' }),
+      await screen.findByRole('button', { name: 'Enable device helper' }),
     );
-    expect(screen.getByText(/copy the device hub it verified/)).toBeTruthy();
+    expect(screen.getByText(/copy the device helper it verified/)).toBeTruthy();
     expect(calls.some((call) => call.method === 'POST')).toBe(false);
     await click(screen.getByRole('button', { name: 'Install and enable' }));
     await waitFor(() =>
@@ -277,8 +277,8 @@ describe('Settings › Device hosts (#1973)', () => {
     });
     mount();
     await screen.findByText(/does not have this Station/);
-    expect(screen.queryByRole('button', { name: 'Retry hub' })).toBeNull();
-    await click(screen.getByRole('button', { name: 'Reinstall hub' }));
+    expect(screen.queryByRole('button', { name: 'Retry helper' })).toBeNull();
+    await click(screen.getByRole('button', { name: 'Reinstall helper' }));
     await waitFor(() =>
       expect(
         calls.some(
@@ -333,7 +333,7 @@ describe('Settings › Device hosts (#1973)', () => {
 
   // Review M3: every action folded out of the host row is still there, in
   // order, with Remove destructive and last — and each still does its job.
-  test('the host menu holds sharing, Disable hub, Edit and a destructive Remove, and each works', async () => {
+  test('the host menu holds sharing, Disable helper, Edit and a destructive Remove, and each works', async () => {
     const calls = stub((method, path) => {
       if (path === '/api/mobile-devices/shares' && method === 'GET')
         return json({ success: true, data: [] });
@@ -350,7 +350,7 @@ describe('Settings › Device hosts (#1973)', () => {
 
     expect(overflowItems(openOverflow(menuName))).toEqual([
       { name: 'Share devices…', danger: false },
-      { name: 'Disable hub', danger: false },
+      { name: 'Disable helper', danger: false },
       { name: 'Edit', danger: false },
       { name: 'Remove', danger: true },
     ]);
@@ -366,7 +366,7 @@ describe('Settings › Device hosts (#1973)', () => {
     ).toBe('true');
     await click(screen.getByRole('menuitem', { name: 'Hide sharing' }));
 
-    chooseOverflow(menuName, 'Disable hub');
+    chooseOverflow(menuName, 'Disable helper');
     await waitFor(() =>
       expect(
         calls.some(

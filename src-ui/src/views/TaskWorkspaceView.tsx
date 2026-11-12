@@ -380,8 +380,8 @@ function StarterLinkRetry({ task }: { task: TaskRecord }) {
       </Button>
       {failed && (
         <p>
-          Still couldn’t link it. Your task is safe. Try again later; it won’t
-          create a second task.
+          Still couldn’t link it. Your task is safe; try again later and it
+          won’t create a second task.
         </p>
       )}
     </section>

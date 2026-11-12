@@ -249,7 +249,7 @@ Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
   Project's admins can open in the Browser. **Find local servers** suggests
   some, and nothing is shared until you choose it. Shared servers appear as
   buttons on an empty Browser.
-- **Open device setup** opens the device setup wizard: the device hub,
+- **Open device setup** opens the device setup wizard: the device helper,
   sharing devices with Projects, and agent device access.
 
 ## Device hosts
@@ -264,10 +264,10 @@ section, and only on a personal Station.
    as `me@build-host.example` or an alias from your SSH config.
 3. Choose **Test connection**. Station checks that it can reach the host and
    that Node.js, Xcode simulators and the Android SDK are available.
-4. Choose **Enable device hub** and confirm **Install and enable**. Station
-   installs its device hub on the host under `~/.station-device-host`.
+4. Choose **Enable device helper** and confirm **Install and enable**. Station
+   installs its device helper on the host under `~/.station-device-host`.
 
-Each host's menu also offers **Share devices…**, **Disable hub**, **Edit** and
+Each host's menu also offers **Share devices…**, **Disable helper**, **Edit** and
 **Remove**. A Station can have up to 32 hosts. The
 [mobile device workspace guide](https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md)
 explains what you can do with the devices once a host is ready.

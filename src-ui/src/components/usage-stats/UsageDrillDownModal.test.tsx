@@ -39,7 +39,7 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
     expect(statValue('Input Tokens (uncached)')).toBe('135');
     expect(statValue('Cache read tokens')).toBe('18,400');
     expect(statValue('Cache write tokens')).toBe('10,100');
-    expect(statValue('Prompt total')).toBe('28,635');
+    expect(statValue('Prompt Total')).toBe('28,635');
   });
 
   test('shows an unverified provider cache component without inventing a prompt sum', () => {
@@ -56,8 +56,8 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
 
     expect(statValue('Input Tokens')).toBe('3,000');
     expect(statValue('Cache read tokens')).toBe('900');
-    expect(screen.queryByText('Prompt total')).toBeNull();
-    expect(screen.queryByText('Prompt total/turn')).toBeNull();
+    expect(screen.queryByText('Prompt Total')).toBeNull();
+    expect(screen.queryByText('Prompt Total/Turn')).toBeNull();
     expect(screen.queryByText('Input Tokens (uncached)')).toBeNull();
   });
 
@@ -76,8 +76,8 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
     expect(statValue('Cache read tokens')).toBe('18,400');
     expect(statValue('Cache write tokens')).toBe('10,100');
     expect(screen.queryByText('Input Tokens (uncached)')).toBeNull();
-    expect(screen.queryByText('Prompt total')).toBeNull();
-    expect(screen.queryByText('Prompt total/turn')).toBeNull();
+    expect(screen.queryByText('Prompt Total')).toBeNull();
+    expect(screen.queryByText('Prompt Total/Turn')).toBeNull();
   });
 
   test('renders a reported cache zero but leaves an absent cache component unrendered', () => {
@@ -138,5 +138,5 @@ test('cache-only observations do not invent an uncached input or prompt total', 
   });
   expect(statValue('Input Tokens (uncached)')).toBe('Not reported');
   expect(statValue('Cache read tokens')).toBe('25');
-  expect(screen.queryByText('Prompt total')).toBeNull();
+  expect(screen.queryByText('Prompt Total')).toBeNull();
 });

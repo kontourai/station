@@ -469,7 +469,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
       promptDigest,
     });
     const text = renderServe({ data });
-    expect(text).toContain('The request content is never recorded');
+    expect(text).toContain('the request content is never recorded');
     expect(text).toContain('not signed');
     for (const digest of [receiptId, peerFingerprint, promptDigest]) {
       expect(text).not.toContain(digest);
