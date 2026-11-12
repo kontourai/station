@@ -228,6 +228,12 @@ describe('delegation helpers', () => {
     expect(stamped._delegation.rootConversationId).toBe('conv-parent');
     expect(
       verifyDelegationContextAttestation(
+        { ...stamped._delegation, parentSessionId: 'another-session' },
+        stamped._delegationAttestation,
+      ),
+    ).toBe(false);
+    expect(
+      verifyDelegationContextAttestation(
         stamped._delegation,
         stamped._delegationAttestation,
       ),
