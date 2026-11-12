@@ -18,6 +18,7 @@ import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { StatusSummary } from '../../components/StatusSummary';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { errorText } from '../../utils/errorText';
 import './TaskCodeReviewPanel.css';
 
@@ -47,6 +48,7 @@ export function TaskCodeReviewPanel({
   taskCreatedAt: string;
   visible: boolean;
 }) {
+  const { navigate } = useNavigationActions();
   const query = useTaskCodeReviewQuery(
     authority,
     projectId,
@@ -279,6 +281,15 @@ export function TaskCodeReviewPanel({
           variant="compact"
           label="Review cannot start"
           description={blocked}
+          action={
+            view.canRequest &&
+            view.implementerAgentSlug &&
+            !view.reviewers.length ? (
+              <Button size="sm" onClick={() => navigate('/agents')}>
+                Open Agents
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <div className="task-code-review__request">

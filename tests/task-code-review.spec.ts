@@ -320,6 +320,10 @@ test('actual Task checkout and dirty-file disclosure stay distinct from review o
     body: JSON.stringify({ enabled: true }),
   });
   await capture(page, info, f.task.id, 'pass-1-location');
+  await f.panel
+    .getByRole('button', { name: 'Open Agents', exact: true })
+    .press('Enter');
+  await expect(page).toHaveURL(/\/agents(?:\?|$)/);
 });
 
 test('controlled review transport loss never automatically starts another review and retains freshness and failure states', async ({
@@ -377,9 +381,24 @@ test('controlled review transport loss never automatically starts another review
     f.panel.getByRole('button', { name: 'Retry request', exact: true }),
   ).toBeEnabled();
   expect(submissions).toBe(1);
-  await f.panel
-    .getByRole('button', { name: 'Retry request', exact: true })
-    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const retry = f.panel.getByRole('button', {
+    name: 'Retry request',
+    exact: true,
+  });
+  await retry.scrollIntoViewIfNeeded();
+  const retryBounds = await retry.boundingBox();
+  expect(retryBounds).not.toBeNull();
+  const touch = await page.context().newCDPSession(page);
+  try {
+    await touch.send('Input.synthesizeTapGesture', {
+      x: retryBounds!.x + retryBounds!.width / 2,
+      y: retryBounds!.y + retryBounds!.height / 2,
+      gestureSourceType: 'touch',
+    });
+  } finally {
+    await touch.detach();
+  }
   await expect(f.panel.getByText('Running', { exact: true })).toBeVisible();
   expect(submissions).toBe(2);
   view.requests[0] = {

@@ -116,6 +116,7 @@ establish where every linked conversation runs or whether dependencies are
 prepared. Expand **Checkout and comparison** to inspect the path and base
 commit. Assign a lead Agent and configure a different Codex Agent in the Project
 to request a read-only review. Requesting review can spend provider credits.
+When no reviewer is available, **Open Agents** leads to the existing Agent setup.
 
 Reviews cover committed changes only. Reviewer failures and the comparison with
 the current checkout are separate observations. A recorded review is neither
