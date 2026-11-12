@@ -117,6 +117,12 @@ export class FeaturePreviewRegistry {
       description:
         'Show integration capability status and Task write-back history.',
     });
+    this.rememberConsumer({
+      id: 'inline-browser-activity',
+      label: 'Inline browser activity',
+      description:
+        'Watch an agent browser beside its tool calls in a conversation, or move the same session to a floating view or Browser pane. Recording remains an explicit action.',
+    });
     // Consumed by the start composers' "Use a visual skill" entry points. The
     // inventory route and authoring contract stay unconditional: hiding the
     // entry points does not change what an installed plugin may declare.

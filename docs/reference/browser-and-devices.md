@@ -264,6 +264,37 @@ person's hold to lapse. Closing the pane does not release the lease; it
 can lapse. A timeout or interrupted operation does not establish that an
 already-sent browser effect was undone.
 
+Human live-view input uses a registered source for the lifetime of that viewer's
+target and transport. `POST /api/live-surfaces/:surfaceId/lease` accepts
+`{action: 'open-input-source'}` and returns `{success: true, data: {sourceId}}`.
+Opening requires the authenticated person's current input and control access;
+it does not claim the control lease. Input batches may carry that `sourceId`
+alongside `epoch` and `events`. The host checks the source's person and device
+before claiming control and again at queued dispatch. Legacy batches without a
+source remain accepted; current viewers fail closed if registration is
+unavailable rather than sending input without teardown protection.
+
+On target/transport change or unmount, the viewer sends
+`{action: 'close-input-source', sourceId}` to the same lease route. The host seals
+the source before waiting for prior input to settle, then cancels only its held
+keys and buttons. Late input from the sealed source is refused; a newer viewer's
+press on the same key is preserved. A button changing pointer type first cancels
+the displaced gesture, so a mouse press cannot hide a still-held touch. Closing
+is not a control-lease release.
+The response waits at most ten seconds for cancellation; a failure or timeout
+does not establish physical release. Failed cleanup retains the held state and
+blocks further input as `surface-wedged` until an authorized whole-surface
+neutral cleanup succeeds. An unrelated empty source close does not clear that
+fence. Registration is bounded to 128 sources per live-surface entry; opening
+also retires idle sources older than five minutes only when they hold no input.
+If input is refused because its source is no longer valid, the viewer discards
+that input and its queued follow-ups. A new person-initiated action registers a
+fresh source; the refused action is never replayed automatically. Replacing the
+viewer's transport also reconnects its frame stream under the new transport.
+Failed registration is discarded too: another user action may register again
+after a refusal or transport failure, without replaying the earlier input.
+The existing producer, authority and control contracts still apply.
+
 **Let agents run JavaScript in this Project's pages** (**Settings → Advanced →
 Browser & devices**) is off by
 default and is a separate permission from ordinary read/click/type tools. A

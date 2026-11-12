@@ -3612,6 +3612,12 @@ fn native_header_allowlisted(name: &str) -> bool {
             | "content-type"
             | "last-event-id"
             | "x-request-id"
+            // Write preconditions: revisioned saves (account, app-config and
+            // notification preferences) send If-Match, and app-config writes
+            // also send Idempotency-Key. Neither carries authority; refusing
+            // them made those saves fail on native before reaching Station.
+            | "if-match"
+            | "idempotency-key"
             // `CLIENT_ORIGIN_HEADER` in `packages/contracts/src/client-origin.ts`.
             // This client-reported provenance is display-only on the server;
             // native still owns the bearer and refuses every authority-bearing
@@ -24169,6 +24175,8 @@ mod tests {
         assert_eq!(NATIVE_HTTP_BODY_LIMIT, 24 * 1024 * 1024);
         assert!(native_header_allowlisted("x-station-plugin"));
         assert!(native_header_allowlisted("x-abort-reason"));
+        assert!(native_header_allowlisted("If-Match"));
+        assert!(native_header_allowlisted("Idempotency-Key"));
         assert!(native_header_allowlisted("X-Station-Client-Origin"));
         assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
