@@ -304,6 +304,16 @@ interface ProjectRoomDraft {
   text: string;
   replyTo?: string;
   recipient?: { id: string; name: string };
+  /**
+   * This edit's identity (#4855): new on every edit and kept through
+   * storage, so an acknowledgement clears only the exact revision it was
+   * asked from, never a later draft retyped to the same text.
+   */
+  revision?: string;
+}
+/** A draft edit: the next envelope, with an identity of its own. */
+function revised(draft: ProjectRoomDraft): ProjectRoomDraft {
+  return { ...draft, revision: randomCorrelationId() };
 }
 const EMPTY_PROJECT_DRAFT: ProjectRoomDraft = { text: '' };
 const PROJECT_DRAFT_CODEC = {
@@ -325,6 +335,11 @@ const PROJECT_DRAFT_CODEC = {
       recipient.id.length > 0 &&
       recipient.id.length <= 256
         ? { recipient: { id: recipient.id, name: recipient.name } }
+        : {}),
+      ...(typeof draft.revision === 'string' &&
+      draft.revision.length > 0 &&
+      draft.revision.length <= 64
+        ? { revision: draft.revision }
         : {}),
     };
   },
@@ -412,33 +427,30 @@ function ProjectRoomSession({
   const { text, replyTo, recipient } = draft;
   const setText = useCallback(
     (update: Update<string>) =>
-      setDraft((current) => ({
-        ...current,
-        text: apply(update, current.text),
-      })),
+      setDraft((current) =>
+        revised({ ...current, text: apply(update, current.text) }),
+      ),
     [setDraft],
   );
   const setReplyTo = useCallback(
     (update: Update<string | undefined>) =>
       setDraft(({ replyTo: previous, ...rest }) => {
         const next = apply(update, previous);
-        return next ? { ...rest, replyTo: next } : rest;
+        return revised(next ? { ...rest, replyTo: next } : rest);
       }),
     [setDraft],
   );
   // Clears the whole envelope only if it is still the revision that was
   // asked; any edit since (text, recipient or reply) keeps the newer draft
-  // intact (#4810 delta 1). Every edit makes a new envelope object.
-  // A late acknowledgement may land after the reader left this draft's
-  // thread or channel: the setter still addresses the draft it was asked
-  // from (`useRoomDraftValue`), read back from storage, so the revision is
-  // compared by value there.
+  // intact (#4810 delta 1), even one retyped to the same text (#4855). The
+  // revision's identity survives storage, so it also holds when a late
+  // acknowledgement lands after the reader left this draft's thread or
+  // channel and the setter reads that draft back (`useRoomDraftValue`).
   const clearDraftIfCurrent = useCallback(
-    (revision: ProjectRoomDraft) =>
+    (asked: ProjectRoomDraft) =>
       setDraft((current) =>
-        current === revision ||
-        PROJECT_DRAFT_CODEC.encode(current) ===
-          PROJECT_DRAFT_CODEC.encode(revision)
+        current === asked ||
+        (asked.revision !== undefined && current.revision === asked.revision)
           ? EMPTY_PROJECT_DRAFT
           : current,
       ),
@@ -448,7 +460,7 @@ function ProjectRoomSession({
     (update: Update<ProjectRoomDraft['recipient']>) =>
       setDraft(({ recipient: previous, ...rest }) => {
         const next = apply(update, previous);
-        return next ? { ...rest, recipient: next } : rest;
+        return revised(next ? { ...rest, recipient: next } : rest);
       }),
     [setDraft],
   );

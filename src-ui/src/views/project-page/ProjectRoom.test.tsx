@@ -1714,3 +1714,32 @@ test('an Agent acknowledgement after leaving the thread clears only the thread d
     release();
   }
 });
+
+test('an acknowledgement keeps a newer draft retyped to the asked text, with its recipient (#4855)', async () => {
+  mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Continue' } });
+  const release = holdAgentRequest();
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+    await waitFor(() => expect(agentWrites).toHaveLength(1));
+    // A newer draft that happens to read the same as the one asked.
+    fireEvent.change(composerField(), { target: { value: 'Something else' } });
+    fireEvent.change(composerField(), { target: { value: 'Continue' } });
+    await act(async () => release());
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
+    expect(composerField().value).toBe('Continue');
+    expect(screen.getByText('@Researcher')).toBeTruthy();
+  } finally {
+    release();
+  }
+});
