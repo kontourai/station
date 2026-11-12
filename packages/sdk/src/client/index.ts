@@ -45,6 +45,7 @@ export * from './conversations';
 export * from './delegations';
 export * from './execution';
 export * from './fleet-routing';
+export * from './followUpAttachments';
 export type {
   ApiRequestScope,
   AuthenticatedFetchInit,

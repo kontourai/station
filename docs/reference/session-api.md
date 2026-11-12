@@ -604,10 +604,17 @@ refusal; a request alone does not prove storage.
   path too. An inbox holds at most 50 unsettled
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
-- Only a plain continuation can be held: no attachments, approval pick, input
+- Only a plain continuation can be held: no approval pick, input
   reply, visual skill start, engine or Agent-definition precondition
   (`expectedEngine`, `expectedDefinitionFingerprint`), delegated send, and no
-  target on another Station. Plain automatic replay may queue; its background
+  target on another Station. Files (`attachments` or staged `attachmentRefs`)
+  can be held only on a host that advertises `followUpAttachments` (absent on
+  hosted Stations): their bytes go to the attachment blob store, a staged
+  reference is accepted for the held entry (released if it is not queued), the
+  entry lists them as `attachments` descriptors (kind, name, MIME type, size;
+  never bytes), and placement sends them with the message. The same key with
+  different files is a different message. Without the flag a busy send with
+  files is not held. Plain automatic replay may queue; its background
   resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
   binding is what the message is sent through later. The sender must be one
@@ -674,8 +681,10 @@ own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
 `continuation_workspace_corrupt_worktree_binding`,
 `continuation_workspace_worktree_gone`,
 `continuation_workspace_different_project`,
-`continuation_workspace_worktree_moved`, or `start_refused` for any other
-refusal. Every client of the conversation sees the same list, except that
+`continuation_workspace_worktree_moved`, `attachment_unavailable` (a held
+file was no longer stored when it was due to be sent; nothing was sent),
+`attachment_input_unsupported` (the engine takes no files), or `start_refused`
+for any other refusal. Every client of the conversation sees the same list, except that
 someone else's message that may still be sent (`queued`, `sending`,
 `unconfirmed`) is shown without its `clientTurnId`. A
 conversation you may not read, or a Station without an inbox, answers `404`.

@@ -808,3 +808,31 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
   expect(INBOX_ACTIVE_POLL_MS).toBe(2_000);
   expect(INBOX_IDLE_POLL_MS).toBe(15_000);
 });
+
+test('a held message lists the files it carries by name, never their bytes', async () => {
+  const file = (name: string) => ({
+    kind: 'file' as const,
+    name,
+    mimeType: 'text/plain' as const,
+    size: 2,
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      response([
+        { ...entry('queued', 'one'), attachments: [file('notes.txt')] },
+        {
+          ...entry('queued', 'two'),
+          attachments: [file('a.txt'), file('b.txt')],
+        },
+      ]),
+    ),
+  );
+  mount();
+  await screen.findByText('2 pending');
+  expand();
+  expect(screen.getByText('notes.txt')).toBeTruthy();
+  expect(screen.getByText('2 files').getAttribute('title')).toBe(
+    'a.txt, b.txt',
+  );
+});

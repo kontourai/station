@@ -5104,6 +5104,9 @@ job does not transfer its earlier conversation's history to the new target.
 Older runs without a recorded target require the creator and current-target
 read access, except creatorless, untargeted jobs remain readable by the local
 operator. An agent can read only its own conversation's runs.
+`readFollowUpAttachmentsCapability(apiBase)` (from `@kontourai/station-sdk/client`)
+reads `followUpAttachments`: `true` when the host holds a busy follow-up with
+its files, `false` otherwise, including an unreadable handshake.
 `readTroubleshootCapability(apiBase)` (from `@kontourai/station-sdk/client`)
 reads the host's public handshake the same way for `troubleshootPrepare`:
 `true`, `false`, or `null` when the handshake could not be read.

@@ -1401,6 +1401,15 @@ export interface StationCapabilityFlags {
    * agent" only on this flag.
    */
   troubleshootPrepare?: boolean;
+  /**
+   * A `/chat` send with files to a busy conversation (`whenBusy: 'queue'`)
+   * is held in its inbox with them: the bytes wait in the attachment blob
+   * store and are sent when the entry is placed. Inbox entries list the
+   * files as `attachments` descriptors. A host without it refuses a busy
+   * send with files, so a client keeps such a draft until the turn ends.
+   * Absent on hosted deployments, which have no conversation inbox.
+   */
+  followUpAttachments?: boolean;
 }
 
 export interface PublicStationHandshake {

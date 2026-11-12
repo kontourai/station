@@ -720,6 +720,8 @@ or search the inbox, find matching **Dismissed** results, and choose
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+A turn the engine opens on its own, such as its reply when background work
+finishes, does not bring it back unless that turn fails, stops or needs you.
 Hidden **Third-party** sessions stay hidden through external updates until you
 restore them or bring them into Station.
 
@@ -925,9 +927,11 @@ currently they wait until the turn finishes. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
-Steer and Queue carry text only. You can still attach files or dictate during a
-turn: files wait in the draft, which says why, until you send it after the turn
-ends.
+You can attach files or dictate during a turn. Steer carries text only, so a
+message with files is queued: Station keeps the files with it and sends them
+when the turn ends, and the pending row names them. On a Station that cannot
+hold files yet, they wait in the draft, which says why, until you send it after
+the turn ends.
 
 The app attempts to save a text message on this device before sending it. If
 the write fails or times out, it sends without that saved row and keeps the

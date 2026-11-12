@@ -29,6 +29,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['delegation_files_turn_refused', 'provider_error', false],
     ['delegation_files_outcome_unknown', 'indeterminate', false],
     ['delegation_files_cleanup_failed', 'provider_error', false],
+    ['attachment_unavailable', 'input_unsupported', false],
     ['stage_not_found', 'input_unsupported', false],
     ['stage_expired', 'input_unsupported', false],
     ['stage_forbidden', 'permission_denied', false],

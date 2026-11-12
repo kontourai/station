@@ -143,6 +143,9 @@ export const PROVIDER_FAILURE_KINDS = {
   delegation_files_invalid_data: 'input_unsupported',
   delegation_files_ref_invalid: 'input_unsupported',
   delegation_files_unavailable: 'unavailable',
+  // A queued follow-up's file was no longer stored when it was due to send;
+  // like an expired stage, only attaching it again can help.
+  attachment_unavailable: 'input_unsupported',
   delegation_files_start_refused: 'provider_error',
   delegation_files_turn_refused: 'provider_error',
   delegation_files_outcome_unknown: 'indeterminate',
