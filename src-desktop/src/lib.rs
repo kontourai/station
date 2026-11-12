@@ -11141,11 +11141,13 @@ impl CoverRgba {
 }
 
 /// The renderer startup screen's surface tokens (`--k-bg`, `--k-text`,
-/// `--k-text-muted`, `--k-line-strong` and `--k-panel` in @kontourai/ui's
-/// default dark and light themes), so the cover and the screen it hands off
-/// to paint the same colours. A colour theme chosen in the app is stored in
-/// the WebView, which the host does not read; the cover follows the window's
-/// appearance.
+/// `--k-text-muted` and `--k-line-strong` in @kontourai/ui's default dark and
+/// light themes), so the cover and the screen it hands off to paint the same
+/// colours. `control` is `--k-line` laid over `--k-bg`, opaque: a neutral
+/// button fill that stays visible against the background in both themes
+/// (white `--k-panel` vanishes on the light background). A colour theme
+/// chosen in the app is stored in the WebView, which the host does not read;
+/// the cover follows the window's appearance.
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct CoverPalette {
@@ -11153,7 +11155,7 @@ struct CoverPalette {
     ink: CoverRgba,
     muted: CoverRgba,
     track: CoverRgba,
-    panel: CoverRgba,
+    control: CoverRgba,
 }
 
 #[cfg(target_os = "macos")]
@@ -11164,7 +11166,7 @@ fn cover_palette(dark: bool) -> CoverPalette {
             ink: CoverRgba::hex(0xeef3f8, 1.0),
             muted: CoverRgba::hex(0xaebccb, 1.0),
             track: CoverRgba(150.0 / 255.0, 180.0 / 255.0, 210.0 / 255.0, 0.22),
-            panel: CoverRgba::hex(0x1b2433, 1.0),
+            control: CoverRgba::hex(0x1b222a, 1.0),
         }
     } else {
         CoverPalette {
@@ -11172,7 +11174,7 @@ fn cover_palette(dark: bool) -> CoverPalette {
             ink: CoverRgba::hex(0x202124, 1.0),
             muted: CoverRgba::hex(0x5b626b, 1.0),
             track: CoverRgba(36.0 / 255.0, 40.0 / 255.0, 46.0 / 255.0, 0.20),
-            panel: CoverRgba::hex(0xffffff, 1.0),
+            control: CoverRgba::hex(0xdcdcd8, 1.0),
         }
     }
 }
@@ -11204,6 +11206,26 @@ fn cover_water(channel: Option<&str>) -> CoverRgba {
         Some("beta") => CoverRgba::hex(0x40945a, 1.0),
         Some("nightly") => CoverRgba::hex(0x9c3860, 1.0),
         _ => CoverRgba::hex(0xa7622d, 1.0),
+    }
+}
+
+/// Title ink for a button filled with `fill`: white while it keeps WCAG AA
+/// contrast (4.5:1) for 14 pt text, else the dark surface ink. Beta's green
+/// river is too light for white.
+#[cfg(target_os = "macos")]
+fn cover_button_ink(fill: CoverRgba) -> CoverRgba {
+    let channel = |value: f64| {
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance = 0.2126 * channel(fill.0) + 0.7152 * channel(fill.1) + 0.0722 * channel(fill.2);
+    if 1.05 / (luminance + 0.05) >= 4.5 {
+        CoverRgba::hex(0xffffff, 1.0)
+    } else {
+        CoverRgba::hex(0x0a0e13, 1.0)
     }
 }
 
@@ -12217,8 +12239,8 @@ fn populate_native_startup_cover(
             objc2::msg_send![&*restart, setAccessibilityLabel: ns_string!("Restart Station")];
         let _: () = objc2::msg_send![&*quit, setAccessibilityLabel: ns_string!("Quit Station")];
     }
-    // Restart wears the channel's river colour, Quit the panel surface, both
-    // with titles in the startup screen's face.
+    // Restart wears the channel's river colour, Quit the neutral control
+    // fill, both with titles in the startup screen's face.
     let titled = |button: &NSButton, title: &str, bezel: CoverRgba, ink: CoverRgba| {
         button.setControlSize(NSControlSize::Large);
         button.setBezelColor(Some(&bezel.ns_color()));
@@ -12229,8 +12251,8 @@ fn populate_native_startup_cover(
         ));
         button.sizeToFit();
     };
-    titled(&quit, "Quit", palette.panel, palette.ink);
-    titled(&restart, "Restart", water, CoverRgba::hex(0xffffff, 1.0));
+    titled(&quit, "Quit", palette.control, palette.ink);
+    titled(&restart, "Restart", water, cover_button_ink(water));
     let quit_size = NSSize::new(
         quit.frame().size.width.max(BUTTON_MIN_WIDTH),
         quit.frame().size.height,
@@ -17208,6 +17230,16 @@ mod tests {
         assert!(waters.iter().all(|water| *water != cover_water(None)));
         assert_ne!(waters[0], waters[1]);
         assert_ne!(waters[1], waters[2]);
+        // Restart's title keeps AA contrast on every river colour: white on
+        // the darker rivers, dark ink on Beta's lighter green.
+        let white = CoverRgba::hex(0xffffff, 1.0);
+        assert_eq!(cover_button_ink(cover_water(Some("stable"))), white);
+        assert_eq!(cover_button_ink(cover_water(Some("nightly"))), white);
+        assert_eq!(cover_button_ink(cover_water(None)), white);
+        assert_eq!(
+            cover_button_ink(cover_water(Some("beta"))),
+            CoverRgba::hex(0x0a0e13, 1.0)
+        );
         assert_eq!(
             cover_mark_png(Some("nightly")),
             include_bytes!("../../src-ui/public/favicon-nightly.png")
