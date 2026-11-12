@@ -99,8 +99,11 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   // rather than matching text, so it sits with the slower gates.
   'button-cap-ratchet',
   'component-style-hygiene',
-  // ~1s: TypeScript AST over src-ui copy; fails only on growth.
+  // ~1s each: TypeScript AST over src-ui copy, and a declaration scan of
+  // src-ui stylesheets; each fails only on growth.
   'ui-copy-length',
+  'ui-copy-style',
+  'ui-css-slop',
   // ~4s: TypeScript AST over every file that mentions child_process; fails
   // only on growth. Also in `verification:policy:gate` (ci:fast); listed here
   // so the push that adds a launch without windowsHide is the one refused.
