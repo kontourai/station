@@ -6,7 +6,15 @@
  * recorder that answers per URL.
  */
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type {
   RegistryItem,
@@ -18,11 +26,14 @@ import {
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { AMBIGUOUS_AGENT_SOURCE_STATUS } from '../../../providers/registries/agent-registry-provider.js';
+import { LocalSourceFileTooLargeError } from '../../../providers/registries/confined-local-read.js';
+import { FilesystemSkillRegistryProvider } from '../../../providers/registries/filesystem-skill-registry.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { registerManifestRegistryProvider } from '../../../providers/registries/register-manifest-registry.js';
 import {
@@ -866,5 +877,298 @@ describe('managed policy still applies', () => {
       }),
       'skills from marketplaces',
     );
+  });
+});
+
+// ── Review round: confinement, read bounds, agent ownership, downgrade ──────
+
+const OUTSIDE_SECRET = 'OUTSIDE-SECRET';
+const skillDocument = (name: string, description = `${name} work`) =>
+  `---\nname: ${name}\ndescription: ${description}\n---\n\nInstructions\n`;
+
+/** A folder outside every source, holding what a link would leak. */
+async function outsideFolder() {
+  return folder(
+    {
+      'clarify/SKILL.md': skillDocument('outside', OUTSIDE_SECRET),
+      'outside/SKILL.md': skillDocument('outside', OUTSIDE_SECRET),
+      'marketplace.json': JSON.stringify({
+        name: OUTSIDE_SECRET,
+        plugins: [{ name: OUTSIDE_SECRET, source: './' }],
+      }),
+    },
+    'outside-',
+  );
+}
+
+describe.skipIf(process.platform === 'win32')(
+  'a local source is read only inside its folder',
+  () => {
+    test('a directory replaced by a link after the tree was listed is refused, not read through', async () => {
+      const outside = await outsideFolder();
+      const root = await folder({
+        '.claude-plugin/marketplace.json':
+          HILL_CLIMB['.claude-plugin/marketplace.json']!,
+      });
+      const tree = await readLocalSourceTree(root);
+      await rename(join(root, '.claude-plugin'), join(root, 'moved'));
+      await mkdir(join(outside, '.claude-plugin'));
+      await rename(
+        join(outside, 'marketplace.json'),
+        join(outside, '.claude-plugin/marketplace.json'),
+      );
+      await symlink(
+        join(outside, '.claude-plugin'),
+        join(root, '.claude-plugin'),
+      );
+      const read = await tree
+        .read('.claude-plugin/marketplace.json', REGISTRY_SOURCE_SCAN_LIMITS)
+        .then(
+          (bytes) => bytes.toString('utf8'),
+          (error: unknown) => error,
+        );
+      expect(read).toBeInstanceOf(RegistrySourceScanRefusal);
+      expect((read as RegistrySourceScanRefusal).bound).toBe('confinement');
+      // Detection over that tree refuses the source as a whole.
+      await expect(detectRegistrySourceTree(tree)).rejects.toMatchObject({
+        bound: 'confinement',
+      });
+    });
+
+    test('a linked SKILL.md is neither counted nor listed nor read', async () => {
+      const { add, list } = setup();
+      const outside = await outsideFolder();
+      const root = await folder({
+        'skills/real/SKILL.md': skillDocument('real'),
+      });
+      await mkdir(join(root, 'skills/linked'));
+      await symlink(
+        join(outside, 'outside/SKILL.md'),
+        join(root, 'skills/linked/SKILL.md'),
+      );
+      const source = await add({ location: root });
+      expect(kinds(source)).toEqual({
+        skills: { count: 1, installable: true, via: 'skill-md' },
+      });
+      const rows = (await list('skills')).filter(
+        (item) => item.catalog?.sourceId === source.id,
+      );
+      expect(rows.map((item) => item.catalog?.itemId)).toEqual(['real']);
+      expect(JSON.stringify(rows)).not.toContain(OUTSIDE_SECRET);
+    });
+
+    test('a skills folder swapped for a link after detection lists and installs nothing from outside', async () => {
+      const { add, list, request, json, home } = setup();
+      const outside = await outsideFolder();
+      const root = await folder({
+        'skills/clarify/SKILL.md': skillDocument('clarify'),
+      });
+      const source = await add({ location: root });
+      const [chosen] = (await list('skills')).filter(
+        (item) => item.catalog?.sourceId === source.id,
+      );
+      expect(chosen?.catalog?.itemId).toBe('clarify');
+      // After detection: `skills` now points outside the source.
+      await rename(join(root, 'skills'), join(root, 'skills-moved'));
+      await symlink(outside, join(root, 'skills'));
+      const response = await request('/skills');
+      const body = JSON.stringify(await response.json());
+      expect(body).not.toContain(OUTSIDE_SECRET);
+      const row = (
+        await json<{ data: RegistrySource[] }>('/sources')
+      ).data.find((entry) => entry.id === source.id);
+      expect(row?.status).not.toBe('ready');
+      const installed = await request('/skills/install', 'POST', {
+        id: chosen!.id,
+      });
+      expect(installed.status).not.toBe(200);
+      expect(await readdir(join(home, 'skills')).catch(() => [])).toEqual([]);
+    });
+  },
+);
+
+describe('local SKILL.md reads are bounded before they happen', () => {
+  const oversized = () =>
+    `${skillDocument('big')}${'x'.repeat(REGISTRY_SOURCE_SCAN_LIMITS.maxFileBytes + 1)}`;
+
+  test('detection refuses a source whose SKILL.md is over the bound, and lists none of it', async () => {
+    const { add, list } = setup();
+    const source = await add({
+      location: await folder({
+        'skills/small/SKILL.md': skillDocument('small'),
+        'skills/big/SKILL.md': oversized(),
+      }),
+    });
+    expect(source.detection).toMatchObject({ state: 'refused', kinds: [] });
+    expect(source.detection?.reason).toContain(
+      `larger than ${REGISTRY_SOURCE_SCAN_LIMITS.maxFileBytes} bytes`,
+    );
+    expect(
+      (await list('skills')).filter(
+        (item) => item.catalog?.sourceId === source.id,
+      ),
+    ).toEqual([]);
+  });
+
+  test('the filesystem skill provider refuses an oversized SKILL.md instead of buffering it', async () => {
+    const root = await folder({ 'big/SKILL.md': oversized() });
+    await expect(
+      new FilesystemSkillRegistryProvider([root]).listAvailable(),
+    ).rejects.toBeInstanceOf(LocalSourceFileTooLargeError);
+    await expect(
+      new FilesystemSkillRegistryProvider([root], {
+        confineTo: root,
+      }).listAvailable(),
+    ).rejects.toBeInstanceOf(LocalSourceFileTooLargeError);
+  });
+});
+
+describe('a plain agent id needs every agent catalog to answer', () => {
+  test('a catalog that cannot be read refuses a plain-id install instead of letting another catalog win', async () => {
+    const home = temporary('detected-unavailable-home-');
+    await ensureStationHomeSchema(home);
+    const { request } = setup(home);
+    const configured = await stationFolder({ agents: ['shared'] });
+    registerManifestRegistryProvider(
+      new JsonManifestRegistryProvider(join(configured, 'registry.json'), home),
+    );
+    registerAgentRegistryProvider(
+      {
+        listAvailable: async () => {
+          throw new Error('catalog host is down');
+        },
+        listInstalled: async () => [],
+        install: async () => ({ success: true, message: 'should not run' }),
+        uninstall: async () => ({ success: false, message: 'none' }),
+      },
+      'Team plugin',
+    );
+    const response = await request('/agents/install', 'POST', {
+      id: 'shared',
+      dataPolicy: 'preserve',
+      consent: {
+        permissions: [],
+        contentDigest: computePluginContentDigest(
+          join(configured, 'packages'),
+          'shared',
+        ),
+        dependencies: [],
+      },
+    });
+    const body = (await response.json()) as { code?: string; message?: string };
+    expect(response.status, JSON.stringify(body)).toBe(503);
+    expect(body.code).toBe('agent-catalog-unavailable');
+    expect(body.message).toContain(
+      'The agent catalog Team plugin could not be read',
+    );
+    expect(await readdir(join(home, 'plugins')).catch(() => [])).toEqual([]);
+  });
+});
+
+/**
+ * The configuration reader of a Station that predates detection, verbatim
+ * from 463add8e (`registry-source-configuration.ts`): what a downgrade reads.
+ */
+function legacyConfigurationReader() {
+  const sourceInput = z
+    .object({
+      displayName: z.string().trim().min(1).max(100),
+      adapter: z.enum(['manifest', 'directory', 'github']),
+      location: z.string().trim().min(1).max(2000),
+    })
+    .strict();
+  const selectionSchema = z
+    .object({
+      sourceId: z.string().min(1).max(100),
+      itemId: z.string().min(1).max(200),
+      revision: z.string().regex(/^[a-f0-9]{64}$/),
+      kind: z.enum(['skills', 'plugins']),
+    })
+    .strict();
+  const registryItemSchema = z.object({
+    providesTools: z.boolean().optional(),
+    id: z.string().min(1).max(1500),
+    displayName: z.string().max(200).optional(),
+    description: z.string().max(2000).optional(),
+    version: z.string().max(200).optional(),
+    source: z.string().max(2000).optional(),
+    status: z.string().max(200).optional(),
+    installed: z.boolean(),
+    installedPluginName: z.string().max(200).optional(),
+    tags: z.array(z.string().max(100)).max(32).optional(),
+    catalog: selectionSchema.optional(),
+    catalogSourceName: z.string().max(100).optional(),
+    catalogFreshness: z.enum(['live', 'stale']).optional(),
+    packageRevision: z.string().max(200).optional(),
+  });
+  const snapshotSchema = z.object({
+    data: z.array(registryItemSchema).max(512),
+    revision: z.string().regex(/^[a-f0-9]{64}$/),
+    checkedAt: z.string().datetime(),
+  });
+  return z.object({
+    version: z.literal(1),
+    sources: z
+      .array(
+        sourceInput.extend({ id: z.string().uuid(), enabled: z.boolean() }),
+      )
+      .max(32),
+    snapshots: z
+      .record(z.string(), snapshotSchema)
+      .refine((snapshots) => Object.keys(snapshots).length <= 32)
+      .default({}),
+    disabled: z.array(z.string()).max(128),
+  });
+}
+
+describe('an earlier Station can still read the configuration', () => {
+  test('after skills, plugins and agents catalogs persist, with no ref, the earlier reader accepts the file', async () => {
+    const { add, list, home } = setup();
+    const source = await add({
+      location: await stationFolder({
+        plugins: ['hello'],
+        agents: ['reviewer'],
+        skills: ['clarify'],
+      }),
+    });
+    for (const kind of ['skills', 'plugins', 'agents'] as const)
+      expect(
+        (await list(kind)).some((item) => item.catalog?.sourceId === source.id),
+      ).toBe(true);
+    const file = JSON.parse(
+      await readFile(join(home, 'config/registry-sources.json'), 'utf8'),
+    ) as {
+      snapshots: Record<string, { data: RegistryItem[] }>;
+      kindSnapshots: Record<string, { data: RegistryItem[] }>;
+    };
+    expect(Object.keys(file.kindSnapshots)).toEqual([`${source.id}#agents`]);
+    expect(
+      Object.values(file.snapshots).every((snapshot) =>
+        snapshot.data.every((item) => item.catalog?.kind !== 'agents'),
+      ),
+    ).toBe(true);
+    const legacy = legacyConfigurationReader().safeParse(file);
+    expect(legacy.success, JSON.stringify(legacy.error?.issues[0])).toBe(true);
+  });
+
+  test('a configured ref is refused by the earlier reader as a whole, never dropped', async () => {
+    const { add, home } = setup();
+    fakeGitHub('Bil0000', 'Hill-Climb');
+    const fetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string, init?: RequestInit) =>
+        fetch(String(input).replace('/commits/main', '/commits/HEAD'), init),
+      ),
+    );
+    await add({
+      location: 'https://github.com/Bil0000/Hill-Climb',
+      ref: 'main',
+    });
+    const file = JSON.parse(
+      await readFile(join(home, 'config/registry-sources.json'), 'utf8'),
+    );
+    expect(file.sources[0].ref).toBe('main');
+    expect(legacyConfigurationReader().safeParse(file).success).toBe(false);
   });
 });

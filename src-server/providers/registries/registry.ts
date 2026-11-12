@@ -51,7 +51,11 @@ import type {
   IUserIdentityProvider,
 } from '../provider-interfaces.js';
 import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
-import { createAgentRegistryProvider } from './agent-registry-provider.js';
+import {
+  type AgentCatalogOwnership,
+  agentCatalogOwnership,
+  createAgentRegistryProvider,
+} from './agent-registry-provider.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
 import { mcpSubregistryIntegrationProviders } from './mcp-subregistry-provider.js';
 
@@ -836,6 +840,19 @@ export function registerAgentRegistryProvider(
   source = 'Core',
 ) {
   registerProvider('agentRegistry', provider, { source });
+}
+
+/** Which registered agent catalog owns a plain agent id (see the provider). */
+export function registeredAgentCatalogOwnership(
+  id: string,
+): Promise<AgentCatalogOwnership> {
+  return agentCatalogOwnership(
+    listProviders('agentRegistry').map((entry) => ({
+      provider: entry.provider as IAgentRegistryProvider,
+      source: entry.source,
+    })),
+    id,
+  );
 }
 
 /**

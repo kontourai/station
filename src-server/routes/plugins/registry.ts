@@ -29,13 +29,13 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
-import { AMBIGUOUS_AGENT_SOURCE_STATUS } from '../../providers/registries/agent-registry-provider.js';
 import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
 import { mcpSubregistryIntegrationProviders } from '../../providers/registries/mcp-subregistry-provider.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
   integrationCatalogManagedDenial,
+  registeredAgentCatalogOwnership,
 } from '../../providers/registries/registry.js';
 import {
   ManagedRegistryRefusal,
@@ -650,34 +650,30 @@ export function createRegistryRoutes(
       const { id } = body;
       registryOps.add(1, { operation: 'install-agent', item: id });
 
-      // A plain id offered by more than one agent catalog is refused here,
-      // before the plugin path below could install it from whichever plugin
-      // registry resolves it first. A source-qualified id names its source.
+      // A plain id is installed only when one agent catalog owns it. Two
+      // owners, or a catalog that could not be read (it might be the second
+      // owner), refuse here, before the plugin path below could install it
+      // from whichever plugin registry resolves it first. A source-qualified
+      // id names its source and skips this.
       if (!readRegistryCatalogSelection(id)) {
-        const offered = (
-          await getAgentRegistryProvider().listAvailable()
-        ).filter(
-          (item) =>
-            item.id === id && item.status === AMBIGUOUS_AGENT_SOURCE_STATUS,
-        );
-        if (offered.length > 0)
+        const ownership = await registeredAgentCatalogOwnership(id);
+        if (
+          ownership.state === 'ambiguous' ||
+          ownership.state === 'unavailable'
+        )
           return c.json(
             {
               success: false,
-              message: `${id} is offered by more than one agent catalog (${offered.map((item) => item.catalogSourceName).join(', ')}). Disable or remove one of them first.`,
+              code:
+                ownership.state === 'ambiguous'
+                  ? 'agent-catalog-ambiguous'
+                  : 'agent-catalog-unavailable',
+              message: ownership.reason,
             },
-            409,
+            ownership.state === 'ambiguous' ? 409 : 503,
           );
       }
 
-      // A JSON-manifest registry serves the same catalog through the agent
-      // face and the plugin face (`register-manifest-registry.ts`), so an id
-      // this surface offers can be a PLUGIN — code contributions, a build
-      // step, a consent basis. Installing that through the provider's raw
-      // tree copy skipped all three: the tree landed without `dist/bundle.js`
-      // and its layout components could never register (#765 D1). An id the
-      // plugin registry resolves takes the one complete install path;
-      // anything else remains a plain provider install, exactly as before.
       if (pluginInstallDeps) {
         let registryPlugin: { source: string } | null = null;
         try {
