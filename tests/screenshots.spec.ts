@@ -3816,7 +3816,7 @@ function roomConversationScreens(): Screen[] {
                   'Delete',
                 ]);
                 await expect(
-                  menu.getByRole('menuitem', { name: 'React' }),
+                  menu.getByRole('menuitem', { name: 'React', exact: true }),
                 ).toBeFocused();
                 const menuBox = await menu.boundingBox();
                 for (const item of await menu.getByRole('menuitem').all()) {
@@ -3830,7 +3830,7 @@ function roomConversationScreens(): Screen[] {
                   );
                 }
                 await expect(
-                  menu.getByRole('menuitem', { name: 'Delete' }),
+                  menu.getByRole('menuitem', { name: 'Delete', exact: true }),
                 ).toHaveClass(/action-overflow__row--danger/);
               }
             }
@@ -3849,7 +3849,7 @@ function roomConversationScreens(): Screen[] {
                   .click();
                 await page
                   .getByRole('menu')
-                  .getByRole('menuitem', { name: 'React' })
+                  .getByRole('menuitem', { name: 'React', exact: true })
                   .click();
               }
               const picker = page.getByRole('dialog', { name: 'Add reaction' });
