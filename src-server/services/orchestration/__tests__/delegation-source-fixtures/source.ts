@@ -1,5 +1,6 @@
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../../domain/file-storage-adapter.js';
@@ -37,16 +38,26 @@ export async function fixture(
   const repo = join(root, 'repo');
   const store = join(root, 'private-receipts');
   for (const path of [home, repo, store]) mkdirSync(path, { mode: 0o700 });
-  const git = async (...args: string[]) =>
-    (
-      await execGit(args, {
-        cwd: repo,
-        timeout: 5000,
-        maxBuffer: 128 * 1024,
-        windowsHide: true,
-        assertCurrent: () => signal?.throwIfAborted(),
-      })
-    ).stdout;
+  const git = async (...args: string[]) => {
+    const startedAt = performance.now();
+    try {
+      return (
+        await execGit(args, {
+          cwd: repo,
+          timeout: 5000,
+          maxBuffer: 128 * 1024,
+          windowsHide: true,
+          assertCurrent: () => signal?.throwIfAborted(),
+        })
+      ).stdout;
+    } catch (error) {
+      if (error instanceof Error) {
+        const elapsedMs = Math.round(performance.now() - startedAt);
+        error.message = `Fixture git ${args[0]} failed after ${elapsedMs}ms (killed=${Reflect.get(error, 'killed') === true}, signal=${Reflect.get(error, 'signal') ?? 'none'}, code=${Reflect.get(error, 'code') ?? 'none'}, requestAborted=${signal?.aborted ?? false}): ${error.message}`;
+      }
+      throw error;
+    }
+  };
   await git('init', '-q');
   await git('config', 'user.name', 'Owned temporary fixture');
   await git('config', 'user.email', 'fixture@example.invalid');
