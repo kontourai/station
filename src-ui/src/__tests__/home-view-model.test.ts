@@ -2119,7 +2119,6 @@ test('Open chats labels use the exact current child model instead of a persisted
       attachments: [],
       queuedMessages: [],
       inputHistory: [],
-      hasUnread: false,
     },
   };
   // Fully typed through a base summary, not cast: archive#1778 keeps the

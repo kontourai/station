@@ -789,13 +789,16 @@ invalidate queries, `presence` updates participants, and `revoked` or terminal
 include the API authority, local Project ID, and room ID for history.
 
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
-session storage before sending. Until it is confirmed, the message waits in the
+session storage before sending, per channel. Until it is confirmed, the message waits in the
 conversation; a lost acknowledgement or reload offers an explicit retry of that
 exact payload and UUID and never resends automatically. The retained intent
 settles once room history shows a message with its intent ID. The unsent draft
-(text, reply target and Agent recipient) is kept per room in the same tab's
+(text, reply target and Agent recipient) is kept per channel in the same tab's
 session storage, keyed by the shell's reload partition rather than its
-per-reload authority epoch; a restored recipient must still be an available
+per-reload authority epoch; `#general` keeps the key the room used before
+channels, and the channel on screen is remembered the same way, so a reload
+returns to it. Messages, `@agent` asks and retained Agent requests are addressed
+to the channel on screen; a restored recipient must still be an available
 Agent, shown under its current catalog name. While an Agent request is
 unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
 messages still send. A new `@agent` ask never reuses a retained Agent intent,
@@ -803,7 +806,8 @@ which only an explicit retry sends, and its acknowledgement clears the draft
 only if the draft is unchanged since that ask. A retained request that never got
 a handle can be abandoned after a confirmation; the current draft is kept and
 the original may already have run. Changing Project, discovered actor or reload partition
-retires the prior draft.
+retires the prior drafts and channel selection; changing authority retires every
+channel's retained send.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
@@ -2213,6 +2217,43 @@ Renames a conversation and invalidates that agent's conversation list on success
 ### `useDeleteConversationMutation()`
 
 Deletes a conversation, invalidates that agent's conversation list, and removes its cached message query on success.
+
+### Read markers
+
+Unread state is kept by the server (see
+[read marker contracts](contracts.md#read-marker-contracts)). Conversation
+inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
+rather than comparing `acknowledgedAt` or `updatedAt` yourself. `version` is
+the conversation's content version: a monotonic, opaque number that moves only
+when readable content arrives, never its `updatedAt`. Compare it only with
+versions of the same conversation. `{ version, unavailable: true }` means the
+server could not read it: show it as unknown, never as read.
+
+- `useAcknowledgeConversationMutation()` takes `{ conversationId, updatedAt,
+  readVersion? }`: `readVersion` is the content version the client rendered
+  (`readState.version`) and is what the server marks read; `updatedAt` is the
+  inventory version shown, kept as "last viewed". With `readVersion` the
+  cached row reads as read at once; if the server refuses, the row is restored
+  and the mutation rejects. Without it (older callers) the server records only
+  "last viewed" and marks nothing read, so the row stays unread. An unknown
+  row stays unknown until the server answers.
+- `acknowledgeConversation(apiBase, conversationId, updatedAt, opts?,
+  readVersion?)` is the same call without React Query.
+- `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
+  the same immediate update for an agent conversation.
+- `useReadMarkerSummaryQuery(targets, config?)` reads up to 100 agent
+  conversations, Project rooms (`{ kind: 'project-room', projectSlug,
+  roomId }`) and Task rooms (`{ kind: 'task-room', taskId }`) in one request.
+  It is disabled for an empty list.
+- `markRead(apiBase, target, version)` and
+  `fetchReadMarkerSummary(apiBase, targets)` are the same calls without React
+  Query. `readMarkerQueries` owns the cache keys.
+
+Gate the summary and mark calls on the handshake's `readMarkers` flag: an
+older host answers them 404. Open clients of the same person refresh on their
+own: the shared orchestration event stream re-reads the inventory and
+read-marker queries when that person's marker moves, coalesced with the
+inventory's own refresh.
 
 ### `useCreateProjectMutation(requestScope?)`
 
@@ -6620,8 +6661,8 @@ browser fixtures do not establish native/installed/release qualification.
 `@kontourai/station-sdk/workspace-file-preview` exports
 `readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
 Pass the render-captured request scope and abort signal in `options`. The
-read-only POST returns a validated HTML page plus isolated frame origin, or a
-bounded raster preview. `thread` selects an authorized Session workspace;
+read-only POST returns a validated HTML page, plus the isolated frame origin
+for a browser on the Station host, or a bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL. A failed
 read throws `WorkspaceVisualFileError` with `status` and a `reason`

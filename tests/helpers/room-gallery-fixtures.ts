@@ -24,6 +24,8 @@ import { rejectUnexpectedFixtureRequest } from './fixture-audit';
  */
 
 const ROOM_ID = '7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a10';
+/** The `channels` scene's second channel (#4792); `#general` is ROOM_ID. */
+const DESIGN_ID = '7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a11';
 const VIEWER = { id: 'person:maya', displayName: 'Maya Chen', kind: 'person' };
 const JONAS = { id: 'person:jonas', displayName: 'Jonas Berg', kind: 'person' };
 const PRIYA = {
@@ -198,7 +200,8 @@ export type ProjectRoomScene =
   | 'agent-pending'
   | 'agent-abandon'
   /** The short room with the composer focused and, on a phone, a keyboard. */
-  | 'keyboard';
+  | 'keyboard'
+  | 'channels';
 
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
@@ -217,13 +220,48 @@ const ARRIVALS: ProjectLine[] = [
   },
 ];
 
-function projectMessage(line: ProjectLine, seq: number) {
+/** `#design` in the channels scene: its own room and history. */
+const DESIGN: ProjectLine[] = [
+  {
+    actor: PRIYA,
+    at: at(1, 15, 2),
+    text: 'New checkout screens are up for review.',
+  },
+  {
+    actor: VIEWER,
+    at: at(1, 15, 9),
+    text: 'The step indicator reads well on phones. Can we shorten the CTA?',
+  },
+];
+/** Channels as the server lists them: default first, then by name. */
+function projectChannels(scene: ProjectRoomScene) {
+  const general = { channelId: ROOM_ID, name: 'general', isDefault: true };
+  if (scene !== 'channels') return [general];
+  return [
+    { ...general, topic: 'Team-wide updates and launch decisions' },
+    {
+      channelId: DESIGN_ID,
+      name: 'design',
+      topic: 'Screens, flows and the checkout review',
+      isDefault: false,
+    },
+    { channelId: uuid(3, 'e1'), name: 'launch-plan', isDefault: false },
+    {
+      channelId: uuid(4, 'e1'),
+      name: 'user-research',
+      archivedAt: at(0, 13, 0),
+      isDefault: false,
+    },
+  ];
+}
+
+function projectMessage(line: ProjectLine, seq: number, roomId = ROOM_ID) {
   return {
-    intentId: uuid(seq, 'b1'),
+    intentId: uuid(seq, roomId === ROOM_ID ? 'b1' : 'b2'),
     text: line.text,
     ...(line.replyTo ? { replyTo: uuid(line.replyTo, 'c1') } : {}),
-    roomId: ROOM_ID,
-    messageId: uuid(seq, 'c1'),
+    roomId,
+    messageId: uuid(seq, roomId === ROOM_ID ? 'c1' : 'c2'),
     seq,
     actor: line.actor,
     createdAt: line.at,
@@ -277,27 +315,34 @@ export async function installProjectRoomFixture(
   });
   await new Promise<void>((resolve) => events.listen(0, '127.0.0.1', resolve));
   const eventsUrl = `http://127.0.0.1:${(events.address() as AddressInfo).port}/events`;
-  const base = `**/api/projects/${encodeURIComponent(slug)}/room`;
-  const handlers: [string, (route: Route) => Promise<void> | void][] = [
+  const project = `**/api/projects/${encodeURIComponent(slug)}`;
+  const base = `${project}/room`;
+  /** Discovery, history, presence and events for one room address. */
+  const roomRoutes = (
+    address: string,
+    roomId: string,
+    read: () => ReturnType<typeof projectMessage>[],
+    failSend: boolean,
+  ): [string, (route: Route) => Promise<void> | void][] => [
     [
-      base,
+      address,
       (route) => {
         if (route.request().method() !== 'GET')
           return rejectUnexpectedFixtureRequest(route);
-        const all = messages();
+        const all = read();
         return route.fulfill({
           json: {
             success: true,
             data: {
               scope,
-              roomId: ROOM_ID,
+              roomId,
               capabilities: {
                 view: true,
                 discuss: true,
                 edit: true,
                 execute: true,
               },
-              checkpoint: { roomId: ROOM_ID, lastSeq: all.length },
+              checkpoint: { roomId, lastSeq: all.length },
               note: null,
               actor: VIEWER,
               presence,
@@ -307,11 +352,11 @@ export async function installProjectRoomFixture(
       },
     ],
     [
-      `${base}/messages*`,
+      `${address}/messages*`,
       (route) => {
         const request = route.request();
         if (request.method() === 'POST') {
-          if (scene === 'failed-send')
+          if (failSend)
             return route.fulfill({
               status: 503,
               json: {
@@ -327,7 +372,7 @@ export async function installProjectRoomFixture(
         const url = new URL(request.url());
         const after = Number(url.searchParams.get('after') ?? 0);
         const limit = Number(url.searchParams.get('limit') ?? 25);
-        const all = messages();
+        const all = read();
         const page = all.filter(
           (message) => message.seq > after && message.seq <= after + limit,
         );
@@ -337,9 +382,9 @@ export async function installProjectRoomFixture(
             success: true,
             data: {
               scope,
-              roomId: ROOM_ID,
+              roomId,
               messages: page,
-              checkpoint: { roomId: ROOM_ID, lastSeq: all.length },
+              checkpoint: { roomId, lastSeq: all.length },
               nextAfter:
                 last < Math.min(all.length, after + limit) ? last : null,
             },
@@ -348,7 +393,7 @@ export async function installProjectRoomFixture(
       },
     ],
     [
-      `${base}/presence`,
+      `${address}/presence`,
       (route) => {
         if (route.request().method() !== 'POST')
           return rejectUnexpectedFixtureRequest(route);
@@ -356,7 +401,7 @@ export async function installProjectRoomFixture(
       },
     ],
     [
-      `${base}/events`,
+      `${address}/events`,
       (route) => {
         if (route.request().method() !== 'GET')
           return rejectUnexpectedFixtureRequest(route);
@@ -364,6 +409,31 @@ export async function installProjectRoomFixture(
       },
     ],
   ];
+  const handlers: [string, (route: Route) => Promise<void> | void][] = [
+    ...roomRoutes(base, ROOM_ID, messages, scene === 'failed-send'),
+    [
+      `${project}/channels`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: { success: true, data: { channels: projectChannels(scene) } },
+        });
+      },
+    ],
+  ];
+  if (scene === 'channels')
+    handlers.push(
+      ...roomRoutes(
+        `${project}/channels/${DESIGN_ID}`,
+        DESIGN_ID,
+        () =>
+          DESIGN.map((line, index) =>
+            projectMessage(line, index + 1, DESIGN_ID),
+          ),
+        false,
+      ),
+    );
   if (scene === 'agent-pending' || scene === 'agent-abandon') {
     // The Station's real catalog plus one available Agent, Scout, shaped like
     // the catalog's own entries.

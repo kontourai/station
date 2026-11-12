@@ -253,7 +253,6 @@ describe('conversationContextBoundaryEligibility', () => {
     status: 'idle',
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
   } as any;
   const orchestrationSession = {
     lifecycleState: 'running',

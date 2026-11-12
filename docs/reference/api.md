@@ -1034,6 +1034,38 @@ intent and grant no permission.
 | `POST /agents/:requestId/reconcile` | guards | inspect completion and publish the authorized selected answer once; does not relaunch |
 | `POST /agents/:requestId/cancel` | guards | cancel request and fence later publication |
 
+### Named channels
+
+A Project's room is divided into named channels. `/room` addresses the
+default channel, `#general`; every per-room operation above except `POST /init`
+is also served at `/api/projects/:slug/channels/:channelId`, where `channelId`
+is that channel's room UUID. Messages, the shared note and Agent requests
+belong to one channel. A host that predates channels answers 404 for these paths.
+
+| Method and path | Input | Result |
+| --- | --- | --- |
+| `GET /channels` | none | `{ channels }`: default first, then by name; empty before the room opens. Needs `view` |
+| `POST /channels` | `{ expectedProjectId, expectedActorId, name, topic? }` | the created channel. Needs `edit` |
+| `PATCH /channels/:channelId` | the same guards plus at least one of `name`, `topic` (`null` clears), `archived` | the updated channel. Needs `edit` |
+
+A channel is `{ channelId, name, topic?, archivedAt?, isDefault }`. Names are
+1–80 characters of lowercase ASCII letters and digits in hyphen-separated runs
+(`design`, `launch-plan`); they are parsed exactly, never normalized, and are
+unique within the Project, archived channels included (`409
+project_room_duplicate`). Topics are one line of at most 250 bytes. A Project
+holds at most 50 channels, archived ones included (`429 project_room_capacity`).
+Past either limit the server refuses rather than truncating. An archived channel
+serves discovery and history, but refuses messages, note edits and Agent
+requests (`409 project_room_archived`). The default channel can be renamed but
+not archived.
+
+Upgrading moves each Project's existing room into `#general` with its room UUID,
+history, note and Agent requests unchanged. Rooms created by an older Station
+after the upgrade are adopted the next time the store opens. A room whose stored
+record does not match its row is never adopted; that Project's room and channels
+stay refused, as before the upgrade. A database from a newer Station is refused
+before any schema change or migration.
+
 Reads, discussion, note editing and execution require their distinct current
 Project actions plus transport permission. Agent requests also require current
 host execution permission and the selected Project execution root. Membership
@@ -2209,6 +2241,75 @@ Unexpected storage failures reach the runtime's correlated generic 500 boundary;
 they are not all reported as bad requests.
 
 ---
+
+## Read markers
+
+The [read marker routes](../../src-server/routes/read-markers/read-marker-routes.ts)
+read and advance the caller's own unread state for agent conversations, Project
+rooms and Task rooms ([contracts](contracts.md#read-marker-contracts)). The
+handshake advertises them as `readMarkers`. Both are `orchestration:read` for
+paired devices and person self-service leaves for an account-bound member's
+Device: each writes only the caller's markers, and each target is re-read under
+the caller's own conversation or room authority.
+
+```http
+POST /api/read-markers/summary
+{ "targets": [{ "kind": "agent-conversation", "conversationId": "…" },
+              { "kind": "project-room", "projectSlug": "launch", "roomId": "…" },
+              { "kind": "task-room", "taskId": "…" }] }
+```
+
+The response holds one item per target, in request order:
+`{ target, latestVersion, seenVersion, unread, unreadCount? }`, or
+`{ target, unavailable: true }`. More than 100 targets is a 400 with
+`read_marker_too_many_targets`.
+
+```http
+POST /api/read-markers/mark
+{ "target": { "kind": "agent-conversation", "conversationId": "…" }, "version": 1794414034117 }
+```
+
+The response is the resulting state. An older version answers the stored
+state and changes nothing. A version above the current one is a 409 with
+`read_marker_future_version` and `latestVersion`. A conversation the caller
+cannot read is a 404, and a caller that is not a person a 403 (on a hosted
+Station, a request that carries only the tenant). A marker store that does
+not decode for the caller is a 503, never an answer of "read". A file-backed
+conversation id keeps the conversation id contract (ids such as
+`human:tailscale-serve:casey@example.test:…` are valid); one with a path
+separator, a `.` or `..` segment, a control character such as NUL, or an
+encoded separator (`%2F`, `%5C`) names no file, and the stored record must
+carry exactly the requested id; anything else is a 404. A marker that moves is
+announced as `read-markers:changed` on that person's own
+`GET /api/orchestration/events` streams, with an empty payload; whose streams
+those are is checked again for every change, so a device that loses owner
+standing stops receiving the owner's changes at once.
+
+History from before read state began reads as seen only for the personal
+owner (`personal:owner`: the local operator and devices with owner standing).
+Any other caller, including a visitor device and every person on a hosted
+Station, sees that history as unread until it is rendered.
+
+An agent conversation's version is its content version: a monotonic number
+from the event store that moves only when readable transcript content is
+appended (a prompt, assistant text, a tool result, host images, a turn
+completing, ending unfinished or failing), never on lifecycle bookkeeping.
+`GET /api/conversations` items carry it as `readState.version`, or
+`readState: { version, unavailable: true }` when the caller's read state
+cannot be read; the conversations are listed either way.
+
+```http
+POST /api/conversations/:id/acknowledgement
+{ "updatedAt": "2026-11-11T10:15:00.000Z", "readVersion": 41 }
+```
+
+`readVersion` is the content version the client rendered and is what is marked
+read; above the current one it is a 409. `updatedAt` is the inventory version
+shown, recorded as "last viewed" (`acknowledgedAt`, Home's Just finished) and
+refused above the current `updatedAt`. A request without `readVersion` (an
+older client) records only "last viewed" and marks nothing read: what it saw
+cannot be known from a timestamp, so its conversations stay unread until it
+sends `readVersion`.
 
 ## Conversation Management
 

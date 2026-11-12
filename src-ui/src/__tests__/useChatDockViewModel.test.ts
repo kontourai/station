@@ -94,7 +94,6 @@ const sessions = [
     id: 's1',
     agentSlug: 'agent-1',
     projectSlug: null,
-    hasUnread: false,
     model: undefined,
   },
 ] as unknown as Parameters<typeof useChatDockViewModel>[0]['sessions'];
@@ -798,7 +797,6 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
     conversationId: 'acp-elsewhere:1',
     agentSlug: 'agent-1',
     projectSlug: 'default',
-    hasUnread: false,
   } as unknown as Props['sessions'][number];
 
   function render(

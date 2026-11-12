@@ -815,6 +815,31 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // #3075: the caller's own read markers. Both are POSTs only because a batch
+  // body does not fit a query string; they read or advance the requesting
+  // person's markers and nothing else, and each target is re-authorized
+  // through its own conversation or room read. A read-only paired phone must
+  // reach them, or reading there could never clear unread anywhere. They are
+  // person self-service leaves, so an account-bound member's Device reaches
+  // them too; the target's own read still decides what it can see.
+  {
+    id: '/api/read-markers/summary:read',
+    method: 'POST',
+    prefix: '/api/read-markers/summary',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/read-markers/mark:own',
+    method: 'POST',
+    prefix: '/api/read-markers/mark',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
   // return bounded projections — hashed transport keys, outcome codes and
   // ids, never a payload or secret. The shared ledger is operator management,
@@ -4816,6 +4841,42 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/projects/:slug/room/agents/:requestId/reconcile',
+    },
+    // Named channels (#4792): the same per-room actions, addressed per channel.
+    // Create, rename, topic and archive compose the room's `edit` tier.
+    { method: 'GET', path: '/api/projects/:slug/channels' },
+    { method: 'POST', path: '/api/projects/:slug/channels' },
+    { method: 'PATCH', path: '/api/projects/:slug/channels/:channelId' },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    { method: 'PUT', path: '/api/projects/:slug/channels/:channelId/note' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/presence',
+    },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/reconcile',
     },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a

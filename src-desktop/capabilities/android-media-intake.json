@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "android-media-intake",
+  "description": "Clipboard image paste and the image share target. Android-only file because the plugin is compiled only on mobile; a shared capability would fail ACL resolution on other targets (station#575).",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": ["station-media-intake:default"]
+}

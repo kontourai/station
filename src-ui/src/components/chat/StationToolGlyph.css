@@ -1,0 +1,6 @@
+/* #3418: Station's mark in the brand colour (4.5:1 as text in every channel,
+   above the 3:1 a graphic needs). Two classes outrank `.tool-call__glyph`. */
+.tool-call__glyph.tool-call__glyph--station {
+  color: var(--k-brand);
+  opacity: 1;
+}

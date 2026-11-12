@@ -486,6 +486,7 @@ export {
   type ACPRegistryInstallAgentReceipt,
   type ACPRegistryInstallRequest,
   type AcceptFlowExceptionInput,
+  type AcknowledgeConversationVariables,
   type AcpSlashCommandDescriptor,
   type AdoptOrchestrationSessionIntent,
   AdoptSessionError,
@@ -1520,6 +1521,13 @@ export {
   usePullRequestQuery,
   usePullRequestsQuery,
 } from './query-domains/pullRequests';
+export {
+  fetchReadMarkerSummary,
+  markRead,
+  readMarkerQueries,
+  useMarkReadMutation,
+  useReadMarkerSummaryQuery,
+} from './query-domains/readMarkers';
 export type {
   SetupImportItem,
   SetupImportPreview,

@@ -100,6 +100,12 @@ export const SERVER_EVENTS = {
    * Project read authority instead.
    */
   PLUGIN_DRAFTS_REBUILT: 'plugin-drafts:rebuilt',
+  /**
+   * #3075: a person's read marker moved forward. The bus payload carries the
+   * person key so the orchestration stream can deliver it to that person's
+   * own clients only; the wire frame carries nothing ("re-read").
+   */
+  READ_MARKERS_CHANGED: 'read-markers:changed',
   PLUGINS_INSTALLED: 'plugins:installed',
   PLUGINS_REMOVED: 'plugins:removed',
   PLUGINS_UPDATED: 'plugins:updated',
@@ -228,6 +234,7 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // Names a Project by slug. Relayed only to subscribers who may read that
   // Project, through the events route's dedicated plugin-draft gate.
   [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: 'scoped',
+  [SERVER_EVENTS.READ_MARKERS_CHANGED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_INSTALLED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_REMOVED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_UPDATED]: 'scoped',

@@ -27,13 +27,16 @@ The boundary reports `enabled`, `disabled`, `unsupported`, or
 or error result. Tauri's `native_capability_report` command reports its actual
 compile target and Station-enabled states. Before that report is read,
 desktop-tray remains `disabled` rather than being guessed from the JavaScript
-host.
+host. The adapter skips a capability id it does not know (a newer shell's),
+but rejects the whole report for a malformed entry, a repeated id or a
+missing required id; an id the shell omits stays at its initial state.
 
 | Capability | Web/PWA | Current Tauri host | Notes |
 | --- | --- | --- | --- |
-| PWA share URL intake | enabled | n/a | Preserves `share`, `text`, `url`, and `title` query parameters and removes them after delivery. |
+| PWA share URL intake (`share-intake`) | enabled | disabled: no native host receives shared text | Preserves `share`, `text`, `url`, and `title` query parameters and removes them after delivery. |
 | Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation and bundled-server status. |
-| Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
+| Native image share receiver (`image-share-intake`) | unsupported | Android enabled; iOS and desktop disabled | `station-media-intake` receives `image/*` `ACTION_SEND`/`ACTION_SEND_MULTIPLE` and opens the conversation picker. iOS needs a Share Extension that is not built. See [Clipboard images and the share target](#clipboard-images-and-the-share-target). |
+| Clipboard images (`clipboard-image`) | unsupported (composers use `navigator.clipboard.read()` on a touch browser) | enabled on mobile; unsupported on desktop | `station-media-intake` reads the system clipboard for **Paste image**, because mobile WebViews offer no Paste for an image-only clipboard. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
@@ -53,14 +56,76 @@ semantics. OS window reveal, startup cover/dialog wiring and physical
 packaged-channel proof remain **NOT_VERIFIED**. Readiness does not depend on a window-state
 plugin; conditional desktop updater registration is a separate owner below.
 
-The current host does not emit inbound share events yet. The event name is a
-future-compatible boundary, not a claim that native share-target behavior is
-shipped. PWA share URLs keep their existing behavior now. Pairing deep links
-are deliberately separate from this generic share boundary.
+The current host does not emit inbound text share events
+(`station://share-received`) yet. That event name is a future-compatible
+boundary; shared images use the separate plugin path below. PWA share URLs keep
+their existing behavior. Pairing deep links are deliberately separate from both
+share boundaries.
 
 Both adapters enforce the same 256 KiB text limit before shared content reaches
 React state. Rejected native events and host-listener registration failures are
 reported through the typed adapter error callback and surfaced to the user.
+
+### Clipboard images and the share target
+
+The [media-intake plugin](../../src-desktop/plugins/media-intake/src/lib.rs) is
+registered on Android and iOS only, with one capability file per platform. Both
+of its reads return the share payload `{ files: [{ name, mimeType, dataUrl }] }`
+defined in [`share-image.ts`](../../src-ui/src/platform/native/share-image.ts).
+
+- **Bounds.** The native code copies the chat-attachment contract: at most
+  five images, 5 MiB each, 15 MiB together. Past any bound it refuses the
+  whole read with a sentence the web layer shows; it never truncates. The
+  type is sniffed from the bytes (PNG, JPEG, GIF, WebP); other types, HEIC
+  included, are refused, not transcoded. An unsafe or overlong display name is
+  replaced with a generated `pasted-image-<n>` or `shared-image-<n>` name;
+  unsafe includes path separators and Unicode control, format (bidi overrides,
+  zero-width) and line or paragraph separators. The web adapter validates every
+  reply again with `parseNativeSharedImagePayload`, which refuses such a name,
+  before it becomes a `File`.
+- **Sources.** Android opens a URI only when it is `content://` from another
+  app's provider. `file://` URIs and Station's own provider authorities (its
+  FileProvider exposes the cache directory) are refused before anything is
+  opened, because Station reads them with its own permissions. When Station
+  cannot list its own provider authorities, every source is refused.
+- **Clipboard (`clipboard-image`).** Android reads the primary clip's image
+  URIs through `ContentResolver`, judging each item by its own type, so a clip
+  that mixes an image with a PDF pastes the image; iOS reads admitted
+  pasteboard representations. An empty clipboard is an empty list. The composers' **Paste
+  image** action (reply, start and Task composers) calls the native read where
+  `clipboard-image` is enabled and `navigator.clipboard.read()` on a touch
+  browser, then hands the files to that composer's own Attach path.
+- **Share target (`image-share-intake`).** Android's generated MainActivity
+  carries an `image/*` filter for `ACTION_SEND` and `ACTION_SEND_MULTIPLE`; the
+  channel bootstrap (`scripts/apply-android-native-bootstrap.mjs`) restores it
+  after `tauri android init`, and gives MainActivity an `onNewIntent` that
+  records the intent (`setIntent`) and offers it to the plugin's buffer
+  before Tauri forwards it: Tauri forwards a new intent only to plugins
+  already loaded, and after process death a share can arrive first. The
+  buffer keeps image shares only, and an intent `load` already drained is not
+  adopted again when Tauri delivers it. The
+  plugin adopts, in `load`, a buffered share as a fresh share or else the
+  launch intent's share, and a share delivered to `onNewIntent` (running),
+  which alone triggers `sharedImages`; it keeps only the URIs, and
+  `take_shared_images` returns the share once, read through the same URI path
+  as the clipboard. The action and type are checked before any extra is
+  unpacked, and extras that fail to unpack are not a share. A share relaunched
+  from Recents is ignored. Taking a share records a hash of the boot count,
+  its task and its URIs (the last 16, in app preferences), and a launch
+  intent whose share was
+  already taken is ignored: Android recreates the activity with the original
+  share after process death, and removing the extra only changes one
+  process's copy. Sharing the same images again while Station runs is a new
+  share. The web layer subscribes first and then takes, as for agent-activity
+  launch routes, and opens the picker: an existing conversation, or **New
+  chat** in a chosen project through the dock's New chat intent. A share that
+  arrives while a picker is open waits for that picker to close. iOS
+  `take_shared_images` answers an empty list until a Share Extension exists.
+
+`share-intake` names text shares: the web adapter's PWA share URLs above. It
+is disabled on native hosts, which receive no shared text, and it never gates
+image intake; the web adapter reports `image-share-intake` unsupported, so
+`takeSharedImages` is `unsupported` there.
 
 ### Nearby Station discovery
 
@@ -547,7 +612,7 @@ exists.
 | Opener / shell | Platform behavior remains target-specific. | Rust-owned tray and reviewed external-link commands use the opener on desktop/mobile; JavaScript link interception and generic opener permissions remain disabled. |
 | Process | Desktop only. | Registered by the desktop host, but no capability manifest grants the webview its permissions (#3851); the native updater restarts through the Rust app handle. |
 | Credential storage | Platform-specific OS stores. | Host-owned pairing capture, credential persistence and request brokering are implemented. No fallback to a plaintext store is implied; runtime/device qualification remains separate. |
-| Clipboard | Mobile supports plain text only. | disabled. |
+| Clipboard | Mobile supports plain text only. | The official plugin is not used. Station's own `station-media-intake` plugin reads clipboard images on mobile (`clipboard-image`); it never writes the clipboard. |
 | Autostart | Desktop only. | disabled. |
 | Biometric / barcode scanner | Mobile only. | disabled. |
 
@@ -557,9 +622,11 @@ Do not add a community plugin as an implementation shortcut. Before enabling
 any plugin, record a target-specific threat model, maintenance/ownership review,
 permissions/capability manifest change, typed adapter operation, and native
 device verification. A plugin must be explicitly enabled in Station separately
-from its upstream support status. In particular, native inbound share targets and background agent execution remain
-unselected; the implemented credential broker has its own authority boundary. The narrow pairing association above is not a general inbound-share
-capability.
+from its upstream support status. In particular, background agent execution remains
+unselected, and the only native inbound share target is the Android image
+receiver above; text, file and iOS share targets remain unselected. The
+implemented credential broker has its own authority boundary. The narrow
+pairing association above is not a general inbound-share capability.
 
 ## Version and source record
 
@@ -575,8 +642,10 @@ was reviewed on 2026-08-08; it is not a current dependency inventory:
 ## Explicitly unverified
 
 Physical release distribution, signing/store delivery, real-device credential
-lifecycle, inbound native shares, remote-push delivery and background mobile
-agents remain **NOT_VERIFIED** by the receipts on this page. Development
+lifecycle, inbound native image shares and native clipboard image reads,
+remote-push delivery and background mobile agents remain **NOT_VERIFIED** by the
+receipts on this page. Media intake is covered by Kotlin unit tests and
+web-layer tests, not by a device receipt. Development
 simulator build/install and the older paired simulator IPC journey are narrower
 observed results, not physical Nightly acceptance. #59 adds source-controlled Android/iOS Tauri configuration and
 a fail-closed GitHub workflow contract, not credential-backed distribution

@@ -178,6 +178,10 @@ export const NewChatGlyph = /* @__PURE__ */ glyph(
 export const OutboxGlyph = /* @__PURE__ */ glyph(
   'M3 3h10v10H3V3Zm0 6h3l1 1.5h2L10 9h3M8 8V2m-2 2 2-2 2 2',
 );
+/** A clipboard: paste from the system clipboard (room composer's Paste image). */
+export const PasteGlyph = /* @__PURE__ */ glyph(
+  'M10.5 3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h1M6 2h4v2H6Z',
+);
 export const PauseGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9m5-9v9');
 /**
  * Two overlapping people — the panel footer's presence slot (#2059). Distinct

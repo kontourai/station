@@ -544,9 +544,11 @@ Project admission still applies. A foreground chat stays on its owning Station;
 choosing another destination starts new work. With no other Station to choose,
 the control is plain text.
 
-The Project page opens on **Overview**. **Project room** is shared discussion
-with people in that Project; use **Bring an Agent** for an explicit request
-whose answer returns to the room. Direct Agent conversations stay in the chat
+The Project page opens on **Overview**. **Room** is shared discussion with
+people in that Project, in named channels starting with `#general`; choose the
+channel name to switch, and people who can edit can add, rename or archive
+channels. Use **Bring an Agent** for an explicit request whose answer returns
+to the channel. Direct Agent conversations stay in the chat
 dock. **Tasks** separates current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
@@ -901,6 +903,9 @@ A background shell command an engine started (or a monitor watching one) is
 not a subagent: its card shows a terminal mark, the command line and, once it
 ends, its exit code, and a group counts it as a background command.
 
+Every background-task row expands to its full title, status, start and end
+times, and, for a tool, which tool ran and a one-line summary of its input.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
@@ -1068,7 +1073,10 @@ unavailable.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
 In new chats and New Task conversations, drop an image onto the composer or paste
-a screenshot. Review its thumbnail and remove it before sending if needed.
+a screenshot. On a phone, use **Paste image** beside Attach. In the Android app
+you can also share images from another app to Station, then pick a
+conversation or **New chat** in a project. Review its thumbnail and remove it
+before sending if needed.
 The existing Task room and agent-thread replies accept images the same way,
 including messages with only an image. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
@@ -1104,6 +1112,16 @@ After first-run setup, Home can offer **Start your first task** for a confirmed
 Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
+
+When a Task's Session reports a plan (ACP engines do), its Tasks board card
+and Project task row show **Agent plan 3/5** and a thin bar. It is the agent's
+newest plan in that Session's latest turn, refreshed every few seconds while
+the Task is in progress or blocked. **Stopped** follows the count when the
+turn was stopped or the Session failed or was canceled with steps open, and
+**Waiting** when the Session needs input or an approval. There is no bar
+without a plan, for a plan from an earlier turn, or on done and canceled
+Tasks. The count is agent-reported: it never marks a Task done or satisfies a
+gate.
 
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
