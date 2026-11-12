@@ -239,7 +239,7 @@ outside a sandbox, needs a restart.
 
 ## Read recent conversations offline
 
-In the browser, open **Settings → Privacy & sharing** and enable **Save offline
+In the browser, open **Settings › Privacy & sharing** and enable **Save offline
 reading copies**. It starts off. Then open conversations while connected to save
 text from their most recent history read: at most 20 conversations, 10 recent
 turns per conversation, 256 KiB per conversation and 2 MiB in total. Copies expire
