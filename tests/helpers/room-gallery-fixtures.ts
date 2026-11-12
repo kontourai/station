@@ -233,8 +233,7 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
 
 /** The navigation scene's thread root: Scout's plan check. */
 export const NAVIGATION_THREAD_ROOT = uuid(3, 'c1');
-/** `#general` and `#design` room ids, for routes and read markers. */
-export const GALLERY_GENERAL_ROOM_ID = ROOM_ID;
+/** `#design` room id, for routes and read markers. */
 export const GALLERY_DESIGN_ROOM_ID = DESIGN_ID;
 
 /** Arrive after the reader scrolls up in the new-messages scene. */
