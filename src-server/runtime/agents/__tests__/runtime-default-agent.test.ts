@@ -21,6 +21,7 @@ const fixtureAgent = () =>
 
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
+import { NO_PERSON_INTENT } from '../../../services/approvals/guardian-conversation.js';
 import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import {
   isBuiltinStationControl,
@@ -362,6 +363,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     const approvalGuardian = {
       isEnabled: () => true,
       getMode: () => 'enforce',
+      readConversation: () => NO_PERSON_INTENT,
       reviewToolCall,
     } as any;
     const framework = {

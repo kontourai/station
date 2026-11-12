@@ -93,6 +93,8 @@ import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  type TurnDispatchOrigin,
+  turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   parseSessionWorkItemAssociation,
@@ -474,6 +476,10 @@ import {
   querySessionOwner,
   queryTranscriptMessages,
 } from './transcript-search-queries.js';
+import {
+  isPersonAuthoredTurn,
+  PERSON_AUTHORED_TURN_SQL,
+} from './turn-authorship.js';
 import {
   createSqliteUsageLimitResumeChoices,
   type UsageLimitResumeChoices,
@@ -9256,6 +9262,109 @@ export class EventStore {
       }
     }
     return prompts;
+  }
+
+  /**
+   * #4827: what a person typed into `threadIds` (one conversation's
+   * Sessions), for the approval guardian. Selected by a positive mark, never
+   * by who authenticated or where the turn was placed: a turn counts only
+   * when Station stamped it `authoredBy: 'person'`, which only the composer
+   * entry points set, after `personTypedRequest` proved a person typed it
+   * into one of Station's clients. A device or operator credential alone is
+   * not enough (a peer Station's delegation, the CLI, a bridge all hold one),
+   * and neither is `dispatchOrigin: 'interactive'` (a child's result placed
+   * in a person's chat has it). As defence in depth a turn that also names a
+   * `clientOrigin.sender` or an MCP `promptSource` is excluded. An adapter
+   * cannot set any of these. The prompt is Station's own dispatched input
+   * (`displayInput ?? input`); tool results and replies are other methods.
+   * Turns recorded before the mark have none, so they do not count.
+   *
+   * Returns at most `limit` prompts, newest first, each as stored. One
+   * indexed lookup per thread (`thread_id, method, sequence`).
+   */
+  personAuthoredTurnPrompts(
+    threadIds: readonly string[],
+    limit: number,
+  ): Array<{ prompt: string; globalSequence: number }> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('A person prompt limit must be between 1 and 1000');
+    }
+    const statement = this.db.prepare(
+      `SELECT ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} AS prompt,
+              global_sequence,
+              json_extract(payload, '$.authoredBy') AS authored_by,
+              json_extract(payload, '$.promptSource') AS prompt_source,
+              json_type(payload, '$.clientOrigin.sender') AS sender_type
+       FROM orchestration_events
+       WHERE thread_id = ? AND ${PERSON_AUTHORED_TURN_SQL}
+         AND ${PROMPTED_TURN_SQL}
+       ORDER BY sequence DESC
+       LIMIT ?`,
+    );
+    const prompts: Array<{ prompt: string; globalSequence: number }> = [];
+    for (const threadId of new Set(threadIds)) {
+      const rows = statement.all(threadId, limit) as Array<{
+        prompt: unknown;
+        global_sequence: number | null;
+        authored_by: unknown;
+        prompt_source: unknown;
+        sender_type: string | null;
+      }>;
+      for (const row of rows) {
+        if (typeof row.prompt !== 'string') continue;
+        // The shared predicate decides; the SQL above only narrows to it.
+        if (
+          !isPersonAuthoredTurn({
+            method: 'turn.started',
+            authoredBy: row.authored_by ?? undefined,
+            promptSource: row.prompt_source ?? undefined,
+            clientOrigin:
+              row.sender_type === null ? {} : { sender: row.sender_type },
+          })
+        )
+          continue;
+        prompts.push({
+          prompt: row.prompt,
+          globalSequence: Number(row.global_sequence ?? 0),
+        });
+      }
+    }
+    return prompts
+      .sort((a, b) => b.globalSequence - a.globalSequence)
+      .slice(0, limit);
+  }
+
+  /**
+   * #4827: `threadId`'s newest own `turn.started` (never a steer), for
+   * `isCurrentTurnPersonAuthored` (`turn-authorship.ts`).
+   */
+  latestOwnTurnStarted(threadId: string): PersistedRuntimeEvent | undefined {
+    const row = this.readStatement(
+      `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(false)}, created_at, observed_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+         ORDER BY sequence DESC
+         LIMIT 1`,
+    ).get(threadId);
+    return row ? this.mapEventRow(row, false) : undefined;
+  }
+
+  /**
+   * #4827: the dispatch origin of `threadId`'s newest own `turn.started`
+   * (never a steer), read through {@link turnDispatchOrigin} so an absent or
+   * unrecognised value is `unknown`. `undefined` when the thread has no turn.
+   */
+  latestTurnDispatchOrigin(threadId: string): TurnDispatchOrigin | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT json_extract(payload, '$.dispatchOrigin') AS origin
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+         ORDER BY sequence DESC
+         LIMIT 1`,
+      )
+      .get(threadId) as { origin: unknown } | undefined;
+    return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
   }
 
   /**

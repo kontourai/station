@@ -1113,15 +1113,17 @@ Project. This separate guided starter keeps its focused title entry and dispatch
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 
-When a Task's Session reports a plan (ACP engines do), its Tasks board card
-and Project task row show **Agent plan 3/5** and a thin bar. It is the agent's
-newest plan in that Session's latest turn, refreshed every few seconds while
-the Task is in progress or blocked. **Stopped** follows the count when the
-turn was stopped or the Session failed or was canceled with steps open, and
-**Waiting** when the Session needs input or an approval. There is no bar
-without a plan, for a plan from an earlier turn, or on done and canceled
-Tasks. The count is agent-reported: it never marks a Task done or satisfies a
-gate.
+When a Session reports a plan (ACP engines do), its row in Activity and on
+Home, and the Tasks board card and Project task row of a Task it runs, show
+**Agent plan 3/5** and a thin bar. It is the agent's newest plan in that
+Session's latest turn, refreshed every few seconds while the Session is
+running or needs you, or while the Task is in progress or blocked.
+**Stopped** follows the count when the turn was stopped or the Session failed
+or was canceled with steps open, and **Waiting** when the Session needs input
+or an approval. There is no bar without a plan, for a plan from an earlier
+turn, on Drafts, on Home's one-line **Earlier** rows, on rows from another
+Station, or on done and canceled Tasks. The count is agent-reported: it never
+marks a Task done or satisfies a gate.
 
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
@@ -1129,7 +1131,9 @@ how Station preserves the same work identity through retries and response loss.
 
 ## Review Activity Without Changing Your Place
 
-Open **Activity** from the workspace sidebar. Use a row's **More actions →
+Open **Activity** from the workspace sidebar. A row can show its Session's
+agent-reported plan, as described in
+[Start Your First Task](#start-your-first-task). Use a row's **More actions →
 Quick review** to read it in Related while keeping the selected item, search,
 filters and list position. **Previous** and **Next** follow the rows currently
 visible in that list. When an item leaves the current results, review says so
