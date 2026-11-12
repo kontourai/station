@@ -161,7 +161,9 @@ describe('the export refuses to misrepresent itself (station#3075)', () => {
     const result = await downloadInsightEvents(14, {});
 
     expect(result.written).toBe(false);
-    expect(result.reason).toContain('3130');
+    expect(result.reason).toBe(
+      "Nothing to export. Tool calls recorded without a user can't be exported yet.",
+    );
   });
 
   test('refuses when the rollup counted far more than the export can read', async () => {

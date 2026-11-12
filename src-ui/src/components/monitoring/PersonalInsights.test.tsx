@@ -277,7 +277,7 @@ test('selecting terminal outcomes applies a saved-compatible population without 
   expect(
     await screen.findByText(/Observed turns \(denominator\): 3/),
   ).toBeTruthy();
-  expect(screen.getByText(/Counts are not full reliability/)).toBeTruthy();
+  expect(screen.getByText(/counts are not full reliability/)).toBeTruthy();
   expect(screen.queryByLabelText('Provider attribution')).toBeNull();
 });
 
@@ -303,7 +303,7 @@ test('an old combined saved view with duplicate source identity cannot preview t
   ];
   render(<PersonalInsights />);
   expect(
-    await screen.findByText(/This selection cannot be applied/),
+    await screen.findByText(/This selection can't be applied/),
   ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Apply view' })).toHaveProperty(
     'disabled',

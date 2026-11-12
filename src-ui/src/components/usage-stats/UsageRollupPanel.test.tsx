@@ -203,7 +203,7 @@ test('keeps Task workflow state, retail equivalent, engine cost and unknown acco
   expect(screen.getByText('Done')).toBeTruthy();
   expect(screen.getByText('0.0000 USD')).toBeTruthy();
   expect(
-    screen.getByText(/result quality is not independently evaluated/),
+    screen.getByText(/Result quality is not independently evaluated/),
   ).toBeTruthy();
   expect(screen.getByText('Account charges')).toBeTruthy();
   expect(screen.getByText('Subscription fee allocation')).toBeTruthy();
