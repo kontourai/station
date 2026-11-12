@@ -1,3 +1,4 @@
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { describe, expect, test } from 'vitest';
 import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
@@ -73,6 +74,35 @@ describe('delegation helpers', () => {
         },
       }),
     ).toThrow(/Delegation depth limit reached/);
+  });
+
+  test('retains a full inherited denial list without growing repeated built-ins', () => {
+    let current: AgentDelegationContext = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 4,
+      parentAgentSlug: agentId('parent'),
+      rootAgentSlug: agentId('root'),
+      blockedTools: [
+        ...DEFAULT_CHILD_BLOCKED_TOOLS,
+        ...Array.from({ length: 246 }, (_, i) => `restricted_${i}`),
+      ],
+    };
+    const required = [...current.blockedTools!];
+    for (let depth = 2; depth <= 4; depth++) {
+      current = createChildDelegationContext({
+        agentSlug: 'parent',
+        spec: {
+          name: 'Parent',
+          prompt: 'Remain bounded',
+          delegation: { maxDepth: 4 },
+        },
+        current,
+      });
+      expect(current.depth).toBe(depth);
+      expect(current.blockedTools).toEqual(required);
+      expect(current.blockedTools).toHaveLength(256);
+    }
   });
 
   test('applies allowlists and blocklists to delegated child tools', () => {

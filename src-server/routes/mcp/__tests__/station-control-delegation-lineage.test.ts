@@ -683,6 +683,31 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
     expect(delegateTask).not.toHaveBeenCalled();
   });
 
+  test('refuses a child policy that cannot retain all inherited denials within the wire bound', async () => {
+    const original = STARTED['session-child'];
+    STARTED['session-child'] = {
+      ...original,
+      delegation: {
+        ...ROOT_CHILD,
+        blockedTools: Array.from({ length: 256 }, (_, i) => `restricted_${i}`),
+      },
+    };
+    try {
+      const result = await callTool(
+        'session-child',
+        'delegate_task',
+        DELEGATE_ARGS,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain(
+        'Delegation policy exceeds its tool-pattern bound',
+      );
+      expect(delegateTask).not.toHaveBeenCalled();
+    } finally {
+      STARTED['session-child'] = original;
+    }
+  });
+
   test('a verified session with no recorded Agent is refused rather than starting a root', async () => {
     const result = await callTool(
       'session-agentless',
