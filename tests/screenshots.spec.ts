@@ -3816,6 +3816,19 @@ function roomConversationScreens(): Screen[] {
                     own.getByRole('button', { name }),
                     name,
                   );
+                // The opened bar on the last message stays in view and the
+                // list keeps following the end (no Jump to latest).
+                await expect(
+                  roomRegion.getByRole('button', { name: /Jump to latest/ }),
+                ).toHaveCount(0);
+                const bar = await own
+                  .getByRole('button', { name: 'Who reacted' })
+                  .boundingBox();
+                const field = await composer.boundingBox();
+                expect(
+                  bar!.y + bar!.height,
+                  'actions bar ends above the composer (px)',
+                ).toBeLessThanOrEqual(field!.y);
               }
             }
             if (scene === 'reaction-picker') {

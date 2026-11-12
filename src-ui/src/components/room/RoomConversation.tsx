@@ -148,7 +148,11 @@ function Row({
       actionsElement.current?.querySelector<HTMLElement>(
         'button:not(:disabled), [href]',
       ) ?? moreButton.current
-    )?.focus();
+    )?.focus({ preventScroll: true });
+    // Bring the whole bar into view, not just its first button: on the last
+    // message a wrapped bar would otherwise sit under the fold, and the
+    // partial scroll read as the reader leaving the end of the list.
+    actionsElement.current?.scrollIntoView?.({ block: 'nearest' });
   }, [actionsOpen, showMore]);
   // Escape closes from the button or the actions and returns to the button.
   const closeOnEscape = (event: React.KeyboardEvent) => {
