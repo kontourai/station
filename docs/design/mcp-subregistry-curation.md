@@ -342,12 +342,22 @@ checks newer state and stale grants is follow-up work, not an available command.
   `.git/` too), the conventional hook folders `.githooks/` and `.husky/`, or
   the repository's effective `core.hooksPath`
   ([untrusted-persistence-protection.ts](../../src-server/services/plugins/untrusted-persistence-protection.ts)).
-  The hooks path is read by parsing the repository's and the user's global
-  git configuration files; no git command runs. A shell command that names
-  one of these, sets a value with `git config`, runs git with `-c` or
-  `--config-env` for `core.hooksPath`, `core.fsmonitor`, `core.sshCommand`
-  or an alias, or assigns `GIT_DIR` or `GIT_CONFIG*`, asks the person
-  instead, because Station cannot tell what a shell command does. A loaded
+  The hooks path is what git reports for the worktree
+  (`git -C <root> config --type=path --get core.hooksPath`, a fixed argument
+  list with no shell, prompt or pager and a short timeout). That command
+  reads configuration only and runs no hook, `core.fsmonitor` or other
+  program the repository names; a test pins this. When git is missing or
+  cannot answer, every folder a raw `hooksPath` line names is protected
+  instead, and every `git config` shell command asks. A shell command asks
+  the person, because Station cannot tell what a shell command does, when
+  it:
+  - names one of these locations;
+  - sets a value with `git config`;
+  - gives git a global option before its subcommand that configures it or
+    points it elsewhere (`-c`, `--config-env`, `--git-dir`, `--work-tree`,
+    `--exec-path`, `--namespace`), or any global option Station does not
+    recognise;
+  - or assigns `GIT_DIR` or `GIT_CONFIG*`. A loaded
   MCP tool is classified by its original name from the loader, and tool
   names compare without case or separators. Paths are compared by segment,
   case-insensitively.
@@ -365,8 +375,7 @@ checks newer state and stale grants is follow-up work, not an available command.
   whether or not the agent named the tool. Remaining limits: a write
   through a link whose name is not protected; a path a command builds at
   run time; a relative path's effective hooks folder (only its name is
-  checked); a hooks path set through an `include` or the system
-  configuration; and Codex's own file changes and commands, which never
+  checked); and Codex's own file changes and commands, which never
   reach the evaluator. The child-to-parent record is kept in memory until
   the parent reads the result, so a restart in between leaves only the
   child marked, and the delivery path then marks the parent from the

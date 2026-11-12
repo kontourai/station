@@ -1817,8 +1817,9 @@ moves and copies into `AGENTS.md`, `CLAUDE.md` and their local or override
 forms at any depth, anything under `.agents/`, `.claude/` or `.codex/`,
 `.mcp.json`, and a repository's hooks and configuration (`.git/hooks`,
 `.git/config`, `.githooks`, `.husky` and the folder `core.hooksPath` names).
-A shell command that names one of these, changes git configuration, or runs
-git with settings that run programs asks you first. A delegated agent that
+A shell command that names one of these, changes git configuration, or gives git
+an option that configures it or points it at another repository asks you
+first. A delegated agent that
 reads the web marks the agent that delegated to it when its result comes
 back. To make such a change yourself, edit the file directly or clear the
 mark. Codex's own file edits and commands are not covered.
