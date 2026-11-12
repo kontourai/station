@@ -492,7 +492,8 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
-    // Section titles stand alone; no eyebrow label repeats them.
+    // Sections rendered for real here (Agents, Layouts and Knowledge are
+    // mocked; their own tests cover them) carry no eyebrow label.
     expect(container.querySelectorAll('.page-section__eyebrow')).toHaveLength(
       0,
     );

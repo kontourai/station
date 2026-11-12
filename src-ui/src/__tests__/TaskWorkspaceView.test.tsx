@@ -1240,7 +1240,12 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
+    // The trigger and the dialog's submit share the label; submit is in the dialog.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Link support',
+      }),
+    );
     await waitFor(() =>
       expect(createAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1270,7 +1275,12 @@ describe('TaskWorkspaceView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
+    // The trigger and the dialog's submit share the label; submit is in the dialog.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Link support',
+      }),
+    );
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
         /Couldn't change answer support/i,
@@ -1344,8 +1354,8 @@ describe('TaskWorkspaceView', () => {
     await waitFor(() =>
       expect(
         (
-          screen.getByRole('button', {
-            name: 'Attach support',
+          within(screen.getByRole('dialog')).getByRole('button', {
+            name: 'Link support',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true),

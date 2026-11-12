@@ -673,3 +673,49 @@ test('running companion renders received product groups with release/window filt
   expect(screen.queryByText(/3 received\. Release 0.1.11/)).toBeNull();
   expect(screen.queryByText(/private receiver failure/)).toBeNull();
 });
+
+// While another operation holds the lock, Stop is not possible, so the
+// uncertain-action alert must not offer it.
+test('an unconfirmed action under an operation lock offers no stop', async () => {
+  const createdAt = '2026-10-24T00:00:00.000Z';
+  mount({
+    managedState: async () => ({
+      supported: true,
+      hasOperationLock: true,
+      installation: {
+        protocol: 'station-companion-installation/v1',
+        installationId: '21234567-89ab-4cde-8fab-0123456789ab',
+        preparationId: '11234567-89ab-4cde-8fab-0123456789ab',
+        source: 'a'.repeat(40),
+        version: '0.7.0-nightly.12',
+        architecture: 'arm64',
+        phase: 'installed',
+        createdAt,
+        host: 'selected-station',
+        storage: 'managed-docker-volumes',
+        configuresSending: false,
+      },
+      latestAction: {
+        protocol: 'station-companion-action/v1',
+        installationId: '21234567-89ab-4cde-8fab-0123456789ab',
+        operationId: '31234567-89ab-4cde-8fab-0123456789ab',
+        action: 'start',
+        phase: 'unconfirmed',
+        createdAt,
+        configuresSending: false,
+      },
+      runtime: 'partial',
+      storage: 'not-checked',
+      observedAt: createdAt,
+    }),
+  });
+  const alert = await screen.findByText(
+    /Station didn.t confirm the last start/,
+  );
+  expect(alert.textContent).toContain('Check status before trying again.');
+  expect(alert.textContent).not.toContain('stop the companion');
+  expect(screen.getByRole('button', { name: 'Stop companion' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+});

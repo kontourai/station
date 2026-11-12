@@ -719,7 +719,7 @@ function AnswerSupportDialog({
       ? 'Replace link'
       : intent === 'replace'
         ? 'Review replacement'
-        : 'Attach support';
+        : 'Link support';
   const canSubmit = isRemoval
     ? Boolean(association)
     : bundleIsAuthorized && claimIsAuthorized;

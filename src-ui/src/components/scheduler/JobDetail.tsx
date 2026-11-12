@@ -280,8 +280,8 @@ export function JobDetail({
       {monitorState?.usageKnown === false ? (
         <>
           <p className="schedule__monitor-resolution" role="status">
-            This run finished without reporting usage, so the monitor is paused.
-            Resolve it from Task evidence to continue.
+            This run’s usage wasn’t reported, so the monitor is paused. Resolve
+            it from Task evidence to continue.
           </p>
           {monitorState.triggerId ? (
             <Button

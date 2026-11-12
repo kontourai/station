@@ -42,8 +42,10 @@ function AgentsEditor() {
 }
 
 test('an Agent read failure disables choices and offers a retry', () => {
-  render(<AgentsEditor />);
+  const { container } = render(<AgentsEditor />);
   expect(screen.getByText('Could not load agents')).toBeTruthy();
+  // The section title stands alone, without an eyebrow restating it.
+  expect(container.querySelector('.page-section__eyebrow')).toBeNull();
   expect(
     screen.getByRole('combobox', { name: 'Default agent' }),
   ).toHaveProperty('disabled', true);
@@ -52,8 +54,9 @@ test('an Agent read failure disables choices and offers a retry', () => {
 });
 
 test('a failed layout read is not shown as an empty project and can be retried', () => {
-  render(<LayoutsSection slug="demo" />);
+  const { container } = render(<LayoutsSection slug="demo" />);
   expect(screen.getByText('Could not load layouts')).toBeTruthy();
+  expect(container.querySelector('.page-section__eyebrow')).toBeNull();
   expect(
     screen.queryByText("This project doesn't have any layouts yet"),
   ).toBeNull();

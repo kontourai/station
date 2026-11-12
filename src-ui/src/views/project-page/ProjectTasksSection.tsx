@@ -462,7 +462,10 @@ export function ProjectTasksSection({
       actions={
         <>
           <Button onClick={() => void refetchTasks()}>Refresh Tasks</Button>
-          {starterId !== 'start-task' && (
+          {/* The starter form replaces New Task, except when its own record is
+              unreadable: then New Task is the way forward the message names. */}
+          {(starterId !== 'start-task' ||
+            starterLaunchProblem === 'retry-state-corrupt') && (
             <Button
               variant="primary"
               onClick={() => requestTaskShaping({ projectSlug: slug })}
@@ -542,7 +545,8 @@ export function ProjectTasksSection({
       {starterLaunchProblem === 'retry-state-corrupt' && (
         <p role="status">
           Nothing was started. This device’s record of your first-task setup
-          can’t be read; reload the page and try again.
+          can’t be read, so Station won’t start it here. Create the task with
+          New Task instead.
         </p>
       )}
       {starterLaunchProblem === 'retry-state-unavailable' && (

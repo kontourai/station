@@ -652,7 +652,9 @@ export function JobFormModal({
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {needsAgentSetup
-                  ? "Scheduled jobs need an agent that runs on Station's engine."
+                  ? anyEngine
+                    ? 'Scheduled jobs need an agent that is set up and ready.'
+                    : "Scheduled jobs need an agent that runs on Station's engine."
                   : jobAgentRunnability.reason}
               </span>
             )}

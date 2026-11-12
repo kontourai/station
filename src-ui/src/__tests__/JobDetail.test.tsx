@@ -169,8 +169,8 @@ test.each([false, true])(
   },
 );
 
-// `usageKnown: false` is written only after the monitor Task finished without
-// reporting usage, and the monitor stays paused until it is resolved.
+// `usageKnown: false` covers a run whose usage was never reported (finished
+// or indeterminate), and the monitor stays paused until it is resolved.
 test('a monitor run that finished without usage says the monitor is paused and how to continue', () => {
   schedulerJobs.mockReturnValue({
     data: [
@@ -193,7 +193,7 @@ test('a monitor run that finished without usage says the monitor is paused and h
   renderWithRuns([]);
   expect(
     screen.getByText(
-      'This run finished without reporting usage, so the monitor is paused. Resolve it from Task evidence to continue.',
+      'This run’s usage wasn’t reported, so the monitor is paused. Resolve it from Task evidence to continue.',
     ),
   ).toBeTruthy();
   expect(

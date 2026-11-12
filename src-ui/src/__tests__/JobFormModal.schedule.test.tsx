@@ -539,6 +539,24 @@ describe('JobFormModal schedule compatibility', () => {
     expect(screen.queryByText(/No Agent named/)).toBeNull();
   });
 
+  // A host that runs chat automations accepts any engine, so the setup
+  // guidance must not claim Station's engine is required there.
+  test('with chat automations available, setup guidance names readiness, not an engine', () => {
+    hostCapability.conversationTarget = true;
+    try {
+      agentCatalog.agents = [];
+      render(<JobFormModal onClose={vi.fn()} onSetupAgent={vi.fn()} />);
+      expect(
+        screen.getByText(
+          'Scheduled jobs need an agent that is set up and ready.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Station's engine/)).toBeNull();
+    } finally {
+      hostCapability.conversationTarget = false;
+    }
+  });
+
   test('adopts a runnable agent as the default instead of the station literal', () => {
     agentCatalog.agents = [
       {
