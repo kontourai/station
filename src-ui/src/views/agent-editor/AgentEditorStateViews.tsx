@@ -161,10 +161,6 @@ export function AgentEditorStartingPoints({
   return (
     <div className="agent-editor__template-picker">
       <h3 className="agent-editor__template-title">Choose a starting point</h3>
-      <p className="agent-editor__template-desc">
-        Choose how this agent runs. You can use a model service, an AI app
-        already connected to this Station, or an agent you created earlier.
-      </p>
       <div className="template-grid">
         <button type="button" className="template-card" onClick={onStartModel}>
           <strong>Use a model connection</strong>
@@ -173,7 +169,7 @@ export function AgentEditorStartingPoints({
           </small>
         </button>
         <button type="button" className="template-card" onClick={onStartCli}>
-          <strong>Use an AI app</strong>
+          <strong>Use a connected engine</strong>
           <small>
             Claude Code, Codex or another engine connected to this Station.
           </small>

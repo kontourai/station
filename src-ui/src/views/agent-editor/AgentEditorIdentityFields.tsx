@@ -110,7 +110,7 @@ export function AgentEditorIdentityFields({
               description: event.target.value,
             }))
           }
-          placeholder="A helpful agent for..."
+          placeholder="A helpful agent for…"
           disabled={locked}
         />
       </div>

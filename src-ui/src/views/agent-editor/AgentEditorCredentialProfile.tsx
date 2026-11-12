@@ -97,7 +97,7 @@ export function AgentEditorCredentialProfile({
 
   const accountHelp =
     profiles.length === 0
-      ? "No separate accounts are enrolled yet. Enrol them on the engine's Connections page."
+      ? "No separate accounts yet. Add them on the engine's Connections page."
       : "Choose which account this agent runs on. Leave unset to follow the connection's account.";
   const describeFallback = connectionActiveRef
     ? `Uses the connection's account (${connectionActiveRef}).`
@@ -138,14 +138,14 @@ export function AgentEditorCredentialProfile({
           </option>
         ))}
         {!pinnedIsKnown && (
-          <option value={pinned}>{pinned} — not enrolled</option>
+          <option value={pinned}>{pinned} (not on this engine)</option>
         )}
       </select>
       {!pinnedIsKnown && (
         <span className="editor-hint" id="ae-credential-profile-hint">
-          This agent pins <strong>{pinned}</strong>, which is not an enrolled
-          account on this engine, so the session will fail rather than run on a
-          different account. Pick an enrolled account or clear the pin.
+          <strong>{pinned}</strong> isn't an account on this engine, so the
+          session will fail rather than run on a different account. Pick another
+          account or clear it.
         </span>
       )}
     </div>

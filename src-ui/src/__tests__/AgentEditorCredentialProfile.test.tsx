@@ -212,7 +212,9 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
         locked={false}
       />,
     );
-    expect(screen.getByText('deleted-account — not enrolled')).toBeTruthy();
+    expect(
+      screen.getByText('deleted-account (not on this engine)'),
+    ).toBeTruthy();
     expect(
       screen.getByText(/will fail rather than run on a different/i),
     ).toBeTruthy();
@@ -227,10 +229,10 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
         locked={false}
       />,
     );
-    expect(screen.queryByText(/No separate accounts are enrolled/i)).toBeNull();
+    expect(screen.queryByText(/No separate accounts yet/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'More about Account' }));
     expect(screen.getByRole('tooltip').textContent).toMatch(
-      /No separate accounts are enrolled/i,
+      /No separate accounts yet/i,
     );
   });
 });

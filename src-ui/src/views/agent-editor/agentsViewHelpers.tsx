@@ -120,7 +120,7 @@ export function buildAgentsViewEmptyContent(options: {
         </span>
       }
       label="No agents of your own yet"
-      description="Pick the engine that runs it — Station, or one you've connected."
+      description="Create one to run on Station's engine or a connected engine."
       action={
         <button
           type="button"

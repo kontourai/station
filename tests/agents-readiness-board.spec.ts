@@ -289,9 +289,7 @@ test.describe('Agents readiness board at 390x844', () => {
     expect(box!.x + box!.width).toBeLessThanOrEqual(390 - 16);
     const heading = await page.locator('.page-frame__header').boundingBox();
     expect(heading!.height).toBeLessThanOrEqual(160);
-    const search = await page
-      .getByPlaceholder('Search agents...')
-      .boundingBox();
+    const search = await page.getByPlaceholder('Search agents…').boundingBox();
     expect(search!.x).toBe(16);
 
     const noHorizontalScroll = await page.evaluate(

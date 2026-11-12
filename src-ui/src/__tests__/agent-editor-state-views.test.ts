@@ -70,7 +70,9 @@ describe('agent editor state views', () => {
     );
     expect(onStartModel).toHaveBeenCalledTimes(1);
     expect(onStartCli).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /Use an AI app/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Use a connected engine/ }),
+    );
     expect(onStartCli).toHaveBeenCalledTimes(1);
     expect(onStartModel).toHaveBeenCalledTimes(1);
     fireEvent.click(

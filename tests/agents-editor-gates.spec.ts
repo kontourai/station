@@ -171,7 +171,7 @@ test.describe('agent editor gates', () => {
     // ...and the button agrees. Before the fix this stayed disabled with no
     // banner anywhere on the screen.
     await expect(
-      page.getByRole('button', { name: 'Create Agent' }),
+      page.getByRole('button', { name: 'Create agent' }),
     ).toBeEnabled({ timeout: 20_000 });
     await expect(page.locator('.agent-editor__capability-banner')).toHaveCount(
       0,
@@ -204,7 +204,7 @@ test.describe('agent editor gates', () => {
       'aria-required',
       'true',
     );
-    const create = page.getByRole('button', { name: 'Create Agent' });
+    const create = page.getByRole('button', { name: 'Create agent' });
     await expect(create).toBeDisabled();
 
     await page.locator('#ae-prompt').fill('You are a required-prompt agent.');

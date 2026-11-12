@@ -156,7 +156,7 @@ describe('the Create readiness gate (§4)', () => {
     renderPane(true);
     expect(
       screen
-        .getByRole('button', { name: /Create Agent/ })
+        .getByRole('button', { name: /Create agent/ })
         .hasAttribute('disabled'),
     ).toBe(true);
   });
@@ -165,7 +165,7 @@ describe('the Create readiness gate (§4)', () => {
     renderPane(false);
     expect(
       screen
-        .getByRole('button', { name: /Create Agent/ })
+        .getByRole('button', { name: /Create agent/ })
         .hasAttribute('disabled'),
     ).toBe(false);
   });

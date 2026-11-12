@@ -129,7 +129,7 @@ export function AgentEditorEngineSelection({
             Engine
           </h3>
           <InfoTip label="Engine capabilities">
-            <p>The built-in Agent uses the engine chosen in Settings.</p>
+            <p>The Station agent uses the engine chosen in Settings.</p>
             <EngineCapabilitySummary
               matrix={resolveEngineCapabilityMatrix(
                 boundConnectionId,

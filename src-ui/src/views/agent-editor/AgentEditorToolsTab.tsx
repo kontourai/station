@@ -3,7 +3,6 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
-import { InfoTip } from '../../components/InfoTip';
 import { PlusGlyph, SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Toggle } from '../../components/Toggle';
@@ -211,12 +210,7 @@ export function AgentEditorToolsTab({
       />
       <div className="editor-field">
         <div className="editor-label-row">
-          <span className="editor-label">
-            Browser access
-            <InfoTip label="Browser access">
-              Let this agent view and interact with the Project browser.
-            </InfoTip>
-          </span>
+          <span className="editor-label">Browser access</span>
           {engineId === 'claude' && (
             <Toggle
               checked={form.tools.browser !== false}
@@ -233,8 +227,8 @@ export function AgentEditorToolsTab({
         </div>
         <p className="editor-hint">
           {engineId === 'claude'
-            ? 'Uses this Project’s Station browser.'
-            : 'Station browser access is currently available with Claude Code.'}
+            ? 'Lets this agent use the Project’s browser.'
+            : 'Browser access works only with Claude Code.'}
         </p>
       </div>
       <details className="agent-tools__advanced">

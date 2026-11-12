@@ -126,7 +126,7 @@ test.describe('core journey accessibility gate', () => {
       name: 'agents',
       path: '/agents',
       // views/AgentsView.tsx — SplitPaneLayout searchPlaceholder
-      ready: (page: Page) => page.getByPlaceholder('Search agents...'),
+      ready: (page: Page) => page.getByPlaceholder('Search agents…'),
     },
     {
       name: 'connections',
