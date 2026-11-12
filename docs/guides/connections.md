@@ -1805,7 +1805,7 @@ or a Station restart, so an expired prompt must be run again.
 
 Reading the web counts too. A conversation is marked when Claude Code's
 `WebFetch` or `WebSearch` returns, when Codex completes a web search, when an
-ACP agent runs a tool it labels as a fetch, when the Station engine's HTTP
+ACP engine runs a tool it labels as a fetch, when the Station engine's HTTP
 request returns, and when an agent reads or drives a page with Station's
 browser tools. muse web reads are not seen, and no engine's shell downloads
 (`curl`, `wget`) are. `GET /api/integrations/untrusted-content/coverage`
