@@ -243,9 +243,14 @@ test.describe('A thread link (#4795)', () => {
       const thread = room.getByRole('region', {
         name: 'Messages in this thread',
       });
+      // A direct link discovers the room, reads its newest window, then
+      // pages back, each after the Project page's own reads. On a loaded host
+      // those reads alone took over 4 s (models/capabilities answered in
+      // 3.4 s), so the default 5 s is not this journey's budget. A stalled
+      // seek never shows the root, however long the wait.
       await expect(
         thread.getByText('The oldest question', { exact: true }),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 30_000 });
       await expect(
         thread.getByText('An answer much later', { exact: true }),
       ).toBeVisible();
