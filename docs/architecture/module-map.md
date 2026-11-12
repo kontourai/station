@@ -2731,10 +2731,6 @@ it is disclosure, so it never invalidates a recorded check. The `/agents` and
 nor holders of `access:manage` (`routeObservationForViewer`). The engine page reads
 it with the [resource-hub kit](../../src-ui/src/components/resource-hub/ResourceDetail.tsx)
 and the [engine detail tabs](../../src-ui/src/views/engine-detail/EngineOverviewTab.tsx).
-The [Connections overview](../../src-ui/src/views/ConnectionsHub.tsx) lists what needs
-attention through the kit's [attention list](../../src-ui/src/components/resource-hub/AttentionList.tsx),
-from the [section signals](../../src-ui/src/views/connections-hub/connection-section-signals.ts)
-that also mark the section rail.
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims

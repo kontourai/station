@@ -1465,9 +1465,9 @@ test.describe('Connections CRUD', () => {
     await page.goto('/connections/knowledge');
     // The view renders inside `ConnectionsSectionFrame`'s own
     // `PageHeaderScope`, so the frame's header wins: eyebrow `Connections`
-    // (archive#4463: unlinked parent-context text), H1 `Knowledge`. Nothing on the page says "Knowledge infrastructure" any
-    // more, and the eyebrow has no link affordance — so the exit affordance
-    // this test used is gone too.
+    // (archive#4463; it links to the Overview), H1 `Knowledge`. Nothing on
+    // the page says "Knowledge infrastructure" any more, so the exit
+    // affordance this test used is gone too.
     await expect(
       page.getByRole('heading', { name: 'Knowledge', level: 1, exact: true }),
     ).toBeVisible();

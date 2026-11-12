@@ -65,8 +65,8 @@ export function getLegacyPathRedirect(path: string): string | null {
 
   // Connections are path-addressed (`/connections/engines`), but the Agent
   // editor previously linked to the older query spelling. Keep that link
-  // routable while canonicalizing it before the root Connections resolver can
-  // choose a different section. This also preserves any shell-scoped query
+  // routable by canonicalizing it to its section rather than landing on the
+  // `/connections` Overview. This also preserves any shell-scoped query
   // state the caller supplied alongside the legacy section selector.
   if (pathname === '/connections') {
     const params = new URLSearchParams(search);

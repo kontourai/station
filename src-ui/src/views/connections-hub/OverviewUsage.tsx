@@ -49,15 +49,23 @@ export function OverviewUsage({
   );
   if (capability.isLoading)
     return <SkeletonBlock count={2} label="Loading usage" />;
-  if (capability.data === false)
+  // `null`: the host published no capability handshake, so it cannot be
+  // asked to group by connection either. Retrying would read the same answer.
+  if (capability.data === false || capability.data === null)
     return (
       <Empty
         variant="compact"
-        label="Update Station to see usage by connection"
+        label="This Station can't report usage by connection"
+        {...(capability.data === false
+          ? { description: 'Update Station to see it.' }
+          : {})}
       />
     );
-  const failed =
-    capability.data !== true ? capability : rollup.isError ? rollup : null;
+  const failed = capability.isError
+    ? capability
+    : rollup.isError
+      ? rollup
+      : null;
   if (failed)
     return (
       <ErrorState

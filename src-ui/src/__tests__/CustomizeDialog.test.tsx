@@ -30,7 +30,7 @@ test('Customize opens the existing management routes and keeps modified links na
   fireEvent.click(screen.getByRole('link', { name: 'Agents' }));
   expect(onNavigate).toHaveBeenCalledWith('/agents');
   fireEvent.click(screen.getByRole('link', { name: 'Connections' }));
-  expect(onNavigate).toHaveBeenCalledWith('/connections/engines');
+  expect(onNavigate).toHaveBeenCalledWith('/connections');
   onNavigate.mockClear();
   fireEvent.click(screen.getByRole('link', { name: 'Skills' }), {
     metaKey: true,

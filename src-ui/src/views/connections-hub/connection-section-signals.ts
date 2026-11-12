@@ -25,7 +25,10 @@ import {
 import { getPathForView } from '../../app-shell/routing';
 import { connectionVerdictTone } from '../../components/kontour/station-tones';
 import type { ResourceStatus } from '../../components/resource-hub/resource-status';
-import { useManagedEngineStateFor } from '../../hooks/useManagedEngines';
+import {
+  useManagedEngineStateFor,
+  useManagedEngineStateSettled,
+} from '../../hooks/useManagedEngines';
 import type { ProviderConnection } from '../provider-settings/types';
 import {
   describeProvider,
@@ -51,9 +54,37 @@ export interface ConnectionAttention {
   section: ConnectionSectionId;
   title: string;
   status: ResourceStatus;
+  /** Why, in one non-empty sentence. */
   sentence: string;
-  /** The fix the status names, performed on the page at `path`. */
-  action?: { label: string; path: string };
+  /** The connection's own page, where its fix is performed. */
+  path: string;
+  /** The fix the status names, when it names one ("Details" never is). */
+  actionLabel?: string;
+}
+
+/**
+ * Where a section's read stands. `unavailable` is a read that has no answer
+ * and is not fetching one: disabled (no Station to ask) or paused (offline).
+ * It must not hold a loading state forever, and it is not "nothing to fix".
+ */
+export type SectionReadState =
+  | 'loading'
+  | 'answered'
+  | 'failed'
+  | 'unavailable';
+
+interface SectionRead {
+  data: unknown;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+function readState(query: SectionRead): SectionReadState {
+  if (query.isError) return 'failed';
+  if (query.data !== undefined) return 'answered';
+  // `isLoading` is a first fetch in flight; a disabled or paused read is
+  // pending without fetching.
+  return query.isLoading ? 'loading' : 'unavailable';
 }
 
 interface ConnectionSectionSignals {
@@ -61,13 +92,20 @@ interface ConnectionSectionSignals {
   needsAttention: (id: ConnectionSectionId) => boolean;
   /** Every connection needing attention, in section order. */
   attention: ConnectionAttention[];
+  /** Where each section's read stands; only `answered` has a count. */
+  state: (id: ConnectionSectionId) => SectionReadState;
   /**
-   * Every read attention depends on has answered (data or error). Before
-   * that, "nothing needs attention" only means "nothing has loaded yet".
+   * No read attention depends on is still on its first fetch. Before that,
+   * "nothing needs attention" only means "nothing has loaded yet".
    */
   settled: boolean;
-  /** Sections whose read failed: their count and attention are unknown. */
+  /**
+   * Sections whose read failed or has no answer: their count and attention
+   * are unknown.
+   */
   unread: ConnectionSectionId[];
+  /** Sections whose read failed: the ones `retry` fetches again. */
+  failed: ConnectionSectionId[];
   /** Fetches the failed reads again. */
   retry: () => void;
 }
@@ -96,8 +134,9 @@ function healthAttention(
     section,
     title,
     status: { label: health.label, tone: health.tone },
-    sentence: health.reason ?? '',
-    ...(health.action ? { action: { label: health.action.label, path } } : {}),
+    sentence: health.reason?.trim() || `${title} is not ready to use.`,
+    path,
+    ...(health.action ? { actionLabel: health.action.label } : {}),
   };
 }
 
@@ -110,8 +149,10 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   const { data: engines = [] } = enginesQuery;
   const { data: tools = [] } = toolsQuery;
   const { data: knowledge } = knowledgeQuery;
-  const { rows: computers } = useComputerRows();
+  const computersRead = useComputerRows();
+  const computers = computersRead.rows;
   const managedStateFor = useManagedEngineStateFor();
+  const managedSettled = useManagedEngineStateSettled();
 
   /**
    * Live capture caught both halves of getting the counts wrong: "Models 1"
@@ -184,26 +225,25 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     // which is false for every tool server — including the built-ins — until
     // a turn runs, so deriving attention from it put a warn dot on a healthy
     // section forever. A probe that FAILED is the observation that means
-    // attention; never-probed is not a failure.
+    // attention; never-probed is not a failure. A disabled server reads
+    // "Disabled" on the Tools page whatever its last check said, so it is
+    // not listed. The words are the Tools row's (`filterIntegrationItems`).
     ...tools.flatMap((tool) =>
-      tool.probe && !tool.probe.ok
+      tool.enabled !== false && tool.probe && !tool.probe.ok
         ? [
             {
               id: `tools:${tool.id}`,
               section: 'tools' as const,
               title: tool.displayName || tool.id,
               status: {
-                label: 'Check failed',
+                label: 'Needs attention',
                 tone: connectionVerdictTone('failing'),
               },
               sentence: tool.probe.error || 'The last check failed.',
-              action: {
-                label: 'Details',
-                path: getPathForView({
-                  type: 'connections-tool-edit',
-                  id: tool.id,
-                })!,
-              },
+              path: getPathForView({
+                type: 'connections-tool-edit',
+                id: tool.id,
+              })!,
             },
           ]
         : [],
@@ -222,7 +262,8 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
               tone: connectionVerdictTone('setup'),
             },
             sentence: 'No vector store is set up.',
-            action: { label: 'Set up', path: '/connections/knowledge' },
+            path: '/connections/knowledge',
+            actionLabel: 'Set up',
           },
         ]
       : []),
@@ -241,22 +282,42 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     tools: toolsQuery,
     knowledge: knowledgeQuery,
   } as const;
-  const unread = (Object.keys(reads) as Array<keyof typeof reads>).filter(
-    (id) => reads[id].isError,
-  );
+  const state = (id: ConnectionSectionId): SectionReadState => {
+    // Paired and manual computers are local; only the SSH read can be
+    // outstanding, and without it the count would be short.
+    if (id === 'computers')
+      return computersRead.isError
+        ? 'failed'
+        : computersRead.isLoading
+          ? 'loading'
+          : 'answered';
+    const read = readState(reads[id]);
+    // An engine the managed policy refuses reads as unmanaged until the
+    // policy (and the ACP reads that place it) answer: wait for them rather
+    // than list it and take it back.
+    if (id === 'engines' && read === 'answered' && !managedSettled)
+      return 'loading';
+    return read;
+  };
+  const ids = Object.keys(reads) as Array<keyof typeof reads>;
+  const unread = ids.filter((id) => {
+    const read = state(id);
+    return read === 'failed' || read === 'unavailable';
+  });
+  const failed = ids.filter((id) => state(id) === 'failed');
 
   return {
     count,
     needsAttention,
     attention,
-    // `isLoading` is a first fetch in flight. A disabled read (no Station
-    // to ask) is pending but not loading, and must not hold the page's
-    // loading state forever. Computers claims no attention, so its read is
-    // not waited on; nor are the ACP reads behind managed policy.
-    settled: Object.values(reads).every((query) => !query.isLoading),
+    state,
+    // Computers claims no attention, so the list does not wait on its read;
+    // its tile does.
+    settled: ids.every((id) => state(id) !== 'loading'),
     unread,
+    failed,
     retry: () => {
-      for (const id of unread) void reads[id].refetch();
+      for (const id of failed) void reads[id].refetch();
     },
   };
 }

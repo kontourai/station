@@ -92,6 +92,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 vi.mock('../contexts/ManagedPolicyContext', () => ({
   useManagedPolicySummary: () => undefined,
+  useManagedPolicyPending: () => false,
 }));
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ connections: state.savedStations }),
@@ -106,9 +107,15 @@ vi.mock('../components/page-frame', () => ({
     segments: Array<{ label: string; onClick?: () => void }>;
   }) => (
     <>
-      {segments.map((segment) => (
-        <span key={segment.label}>{segment.label}</span>
-      ))}
+      {segments.map((segment) =>
+        segment.onClick ? (
+          <button key={segment.label} type="button" onClick={segment.onClick}>
+            {segment.label}
+          </button>
+        ) : (
+          <span key={segment.label}>{segment.label}</span>
+        ),
+      )}
     </>
   ),
   PageFrameActions: ({ children }: { children: React.ReactNode }) => (
@@ -127,6 +134,7 @@ vi.mock('../views/connections-hub/IntegrationStatusSection', () => ({
   IntegrationStatusSection: () => <div data-testid="integration-status-slot" />,
 }));
 
+import { usePageHeader } from '../components/page-frame';
 import { ConnectionsSectionFrame } from '../views/ConnectionsSectionFrame';
 
 function tab(name: string) {
@@ -146,6 +154,20 @@ describe('ConnectionsSectionFrame', () => {
     state.ssh = [];
     navigate.mockReset();
     viewport.mobile = false;
+  });
+
+  test("the eyebrow is 'Connections' and opens the Overview", () => {
+    render(
+      <ConnectionsSectionFrame sectionId="engines">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    const header = vi.mocked(usePageHeader).mock.lastCall![0] as {
+      eyebrow: React.ReactNode;
+    };
+    render(<div>{header.eyebrow}</div>);
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+    expect(navigate).toHaveBeenCalledWith('/connections');
   });
 
   test('the rail offers the five user-facing sections, in order', () => {

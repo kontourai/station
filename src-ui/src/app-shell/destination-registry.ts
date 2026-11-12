@@ -358,12 +358,12 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Connections',
     keywords: ['connections', 'providers', 'integrations'],
     icon: 'connections',
-    // Entered at its Engines tab and named for what a reader is looking for.
+    // Entered at the Overview, which lists what needs fixing across every
+    // section and opens each one.
     customizeNav: {
       group: 'set-up',
       order: 30,
       label: 'Connections',
-      route: '/connections/engines',
     },
     managementGroup: 'connections',
     palette: { order: 50 },

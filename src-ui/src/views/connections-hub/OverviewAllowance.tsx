@@ -18,7 +18,10 @@ type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 /**
  * Provider-reported allowance for each engine that holds accounts, read for
  * the account its runs use. The caller renders this only for a viewer with
- * `access:manage`: each read calls the provider live.
+ * `access:manage`: each read calls the provider live, so it is made once per
+ * visit (no polling; the engine's own page polls) and only for an engine
+ * that is on, ready and signed in. Allowance must not become a background
+ * read for every viewer (docs/design/connections-overhaul.md).
  */
 export function OverviewAllowance({
   engines,
@@ -47,10 +50,19 @@ function EngineAllowance({
   engine: AgentConnectionView;
   scope: Scope;
 }) {
-  const accounts = useEngineAccountsQuery(engine.id, scope, true);
+  // An engine that is off or not ready runs nothing to spend allowance on.
+  const ready = engine.enabled && engine.status === 'ready';
+  const accounts = useEngineAccountsQuery(engine.id, scope, ready);
   const ref = accounts.data?.activeProfileRef ?? null;
   const account = accounts.data?.accounts.find((item) => item.ref === ref);
-  const usage = useEngineAccountUsageQuery(engine.id, ref, scope, !!account);
+  const signedIn = account?.authState === 'authenticated';
+  const usage = useEngineAccountUsageQuery(
+    engine.id,
+    ref,
+    scope,
+    ready && signedIn,
+    { poll: false },
+  );
   const failed = accounts.isError ? accounts : usage.isError ? usage : null;
   return (
     <section
@@ -59,7 +71,12 @@ function EngineAllowance({
     >
       <h3>{engine.name}</h3>
       {account ? <small>{account.label}</small> : null}
-      {failed ? (
+      {!ready ? (
+        <Empty
+          variant="compact"
+          label={engine.enabled ? 'Not ready' : 'Turned off'}
+        />
+      ) : failed ? (
         <ErrorState
           variant="compact"
           title="Allowance could not be loaded"
@@ -68,6 +85,15 @@ function EngineAllowance({
         />
       ) : accounts.data && !account ? (
         <Empty variant="compact" label="No account in use" />
+      ) : account && !signedIn ? (
+        <Empty
+          variant="compact"
+          label={
+            account.authState === 'unauthenticated'
+              ? 'Signed out'
+              : 'Status unavailable'
+          }
+        />
       ) : !usage.data ? (
         <SkeletonBlock count={1} label={`Loading ${engine.name} allowance`} />
       ) : usage.data.status === 'unknown' ? (

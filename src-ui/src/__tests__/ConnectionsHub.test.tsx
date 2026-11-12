@@ -31,6 +31,14 @@ const state: {
   ssh: unknown[];
   /** The Engines read's first fetch is still in flight. */
   enginesLoading: boolean;
+  /** The Engines read has no Station to ask: disabled, never fetched. */
+  enginesDisabled: boolean;
+  /** The SSH computers read's first fetch is still in flight. */
+  sshLoading: boolean;
+  /** The managed policy's first read is still in flight. */
+  policyPending: boolean;
+  /** The sign-in state of the account each engine's runs use. */
+  authState: string;
   /** Live ACP bridge connections and registry entries (managed policy). */
   acpConnections: unknown[];
   acpRegistry: unknown[];
@@ -48,13 +56,17 @@ const state: {
   capability: true,
   rollupRows: [],
   enginesLoading: false,
+  enginesDisabled: false,
+  sshLoading: false,
+  policyPending: false,
+  authState: 'authenticated',
   acpConnections: [],
   acpRegistry: [],
   policy: undefined,
   connections: [],
   engines: [],
   tools: [],
-  knowledge: undefined,
+  knowledge: null,
   savedStations: [],
   ssh: [],
 };
@@ -91,6 +103,8 @@ function read(section: string, data: unknown) {
 
 const fetchAccounts = vi.fn();
 const fetchAllowance = vi.fn();
+/** The options each enabled allowance read was made with. */
+const allowanceOptions = vi.fn();
 const readCapability = vi.fn(async (_apiBase: string) => state.capability);
 const rollupRead = vi.fn();
 const SCOPE = { apiBase: 'http://station.test', authorityKey: 'k' };
@@ -101,10 +115,21 @@ vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () =>
     state.enginesLoading
       ? { data: undefined, isLoading: true, isPending: true }
-      : { ...read('engines', state.engines), isPending: false },
+      : state.enginesDisabled
+        ? {
+            data: undefined,
+            isLoading: false,
+            isPending: true,
+            isError: false,
+            refetch,
+          }
+        : { ...read('engines', state.engines), isPending: false },
   useIntegrationsQuery: () => read('tools', state.tools),
   useGlobalKnowledgeStatusQuery: () => read('knowledge', state.knowledge),
-  useSshEnvironmentsQuery: () => ({ data: state.ssh }),
+  useSshEnvironmentsQuery: () =>
+    state.sshLoading
+      ? { data: undefined, isLoading: true, isError: false }
+      : { data: state.ssh, isLoading: false, isError: false },
   sshEnvironmentsToKnownEnvironments: () => [],
   useACPConnectionsQuery: () => ({ data: state.acpConnections }),
   useACPConnectionRegistryQuery: () => ({ data: state.acpRegistry }),
@@ -122,8 +147,8 @@ vi.mock('@kontourai/station-sdk/engine-accounts', () => ({
       data: {
         engine: id,
         accounts: [
-          { ref: null, label: 'Default account', authState: 'ok' },
-          { ref: 'work', label: 'Work', authState: 'ok' },
+          { ref: null, label: 'Default account', authState: 'authenticated' },
+          { ref: 'work', label: 'Work', authState: state.authState },
         ],
         activeProfileRef: 'work',
       },
@@ -135,9 +160,11 @@ vi.mock('@kontourai/station-sdk/engine-accounts', () => ({
     ref: string | null,
     _scope: unknown,
     enabled: boolean,
+    options?: { poll?: boolean },
   ) => {
     if (!enabled) return { data: undefined };
     fetchAllowance(id, ref);
+    allowanceOptions(options);
     return {
       data: {
         status: 'ok',
@@ -168,6 +195,28 @@ vi.mock('@kontourai/station-sdk/usage-rollup-query', () => ({
     };
   },
 }));
+// The resolver gives every non-ready verdict a reason today; an engine named
+// 'Blank Reason' gets none, so the attention list's own fallback is reached.
+vi.mock(
+  '../views/connections-hub/connection-health',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../views/connections-hub/connection-health')
+      >();
+    return {
+      ...actual,
+      deriveConnectionHealth: (
+        ...args: Parameters<typeof actual.deriveConnectionHealth>
+      ) => {
+        const health = actual.deriveConnectionHealth(...args);
+        if (args[0].name !== 'Blank Reason') return health;
+        const { reason: _reason, ...rest } = health;
+        return rest;
+      },
+    };
+  },
+);
 vi.mock('../views/engine-detail/useEngineAccountAccess', () => ({
   useEngineAccountAccess: () => ({
     scope: SCOPE,
@@ -178,6 +227,7 @@ vi.mock('../views/engine-detail/useEngineAccountAccess', () => ({
 }));
 vi.mock('../contexts/ManagedPolicyContext', () => ({
   useManagedPolicySummary: () => state.policy,
+  useManagedPolicyPending: () => state.policyPending,
 }));
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ connections: state.savedStations }),
@@ -297,10 +347,14 @@ describe('the /connections Overview', () => {
     state.connections = [];
     state.engines = [];
     state.tools = [];
-    state.knowledge = undefined;
+    state.knowledge = null;
     state.savedStations = [];
     state.ssh = [];
     state.enginesLoading = false;
+    state.enginesDisabled = false;
+    state.sshLoading = false;
+    state.policyPending = false;
+    state.authState = 'authenticated';
     state.acpConnections = [];
     state.acpRegistry = [];
     state.policy = undefined;
@@ -312,6 +366,7 @@ describe('the /connections Overview', () => {
     refetch.mockReset();
     fetchAccounts.mockReset();
     fetchAllowance.mockReset();
+    allowanceOptions.mockReset();
     readCapability.mockClear();
     rollupRead.mockReset();
   });
@@ -344,7 +399,7 @@ describe('the /connections Overview', () => {
     expect(attentionItems()).toEqual([
       'Anthropic: Check failed',
       'Muse Code: Limited',
-      'Audit Echo: Check failed',
+      'Audit Echo: Needs attention',
       'Knowledge store: Setup required',
     ]);
     // One sentence each: the tool server's own failure, not a generic one.
@@ -509,7 +564,7 @@ describe('the /connections Overview', () => {
     ).toBeTruthy();
     expect(screen.queryByText('Nothing needs attention')).toBeNull();
     // What did answer is still listed.
-    expect(attentionItems()).toEqual(['audit-echo: Check failed']);
+    expect(attentionItems()).toEqual(['audit-echo: Needs attention']);
     const engines = screen.getByRole('button', { name: /^Engines/ });
     expect(engines.textContent).toContain('Not loaded');
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -596,13 +651,181 @@ describe('the /connections Overview', () => {
     ).toEqual(['Not attributed1,500', 'Muse Code120']);
   });
 
+  test('each tile waits for its own section: no count while its read is in flight', () => {
+    state.enginesLoading = true;
+    state.sshLoading = true;
+    state.connections = [failedModel];
+    renderHub();
+    const engines = screen.getByRole('button', { name: /^Engines/ });
+    expect(engines.getAttribute('aria-busy')).toBe('true');
+    expect(engines.textContent).toBe('EnginesLoading');
+    const computers = screen.getByRole('button', { name: /^Computers/ });
+    expect(computers.textContent).toBe('ComputersLoading');
+    // A section that answered shows its count meanwhile.
+    expect(screen.getByRole('button', { name: /^Models/ }).textContent).toBe(
+      'Models1Needs attention',
+    );
+  });
+
+  test('a read with no Station to ask is not "nothing needs attention", and is not retried', () => {
+    state.enginesDisabled = true;
+    renderHub();
+    expect(
+      screen.queryByRole('status', { name: 'Loading connections' }),
+    ).toBeNull();
+    expect(screen.queryByText('Nothing needs attention')).toBeNull();
+    expect(screen.getByText('Nothing else needs attention')).toBeTruthy();
+    expect(
+      screen.getByText('Some connections could not be loaded'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    const engines = screen.getByRole('button', { name: /^Engines/ });
+    expect(engines.textContent).toBe('Engines—Not loaded');
+  });
+
+  test('waits for the managed policy before listing engines, so a refused one never flashes in', () => {
+    state.policyPending = true;
+    state.engines = [
+      engine('claude', 'Claude Code', {
+        status: 'error',
+        config: { engineId: 'claude' },
+      }),
+    ];
+    const { rerender } = renderHub();
+    expect(
+      screen.getByRole('status', { name: 'Loading connections' }),
+    ).toBeTruthy();
+    expect(attentionItems()).toEqual([]);
+    expect(screen.getByRole('button', { name: /^Engines/ }).textContent).toBe(
+      'EnginesLoading',
+    );
+
+    state.policyPending = false;
+    state.policy = {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: {},
+      engines: { allowed: ['acp'], acpRegistryAgents: false, pinned: [] },
+    };
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConnectionsHub />
+      </QueryClientProvider>,
+    );
+    expect(attentionItems()).toEqual([]);
+    expect(screen.getByText('Nothing needs attention')).toBeTruthy();
+  });
+
+  test("a tool is listed in the Tools page's words, and a disabled one is not listed", () => {
+    state.tools = [
+      {
+        id: 'audit-echo',
+        displayName: 'Audit Echo',
+        connected: false,
+        probe: { ok: false, toolCount: 0, error: 'spawn ENOENT' },
+      },
+      {
+        id: 'old-server',
+        displayName: 'Old Server',
+        enabled: false,
+        connected: false,
+        probe: { ok: false, toolCount: 0, error: 'spawn ENOENT' },
+      },
+    ];
+    renderHub();
+    expect(attentionItems()).toEqual(['Audit Echo: Needs attention']);
+    expect(screen.getByRole('button', { name: /^Tools/ }).textContent).toBe(
+      'Tools2Needs attention',
+    );
+    // No fix to name: the title opens the server's page instead.
+    expect(screen.queryByRole('button', { name: /: Audit Echo$/ })).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: 'Audit Echo' }));
+    expect(navigate).toHaveBeenLastCalledWith('/connections/tools/audit-echo');
+  });
+
+  test('"Details" is never offered as a fix, and every item says why in a sentence', () => {
+    // Status `available` with setup placing it ready: the resolver's words
+    // for it are "Ready", whose action is "Details".
+    state.engines = [
+      engine('muse', 'Muse Code', { status: 'available' }),
+      engine('blank', 'Blank Reason', { status: 'error' }),
+    ];
+    renderHub();
+    expect(attentionItems()).toHaveLength(2);
+    expect(screen.getByText('Blank Reason is not ready to use.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Details/ })).toBeNull();
+    const list = screen.getByRole('list', {
+      name: 'Connections needing attention',
+    });
+    for (const sentence of list.querySelectorAll('p'))
+      expect(sentence.textContent?.trim()).not.toBe('');
+    fireEvent.click(within(list).getByRole('link', { name: 'Muse Code' }));
+    expect(navigate).toHaveBeenLastCalledWith('/connections/engines/muse');
+  });
+
+  test('allowance is read once per visit, never polled, and only for engines that are on, ready and signed in', () => {
+    state.canManage = true;
+    state.engines = [
+      engine('claude', 'Claude Code'),
+      engine('codex', 'Codex', { enabled: false }),
+    ];
+    renderHub();
+    expect(fetchAccounts.mock.calls).toEqual([['claude']]);
+    expect(fetchAllowance.mock.calls).toEqual([['claude', 'work']]);
+    expect(allowanceOptions).toHaveBeenCalledWith({ poll: false });
+    expect(
+      within(screen.getByRole('region', { name: 'Codex allowance' })).getByText(
+        'Turned off',
+      ),
+    ).toBeTruthy();
+  });
+
+  test.each([
+    [
+      'not ready',
+      { status: 'missing_prerequisites' },
+      'authenticated',
+      'Not ready',
+    ],
+    ['signed out', {}, 'unauthenticated', 'Signed out'],
+  ])(
+    'an engine that is %s has no allowance read',
+    (_case, overrides, authState, label) => {
+      state.canManage = true;
+      state.authState = authState;
+      state.engines = [engine('claude', 'Claude Code', overrides)];
+      renderHub();
+      expect(fetchAllowance).not.toHaveBeenCalled();
+      expect(
+        within(
+          screen.getByRole('region', { name: 'Claude Code allowance' }),
+        ).getByText(label),
+      ).toBeTruthy();
+    },
+  );
+
+  test('a host with no capability handshake is not offered a retry that cannot succeed', async () => {
+    state.canManage = true;
+    state.capability = null;
+    renderHub();
+    await waitFor(() =>
+      expect(
+        screen.getByText("This Station can't report usage by connection"),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText('Usage could not be loaded')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(rollupRead).not.toHaveBeenCalled();
+  });
+
   test('a host without connection filters is never asked to group by connection', async () => {
     state.canManage = true;
     state.capability = false;
     renderHub();
     await waitFor(() =>
       expect(
-        screen.getByText('Update Station to see usage by connection'),
+        screen.getByText("This Station can't report usage by connection"),
       ).toBeTruthy(),
     );
     expect(readCapability).toHaveBeenCalledWith(SCOPE.apiBase);

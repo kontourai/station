@@ -71,23 +71,29 @@ derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
 
 ## Read the Connections overview
 
-**Connections** (`/connections`) opens an [overview
-page](../../src-ui/src/views/ConnectionsHub.tsx) rather than a section:
+**Connections** (`/connections`, and the **Connections** entry under
+**Customize**) opens an [overview page](../../src-ui/src/views/ConnectionsHub.tsx)
+rather than a section. Each section's **Connections** eyebrow links back to it.
 
 - **Needs attention** lists each connection that puts a mark on a section,
-  with its badge, one sentence and at most one action. The action is the
-  fix its badge names and opens the page that performs it; Claude Code and
-  Codex sign in on their **Accounts** tab. The list shows a loading state
-  until the section lists load, says so when one could not be loaded, and
-  reads **Nothing needs attention** only when every list loaded clean.
-- **Sections** has a tile per section with its count and mark. A tile opens
-  its section.
+  with its badge, one sentence and at most one action. The connection's name
+  opens its page. The action is the fix its badge names and opens the page
+  that performs it; Claude Code and Codex sign in on their **Accounts** tab.
+  A tool server whose last check failed reads **Needs attention**, as on the
+  Tools page; a turned-off one is not listed. The list shows a loading state
+  until the section lists (and any managed engine policy) load, says so when
+  one could not be loaded, and reads **Nothing needs attention** only when
+  every list loaded clean.
+- **Sections** has a tile per section with its count and mark, or a loading
+  state until that section's list loads. A tile opens its section.
 - **Allowance** and **Usage, last 7 days** appear only for a viewer with
   `access:manage`, and the page asks for neither otherwise. Allowance shows
   the provider-reported limits of the account Claude Code's and Codex's runs
-  use. Usage lists this Station's tokens by engine connection, on a Station
-  that supports that grouping; runs recorded without their engine are listed
-  as **Not attributed**.
+  use, read once per visit and only for an engine that is on, ready and
+  signed in; the engine's own page keeps it current. Usage lists this
+  Station's tokens by engine connection, on a Station that reports that
+  grouping; runs recorded without their engine are listed as
+  **Not attributed**.
 
 The list, the tiles and the section marks are read from one
 [derivation](../../src-ui/src/views/connections-hub/connection-section-signals.ts).

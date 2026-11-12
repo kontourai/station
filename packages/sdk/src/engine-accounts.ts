@@ -298,11 +298,17 @@ export function useEngineAccountsQuery(
     ...queryPolicy,
   });
 }
+/**
+ * Each read asks the provider live. `poll` (default true) refreshes it every
+ * minute while mounted, for the engine's own page; a summary that shows many
+ * engines at once passes `poll: false` to read each once per visit.
+ */
 export function useEngineAccountUsageQuery(
   id: string,
   ref: string | null,
   scope: ApiRequestScope,
   enabled: boolean,
+  options: { poll?: boolean } = {},
 ) {
   return useQuery({
     queryKey: key(scope, id, 'limits', ref),
@@ -312,7 +318,7 @@ export function useEngineAccountUsageQuery(
       ),
     enabled,
     ...queryPolicy,
-    refetchInterval: 60000,
+    refetchInterval: options.poll === false ? false : 60000,
   });
 }
 export function useEngineAccountLoginQuery(

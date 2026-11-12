@@ -52,6 +52,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 vi.mock('../contexts/ManagedPolicyContext', () => ({
   useManagedPolicySummary: () => undefined,
+  useManagedPolicyPending: () => false,
 }));
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ connections: [] }),
@@ -90,14 +91,18 @@ test.each(['disabled', 'paused'] as const)(
     // There is no timer: settling comes from the reads alone.
     await waitFor(
       () =>
-        expect(
-          screen.getByRole('button', { name: 'Details: audit-echo' }),
-        ).toBeTruthy(),
+        expect(screen.getByRole('link', { name: 'audit-echo' })).toBeTruthy(),
       { timeout: 500 },
     );
     expect(
       screen.queryByRole('status', { name: 'Loading connections' }),
     ).toBeNull();
+    // Not loading, and not "nothing to fix" either: the Engines read has no
+    // answer, so the page says so.
+    expect(screen.queryByText('Nothing needs attention')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Engines/ }).textContent).toBe(
+      'Engines—Not loaded',
+    );
     expect(navigate).not.toHaveBeenCalled();
     expect(client.getQueryState(['engines', engines])?.status).toBe('pending');
     client.clear();

@@ -1,5 +1,5 @@
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
-import { Badge } from '@kontourai/ui/react';
+import { Badge, Skeleton } from '@kontourai/ui/react';
 import { Button } from '../components/Button';
 import { PageSection } from '../components/PageSection';
 import { usePageHeader } from '../components/page-frame';
@@ -39,7 +39,11 @@ export function ConnectionsHub() {
           <ErrorState
             variant="compact"
             title="Some connections could not be loaded"
-            action={<Button onClick={signals.retry}>Retry</Button>}
+            // Only a failed read can be fetched again; a read with no
+            // Station to ask or no network would only fail the same way.
+            {...(signals.failed.length
+              ? { action: <Button onClick={signals.retry}>Retry</Button> }
+              : {})}
           />
         ) : null}
         {!signals.settled ? (
@@ -52,46 +56,59 @@ export function ConnectionsHub() {
                 ? 'Nothing else needs attention'
                 : 'Nothing needs attention'
             }
-            items={signals.attention.map((item) => {
-              const action = item.action;
-              return {
-                id: item.id,
-                title: item.title,
-                status: item.status,
-                sentence: item.sentence,
-                ...(action
-                  ? {
-                      action: {
-                        label: action.label,
-                        onSelect: () => navigate(action.path),
-                      },
-                    }
-                  : {}),
-              };
-            })}
+            items={signals.attention.map((item) => ({
+              id: item.id,
+              title: item.title,
+              status: item.status,
+              sentence: item.sentence,
+              open: { href: item.path, onOpen: () => navigate(item.path) },
+              ...(item.actionLabel
+                ? {
+                    action: {
+                      label: item.actionLabel,
+                      onSelect: () => navigate(item.path),
+                    },
+                  }
+                : {}),
+            }))}
           />
         )}
       </PageSection>
       <PageSection title="Sections">
         <ul className="connections-overview__tiles">
           {CONNECTION_SECTIONS.map((section) => {
-            const unread = signals.unread.includes(section.id);
+            // Each tile waits for its own section's read: a count of 0
+            // before it answers would be a claim about an empty section.
+            const read = signals.state(section.id);
             return (
               <li key={section.id}>
                 <button
                   type="button"
                   className="connections-overview__tile"
+                  aria-busy={read === 'loading'}
                   onClick={() => navigate(section.path)}
                 >
                   <span className="connections-overview__tile-title">
                     {section.title}
                   </span>
-                  <strong>{unread ? '—' : signals.count(section.id)}</strong>
-                  {unread ? (
-                    <Badge value="Not loaded" tone="neutral" />
-                  ) : signals.needsAttention(section.id) ? (
-                    <Badge value="Needs attention" tone="caution" />
-                  ) : null}
+                  {read === 'loading' ? (
+                    <>
+                      <span className="sr-only">Loading</span>
+                      <Skeleton variant="line" width="2ch" />
+                    </>
+                  ) : read === 'answered' ? (
+                    <>
+                      <strong>{signals.count(section.id)}</strong>
+                      {signals.needsAttention(section.id) ? (
+                        <Badge value="Needs attention" tone="caution" />
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <strong>—</strong>
+                      <Badge value="Not loaded" tone="neutral" />
+                    </>
+                  )}
                 </button>
               </li>
             );
