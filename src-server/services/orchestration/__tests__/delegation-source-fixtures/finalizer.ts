@@ -39,6 +39,7 @@ export interface FinalizerFixture {
   handle: Awaited<ReturnType<StationReportGroupPreparation['prepare']>>;
   groupId: string;
   current(): undefined;
+  phase(name: string): void;
   persistence: StationDelegationPersistence;
   controller: Pick<
     ReturnType<typeof createDelegationRoundsController>,
@@ -411,6 +412,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       handle,
       groupId,
       current,
+      phase: (name: string) => markPhase(signal, name),
       persistence,
       controller,
       held,

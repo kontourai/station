@@ -54,6 +54,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     handle,
     groupId,
     current,
+    phase,
     persistence,
     controller,
     held,
@@ -82,6 +83,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         retainedBeforeFault = await retain(...args);
         throw new Error('injected fault after retention');
       });
+    phase('initial-finalize-with-retention-fault');
     await assert.rejects(
       h.custody.finalizeContinuation(
         h.f.context(requestFor(h, 'POST')),
@@ -100,6 +102,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     );
     retentionFault.mockRestore();
     assert.ok(retainedBeforeFault);
+    phase('read-after-retention-fault');
     assert.equal((await controller.get(groupId)).revision, held.revision);
     let callbackReached!: () => void, releaseCallback!: () => void;
     let durableReached!: () => void, releaseDurable!: () => void;
@@ -172,6 +175,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       Reflect.get(runtime, 'orchestrationEventStore'),
       'close',
     );
+    phase('held-finalize');
     const pending = h.custody.finalizeContinuation(
       h.f.context(requestFor(h, 'POST')),
       groupId,
@@ -201,6 +205,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     let cleanupFailures: unknown[] = [];
     try {
       await Promise.race([callbackReady, earlySettlement]);
+      phase('held-callback-ready');
       await assert.rejects(
         h.custody.finalizeContinuation(
           h.f.context(requestFor(h, 'POST')),
@@ -221,6 +226,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
           operationRan: false,
         },
       );
+      phase('shutdown-with-held-callback');
       shutdown = runtime.shutdown();
       void shutdown.catch(() => {});
       assert.throws(() => participant.acquire());
@@ -231,6 +237,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       assert.equal(close.mock.calls.length, 0);
       releaseCallback();
       await Promise.race([durableReady, earlySettlement]);
+      phase('held-durable-return-ready');
       assert.throws(() => physicalHome.runSynchronous(() => undefined), {
         reason: 'busy',
       });
@@ -241,6 +248,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       );
       releaseDurable();
       finalized = await pending;
+      phase('held-finalize-returned');
       for (const guard of lateGuards)
         assert.throws(
           guard,
@@ -270,6 +278,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         'Finalizer scenario cleanup failed',
       );
     assert.ok(finalized);
+    phase('recovery-runtime');
     runtime = createFinalizerRuntime({ projectHomeDir: h.f.home }, signal);
     participant = Reflect.get(
       runtime,
@@ -394,6 +403,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       `${winner.id}.json`,
     );
     const winnerBytes = readFileSync(winnerPath);
+    phase('replay-finalize');
     const replay = await h.custody.finalizeContinuation(
       h.f.context(requestFor(h, 'POST')),
       groupId,
