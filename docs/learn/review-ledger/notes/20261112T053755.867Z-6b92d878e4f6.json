@@ -1,0 +1,7 @@
+{
+  "revision": "48fcca265ee6ec04eea76419f518c3f08c211ea5",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-reviewed after the review fixes in 48fcca265ee6 against StationSwitcherMenu.tsx, lib/stationSwitcher.ts and StationConnectingScreen.tsx: refused rows keep the needs-pairing mark; the refusal time shows only when lastError exists; blocked auth failures stop automatic retries (ConnectionHealthCoordinator classifyConnectionFailure terminal); the managed-loopback local Station shows no check time; Back to names the most recent other Station from readRecentStations; the native Loading Station step reports the Station answered.","inputs":["docs/guides/connections.md"]}
+  ]
+}

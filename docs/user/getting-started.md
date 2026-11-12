@@ -901,6 +901,9 @@ A background shell command an engine started (or a monitor watching one) is
 not a subagent: its card shows a terminal mark, the command line and, once it
 ends, its exit code, and a group counts it as a background command.
 
+Every background-task row expands to its full title, status, start and end
+times, and, for a tool, which tool ran and a one-line summary of its input.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
@@ -1068,7 +1071,10 @@ unavailable.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
 In new chats and New Task conversations, drop an image onto the composer or paste
-a screenshot. Review its thumbnail and remove it before sending if needed.
+a screenshot. On a phone, use **Paste image** beside Attach. In the Android app
+you can also share images from another app to Station, then pick a
+conversation or **New chat** in a project. Review its thumbnail and remove it
+before sending if needed.
 The existing Task room and agent-thread replies accept images the same way,
 including messages with only an image. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading

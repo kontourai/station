@@ -188,7 +188,6 @@ function session(revision: number): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: 1,
     updatedAt: revision,

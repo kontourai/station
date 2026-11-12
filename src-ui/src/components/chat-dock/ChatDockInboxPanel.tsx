@@ -9,6 +9,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { MessageGlyph, RefreshGlyph, SearchGlyph } from '../icons/Glyph';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, ErrorState, FilteredEmpty } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
@@ -217,6 +218,7 @@ function ChatDockInboxPanelImpl({
             }
           />
         )}
+        <ReadStatusNote items={items} />
         {!hasAnyItems && query.trim() ? (
           <FilteredEmpty
             query={query}

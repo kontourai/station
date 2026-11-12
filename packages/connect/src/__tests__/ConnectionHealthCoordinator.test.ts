@@ -56,6 +56,57 @@ describe('ConnectionHealthCoordinator', () => {
     unsubscribe();
   });
 
+  it('stamps when each completed check finished, success or failure, and not while one runs', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const endpoint = createAccessEndpoint('https://station.example.test');
+    let answer: (result: ConnectionHealthCheckResult) => void = () => {};
+    const check = vi.fn(
+      () =>
+        new Promise<ConnectionHealthCheckResult>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const coordinator = new ConnectionHealthCoordinator({
+      endpoints: () => [endpoint],
+      compatibility: () => ({ clientProtocol: 'https:', online: true }),
+      check,
+      pollIntervalMs: 10_000,
+      baseRetryMs: 1,
+      jitterRatio: 0,
+    });
+    expect(coordinator.getSnapshot().checkedAt).toBeNull();
+    const unsubscribe = coordinator.subscribe(vi.fn());
+    await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+    // In flight: nothing has been learned yet.
+    expect(coordinator.getSnapshot()).toMatchObject({
+      checking: true,
+      checkedAt: null,
+    });
+    vi.setSystemTime(1_000_500);
+    answer({ ok: false, reason: 'timeout' });
+    // (`vi.waitFor` advances fake time as it polls, so times are ranges.)
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot().status).toBe('error'),
+    );
+    const failedAt = coordinator.getSnapshot().checkedAt;
+    expect(failedAt).toBeGreaterThanOrEqual(1_000_500);
+    expect(failedAt).toBeLessThan(1_002_000);
+    vi.setSystemTime(1_002_000);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(2));
+    // A retry in flight keeps the previous check's time.
+    expect(coordinator.getSnapshot().checkedAt).toBe(failedAt);
+    answer(true);
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot().status).toBe('connected'),
+    );
+    expect(coordinator.getSnapshot().checkedAt).toBeGreaterThanOrEqual(
+      1_002_000,
+    );
+    unsubscribe();
+  });
+
   it('accumulates one streak across alternating timeout and unreachable probes', async () => {
     // sol review of #2630, finding 4: timeout and unreachable are one
     // transient-unreachability family — alternation must not reset the
@@ -235,6 +286,31 @@ describe('ConnectionHealthCoordinator', () => {
     expect(check).not.toHaveBeenCalled();
     expect(onFailure).not.toHaveBeenCalled();
     expect(coordinator.getSnapshot().reason).toBeNull();
+    // Nothing was probed, so there is no check time to show.
+    expect(coordinator.getSnapshot().checkedAt).toBeNull();
+    unsubscribe();
+  });
+
+  it('reports no check time once a probed Station resolves to the supervised local server', async () => {
+    const probed = createAccessEndpoint('https://station.example.test');
+    const managed = createAccessEndpoint('http://127.0.0.1:3142', {
+      kind: 'managed-loopback',
+    });
+    let endpoints = [probed];
+    const coordinator = new ConnectionHealthCoordinator({
+      endpoints: () => endpoints,
+      compatibility: () => ({ clientProtocol: 'http:', online: true }),
+      check: vi.fn().mockResolvedValue(true),
+    });
+    const unsubscribe = coordinator.subscribe(vi.fn());
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot().checkedAt).not.toBeNull(),
+    );
+    endpoints = [managed];
+    coordinator.trigger();
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot().checkedAt).toBeNull(),
+    );
     unsubscribe();
   });
 

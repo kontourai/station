@@ -122,10 +122,15 @@ and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,
 metadata and license. Its alternate `build/esm` and `build/esnext` bundler
 distributions are omitted; normal Node imports and `require` share the retained
-implementation. Flow Agents keeps its compiled `build/`, hooks, skills, kits,
-schemas and context; its per-harness `dist/` bundles, its TypeScript `src/` and
-its own `evals/` test harness are omitted (a kit's own `evals/` is kept). The
-512 MiB runtime ceiling remains enforced.
+implementation. Flow Agents ships its compiled `build/`, hooks, skills, kits,
+schemas and context; since 9.14 it no longer publishes per-harness `dist/`
+bundles, a TypeScript `src/` or its own `evals/` harness, so staging has no
+Flow Agents prune rule and a portability test fails if they return. Its
+esbuild edge (used only to rebuild those bundles) is still not followed.
+npm alias dependencies, such as Flow Agents' `@kontourai/surface-knowledge`
+(`npm:@kontourai/surface@…`), are staged under the alias name and verified
+against the real package the declaring manifest names. The 512 MiB runtime
+ceiling remains enforced.
 node-pty keeps every architecture's prebuilds for the staging operating system
 and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture

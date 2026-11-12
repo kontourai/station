@@ -96,7 +96,6 @@ function session(messageCount = 10) {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle' as const,
     createdAt: 1,
     updatedAt: 1,

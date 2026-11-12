@@ -127,6 +127,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/feature-previews/` | The registry of feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
+| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
 | `src-server/services/session-summary/` | Session summary records and the server-observed intent source they are derived from | Source |
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
@@ -5650,6 +5651,15 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
+The off-by-default **Inline browser activity** preview places the same browser
+beside its qualified transcript calls. The conversation boundary supplies the
+Station request scope; exact session selection also requires the Project,
+principal and conversation binding. Inline and floating placements share
+`float-over-chat/BrowserSessionSurface.tsx`, including input, page dialogs and
+navigation. Existing source-visibility arbitration suppresses duplicate viewers.
+Settled activities summarize tool history without inventing historical frames;
+recording remains explicit. The [delivery plan](../plans/browser-activity-inline.md)
+names the owners, limitations and verification cases.
 `BrowserTabs.tsx` persists bounded,
 ordered exact-session references through the pane wrapper, and discovers popup
 sessions. The Chromium host adopts the actual popup target and original request;
@@ -5753,6 +5763,16 @@ Retry is offered only for a batch the host refused before dispatching any of it
 (`surface-busy`), kept whole as one gesture with the control epoch it was made
 at, and dropped when control changes hands. The registry cannot cancel an arbitrary producer effect already in flight.
 
+Human viewers lazily register an authenticated input source through the existing
+lease route. `useLiveSurface` captures that source and transport for teardown;
+the registry seals the retiring source before cancelling its held input on the
+serialized dispatch chain. A newer source's press is preserved. Failed neutral
+cleanup retains held-input custody and fences further input until whole-surface
+cleanup succeeds. Registration refusal or an invalid source drops pending input;
+only a later user action registers again, without replaying refused events.
+Replacing the transport also reconnects frames. See the
+[wire and recovery contract](../reference/browser-and-devices.md#agent-authority-and-human-input).
+
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
 Browser; unregistering the generation also cancels and joins its recordings.
@@ -5790,7 +5810,15 @@ refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
 never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
-coalesces input through one in-flight POST. It opens a frame stream only with a
+coalesces input through one in-flight POST. It lazily registers a per-viewer
+input source on the first input. Target,
+transport or viewer retirement seals that source and queues cancellation behind
+prior dispatch. The registry rejects sealed and foreign source IDs at queued
+dispatch and cancels only source-owned presses, preserving newer same-person
+input. Failed neutral cleanup retains its pressed snapshot and fences further
+input until a whole-surface cleanup succeeds. Legacy batches remain accepted;
+the current viewer does not silently fall back when registration is unavailable.
+Frame streams remain separate from source registration and open only with a
 slot from `liveSurfaceStreamAdmission.ts`: two per origin, shared across tabs
 through Web Locks (per page where Web Locks is missing), so input and lease
 requests keep a connection; a viewer past the cap reads `queued`. A viewer
