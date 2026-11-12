@@ -1450,6 +1450,27 @@ describe('the turn making the call decides, never an earlier one (#4830 fix roun
     expect(stored(sessionId)).toEqual([]);
   });
 
+  test("a continuation held while the person's turn still runs cannot propose", async () => {
+    // The person's turn has not ended, so the stored lifecycle still names it
+    // as running; only the held start says the call comes from a newer turn.
+    const sessionId = await personSession(false);
+    const personTurn =
+      eventStore.latestOwnTurnStarted(sessionId)!.payload.turnId;
+    let observed: number[] | undefined;
+    adapter.duringSend = async () => {
+      expect(eventStore.latestOwnTurnStarted(sessionId)!.payload.turnId).toBe(
+        personTurn,
+      );
+      expect(service.stationControlCallingTurn(sessionId)).toEqual({
+        kind: 'pending',
+      });
+      observed = await proposeBoth(sessionId);
+    };
+    await deliverResult(sessionId);
+    expect(observed).toEqual([403, 403]);
+    expect(stored(sessionId)).toEqual([]);
+  });
+
   test('a continuation whose send is still in flight cannot propose (before its start)', async () => {
     const sessionId = await personSession(true);
     let observed: number[] | undefined;
