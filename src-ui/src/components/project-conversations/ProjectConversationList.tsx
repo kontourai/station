@@ -149,36 +149,29 @@ export function ProjectConversationList({
         tabIndex={row.key === stop ? 0 : -1}
         className={`conversation-list__row${row.unread?.unread ? ' conversation-list__row--unread' : ''}${row.current ? ' conversation-list__row--current' : ''}`}
         aria-current={row.current ? 'page' : undefined}
+        // The name names the row; the mark, count and chevron are drawn by
+        // CSS, so the visible text is exactly the name's start (label in
+        // name, WCAG 2.5.3) and the name stays one exact phrase.
+        aria-label={`${row.name}${suffix(row)}`}
         onFocus={() => setFocusKey(row.key)}
         onClick={row.open}
       >
-        {row.kind === 'channel' ? (
-          <span className="conversation-list__mark" aria-hidden="true">
-            #
-          </span>
-        ) : (
-          <span
-            className={`conversation-list__mark conversation-list__task-mark${row.working ? ' conversation-list__task-mark--working' : ''}`}
-            aria-hidden="true"
-          />
-        )}
-        {/* The name is the visible text plus words only a screen reader
-            needs, so what is seen is part of what is announced. */}
+        <span
+          className={`conversation-list__mark ${row.kind === 'channel' ? 'conversation-list__hash' : `conversation-list__task-mark${row.working ? ' conversation-list__task-mark--working' : ''}`}`}
+          aria-hidden="true"
+        />
         <span className="conversation-list__label" title={row.label}>
           {row.label}
         </span>
-        {/* One hidden phrase, not pieces: name computation trims each
-            inline child, which would run separate pieces together. */}
-        {suffix(row) && <span className="sr-only">{suffix(row)}</span>}
         {row.unread?.unread && row.unread.count ? (
-          <span className="conversation-list__count" aria-hidden="true">
-            {countText(row.unread.count)}
-          </span>
+          <span
+            className="conversation-list__count"
+            data-count={countText(row.unread.count)}
+            aria-hidden="true"
+          />
         ) : null}
         {variant === 'page' && (
-          <span className="conversation-list__chevron" aria-hidden="true">
-            ›
-          </span>
+          <span className="conversation-list__chevron" aria-hidden="true" />
         )}
       </button>
     </li>

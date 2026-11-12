@@ -129,6 +129,12 @@
   color: inherit;
 }
 
+/* The mark, count and chevron are generated content: what the row shows as
+   text is exactly the start of its accessible name. */
+.conversation-list__hash::before {
+  content: "#";
+}
+
 /* A Task room's mark: a small square, like an agent's avatar. */
 .conversation-list__task-mark::before {
   content: "";
@@ -172,6 +178,10 @@
   white-space: nowrap;
 }
 
+.conversation-list__count::before {
+  content: attr(data-count);
+}
+
 .conversation-list__count {
   flex: 0 0 auto;
   min-width: calc(var(--k-space-4) + 2px);
@@ -194,6 +204,10 @@
   padding: var(--k-space-1) var(--k-space-2);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+}
+
+.conversation-list__chevron::before {
+  content: "\203A";
 }
 
 .conversation-list__chevron {
