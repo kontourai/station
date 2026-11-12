@@ -64,7 +64,7 @@ export function SessionPickerModal({
     <AutoSelectModal
       isOpen={isOpen}
       title="Open chat"
-      placeholder="Search conversations..."
+      placeholder="Search chats…"
       items={items}
       loading={inventoryQuery.isLoading}
       // archive#771: `AutoSelectModal` (published by the SDK) has no error

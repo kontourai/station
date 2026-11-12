@@ -244,7 +244,7 @@ export function ConversationHandoffDialog({
   >(restoredIntent ? 'indeterminate' : 'idle');
   const [feedback, setFeedback] = useState<string | undefined>(
     restoredIntent
-      ? 'A prior handoff has no final response yet. Check its exact marker before retrying.'
+      ? "The last switch hasn't finished. Check its status before retrying."
       : undefined,
   );
   const idempotencyKey = useRef(
@@ -274,7 +274,7 @@ export function ConversationHandoffDialog({
     (attachments.length > 0
       ? `Send or remove attachments before ${changeLabel}.`
       : state === 'indeterminate' && !retryEligible
-        ? 'This request’s Agent, engine or model is not available here. Check status, or restore that setup to retry.'
+        ? 'This request’s agent, engine or model isn’t available here. Restore that setup to retry.'
         : undefined);
   const engineLabel =
     executionTarget?.engineDisplayName ??
@@ -348,7 +348,7 @@ export function ConversationHandoffDialog({
     } catch {
       setState('error');
       setFeedback(
-        'This browser cannot retain a safe handoff retry. Enable session storage and try again.',
+        "This browser blocks session storage, so a retry isn't safe. Enable it and try again.",
       );
       return;
     }
@@ -413,14 +413,14 @@ export function ConversationHandoffDialog({
         clearPendingIntent(apiBase, conversationId);
         setState('error');
         setFeedback(
-          `Resolve this conversation’s queued or offline messages before ${changeLabel}.`,
+          `Send or discard this chat’s queued messages before ${changeLabel}.`,
         );
       }
     } catch (error) {
       if (!isDefiniteHandoffFailure(error)) {
         setState('indeterminate');
         setFeedback(
-          'Station did not receive a final response. Check status or retry safely with the retained request.',
+          "Station didn't confirm the switch. Retrying won't run it twice.",
         );
       } else {
         clearPendingIntent(apiBase, conversationId);
@@ -499,8 +499,8 @@ export function ConversationHandoffDialog({
       setState('indeterminate');
       setFeedback(
         result.status === 'reserved'
-          ? 'Station reserved the handoff but has not accepted a provider turn. Restore the target setup, then retry safely.'
-          : `Handoff status is ${result.status}. The retained request was not cleared.`,
+          ? "The switch started but the new agent hasn't replied. Restore its setup, then retry."
+          : `The switch is ${result.status}. Your message is kept for a retry.`,
       );
     } catch (error) {
       setState('indeterminate');
@@ -514,9 +514,7 @@ export function ConversationHandoffDialog({
     <ResponsiveDialogSurface
       layer="dialog"
       ariaLabel={
-        executionPreset
-          ? 'Change conversation engine'
-          : 'Continue with another Agent'
+        executionPreset ? 'Change chat engine' : 'Continue with another Agent'
       }
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
@@ -525,13 +523,9 @@ export function ConversationHandoffDialog({
       <div className="conversation-handoff-dialog__header">
         <div>
           <h3>
-            {executionPreset
-              ? 'Change engine for this conversation'
-              : 'Continue with…'}
+            {executionPreset ? 'Change engine for this chat' : 'Continue with…'}
           </h3>
-          <p>
-            Keep this conversation and workspace; continue in a new Session.
-          </p>
+          <p>Keeps this chat and its workspace.</p>
         </div>
         <ResponsiveDialogCloseButton
           label={
@@ -544,14 +538,14 @@ export function ConversationHandoffDialog({
 
       {executionPreset ? (
         <p className="conversation-handoff-dialog__summary">
-          Keep the {targetName} Agent and run this conversation on{' '}
+          Keep the {targetName} agent and run this chat on{' '}
           {engineLabel ?? 'its default engine'}.
         </p>
       ) : candidates.length === 0 ? (
         <Empty
           variant="compact"
           label="Nothing available"
-          description="Connect or ready another Agent in this conversation's Environment and workspace to continue."
+          description="Connect another agent in this chat's environment to continue."
         />
       ) : (
         <div

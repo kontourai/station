@@ -550,9 +550,7 @@ describe('ConversationHandoffDialog', () => {
       'Send or remove attachments before switching engines.',
     );
     expect(
-      screen.getByText(
-        'Keep the Claude Agent and run this conversation on Codex.',
-      ),
+      screen.getByText('Keep the Claude agent and run this chat on Codex.'),
     ).toBeTruthy();
   });
 
@@ -624,7 +622,7 @@ describe('ConversationHandoffDialog', () => {
       expect(retry.disabled).toBe(true);
       const reason = screen.getByRole('status');
       expect(reason.textContent).toBe(
-        'This request’s Agent, engine or model is not available here. Check status, or restore that setup to retry.',
+        'This request’s agent, engine or model isn’t available here. Restore that setup to retry.',
       );
       expect(retry.getAttribute('aria-describedby')).toBe(reason.id);
       expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
@@ -751,7 +749,9 @@ describe('ConversationHandoffDialog', () => {
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry safely' }));
 
@@ -796,7 +796,9 @@ describe('ConversationHandoffDialog', () => {
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     const key = handoffExecutionMessage.mock.calls[0][2].idempotencyKey;
     first.unmount();
@@ -832,7 +834,9 @@ describe('ConversationHandoffDialog', () => {
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     first.unmount();
 
@@ -879,7 +883,9 @@ describe('ConversationHandoffDialog', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     expect(onDefiniteFailure).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Retry safely' })).toBeTruthy();
@@ -897,7 +903,7 @@ describe('ConversationHandoffDialog', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toContain(
-        'queued or offline messages',
+        'queued messages before',
       ),
     );
     expect(handoffExecutionMessage).not.toHaveBeenCalled();
@@ -997,7 +1003,7 @@ describe('ConversationHandoffDialog', () => {
 
       await waitFor(() =>
         expect(screen.getByRole('alert').textContent).toContain(
-          'final response',
+          "Station didn't confirm the switch",
         ),
       );
       expect(onDefiniteFailure).not.toHaveBeenCalled();
