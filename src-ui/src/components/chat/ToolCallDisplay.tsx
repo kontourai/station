@@ -88,6 +88,7 @@ import {
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
 
 import './ToolCallDetails.css';
+import './StationToolGlyph.css';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by

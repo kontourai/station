@@ -4620,15 +4620,6 @@ button.tool-call__line:hover {
   opacity: 0.7;
 }
 
-/* #3418: Station's own tools carry its mark, in the brand colour at full
-   strength. The brand passes 4.5:1 as text on every page and panel surface
-   (see the channel block at the top of this file), past the 3:1 a graphic
-   needs, in every channel and mode. */
-.tool-call__glyph--station {
-  color: var(--k-brand);
-  opacity: 1;
-}
-
 .tool-call__label {
   min-width: 0;
   overflow: hidden;
