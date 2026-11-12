@@ -122,7 +122,7 @@ async function removeProject(request: AuthenticatedE2ERequest, slug: string) {
   expect(removed.ok()).toBe(true);
 }
 
-/** No horizontal page scroll: the document and the page's own scroller. */
+/** No horizontal page scroll: the document and the Project page. */
 async function expectNoHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(() =>
     [document.scrollingElement, document.querySelector('.project-page')]
@@ -228,8 +228,21 @@ test.describe('Project channels on a phone (#4795)', () => {
       // Scroll the Project page until the last channel is in reach.
       const target = list.getByRole('button', { name: 'team-12' });
       await target.scrollIntoViewIfNeeded();
-      const scroller = page.locator('.project-page').first();
-      const before = await scroller.evaluate((node) => node.scrollTop);
+      // Whatever scrolls the page in this shell: the list's nearest
+      // scrolling ancestor.
+      const scrollTop = () =>
+        list.evaluate((node) => {
+          for (let el = node.parentElement; el; el = el.parentElement) {
+            const { overflowY } = getComputedStyle(el);
+            if (
+              (overflowY === 'auto' || overflowY === 'scroll') &&
+              el.scrollHeight > el.clientHeight
+            )
+              return el.scrollTop;
+          }
+          return document.scrollingElement?.scrollTop ?? 0;
+        });
+      const before = await scrollTop();
       expect(before).toBeGreaterThan(0);
       const historyBefore = await page.evaluate(() => history.length);
 
@@ -292,12 +305,8 @@ test.describe('Project channels on a phone (#4795)', () => {
         .getByRole('button', { name: 'Back to Channel journey' })
         .click();
       await expect(list.getByRole('button', { name: 'team-12' })).toBeVisible();
-      await expect
-        .poll(() => scroller.evaluate((node) => node.scrollTop))
-        .toBeGreaterThanOrEqual(before - 2);
-      expect(
-        await scroller.evaluate((node) => node.scrollTop),
-      ).toBeLessThanOrEqual(before + 2);
+      await expect.poll(scrollTop).toBeGreaterThanOrEqual(before - 2);
+      expect(await scrollTop()).toBeLessThanOrEqual(before + 2);
 
       // 360 wide: still no horizontal scroll, list or conversation.
       await page.setViewportSize({ width: 360, height: 780 });

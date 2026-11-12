@@ -5,7 +5,25 @@ import { type RefObject, useCallback, useLayoutEffect } from 'react';
  * conversation from it, for this page session (#4795). The list and the
  * conversation share one scrolling page, so the browser cannot restore it.
  */
-const listScroll = new Map<string, number>();
+const listScroll = new Map<string, { scroller: Element; top: number }>();
+
+/**
+ * The element that actually scrolls the Project page: the nearest ancestor
+ * (the page itself included) whose content overflows a scrollable box. Which
+ * one that is depends on the shell — on a phone the page grows and the
+ * shell's main region scrolls — so it is found, not assumed.
+ */
+function scrollerOf(element: HTMLElement | null): Element | null {
+  for (let node = element; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll') &&
+      node.scrollHeight > node.clientHeight
+    )
+      return node;
+  }
+  return document.scrollingElement;
+}
 
 /**
  * A phone's Project page keeps its channel list's place across a pushed
@@ -15,30 +33,31 @@ const listScroll = new Map<string, number>();
  */
 export function useListScrollMemory(
   key: string,
-  scrollerRef: RefObject<HTMLElement | null>,
+  pageRef: RefObject<HTMLElement | null>,
   listShown: boolean,
   screenShown: boolean,
 ) {
   useLayoutEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
+    const saved = listScroll.get(key);
     if (screenShown) {
-      scroller.scrollTop = 0;
+      // The element that held the list's offset, which the shorter screen
+      // may no longer overflow.
+      const scroller = saved?.scroller ?? scrollerOf(pageRef.current);
+      if (scroller) scroller.scrollTop = 0;
       return;
     }
-    if (!listShown) return;
-    const saved = listScroll.get(key);
-    if (saved === undefined) return;
+    if (!listShown || !saved) return;
     listScroll.delete(key);
-    scroller.scrollTop = saved;
-  }, [key, listShown, screenShown, scrollerRef]);
+    saved.scroller.scrollTop = saved.top;
+  }, [key, listShown, screenShown, pageRef]);
   const openFromList = useCallback(
     (open: () => void) => {
-      const scroller = scrollerRef.current;
-      if (listShown && scroller) listScroll.set(key, scroller.scrollTop);
+      const scroller = scrollerOf(pageRef.current);
+      if (listShown && scroller)
+        listScroll.set(key, { scroller, top: scroller.scrollTop });
       open();
     },
-    [key, listShown, scrollerRef],
+    [key, listShown, pageRef],
   );
   return { openFromList };
 }
