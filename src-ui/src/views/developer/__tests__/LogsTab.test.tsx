@@ -34,7 +34,7 @@ vi.mock('../../../hooks/useDevicePresentation', () => ({
 import LogsTab from '../LogsTab';
 
 const REDACTED_SENTENCE =
-  'Full logs are available on workshop. This device is shown the redacted read.';
+  'Full logs are available on workshop. This device shows a redacted copy.';
 
 beforeEach(() => {
   logsState.data = {

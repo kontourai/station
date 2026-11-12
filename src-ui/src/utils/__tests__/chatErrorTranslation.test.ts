@@ -61,7 +61,7 @@ describe('translateChatError', () => {
       message: 'The requested conversation is unavailable.',
     });
     expect(result.retryable).toBe(false);
-    expect(result.title).toMatch(/could not be resumed/);
+    expect(result.title).toMatch(/couldn’t be resumed/);
     expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
   });
 
@@ -126,7 +126,7 @@ describe('translateChatError', () => {
       message: 'Synthetic provider failure',
     });
 
-    expect(result.title).toBe("Can't resume");
+    expect(result.title).toBe('This chat can’t continue');
     expect(result.body).toBe('Synthetic provider failure');
     expect(result.hint).not.toMatch(/Model connection settings/i);
   });
@@ -608,7 +608,7 @@ describe('formatChatErrorDisplay', () => {
     const rendered = formatChatErrorDisplay({
       title: "This conversation's history is gone",
       body: "Can't reach native session.",
-      hint: 'New chat.',
+      hint: 'Start a new chat.',
       disclosureRaw: true,
     });
 
