@@ -81,7 +81,7 @@ export function NativeRelayConnectionRecovery({
       ) : (
         <p role="status">
           {pending
-            ? 'Some saved connections could not be removed yet. Keep this screen open and ask the Station owner for help before continuing.'
+            ? 'Some saved connections could not be removed yet. Keep this screen open and ask the Station operator for help before continuing.'
             : 'Saved connections removed. Continue to device approval.'}
         </p>
       )}
@@ -112,7 +112,7 @@ export function NativeRelayConnectionRecovery({
       {preview.isError || reset.isError ? (
         <p role="alert">
           Station couldn’t confirm that saved connections were removed. Ask the
-          Station owner for help before continuing.
+          Station operator for help before continuing.
         </p>
       ) : null}
     </section>

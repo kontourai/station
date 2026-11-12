@@ -249,7 +249,7 @@ Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
   Project's admins can open in the Browser. **Find local servers** suggests
   some, and nothing is shared until you choose it. Shared servers appear as
   buttons on an empty Browser.
-- **Open device setup** opens the device setup wizard: the device hub,
+- **Open device setup** opens the device setup wizard: the device helper,
   sharing devices with Projects, and agent device access.
 
 ## Device hosts

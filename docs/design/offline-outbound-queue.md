@@ -274,7 +274,7 @@ or its per-request nonce. A cached live index would replay its nonce and possibl
 its runtime bootstrap; the generated shell avoids both. Navigations use the
 network first, falling back on network failure or a 502/503/504 response. Auth refusals are
 passed through. The fallback marker opens the local reader even when the browser
-link stays online; **Retry connection** loads current server HTML. APIs, SSE, auth routes,
+link stays online; **Reconnect** loads current server HTML. APIs, SSE, auth routes,
 query-bearing URLs, mutations and authorization-bearing requests are not cached.
 Hashed assets use cache-first storage after anonymous fetches. Which assets are
 hashed, and the fallback's policy, come from

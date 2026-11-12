@@ -256,9 +256,9 @@ copies. A build change also turns saving off with the expired copies, so enable 
 again after an update. Reachability failures leave saved copies and the saving
 preference intact.
 
-A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
-copy from** timestamp. If you lose connectivity in an already open workspace,
-choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
+A browser reload while the Station route is unavailable shows a separate, read-only reader with a **Read-only
+copy saved** timestamp. If you lose connectivity in an already open workspace,
+choose **Read saved copies**; **Back to workspace** keeps drafts and the existing
 outbox available. Reconnecting leaves the reader, verifies live access and uses
 server data. Local copies never enter the live transcript or authorize actions.
 

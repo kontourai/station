@@ -60,7 +60,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-knowledge': {
     eyebrow: 'Connections',
     title: 'Knowledge',
-    subtitle: 'The knowledge store and its attached namespaces.',
+    subtitle: 'What agents can look up',
     width: 'narrow',
   },
   'connections-computers': { width: 'full', body: 'flow', flush: true },
@@ -91,7 +91,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   },
   appearance: {
     title: 'Appearance',
-    subtitle: 'Mode, density, motion, color theme and accent.',
     width: 'narrow',
   },
   profile: {
@@ -103,7 +102,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     title: 'Notifications',
     // states the page's model in its own subtitle, and the two regions
     // below are named for exactly these two halves.
-    subtitle: 'Things that need you, and what happened.',
+    subtitle: 'Things that need you, and what happened',
     width: 'narrow',
     // #2065: the first-run "Decisions are part of the record" step points
     // here now that the global review queue is retired.

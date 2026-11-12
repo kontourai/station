@@ -5,7 +5,7 @@ import { SkeletonBlock } from '../../components/state';
 import { useDeviceToolVersions } from './deviceToolchainApi';
 
 const TOOL_LABEL = {
-  'expo-device-hub': 'Device hub',
+  'expo-device-hub': 'Device helper',
   'agent-device': 'Agent device tools',
 } as const;
 
