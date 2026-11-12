@@ -15,6 +15,9 @@ const json = (body: unknown) => ({
 });
 
 const THREAD_ID = 'thread-stored-conversation';
+// Recent, so the inbox lists it among current work rather than history.
+const UPDATED_AT = new Date(Date.now() - 5 * 60_000).toISOString();
+const CREATED_AT = new Date(Date.now() - 10 * 60_000).toISOString();
 const TITLE = 'Stored pricing review';
 const ANSWER = 'The stored answer is back on screen.';
 
@@ -23,6 +26,32 @@ const ANSWER = 'The stored answer is back on screen.';
  * browser: only the inventory names it.
  */
 async function storeConversation(page: Page) {
+  // The inbox row is the Station's session; nothing in this browser has a
+  // chat open for it.
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId: THREAD_ID,
+            provider: 'bedrock',
+            model: 'model-selected',
+            cwd: '/repo/project',
+            projectSlug: 'default',
+            assignedAgentSlug: 'station',
+            status: 'ready',
+            lifecycleState: 'idle',
+            createdAt: CREATED_AT,
+            updatedAt: UPDATED_AT,
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 2,
+          },
+        ],
+      }),
+    ),
+  );
   await page.route(/\/api\/conversations(?:\?.*)?$/, (route) =>
     route.fulfill(
       json({
@@ -37,8 +66,8 @@ async function storeConversation(page: Page) {
               model: 'model-selected',
               projectSlug: 'default',
               title: TITLE,
-              createdAt: '2026-09-20T00:02:00.000Z',
-              updatedAt: '2026-09-20T00:03:00.000Z',
+              createdAt: CREATED_AT,
+              updatedAt: UPDATED_AT,
               messageCount: 2,
               mutable: true,
               answerability: { answerable: true },
@@ -58,7 +87,7 @@ async function storeConversation(page: Page) {
             id: THREAD_ID,
             title: TITLE,
             agentSlug: 'station',
-            updatedAt: '2026-09-20T00:03:00.000Z',
+            updatedAt: UPDATED_AT,
           },
         ],
       }),
@@ -114,9 +143,13 @@ test('an inbox row for a stored conversation with no open chat opens its transcr
 
   await page.goto('/?dock=open&maximize=true');
   await dismissSetupLauncher(page);
-  await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
+  // With no chat open, the phone dock opens on its Inbox.
   const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
-  await inbox.getByRole('button', { name: `${TITLE}, default` }).click();
+  await expect(inbox).toBeVisible();
+  // The Station's session row; no chat for it is open in this browser.
+  await inbox
+    .getByRole('button', { name: 'Station session, default', exact: true })
+    .click();
 
   await expect(page.getByText(ANSWER, { exact: true })).toBeVisible();
   await expect(page.getByText('No chat open', { exact: true })).toHaveCount(0);
