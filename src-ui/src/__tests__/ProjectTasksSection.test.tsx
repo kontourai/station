@@ -18,12 +18,14 @@ const {
   useWorkflowTasksQuery,
   useWorkItemsQuery,
   useTasksQuery,
+  useOrchestrationSessionActivityQuery,
 } = vi.hoisted(() => ({
   navigate: vi.fn(),
   showToast: vi.fn(),
   useWorkflowTasksQuery: vi.fn(),
   useWorkItemsQuery: vi.fn(),
   useTasksQuery: vi.fn(),
+  useOrchestrationSessionActivityQuery: vi.fn(),
 }));
 const invalidateQueries = vi.fn();
 const setQueryData = vi.fn();
@@ -176,6 +178,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useWorkItemsQuery,
   useTaskClaimQuery: () => ({ data: taskClaim }),
   useWorkItemClaimQuery: () => ({ data: providerItemClaim }),
+  useOrchestrationSessionActivityQuery,
 }));
 
 import { ProjectTasksSection } from '../views/project-page/ProjectTasksSection';
@@ -209,6 +212,8 @@ describe('ProjectTasksSection', () => {
     useWorkflowTasksQuery.mockImplementation(() => ({ data: workflowTasks }));
     useWorkItemsQuery.mockReset();
     useWorkItemsQuery.mockImplementation(() => ({ data: workItemsData }));
+    useOrchestrationSessionActivityQuery.mockReset();
+    useOrchestrationSessionActivityQuery.mockReturnValue({ data: undefined });
     tasks = [
       {
         id: 'task-1',
@@ -261,6 +266,55 @@ describe('ProjectTasksSection', () => {
     expect(screen.getByRole('button', { name: 'Dispatch' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
     expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
+  });
+
+  test("names the dispatched Session's agent-reported plan progress in the list link", () => {
+    tasks = [
+      { ...tasks[0], status: 'in_progress', sessionId: 'session-a' },
+      {
+        ...tasks[0],
+        id: 'task-2',
+        title: 'Unplanned task',
+        status: 'in_progress',
+        sessionId: 'session-b',
+      },
+    ];
+    useOrchestrationSessionActivityQuery.mockImplementation(
+      (threadId: string) =>
+        threadId === 'session-a'
+          ? {
+              data: {
+                session: { threadId, lifecycleState: 'running' },
+                events: [
+                  {
+                    sequence: 1,
+                    event: { method: 'turn.started', turnId: 'turn-1' },
+                  },
+                  {
+                    sequence: 2,
+                    event: {
+                      method: 'plan.updated',
+                      turnId: 'turn-1',
+                      entries: [
+                        { content: 'Read', status: 'completed' },
+                        { content: 'Edit', status: 'in_progress' },
+                      ],
+                    },
+                  },
+                ],
+              },
+            }
+          : { data: undefined },
+    );
+    render(<ProjectTasksSection slug="project-alpha" />);
+    const entry = screen.getByRole('link', {
+      name: /Existing task.*Agent-reported plan: 1 of 2 steps done.*Open Task/,
+    });
+    expect(entry.textContent).toContain('Agent plan 1/2');
+    // A Session without a plan shows nothing rather than an empty bar.
+    const unplanned = screen.getByRole('link', { name: /Unplanned task/ });
+    expect(unplanned.textContent).not.toContain('Agent plan');
+    expect(unplanned.querySelector('.task-plan-progress')).toBeNull();
   });
 
   test('heads the section like other Project sections, with New Task beside Refresh', () => {

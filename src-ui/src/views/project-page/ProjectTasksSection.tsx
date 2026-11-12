@@ -28,6 +28,7 @@ import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
 import { PageSection } from '../../components/PageSection';
 import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
 import { describeReadFailure, Empty, ErrorState } from '../../components/state';
+import { TaskPlanProgressForTask } from '../../components/TaskPlanProgress';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
@@ -638,6 +639,7 @@ export function ProjectTasksSection({
                           <span>{task.priority}</span>
                         )}
                       </span>
+                      <TaskPlanProgressForTask task={task} />
                       <span className="project-tasks-section__next">
                         Open Task
                       </span>
