@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import {
   claimReadyStep,
@@ -17,6 +18,7 @@ import {
 import { afterEach, type TestContext, test, vi } from 'vitest';
 import { RuntimePublicationParticipant } from '../../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../../runtime/bootstrap/station-runtime.js';
+import { createLogger } from '../../../../utils/logger.js';
 import { HomeWriterOwner } from '../../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../../delegation-group-persistence.js';
 import { LocalSourceAdmissionOwner } from '../../delegation-group-source-admission.js';
@@ -58,6 +60,14 @@ export interface FinalizerFixture {
 const pending = new Set<Promise<unknown>>();
 const runtimes = new Set<StationRuntime>();
 const lifetimes = new Set<AbortController>();
+const phaseTraces = new WeakMap<
+  AbortSignal,
+  Array<{ phase: string; atMs: number }>
+>();
+
+function markPhase(signal: AbortSignal | undefined, phase: string): void {
+  if (signal) phaseTraces.get(signal)?.push({ phase, atMs: performance.now() });
+}
 
 function observeFinalizerWork<T>(work: Promise<T>): Promise<T> {
   pending.add(work);
@@ -73,7 +83,40 @@ export function finalizerTest(
   body: (context: TestContext) => Promise<void>,
   timeoutMs?: number,
 ): void {
-  test(name, (context) => observeFinalizerWork(body(context)), timeoutMs);
+  test(
+    name,
+    (context) => {
+      if (process.env.STATION_FINALIZER_PHASE_TIMINGS === '1') {
+        const trace: Array<{ phase: string; atMs: number }> = [];
+        phaseTraces.set(context.signal, trace);
+        markPhase(context.signal, 'test-body');
+        context.signal.addEventListener(
+          'abort',
+          () => markPhase(context.signal, 'test-signal-aborted'),
+          { once: true },
+        );
+        context.onTestFailed(() => {
+          const now = performance.now();
+          const origin = trace[0]?.atMs ?? now;
+          createLogger({
+            name: 'finalizer-phase-diagnostic',
+            level: 'warn',
+          }).warn('Finalizer phase timings', {
+            test: name,
+            phases: trace.map((entry, index) => ({
+              phase: entry.phase,
+              startMs: Math.round(entry.atMs - origin),
+              elapsedMs: Math.round(
+                (trace[index + 1]?.atMs ?? now) - entry.atMs,
+              ),
+            })),
+          });
+        });
+      }
+      return observeFinalizerWork(body(context));
+    },
+    timeoutMs,
+  );
 }
 
 export function createFinalizerRuntime(
@@ -106,15 +149,19 @@ export function setupFinalizer(
 ): Promise<FinalizerFixture> {
   const lifetime = new AbortController();
   lifetimes.add(lifetime);
-  return observeFinalizerWork(
-    createFinalizer(
-      signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal,
-    ),
-  );
+  const boundSignal = signal
+    ? AbortSignal.any([signal, lifetime.signal])
+    : lifetime.signal;
+  const trace = signal && phaseTraces.get(signal);
+  if (trace) phaseTraces.set(boundSignal, trace);
+  return observeFinalizerWork(createFinalizer(boundSignal));
 }
 
 async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
+  markPhase(signal, 'fixture-setup');
   const h = await setup('local-grant', NOW, signal);
+  const trace = phaseTraces.get(signal);
+  if (trace) phaseTraces.set(h.f.req.signal, trace);
   const reportRoot = join(h.f.home, 'report-groups');
   const sourcesRoot = join(reportRoot, 'sources');
   const dispatchRoot = join(reportRoot, 'dispatch');
@@ -133,6 +180,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
     ...h.custodyOwners,
     canonicalLocalGrantOrigin: h.f.environment.canonicalLocalGrantOrigin(),
   });
+  markPhase(signal, 'flow-definition');
   const flow = await createReportFlow(h.f, 'lost-reappraisal', [
     { id: 'first' },
     {
@@ -142,6 +190,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       routeBack: 'first',
     },
   ]);
+  markPhase(signal, 'sealed-source-preparation');
   const handle = await h.owner.prepare(h.f.context(), {
     ...h.input,
     maxConcurrent: 1,
@@ -160,13 +209,16 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       maxRecoveries: 2,
     },
   });
+  markPhase(signal, 'runtime-owner');
   const runtime = createFinalizerRuntime({ projectHomeDir: h.f.home }, signal);
   let participant = Reflect.get(
     runtime,
     'runtimePublicationParticipant',
   ) as RuntimePublicationParticipant;
   try {
+    markPhase(signal, 'prepared-read');
     const prepared = h.owner.read(handle, h.f.req);
+    markPhase(signal, 'custody-retention');
     const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
     const current = (): undefined => {
       h.owner.assertCurrent(handle, h.f.req);
@@ -204,6 +256,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
             work(createAuthority(scope), scope),
           ),
       );
+    markPhase(signal, 'authority-issue-and-derive');
     await withAuthority(async (authority, scope) => {
       await authority.issue(prepared.root);
       scope.check(current);
@@ -284,6 +337,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
         withController((owner) => owner.authorizeRetry(command)),
       cancel: (command) => withController((owner) => owner.cancel(command)),
     };
+    markPhase(signal, 'controller-create');
     const created = await controller.create({
       kind: 'create',
       groupId,
@@ -299,6 +353,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       ['c', 'first'],
       ['d', 'review'],
     ]) {
+      markPhase(signal, `flow-claim-${id}`);
       const { claim } = await claimReadyStep(flow.runId, {
         cwd: h.f.repo,
         step_id: step,
@@ -306,6 +361,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
         liveness_id: `${id}-live`,
         actor,
       });
+      markPhase(signal, `flow-evaluate-${id}`);
       await evaluateClaimedStep(flow.runId, {
         cwd: h.f.repo,
         claim_id: claim.claim_id,
@@ -313,6 +369,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
         actor,
       });
     }
+    markPhase(signal, 'blocked-flow-read');
     const before = await loadRun(flow.runId, h.f.repo);
     const blocked = before.state.transitions.at(-1);
     assert.equal(blocked?.status, 'blocked');
@@ -322,6 +379,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       JSON.stringify(before.state.transitions),
     );
     assert.equal(blocked.gate_id, 'review');
+    markPhase(signal, 'lost-reappraisal');
     await assert.rejects(
       controller.reappraise({
         kind: 'reappraise',
@@ -336,11 +394,15 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       }),
       /injected receipt retention outage/,
     );
+    markPhase(signal, 'group-read');
     const held = await controller.get(groupId);
+    markPhase(signal, 'flow-after-loss-read');
     const flowAfterLoss = await loadRun(flow.runId, h.f.repo);
+    markPhase(signal, 'authority-inspect');
     const authorityBefore = await withAuthority((authority) =>
       authority.inspect(prepared.root.authority_id),
     );
+    markPhase(signal, 'fixture-ready');
     return {
       h,
       reportRoot,
@@ -373,6 +435,7 @@ export function finalizeFixture(
   f: FinalizerFixture,
   request = requestFor(f.h, 'POST'),
 ) {
+  markPhase(f.h.f.req.signal, 'finalize-continuation');
   return f.h.custody.finalizeContinuation(
     f.h.f.context(request),
     f.groupId,
