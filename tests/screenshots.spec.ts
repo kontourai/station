@@ -3450,6 +3450,7 @@ function roomConversationScreens(): Screen[] {
           | Awaited<ReturnType<typeof installProjectRoomFixture>>
           | undefined;
         let cleanupTask: (() => Promise<void>) | undefined;
+        let restoreHandshake: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `room-${room === 'task' ? 'task-' : ''}${scene}-${theme}-${width}`,
           title: `${room === 'task' ? 'Task' : 'Project'} room, ${scene} — ${theme}, ${viewport.width}px`,
@@ -3467,6 +3468,16 @@ function roomConversationScreens(): Screen[] {
             if (room === 'project') {
               if (scene === 'keyboard' && viewport.width === MOBILE.width)
                 await installKeyboardEmulation(page);
+              // A current host serves reactions, edits, deletes and files
+              // (#4796, #4797, #4812); the room offers them only on this flag.
+              restoreHandshake = await withRoute(
+                page,
+                '**/.well-known/station/v1',
+                (route) =>
+                  fulfillGalleryStationHandshake(route, false, {
+                    projectRoomMessageActions: true,
+                  }),
+              );
               fixture = await installProjectRoomFixture(page, {
                 slug,
                 projectId: project.id,
@@ -3777,8 +3788,9 @@ function roomConversationScreens(): Screen[] {
                 }),
               ).toHaveAttribute('aria-pressed', 'false');
               if (viewport.width === DESKTOP.width) {
-                // Who reacted: the pill's tooltip under a hovering pointer.
-                await pill.hover();
+                // Who reacted: the pill's tooltip. Keyboard focus shows it as
+                // hover does, and survives the capture's resting pointer.
+                await pill.focus();
                 await expect(
                   conversation.getByRole('tooltip', {
                     name: 'You, Priya Natarajan and Jonas Berg',
@@ -3982,6 +3994,7 @@ function roomConversationScreens(): Screen[] {
           },
           async cleanup() {
             await fixture?.cleanup();
+            await restoreHandshake?.();
             await cleanupTask?.();
             if (created) {
               const removed = await request.delete(
