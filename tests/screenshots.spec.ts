@@ -3898,23 +3898,23 @@ function roomConversationScreens(): Screen[] {
 /**
  * Channel navigation (#4794, #4795): the Project's channel list (the phone's
  * Project page; at 1440 the sidebar with one Project expanded and one
- * collapsed), a channel opened by its address, a thread, and the phone's
- * navigation drawer. Unread state comes from the read-marker fixture.
+ * collapsed), a channel opened by its address, and a thread. Unread state
+ * comes from the read-marker fixture.
+ *
+ * The phone list is shot in a tall phone frame, the whole page at once: the
+ * collapsed dock overlays the bottom band of the page's scrollport, and in
+ * a 844px frame some control of this page always sits behind it.
  */
-const CHANNEL_NAV_SCENES = [
-  'list',
-  'conversation',
-  'thread',
-  'drawer',
-] as const;
+const CHANNEL_NAV_SCENES = ['list', 'conversation', 'thread'] as const;
+const PHONE_PAGE = { width: MOBILE.width, height: 1200 } as const;
 
 function channelNavigationScreens(): Screen[] {
   return CHANNEL_NAV_SCENES.flatMap((scene) =>
     (['dark', 'light'] as const).flatMap((theme) =>
-      // The drawer is the phone's sidebar; at 1440 the list scene shows it.
-      (scene === 'drawer' ? [MOBILE] : [DESKTOP, MOBILE]).map(
+      [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE].map(
         (viewport): Screen => {
           const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+          const phone = viewport.width === MOBILE.width;
           const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
           const other = `${slug}-site`;
           let request: ReturnType<typeof createAuthenticatedE2ERequest>;
@@ -3966,7 +3966,6 @@ function channelNavigationScreens(): Screen[] {
                   document.documentElement.setAttribute('data-theme', selected),
                 theme,
               );
-              const phone = viewport.width === MOBILE.width;
               const sidebar = page.getByRole('navigation', {
                 name: 'Primary navigation',
               });
@@ -4037,22 +4036,6 @@ function channelNavigationScreens(): Screen[] {
                   ).toBeVisible();
                 }
                 await page.mouse.move(0, 0);
-                return;
-              }
-              if (scene === 'drawer') {
-                await page
-                  .locator('button[aria-controls="mobile-navigation"]')
-                  .first()
-                  .click();
-                const drawer = page.getByRole('navigation', {
-                  name: 'Mobile navigation',
-                });
-                await expect(drawer).toBeVisible();
-                await expectProjectList(drawer);
-                await expectTouchTarget(
-                  drawer.getByRole('button', { name: 'design', exact: true }),
-                  'Channel row',
-                );
                 return;
               }
               if (phone) {

@@ -46,11 +46,6 @@ interface Row {
   open(): void;
 }
 
-function unreadLabel(unread: ConversationUnread | undefined) {
-  if (!unread?.unread) return '';
-  return unread.count ? `, ${unread.count} unread` : ', unread';
-}
-
 /** The server caps room counts at 99, meaning "99 or more". */
 function countText(count: number) {
   return count >= 99 ? '99+' : String(count);
@@ -144,7 +139,6 @@ export function ProjectConversationList({
         tabIndex={row.key === stop ? 0 : -1}
         className={`conversation-list__row${row.unread?.unread ? ' conversation-list__row--unread' : ''}${row.current ? ' conversation-list__row--current' : ''}`}
         aria-current={row.current ? 'page' : undefined}
-        aria-label={`${row.name}${row.kind === 'task' ? ', Task room' : ''}${row.working ? ', agent working' : ''}${unreadLabel(row.unread)}`}
         onFocus={() => setFocusKey(row.key)}
         onClick={row.open}
       >
@@ -158,13 +152,23 @@ export function ProjectConversationList({
             aria-hidden="true"
           />
         )}
+        {/* The name is the visible text plus words only a screen reader
+            needs, so what is seen is part of what is announced. */}
         <span className="conversation-list__label" title={row.label}>
           {row.label}
         </span>
+        {row.kind === 'task' && <span className="sr-only">, Task room</span>}
+        {row.working && <span className="sr-only">, agent working</span>}
         {row.unread?.unread && row.unread.count ? (
-          <span className="conversation-list__count" aria-hidden="true">
-            {countText(row.unread.count)}
-          </span>
+          <>
+            <span className="sr-only">, </span>
+            <span className="conversation-list__count">
+              {countText(row.unread.count)}
+            </span>
+            <span className="sr-only"> unread</span>
+          </>
+        ) : row.unread?.unread ? (
+          <span className="sr-only">, unread</span>
         ) : null}
         {variant === 'page' && (
           <span className="conversation-list__chevron" aria-hidden="true">

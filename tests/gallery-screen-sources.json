@@ -533,18 +533,6 @@
       "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
       "src-ui/src/views/ProjectPage.tsx",
       "src-ui/src/views/project-page/ProjectRoom.tsx"
-    ],
-    "channel-nav-drawer-dark-mobile": [
-      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
-      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
-      "src-ui/src/views/ProjectPage.tsx",
-      "src-ui/src/views/project-page/ProjectRoom.tsx"
-    ],
-    "channel-nav-drawer-light-mobile": [
-      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
-      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
-      "src-ui/src/views/ProjectPage.tsx",
-      "src-ui/src/views/project-page/ProjectRoom.tsx"
     ]
   }
 }

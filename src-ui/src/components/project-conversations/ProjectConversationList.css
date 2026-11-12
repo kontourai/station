@@ -83,7 +83,9 @@
   border: 0;
   border-radius: var(--k-radius-control);
   background: transparent;
-  color: var(--k-text-muted);
+  /* Full-strength text: muted measured under 4.5:1 on the light sidebar.
+     Read and unread differ by weight, as chat apps do. */
+  color: var(--k-text);
   font: inherit;
   font-size: var(--k-text-sm);
   font-weight: 400;
@@ -104,7 +106,6 @@
 /* Unread is the server's answer (#3075): the name goes bold and full
    strength, the way chat apps mark a place with something new. */
 .conversation-list__row--unread {
-  color: var(--k-text);
   font-weight: 650;
 }
 
@@ -185,13 +186,13 @@
 }
 
 .conversation-list__more {
-  color: var(--k-text-faint);
+  color: var(--k-action);
 }
 
 .conversation-list__empty {
   margin: 0;
   padding: var(--k-space-1) var(--k-space-2);
-  color: var(--k-text-faint);
+  color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
 
