@@ -95,14 +95,11 @@ export function AgentScheduleNotes({
               declineAutomationProposal.isPending &&
               declineAutomationProposal.variables === item.id
             }
-            error={
-              confirmAutomationProposal.isError &&
-              confirmAutomationProposal.variables?.id === item.id
-                ? confirmAutomationProposal.error.message
-                : declineAutomationProposal.isError &&
-                    declineAutomationProposal.variables === item.id
-                  ? declineAutomationProposal.error.message
-                  : undefined
+            failed={
+              (confirmAutomationProposal.isError &&
+                confirmAutomationProposal.variables?.id === item.id) ||
+              (declineAutomationProposal.isError &&
+                declineAutomationProposal.variables === item.id)
             }
             onConfirm={(enable) =>
               confirmAutomationProposal.mutate({ id: item.id, enable })
@@ -406,7 +403,7 @@ function AutomationProposalCard({
   busy,
   confirming,
   declining,
-  error,
+  failed,
   onConfirm,
   onDecline,
 }: {
@@ -414,7 +411,7 @@ function AutomationProposalCard({
   busy: boolean;
   confirming: boolean;
   declining: boolean;
-  error: string | undefined;
+  failed: boolean;
   onConfirm: (enable: boolean) => void;
   onDecline: () => void;
 }) {
@@ -463,9 +460,15 @@ function AutomationProposalCard({
       <Checkbox checked={enable} disabled={busy} onChange={setEnable}>
         Turn it on now
       </Checkbox>
-      {error ? (
+      {proposal.kind === 'rule' && proposal.rule.sourceProposalId ? (
+        <p className="agent-schedule-card__why">
+          This rule uses a source proposed in this chat; that source must be
+          confirmed before this rule.
+        </p>
+      ) : null}
+      {failed ? (
         <p className="agent-schedule-card__error" role="alert">
-          {error}
+          That didn't go through. Try again.
         </p>
       ) : null}
       <div className="agent-schedule-card__actions">
