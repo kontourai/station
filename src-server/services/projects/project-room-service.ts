@@ -5,6 +5,8 @@ import type {
 import type {
   ProjectRoomActor,
   ProjectRoomAppendInput,
+  ProjectRoomChannelCreateInput,
+  ProjectRoomChannelUpdateInput,
   ProjectRoomNoteInput,
   ProjectRoomView,
 } from '@kontourai/station-contracts/project-room';
@@ -39,6 +41,11 @@ export interface ProjectRoomMutationGuard {
   expectedProjectId: string;
   expectedActorId: string;
 }
+/** Guards a channel operation: the Project and actor the client saw. */
+export type ProjectRoomChannelGuard = Omit<
+  ProjectRoomMutationGuard,
+  'expectedRoomId'
+>;
 export interface ProjectRoomAdmission {
   scope: ProjectMembershipScope;
   actorId: string;
@@ -143,13 +150,14 @@ export class ProjectRoomService {
     request: Request,
     slug: string,
     action: ProjectMemberAction,
-    guard: ProjectRoomMutationGuard | undefined,
+    guard: ProjectRoomMutationGuard | ProjectRoomChannelGuard | undefined,
     operation: (
       scope: ProjectMembershipScope,
       actor: ProjectRoomActor,
       caps: ProjectRoomCapabilities,
       assertCurrent: () => void,
     ) => T,
+    channelId?: string,
   ) {
     this.assertOpen();
     const outcome = await this.access.withAction(
@@ -164,7 +172,9 @@ export class ProjectRoomService {
             guard &&
             (actor.id !== guard.expectedActorId ||
               scope.localProjectId !== guard.expectedProjectId ||
-              this.store.lookupRoom(scope)?.roomId !== guard.expectedRoomId)
+              ('expectedRoomId' in guard &&
+                this.store.lookupRoom(scope, channelId)?.roomId !==
+                  guard.expectedRoomId))
           )
             throw new ProjectRoomRefusal('conflict');
           const result = operation(scope, actor, caps, () => {
@@ -203,17 +213,22 @@ export class ProjectRoomService {
       },
     );
   }
-  discover(request: Request, slug: string) {
+  discover(request: Request, slug: string, channelId?: string) {
     return this.run(
       request,
       slug,
       'view',
       undefined,
       (scope, actor, capabilities, assertCurrent): ProjectRoomBrowserView => {
-        const room = this.store.lookupRoom(scope);
+        const room = this.store.lookupRoom(scope, channelId);
         if (!room) throw new ProjectRoomRefusal('not_found');
-        const checkpoint = this.store.history(scope, 0, 1).checkpoint;
-        const note = this.store.getNote(scope);
+        const checkpoint = this.store.history(
+          scope,
+          0,
+          1,
+          channelId,
+        ).checkpoint;
+        const note = this.store.getNote(scope, channelId);
         assertCurrent();
         return {
           ...room,
@@ -224,19 +239,27 @@ export class ProjectRoomService {
           presence: this.presence(room.roomId),
         };
       },
+      channelId,
     );
   }
-  history(request: Request, slug: string, after: number, limit: number) {
+  history(
+    request: Request,
+    slug: string,
+    after: number,
+    limit: number,
+    channelId?: string,
+  ) {
     return this.run(
       request,
       slug,
       'view',
       undefined,
       (scope, _actor, _caps, assertCurrent) => {
-        const result = this.store.history(scope, after, limit);
+        const result = this.store.history(scope, after, limit, channelId);
         assertCurrent();
         return result;
       },
+      channelId,
     );
   }
   append(
@@ -244,6 +267,7 @@ export class ProjectRoomService {
     slug: string,
     guard: ProjectRoomMutationGuard,
     input: ProjectRoomAppendInput,
+    channelId?: string,
   ) {
     return this.run(
       request,
@@ -251,7 +275,8 @@ export class ProjectRoomService {
       'discuss',
       guard,
       (scope, actor, _caps, assertCurrent) =>
-        this.store.append(scope, actor, input, assertCurrent),
+        this.store.append(scope, actor, input, assertCurrent, channelId),
+      channelId,
     );
   }
   note(
@@ -259,6 +284,7 @@ export class ProjectRoomService {
     slug: string,
     guard: ProjectRoomMutationGuard,
     input: ProjectRoomNoteInput,
+    channelId?: string,
   ) {
     return this.run(
       request,
@@ -266,7 +292,52 @@ export class ProjectRoomService {
       'edit',
       guard,
       (scope, actor, _caps, assertCurrent) =>
-        this.store.updateNote(scope, actor, input, assertCurrent),
+        this.store.updateNote(scope, actor, input, assertCurrent, channelId),
+      channelId,
+    );
+  }
+  channels(request: Request, slug: string) {
+    return this.run(
+      request,
+      slug,
+      'view',
+      undefined,
+      (scope, _actor, _caps, assertCurrent) => {
+        const channels = this.store.listChannels(scope);
+        assertCurrent();
+        return { channels };
+      },
+    );
+  }
+  createChannel(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomChannelGuard,
+    input: ProjectRoomChannelCreateInput,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'edit',
+      guard,
+      (scope, _actor, _caps, assertCurrent) =>
+        this.store.createChannel(scope, input, assertCurrent),
+    );
+  }
+  updateChannel(
+    request: Request,
+    slug: string,
+    channelId: string,
+    guard: ProjectRoomChannelGuard,
+    input: ProjectRoomChannelUpdateInput,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'edit',
+      guard,
+      (scope, _actor, _caps, assertCurrent) =>
+        this.store.updateChannel(scope, channelId, input, assertCurrent),
     );
   }
   updatePresence(
@@ -275,6 +346,7 @@ export class ProjectRoomService {
     guard: ProjectRoomMutationGuard,
     clientId: string,
     state: 'join' | 'leave',
+    channelId?: string,
   ) {
     return this.run(
       request,
@@ -306,6 +378,7 @@ export class ProjectRoomService {
         this.notifyPresence(guard.expectedRoomId);
         return this.presence(guard.expectedRoomId);
       },
+      channelId,
     );
   }
   async current(request: Request, admission: ProjectRoomAdmission) {

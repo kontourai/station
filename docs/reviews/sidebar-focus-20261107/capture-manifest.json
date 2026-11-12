@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "dateUtc": "2026-11-07",
+  "runtime": "Station CLI --watch; source server and Vite UI",
+  "browser": "Chrome; normal controls and explicit device emulation",
+  "testData": "Disposable local homes and sample Project/Task; generic saved Station label set through ordinary UI",
+  "captures": [
+    {
+      "file": "task-desktop-dark.png",
+      "sha256": "db61740b1c3b12d1bfb8bbc0b148947f6554c3b3e97b332815652906918a4ab4",
+      "pixelDimensions": [
+        2880,
+        1800
+      ],
+      "viewportCssPixels": [
+        1440,
+        900
+      ],
+      "devicePixelRatio": 2,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Disposable Task Overview; no provider execution or actual shared result"
+    },
+    {
+      "file": "task-desktop-light.png",
+      "sha256": "224e02b7974b00b743e15b9820556a4183ad87e4587c7877baf3a98d63e0c3ff",
+      "pixelDimensions": [
+        2880,
+        1800
+      ],
+      "viewportCssPixels": [
+        1440,
+        900
+      ],
+      "devicePixelRatio": 2,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Disposable Task Overview; no provider execution or actual shared result"
+    },
+    {
+      "file": "task-mobile-dark.png",
+      "sha256": "dd26f1247efc96315f99c90fee1eb5f974cacac41d94405f5a02e59ffec21fb1",
+      "pixelDimensions": [
+        780,
+        1688
+      ],
+      "viewportCssPixels": [
+        390,
+        844
+      ],
+      "devicePixelRatio": 2,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Disposable Task Overview; no provider execution or actual shared result"
+    },
+    {
+      "file": "task-mobile-light.png",
+      "sha256": "b71aadc38fee27588643232101eaeca118f5c5d6be125472f52acab23a030934",
+      "pixelDimensions": [
+        780,
+        1688
+      ],
+      "viewportCssPixels": [
+        390,
+        844
+      ],
+      "devicePixelRatio": 2,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Disposable Task Overview; no provider execution or actual shared result"
+    },
+    {
+      "file": "drawer-touch-dark.png",
+      "sha256": "41081ca291fb252797d6d3784e1ca07a4991bba84ab5b0bb911d8fad4116ce34",
+      "pixelDimensions": [
+        1179,
+        2556
+      ],
+      "viewportCssPixels": [
+        393,
+        852
+      ],
+      "devicePixelRatio": 3,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Native emulated touch opens dark drawer"
+    },
+    {
+      "file": "drawer-touch-light.png",
+      "sha256": "07202f9677262c24ed6fd25fe71d6d57dcf1e102dbc72998d1ec9084ae5a7b92",
+      "pixelDimensions": [
+        1179,
+        2556
+      ],
+      "viewportCssPixels": [
+        393,
+        852
+      ],
+      "devicePixelRatio": 3,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Native emulated touch opens light drawer"
+    },
+    {
+      "file": "offline-message.png",
+      "sha256": "f5368244799a3ac48ebd891840e9337114bcc4d05ba28929fa58316b9f2d1d61",
+      "pixelDimensions": [
+        1179,
+        2556
+      ],
+      "viewportCssPixels": [
+        393,
+        852
+      ],
+      "devicePixelRatio": 3,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Real offline human send remains unconfirmed with retained draft"
+    },
+    {
+      "file": "recovered-message.png",
+      "sha256": "a49ceb0bf53f796dda1d6c8f27e9b0374baf5b7bc6f25dc4d10036364ab4a23e",
+      "pixelDimensions": [
+        1179,
+        2556
+      ],
+      "viewportCssPixels": [
+        393,
+        852
+      ],
+      "devicePixelRatio": 3,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Online retry produces one visible matching history entry"
+    },
+    {
+      "file": "throttled-loading.png",
+      "sha256": "852e3c2911768132d49f6aeb0393843577381a2d3c6e07a94a8e9c7427aecd0e",
+      "pixelDimensions": [
+        1179,
+        2556
+      ],
+      "viewportCssPixels": [
+        393,
+        852
+      ],
+      "devicePixelRatio": 3,
+      "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "transformation": "none",
+      "scenario": "Real slow Task read displays skeletons before recovery"
+    },
+    {
+      "file": "focus-comparison.png",
+      "sha256": "b4c29df9de7f74485f367e855d5ae2fb2e0f920d9080dfbfcfb1c234250293dd",
+      "pixelDimensions": [
+        1620,
+        260
+      ],
+      "transformation": {
+        "kind": "annotated-comparison",
+        "panels": [
+          {
+            "sourceCapture": "before-home-390x844-dark-generic.png",
+            "sourceSha256": "f1a0998776af674a66fc82d6bc5fab7cd92e59b0ee6b3af136f1b5791faaaef2",
+            "cropPixels": [
+              0,
+              0,
+              780,
+              108
+            ],
+            "capturedRevision": "eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb"
+          },
+          {
+            "sourceCapture": "after-home-390x844-dark-generic.png",
+            "sourceSha256": "b54795a9ae2ea8d0e1e7f30a40ab9222439b48befb02891dda57b32a9c723c0f",
+            "cropPixels": [
+              0,
+              0,
+              780,
+              108
+            ],
+            "capturedRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82"
+          }
+        ],
+        "note": "Labels outside unmodified header pixels report actual browser focus observations. Header crops are byte-identical; this is behavior evidence, not a pixel-change claim."
+      }
+    }
+  ],
+  "focusObservations": {
+    "before": {
+      "sourceRevision": "eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb",
+      "activeElement": "BODY",
+      "navigationAriaHidden": true,
+      "navigationInert": false
+    },
+    "after": {
+      "sourceRevision": "82698b3027b8d1b73ed4dc2331d05fe035458c82",
+      "activeElement": "BUTTON[aria-label=\"Toggle menu\"]",
+      "navigationAriaHidden": true,
+      "navigationInert": true
+    }
+  },
+  "limits": [
+    "Bounded current sidebar and adjacent Home/Project/Task journeys, not exhaustive all-product inventory",
+    "CLI --watch and Vite; not packaged production UI qualification",
+    "One operator and disposable content; no actual shared provider result or two-human acceptance",
+    "Touch is browser emulation; no physical-device/native proof",
+    "No full matrix of loading/error/partial combinations",
+    "Separate modal opening focus finding #4665 remains open",
+    "No Gallery comparator, hosted, merge or release qualification from these captures"
+  ],
+  "touch": {
+    "profile": "Chrome DevTools iPhone16",
+    "pointerCoarse": true,
+    "hoverNone": true,
+    "maxTouchPoints": 1,
+    "inputObserved": [
+      "pointerdown with pointerType touch",
+      "touchstart"
+    ],
+    "visibleDrawerButtons": 11,
+    "minimumDrawerTargetCssPixels": [
+      44,
+      44
+    ],
+    "taskTabHeightCssPixels": 44,
+    "minimumTaskTabWidthCssPixels": 48.65625,
+    "physicalDevice": false
+  },
+  "recovery": {
+    "offlineControl": "DevTools Offline on the owned tab",
+    "retainedDraft": true,
+    "onlineRetryMatchingVisibleHistoryEntries": 1,
+    "composerCleared": true,
+    "loadingControl": "DevTools 3G preset",
+    "loadingObserved": "Loading view and real Task Overview skeletons; populated connected view after restoring normal networking",
+    "limits": "No wire-ID/restart/provider/two-person proof from this UI recovery"
+  },
+  "cleanup": {
+    "bothOwnedInstancesStoppedViaCli": true,
+    "allEightOwnedPortsClear": true,
+    "ownedPreviewAndIncognitoClosed": true
+  }
+}

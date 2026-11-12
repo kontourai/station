@@ -51,6 +51,7 @@ import {
   acquireFileMutationLock,
   type FileMutationLockOptions,
 } from './lifecycle-events.js';
+import { isObjectRecord } from './object-record.js';
 import { birthProvesReuse } from './process-identity.mjs';
 import {
   admitStationRuntimeHome,
@@ -95,12 +96,8 @@ function isValidInstanceType(value: unknown): value is InstanceType {
   return typeof value === 'string' && INSTANCE_TYPES.has(value as InstanceType);
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isValidInstanceConfig(value: unknown): value is InstanceConfig {
-  if (!isPlainObject(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (typeof value.port !== 'number' || !Number.isFinite(value.port)) {
     return false;
   }
@@ -108,9 +105,9 @@ function isValidInstanceConfig(value: unknown): value is InstanceConfig {
 }
 
 function isValidInstanceRegistry(value: unknown): value is InstanceRegistry {
-  if (!isPlainObject(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (value.version !== 1) return false;
-  if (!isPlainObject(value.instances)) return false;
+  if (!isObjectRecord(value.instances)) return false;
   return Object.values(value.instances).every(isValidInstanceConfig);
 }
 

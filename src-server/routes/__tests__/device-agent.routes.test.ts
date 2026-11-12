@@ -67,6 +67,8 @@ function harness(
     taskCapture?: 'unbound' | 'mismatch';
     projectRoot?: string;
     operatorDevice?: boolean;
+    /** #4769: what the route reads for the calling session's network. */
+    networkRestricted?: (sessionId: string) => boolean;
   } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
@@ -359,6 +361,9 @@ function harness(
         : resolveStationControlCallerFromToken(presented, record);
     },
     automation,
+    ...(options.networkRestricted
+      ? { networkRestrictedSession: options.networkRestricted }
+      : {}),
     ...(options.taskCapture
       ? {
           taskCapture: () => ({
@@ -546,6 +551,46 @@ function harness(
     },
   };
 }
+
+test('#4769: a session whose network is restricted is refused every device operation, before the device is touched', async () => {
+  const asked: string[] = [];
+  const restricted = harness('sdk-in-process', {
+    networkRestricted: (id) => {
+      asked.push(id);
+      return true;
+    },
+  });
+  for (const [operation, body] of [
+    ['open', restricted.device],
+    ['open-url', { ...restricted.device, url: 'https://exfil.example/x' }],
+    ['input', { ...restricted.device, type: 'tap', x: 1, y: 1 }],
+    ['launch-app', { ...restricted.device, appId: 'com.example.app' }],
+  ] as const) {
+    const response = await restricted.raw(operation, body);
+    expect(await response.json(), operation).toEqual({
+      ok: false,
+      code: 'device-network-restricted',
+    });
+  }
+  expect(asked.length).toBe(4);
+  // Nothing was installed or opened for the refused calls.
+  expect(restricted.installApp).not.toHaveBeenCalled();
+  // A reader that fails refuses too.
+  const unknown = harness('sdk-in-process', {
+    networkRestricted: () => {
+      throw new Error('store unavailable');
+    },
+  });
+  expect(await (await unknown.raw('open', unknown.device)).json()).toEqual({
+    ok: false,
+    code: 'device-network-restricted',
+  });
+  // An unrestricted session still opens the device.
+  const open = harness('sdk-in-process', { networkRestricted: () => false });
+  expect(parsed(await open.run('device_open', open.device))).toMatchObject({
+    ok: true,
+  });
+});
 
 test('reveal requests are conversation scoped, deduplicated, optional and recheck human device admission', async () => {
   const h = harness();

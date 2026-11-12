@@ -6,6 +6,7 @@ import type {
   MobileDeviceSummary,
   MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
+import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 import {
   claimAgentControl,
   dispatchAgentInput,
@@ -110,7 +111,7 @@ export class DeviceAutomation {
     }
   >();
   private readonly owners = new Map<string, string>();
-  private readonly inputBatches = new Map<string, Promise<void>>();
+  private readonly inputBatches = createKeyedSerialQueue();
   private readonly inFlight = new Map<
     string,
     {
@@ -426,19 +427,7 @@ export class DeviceAutomation {
     surfaceId: string,
     run: () => Promise<T>,
   ): Promise<T> {
-    const previous = this.inputBatches.get(surfaceId) ?? Promise.resolve();
-    const operation = previous.then(run);
-    const completed = operation.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.inputBatches.set(surfaceId, completed);
-    try {
-      return await operation;
-    } finally {
-      if (this.inputBatches.get(surfaceId) === completed)
-        this.inputBatches.delete(surfaceId);
-    }
+    return this.inputBatches.run(surfaceId, run);
   }
 
   async input(

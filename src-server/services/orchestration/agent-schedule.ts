@@ -56,6 +56,7 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   type TransactionalSqliteDatabase,
   writeTransaction,
@@ -843,7 +844,7 @@ export class AgentWakeUpDelivery {
     } catch (error) {
       this.ports.logger.warn('agent wake-up could not be sent', {
         wakeUpId: id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       this.ports.store.settleWakeUp(id, 'failed', now, {
         reasonCode: 'send_failed',

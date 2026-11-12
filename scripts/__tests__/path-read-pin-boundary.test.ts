@@ -583,6 +583,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   // the workspace or temp fixture object.
   'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
+  // Walks fixture homes that `buildSourceHome()` creates under trackTempDirs.
+  'scripts/__tests__/seed-dev-home.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':
@@ -595,6 +597,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists the archive directory of the temporary install it builds, to read the signed archive size',
   'src-server/services/infra/__tests__/workload-budget.test.ts':
     'lists the config directory under its temporary Station home to prove a refused settings save leaves no temporary file beside workload-budgets.json',
+  'src-server/security/confinement/__tests__/confinement-preflight-factory.test.ts':
+    'snapshots its temporary Station home before and after a confinement preflight read, to prove the read created and changed nothing under it',
   'packages/supervisor/src/__tests__/control-server.test.ts':
     'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts':

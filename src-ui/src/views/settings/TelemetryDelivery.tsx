@@ -12,6 +12,7 @@ import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
 import { SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { formatDateTime } from '../../utils/relativeTime';
 import { settingsRow } from './settings-catalog';
 
 const failures: Record<TelemetryRequestFailureCode, string> = {
@@ -43,7 +44,7 @@ function checked(probe: TelemetryConnectionProbeStatus): string {
     : 'Collector accepted the empty metrics and trace requests; downstream storage is unverified.';
 }
 
-const when = (value: string) => new Date(value).toLocaleString();
+const when = (value: string) => formatDateTime(value, value);
 
 function ConnectionStatus({
   probe,

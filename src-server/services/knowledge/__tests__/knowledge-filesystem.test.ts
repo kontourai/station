@@ -307,4 +307,74 @@ describe('knowledge-filesystem helpers', () => {
       'code',
     );
   });
+
+  /** Scans `workingDirectory` for `.md` files and records what it uploads. */
+  async function scanWorkspace(
+    workingDirectory: string,
+    includePatterns?: string[],
+  ) {
+    const uploaded: string[] = [];
+    const result = await scanKnowledgeDirectories({
+      projectSlug: 'test',
+      namespace: 'code',
+      extensions: ['md'],
+      includePatterns,
+      storageAdapter: {
+        getProject: () => ({
+          slug: 'test',
+          name: 'Test',
+          workingDirectory,
+        }),
+      } as any,
+      getNamespaceConfig: () => undefined,
+      uploadDocument: async (_projectSlug, filename) => {
+        uploaded.push(filename);
+        return {};
+      },
+    });
+    return { result, uploaded: uploaded.sort() };
+  }
+
+  test('scanKnowledgeDirectories applies the file cap after the include patterns, not before', async () => {
+    const workingDirectory = join(dir, 'workspace');
+    mkdirSync(workingDirectory, { recursive: true });
+    // 300 extension matches, more than the scan's cap of 200, of which every
+    // other one is included. Interleaved by name so that no directory order
+    // lists all the included files first.
+    const included: string[] = [];
+    for (let index = 0; index < 300; index += 1) {
+      const name = `${String(index).padStart(3, '0')}-${
+        index % 2 === 0 ? 'keep' : 'drop'
+      }.md`;
+      writeFileSync(join(workingDirectory, name), '# note\n');
+      if (index % 2 === 0) included.push(name);
+    }
+
+    const { result, uploaded } = await scanWorkspace(workingDirectory, [
+      '*-keep.md',
+    ]);
+
+    expect(result).toEqual({ indexed: 150, skipped: 0 });
+    expect(uploaded).toEqual(included);
+  });
+
+  test('scanKnowledgeDirectories does not index through symbolic links', async () => {
+    const workingDirectory = join(dir, 'workspace');
+    const outside = join(dir, 'outside');
+    mkdirSync(workingDirectory, { recursive: true });
+    mkdirSync(join(outside, 'nested'), { recursive: true });
+    writeFileSync(join(outside, 'secret.md'), '# outside file\n');
+    writeFileSync(join(outside, 'nested', 'deep.md'), '# outside tree\n');
+    writeFileSync(join(workingDirectory, 'inside.md'), '# inside\n');
+    symlinkSync(
+      join(outside, 'secret.md'),
+      join(workingDirectory, 'linked-file.md'),
+    );
+    symlinkSync(outside, join(workingDirectory, 'linked-directory'));
+
+    const { result, uploaded } = await scanWorkspace(workingDirectory);
+
+    expect(result).toEqual({ indexed: 1, skipped: 0 });
+    expect(uploaded).toEqual(['inside.md']);
+  });
 });

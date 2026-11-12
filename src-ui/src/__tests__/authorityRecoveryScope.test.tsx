@@ -421,11 +421,11 @@ describe('recovery request authority (real SDK guards)', () => {
         recoveryDisclosureKey(urlA, scopeAKey!),
       ),
     ).toBeUndefined();
-    expect(screen.getByText('Try again')).not.toBeNull();
+    expect(screen.getByText('Retry')).not.toBeNull();
 
     // The retry is a NEW intent against the current authority: it
     // dispatches once more and the acknowledgement lands on B's entry.
-    fireEvent.click(screen.getByText('Try again'));
+    fireEvent.click(screen.getByText('Retry'));
     await waitFor(() =>
       expect(
         harness.fetchLog.filter((entry) =>

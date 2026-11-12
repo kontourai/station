@@ -2,7 +2,7 @@
 
 Status: source-based decision inventory, 2026-10-19. Covers all **76 catalog
 entries** in this branch (73 existing entries plus three developer opt-ins;
-a fourth opt-in added later is listed with its date),
+entries added later are listed with their dates),
 and additional nested controls below. Baseline:
 `ac9a23234b1e5ec036b3c240b1ed910de24db19c`. This is a Settings review, not an
 app-wide launch certification. “Keep” means the option has a clear purpose;
@@ -147,6 +147,7 @@ changed. No inventory item below is silently marked launch-hardened.
 | Device pairing (`mobile-pairing`) | Keep | Core device connection and revocation journey; never mistake a paired grant for operator authority. | [source](../../src-ui/src/views/settings/PairingSection.tsx) |
 | Open last Station on launch (`open-last-station`) | Keep | Concrete mobile startup choice; unavailable/revoked last Station must be recoverable. | [source](../../src-ui/src/platform/PlatformProfileContext.tsx) |
 | My knowledge store (`personal-knowledge-store`) | Keep / qualify | Concrete root selection; path validation is not search/retrieval value proof for every adapter. | [source](../../src-ui/src/views/settings/KnowledgeStoreSection.tsx) |
+| Past conversations in Knowledge (`knowledge-conversation-history`) | Keep / qualify | Added 2026-11-10, after this inventory's baseline. Off by default; personal startup registers the read-only `root:conversations` root, and turning it off does not remove it. Search value over conversation history is not qualified here. | [source](../../src-server/knowledge-store/conversation-root-bootstrap.ts) |
 
 ## Nested controls outside the catalog count
 

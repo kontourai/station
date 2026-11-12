@@ -391,12 +391,10 @@ const ESCALATION_DECISION_REASONS: ReadonlySet<string> = new Set([
   'Your organization requires approval for this tool',
 ]);
 /**
- * #2932: the `decisionReason` texts Claude Code 2.1.278 sends with reason
- * type `other` for an ordinary ask: a single Bash command that no rule
- * matched. Every other `other` reason is a check of some kind (shell
- * operators, an unparseable command, a `cd` before a write, a sed write),
- * so it escalates. If a later CLI rewords this text, the ordinary ask
- * escalates too and prompts; it never widens.
+ * #2932: the `decisionReason` text Claude Code sends with reason type
+ * `other` for an ordinary ask: a single command that no rule matched. On a
+ * tool other than Bash, any other `other` reason escalates. On Bash, every
+ * `other` reason is a plain call (see `claudeAskEscalates`).
  */
 const ORDINARY_OTHER_DECISION_REASONS: ReadonlySet<string> = new Set([
   'This command requires approval',
@@ -527,9 +525,14 @@ export function sessionGrantPermissionUpdates<T>(
  * - #2932: the engine's structured reason (`claudeAskEscalates`): an ask
  *   rule on a single command, a safety check (in any part of a chained
  *   command too), every PowerShell ask, or a Claude ask whose frame was
- *   not read. The literal rules above stay as a second layer.
+ *   not read. The literal rules above stay as a second layer. Claude's
+ *   Bash command-analysis warnings escalate unless `bashWarnings` is
+ *   `'plain'`, which only the whole-tool session grant passes.
  */
-export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
+export function toolRequestEscalates(
+  request: ToolRequestGrantInput,
+  bashWarnings: BashWarningReading = 'escalate',
+): boolean {
   return (
     request.blockedPath != null ||
     request.matchedAskRule != null ||
@@ -540,7 +543,7 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
     request.suppressAlwaysAllowRule === true ||
     request.defaultToNo === true ||
     request.requiresUserInteraction === true ||
-    claudeAskEscalates(request) ||
+    claudeAskEscalates(request, bashWarnings) ||
     suggestionList(request.suggestions).some(
       (update) => directoryPermissionUpdateKind(update) !== undefined,
     )
@@ -556,8 +559,9 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  *   escalates, so a changed or dropped frame costs a prompt, never a grant.
  * - `classifierApprovable` set, either way: a safety check is involved,
  *   in the ask itself or in any part of a chained command. The engine
- *   sets it exactly then, and sends `decisionReason` text with a chained
- *   command only then (captured from 2.1.278).
+ *   sets it exactly then (captured from 2.1.278). A chained command can
+ *   also carry `decisionReason` text without it (a `&` background operator,
+ *   which defers execution past approval-time checks).
  * - a `decisionReasonCode`: the engine sets one only for a block a host
  *   may act on (`outside_reads_blocked`, `memory_paused`,
  *   `classifier_transcript_too_long`), never for an ordinary ask.
@@ -571,39 +575,59 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  *   tells that from an ordinary command, so every PowerShell ask
  *   escalates.
  * - type `subcommandResults` on Bash (a chained command: `a && b`, `a; b`,
- *   a pipeline) with any `decisionReason` text or a `matchedAskRule`.
- *   Otherwise it is a PLAIN call (owner decision, #2932): a Bash grant
- *   answers chained commands. The engine does not send the reasons of a
- *   chain's parts, so three things a part raised are NOT visible here and
- *   a grant can answer them, as it could before this reader existed:
- *   (i) any `permissions.ask` rule that applies to the chain or to one of
- *   its parts, exact or prefix, whenever the chain arrives as
+ *   a pipeline) with a `matchedAskRule`, or (read strictly) with any
+ *   `decisionReason` text. Otherwise it is a PLAIN call (owner decision,
+ *   #2932): a Bash grant answers chained commands. The engine does not
+ *   send the reasons of a chain's parts, so
+ *   three things a part raised are NOT visible here and a grant can answer
+ *   them, as it could before this reader existed: (i) any
+ *   `permissions.ask` rule that applies to the chain or to one of its
+ *   parts, exact or prefix, whenever the chain arrives as
  *   `subcommandResults`, which is when more than one part needs approval
  *   (the engine sets no `matched_ask_rule` for it; that clause is only a
- *   second layer for a rule the engine does report); (ii) a write or delete outside the
- *   working directories in an `&&` or `;` chain, or in a pipeline with an
- *   output redirect, which arrives with no blocked path and no directory
- *   suggestion; (iii) a part's warning that is not a safety check.
- *   Closing these needs the engine to send the nested reasons.
- * - type `other` with any reason text but the ordinary one.
+ *   second layer for a rule the engine does report); (ii) a write or
+ *   delete outside the working directories in an `&&` or `;` chain, or in
+ *   a pipeline with an output redirect, which arrives with no blocked path
+ *   and no directory suggestion; (iii) a part's warning that is not a
+ *   safety check. Closing these needs the engine to send the nested
+ *   reasons.
+ * - type `other` with any reason text but the ordinary one (read strictly;
+ *   on Bash, see below).
  * - no reason type on a shell tool (Bash, PowerShell). An ordinary Bash
  *   ask carries `other`, so an ask without a type is never the ordinary
  *   one. The engine does send such asks (a Bash path check, which also
  *   carries a blocked path), and an engine that dropped the field must not
  *   turn every shell ask into a plain call.
  *
+ * Bash command-analysis warnings (`bashWarnings`). Besides the ordinary
+ * "This command requires approval", the engine sends its command-analysis
+ * warnings as Bash reason text, under `other` ("A variable in this command
+ * can't be checked before it runs", "Contains brace with quote character
+ * (expansion obfuscation)", a `cd` before a version-control command, …) or
+ * on a chained command (a `&` background operator). Read `'escalate'` (the
+ * default: agent `tools.autoApprove` patterns, the approval guardian, a
+ * delegated child), each reaches a person. Read `'plain'` (only the
+ * whole-tool session grant a person gives, owner decision), each is a
+ * plain call: the warnings say a prefix rule cannot be checked against the
+ * command, and a whole-tool grant matches no rule. Like (ii) above, such a
+ * warning about a write outside the working directories is then answered
+ * when the engine sends it with no blocked path.
+ *
  * A plain call is therefore an ask with no reason type on any other tool
  * (an MCP tool, WebFetch, a file edit inside the working directories),
- * `other` with the ordinary Bash text, or a chained Bash command with no
- * safety check. The signals `toolRequestEscalates` reads beside this one
- * (a blocked path, a directory suggestion, a sandbox override, the ask
- * flags) apply to a chained command when the engine sends them.
+ * `other` with the ordinary text, a Bash warning read `'plain'`, or a
+ * chained Bash command with no safety check and no reported ask rule. The signals
+ * `toolRequestEscalates` reads beside this one (a blocked path, a
+ * directory suggestion, a sandbox override, the literal escalation
+ * reasons, the ask flags) still escalate any of these when the engine
+ * sends them.
  */
 export function claudeAskEscalates(
   request: Pick<
     ToolRequestGrantInput,
     'toolName' | 'claudeAsk' | 'decisionReason' | 'matchedAskRule'
   >,
+  bashWarnings: BashWarningReading = 'escalate',
 ): boolean {
   const { claudeAsk, decisionReason } = request;
   if (claudeAsk === undefined) return false;
@@ -612,16 +636,19 @@ export function claudeAskEscalates(
   if (claudeAsk.decisionReasonCode !== undefined) return true;
   const type = claudeAsk.decisionReasonType;
   const toolName = request.toolName?.trim() ?? '';
+  const hasReasonText =
+    typeof decisionReason === 'string'
+      ? decisionReason.trim() !== ''
+      : decisionReason != null;
   if (type === undefined) return CLAUDE_SHELL_TOOLS.has(toolName);
   if (type === 'subcommandResults')
     return (
       toolName !== 'Bash' ||
       request.matchedAskRule != null ||
-      (typeof decisionReason === 'string'
-        ? decisionReason.trim() !== ''
-        : decisionReason != null)
+      (bashWarnings === 'escalate' && hasReasonText)
     );
   if (type !== 'other') return true;
+  if (toolName === 'Bash' && bashWarnings === 'plain') return false;
   return !(
     typeof decisionReason === 'string' &&
     ORDINARY_OTHER_DECISION_REASONS.has(decisionReason)
@@ -668,8 +695,28 @@ export function toolRequestNeedsPerson(
   return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
 }
 
+/**
+ * How Claude's Bash command-analysis warnings are read (see
+ * `claudeAskEscalates`): `'plain'` for the whole-tool session grant a person
+ * gives, `'escalate'` for every standing allowance a person did not give for
+ * this conversation (agent patterns, the guardian).
+ */
+export type BashWarningReading = 'plain' | 'escalate';
+
+/**
+ * The session grant a person's answer may give. A whole-tool grant answers
+ * Claude's Bash command-analysis warnings (owner decision); see
+ * `toolRequestIsPlainCall` for the stricter reading patterns use.
+ */
 export function toolRequestSessionGrant(
   request: ToolRequestGrantInput,
+): ToolRequestSessionGrant {
+  return sessionGrantFor(request, 'plain');
+}
+
+function sessionGrantFor(
+  request: ToolRequestGrantInput,
+  bashWarnings: BashWarningReading,
 ): ToolRequestSessionGrant {
   const toolName = request.toolName?.trim();
   if (
@@ -680,7 +727,7 @@ export function toolRequestSessionGrant(
     return 'none';
   const readOnly =
     toolName !== undefined && CLAUDE_READ_ONLY_TOOLS.has(toolName);
-  const escalates = toolRequestEscalates(request);
+  const escalates = toolRequestEscalates(request, bashWarnings);
   if (
     !escalates &&
     toolName !== undefined &&
@@ -718,11 +765,16 @@ export function toolRequestSessionGrant(
  * frame was not read. A chained Bash command hides an ask rule on one of
  * its parts and some writes outside the working directories; see
  * `claudeAskEscalates`.
+ *
+ * Stricter than the whole-tool session grant in one respect: Claude's Bash
+ * command-analysis warnings still reach a person here (`'escalate'`). The
+ * owner decided a person's own session answer covers them; a pattern, the
+ * guardian and a delegated child's policy were not part of that decision.
  */
 export function toolRequestIsPlainCall(
   request: ToolRequestGrantInput,
 ): boolean {
-  const grant = toolRequestSessionGrant(request);
+  const grant = sessionGrantFor(request, 'escalate');
   return grant === 'tool' || grant === 'edit-mode';
 }
 
@@ -786,13 +838,152 @@ export function toolRequestSessionGrantFromPayload(
 }
 
 /**
+ * The command-prefix session grant a Claude Bash request can additionally
+ * offer (owner decision): allow the prefixes the engine itself suggested,
+ * such as `npm ls *`, for this session. Answered with `acceptForSession`
+ * and the typed `sessionGrantScope: 'rule'`; the adapter forwards only those
+ * rules (`ruleGrantPermissionUpdates`), with the session as destination, so
+ * the engine stops asking for matching commands. Station mints no tool
+ * grant for it.
+ */
+export type ToolRequestRuleGrant = {
+  /** The suggested Bash prefix rules, exactly as the engine wrote them. */
+  rules: readonly string[];
+  /** The choice's label on every surface. */
+  label: string;
+};
+
+/** More prefixes than this make no short label; the choice is not offered. */
+const MAX_RULE_GRANT_RULES = 2;
+const MAX_RULE_GRANT_RULE_LENGTH = 60;
+
+/**
+ * A Bash allow rule worth a session choice: a prefix (`npm ls *`, or the
+ * older `npm ls:*`). An exact-command rule (`npm --version`) is not.
+ */
+function isBashPrefixRule(
+  rule: unknown,
+): rule is { toolName: 'Bash'; ruleContent: string } {
+  if (
+    !isRecord(rule) ||
+    rule.toolName !== 'Bash' ||
+    typeof rule.ruleContent !== 'string'
+  )
+    return false;
+  const content = rule.ruleContent;
+  const prefix = content.endsWith(':*')
+    ? content.slice(0, -2)
+    : content.endsWith(' *')
+      ? content.slice(0, -2)
+      : undefined;
+  // A wildcard inside the prefix (`* *`) matches nearly everything, and a
+  // quote would break the label's quoting: neither is offered.
+  return (
+    prefix !== undefined &&
+    prefix.trim() !== '' &&
+    !prefix.includes('*') &&
+    !prefix.includes('"')
+  );
+}
+
+/**
+ * The suggested updates a `sessionGrantScope: 'rule'` answer forwards: each
+ * `addRules` allow update cut to its Bash prefix rules, and nothing else (no
+ * mode change, directory or exact-command rule).
+ */
+export function ruleGrantPermissionUpdates<T>(
+  suggestions: readonly T[] = [],
+): T[] {
+  return suggestions.flatMap((update) => {
+    if (
+      !isRecord(update) ||
+      update.type !== 'addRules' ||
+      update.behavior !== 'allow' ||
+      !Array.isArray(update.rules)
+    )
+      return [];
+    const rules = update.rules.filter(isBashPrefixRule);
+    return rules.length > 0 ? [{ ...update, rules } as T] : [];
+  });
+}
+
+/**
+ * Whether the request offers the command-prefix grant, and its rules and
+ * label. Only a Claude Bash ask (its frame was read: `claudeAsk` is an
+ * object, which only the Claude adapter sends) that is a plain call (`tool`
+ * grant) and whose suggestions carry one or two Bash prefix rules. A rule
+ * the preview would redact or shorten is not offered: the label must show
+ * exactly what is allowed. The adapter honours the answer with this same
+ * computation.
+ */
+export function toolRequestRuleGrant(
+  request: ToolRequestGrantInput,
+): ToolRequestRuleGrant | undefined {
+  if (
+    request.toolName?.trim() !== 'Bash' ||
+    !isRecord(request.claudeAsk) ||
+    Array.isArray(request.claudeAsk) ||
+    toolRequestSessionGrant(request) !== 'tool'
+  )
+    return undefined;
+  const rules = [
+    ...new Set(
+      ruleGrantPermissionUpdates(suggestionList(request.suggestions)).flatMap(
+        (update) =>
+          (update as { rules: { ruleContent: string }[] }).rules.map(
+            (rule) => rule.ruleContent,
+          ),
+      ),
+    ),
+  ];
+  if (
+    rules.length === 0 ||
+    rules.length > MAX_RULE_GRANT_RULES ||
+    rules.some(
+      (rule) =>
+        rule.length > MAX_RULE_GRANT_RULE_LENGTH ||
+        boundedPreviewLine(rule) !== rule,
+    )
+  )
+    return undefined;
+  return {
+    rules,
+    label: `Allow ${rules.map((rule) => `"${rule}"`).join(' and ')} for this session`,
+  };
+}
+
+/** `toolRequestRuleGrant` over a whole `request.opened` payload. */
+export function toolRequestRuleGrantFromPayload(
+  payload: Record<string, unknown> | undefined,
+): ToolRequestRuleGrant | undefined {
+  const { toolName, toolInput } = toolRequestFromPayload(payload);
+  return toolRequestRuleGrant({
+    toolName,
+    toolInput,
+    decisionReason: payload?.decisionReason,
+    suppressAlwaysAllowRule: payload?.suppressAlwaysAllowRule,
+    defaultToNo: payload?.defaultToNo,
+    requiresUserInteraction: payload?.requiresUserInteraction,
+    claudeAsk: payload?.claudeAsk,
+    suggestions: payload?.suggestions,
+    blockedPath: payload?.blockedPath,
+    matchedAskRule: payload?.matchedAskRule,
+    permissionMode: payload?.permissionMode,
+    toolKind: payload?.toolKind,
+  });
+}
+
+/**
  * The label of the session-grant decision (`acceptForSession`), shared by the
  * approval toast, the inline card (#2316) and the inbox card. It names both
  * what is granted and the session scope: "Always Allow" overstated its
  * duration and hid its breadth. Undefined when no session grant is offered.
  *
  * A `tool` grant names the tool only when the request reported one: then the
- * adapter records a standing grant for every later call to it (#2299). With
+ * adapter records a standing grant for every later call to it (#2299), and
+ * the label says "all <Tool> calls" ("all Bash commands" for a Claude
+ * shell tool) so it reads apart from a command-prefix choice
+ * (`toolRequestRuleGrant`). With
  * NO reported name the grant's breadth is not one thing the label could name
  * — Codex's adapter derives its own key (every later command, or file
  * change), an ACP engine with no name gets only its own `allow_always` rule
@@ -816,9 +1007,11 @@ export function toolRequestGrantLabel(
       return 'Allow access to this folder for this session';
     case 'tool': {
       const displayName = toolRequestDisplayName(toolName);
-      return displayName
-        ? `Allow ${displayName} for this session`
-        : 'Allow for this session';
+      if (!displayName) return 'Allow for this session';
+      // "all", because a command-prefix choice may sit beside this one.
+      return CLAUDE_SHELL_TOOLS.has(displayName)
+        ? `Allow all ${displayName} commands for this session`
+        : `Allow all ${displayName} calls for this session`;
     }
   }
 }

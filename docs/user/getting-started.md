@@ -47,7 +47,7 @@ AI app**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
 inspect the selection. Save with **Create Agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
-the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
+the same priority as that message. (With the **Station orchestration instructions** Feature Preview on, an Agent that has Station controls also gets Station's own guidance on using them in that first message.) You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
 for tool selection and approval details.
 
 In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
@@ -231,9 +231,11 @@ writes too. Codex's web search and MCP tools are not commands and are not
 covered by this. Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session. A Claude chat started in a
 chosen mode by someone who may grant full access can switch to full access on
-its next turn. A chat left on Claude's own settings, one that started before
-this was available, or one on a Station running as root outside a sandbox
-needs a restart.
+its next turn. A chat left on Claude's own settings, or one that started before
+this was available, gets full access on its next turn too: Station relaunches
+Claude Code first and resumes the same conversation. A chat that is waiting on
+you or still running background work, or one on a Station running as root
+outside a sandbox, needs a restart.
 
 ## Read recent conversations offline
 
@@ -542,9 +544,11 @@ Project admission still applies. A foreground chat stays on its owning Station;
 choosing another destination starts new work. With no other Station to choose,
 the control is plain text.
 
-The Project page opens on **Overview**. **Project room** is shared discussion
-with people in that Project; use **Bring an Agent** for an explicit request
-whose answer returns to the room. Direct Agent conversations stay in the chat
+The Project page opens on **Overview**. **Room** is shared discussion with
+people in that Project, in named channels starting with `#general`; choose the
+channel name to switch, and people who can edit can add, rename or archive
+channels. Use **Bring an Agent** for an explicit request whose answer returns
+to the channel. Direct Agent conversations stay in the chat
 dock. **Tasks** separates current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
@@ -706,18 +710,34 @@ and shows all work anywhere else. If work needs
 you outside the filter, choose **Show all** from the notice.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
-from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
-preview** enabled in Settings → Advanced → Developer tools, swipe left to
-reveal the clock and × controls. The clock opens Snooze duration choices; ×
-dismisses the conversation. Dismissal leaves running work and history intact.
+from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
+details. With **Sheet gestures preview** enabled in Settings → Advanced →
+Developer tools, swipe left to reveal labelled actions; the row follows your
+finger and snaps open when released. Only one row's actions stay revealed.
+**Snooze** opens duration choices, and **Dismiss** hides the conversation.
+Swiping itself never runs an action. Dismissal leaves running work and history intact.
 Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
 or search the inbox, find matching **Dismissed** results, and choose
 **Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+A turn the engine opens on its own, such as its reply when background work
+finishes, does not bring it back unless that turn fails, stops or needs you.
 Hidden **Third-party** sessions stay hidden through external updates until you
 restore them or bring them into Station.
+
+If this browser cannot save Snooze, the choice still holds for the current
+page session. Saved snoozes update other open tabs of this browser.
+
+**Discard draft** deletes an unstarted server Draft across devices. It first
+offers **Undo** for eight seconds and announces **Draft will be discarded**.
+The Undo button replaces the row's discard shortcut; the Details sheet also
+shows the pending message. Undo keeps
+the Draft; leaving that control or switching Station or account also cancels
+the pending deletion. After the window, Station asks the server to discard it
+and shows any refusal. Discarding an **unsent draft** instead clears the text
+you typed on this device.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
@@ -879,6 +899,13 @@ was not recorded. A summary or transcript handle alone does not establish a
 returned result. An existing completion notice is corrected when a later
 structured tool return arrives from the same Station and child.
 
+A background shell command an engine started (or a monitor watching one) is
+not a subagent: its card shows a terminal mark, the command line and, once it
+ends, its exit code, and a group counts it as a background command.
+
+Every background-task row expands to its full title, status, start and end
+times, and, for a tool, which tool ran and a one-line summary of its input.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
@@ -902,16 +929,18 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
-the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
-native steering. Other engines hold steering until a safe boundary can be proven;
+Keep typing during a turn. With Claude Code and Codex, which take native
+steering, **Send** defaults to **Steer**; elsewhere it defaults to **Queue**,
+which delivers after the turn finishes. The dropdown switches between them. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
-Steer and Queue carry text only. You can still attach files or dictate during a
-turn: files wait in the draft, which says why, until you send it after the turn
-ends.
+You can attach files or dictate during a turn. Steer carries text only, so a
+message with files is queued: Station keeps the files with it and sends them
+when the turn ends, and the pending row names them. On a Station that cannot
+hold files yet, they wait in the draft, which says why, until you send it after
+the turn ends.
 
 The app attempts to save a text message on this device before sending it. If
 the write fails or times out, it sends without that saved row and keeps the
@@ -1044,7 +1073,10 @@ unavailable.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
 In new chats and New Task conversations, drop an image onto the composer or paste
-a screenshot. Review its thumbnail and remove it before sending if needed.
+a screenshot. On a phone, use **Paste image** beside Attach. In the Android app
+you can also share images from another app to Station, then pick a
+conversation or **New chat** in a project. Review its thumbnail and remove it
+before sending if needed.
 The existing Task room and agent-thread replies accept images the same way,
 including messages with only an image. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
@@ -1055,7 +1087,7 @@ An existing chat can become a Task through **New Task from this** in its More me
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
 
-To keep one chat as your personal agent, choose **Make this Houston** in its More menu. Home then pins it with **Talk to Houston**, and Station tells it when your work needs you, fails or finishes. See [Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md).
+To keep one chat as your personal agent, turn on **Coordinator chat** in Settings → Advanced → Feature previews, then choose **Make this Houston** in the chat's More menu. Home then pins it with **Talk to Houston**, and Station tells it when your work needs you, fails or finishes. See [Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md).
 
 On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
 issue's description and latest comments into a new Task and links back to the
@@ -1064,9 +1096,14 @@ issue; if the issue already has an open Task, Station opens that Task instead.
 After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
 
 The Task opens as a chat room. Press Enter to send, or Shift+Enter for a new
-line. New messages follow the newest message while you are at the bottom; if
-you scroll up, **Jump to latest** returns you there. **Load earlier messages**
-appears above the visible history. A failed agent request stays in the room
+line; on a phone keyboard, Return adds a line and the round send button sends.
+An unsent draft is kept for each room and thread in this tab. Messages from one
+person within a few minutes share one name and avatar, a divider marks each day,
+and agents have square avatars where people have round ones. New messages
+follow the newest message while you are at the bottom; if you scroll up, the
+room keeps your place, marks where new messages start, and **N new messages**
+returns you to the latest. **Load earlier messages** appears above the visible
+history. A failed agent request stays in the room
 with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
@@ -1075,6 +1112,16 @@ After first-run setup, Home can offer **Start your first task** for a confirmed
 Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
+
+When a Task's Session reports a plan (ACP engines do), its Tasks board card
+and Project task row show **Agent plan 3/5** and a thin bar. It is the agent's
+newest plan in that Session's latest turn, refreshed every few seconds while
+the Task is in progress or blocked. **Stopped** follows the count when the
+turn was stopped or the Session failed or was canceled with steps open, and
+**Waiting** when the Session needs input or an approval. There is no bar
+without a plan, for a plan from an earlier turn, or on done and canceled
+Tasks. The count is agent-reported: it never marks a Task done or satisfies a
+gate.
 
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains

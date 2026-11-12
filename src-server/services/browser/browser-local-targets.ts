@@ -12,15 +12,10 @@
  * owns the file.
  */
 import { randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { BlockList } from 'node:net';
 import { join } from 'node:path';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import type { RegisteredLocalTarget } from './egress-policy.js';
 import { canonicalIp, isLoopbackIp } from './ip-address.js';
 import type { StationListeners } from './station-listeners.js';
@@ -189,8 +184,6 @@ export class LocalTargetStore {
       recursive: true,
       mode: 0o700,
     });
-    const temp = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temp, this.path);
+    writeJsonDurably(this.path, store);
   }
 }

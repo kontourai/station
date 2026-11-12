@@ -9,6 +9,7 @@ import {
   validateManifest,
   validateStationExtension,
 } from './agent-plugin-validators.generated.mjs';
+import { isObjectRecord } from './object-record.js';
 
 export interface AgentPluginManifestReport {
   level: 'warning' | 'error';
@@ -18,9 +19,6 @@ export interface AgentPluginManifestReport {
     | 'unknown-manifest-field';
   component?: string;
   message: string;
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 function isReservedObjectKey(key: string): boolean {
   return ['__proto__', 'constructor', 'prototype'].includes(key);
@@ -62,7 +60,7 @@ export function parseAgentPluginManifest(
       component: 'plugin.json',
       message,
     });
-  if (!isRecord(value)) {
+  if (!isObjectRecord(value)) {
     manifestError('Plugin manifest must be an object');
     return null;
   }
@@ -92,9 +90,9 @@ export function parseAgentPluginManifest(
       core[key] = fieldValue;
     }
   }
-  if (isRecord(value.extensions)) {
+  if (isObjectRecord(value.extensions)) {
     const invalidNamespace = Object.entries(value.extensions).find(
-      ([, namespaceValue]) => !isRecord(namespaceValue),
+      ([, namespaceValue]) => !isObjectRecord(namespaceValue),
     );
     if (invalidNamespace) {
       manifestError(
@@ -123,14 +121,14 @@ export function parseAgentPluginManifest(
   }
 
   let stationExtension: StationAgentPluginExtensionV1 | undefined;
-  if (value.extensions !== undefined && !isRecord(value.extensions)) {
+  if (value.extensions !== undefined && !isObjectRecord(value.extensions)) {
     report({
       level: 'warning',
       code: 'manifest-invalid',
       component: 'plugin.json#extensions',
       message: 'Non-object extensions field was ignored',
     });
-  } else if (isRecord(value.extensions)) {
+  } else if (isObjectRecord(value.extensions)) {
     const station = value.extensions[STATION_AGENT_PLUGIN_EXTENSION_ID];
     if (station !== undefined) {
       if (!validators.stationExtension(station)) {

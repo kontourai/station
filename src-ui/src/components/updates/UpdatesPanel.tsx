@@ -68,7 +68,7 @@ export function UpdatesPanel({
           )}
           {!notice.href && notice.onAction && (
             <Button onClick={notice.onAction}>
-              {notice.actionLabel ?? 'Try again'}
+              {notice.actionLabel ?? 'Retry'}
             </Button>
           )}
         </div>

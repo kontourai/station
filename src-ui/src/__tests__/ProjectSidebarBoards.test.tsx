@@ -62,6 +62,7 @@ const {
   reactApi,
   viewport,
   createOutcome,
+  deleteOutcome,
   readState,
 } = vi.hoisted(() => ({
   /**
@@ -72,6 +73,8 @@ const {
   viewport: { isMobile: false },
   /** Whether the next create is refused; see the create mock below. */
   createOutcome: { rejects: false },
+  /** Whether the next delete is refused; see the delete mock below. */
+  deleteOutcome: { rejects: false },
   readState: { status: 'success', refetch: vi.fn() },
   boards: [] as Array<{
     id: string;
@@ -272,31 +275,52 @@ vi.mock('@kontourai/station-sdk', () => {
         notify();
       },
     }),
-    useDeletePersonalLayoutMutation: () => ({
-      mutate: (slug: string) => {
+    useDeletePersonalLayoutMutation: () => {
+      const remove = (slug: string) => {
         calls.remove.push(slug);
         const index = boards.findIndex((row) => row.slug === slug);
         if (index >= 0) boards.splice(index, 1);
         notify();
-      },
-    }),
-    usePromotePersonalLayoutMutation: () => ({
-      mutate: (input: { layoutSlug: string; projectSlug: string }) => {
+      };
+      return {
+        mutate: remove,
+        // #4688: the row menu's delete is deferred behind Undo and awaits it.
+        mutateAsync: async (slug: string) => {
+          if (deleteOutcome.rejects) {
+            calls.remove.push(slug);
+            throw new Error('Board storage is unavailable');
+          }
+          remove(slug);
+        },
+      };
+    },
+    usePromotePersonalLayoutMutation: () => {
+      const promote = (input: { layoutSlug: string; projectSlug: string }) => {
         calls.promote.push(input);
         // Promote is a MOVE: the record leaves the personal list. A mock that
         // left it there would let a panel that treats promote as a copy pass.
         const index = boards.findIndex((row) => row.slug === input.layoutSlug);
         if (index >= 0) boards.splice(index, 1);
         notify();
-      },
-    }),
+      };
+      return {
+        mutate: promote,
+        mutateAsync: async (input: {
+          layoutSlug: string;
+          projectSlug: string;
+        }) => promote(input),
+      };
+    },
   };
 });
 
 import * as React from 'react';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
+import { UndoableActionShortcut } from '../components/undo/UndoableActionShortcut';
+import { resetUndoableActionsForTest } from '../components/undo/undoable-actions';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
@@ -334,7 +358,9 @@ function setViewportWidth(width: number) {
  */
 async function renderSidebar(ui: ReactElement) {
   const result = render(
-    <KeyboardShortcutsProvider>{ui}</KeyboardShortcutsProvider>,
+    <KeyboardShortcutsProvider>
+      <UndoableActionShortcut>{ui}</UndoableActionShortcut>
+    </KeyboardShortcutsProvider>,
   );
   // The panel's own rows are synchronous; this is the lazy boundary settling.
   await act(async () => {
@@ -357,6 +383,9 @@ beforeEach(() => {
   setViewportWidth(DESKTOP_WIDTH);
   openSurfaceInRegion.mockClear();
   createOutcome.rejects = false;
+  deleteOutcome.rejects = false;
+  resetUndoableActionsForTest();
+  toastStore.clear();
   boards.length = 0;
   projects.length = 0;
   pathname.value = '/';
@@ -381,6 +410,37 @@ function boardsHeader() {
 
 function boardMenu(name: string) {
   fireEvent.click(screen.getByRole('button', { name: `${name} actions` }));
+}
+
+/** Closes every notice, which is when a deferred Board write runs (#4688). */
+async function closeUndoWindow() {
+  await act(async () => {
+    toastStore.dismissAll();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+/** The Undo notice's message, or undefined when none is showing. */
+function notice(message: string) {
+  return toastStore.getSnapshot().find((toast) => toast.message === message);
+}
+
+/** Mod+Z from outside any text field. */
+function pressUndo() {
+  act(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+  });
+}
+
+function deleteFromMenu(name: string) {
+  boardMenu(name);
+  act(() => {
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  });
+  act(() => {
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  });
 }
 
 describe('Apps stay discoverable after Projects', () => {
@@ -1439,7 +1499,12 @@ describe('deleting a Board from the panel', () => {
     act(() => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     });
+    // #4688: gone from the panel at once, deleted when the Undo window closes.
+    expect(screen.queryByRole('button', { name: 'Daily brief' })).toBeNull();
+    expect(calls.remove).toEqual([]);
+    await closeUndoWindow();
     expect(calls.remove).toEqual(['daily']);
+    expect(screen.queryByRole('button', { name: 'Daily brief' })).toBeNull();
     // The first-create action remains after the last Board is removed.
     expect(boardsHeader()).not.toBeNull();
     expect(screen.getByRole('button', { name: 'New Board' })).toBeTruthy();
@@ -1485,6 +1550,8 @@ describe('promoting a Board from the panel', () => {
     act(() => {
       fireEvent.click(within(menu).getByRole('menuitem', { name: 'Other' }));
     });
+    expect(calls.promote).toEqual([]);
+    await closeUndoWindow();
 
     expect(calls.promote).toEqual([
       { layoutSlug: 'daily', projectSlug: 'other' },
@@ -1693,5 +1760,145 @@ describe('a Board pill opens into a region (#2158)', () => {
     expect(openSurfaceInRegion).toHaveBeenCalledWith(`board:${DAILY_ID}`, {
       region: 'bottom',
     });
+  });
+});
+
+/**
+ * #4688 — Delete and Move to project are offered with General Undo. The
+ * server write is deferred until the notice closes, so Undo is the absence of
+ * a write: `calls` is what the server would have been asked to do.
+ */
+describe('undoing a Board delete or move', () => {
+  test('Mod+Z brings a deleted Board back and nothing is ever deleted', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    await renderSidebar(<ProjectSidebar />);
+    deleteFromMenu('Daily brief');
+    expect(screen.queryByRole('button', { name: 'Daily brief' })).toBeNull();
+    expect(notice('Deleted Daily brief')?.actions?.[0]?.label).toBe('Undo');
+
+    pressUndo();
+    expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
+    expect(notice('Restored Daily brief')).toBeDefined();
+    await closeUndoWindow();
+    expect(calls.remove).toEqual([]);
+    expect(boards.map((board) => board.slug)).toEqual(['daily']);
+  });
+
+  test('a change made elsewhere during the window survives the Undo', async () => {
+    boards.push(
+      { id: boardId('daily'), slug: 'daily', name: 'Daily brief' },
+      { id: boardId('weekly'), slug: 'weekly', name: 'Weekly' },
+    );
+    await renderSidebar(<ProjectSidebar />);
+    deleteFromMenu('Daily brief');
+    // Another device renames the pending Board, and this one renames another.
+    boards[0]!.name = 'Morning brief';
+    act(() => sdk.notify());
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Weekly actions' }));
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    });
+    const input = screen.getByRole('textbox', { name: 'Rename Weekly' });
+    fireEvent.change(input, { target: { value: 'Weekly review' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    act(() => {
+      toastStore.runAction(notice('Deleted Daily brief')!.id, 0);
+    });
+    // No snapshot is written back: both edits stand.
+    expect(screen.getByRole('button', { name: 'Morning brief' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Weekly review' })).toBeTruthy();
+    expect(calls.update).toEqual([
+      { layoutSlug: 'weekly', update: { name: 'Weekly review' } },
+    ]);
+    expect(calls.create).toEqual([]);
+    await closeUndoWindow();
+    expect(calls.remove).toEqual([]);
+  });
+
+  test('deleting the open Board leaves it, and Undo returns to it (#4458)', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    pathname.value = '/boards/daily';
+    await renderSidebar(<ProjectSidebar />);
+    deleteFromMenu('Daily brief');
+    expect(navigate).toHaveBeenLastCalledWith('/');
+    pressUndo();
+    expect(navigate).toHaveBeenLastCalledWith('/boards/daily');
+  });
+
+  test('moving the open Board leaves it, and Undo returns to it', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    projects.push({ id: '1', slug: 'demo', name: 'Demo' });
+    pathname.value = '/boards/daily';
+    await renderSidebar(<ProjectSidebar />);
+    boardMenu('Daily brief');
+    act(() => {
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Move to project…' }),
+      );
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Demo' }));
+    });
+    expect(navigate).toHaveBeenLastCalledWith('/');
+    pressUndo();
+    expect(navigate).toHaveBeenLastCalledWith('/boards/daily');
+    await closeUndoWindow();
+    expect(calls.promote).toEqual([]);
+  });
+
+  test('a refused delete is shown and the Board comes back', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    deleteOutcome.rejects = true;
+    await renderSidebar(<ProjectSidebar />);
+    deleteFromMenu('Daily brief');
+    await closeUndoWindow();
+    expect(calls.remove).toEqual(['daily']);
+    const failure = notice('Could not delete Daily brief.');
+    expect(failure?.type).toBe('error');
+    expect(failure?.metadata?.detail).toBe('Board storage is unavailable');
+    expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
+  });
+
+  test('Undo keeps a moved Board in Apps and nothing is moved', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    projects.push({ id: '1', slug: 'demo', name: 'Demo' });
+    await renderSidebar(<ProjectSidebar />);
+    boardMenu('Daily brief');
+    act(() => {
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Move to project…' }),
+      );
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Demo' }));
+    });
+    expect(screen.queryByRole('button', { name: 'Daily brief' })).toBeNull();
+    expect(notice('Moved Daily brief to Demo')).toBeDefined();
+    pressUndo();
+    expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
+    await closeUndoWindow();
+    expect(calls.promote).toEqual([]);
+  });
+
+  test('Mod+Z inside the rename field stays with the field', async () => {
+    boards.push(
+      { id: boardId('daily'), slug: 'daily', name: 'Daily brief' },
+      { id: boardId('weekly'), slug: 'weekly', name: 'Weekly' },
+    );
+    await renderSidebar(<ProjectSidebar />);
+    deleteFromMenu('Daily brief');
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Weekly actions' }));
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    });
+    const input = screen.getByRole('textbox', { name: 'Rename Weekly' });
+    act(() => input.focus());
+    expect(fireEvent.keyDown(input, { key: 'z', ctrlKey: true })).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Daily brief' })).toBeNull();
   });
 });

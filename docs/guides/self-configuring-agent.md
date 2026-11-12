@@ -22,6 +22,8 @@ example does not grant one implicitly.
 
 Attach `station-control` and select `html_preview` and `html_render` to let an
 Agent preview and publish a self-contained HTML reply in its own conversation.
+A session whose network Station restricts is not given them: they run in
+Station's Chromium, outside its sandbox.
 This works through the existing Claude, Codex and ACP MCP passthroughs when the
 connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
 and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
@@ -59,8 +61,8 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
 - `coordinator_picture_read` and `coordinator_picture_update` for the bound
-  designated coordinator, when the **Coordinator working picture** preview is
-  enabled. They keep short, person-scoped notes about readable conversations;
+  designated coordinator, when the **Coordinator chat** and **Coordinator
+  working picture** previews are enabled. They keep short, person-scoped notes about readable conversations;
   Station rechecks source access on reads and updates. Notes are the
   coordinator's account, not authoritative live status. See [Houston's
   working picture](../user/houston.md#working-picture).
@@ -219,6 +221,12 @@ Station checks an Agent's dispatch against its verified Session caller:
   with that owner's `execute` action in the target Project.
 - Other verified callers also stay within their calling Session's Project or
   global scope and cannot reach a conversation that runs unconfined (`host`).
+- A Session whose network Station restricts
+  ([`confinedNetwork`](../reference/config.md#optional-fields)) is not given
+  the dispatch tools at all, nor the device, HTML-preview and settings tools.
+  The server refuses it, with `station_control_network_restricted`, every
+  route owned only by withheld tools; a route a kept tool shares stays open
+  to the kept tool's calls (#4769).
 
 Here, `bound` describes verified caller assurance, not a selected approval mode.
 A plain folder target belongs to the deepest Project whose canonical working
@@ -648,7 +656,8 @@ inputs: nothing names a Project, an owner, or a host.
   turn's last terminal event (`completed`, `failed` for a `runtime.error`,
   `interrupted` for an abort or a `cancelled` finish, or `open` when none is
   recorded), tool calls by name (`otherTools` counts the names beyond the first
-  eight), `files` (only a successful call whose engine reported an edit, delete
+  eight; a Station tool also has a plain-language `label`, such as "Wait for a
+  Session"), `files` (only a successful call whose engine reported an edit, delete
   or move kind and a path argument, and a path is never guessed from a tool's
   name), `filesReported: false` on a turn that called tools none of which carried
   an engine-reported tool kind (a missing `files` there means unknown, not none;
@@ -1015,6 +1024,51 @@ parent linkage. The result is the same resumable task exposed by
 confirmation to follow its existing session, approvals, output, and interrupt
 controls.
 
+## Orchestration instructions
+
+With the `station-orchestration-instructions` Feature Preview on (off by
+default; Settings, Advanced, Feature previews), a new Session whose Agent is
+offered `station-control` also receives Station-owned guidance on when to use
+those tools: delegating with `delegate_task`, waiting with `wait_session`, and
+the browser and device tools. The text is composed from the tools the Session
+is actually offered after the Agent's tool selection, disabled tools, and the
+engine's caller assurance, so it never names a tool the Session cannot call.
+This is guidance, not authority: access, approval and the delegation rules below
+are enforced regardless.
+
+Delivery depends on the engine:
+
+- Claude with an authored Agent prompt: appended after that prompt, as
+  `stationInstructions` on the resolved definition, with receipt channel
+  `system-prompt-append`. An Agent with no authored prompt is not given an
+  append, because that would switch Claude to its preset prompt; it uses the
+  first-turn channel instead.
+- Muse and any other engine without a Station Control caller assurance get
+  no instructions. Muse is never given `station-control`, so there is no tool to
+  describe, and Station composes nothing for it.
+- Codex and ACP: prepended to the Session's first message (receipt channel
+  `first-turn`), after the Agent prompt. Codex has no `additionalContext` channel
+  here; the existing first-message path is used.
+- A resumed engine thread is not re-sent the first-turn text, a Session's second
+  turn never repeats it, and it is withheld when `station-control` did not reach
+  the engine. When the engine is recovered just before the first turn, that
+  check reads the delivery report written by the recovery.
+- Codex gets device guidance only while the `codex-bound-browser-device-tools`
+  preview is on and the bound channel offers `device_open`.
+
+Known limitations while this is a preview: the delivery check reads the event
+log, so a delivery report that has not yet been stored, or a recovery done by
+another caller, can leave the first turn deciding from the earlier report.
+Switching the bound-tools preview off between Session setup and engine start
+can likewise leave device guidance for tools the engine never received. In each
+case the effect is guidance that names a tool which then refuses, or guidance
+that is missing; access is never widened.
+
+The receipt is recorded under `stationInstructions` in the Session's capability
+delivery metadata (`sections`, `digest`, `channel`; `delivered` only for the
+Claude append, see [contracts](../reference/contracts.md#station-orchestration-instructions-receipt)). Toggling the preview applies
+to Sessions started afterwards.
+
 ## Example agent
 
 Use this as an attended Station-engine Agent after configuring a usable Model
@@ -1098,6 +1152,16 @@ The `_delegation` argument a model writes into `delegate_task` or
 `send_message` is ignored. A session already at the depth limit is refused
 before any child starts, on every engine.
 
+A delegated child that calls `delegate_task` or `send_message` is refused
+earlier and at any depth, not only at the last one: the routes behind them
+answer `403` with `delegated_tool_blocked` before the depth limit is read.
+The decision uses the calling session's own recorded context and the built-in
+denials below, so an Agent's `allowedTools` cannot re-allow them, and it applies
+on every engine whose call carries a verified station-control caller (see
+[tool-policy delivery](../conformance/tool-policy-delivery.md)). The
+[orchestration instructions](#orchestration-instructions) never tell a
+delegated child to use either tool.
+
 The default policy is `maxDepth` 2, `denyApprovals`, and the built-in
 denials in `BUILTIN_DELEGATION_DENIALS`
 ([`agent.ts`](../../packages/contracts/src/agent.ts)): `send_message`,
@@ -1109,8 +1173,9 @@ dropped any context, so every `delegate_task` child started as an unrestricted
 root, including children of Station's own engine and of the default Agents
 (`station`, `claude`, `codex`). A `send_message` child on another engine
 carried whatever context the model wrote, or none. Every such child now gets
-lineage and the default policy. Where Station's pre-tool policy is delivered,
-the built-in denials prevent a delegated child from:
+lineage and the default policy. Where Station's pre-tool policy is delivered
+(and, for delegating or messaging further, at the server routes as described
+above), the built-in denials prevent a delegated child from:
 
 - calling the matching create, update, delete, add, or remove station-control tools;
 - starting a scheduled job with `run_job`, or delegating or messaging further;

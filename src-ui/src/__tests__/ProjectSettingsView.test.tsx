@@ -1392,7 +1392,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       'Try again in a moment.',
     );
     expect(screen.queryByText('Station connection was interrupted')).toBeNull();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
     expect(navigationMocks.showSurface).not.toHaveBeenCalled();
   });
@@ -1417,10 +1417,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
 
-    expect(screen.getByRole('dialog').textContent).toContain(
+    expect(screen.getByRole('alertdialog').textContent).toContain(
       'Tasks and chats stay in history',
     );
-    expect(screen.getByRole('dialog').textContent).toContain(
+    expect(screen.getByRole('alertdialog').textContent).toContain(
       'no longer have a live Project workspace',
     );
   });

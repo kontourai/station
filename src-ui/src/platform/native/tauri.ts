@@ -1,5 +1,6 @@
 import { readNativeCommandError } from './nativeCommandError';
 import { validateNativeShareText } from './share';
+import { parseNativeImageList } from './share-image';
 import { invokeTauri, listenTauriPlugin } from './tauriInvoke';
 import type {
   BundledServerOwnership,
@@ -21,6 +22,7 @@ import type {
   NativeCommandResult,
   NativeConsentOutcome,
   NativeEventSubscription,
+  NativeImageList,
   NativeIosAgentActivityStatus,
   NativePairingDeepLinkEvent,
   NativePlatformAdapter,
@@ -159,6 +161,18 @@ const INITIAL_TAURI_CAPABILITIES: Record<
     reason:
       'No reviewed native share-target or deep-link receiver is enabled yet.',
   },
+  'image-share-intake': {
+    id: 'image-share-intake',
+    state: 'disabled',
+    reason:
+      'The native host must report its image share target before it is used.',
+  },
+  'clipboard-image': {
+    id: 'clipboard-image',
+    state: 'disabled',
+    reason:
+      'The native host must report clipboard image reads before they are used.',
+  },
 };
 
 const CAPABILITY_IDS: NativeCapabilityId[] = [
@@ -173,9 +187,12 @@ const CAPABILITY_IDS: NativeCapabilityId[] = [
   'native-consent-broker',
   'remote-push',
   'share-intake',
+  'image-share-intake',
+  'clipboard-image',
 ];
-// `native-consent-broker` is deliberately NOT required: a UI served by a
-// newer Station must still verify an older shell's report (archive#3677).
+// `native-consent-broker`, `image-share-intake` and `clipboard-image` are
+// deliberately NOT required: a UI served by a newer Station must still verify an older
+// shell's report (archive#3677).
 const REQUIRED_CAPABILITY_IDS: NativeCapabilityId[] = [
   'capability-report',
   'desktop-tray',
@@ -358,12 +375,26 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     return null;
   }
 
-  const capabilities = candidate.capabilities.filter(
+  // Every entry must be an object with a string id, and ids must not repeat.
+  // An id this UI does not know (a newer shell's capability) is skipped, not
+  // fatal; an entry for a known id must be well formed.
+  const entries = candidate.capabilities;
+  const allIds: string[] = [];
+  for (const entry of entries) {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      typeof (entry as { id?: unknown }).id !== 'string'
+    )
+      return null;
+    allIds.push((entry as { id: string }).id);
+  }
+  if (new Set(allIds).size !== allIds.length) return null;
+  const known = entries.filter((entry: { id: string }) =>
+    CAPABILITY_IDS.includes(entry.id as NativeCapabilityId),
+  );
+  const capabilities = known.filter(
     (capability): capability is NativeCapabilityStatus =>
-      typeof capability === 'object' &&
-      capability !== null &&
-      typeof capability.id === 'string' &&
-      CAPABILITY_IDS.includes(capability.id as NativeCapabilityId) &&
       typeof capability.state === 'string' &&
       CAPABILITY_STATES.has(capability.state) &&
       typeof capability.reason === 'string' &&
@@ -371,8 +402,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
   );
   const ids = capabilities.map(({ id }) => id);
   if (
-    capabilities.length !== candidate.capabilities.length ||
-    new Set(ids).size !== capabilities.length ||
+    capabilities.length !== known.length ||
     !REQUIRED_CAPABILITY_IDS.every((id) => ids.includes(id))
   ) {
     return null;
@@ -573,6 +603,7 @@ function errorMessage(error: unknown): string {
 
 /** Tauri plugin id of the agent-activity plugin (src-desktop/plugins/agent-activity). */
 const AGENT_ACTIVITY_PLUGIN = 'plugin:station-agent-activity';
+const MEDIA_INTAKE_PLUGIN = 'plugin:station-media-intake';
 
 function isApnsEnvironment(value: unknown): value is 'production' | 'sandbox' {
   return value === 'production' || value === 'sandbox';
@@ -1464,6 +1495,90 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         unlisten?.();
       },
     };
+  }
+
+  readClipboardImages(): Promise<NativeCommandResult<NativeImageList>> {
+    return this.mediaIntakeCommand(
+      'read-clipboard-images',
+      'clipboard-image',
+      'read_clipboard_images',
+    );
+  }
+
+  takeSharedImages(): Promise<NativeCommandResult<NativeImageList>> {
+    return this.mediaIntakeCommand(
+      'take-shared-images',
+      'image-share-intake',
+      'take_shared_images',
+    );
+  }
+
+  subscribeToSharedImages(
+    listener: () => void,
+  ): NativeEventSubscription & { ready: Promise<void> } {
+    let disposed = false;
+    let unlisten: UnlistenFn | undefined;
+    const addPluginListener = this.bridge.addPluginListener;
+    if (
+      this.capabilities['image-share-intake'].state !== 'enabled' ||
+      !addPluginListener
+    )
+      return { dispose() {}, ready: Promise.resolve() };
+    const ready = addPluginListener
+      .call(this.bridge, 'station-media-intake', 'sharedImages', () => {
+        if (!disposed) listener();
+      })
+      .then((registered) => {
+        if (disposed) registered();
+        else unlisten = registered;
+      })
+      .catch((error: unknown) => {
+        // Without the nudge a share while the app runs waits for the next
+        // start's take; say so rather than failing silently.
+        console.warn('station: shared image listener failed', error);
+      });
+    return {
+      ready,
+      dispose() {
+        disposed = true;
+        unlisten?.();
+      },
+    };
+  }
+
+  /** The host's own report decides whether the plugin is called at all. */
+  private async mediaIntakeCommand(
+    command: NativeCommandName,
+    capabilityId: 'clipboard-image' | 'image-share-intake',
+    pluginCommand: string,
+  ): Promise<NativeCommandResult<NativeImageList>> {
+    const capability = this.capabilities[capabilityId];
+    if (capability.state !== 'enabled') {
+      return { status: 'unsupported', command, reason: capability.reason };
+    }
+    try {
+      const value = parseNativeImageList(
+        await this.bridge.invoke<unknown>(
+          `${MEDIA_INTAKE_PLUGIN}|${pluginCommand}`,
+        ),
+      );
+      if (value === null) {
+        return {
+          status: 'error',
+          command,
+          message: 'Station could not read those images.',
+        };
+      }
+      return { status: 'ok', value };
+    } catch (error) {
+      // The plugin rejects with a sentence for the person (too many, too
+      // large, unsupported type); keep its words.
+      return {
+        status: 'error',
+        command,
+        message: readNativeCommandError(error).message.slice(0, 500),
+      };
+    }
   }
 
   /**

@@ -308,8 +308,9 @@ Arbitrary traffic can exceed that premise; the API computes the conservative
 D/40 network-week bound from its stored public domain. Expected absolute noise
 is about 280 weekly network-days; sparse cells
 have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this,
-then shows only values above the 95% noise bound and reports the rest as
-within noise. See the
+then shows only values above each card’s noise bound. When no displayed
+value clears that bound, it shows one explanation and the publication window
+instead of empty charts. Other suppressed cells read “within noise.” See the
 [receiver privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates).
 
 Schema 6 atomically persists each publisher/week's marker and frozen noisy cells.

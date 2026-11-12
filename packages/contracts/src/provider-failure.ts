@@ -68,6 +68,12 @@ export const MCP_SIGN_IN_REQUIRED_CODE = 'mcp_sign_in_required';
 export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
   'confined_full_access_unavailable';
+/**
+ * #4769: a confined session's restricted network refused a connection to a
+ * host its policy does not allow (a `runtime.warning` naming the host and
+ * port, never a payload or path).
+ */
+export const CONFINED_NETWORK_DENIED_CODE = 'confined_network_denied';
 export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
@@ -137,6 +143,9 @@ export const PROVIDER_FAILURE_KINDS = {
   delegation_files_invalid_data: 'input_unsupported',
   delegation_files_ref_invalid: 'input_unsupported',
   delegation_files_unavailable: 'unavailable',
+  // A queued follow-up's file was no longer stored when it was due to send;
+  // like an expired stage, only attaching it again can help.
+  attachment_unavailable: 'input_unsupported',
   delegation_files_start_refused: 'provider_error',
   delegation_files_turn_refused: 'provider_error',
   delegation_files_outcome_unknown: 'indeterminate',
@@ -158,6 +167,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [SESSION_RECOVERY_FAILED_CODE]: 'unavailable',
   [SESSION_START_INDETERMINATE_CODE]: 'indeterminate',
   [CONFINED_FULL_ACCESS_UNAVAILABLE_CODE]: 'permission_denied',
+  [CONFINED_NETWORK_DENIED_CODE]: 'permission_denied',
   [SESSION_START_IN_FLIGHT_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',

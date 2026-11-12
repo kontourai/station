@@ -24,6 +24,7 @@ import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useServerEventsListener } from '../hooks/useServerEventsListener';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
+import { flushHistoryTraversals } from './fixtures/history-traversals';
 
 const serverEventsMount = vi.hoisted(() => vi.fn(() => null));
 // Connection authority is exercised by station-connection-registry.test.tsx;
@@ -953,9 +954,7 @@ describe('App home route resolution', () => {
 
       // jsdom runs a traversal as two chained 0ms tasks; these are task
       // turns that let one land, not a wait for time to pass.
-      for (let turn = 0; turn < 4; turn += 1) {
-        await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-      }
+      await flushHistoryTraversals();
       expect(landed).toEqual([]);
       expect(window.location.pathname).toBe('/');
     } finally {

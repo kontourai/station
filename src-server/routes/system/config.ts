@@ -12,6 +12,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   type AppConfig,
+  appConfigSemanticError,
   describeFirstRunTransitionViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
@@ -293,9 +294,11 @@ export function createConfigRoutes(
   logger: Logger,
   eventBus?: EventBus,
   applyConfigurationMutation?: AgentConfigurationMutationRunner,
-  // Runtime-derived origin of the dedicated MCP-UI frame server, if running.
-  // Injected into GET /app only (never persisted via the update schema).
-  getMcpUiFrameOrigin?: () => string | undefined,
+  // Runtime-derived origin of the dedicated MCP-UI frame server, if running
+  // AND reachable by this request's client (it listens on the host's
+  // loopback only). Injected into GET /app only (never persisted via the
+  // update schema).
+  getMcpUiFrameOrigin?: (c: Context) => string | undefined,
   // archive#1194 (epic archive#1191, slice B): re-applies the built-in default
   // agent's engine binding via the existing bootstrap function whenever an
   // update touches `builtinAgentEngineConnectionId` — Voice is deliberately
@@ -455,7 +458,7 @@ export function createConfigRoutes(
       const config = withManagedApprovalCeiling(
         overlayManagedAppSettings(stored, managed),
       );
-      const frameOrigin = getMcpUiFrameOrigin?.();
+      const frameOrigin = getMcpUiFrameOrigin?.(c);
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       // #1582 D9: what a terminal would start here with nothing configured,
       // derived from the resolver a spawn actually walks rather than a
@@ -850,6 +853,34 @@ export function createConfigRoutes(
       }
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
+      }
+      // #4769: the confined network policy is refused here, as written, when
+      // its shape or any allowed host is not one the broker can read; stored,
+      // it would refuse every start that requires confinement. `null` clears it.
+      if (Object.hasOwn(body as object, 'confinedNetwork')) {
+        // #4769: an agent may not change the policy that confines agents,
+        // its own session's included; the operator can, in person.
+        if (requestMayBeAnAgent(c.req.raw)) {
+          logRefusal('confined_network_agent_not_granted');
+          return c.json(
+            {
+              success: false,
+              code: COMMAND_NOT_GRANTED_CODE,
+              error:
+                'An agent cannot change the confined network policy. The operator can, with PUT /config/app or station config set.',
+            },
+            403,
+          );
+        }
+        const value = (body as Record<string, unknown>).confinedNetwork;
+        if (value !== null && value !== undefined) {
+          const problem = appConfigSemanticError({ confinedNetwork: value });
+          if (problem)
+            return c.json(
+              { success: false, error: `${problem} No settings were saved.` },
+              400,
+            );
+        }
       }
       // Terminal history retention: each value's range is the registry's;
       // the rules spanning settings are checked against the merged result.

@@ -531,7 +531,7 @@ export function ProviderSettingsView({
       // these two props would be dead text.
       listEmptyTitle="No model connections yet"
       emptyContent={
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className="split-pane__detail-empty">
           {/*
             This panel's own "nothing to select"
             label duplicated whichever fact the list pane had already
@@ -552,8 +552,8 @@ export function ProviderSettingsView({
           {llmEmbeddingProviders.length > 0 && items.length > 0 && (
             <Empty
               variant="compact"
-              label="Select a model connection"
-              description="Choose a model connection to review its status and setup."
+              label="Nothing selected"
+              description="Select a model connection to review its status and setup."
             />
           )}
           {detectedActions.length > 0 && (

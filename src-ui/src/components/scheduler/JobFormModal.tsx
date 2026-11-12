@@ -633,7 +633,7 @@ export function JobFormModal({
               onClick={retryAgents}
               disabled={agentsRetrying}
             >
-              {agentsRetrying ? 'Trying…' : 'Try again'}
+              {agentsRetrying ? 'Retrying…' : 'Retry'}
             </button>
           </span>
         )}

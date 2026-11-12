@@ -344,7 +344,7 @@ test.describe('core journey accessibility gate', () => {
     await trigger.focus();
     await trigger.press('Enter');
 
-    const dialog = page.getByRole('dialog', {
+    const dialog = page.getByRole('alertdialog', {
       name: 'Reset Station settings',
     });
     await expect(dialog).toBeVisible();

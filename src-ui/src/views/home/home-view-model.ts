@@ -71,6 +71,19 @@ export interface HomeWorkItem {
   /** Epoch ms of the inventory version the current user last viewed. */
   acknowledgedAt?: number;
   /**
+   * #3075: the server's answer to "has this conversation changed since you
+   * last read it?", from the inventory's `readState`. Absent when the server
+   * reports no read state; never derived on the client.
+   */
+  unread?: boolean;
+  /** The inventory version `unread` was computed for (epoch ms). */
+  readVersion?: number;
+  /**
+   * #3075 review: the server keeps read state for this person but could not
+   * read it. Unknown: neither `unread` nor read.
+   */
+  readStateUnavailable?: true;
+  /**
    * Epoch ms the work entered its current terminal state, from the server's
    * `lifecycleChangedAt` (#4266). Absent for live work and for hosts that do
    * not report it; `finishedAtOf` then falls back to `updatedAt`.

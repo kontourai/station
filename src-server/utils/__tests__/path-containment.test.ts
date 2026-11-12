@@ -6,10 +6,14 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
-import { assertExistingPathInside } from '../path-containment.js';
+import {
+  assertExistingPathInside,
+  isCanonicalPathStrictlyWithin,
+  isCanonicalPathWithin,
+} from '../path-containment.js';
 
 // Real temp-dir fixtures: every shape below is resolved by the filesystem,
 // not a mocked `fs`, because the defect (#1502) is a disagreement between
@@ -164,5 +168,58 @@ describe('assertExistingPathInside', () => {
         'Fixture path escapes root',
       );
     }
+  });
+});
+
+// Lexical on purpose: these two answer for paths the caller has already made
+// canonical, so no fixture is needed and none is read.
+describe('isCanonicalPathWithin and isCanonicalPathStrictlyWithin', () => {
+  const root = join(sep, 'srv', 'project');
+
+  test('a path below the root is inside both', () => {
+    for (const candidate of [join(root, 'a'), join(root, 'a', 'b.txt')]) {
+      expect(isCanonicalPathWithin(root, candidate)).toBe(true);
+      expect(isCanonicalPathStrictlyWithin(root, candidate)).toBe(true);
+    }
+  });
+
+  test('the root is inside itself only for the inclusive form', () => {
+    expect(isCanonicalPathWithin(root, root)).toBe(true);
+    expect(isCanonicalPathStrictlyWithin(root, root)).toBe(false);
+    // Another spelling of the root is still the root, not a child of it.
+    expect(isCanonicalPathWithin(root, `${root}${sep}`)).toBe(true);
+    expect(isCanonicalPathStrictlyWithin(root, `${root}${sep}`)).toBe(false);
+  });
+
+  test('a child whose first segment merely starts with `..` is inside', () => {
+    // `!rel.startsWith('..')`, which nine private copies used, refused these.
+    for (const candidate of [
+      join(root, '..data'),
+      join(root, '..data', 'file'),
+      join(root, '...'),
+    ]) {
+      expect(isCanonicalPathWithin(root, candidate)).toBe(true);
+      expect(isCanonicalPathStrictlyWithin(root, candidate)).toBe(true);
+    }
+  });
+
+  test('a parent, a sibling and a sibling sharing the name prefix are outside', () => {
+    for (const candidate of [
+      join(sep, 'srv'),
+      join(sep, 'srv', 'other'),
+      join(sep, 'srv', 'project-2'),
+      join(sep, 'srv', 'project-2', 'a'),
+      `${root}${sep}..${sep}other`,
+      sep,
+    ]) {
+      expect(isCanonicalPathWithin(root, candidate)).toBe(false);
+      expect(isCanonicalPathStrictlyWithin(root, candidate)).toBe(false);
+    }
+  });
+
+  test('everything is inside the filesystem root', () => {
+    expect(isCanonicalPathWithin(sep, root)).toBe(true);
+    expect(isCanonicalPathStrictlyWithin(sep, root)).toBe(true);
+    expect(isCanonicalPathStrictlyWithin(sep, sep)).toBe(false);
   });
 });

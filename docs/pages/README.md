@@ -89,8 +89,11 @@ renders no page for it and this builder never publishes it. The manifest's
 - `docs/user/workspace-checkpoints.md` and `docs/user/houston.md`: the
   unadmitted user guides.
 - `docs/reviews/personal-boards-20261016/README.md`,
-  `docs/reviews/workspace-map-20261015/README.md` and
-  `docs/ui/reviews/mobile-pickers-20261003/README.md`: dated review evidence,
+  `docs/reviews/sidebar-focus-20261107/README.md`,
+  `docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md`,
+  `docs/reviews/workspace-map-20261015/README.md`,
+  `docs/ui/reviews/mobile-pickers-20261003/README.md`, and
+  `docs/ui/reviews/station-connections-20261105/README.md`: dated review evidence,
   each listed by exact path.
 
 Admitting or withdrawing a document changes both files.

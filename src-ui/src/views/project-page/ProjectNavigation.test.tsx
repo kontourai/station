@@ -31,7 +31,7 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Overview' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
     fireEvent.click(screen.getByRole('link', { name: 'Files & connections' }));
     expect(new URLSearchParams(window.location.search).get('section')).toBe(
       'sources',
@@ -40,7 +40,7 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Files & connections' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
     await act(async () => {
       window.history.back();
       await vi.waitFor(() =>
@@ -53,7 +53,7 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Overview' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
     await act(async () => {
       window.history.forward();
       await vi.waitFor(() =>
@@ -66,21 +66,19 @@ describe('Project destination navigation', () => {
       screen
         .getByRole('link', { name: 'Files & connections' })
         .getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
   });
 
   test('honors direct destination and existing Starter Work links on mount', () => {
     const first = mount('?section=room');
     expect(
-      screen
-        .getByRole('link', { name: '# Project room' })
-        .getAttribute('aria-current'),
-    ).toBe('page');
+      screen.getByRole('link', { name: 'Room' }).getAttribute('aria-current'),
+    ).toBe('location');
     first.unmount();
     mount('?starter=start-task');
     expect(
       screen.getByRole('link', { name: 'Tasks' }).getAttribute('aria-current'),
-    ).toBe('page');
+    ).toBe('location');
   });
 
   test('destination and Settings links consult the existing dirty-state guard', () => {
@@ -101,7 +99,7 @@ describe('Project destination navigation', () => {
         screen
           .getByRole('link', { name: 'Tasks' })
           .getAttribute('aria-current'),
-      ).toBe('page');
+      ).toBe('location');
       fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
       expect(decisions).toHaveLength(2);
       expect(window.location.pathname).toBe('/projects/demo');
@@ -119,9 +117,9 @@ test('member navigation exposes the shared room and work without operator destin
       <ProjectNavigation slug="team" member />
     </NavigationProvider>,
   );
-  expect(
-    screen.getByRole('link', { name: '# Project room' }).getAttribute('href'),
-  ).toBe('/projects/team?section=room');
+  expect(screen.getByRole('link', { name: 'Room' }).getAttribute('href')).toBe(
+    '/projects/team?section=room',
+  );
   expect(screen.getByRole('link', { name: 'Tasks' })).toBeTruthy();
   expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
   expect(
@@ -137,7 +135,7 @@ test('expanding a room preserves its editor while leaving for Tasks asks the dir
     (proceed) => decisions.push(proceed),
   );
   try {
-    fireEvent.click(screen.getByRole('link', { name: '# Project room' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Room' }));
     expect(new URLSearchParams(window.location.search).get('section')).toBe(
       'room',
     );

@@ -59,8 +59,8 @@
 //      not exhaustive static analysis — mitigated by keeping the pattern
 //      list easy to extend.
 import { readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 // ---------------------------------------------------------------------------
 // Check 1: no bare confirm()/prompt() or window.confirm()/window.prompt()
@@ -245,11 +245,7 @@ function listTrackedFilesUnder(dir) {
   // used here because it unexpectedly excludes files directly inside `dir`
   // on this git version; listing everything and filtering the extension in
   // JS sidesteps that pathspec-glob ambiguity entirely).
-  const out = execFileSyncBounded('git', ['ls-files', `${dir}/**`], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  return out.trim().split('\n').filter(Boolean);
+  return gitLsFiles([`${dir}/**`]);
 }
 
 function isTsOrTsx(file) {

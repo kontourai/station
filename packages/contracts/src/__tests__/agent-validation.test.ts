@@ -34,3 +34,29 @@ describe('requiresAgentPromptForRuntime — independent classification literals 
     },
   );
 });
+
+test('Agent schema admits only bounded explicit shared model consent', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { default: Ajv } = await import('ajv');
+  const schema = JSON.parse(readFileSync('schemas/agent.schema.json', 'utf8'));
+  const validate = new Ajv().compile(schema);
+  const spec = (sharedTurns: unknown) => ({
+    name: 'Researcher',
+    prompt: 'Help',
+    execution: { sharedTurns },
+  });
+  const valid = {
+    version: 'station.agent-shared-turns/v1',
+    mode: 'model-only',
+    allowedModelIds: ['model-a'],
+  };
+  expect(validate(spec(valid))).toBe(true);
+  for (const invalid of [
+    { ...valid, allowedModelIds: [] },
+    { ...valid, allowedModelIds: ['a', 'a'] },
+    { ...valid, allowedModelIds: [' a'] },
+    { ...valid, version: 'future' },
+    { ...valid, tools: false },
+  ])
+    expect(validate(spec(invalid))).toBe(false);
+});

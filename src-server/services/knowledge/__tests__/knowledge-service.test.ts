@@ -15,6 +15,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { KnowledgeService } = await import('../knowledge-service.js');
+const { KnowledgeDocumentExistsError } = await import(
+  '../knowledge-documents.js'
+);
 const { knowledgeOps } = await import('../../../telemetry/metrics.js');
 
 function createMockStorageAdapter() {
@@ -490,6 +493,32 @@ describe('KnowledgeService — file-first document operations', () => {
         id: uploaded.id,
         contentHash: expect.any(String),
       }),
+    ]);
+  });
+
+  test('a second upload of a filename is a conflict decided before any embedding call', async () => {
+    const svc = new KnowledgeService(
+      () => vectorDb as any,
+      () => embedding as any,
+      dir,
+    );
+    const first = await svc.uploadDocument('test', 'twice.md', '# First');
+    embedding.embed.mockClear();
+    vectorDb.addDocuments.mockClear();
+
+    await expect(
+      svc.uploadDocument('test', 'twice.md', '# Second'),
+    ).rejects.toBeInstanceOf(KnowledgeDocumentExistsError);
+
+    expect(embedding.embed).not.toHaveBeenCalled();
+    expect(vectorDb.addDocuments).not.toHaveBeenCalled();
+    // The store is intact and still holds the first upload, not the second.
+    const storageDir = join(dir, 'projects', 'test', 'knowledge', 'default');
+    expect(readFileSync(join(storageDir, 'files', 'twice.md'), 'utf8')).toBe(
+      '# First',
+    );
+    expect(await svc.listDocuments('test', 'default')).toEqual([
+      expect.objectContaining({ id: first.id, path: 'twice.md' }),
     ]);
   });
 

@@ -324,7 +324,7 @@ export function ReviewLayout({
                   disabled={bulkPending}
                   onClick={() => setBulkAction('approve')}
                 >
-                  Approve All
+                  Approve all
                 </Button>
                 <Button
                   size="sm"
@@ -332,7 +332,7 @@ export function ReviewLayout({
                   disabled={bulkPending}
                   onClick={() => setBulkAction('reject')}
                 >
-                  Reject All
+                  Reject all
                 </Button>
               </div>
             ) : null}
@@ -370,7 +370,7 @@ export function ReviewLayout({
             : 'Reject pending changes'
         }
         message={`Apply this decision to ${pendingIds.length} pending proposed change${pendingIds.length === 1 ? '' : 's'} in ${projectSlug}?`}
-        confirmLabel={bulkAction === 'approve' ? 'Approve All' : 'Reject All'}
+        confirmLabel={bulkAction === 'approve' ? 'Approve all' : 'Reject all'}
         variant={bulkAction === 'reject' ? 'danger' : 'warning'}
         onConfirm={confirmBulk}
         onCancel={() => setBulkAction(null)}

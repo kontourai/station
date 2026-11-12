@@ -63,6 +63,49 @@ mutation. Refresh is observation, not permission to retry an uncertain write.
 Goal completion never mutates Task or workflow status. Turning the preview off
 refuses all subsequent Goal requests; ordinary Session controls remain available.
 
+## Worktree output settlement
+
+`GET /api/orchestration/sessions/:threadId/worktree-settlement` returns
+`{success:true, data:{settlement}}`: the Session's one
+[`WorktreeOutputSettlement`](../../packages/contracts/src/workspace-isolation.ts),
+or `null`. It uses Session read authority and the orchestration read scope.
+
+`POST` to the same path settles it once. It requires an authenticated person
+with Session mutation authority and the orchestration operate scope; agent
+callers are refused. The strict body is one of
+`{requestKey, outcome:'discarded', acceptUncommittedLoss?}`,
+`{requestKey, outcome:'kept'}` or
+`{requestKey, outcome:'released', pullRequest:{provider, host, repository:{owner, name}, ref}}`.
+`requestKey` is 1–128 characters of `A-Z a-z 0-9 . _ : -`. A body that names
+an `actor` is refused with 400: the actor is the request's principal. The
+Session must have started in a worktree of its own, and no turn may be running
+in it. A discard removes files the repository ignores without
+`acceptUncommittedLoss`; the record counts the ignored paths `git status`
+listed (`ignoredEntries`). A discard is refused while the branch has moved on
+or another checkout has it; only when it completes an earlier discard whose
+worktree is already gone does it keep the branch in those cases, and the
+record says so (`branchKept`). A `kept` base must name a local or
+remote-tracking branch: a branch name is read as that branch even when a tag
+shares it, any spelling of `HEAD` is the branch it has checked out, and a
+detached checkout, a tag or a commit id is refused. The cleanup record's
+`afterCleanup` reports what was observed gone afterwards, not who removed it.
+
+A new record answers 201 with `data:{status:'recorded', settlement}`; a replay
+of the same request key and request, or a discard that completed an earlier
+half-done one, answers 200 with `status:'existing'`. Session authority is
+checked again after Station's Git and forge reads, immediately before anything
+is recorded or removed. A refusal answers 409 (404 for a Session without its
+own worktree, or `authority-changed`) with a `code` such as
+`already-settled`, `request-key-mismatch`, `settlement-pending`,
+`session-running`, `uncommitted-changes`, `branch-checked-out-elsewhere`,
+`branch-moved`, `worktree-path-not-a-directory`, `worktree-replaced`,
+`repository-missing`, `base-detached`, `base-is-session-branch`,
+`base-does-not-contain-head`, `no-new-commits`, `pull-request-mismatch` or
+`task-owned-worktree`, and the record in the way when there is one. A refusal
+records and removes nothing. Outcomes, evidence and crash behavior are described in
+[worktree output settlement](../design/isolated-agent-runs.md#worktree-output-settlement).
+No SDK or CLI command calls this route yet.
+
 This reference explains selected HTTP route families and their current owners.
 It is not a complete endpoint inventory. Request examples use illustrative IDs;
 replace them with identities returned by the selected Station. Response excerpts
@@ -158,7 +201,8 @@ engine or establish that the Session is active.
 ## Visual replies
 
 `html_preview` and `html_render` on station-control act only for the verified
-calling Session. The internal POST leaves `/api/html-replies/preview` and
+calling Session, and never for one whose network Station restricts (#4769:
+the guard answers 403 `station_control_network_restricted`). The internal POST leaves `/api/html-replies/preview` and
 `/api/html-replies/render` accept bounded self-contained HTML, not a caller-chosen
 Session or workspace. Preview returns PNG data, contentHeight and console output;
 render returns a page reference. Both POST leaves require operate scope; preview launches Chromium rather than performing a read-only query. `GET /api/html-replies/:sessionId/:pageId` reads
@@ -989,6 +1033,38 @@ intent and grant no permission.
 | `GET /agents/:requestId` | none | current handle without private Session/correlation coordinates |
 | `POST /agents/:requestId/reconcile` | guards | inspect completion and publish the authorized selected answer once; does not relaunch |
 | `POST /agents/:requestId/cancel` | guards | cancel request and fence later publication |
+
+### Named channels
+
+A Project's room is divided into named channels. `/room` addresses the
+default channel, `#general`; every per-room operation above except `POST /init`
+is also served at `/api/projects/:slug/channels/:channelId`, where `channelId`
+is that channel's room UUID. Messages, the shared note and Agent requests
+belong to one channel. A host that predates channels answers 404 for these paths.
+
+| Method and path | Input | Result |
+| --- | --- | --- |
+| `GET /channels` | none | `{ channels }`: default first, then by name; empty before the room opens. Needs `view` |
+| `POST /channels` | `{ expectedProjectId, expectedActorId, name, topic? }` | the created channel. Needs `edit` |
+| `PATCH /channels/:channelId` | the same guards plus at least one of `name`, `topic` (`null` clears), `archived` | the updated channel. Needs `edit` |
+
+A channel is `{ channelId, name, topic?, archivedAt?, isDefault }`. Names are
+1–80 characters of lowercase ASCII letters and digits in hyphen-separated runs
+(`design`, `launch-plan`); they are parsed exactly, never normalized, and are
+unique within the Project, archived channels included (`409
+project_room_duplicate`). Topics are one line of at most 250 bytes. A Project
+holds at most 50 channels, archived ones included (`429 project_room_capacity`).
+Past either limit the server refuses rather than truncating. An archived channel
+serves discovery and history, but refuses messages, note edits and Agent
+requests (`409 project_room_archived`). The default channel can be renamed but
+not archived.
+
+Upgrading moves each Project's existing room into `#general` with its room UUID,
+history, note and Agent requests unchanged. Rooms created by an older Station
+after the upgrade are adopted the next time the store opens. A room whose stored
+record does not match its row is never adopted; that Project's room and channels
+stay refused, as before the upgrade. A database from a newer Station is refused
+before any schema change or migration.
 
 Reads, discussion, note editing and execution require their distinct current
 Project actions plus transport permission. Agent requests also require current
@@ -2166,6 +2242,75 @@ they are not all reported as bad requests.
 
 ---
 
+## Read markers
+
+The [read marker routes](../../src-server/routes/read-markers/read-marker-routes.ts)
+read and advance the caller's own unread state for agent conversations, Project
+rooms and Task rooms ([contracts](contracts.md#read-marker-contracts)). The
+handshake advertises them as `readMarkers`. Both are `orchestration:read` for
+paired devices and person self-service leaves for an account-bound member's
+Device: each writes only the caller's markers, and each target is re-read under
+the caller's own conversation or room authority.
+
+```http
+POST /api/read-markers/summary
+{ "targets": [{ "kind": "agent-conversation", "conversationId": "…" },
+              { "kind": "project-room", "projectSlug": "launch", "roomId": "…" },
+              { "kind": "task-room", "taskId": "…" }] }
+```
+
+The response holds one item per target, in request order:
+`{ target, latestVersion, seenVersion, unread, unreadCount? }`, or
+`{ target, unavailable: true }`. More than 100 targets is a 400 with
+`read_marker_too_many_targets`.
+
+```http
+POST /api/read-markers/mark
+{ "target": { "kind": "agent-conversation", "conversationId": "…" }, "version": 1794414034117 }
+```
+
+The response is the resulting state. An older version answers the stored
+state and changes nothing. A version above the current one is a 409 with
+`read_marker_future_version` and `latestVersion`. A conversation the caller
+cannot read is a 404, and a caller that is not a person a 403 (on a hosted
+Station, a request that carries only the tenant). A marker store that does
+not decode for the caller is a 503, never an answer of "read". A file-backed
+conversation id keeps the conversation id contract (ids such as
+`human:tailscale-serve:casey@example.test:…` are valid); one with a path
+separator, a `.` or `..` segment, a control character such as NUL, or an
+encoded separator (`%2F`, `%5C`) names no file, and the stored record must
+carry exactly the requested id; anything else is a 404. A marker that moves is
+announced as `read-markers:changed` on that person's own
+`GET /api/orchestration/events` streams, with an empty payload; whose streams
+those are is checked again for every change, so a device that loses owner
+standing stops receiving the owner's changes at once.
+
+History from before read state began reads as seen only for the personal
+owner (`personal:owner`: the local operator and devices with owner standing).
+Any other caller, including a visitor device and every person on a hosted
+Station, sees that history as unread until it is rendered.
+
+An agent conversation's version is its content version: a monotonic number
+from the event store that moves only when readable transcript content is
+appended (a prompt, assistant text, a tool result, host images, a turn
+completing, ending unfinished or failing), never on lifecycle bookkeeping.
+`GET /api/conversations` items carry it as `readState.version`, or
+`readState: { version, unavailable: true }` when the caller's read state
+cannot be read; the conversations are listed either way.
+
+```http
+POST /api/conversations/:id/acknowledgement
+{ "updatedAt": "2026-11-11T10:15:00.000Z", "readVersion": 41 }
+```
+
+`readVersion` is the content version the client rendered and is what is marked
+read; above the current one it is a 409. `updatedAt` is the inventory version
+shown, recorded as "last viewed" (`acknowledgedAt`, Home's Just finished) and
+refused above the current `updatedAt`. A request without `readVersion` (an
+older client) records only "last viewed" and marks nothing read: what it saw
+cannot be known from a timestamp, so its conversations stay unread until it
+sends `readVersion`.
+
 ## Conversation Management
 
 The [conversation routes](../../src-server/routes/chat/conversations.ts) combine
@@ -2322,7 +2467,9 @@ updated `data`, optional `ignoredKeys`, and an activation receipt when relevant.
 Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
 write it: first-run decisions and revisioned log-level changes have separate
-routes, and contribution/full-access choices have additional checks.
+routes, and contribution/full-access choices have additional checks. A
+`confinedNetwork` whose shape or any `allowedHosts` entry the egress broker
+cannot read is refused with 400 and nothing is saved (#4769).
 A change to a setting the managed policy locks is refused before any other
 check with 403, `code: 'managed_setting_locked'`, the setting's `key` and the
 policy's denial sentence; nothing in the request is saved. Sending exactly the
@@ -5237,6 +5384,9 @@ conversation is another person's. `DELETE` removes it (`undesignated`). The
 user id is the request principal's; a request that may be an agent's is
 refused (403 `person-approval-required`). A hosted Station answers 503
 `coordinator_unavailable` and withdraws the `coordinatorSession` capability.
+While the `coordinator-session` Feature Preview is off, every route here
+except `DELETE` answers 404 `feature_preview_disabled`; the stored designation
+is kept.
 With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
 `wakes` is `blocked` when the coordinator's last turn has ended but its
 turn boundary is still held, so the inbox would hold a wake indefinitely
@@ -5250,7 +5400,8 @@ or removing a designation withdraws the wakes still queued for the old
 conversation and revokes its designation-derived Station Control and Knowledge
 credentials. Independently authored Agent or Project grants remain separate.
 
-The default-off coordinator-picture preview adds
+The default-off coordinator-picture preview, which also needs
+`coordinator-session`, adds
 `GET /api/orchestration/coordinator/picture` for the person's readable notes.
 A bound designated coordinator reads and writes its own picture through
 `GET` and `POST /api/orchestration/station-control/coordinator-picture`.
@@ -5918,7 +6069,9 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
   never a silently truncated page; use the terminal socket for larger replay.
-  `reset: true` means retention removed the resume point.
+  `reset: true` means retention removed the resume point. A record with
+  `resize: {cols, rows}` and empty `data` is the size the output after it
+  was written for.
   The server generates the UUID; a terminal from another Project or binding is
   refused even if the caller can access both Projects.
 - `POST /:terminalId/input` takes `{data, bindingKey?}` (at most 64 KiB of input).
@@ -6058,9 +6211,12 @@ admitted before the upgrade:
    base64url ticket valid for 30 seconds and redeemable once. An older host
    answers 404 (treat as unsupported); refusal is 403; more than eight
    unredeemed tickets per identity is 429.
-2. Open the socket offering two subprotocols, `station.terminal.v1` and
-   `station.terminal.ticket.<ticket>`. The server selects only
-   `station.terminal.v1` and sends `{type: "authenticated", protocolVersion: 1}`.
+2. Open the socket offering the version subprotocols, `station.terminal.v2`
+   then `station.terminal.v1`, and `station.terminal.ticket.<ticket>`. The
+   server selects only a version, the newest offered (a host older than
+   version 2 selects `station.terminal.v1`), and sends `{type:
+   "authenticated", protocolVersion: 1}`. Version 2 adds resize frames
+   (below); read the selected subprotocol to know which you got.
    A missing, reused, expired or malformed ticket gets HTTP 401 before any
    socket exists; the browser Origin allowlist is not consulted, because the
    ticket carries the HTTP admission decision. Query strings and unknown paths
@@ -6119,8 +6275,13 @@ Project/binding authority through TerminalSessions.
   It must name the current acknowledgement or an actually sent record.
   Future, backward and unsent acknowledgements return `invalid-ack`.
 
-Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output),
-uint32 channel, uint64 sequence, followed by UTF-8 bytes. Sequences must fit a
+Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output,
+`3` resize), uint32 channel, uint64 sequence, followed by UTF-8 bytes. A
+resize frame (version 2 only) carries two uint16 values, columns then rows:
+the terminal's size from that sequence on, as its journal recorded it when
+the PTY was resized. A view replays the output after it at that size. It is
+acknowledged like output, holds one of the 128 frame slots and costs no
+credit. On version 1 the same sequence arrives as an empty output frame. Sequences must fit a
 JavaScript safe integer. Input starts at one per channel and increments by one;
 duplicates, gaps and input before replay acknowledgement return
 `terminal-refused`. A current observer's complete mouse/focus reports return

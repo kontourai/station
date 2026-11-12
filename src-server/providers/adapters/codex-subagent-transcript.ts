@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import { redactInlineData } from '../model-image-attachments.js';
 import {
+  asRecord,
   createResolvedPathCache,
   directoryEntries,
   isRealDirectory,
@@ -105,12 +106,6 @@ function bounded(text: string): { text: string; truncated?: true } {
     redactInlineData(text),
     CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS,
   );
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 function codexHomeOf(ref: CodexThreadTranscriptRef): string {

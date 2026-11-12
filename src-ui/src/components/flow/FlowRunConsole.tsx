@@ -31,6 +31,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import { copyToClipboard } from '../../lib/clipboard';
+import { formatDateTime } from '../../utils/relativeTime';
 import { describeStationFailure } from '../../utils/stationFailure';
 import {
   TaskPicker,
@@ -68,9 +69,7 @@ function gateCardClass(status: string): string {
 }
 
 function formatTimestamp(value: string | null | undefined): string {
-  if (!value) return 'unknown';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+  return formatDateTime(value, value || 'unknown');
 }
 
 /**

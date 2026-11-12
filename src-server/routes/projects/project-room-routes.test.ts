@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
+  PROJECT_ROOM_LIMITS,
+  parseProjectRoomChannel,
+  parseProjectRoomChannelList,
+} from '@kontourai/station-contracts/project-room';
+import {
   parseProjectRoomBrowserView,
   parseProjectRoomHistory,
   parseProjectRoomMessage,
@@ -30,6 +35,7 @@ import {
   ProjectRoomStore,
 } from '../../services/projects/project-room-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
+import { projectRoomVersionSource } from '../../services/read-markers/room-version-sources.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
@@ -694,4 +700,303 @@ test('mounted SSE reconciles another SQLite writer once per Room and heartbeat d
   for (const reader of readers) await reader.cancel();
   await vi.advanceTimersByTimeAsync(0);
   expect(vi.getTimerCount()).toBe(0);
+});
+
+type Harness = Awaited<ReturnType<typeof harness>>;
+function api(
+  h: Harness,
+  who: 'alice' | 'bob',
+  path: string,
+  method = 'GET',
+  value?: unknown,
+) {
+  return h.app.request(`/api/projects/example${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${who}-session`,
+      'content-type': 'application/json',
+    },
+    ...(value === undefined ? {} : { body: JSON.stringify(value) }),
+  });
+}
+async function code(response: Response) {
+  return {
+    status: response.status,
+    code: ((await response.json()) as { error?: { code?: string } }).error
+      ?.code,
+  };
+}
+async function channelGuard(h: Harness, who: 'alice' | 'bob') {
+  const view = await h.discover(who);
+  return {
+    expectedProjectId: view.scope.localProjectId,
+    expectedActorId: view.actor.id,
+  };
+}
+async function createChannel(
+  h: Harness,
+  who: 'alice' | 'bob',
+  name: string,
+  topic?: string,
+) {
+  return api(h, who, '/channels', 'POST', {
+    ...(await channelGuard(h, who)),
+    name,
+    ...(topic === undefined ? {} : { topic }),
+  });
+}
+test('channels: the default room lists as #general and per-channel routes address separate rooms', async () => {
+  const h = await harness();
+  const general = await h.discover('alice');
+  const listed = parseProjectRoomChannelList(
+    await data(await api(h, 'bob', '/channels')),
+  );
+  expect(listed).toEqual([
+    { channelId: general.roomId, name: 'general', isDefault: true },
+  ]);
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design', 'Screens and flows')),
+  );
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'bob', `/channels/${design.channelId}`)),
+  );
+  expect(view.roomId).toBe(design.channelId);
+  const posted = parseProjectRoomMessage(
+    await data(
+      await api(h, 'bob', `/channels/${design.channelId}/messages`, 'POST', {
+        ...guard(view),
+        intentId: randomUUID(),
+        text: 'Design only',
+      }),
+    ),
+  );
+  expect(posted.roomId).toBe(design.channelId);
+  // #general (both addresses) does not see it; the channel does.
+  for (const path of ['/room/messages', `/channels/${general.roomId}/messages`])
+    expect(
+      parseProjectRoomHistory(await data(await api(h, 'bob', path))).messages,
+    ).toEqual([]);
+  expect(
+    parseProjectRoomHistory(
+      await data(await api(h, 'bob', `/channels/${design.channelId}/messages`)),
+    ).messages,
+  ).toEqual([posted]);
+  // A guard naming #general cannot post into another channel.
+  expect(
+    await code(
+      await api(h, 'bob', `/channels/${design.channelId}/messages`, 'POST', {
+        ...guard(general),
+        expectedActorId: view.actor.id,
+        intentId: randomUUID(),
+        text: 'wrong room',
+      }),
+    ),
+  ).toEqual({ status: 409, code: 'project_room_conflict' });
+  expect((await api(h, 'bob', `/channels/${randomUUID()}`)).status).toBe(404);
+  expect((await api(h, 'bob', '/channels/not-a-uuid')).status).toBe(400);
+});
+test('channels: create, rename, topic and archive need edit; viewers read but cannot manage', async () => {
+  const h = await harness('viewer');
+  expect((await api(h, 'bob', '/channels')).status).toBe(200);
+  expect((await createChannel(h, 'bob', 'design')).status).toBe(403);
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design')),
+  );
+  expect(
+    (
+      await api(h, 'bob', `/channels/${design.channelId}`, 'PATCH', {
+        ...(await channelGuard(h, 'bob')),
+        archived: true,
+      })
+    ).status,
+  ).toBe(403);
+  const patch = async (value: object) =>
+    api(h, 'alice', `/channels/${design.channelId}`, 'PATCH', {
+      ...(await channelGuard(h, 'alice')),
+      ...value,
+    });
+  expect(
+    parseProjectRoomChannel(
+      await data(await patch({ name: 'ux', topic: 'Flows' })),
+    ),
+  ).toMatchObject({ name: 'ux', topic: 'Flows' });
+  expect(
+    parseProjectRoomChannel(await data(await patch({ topic: null }))).topic,
+  ).toBeUndefined();
+  expect((await patch({})).status).toBe(400);
+  const topicLimit = PROJECT_ROOM_LIMITS.channelTopicBytes;
+  expect(250).toBe(topicLimit);
+  expect((await patch({ topic: 'x'.repeat(topicLimit) })).status).toBe(200);
+  expect((await patch({ topic: 'x'.repeat(topicLimit + 1) })).status).toBe(400);
+  const general = (await h.discover('alice')).roomId;
+  expect(
+    await code(
+      await api(h, 'alice', `/channels/${general}`, 'PATCH', {
+        ...(await channelGuard(h, 'alice')),
+        archived: true,
+      }),
+    ),
+  ).toEqual({ status: 400, code: 'project_room_invalid' });
+});
+test('channels: names are parsed, unique per Project, and bounded at the limit', async () => {
+  const h = await harness();
+  const nameLimit = PROJECT_ROOM_LIMITS.channelNameLength;
+  expect(80).toBe(nameLimit);
+  for (const name of [
+    'Design',
+    'design_x',
+    '-design',
+    'design-',
+    'de--sign',
+    'design team',
+    '',
+    'a'.repeat(nameLimit + 1),
+  ])
+    expect((await createChannel(h, 'alice', name)).status, name).toBe(400);
+  expect((await createChannel(h, 'alice', 'a'.repeat(nameLimit))).status).toBe(
+    200,
+  );
+  expect((await createChannel(h, 'alice', 'design')).status).toBe(200);
+  expect(await code(await createChannel(h, 'bob', 'design'))).toEqual({
+    status: 409,
+    code: 'project_room_duplicate',
+  });
+  expect(await code(await createChannel(h, 'bob', 'general'))).toEqual({
+    status: 409,
+    code: 'project_room_duplicate',
+  });
+  const channels = parseProjectRoomChannelList(
+    await data(await api(h, 'alice', '/channels')),
+  );
+  const design = channels.find((c) => c.name === 'design')!;
+  expect(
+    await code(
+      await api(h, 'alice', `/channels/${design.channelId}`, 'PATCH', {
+        ...(await channelGuard(h, 'alice')),
+        name: 'general',
+      }),
+    ),
+  ).toEqual({ status: 409, code: 'project_room_duplicate' });
+});
+test('channels: the Project refuses a channel past its limit, archived ones included', async () => {
+  const h = await harness();
+  const limit = PROJECT_ROOM_LIMITS.channelsPerProject;
+  expect(50).toBe(limit);
+  // #general is the first of the limit.
+  for (let index = 1; index < limit; index++)
+    expect((await createChannel(h, 'alice', `topic-${index}`)).status).toBe(
+      200,
+    );
+  const listed = parseProjectRoomChannelList(
+    await data(await api(h, 'alice', '/channels')),
+  );
+  expect(listed).toHaveLength(limit);
+  await api(h, 'alice', `/channels/${listed[1].channelId}`, 'PATCH', {
+    ...(await channelGuard(h, 'alice')),
+    archived: true,
+  });
+  expect(await code(await createChannel(h, 'alice', 'one-more'))).toEqual({
+    status: 429,
+    code: 'project_room_capacity',
+  });
+});
+// Agent requests into an archived channel are refused at the Agent module seam
+// (project-room-agent-module.test.ts); this harness mounts no Agent routes.
+test('channels: an archived channel refuses posts and note edits but still serves history', async () => {
+  const h = await harness();
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design')),
+  );
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'bob', `/channels/${design.channelId}`)),
+  );
+  const message = (text: string) =>
+    api(h, 'bob', `/channels/${design.channelId}/messages`, 'POST', {
+      ...guard(view),
+      intentId: randomUUID(),
+      text,
+    });
+  const before = parseProjectRoomMessage(await data(await message('kept')));
+  const archived = parseProjectRoomChannel(
+    await data(
+      await api(h, 'alice', `/channels/${design.channelId}`, 'PATCH', {
+        ...(await channelGuard(h, 'alice')),
+        archived: true,
+      }),
+    ),
+  );
+  expect(archived.archivedAt).toEqual(expect.any(String));
+  expect(await code(await message('late'))).toEqual({
+    status: 409,
+    code: 'project_room_archived',
+  });
+  expect(
+    await code(
+      await api(h, 'bob', `/channels/${design.channelId}/note`, 'PUT', {
+        ...guard(view),
+        expectedRevision: 0,
+        markdown: 'late',
+        sourceMessageIds: [],
+      }),
+    ),
+  ).toEqual({ status: 409, code: 'project_room_archived' });
+  expect(
+    parseProjectRoomHistory(
+      await data(await api(h, 'bob', `/channels/${design.channelId}/messages`)),
+    ).messages,
+  ).toEqual([before]);
+  expect((await api(h, 'bob', `/channels/${design.channelId}`)).status).toBe(
+    200,
+  );
+  await api(h, 'alice', `/channels/${design.channelId}`, 'PATCH', {
+    ...(await channelGuard(h, 'alice')),
+    archived: false,
+  });
+  expect((await message('back')).status).toBe(200);
+});
+
+test('read markers (#3075): each channel has its own room version, read through the room service', async () => {
+  const h = await harness();
+  const general = await h.discover('bob');
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design')),
+  );
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'bob', `/channels/${design.channelId}`)),
+  );
+  for (const text of ['one', 'two'])
+    expect(
+      (
+        await api(h, 'bob', `/channels/${design.channelId}/messages`, 'POST', {
+          ...guard(view),
+          intentId: randomUUID(),
+          text,
+        })
+      ).status,
+    ).toBe(200);
+  const versions = projectRoomVersionSource(h.service);
+  const as = (who: 'alice' | 'bob') =>
+    new Request('http://localhost', {
+      headers: { authorization: `Bearer ${who}-session` },
+    });
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: design.channelId },
+      as('bob'),
+    ),
+  ).toEqual({ key: `project-room:${design.channelId}`, latestVersion: 2 });
+  // #general keeps its own key and version.
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: general.roomId },
+      as('bob'),
+    ),
+  ).toEqual({ key: `project-room:${general.roomId}`, latestVersion: 0 });
+  // A room id that is not one of this Project's channels stays unavailable.
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: randomUUID() },
+      as('bob'),
+    ),
+  ).toBeUndefined();
 });

@@ -262,6 +262,10 @@ function makeDefaultStore(
   // (e.g. the desktop bundled server), but legacy migration above still runs.
   if (!seedDefault) return store;
 
+  // A stored list this build cannot parse reads as empty. Seeding it would
+  // replace the stored value; `apiBase` falls back to `defaultUrl` without it.
+  if (store.hasUnreadableStoredList()) return store;
+
   // Ensure there is always at least one (default) connection
   if (store.getAll().length === 0) {
     const connection = store.add('Default', defaultUrl);

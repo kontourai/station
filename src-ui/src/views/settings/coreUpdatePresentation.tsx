@@ -16,6 +16,8 @@ import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import type { SemanticTone } from '@kontourai/ui/react';
 import type { ReactNode } from 'react';
 import { CheckGlyph } from '../../components/icons/Glyph';
+import { formatBytes } from '../../utils/formatBytes';
+import { formatDateTime } from '../../utils/relativeTime';
 
 /**
  * When the last check ran, as a wall-clock time: React Query's stamp of the
@@ -375,15 +377,12 @@ function serviceUpdateReason(reason: string): string {
 }
 
 function finishedTime(at: string): string {
-  const time = Date.parse(at);
-  return Number.isFinite(time) ? new Date(time).toLocaleString() : at;
+  return formatDateTime(at, at);
 }
 
 export const SERVICE_UPDATE_IN_FLIGHT: ReadonlySet<
   ServiceUpdateProgress['state']
 > = new Set(['queued', 'staging', 'updating']);
-
-const MEGABYTE = 1024 * 1024;
 
 /**
  * #3851: the step the installer reported, with measured bytes while it
@@ -402,7 +401,7 @@ function stagingLine(
     const percent = Math.floor(
       (progress.downloadedBytes / progress.totalBytes) * 100,
     );
-    return `Downloading the release: ${(progress.downloadedBytes / MEGABYTE).toFixed(1)} of ${(progress.totalBytes / MEGABYTE).toFixed(1)} MB (${percent}%)…`;
+    return `Downloading the release: ${formatBytes(progress.downloadedBytes)} of ${formatBytes(progress.totalBytes)} (${percent}%)…`;
   }
   if (progress.stagePhase === 'downloading') return 'Downloading the release…';
   if (progress.stagePhase === 'verifying')
@@ -611,7 +610,7 @@ export function serviceUpdateDownload(progress: ServiceUpdateProgress): {
       100,
       Math.floor((progress.downloadedBytes / progress.totalBytes) * 100),
     ),
-    text: `${(progress.downloadedBytes / MEGABYTE).toFixed(1)} / ${(progress.totalBytes / MEGABYTE).toFixed(1)} MB`,
+    text: `${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`,
   };
 }
 

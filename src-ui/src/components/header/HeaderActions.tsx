@@ -207,6 +207,7 @@ export function HeaderActions({
     status: connStatus,
     reason: connReason,
     failureStreak: connFailureStreak,
+    checkedAt: connCheckedAt,
     recheck: connRecheck,
   } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -501,6 +502,8 @@ export function HeaderActions({
             activeConnectionId: activeConnection?.id,
             activeStatus: connState,
             activeStatusLabel: connStateLabel,
+            activeReason: connReason,
+            activeCheckedAt: connCheckedAt,
             activeDisplayName: connIdentity,
             onSelect: async (connection) => {
               await setActiveConnection(connection.id);
@@ -508,9 +511,15 @@ export function HeaderActions({
             onForget: (connection) => forgetConnection(connection.id),
             canForget: (connection) => canForgetConnection(connection.id),
             onClose: () => setConnectionMenuOpen(false),
-            onManage: onOpenConnections,
+            onManage: () => {
+              connectionButtonRef.current?.focus();
+              onOpenConnections();
+            },
             onPairPhone: hasLocalStationForProfile(profile)
-              ? () => openConnectionsModal({ mode: 'pair-host' })
+              ? () => {
+                  connectionButtonRef.current?.focus();
+                  openConnectionsModal({ mode: 'pair-host' });
+                }
               : undefined,
           }}
           pending={null}

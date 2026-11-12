@@ -1,8 +1,11 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -390,22 +393,292 @@ export async function runE2EExecutionPhases(phases, execute) {
   }
 }
 
+function readLifecycleEvidence(path, instance, expected) {
+  let descriptor;
+  const events = [];
+  let binding = { bytes: null, sha256: null };
+  const gap = (reason) => ({
+    ...binding,
+    events,
+    started: null,
+    matched: false,
+    gap: reason,
+  });
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    if (!fstatSync(descriptor).isFile()) return gap('journal-not-regular');
+    const buffer = Buffer.alloc(128 * 1024 + 1);
+    const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
+    if (bytes === buffer.length) return gap('journal-too-large');
+    const raw = buffer.subarray(0, bytes);
+    binding = {
+      bytes,
+      sha256: createHash('sha256').update(raw).digest('hex'),
+    };
+    const id = (value) =>
+      typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+    for (const line of raw.toString('utf8').split('\n').filter(Boolean)) {
+      const event = JSON.parse(line);
+      if (
+        event.type !== 'started' &&
+        event.type !== 'stop_intent' &&
+        event.type !== 'stop_result'
+      )
+        continue;
+      if (
+        event.instanceId !== instance ||
+        !id(event.bootId) ||
+        !Number.isSafeInteger(event.pid) ||
+        event.pid < 1 ||
+        typeof event.sha !== 'string' ||
+        !/^[a-f0-9]{40,64}$/.test(event.sha) ||
+        (event.type !== 'started' && !id(event.operationId)) ||
+        (event.type === 'stop_result' &&
+          !['completed', 'already_absent', 'failed'].includes(event.result))
+      )
+        return gap('journal-identity-mismatch');
+      if (events.length === 64) return gap('too-many-lifecycle-events');
+      events.push({
+        type: event.type,
+        instanceId: instance,
+        bootId: event.bootId,
+        pid: event.pid,
+        sha: event.sha,
+        ...(event.type !== 'started' ? { operationId: event.operationId } : {}),
+        ...(event.type === 'stop_result' ? { result: event.result } : {}),
+      });
+    }
+    const sameIdentity = (left, right) =>
+      left.instanceId === right.instanceId &&
+      left.pid === right.pid &&
+      left.bootId === right.bootId &&
+      left.sha === right.sha;
+    const starts = events.filter((event) => event.type === 'started');
+    if (starts.length === 0) return gap('startup-identity-missing');
+    if (
+      starts.some((event, index) =>
+        starts.slice(0, index).some((prior) => sameIdentity(event, prior)),
+      )
+    )
+      return gap('duplicate-start-or-restart');
+    const bootBuilds = new Set(
+      events.map((event) => `${event.bootId}:${event.sha}`),
+    );
+    if (bootBuilds.size !== 1) return gap('conflicting-boot-or-build');
+    if (
+      !expected?.server ||
+      !id(expected.bootId) ||
+      typeof expected.sha !== 'string'
+    )
+      return gap('expected-server-identity-missing');
+    if (
+      starts.some(
+        (event) =>
+          event.bootId !== expected.bootId ||
+          event.sha !== expected.sha ||
+          (event.pid !== expected.server.pid &&
+            event.pid !== expected.generation?.pid),
+      )
+    )
+      return gap('unrecorded-start-identity');
+    const intents = events.filter((event) => event.type === 'stop_intent');
+    const results = events.filter((event) => event.type === 'stop_result');
+    if (results.some((event) => event.result === 'failed'))
+      return gap('failed-stop');
+    if (intents.length === 0 && results.length === 0)
+      return gap('matching-stop-pair-missing');
+    if (intents.length !== 1 || results.length !== 1)
+      return gap('ambiguous-or-orphan-stop');
+    const [intent] = intents;
+    const [result] = results;
+    if (
+      !intent ||
+      !result ||
+      !sameIdentity(intent, result) ||
+      intent.operationId !== result.operationId
+    )
+      return gap('conflicting-stop-operation');
+    const candidates = starts.filter((event) => sameIdentity(event, intent));
+    const [started] = candidates;
+    if (candidates.length !== 1 || !started)
+      return gap('stop-identity-not-unique');
+    if (
+      events.indexOf(started) >= events.indexOf(intent) ||
+      events.indexOf(intent) >= events.indexOf(result) ||
+      starts.some((event) => events.indexOf(event) >= events.indexOf(intent))
+    )
+      return gap('stop-events-out-of-order');
+    if (
+      started.pid !== expected.server.pid ||
+      started.bootId !== expected.bootId ||
+      started.sha !== expected.sha
+    )
+      return gap('stop-does-not-match-lease-server');
+    return { ...binding, events, started, matched: true, gap: null };
+  } catch {
+    return gap('journal-unreadable');
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function lifecycleProcessIdentity(identity) {
+  if (
+    !Number.isSafeInteger(identity?.pid) ||
+    !Number.isSafeInteger(identity?.pgid) ||
+    typeof identity?.processStart !== 'string' ||
+    !/^[\x20-\x7e]{1,128}$/.test(identity.processStart)
+  )
+    return null;
+  return {
+    pid: identity.pid,
+    pgid: identity.pgid,
+    processStart: identity.processStart,
+  };
+}
+
+function nativeCommandOutcome(value) {
+  if (
+    !value ||
+    (value.code !== null && !Number.isInteger(value.code)) ||
+    (value.signal !== null &&
+      (typeof value.signal !== 'string' ||
+        !/^SIG[A-Z0-9]+$/.test(value.signal))) ||
+    typeof value.error !== 'boolean' ||
+    (value.timedOut !== null && typeof value.timedOut !== 'boolean')
+  )
+    return null;
+  return {
+    code: value.code,
+    signal: value.signal,
+    error: value.error,
+    timedOut: value.timedOut,
+  };
+}
+
+function emitSuiteLifecycleEvidence(
+  instance,
+  journal,
+  lease,
+  start,
+  stop,
+  cleanup,
+  attempts,
+) {
+  try {
+    const evidence = readLifecycleEvidence(journal, instance, {
+      server: lease?.daemon?.server,
+      generation: lease?.daemon?.generation,
+      bootId: lease?.daemon?.bootId,
+      sha: start?.sha,
+    });
+    console.log(
+      `[e2e-lifecycle] ${JSON.stringify({
+        owner: 'suite',
+        instance,
+        roots: 'runner-owned-temp-home-and-results',
+        serverPort: lease?.start?.serverPort ?? start?.serverPort ?? null,
+        uiPort: lease?.start?.uiPort ?? start?.uiPort ?? null,
+        runner: lifecycleProcessIdentity(lease?.runner),
+        launcher: lifecycleProcessIdentity(start?.launcher),
+        starterGroup: (start?.groupMembers ?? [])
+          .slice(0, 64)
+          .map(lifecycleProcessIdentity),
+        daemon: {
+          server: lifecycleProcessIdentity(lease?.daemon?.server),
+          ui: lifecycleProcessIdentity(lease?.daemon?.ui),
+          generation: lifecycleProcessIdentity(lease?.daemon?.generation),
+        },
+        start: start?.outcome ?? null,
+        stop,
+        attempts: attempts.map((attempt) => ({
+          ordinal: attempt.ordinal,
+          serverPort: attempt.serverPort,
+          uiPort: attempt.uiPort,
+          start: {
+            state: attempt.start.state,
+            code: attempt.start.code,
+            nativeOutcome: nativeCommandOutcome(attempt.start.nativeOutcome),
+          },
+          retryKind: attempt.retryKind,
+          recoveryStop: attempt.recoveryStop
+            ? {
+                state: attempt.recoveryStop.state,
+                nativeOutcome: nativeCommandOutcome(
+                  attempt.recoveryStop.nativeOutcome,
+                ),
+              }
+            : null,
+        })),
+        cleanup: {
+          settled: cleanup.settled,
+          errorsPresent: cleanup.errors.length > 0,
+        },
+        identityGap:
+          !lifecycleProcessIdentity(lease?.daemon?.server) ||
+          !lifecycleProcessIdentity(lease?.daemon?.ui)
+            ? 'daemon-identity-missing'
+            : null,
+        journal: evidence,
+        journalDaemonMatch: Boolean(
+          evidence.matched &&
+            evidence.started &&
+            evidence.started.pid === lease?.daemon?.server?.pid &&
+            evidence.started.bootId === lease?.daemon?.bootId &&
+            evidence.started.sha === start?.sha &&
+            start?.outcome?.code === 0 &&
+            start.outcome.signal === null &&
+            !start.outcome.error &&
+            start.outcome.timedOut === false &&
+            stop?.code === 0 &&
+            stop.signal === null &&
+            !stop.error &&
+            stop.timedOut === false &&
+            cleanup.settled &&
+            cleanup.errors.length === 0,
+        ),
+      })}`,
+    );
+  } catch {
+    try {
+      console.log('[e2e-lifecycle] {"owner":"suite","gap":"capture-failed"}');
+    } catch {
+      // Evidence output must not replace the original command outcome.
+    }
+  }
+}
+
 async function runWithinOwnedDeadline(
   command,
   args,
-  { deadlineMs, terminationGraceMs, terminationForceMs, ...options },
+  { deadlineMs, terminationGraceMs, terminationForceMs, onOutcome, ...options },
 ) {
   const execution = startOwned(command, args, options, command);
-  const result = await awaitOwnedCommandDeadline(execution, command, {
-    deadlineMs,
-    terminationGraceMs,
-    terminationForceMs,
+  let result;
+  try {
+    result = await awaitOwnedCommandDeadline(execution, command, {
+      deadlineMs,
+      terminationGraceMs,
+      terminationForceMs,
+    });
+  } catch (error) {
+    onOutcome?.({ code: null, signal: null, error: true, timedOut: null });
+    throw error;
+  }
+  onOutcome?.({
+    code: result.status,
+    signal: result.signal ?? null,
+    error: Boolean(result.error),
+    timedOut: false,
   });
-  if (result.status === 0) return;
+  if (result.status === 0) return result;
   throw new Error(`${command} ${args.join(' ')} exited with ${result.status}`);
 }
 
-function stopE2EInstance(instance) {
+function stopE2EInstance(instance, onOutcome) {
   return runWithinOwnedDeadline(
     './station',
     ['stop', `--instance=${instance}`],
@@ -413,6 +686,7 @@ function stopE2EInstance(instance) {
       deadlineMs: E2E_STOP_DEADLINE_MS,
       terminationGraceMs: E2E_STOP_SETTLEMENT_MS,
       terminationForceMs: E2E_STOP_SETTLEMENT_MS,
+      onOutcome,
     },
   );
 }
@@ -483,6 +757,12 @@ async function runCapturing(command, args, options = {}) {
   }
   return {
     code: result.status ?? 1,
+    nativeOutcome: {
+      code: result.error ? null : (result.status ?? null),
+      signal: result.signal ?? null,
+      error: Boolean(result.error),
+      timedOut: result.error ? null : false,
+    },
     output: result.error ? `${output}${String(result.error)}` : output,
     observedBytes,
     outputTruncated,
@@ -1554,7 +1834,10 @@ export async function startWithPortRetry({
   stopInstance,
   warn,
   onStarted = () => {},
+  attempts = [],
 }) {
+  if (!Array.isArray(attempts) || attempts.length !== 0)
+    throw new Error('E2E attempt records must start as an empty array');
   let lastFailure = null;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const serverBias = preferredPorts.server + attempt * 30;
@@ -1570,7 +1853,27 @@ export async function startWithPortRetry({
     } catch {
       // A first start commonly has no log yet.
     }
-    const result = await startInstance(serverPort, uiPort);
+    const record = {
+      ordinal: attempt + 1,
+      serverPort,
+      uiPort,
+      start: { state: 'pending', code: null, nativeOutcome: null },
+      retryKind: null,
+      recoveryStop: null,
+    };
+    attempts.push(record);
+    let result;
+    try {
+      result = await startInstance(serverPort, uiPort);
+    } catch (error) {
+      record.start.state = 'threw';
+      throw error;
+    }
+    record.start = {
+      state: 'returned',
+      code: Number.isInteger(result?.code) ? result.code : null,
+      nativeOutcome: nativeCommandOutcome(result?.nativeOutcome),
+    };
     if (result.code === 0) {
       onStarted({
         label,
@@ -1579,7 +1882,7 @@ export async function startWithPortRetry({
         observedBytes: result.observedBytes ?? 0,
         outputTruncated: result.outputTruncated === true,
       });
-      return { serverPort, uiPort };
+      return { serverPort, uiPort, attempts };
     }
 
     let output = result.output;
@@ -1614,6 +1917,7 @@ export async function startWithPortRetry({
       if (descriptor !== undefined) closeSync(descriptor);
     }
     const failureKind = classifyStartFailure(output, serverPort);
+    record.retryKind = failureKind;
     if (failureKind === 'fatal') {
       throw new Error(
         `./station start failed for ${label} (exit ${result.code}) — not a port collision; aborting.` +
@@ -1631,7 +1935,19 @@ export async function startWithPortRetry({
     );
     // A partial start may have detached the daemon already. A failed stop is
     // not best effort: continuing would reuse contested ports and outputs.
-    await stopInstance();
+    record.recoveryStop = { state: 'pending', nativeOutcome: null };
+    const retainStopOutcome = (outcome) => {
+      record.recoveryStop.nativeOutcome = nativeCommandOutcome(outcome);
+    };
+    try {
+      const outcome = await stopInstance(retainStopOutcome);
+      if (record.recoveryStop.nativeOutcome === null)
+        retainStopOutcome(outcome);
+      record.recoveryStop.state = 'returned';
+    } catch (error) {
+      record.recoveryStop.state = 'threw';
+      throw error;
+    }
   }
   throw new Error(
     `./station start for ${label} did not survive ${maxAttempts} port-block attempts; ` +
@@ -1879,13 +2195,21 @@ export function isCleanInstallE2ESuite(suite) {
   return suite === 'first-run' || suite === 'starter-clean-install';
 }
 
+function isHumanOnlyTaskRecoverySelection(suite, selectedSpecs) {
+  return (
+    suite === 'smoke-live' &&
+    selectedSpecs?.length === 1 &&
+    selectedSpecs[0] === 'tests/task-room-reload-recovery.spec.ts'
+  );
+}
+
 /**
  * Keep clean-install proof independent from any telemetry configuration in the
  * invoking shell. Empty endpoints prevent both direct product telemetry and
  * OTLP exports; the explicit enablement flag also proves the product's own
  * disabled path rather than merely relying on absent configuration.
  */
-export function suiteStationE2EEnv(suite) {
+export function suiteStationE2EEnv(suite, selectedSpecs = undefined) {
   // station#4464 arbiter rule, same shape as `STATION_E2E_SCREENS` below: an
   // EXPLICIT key in every branch, never a conditional spread. Both consumers
   // spread this after `...process.env`, so a stray `STATION_E2E_MUSE_PROVIDER`
@@ -1893,8 +2217,9 @@ export function suiteStationE2EEnv(suite) {
   // into a suite that never asked for it. `undefined` is not stringified —
   // Node's `spawn` omits any key whose value is `undefined` — so the
   // non-smoke-live suites hand the child no such variable at all.
+  const humanOnly = isHumanOnlyTaskRecoverySelection(suite, selectedSpecs);
   const museProvider =
-    suite === 'smoke-live' ? SMOKE_LIVE_MUSE_PROVIDER : undefined;
+    suite === 'smoke-live' && !humanOnly ? SMOKE_LIVE_MUSE_PROVIDER : undefined;
   // #875: explicit in every branch for the same inherited-environment reason
   // as the Muse override. Only the screenshot server requests suppression;
   // the server still requires its temp-home + e2e-screenshot instance
@@ -1919,7 +2244,7 @@ export function suiteStationE2EEnv(suite) {
       STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
     };
   return {
-    STATION_E2E_SYSTEM_STATUS_READY: '1',
+    STATION_E2E_SYSTEM_STATUS_READY: humanOnly ? undefined : '1',
     STATION_E2E_MUSE_PROVIDER: museProvider,
     STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
   };
@@ -1953,15 +2278,26 @@ export function establishedUserPlaywrightEnv(suite) {
 }
 
 /** Isolate imported history without removing authentication from live engines. */
-export function e2eProviderConfigEnv(suite, roots, inheritedEnv = process.env) {
+export function e2eProviderConfigEnv(
+  suite,
+  roots,
+  inheritedEnv = process.env,
+  selectedSpecs = undefined,
+) {
+  const retainHostAuthentication =
+    suite === 'smoke-live' &&
+    !isHumanOnlyTaskRecoverySelection(suite, selectedSpecs);
   return {
     STATION_EXTERNAL_CLAUDE_SOURCE_ROOT: roots.claude,
     STATION_EXTERNAL_CODEX_SOURCE_ROOT: roots.codex,
     STATION_EXTERNAL_OPENCODE_SOURCE_ROOT: roots.opencode,
     STATION_EXTERNAL_GROK_SOURCE_ROOT: roots.grok,
-    CLAUDE_CONFIG_DIR:
-      suite === 'smoke-live' ? inheritedEnv.CLAUDE_CONFIG_DIR : roots.claude,
-    CODEX_HOME: suite === 'smoke-live' ? inheritedEnv.CODEX_HOME : roots.codex,
+    CLAUDE_CONFIG_DIR: retainHostAuthentication
+      ? inheritedEnv.CLAUDE_CONFIG_DIR
+      : roots.claude,
+    CODEX_HOME: retainHostAuthentication
+      ? inheritedEnv.CODEX_HOME
+      : roots.codex,
   };
 }
 
@@ -2103,7 +2439,6 @@ async function main() {
     grep,
     screens,
   } = resolveE2ERunnerSelection(argv, suite, suiteSpecs);
-  const stationE2EEnv = suiteStationE2EEnv(suite);
   if (selectedSpecs.length === 0) {
     throw new Error(`E2E suite '${suite}' has no specs.`);
   }
@@ -2124,20 +2459,24 @@ async function main() {
     );
     return;
   }
+  const humanOnly = isHumanOnlyTaskRecoverySelection(suite, specs);
+  const stationE2EEnv = suiteStationE2EEnv(suite, specs);
   assertSupportedE2EPlatform();
   assertPlaywrightBrowsersInstalled(process.cwd());
-  const prunedResults = sweepRetainedE2ETestResults(process.cwd());
-  if (prunedResults > 0)
-    console.log(
-      `[e2e] pruned ${prunedResults} retained Playwright result root(s)`,
-    );
-  const recovered = await recoverInterruptedE2ERuns();
-  const reclaimed = sweepInterruptedBuildDirs();
-  const recoveredCount = recovered + reclaimed;
-  if (recoveredCount > 0) {
-    console.log(
-      `[e2e] reclaimed ${recoveredCount} interrupted E2E run${recoveredCount === 1 ? '' : 's'}`,
-    );
+  if (!humanOnly) {
+    const prunedResults = sweepRetainedE2ETestResults(process.cwd());
+    if (prunedResults > 0)
+      console.log(
+        `[e2e] pruned ${prunedResults} retained Playwright result root(s)`,
+      );
+    const recovered = await recoverInterruptedE2ERuns();
+    const reclaimed = sweepInterruptedBuildDirs();
+    const recoveredCount = recovered + reclaimed;
+    if (recoveredCount > 0) {
+      console.log(
+        `[e2e] reclaimed ${recoveredCount} interrupted E2E run${recoveredCount === 1 ? '' : 's'}`,
+      );
+    }
   }
   // CROSS-FILE COUPLE — three server-side containment gates transcribe this
   // exact `e2e-${suite}-${Date.now()}-${base36}` shape as a regex and treat a
@@ -2171,6 +2510,18 @@ async function main() {
   // Keep startup diagnostics in the instance-owned Playwright artifact root so
   // hosted CI is secure and failures remain uploadable.
   const serverLog = join(testResultsRoot, 'station.log');
+  const lifecycleJournal = join(testResultsRoot, 'lifecycle.ndjson');
+  let lifecycleStart = null;
+  let lifecycleStop = null;
+  const lifecycleAttempts = [];
+  const stopWithEvidence = async (onOutcome) => {
+    lifecycleStop = null;
+    await stopE2EInstance(instance, (outcome) => {
+      lifecycleStop = nativeCommandOutcome(outcome);
+      onOutcome?.(lifecycleStop);
+    });
+    return lifecycleStop;
+  };
   // Fixture writers and external-session readers share isolated history roots.
   // The live server can retain CLI authentication without importing host history.
   const claudeConfigDir = mkdtempSync(join(tmpdir(), `${instance}-claude-`));
@@ -2200,6 +2551,7 @@ async function main() {
       logPath: serverLog,
       preferredPorts,
       maxAttempts: MAX_START_ATTEMPTS,
+      attempts: lifecycleAttempts,
       pickServerPort: (bias) => findPreferredPortBlock(bias, 3),
       pickUiPort: (bias, chosenServerPort) =>
         findPreferredPortOutside(bias, chosenServerPort, 3),
@@ -2220,6 +2572,7 @@ async function main() {
         lease = readE2ELease(process.cwd(), instance);
         let groupSampler;
         let groupSamplingFailure = null;
+        lifecycleStart = { ...start, outcome: null };
         try {
           const result = await runCapturing(
             './station',
@@ -2232,7 +2585,7 @@ async function main() {
               `--port=${chosenServerPort}`,
               `--ui-port=${chosenUiPort}`,
               `--log=${serverLog}`,
-              `--lifecycle-journal=${join(testResultsRoot, 'lifecycle.ndjson')}`,
+              `--lifecycle-journal=${lifecycleJournal}`,
             ],
             {
               // The selected status mode must reach the SERVER, not just
@@ -2256,12 +2609,17 @@ async function main() {
                 // device helper can still name one explicitly.
                 STATION_MOBILE_DEVICE_HUB_URL: undefined,
                 ...stationE2EEnv,
-                ...e2eProviderConfigEnv(suite, {
-                  claude: claudeConfigDir,
-                  codex: codexConfigDir,
-                  opencode: openCodeDataDir,
-                  grok: grokHomeDir,
-                }),
+                ...e2eProviderConfigEnv(
+                  suite,
+                  {
+                    claude: claudeConfigDir,
+                    codex: codexConfigDir,
+                    opencode: openCodeDataDir,
+                    grok: grokHomeDir,
+                  },
+                  process.env,
+                  specs,
+                ),
               },
               onSpawn: (child) => {
                 const launcher = processIdentity(child.pid);
@@ -2292,6 +2650,13 @@ async function main() {
               },
             },
           );
+          const activeAttempt = lifecycleAttempts.at(-1);
+          if (activeAttempt) {
+            activeAttempt.start.nativeOutcome = nativeCommandOutcome(
+              result.nativeOutcome,
+            );
+          }
+          lifecycleStart = { ...lease?.start, outcome: result.nativeOutcome };
           if (groupSamplingFailure) throw groupSamplingFailure;
           if (result.code !== 0) return result;
           const bootstrapAuthority = readE2EBootstrapAuthority(
@@ -2300,6 +2665,7 @@ async function main() {
           );
           operatorCredential = bootstrapAuthority.operatorCredential;
           stationHome = bootstrapAuthority.registry.baseDir;
+          lifecycleStart.sha = bootstrapAuthority.registry.build?.sha ?? null;
           daemon = await discoverE2EDaemon({
             root: process.cwd(),
             instance,
@@ -2323,7 +2689,7 @@ async function main() {
           if (groupSampler) clearInterval(groupSampler);
         }
       },
-      stopInstance: () => stopE2EInstance(instance),
+      stopInstance: stopWithEvidence,
       warn: (message) => console.warn(message),
       onStarted: ({ serverPort, uiPort, observedBytes, outputTruncated }) => {
         console.log(
@@ -2339,8 +2705,17 @@ async function main() {
       root: process.cwd(),
       leasePath: runLease,
       lease,
-      stopInstance: () => stopE2EInstance(instance),
+      stopInstance: stopWithEvidence,
     });
+    emitSuiteLifecycleEvidence(
+      instance,
+      lifecycleJournal,
+      lease,
+      lifecycleStart,
+      lifecycleStop,
+      cleanup,
+      lifecycleAttempts,
+    );
     if (cleanup.errors.length) {
       throw new Error(
         `E2E startup failed and cleanup was not proven: ${cleanup.errors.join('; ')}`,
@@ -2475,6 +2850,19 @@ async function main() {
             ...establishedUserPlaywrightEnv(suite),
             CLAUDE_CONFIG_DIR: claudeConfigDir,
             CODEX_HOME: codexConfigDir,
+            ...(humanOnly
+              ? e2eProviderConfigEnv(
+                  suite,
+                  {
+                    claude: claudeConfigDir,
+                    codex: codexConfigDir,
+                    opencode: openCodeDataDir,
+                    grok: grokHomeDir,
+                  },
+                  process.env,
+                  specs,
+                )
+              : {}),
             STATION_E2E_UI_DIR: join(process.cwd(), `dist-ui-${instance}`),
             STATION_CRITICAL_BROWSER_REPORT: criticalSmoke
               ? join(
@@ -2515,8 +2903,17 @@ async function main() {
           root: process.cwd(),
           leasePath: runLease,
           lease,
-          stopInstance: () => stopE2EInstance(instance),
+          stopInstance: stopWithEvidence,
         });
+        emitSuiteLifecycleEvidence(
+          instance,
+          lifecycleJournal,
+          lease,
+          lifecycleStart,
+          lifecycleStop,
+          cleanup,
+          lifecycleAttempts,
+        );
         if (runFailure) {
           if (existsSync(serverLog))
             console.error(`[e2e] retained Station server log: ${serverLog}`);
@@ -2536,7 +2933,7 @@ async function main() {
             );
           }
         }
-        if (cleanup.errors.length === 0) {
+        if (cleanup.errors.length === 0 && !humanOnly) {
           const pruned = sweepRetainedE2ETestResults(process.cwd());
           if (pruned > 0) {
             console.log(

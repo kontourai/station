@@ -29,6 +29,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -56,6 +57,7 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { describeStationFailure } from '../utils/stationFailure';
+import { nextTabIndex } from '../utils/tab-navigation';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
 import {
   ProjectTaskRoomConversation,
@@ -552,6 +554,35 @@ function TaskWorkspaceContent({
   const integrations = references.filter(
     (reference) => reference.kind === 'external',
   );
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  const revealTab = useCallback((button: HTMLElement) => {
+    const strip = tabStripRef.current;
+    if (!strip) return;
+    const stripBounds = strip.getBoundingClientRect();
+    const buttonBounds = button.getBoundingClientRect();
+    const stripStyle = getComputedStyle(strip);
+    const buttonStyle = getComputedStyle(button);
+    const paddingLeft = Number.parseFloat(stripStyle.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(stripStyle.paddingRight) || 0;
+    const outline =
+      (Number.parseFloat(buttonStyle.outlineWidth) || 0) +
+      Math.max(0, Number.parseFloat(buttonStyle.outlineOffset) || 0);
+    const left = stripBounds.left + strip.clientLeft + paddingLeft;
+    const right =
+      stripBounds.left + strip.clientLeft + strip.clientWidth - paddingRight;
+    const clippedLeft = buttonBounds.left - outline - left;
+    const clippedRight = buttonBounds.right + outline - right;
+    if (clippedLeft < 0) strip.scrollLeft += clippedLeft;
+    else if (clippedRight > 0) strip.scrollLeft += clippedRight;
+  }, []);
+  // The selected tab or its position can change when Review becomes available.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selection and tab insertion change the DOM geometry.
+  useLayoutEffect(() => {
+    const selected = tabStripRef.current?.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    if (selected) revealTab(selected);
+  }, [tab, reviewEnabled, revealTab]);
   return (
     <div className="page page--full task-workspace">
       <TaskRoomHeader
@@ -563,6 +594,7 @@ function TaskWorkspaceContent({
       />
       <div
         className="task-room-tabs page__tabs"
+        ref={tabStripRef}
         role="tablist"
         aria-label="Task views"
       >
@@ -578,31 +610,26 @@ function TaskWorkspaceContent({
               id={`task-tab-${name.replaceAll(' ', '-')}`}
               className="page__tab"
               onClick={() => setTab(name)}
+              onFocus={(event) => revealTab(event.currentTarget)}
               onKeyDown={(event) => {
-                if (
-                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
-                    event.key,
-                  )
-                )
-                  return;
                 const tabs = Array.from(
                   event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
                     '[role="tab"]',
                   ) ?? [],
                 ).filter((button) => button.offsetParent !== null);
-                const index = tabs.indexOf(event.currentTarget);
-                const next =
-                  event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : (index +
-                          (event.key === 'ArrowRight' ? 1 : -1) +
-                          tabs.length) %
-                        tabs.length;
+                const next = nextTabIndex(
+                  tabs.indexOf(event.currentTarget),
+                  tabs.length,
+                  event.key,
+                );
+                if (next === null) return;
                 event.preventDefault();
-                tabs[next]?.focus();
-                tabs[next]?.click();
+                const target = tabs[next];
+                if (target) {
+                  target.focus({ preventScroll: true });
+                  revealTab(target);
+                  target.click();
+                }
               }}
             >
               {name}

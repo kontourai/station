@@ -93,7 +93,10 @@ import {
   useShortcutRegistry,
 } from '../../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../../contexts/navigation-store';
-import { browserFloatSourceKey } from '../../../float-over-chat/floatSource';
+import {
+  browserFloatSourceKey,
+  browserShownSourceKey,
+} from '../../../float-over-chat/floatSource';
 import {
   dismissFloat,
   openFloat,
@@ -204,7 +207,7 @@ function renderPane(
       <QueryClientProvider client={client}>{node}</QueryClientProvider>
     </KeyboardShortcutsProvider>
   );
-  render(
+  const view = render(
     wrap(
       <BrowserPane
         projectSlug="alpha"
@@ -214,7 +217,7 @@ function renderPane(
       />,
     ),
   );
-  return { ...station, onAttach };
+  return { ...station, onAttach, unmount: view.unmount };
 }
 
 afterEach(() => {
@@ -351,11 +354,19 @@ describe('BrowserPane honest states', () => {
         request?.onTaken?.();
       });
       await waitFor(() =>
-        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(false),
+        expect(
+          isSourceShown(
+            browserShownSourceKey(SESSION, 'http://station.test', 'fixture'),
+          ),
+        ).toBe(false),
       );
       act(() => dismissFloat('test-chat', browserFloatSourceKey(SESSION)));
       await waitFor(() =>
-        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(true),
+        expect(
+          isSourceShown(
+            browserShownSourceKey(SESSION, 'http://station.test', 'fixture'),
+          ),
+        ).toBe(true),
       );
     } finally {
       release();
@@ -728,7 +739,7 @@ describe('BrowserPane honest states', () => {
     ).toBeTruthy();
     expect(screen.queryByLabelText('Address')).toBeNull();
     expect(screen.getByText(/grant you Project admin access/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test.each([
@@ -738,7 +749,7 @@ describe('BrowserPane honest states', () => {
     renderPane({ 'GET /api/browser/projects/alpha/access': refuse(403, code) });
     expect(await screen.findByText(title)).toBeTruthy();
     expect(screen.getByText(guidance)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('a live session mounts the live view on its surface', async () => {
@@ -754,7 +765,11 @@ describe('BrowserPane honest states', () => {
   });
 
   test('while its live view is on screen the pane announces the session, so the float-over-chat hides (#90 D9)', async () => {
-    const key = browserFloatSourceKey(SESSION);
+    const key = browserShownSourceKey(
+      SESSION,
+      'http://station.test',
+      'fixture',
+    );
     expect(isSourceShown(key)).toBe(false);
     renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
@@ -1271,7 +1286,7 @@ describe('BrowserPane Chromium acquisition (D3)', () => {
       ),
     });
     const download = await screen.findByRole('button', {
-      name: 'Download Chromium (152 MB)',
+      name: 'Download Chromium (145.0 MB)',
     });
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
     fireEvent.click(download);
@@ -2240,10 +2255,29 @@ describe('BrowserPane on a phone-width pane (Duo audit)', () => {
     expect(
       await screen.findByText('Local servers could not be read'),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(
       await screen.findByText('Local servers appear here once shared'),
     ).toBeTruthy();
     expect(reads).toBe(2);
   });
+});
+
+test('two panes share one browser viewer and transfer it on unmount', async () => {
+  const routes = {
+    'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+    [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+  };
+  const first = renderPane(routes);
+  await screen.findByTestId('live-canvas');
+  renderPane(routes);
+  await screen.findByText('This Browser is shown in another view');
+  expect(screen.getAllByTestId('live-canvas')).toHaveLength(1);
+  first.unmount();
+  await waitFor(() =>
+    expect(screen.getAllByTestId('live-canvas')).toHaveLength(1),
+  );
+  expect(
+    screen.queryByText('This Browser is shown in another view'),
+  ).toBeNull();
 });

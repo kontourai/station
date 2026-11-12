@@ -1,5 +1,7 @@
 import type {
+  DensityPreference,
   DeviceSettings,
+  MotionPreference,
   ThemePreference,
 } from '@kontourai/station-contracts/device-settings';
 import { useCallback, useRef, useSyncExternalStore } from 'react';
@@ -40,6 +42,7 @@ import {
   type ColorThemeOption,
   type ColorThemeSwatch,
 } from '../lib/color-themes';
+import { resolveDensity, resolveMotion } from '../lib/display-preferences';
 import { AccentColorPicker } from '../views/settings/AccentColorPicker';
 import { formatSettingsMessage } from '../views/settings/settings-catalog';
 import './AppearancePage.css';
@@ -199,6 +202,63 @@ function ModeControl({
   );
 }
 
+/**
+ * One choice as native radios sharing a name, styled like Mode: the browser
+ * gives the group one tab stop and arrow-key movement, and each option keeps
+ * the 44px hit area Mode's options have.
+ */
+function SegmentedChoice<T extends string>({
+  name,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  name: string;
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="appearance-mode">
+      <div
+        className="appearance-mode__options"
+        role="radiogroup"
+        aria-label={label}
+      >
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className={`appearance-mode__option${value === option.value ? ' is-selected' : ''}`}
+          >
+            <input
+              type="radio"
+              className="appearance__radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const DENSITY_OPTIONS: readonly { value: DensityPreference; label: string }[] =
+  [
+    { value: 'comfortable', label: 'Comfortable' },
+    { value: 'compact', label: 'Compact' },
+  ];
+
+const MOTION_OPTIONS: readonly { value: MotionPreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'reduce', label: 'Reduced' },
+];
+
 const APPLIED_ATTRIBUTES = [
   COLOR_THEME_ATTRIBUTE,
   COLOR_THEME_FLAVOR_ATTRIBUTE,
@@ -299,7 +359,7 @@ export function AppearancePage() {
           : 'loading';
   const loading = sheetState === 'loading';
   const failed = sheetState === 'failed';
-  // Try again sits in the notice that goes away while the retry loads, so
+  // Retry sits in the notice that goes away while the retry loads, so
   // focus moves first to the choice being retried; it would otherwise drop to
   // the page body.
   const selectedRadio = useRef<HTMLInputElement | null>(null);
@@ -385,6 +445,35 @@ export function AppearancePage() {
         />
       </PageSection>
 
+      <PageSection className="appearance__section" title="Display">
+        <PageRow
+          title="Density"
+          description="Comfortable reads at 13px. Compact fits more on screen at 12px."
+          control={
+            <SegmentedChoice
+              name="appearance-density"
+              label="Density"
+              options={DENSITY_OPTIONS}
+              value={resolveDensity(settings.density)}
+              onChange={(next) => setDeviceSetting('density', next)}
+            />
+          }
+        />
+        <PageRow
+          title="Motion"
+          description="System follows this device. Reduced keeps animation to a minimum."
+          control={
+            <SegmentedChoice
+              name="appearance-motion"
+              label="Motion"
+              options={MOTION_OPTIONS}
+              value={resolveMotion(settings.motion)}
+              onChange={(next) => setDeviceSetting('motion', next)}
+            />
+          }
+        />
+      </PageSection>
+
       <PageSection
         className="appearance__section"
         title="Theme"
@@ -448,7 +537,7 @@ export function AppearancePage() {
             title={`Couldn't load ${selectedOption.label}.`}
             action={
               <Button size="sm" onClick={retry}>
-                Try again
+                Retry
               </Button>
             }
           >

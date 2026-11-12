@@ -194,9 +194,7 @@ function SharingControls({
           <ErrorState
             title="Project sharing unavailable"
             description={userFacingErrorMessage(query.error)}
-            action={
-              <Button onClick={() => void query.refetch()}>Try again</Button>
-            }
+            action={<Button onClick={() => void query.refetch()}>Retry</Button>}
           />
         )}
       </PageSection>

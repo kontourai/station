@@ -43,6 +43,7 @@ import { CLIENT_DOCUMENT_SESSION_ID } from '../../clientDocumentSession';
 import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
+  wakeOrchestrationEventStreams,
 } from '../ensureOrchestrationEventStream';
 import { subscribeSharedOrchestrationStream } from '../sharedStreamListeners';
 import { getStreamConnectionState } from '../streamConnectionState';
@@ -170,6 +171,72 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     const resumedA = requestsTo(a)[1]?.[1] as RequestInit | undefined;
     expect(new Headers(resumedA?.headers).get('Last-Event-ID')).toBe('5');
   });
+  // A host conversation hands its own station connection to the transcript's
+  // ensure, while the dock and the app-wide transport ensure the same apiBase
+  // under the host's plain authority key. Both name ONE authority. Keying the
+  // station by its runtime key read every alternating ensure as an authority
+  // change: it closed the live stream and dropped its cursor, so the phone
+  // reconnected every few seconds with no Last-Event-ID, and the events in
+  // each gap (an approval's resolution, the next request) never arrived.
+  test('a host conversation and the app-wide transport share one stream and its cursor', async () => {
+    const apiBase = 'http://recovery.test/host-shared-authority';
+    const authorityKey = 'host-authority';
+    const host = {
+      routeKind: 'host',
+      targetApiBase: apiBase,
+      requestScope: { apiBase, authorityKey },
+      runtimeKey: JSON.stringify([apiBase, authorityKey, 'generation-1']),
+      binding: {
+        version: 1,
+        environmentId: 'host-shared',
+        stationName: 'host-shared',
+        affinity: { kind: 'host' },
+      },
+      isCurrent: () => true,
+    } as unknown as Parameters<typeof ensureOrchestrationEventStream>[5];
+    const releaseApp = ensureOrchestrationEventStream(
+      apiBase,
+      undefined,
+      authorityKey,
+    );
+    await settle();
+    // The transcript effect, then a re-run of it (its deps changed).
+    const releaseFirst = ensureOrchestrationEventStream(
+      apiBase,
+      undefined,
+      undefined,
+      false,
+      false,
+      host,
+    );
+    await settle();
+    releaseFirst();
+    const releaseConversation = ensureOrchestrationEventStream(
+      apiBase,
+      undefined,
+      undefined,
+      false,
+      false,
+      host,
+    );
+    await settle();
+    const releaseDock = ensureOrchestrationEventStream(
+      apiBase,
+      undefined,
+      authorityKey,
+    );
+    await settle();
+    try {
+      expect(requestsTo(apiBase)).toHaveLength(1);
+      const [, init] = requestsTo(apiBase)[0] as [unknown, RequestInit];
+      expect(init.signal?.aborted).toBe(false);
+    } finally {
+      releaseDock();
+      releaseConversation();
+      releaseApp();
+    }
+  });
+
   test('a stream ended by a non-persisted pagehide is replaced by the next ensure', async () => {
     const apiBase = 'http://recovery.test/pagehide';
     ensureOrchestrationEventStream(apiBase);
@@ -347,6 +414,30 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     await settle();
     expect(requestsTo(a)).toHaveLength(2);
     expect(requestsTo(b)).toHaveLength(1);
+  });
+
+  test('a health-recovery wake cuts a transient backoff short and leaves a parked stream to its floor', async () => {
+    const apiBase = 'http://recovery.test/health-wake';
+    const parked = 'http://recovery.test/parked-health-wake';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith(parked)) return new Response('', { status: 401 });
+      throw new TypeError('network down');
+    });
+    ensureOrchestrationEventStream(apiBase);
+    ensureOrchestrationEventStream(parked);
+    await settle();
+    // One failed attempt each: `apiBase` waits out a 2s backoff, `parked`
+    // waits for a credential.
+    expect(requestsTo(apiBase)).toHaveLength(1);
+    expect(requestsTo(parked)).toHaveLength(1);
+
+    wakeOrchestrationEventStreams();
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
+    // A refused credential is not repaired by the server answering again, and
+    // every retry of it is a failed authentication the runtime rate-limits.
+    expect(requestsTo(parked)).toHaveLength(1);
   });
 
   test('a stream resumed from its park is no longer treated as parked', async () => {

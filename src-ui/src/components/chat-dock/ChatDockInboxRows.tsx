@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/device-settings';
 import type { GitReadLocation } from '@kontourai/station-sdk';
 import {
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -13,12 +14,19 @@ import {
 } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { useConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
 import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
+import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useInboxSwipe } from '../../hooks/useInboxSwipe';
 import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
+import {
+  isCurrentInboxItem,
+  rowReadStateUnknown,
+  rowReadsUnread,
+} from '../../views/home/conversation-read-state';
 import {
   draftDiscardThreadId,
   draftSessionIds,
@@ -38,7 +46,6 @@ import {
   DiscardGlyph,
   EditGlyph,
   FolderGlyph,
-  InfoGlyph,
   MoreGlyph,
   RefreshGlyph,
   ReturnGlyph,
@@ -51,6 +58,12 @@ import {
   InboxRowStatusGlyph,
   InboxRowStatusLine,
 } from '../inbox-row/InboxRowStatus';
+import {
+  type InboxRowAction,
+  type InboxRowCommand,
+  type InboxRowSnoozeAction,
+  inboxRowActions,
+} from '../inbox-row/inbox-row-actions';
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
@@ -62,11 +75,6 @@ import {
 } from '../ResponsiveDialogSurface';
 import { ErrorState } from '../state';
 import type { MobileActivityGroup } from './mobile-activity-groups';
-import {
-  SNOOZE_OPTIONS,
-  type SnoozeOption,
-  snoozeWakeAt,
-} from './mobile-activity-groups';
 import { useConversationWorkState } from './useConversationWorkState';
 import './ChatDockInboxPanel.css';
 import {
@@ -274,36 +282,29 @@ const loadChatInboxDetailsSheet = () =>
  * never a one-tap default. A snoozed row shows Unsnooze instead.
  */
 function SnoozeActions({
-  item,
-  isSnoozed,
-  now,
-  onWake,
+  action,
   showLabel = false,
 }: {
   showLabel?: boolean;
-  item: HomeWorkItem;
-  isSnoozed: boolean;
-  now: number;
-  onWake: (wakeAt: number | null, action: HTMLButtonElement) => void;
+  action: InboxRowSnoozeAction;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const choose = (option: SnoozeOption) => {
-    if (triggerRef.current)
-      onWake(snoozeWakeAt(option, now), triggerRef.current);
+  const choose = (wakeAt: number) => {
+    if (triggerRef.current) action.choose(wakeAt, triggerRef.current);
     setMenuOpen(false);
   };
-  if (isSnoozed) {
+  if (action.isSnoozed) {
     return (
       <button
         type="button"
         className="chat-dock-inbox__row-action inbox-row__action"
-        title="Unsnooze"
-        aria-label={`Unsnooze ${item.title}`}
-        onClick={(event) => onWake(null, event.currentTarget)}
+        title={action.label}
+        aria-label={action.accessibleLabel}
+        onClick={(event) => action.choose(null, event.currentTarget)}
       >
         <ReturnGlyph />
-        {showLabel && <span>Unsnooze</span>}
+        {showLabel && <span>{action.shortLabel}</span>}
       </button>
     );
   }
@@ -313,19 +314,19 @@ function SnoozeActions({
         ref={triggerRef}
         type="button"
         className="chat-dock-inbox__row-action inbox-row__action"
-        title="Snooze"
-        aria-label={`Snooze ${item.title}`}
+        title={action.label}
+        aria-label={action.accessibleLabel}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={() => setMenuOpen((open) => !open)}
       >
         <TimeGlyph />
-        {showLabel && <span>Snooze</span>}
+        {showLabel && <span>{action.shortLabel}</span>}
       </button>
       {menuOpen && (
         <ResponsiveDialogSurface
           layer={showLabel ? 'dialog' : 'popover'}
-          ariaLabel={`Snooze ${item.title}`}
+          ariaLabel={action.accessibleLabel}
           onClose={() => setMenuOpen(false)}
           returnFocusTarget={triggerRef.current}
           anchorRef={triggerRef}
@@ -337,13 +338,13 @@ function SnoozeActions({
             closeLabel="Close snooze menu"
             onClose={() => setMenuOpen(false)}
           />
-          <div role="menu" aria-label={`Snooze ${item.title}`}>
-            {SNOOZE_OPTIONS.map((option) => (
+          <div role="menu" aria-label={action.accessibleLabel}>
+            {action.choices.map((option) => (
               <button
                 key={option.label}
                 type="button"
                 role="menuitem"
-                onClick={() => choose(option)}
+                onClick={() => choose(option.wakeAt)}
               >
                 {option.label}
               </button>
@@ -352,6 +353,58 @@ function SnoozeActions({
         </ResponsiveDialogSurface>
       )}
     </>
+  );
+}
+
+function InboxCommandButton({
+  action,
+  placement,
+  onSelect = action.select,
+}: {
+  action: InboxRowCommand;
+  placement: 'row' | 'sheet' | 'swipe';
+  onSelect?: (trigger: HTMLButtonElement) => void;
+}) {
+  const icons = {
+    settle: CheckGlyph,
+    reopen: RefreshGlyph,
+    close: CloseGlyph,
+    restore: ReturnGlyph,
+    discard: DiscardGlyph,
+  };
+  const Glyph = icons[action.icon];
+  return (
+    <Button
+      variant="ghost"
+      className={[
+        placement === 'sheet'
+          ? 'menu-row'
+          : placement === 'row'
+            ? 'chat-dock-inbox__row-action inbox-row__action'
+            : `inbox-row__swipe-${action.id === 'close' ? 'dismiss' : action.id}`,
+        action.danger ? 'action-overflow__row--danger' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      disabled={action.pending}
+      title={action.label}
+      aria-label={
+        placement !== 'sheet' || action.id === 'discard-unsent'
+          ? action.accessibleLabel
+          : undefined
+      }
+      onClick={(event) => onSelect(event.currentTarget)}
+    >
+      <span
+        className={placement === 'sheet' ? 'menu-row__glyph' : undefined}
+        aria-hidden="true"
+      >
+        <Glyph />
+      </span>
+      {placement !== 'row' && (
+        <span>{placement === 'swipe' ? action.shortLabel : action.label}</span>
+      )}
+    </Button>
   );
 }
 
@@ -380,6 +433,8 @@ interface InboxRowProps {
   resolution?: { settled: boolean; pending: boolean; onChange: () => void };
   isDismissed?: boolean;
   swipeActions?: boolean;
+  swipeOpen?: boolean;
+  onSwipeOpenChange?: (open: boolean) => void;
   /**
    * #2312: offers server-side Discard on Draft rows, independently of inbox
    * dismissal. Runs after the command succeeds for focus and tab teardown.
@@ -480,6 +535,25 @@ function useHasUnsentComposerDraft(item: HomeWorkItem): boolean {
   );
 }
 
+/**
+ * The row title. Unread sets it bold (#3075), and a weight change must not
+ * move anything: a bolder title is wider, so it could re-wrap a two-line
+ * phone title or shift an ellipsis. The title therefore always takes the
+ * size of its bold rendering (an invisible bold copy, `data-title`, laid in
+ * the same grid cell by CSS), whichever weight is showing.
+ */
+function InboxRowTitle({ title }: { title: string }) {
+  return (
+    <strong
+      className="chat-dock-inbox__title inbox-row__title"
+      title={title}
+      data-title={title}
+    >
+      <span className="inbox-row__title-text">{title}</span>
+    </strong>
+  );
+}
+
 export function InboxRow({
   item,
   isCurrent,
@@ -494,6 +568,8 @@ export function InboxRow({
   resolution,
   isDismissed = false,
   swipeActions = false,
+  swipeOpen,
+  onSwipeOpenChange,
   onDraftDiscarded,
   agents,
   gitLocation,
@@ -526,6 +602,13 @@ export function InboxRow({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const hasUnsentDraft = useHasUnsentComposerDraft(item);
+  // #3075: the server's read state. The current chat in a focused window is
+  // being read as its output lands, so it never reads as unread here (the
+  // dock is telling the server the same thing).
+  const documentFocused = useDocumentFocused();
+  const onScreen = useConversationOnScreen(item);
+  const unread = rowReadsUnread(item, onScreen && documentFocused);
+  const readUnknown = rowReadStateUnknown(item, onScreen && documentFocused);
   // The ONE status read (#3042): the line here and the lane this row was
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
@@ -539,237 +622,182 @@ export function InboxRow({
     ? `Directory · ${directoryContext}`
     : item.projectLabel;
   const hasTime = item.updatedAt > 0;
-  const closable =
-    !isDismissed &&
-    Boolean(onDismiss || (onCloseChat && isOpenChat && item.chatSessionId));
-  const closeLabel = onDismiss ? 'Dismiss from inbox' : 'Close chat';
-  const closeItem = (action: HTMLButtonElement) => {
-    if (onDismiss) onDismiss(item, action);
-    else if (item.chatSessionId) onCloseChat?.(item.chatSessionId, action);
-  };
-  const restorable = Boolean(isDismissed && onRestore);
   const tooltip = hoverCard && chrome === 'hover';
   const details = hoverCard && chrome === 'touch';
-  // A host that offers nothing (the sidebar's open chats) gets no slot and
-  // no extra tab stop: the row is already its own open control.
-  const hasActions = Boolean(
-    details ||
-      onSnoozeWake ||
-      discardThreadId ||
-      closable ||
-      restorable ||
-      resolution,
-  );
-  // TOUCH CHROME shows Details and at most ONE direct action, so a phone
-  // row keeps its title: Discard on a Draft (it is what a Draft row is for),
-  // otherwise snooze where the row can be snoozed, otherwise close. A slim
-  // row is one line and shows Details alone.
-  // Whatever is not beside the row is an ordinary button inside the Details
-  // sheet. Hover chrome reveals every action over the time slot as before.
-  const snoozable = Boolean(onSnoozeWake);
-  const direct: 'all' | 'snooze' | 'close' | 'discard' | 'none' = !details
+  const detailsOpenRef = useRef(detailsOpen);
+  detailsOpenRef.current = detailsOpen;
+  const fromSheet = (action: (trigger: HTMLButtonElement) => void) => {
+    setDetailsOpen(false);
+    if (detailsTriggerRef.current) {
+      detailsTriggerRef.current.focus();
+      action(detailsTriggerRef.current);
+    }
+  };
+  const composerDraftSessionId =
+    hasUnsentDraft && item.chatSessionId ? item.chatSessionId : undefined;
+  const actions = inboxRowActions({
+    title: item.title,
+    now,
+    snooze: onSnoozeWake
+      ? {
+          isSnoozed,
+          choose: (wakeAt, trigger) => onSnoozeWake(item, wakeAt, trigger),
+        }
+      : undefined,
+    close:
+      !isDismissed &&
+      (onDismiss || (onCloseChat && isOpenChat && item.chatSessionId))
+        ? {
+            dismiss: Boolean(onDismiss),
+            select: (trigger) => {
+              if (onDismiss) onDismiss(item, trigger);
+              else if (item.chatSessionId)
+                onCloseChat?.(item.chatSessionId, trigger);
+            },
+          }
+        : undefined,
+    restore:
+      isDismissed && onRestore
+        ? (trigger) => onRestore(item, trigger)
+        : undefined,
+    resolution: resolution
+      ? {
+          ...resolution,
+          select: (trigger) => {
+            trigger
+              .closest('.inbox-row')
+              ?.querySelector<HTMLButtonElement>('.inbox-row__open')
+              ?.focus();
+            resolution.onChange();
+          },
+        }
+      : undefined,
+    discardUnsent: composerDraftSessionId
+      ? () => {
+          activeChatsStore.clearInput(composerDraftSessionId);
+          chatDraftsStore.clear(composerDraftSessionId);
+        }
+      : undefined,
+    discard:
+      discardThreadId && onDraftDiscarded
+        ? {
+            threadId: discardThreadId,
+            onDiscarded: (trigger) => onDraftDiscarded(item, trigger),
+          }
+        : undefined,
+  });
+  const hasActions =
+    details || actions.some((action) => action.id !== 'discard-unsent');
+  const direct = !details
     ? 'all'
     : actionsInDetails || size === 'slim'
       ? 'none'
-      : discardThreadId
+      : actions.find((action) => action.id === 'discard')
         ? 'discard'
-        : snoozable
+        : actions.find((action) => action.id === 'snooze')
           ? 'snooze'
-          : closable
+          : actions.find((action) => action.id === 'close')
             ? 'close'
             : 'none';
-  const beside = (action: 'snooze' | 'close' | 'discard') =>
-    direct === 'all' || direct === action;
-  // Sheet actions hand the host the Details trigger: it lives in the row, so
-  // the host's focus move can find the row the action is about to remove.
-  const fromSheet = (action: (trigger: HTMLButtonElement) => void) => {
-    setDetailsOpen(false);
-    if (detailsTriggerRef.current) action(detailsTriggerRef.current);
-  };
-  const changeResolution = (action: HTMLButtonElement) => {
-    action
-      .closest('.inbox-row')
-      ?.querySelector<HTMLButtonElement>('.inbox-row__open')
-      ?.focus();
-    resolution?.onChange();
-  };
-  // The actions that are not beside the row, as the sheet's menu list: the
-  // shared menu primitive's groups and rows (`.menu-group`, `.menu-row`), an
-  // icon and a label on each, snooze presets under their own group label and
-  // the destructive Discard last. They are buttons in a labelled list, not
-  // `role="menu"`: the sheet is a dialog that also holds read-only details
-  // and takes focus as a dialog, and a menu role would promise roving arrow
-  // keys this composite does not implement. `undefined` when the row keeps
-  // nothing in the sheet, so no empty list is rendered.
-  const sheetSnoozePresets =
-    !beside('snooze') && onSnoozeWake && !isSnoozed ? onSnoozeWake : undefined;
-  const sheetUnsnooze =
-    !beside('snooze') && onSnoozeWake && isSnoozed ? onSnoozeWake : undefined;
-  const sheetClose = !beside('close') && closable;
-  const swipe = useInboxSwipe(
-    Boolean(details && swipeActions && onDismiss && !isDismissed),
+  const beside = (action: InboxRowAction) =>
+    direct === 'all' || direct === action.id;
+  const trayActions = actions.filter(
+    (action) =>
+      action.id === 'resolution' ||
+      action.id === 'snooze' ||
+      (action.id === 'close' && onDismiss),
   );
   const canSwipe = Boolean(
-    details && swipeActions && onDismiss && !isDismissed,
+    details && swipeActions && !isDismissed && trayActions.length,
   );
-  const sheetDiscard =
-    !beside('discard') && discardThreadId && onDraftDiscarded
-      ? { threadId: discardThreadId, onDraftDiscarded }
-      : undefined;
-  // #3239: an UNSENT composer draft — text typed into
-  // an open chat on this device, the row's "Unsent draft" chip — had no way
-  // off a phone. It is this device's text, not a server Draft, so discarding
-  // it clears the composer and the store the chip reads, nothing else.
-  const composerDraftSessionId =
-    hasUnsentDraft && item.chatSessionId ? item.chatSessionId : undefined;
-  const sheetMenu =
-    sheetSnoozePresets ||
-    sheetUnsnooze ||
-    sheetClose ||
-    restorable ||
-    sheetDiscard ||
-    composerDraftSessionId ||
-    resolution ? (
-      <div
-        className="menu-surface chat-dock-inbox-details__menu"
-        data-testid="inbox-row-details-actions"
-      >
-        {resolution && (
-          <Button
-            variant="ghost"
-            className="menu-row"
-            disabled={resolution.pending}
-            onClick={() => fromSheet(changeResolution)}
-          >
-            {resolution.settled ? 'Reopen conversation' : 'Settle conversation'}
-          </Button>
-        )}
-        {sheetSnoozePresets && (
-          <fieldset className="menu-group">
-            <legend className="menu-group__label">Snooze</legend>
-            {SNOOZE_OPTIONS.map((option) => (
-              <button
-                key={option.label}
-                type="button"
+  const swipe = useInboxSwipe(canSwipe, {
+    open: swipeOpen,
+    onOpenChange: onSwipeOpenChange,
+    actionWidth: trayActions.length * 72,
+  });
+  const openDetails = () => {
+    swipe.close();
+    setDetailsOpen(true);
+    return true;
+  };
+  const renderDiscard = (
+    action: Extract<InboxRowAction, { kind: 'discard' }>,
+    inSheet: boolean,
+  ) => (
+    <DiscardDraftButton
+      threadId={action.threadId}
+      title={item.title}
+      label={inSheet ? action.label : undefined}
+      className={
+        inSheet
+          ? 'menu-row action-overflow__row--danger'
+          : 'chat-dock-inbox__row-action inbox-row__action'
+      }
+      closeSessionIds={draftSessionIds(item)}
+      onDiscarded={(trigger) => {
+        if (!inSheet) action.onDiscarded(trigger);
+        else if (detailsOpenRef.current) fromSheet(action.onDiscarded);
+        else action.onDiscarded(trigger);
+      }}
+    />
+  );
+  const sheetMenu = actions.length ? (
+    <div
+      className="menu-surface chat-dock-inbox-details__menu"
+      data-testid="inbox-row-details-actions"
+    >
+      {actions.map((action) =>
+        action.kind === 'snooze' && !action.isSnoozed ? (
+          <fieldset key={action.id} className="menu-group">
+            <legend className="menu-group__label">{action.label}</legend>
+            {action.choices.map((choice) => (
+              <Button
+                key={choice.label}
+                variant="ghost"
                 className="menu-row"
                 onClick={() =>
-                  fromSheet((trigger) =>
-                    sheetSnoozePresets(
-                      item,
-                      snoozeWakeAt(option, now),
-                      trigger,
-                    ),
-                  )
+                  fromSheet((trigger) => action.choose(choice.wakeAt, trigger))
                 }
               >
                 <span className="menu-row__glyph" aria-hidden="true">
                   <TimeGlyph />
                 </span>
-                {option.label}
-              </button>
+                {choice.label}
+              </Button>
             ))}
           </fieldset>
-        )}
-        {(sheetUnsnooze || sheetClose || restorable) && (
-          <div className="menu-group">
-            {sheetUnsnooze && (
-              <button
-                type="button"
+        ) : (
+          <div key={action.id} className="menu-group">
+            {action.kind === 'snooze' ? (
+              <Button
+                variant="ghost"
                 className="menu-row"
                 onClick={() =>
-                  fromSheet((trigger) => sheetUnsnooze(item, null, trigger))
+                  fromSheet((trigger) => action.choose(null, trigger))
                 }
               >
                 <span className="menu-row__glyph" aria-hidden="true">
                   <ReturnGlyph />
                 </span>
-                Unsnooze
-              </button>
-            )}
-            {restorable && (
-              <Button
-                className="menu-row"
-                onClick={() =>
-                  fromSheet((trigger) => onRestore?.(item, trigger))
-                }
-              >
-                <ReturnGlyph /> Restore to inbox
+                {action.label}
               </Button>
-            )}
-            {sheetClose && (
-              <button
-                type="button"
-                className="menu-row"
-                onClick={() => fromSheet((trigger) => closeItem(trigger))}
-              >
-                <span className="menu-row__glyph" aria-hidden="true">
-                  <CloseGlyph />
-                </span>
-                {closeLabel}
-              </button>
+            ) : action.kind === 'discard' ? (
+              renderDiscard(action, true)
+            ) : (
+              <InboxCommandButton
+                action={action}
+                placement="sheet"
+                onSelect={() => fromSheet(action.select)}
+              />
             )}
           </div>
-        )}
-        {composerDraftSessionId && (
-          <div className="menu-group">
-            <button
-              type="button"
-              className="menu-row action-overflow__row--danger"
-              aria-label={`Discard unsent draft for ${item.title}`}
-              onClick={() => {
-                activeChatsStore.clearInput(composerDraftSessionId);
-                chatDraftsStore.clear(composerDraftSessionId);
-                setDetailsOpen(false);
-              }}
-            >
-              <span className="menu-row__glyph" aria-hidden="true">
-                <DiscardGlyph />
-              </span>
-              Discard unsent draft
-            </button>
-          </div>
-        )}
-        {/* Destructive, so last and marked. It is the shared discard
-            button (its accessible name and its server command unchanged),
-            and like every sheet action it closes the sheet and hands the
-            host the row's own trigger to move focus from. */}
-        {sheetDiscard && (
-          <div className="menu-group">
-            <DiscardDraftButton
-              threadId={sheetDiscard.threadId}
-              title={item.title}
-              label="Discard draft"
-              className="menu-row action-overflow__row--danger"
-              closeSessionIds={draftSessionIds(item)}
-              onDiscarded={() =>
-                fromSheet((trigger) =>
-                  sheetDiscard.onDraftDiscarded(item, trigger),
-                )
-              }
-            />
-          </div>
-        )}
-      </div>
-    ) : undefined;
-  const discardButton =
-    discardThreadId && onDraftDiscarded ? (
-      <DiscardDraftButton
-        threadId={discardThreadId}
-        title={item.title}
-        className="chat-dock-inbox__row-action inbox-row__action"
-        closeSessionIds={draftSessionIds(item)}
-        onDiscarded={(action) => onDraftDiscarded(item, action)}
-      />
-    ) : null;
-  // A phone row keeps most of its actions in the Details sheet; a hold on the
-  // row (or a right-click, on a touch-chrome row with a mouse) opens that
-  // sheet, as the Details button does. Hover chrome has no sheet: its actions
-  // are already beside the pointer that would right-click.
+        ),
+      )}
+    </div>
+  ) : undefined;
   const gesture = useContextMenuGesture({
     enabled: details,
-    onOpen: () => {
-      setDetailsOpen(true);
-    },
+    onOpen: openDetails,
   });
   const describedBy =
     tooltip && hover.anchor ? `${statusId} ${hoverCardId}` : statusId;
@@ -785,10 +813,14 @@ export function InboxRow({
         isCurrent ? 'is-current' : '',
         canSwipe ? 'inbox-row--swipe' : '',
         swipe.open ? 'inbox-row--swiped' : '',
+        swipe.dragging ? 'inbox-row--dragging' : '',
       ]
         .filter(Boolean)
         .join(' ')}
+      style={swipe.style}
       data-testid="inbox-row"
+      data-unread={unread ? '' : undefined}
+      data-read-unknown={readUnknown ? '' : undefined}
       data-row-key={rowKey ?? item.id}
       data-status-rung={status.rung}
       data-lane={status.lane}
@@ -809,6 +841,7 @@ export function InboxRow({
         gesture.onPointerCancel(event);
         swipe.onPointerCancel();
       }}
+      onLostPointerCapture={swipe.onLostPointerCapture}
       onClickCapture={(event) => {
         swipe.onClickCapture(event);
         if (!event.isPropagationStopped()) gesture.onClickCapture(event);
@@ -820,7 +853,16 @@ export function InboxRow({
           event.target instanceof Node &&
           event.currentTarget.contains(event.target)
         ) {
+          event.preventDefault();
           event.stopPropagation();
+          if (
+            event.target instanceof Element &&
+            event.target.closest('.inbox-row__swipe-actions')
+          ) {
+            event.currentTarget
+              .querySelector<HTMLButtonElement>('.inbox-row__open')
+              ?.focus();
+          }
           swipe.close();
         }
       }}
@@ -830,30 +872,29 @@ export function InboxRow({
       onBlur={tooltip ? hover.onBlur : undefined}
     >
       {canSwipe && (
-        <div className="inbox-row__swipe-actions" hidden={!swipe.open}>
-          {onSnoozeWake && (
-            <SnoozeActions
-              item={item}
-              isSnoozed={isSnoozed}
-              now={now}
-              showLabel
-              onWake={(wakeAt, action) => onSnoozeWake(item, wakeAt, action)}
-            />
+        <div
+          className="inbox-row__swipe-actions"
+          hidden={!swipe.actionsVisible}
+          aria-hidden={!swipe.open}
+          inert={!swipe.open}
+        >
+          {trayActions.map((action) =>
+            action.kind === 'snooze' ? (
+              <SnoozeActions key={action.id} action={action} showLabel />
+            ) : action.kind === 'command' ? (
+              <InboxCommandButton
+                key={action.id}
+                action={action}
+                placement="swipe"
+              />
+            ) : null,
           )}
-          <Button
-            className="inbox-row__swipe-dismiss"
-            aria-label={`Dismiss ${item.title} from inbox`}
-            onClick={(event) => onDismiss?.(item, event.currentTarget)}
-          >
-            <CloseGlyph />
-            <span>Dismiss</span>
-          </Button>
         </div>
       )}
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}${unread ? ', unread' : readUnknown ? ', read status unknown' : ''}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is
@@ -879,12 +920,7 @@ export function InboxRow({
             <span className="inbox-row__slim-status" data-tone={status.tone}>
               <InboxRowStatusGlyph rung={status.rung} />
             </span>
-            <strong
-              className="chat-dock-inbox__title inbox-row__title"
-              title={item.title}
-            >
-              {item.title}
-            </strong>
+            <InboxRowTitle title={item.title} />
             {hasUnsentDraft && <DraftMarker />}
             {/* Provenance survives the one-line size: a remote row must
                 never read as local work. */}
@@ -955,12 +991,7 @@ export function InboxRow({
                 </span>
               )}
             </span>
-            <strong
-              className="chat-dock-inbox__title inbox-row__title"
-              title={item.title}
-            >
-              {item.title}
-            </strong>
+            <InboxRowTitle title={item.title} />
             <InboxRowStatusLine id={statusId} status={status} now={now} />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
@@ -994,67 +1025,35 @@ export function InboxRow({
               ref={detailsTriggerRef}
               type="button"
               className="chat-dock-inbox__row-action inbox-row__action"
-              title={actionsInDetails ? 'Chat actions and details' : 'Details'}
+              title="Chat actions and details"
               aria-label={`Details for ${item.title}`}
               aria-haspopup="dialog"
               aria-expanded={detailsOpen}
-              onClick={() => setDetailsOpen(!detailsOpen)}
+              onClick={() => {
+                if (detailsOpen) setDetailsOpen(false);
+                else openDetails();
+              }}
             >
-              {actionsInDetails ? <MoreGlyph /> : <InfoGlyph />}
+              <MoreGlyph />
             </button>
           )}
-          {resolution && !details && (
-            <Button
-              variant="ghost"
-              className="inbox-row__action"
-              disabled={resolution.pending}
-              title={
-                resolution.settled
-                  ? 'Reopen conversation'
-                  : 'Settle conversation'
-              }
-              aria-label={`${resolution.settled ? 'Reopen' : 'Settle'} ${item.title}`}
-              onClick={(event) => changeResolution(event.currentTarget)}
-            >
-              <span aria-hidden="true">
-                {resolution.settled ? <RefreshGlyph /> : <CheckGlyph />}
-              </span>
-            </Button>
-          )}
-          {beside('snooze') && onSnoozeWake && (
-            <SnoozeActions
-              item={item}
-              isSnoozed={isSnoozed}
-              now={now}
-              onWake={(wakeAt, action) => onSnoozeWake(item, wakeAt, action)}
-            />
-          )}
-          {beside('close') && closable && (
-            <button
-              type="button"
-              className="chat-dock-inbox__row-action inbox-row__action"
-              title={closeLabel}
-              aria-label={
-                onDismiss
-                  ? `Dismiss ${item.title} from inbox`
-                  : `Close ${item.title}`
-              }
-              onClick={(event) => closeItem(event.currentTarget)}
-            >
-              <span aria-hidden="true">×</span>
-            </button>
-          )}
-          {beside('close') && restorable && (
-            <Button
-              variant="ghost"
-              title="Restore to inbox"
-              aria-label={`Restore ${item.title} to inbox`}
-              onClick={(event) => onRestore?.(item, event.currentTarget)}
-            >
-              <ReturnGlyph />
-            </Button>
-          )}
-          {beside('discard') && discardButton}
+          {actions
+            .filter(beside)
+            .map((action) =>
+              action.kind === 'snooze' ? (
+                <SnoozeActions key={action.id} action={action} />
+              ) : action.kind === 'discard' ? (
+                <Fragment key={action.id}>
+                  {renderDiscard(action, false)}
+                </Fragment>
+              ) : action.id !== 'discard-unsent' ? (
+                <InboxCommandButton
+                  key={action.id}
+                  action={action}
+                  placement="row"
+                />
+              ) : null,
+            )}
         </div>
       )}
       {tooltip && hover.anchor && (
@@ -1119,15 +1118,31 @@ function InboxTaskRow({
 >) {
   const id = useId();
   const status = useObservedWorkStatus(item, now, facts);
+  const actions = inboxRowActions({
+    title: item.title,
+    now,
+    snooze: onSnoozeWake
+      ? {
+          isSnoozed: Boolean(isSnoozed),
+          choose: (wakeAt, trigger) => onSnoozeWake(item, wakeAt, trigger),
+        }
+      : undefined,
+    close:
+      !isDismissed && onDismiss
+        ? { dismiss: true, select: (trigger) => onDismiss(item, trigger) }
+        : undefined,
+    restore:
+      isDismissed && onRestore
+        ? (trigger) => onRestore(item, trigger)
+        : undefined,
+  });
   return (
     <div
       className="chat-dock-inbox__row inbox-row inbox-row--task"
       data-row-key={item.id}
     >
       <span className="inbox-row__task-label">Task · {item.projectLabel}</span>
-      <strong className="inbox-row__title" title={item.title}>
-        {item.title}
-      </strong>
+      <InboxRowTitle title={item.title} />
       <InboxRowStatusLine id={id} status={status} now={now} />
       <div className="inbox-row__task-actions">
         <Button
@@ -1140,53 +1155,36 @@ function InboxTaskRow({
         </Button>
         <ActionOverflowMenu
           label={`Actions for task ${item.title}`}
-          actions={[
-            ...(onSnoozeWake
-              ? isSnoozed
-                ? [
-                    {
-                      key: 'wake',
-                      label: 'Unsnooze',
-                      onSelect: (trigger: HTMLElement) => {
-                        if (trigger instanceof HTMLButtonElement)
-                          onSnoozeWake(item, null, trigger);
-                      },
-                    },
-                  ]
-                : SNOOZE_OPTIONS.map((option) => ({
-                    key: option.label,
-                    label: `Snooze ${option.label}`,
-                    onSelect: (trigger: HTMLElement) => {
-                      if (trigger instanceof HTMLButtonElement)
-                        onSnoozeWake(item, snoozeWakeAt(option, now), trigger);
-                    },
-                  }))
-              : []),
-            ...(!isDismissed && onDismiss
+          actions={actions.flatMap((action) => {
+            if (action.kind === 'snooze') {
+              const choices = action.isSnoozed
+                ? [{ label: action.label, wakeAt: null }]
+                : action.choices.map((choice) => ({
+                    label: `${action.label} ${choice.label}`,
+                    wakeAt: choice.wakeAt,
+                  }));
+              return choices.map((choice) => ({
+                key: choice.label,
+                label: choice.label,
+                onSelect: (trigger: HTMLElement) => {
+                  if (trigger instanceof HTMLButtonElement)
+                    action.choose(choice.wakeAt, trigger);
+                },
+              }));
+            }
+            return action.kind === 'command'
               ? [
                   {
-                    key: 'dismiss',
-                    label: 'Dismiss from inbox',
+                    key: action.id,
+                    label: action.label,
                     onSelect: (trigger: HTMLElement) => {
                       if (trigger instanceof HTMLButtonElement)
-                        onDismiss(item, trigger);
+                        action.select(trigger);
                     },
                   },
                 ]
-              : []),
-            ...(isDismissed && onRestore
-              ? [
-                  {
-                    key: 'restore',
-                    label: 'Restore to inbox',
-                    onSelect: (trigger: HTMLElement) => {
-                      if (trigger instanceof HTMLButtonElement)
-                        onRestore(item, trigger);
-                    },
-                  },
-                ]
-              : []),
-          ]}
+              : [];
+          })}
         />
       </div>
     </div>
@@ -1287,9 +1285,9 @@ export function InboxGroupList({
   // Owned here, by item id, so the sheet outlives the row's remount when
   // the item moves to another lane.
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  const [swipedFor, setSwipedFor] = useState<string | null>(null);
   const isCurrent = (item: HomeWorkItem) =>
-    item.chatSessionId === activeChatSessionId ||
-    item.orchestrationThreadId === activeChatSessionId;
+    isCurrentInboxItem(item, activeChatSessionId);
   /** The rows a group actually renders, including the current row beyond page one. */
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
     const collapsed =
@@ -1309,20 +1307,23 @@ export function InboxGroupList({
   // A sheet belongs to a row that is on screen. Once its row is gone
   // (collapsed, folded away, discarded, snoozed) the open state is cleared,
   // so the sheet cannot reopen unprompted when the row comes back.
-  const detailsRowRendered =
-    detailsFor !== null &&
+  const rowRendered = (rowId: string | null) =>
+    rowId !== null &&
     groups.some((group) =>
       renderedItems(group).some(
         (item) =>
-          item.id === detailsFor ||
-          group.childrenById
-            ?.get(item.id)
-            ?.some((child) => child.id === detailsFor),
+          item.id === rowId ||
+          group.childrenById?.get(item.id)?.some((child) => child.id === rowId),
       ),
     );
+  const detailsRowRendered = rowRendered(detailsFor);
+  const swipedRowRendered = rowRendered(swipedFor);
   useEffect(() => {
     if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
   }, [detailsFor, detailsRowRendered]);
+  useEffect(() => {
+    if (swipedFor !== null && !swipedRowRendered) setSwipedFor(null);
+  }, [swipedFor, swipedRowRendered]);
   const renderItem = (group: MobileActivityGroup, item: HomeWorkItem) =>
     item.kind === 'task' ? (
       <InboxTaskRow
@@ -1377,6 +1378,12 @@ export function InboxGroupList({
             : undefined
         }
         swipeActions={swipeActions}
+        swipeOpen={swipedFor === item.id}
+        onSwipeOpenChange={(open) =>
+          setSwipedFor((current) =>
+            open ? item.id : current === item.id ? null : current,
+          )
+        }
         onDraftDiscarded={onDraftDiscarded}
         agents={agents}
         chrome={chrome}

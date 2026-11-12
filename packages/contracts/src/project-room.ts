@@ -10,7 +10,154 @@ export const PROJECT_ROOM_LIMITS = {
   messagesPerRoom: 10_000,
   requestsPerRoom: 1_000,
   sourceMessages: 100,
+  /** Stored channels per Project, archived ones included. */
+  channelsPerProject: 50,
+  /** Channel names are lowercase ASCII, so characters equal bytes. */
+  channelNameLength: 80,
+  channelTopicBytes: 250,
 } as const;
+/** Name the migration gives a Project's existing room. */
+export const PROJECT_ROOM_DEFAULT_CHANNEL_NAME = 'general';
+/**
+ * A named channel in a Project. Each channel is one room: `channelId` is that
+ * room's `roomId`, which keys its messages, shared note and Agent requests.
+ */
+export interface ProjectRoomChannel {
+  channelId: string;
+  name: string;
+  topic?: string;
+  archivedAt?: string;
+  /** The channel the `/room` routes address. It cannot be archived. */
+  isDefault: boolean;
+}
+export interface ProjectRoomChannelCreateInput {
+  name: string;
+  topic?: string;
+}
+/** At least one field. `topic: null` clears the topic. */
+export interface ProjectRoomChannelUpdateInput {
+  name?: string;
+  topic?: string | null;
+  archived?: boolean;
+}
+export type ProjectRoomChannelNameProblem = 'empty' | 'too_long' | 'format';
+const channelName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Why `value` is not a channel name, or null when it is one. */
+export function projectRoomChannelNameProblem(
+  value: unknown,
+): ProjectRoomChannelNameProblem | null {
+  if (typeof value !== 'string' || value.length === 0) return 'empty';
+  if (value.length > PROJECT_ROOM_LIMITS.channelNameLength) return 'too_long';
+  return channelName.test(value) ? null : 'format';
+}
+export function parseProjectRoomChannelName(value: unknown): string {
+  if (projectRoomChannelNameProblem(value) !== null)
+    throw new Error('Invalid Project room channel name');
+  return value as string;
+}
+export type ProjectRoomChannelTopicProblem = 'empty' | 'too_long' | 'format';
+/** Why `value` is not a channel topic, or null when it is one. */
+export function projectRoomChannelTopicProblem(
+  value: unknown,
+): ProjectRoomChannelTopicProblem | null {
+  if (typeof value !== 'string' || !value.trim()) return 'empty';
+  if (bytes(value) > PROJECT_ROOM_LIMITS.channelTopicBytes) return 'too_long';
+  // A topic is one line of header text.
+  for (const char of value) {
+    const code = char.codePointAt(0)!;
+    if (code < 0x20 || code === 0x7f) return 'format';
+  }
+  return null;
+}
+export function parseProjectRoomChannelTopic(value: unknown): string {
+  if (projectRoomChannelTopicProblem(value) !== null)
+    throw new Error('Invalid Project room channel topic');
+  return value as string;
+}
+export function parseProjectRoomChannelCreateInput(
+  value: unknown,
+): ProjectRoomChannelCreateInput {
+  const v = object(value);
+  if (Object.keys(v).some((k) => !['name', 'topic'].includes(k)))
+    throw new Error('Invalid Project room channel');
+  return {
+    name: parseProjectRoomChannelName(v.name),
+    ...(v.topic === undefined
+      ? {}
+      : { topic: parseProjectRoomChannelTopic(v.topic) }),
+  };
+}
+export function parseProjectRoomChannelUpdateInput(
+  value: unknown,
+): ProjectRoomChannelUpdateInput {
+  const v = object(value);
+  const keys = Object.keys(v);
+  if (
+    !keys.length ||
+    keys.some((k) => !['name', 'topic', 'archived'].includes(k)) ||
+    (v.archived !== undefined && typeof v.archived !== 'boolean')
+  )
+    throw new Error('Invalid Project room channel update');
+  return {
+    ...(v.name === undefined
+      ? {}
+      : { name: parseProjectRoomChannelName(v.name) }),
+    ...(v.topic === undefined
+      ? {}
+      : {
+          topic:
+            v.topic === null ? null : parseProjectRoomChannelTopic(v.topic),
+        }),
+    ...(v.archived === undefined ? {} : { archived: v.archived as boolean }),
+  };
+}
+export function parseProjectRoomChannel(value: unknown): ProjectRoomChannel {
+  const v = object(value);
+  if (
+    Object.keys(v).some(
+      (k) =>
+        !['channelId', 'name', 'topic', 'archivedAt', 'isDefault'].includes(k),
+    ) ||
+    !isProjectRoomUuid(v.channelId) ||
+    typeof v.isDefault !== 'boolean' ||
+    (v.archivedAt !== undefined &&
+      (typeof v.archivedAt !== 'string' ||
+        !Number.isFinite(Date.parse(v.archivedAt)))) ||
+    (v.isDefault && v.archivedAt !== undefined)
+  )
+    throw new Error('Invalid Project room channel');
+  return {
+    channelId: v.channelId,
+    name: parseProjectRoomChannelName(v.name),
+    ...(v.topic === undefined
+      ? {}
+      : { topic: parseProjectRoomChannelTopic(v.topic) }),
+    ...(v.archivedAt === undefined
+      ? {}
+      : { archivedAt: v.archivedAt as string }),
+    isDefault: v.isDefault,
+  };
+}
+/** A Project's channels: the default first, then by name. Bounded by the limit. */
+export function parseProjectRoomChannelList(
+  value: unknown,
+): ProjectRoomChannel[] {
+  const v = object(value);
+  if (
+    Object.keys(v).some((k) => k !== 'channels') ||
+    !Array.isArray(v.channels) ||
+    v.channels.length > PROJECT_ROOM_LIMITS.channelsPerProject
+  )
+    throw new Error('Invalid Project room channel list');
+  const channels = v.channels.map(parseProjectRoomChannel);
+  if (
+    new Set(channels.map((c) => c.channelId)).size !== channels.length ||
+    new Set(channels.map((c) => c.name)).size !== channels.length ||
+    channels.filter((c) => c.isDefault).length > 1
+  )
+    throw new Error('Invalid Project room channel list');
+  return channels;
+}
 export interface ProjectRoomActor {
   id: string;
   displayName: string;

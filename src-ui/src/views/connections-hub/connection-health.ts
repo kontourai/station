@@ -28,11 +28,11 @@ import {
 import type { ResourceStatus } from '../../components/resource-hub/resource-status';
 import {
   blockingPrerequisite,
+  modelCatalogInput,
   type ProviderCatalogInput,
   type ProviderReadiness,
   resolveProviderPresentation,
 } from '../provider-settings/providerCatalog';
-import type { ProviderConnection } from '../provider-settings/types';
 
 export type { ConnectionVerdict };
 
@@ -100,24 +100,7 @@ export function engineHealthInput(
   };
 }
 
-export function modelHealthInput(
-  connection: ProviderConnection,
-): ProviderCatalogInput {
-  return {
-    id: connection.id,
-    kind: 'model',
-    type: connection.type,
-    name: connection.name,
-    enabled: connection.enabled,
-    status: connection.status,
-    prerequisites: connection.prerequisites,
-    ...(connection.readinessEvidence
-      ? { readinessEvidence: connection.readinessEvidence }
-      : {}),
-    setup: null,
-    href: '',
-  };
-}
+export const modelHealthInput = modelCatalogInput;
 
 /** Engine statuses that are observations, not placement. */
 // `ConnectionStatus` has no `disconnected`; engines report `error`.

@@ -240,8 +240,8 @@ backups retain their stored section values for compatibility.
   the chat dock (⌘D), which retains its own inbox.
 - **Footer**: Schedule and Customize on the left, Updates and the account
   control on the right. Settings is available in the account menu and Customize.
-  Notifications remain in the header, and the command palette keeps its keyboard
-  shortcut. Schedule and Customize do not occupy project-list rows.
+  Notifications remain in the header, and the command palette opens from its
+  keyboard shortcut or the header's **Search or jump to…** entry. Schedule and Customize do not occupy project-list rows.
 
 The original slice moved Agents, Connections, Guidance, Registry, Plugins,
 Schedule, and Developer behind the Settings gear and command palette, removing

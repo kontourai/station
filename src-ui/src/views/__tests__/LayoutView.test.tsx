@@ -378,7 +378,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       "Couldn't open this layout",
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetchLayoutMock).toHaveBeenCalledTimes(1);
   });
 
@@ -405,7 +405,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'Could not reach Station',
     );
-    const retry = screen.getByRole('button', { name: 'Try again' });
+    const retry = screen.getByRole('button', { name: 'Retry' });
     expect(retry.getAttribute('aria-busy')).toBe('true');
     expect((retry as HTMLButtonElement).disabled).toBe(true);
   });
@@ -450,7 +450,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'This layout could not be loaded',
     );
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('an in-flight request still loads, with an escape hatch', () => {

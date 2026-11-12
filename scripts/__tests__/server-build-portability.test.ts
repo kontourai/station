@@ -678,17 +678,29 @@ function assertRealRuntimePrune(release: string) {
   );
 
   const flowAgents = join(modules, '@kontourai', 'flow-agents');
+  // flow-agents 9.14 stopped publishing its harness bundles (`dist/`), its
+  // TypeScript input (`src/`) and its test harness (`evals/`), so Station no
+  // longer carries prune rules for them. If a release ships them again this
+  // fails on the installed copy: restore rules rather than ship ~120 MB.
+  for (const unpublished of ['dist', 'src', 'evals']) {
+    expect(
+      existsSync(
+        join(repoRoot, 'node_modules/@kontourai/flow-agents', unpublished),
+      ),
+      unpublished,
+    ).toBe(false);
+    expect(existsSync(join(flowAgents, unpublished)), unpublished).toBe(false);
+  }
+  // 9.14 also declares an npm alias (`@kontourai/surface-knowledge`), which
+  // the stager must place under the alias name with the real package inside.
   expect(
-    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/dist')),
-  ).toBe(true);
-  expect(existsSync(join(flowAgents, 'dist'))).toBe(false);
-  // The package's own TypeScript input and test harness are not shipped either, while
-  // the repository's installed copy has them.
-  expect(
-    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/src')),
-  ).toBe(true);
-  expect(existsSync(join(flowAgents, 'src'))).toBe(false);
-  expect(existsSync(join(flowAgents, 'evals'))).toBe(false);
+    JSON.parse(
+      readFileSync(
+        join(modules, '@kontourai/surface-knowledge/package.json'),
+        'utf8',
+      ),
+    ).name,
+  ).toBe('@kontourai/surface');
   for (const required of [
     'build/src/index.js',
     'build/src/cli/assignment-provider.js',
@@ -979,8 +991,6 @@ describe('server build package portability', () => {
       'node-pty-foreign-prebuilds',
       'koffi-build-sources',
       'koffi-off-windows',
-      'flow-agents-harness-bundles',
-      'flow-agents-development-sources',
     ]);
     expect(RUNTIME_DEPENDENCY_EXCLUSIONS.map((rule) => rule.id)).toEqual([
       'flow-agents-bundle-builder-esbuild',
@@ -1116,7 +1126,7 @@ describe('server build package portability', () => {
     ).toBe(true);
   });
 
-  it('drops flow-agents harness bundles and their esbuild edge but keeps what Station reads', () => {
+  it('drops the flow-agents esbuild edge but keeps what Station reads', () => {
     const root = makeTempDir('station-runtime-flow-agents-');
     const project = join(root, 'project');
     const flowAgents = join(project, 'node_modules/@kontourai/flow-agents');
@@ -1124,7 +1134,7 @@ describe('server build package portability', () => {
       flowAgents,
       {
         name: '@kontourai/flow-agents',
-        version: '6.4.0',
+        version: '9.14.0',
         dependencies: { esbuild: '0.28.1' },
       },
       {
@@ -1137,11 +1147,6 @@ describe('server build package portability', () => {
           'export const evaluation = true;',
         'schemas/workflow.schema.json': '{}',
         'context/settings/backlog-provider-settings.json': '{}',
-        'dist/codex/build/src/index.js': 'bundle',
-        'dist/catalog.json': '{}',
-        'src/index.ts': 'export {};',
-        'evals/run.sh': '#!/bin/sh',
-        'evals/cases/example.json': '{}',
         LICENSE: 'MIT',
       },
     );
@@ -1171,10 +1176,6 @@ describe('server build package portability', () => {
       packages: ['esbuild', '@kontourai/flow-agents', 'other-builder'],
     });
     const staged = join(output, 'node_modules/@kontourai/flow-agents');
-    expect(existsSync(join(staged, 'dist'))).toBe(false);
-    // The package's own TypeScript input and test harness are not shipped...
-    expect(existsSync(join(staged, 'src'))).toBe(false);
-    expect(existsSync(join(staged, 'evals'))).toBe(false);
     for (const kept of [
       'build/src/index.js',
       'build/src/cli/assignment-provider.js',
@@ -1213,6 +1214,90 @@ describe('server build package portability', () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it('stages npm alias dependencies by the identity their declaring package names', () => {
+    // The installed layout pnpm (hoisted) produces for flow-agents 9.14: the
+    // alias sits at the root under its alias name with the real package's
+    // manifest inside, and the package's own older surface is nested.
+    const root = makeTempDir('station-runtime-alias-');
+    const project = join(root, 'project');
+    const modules = join(project, 'node_modules');
+    const surface = (version: string) => ({
+      name: '@kontourai/surface',
+      version,
+      main: 'index.cjs',
+    });
+    const flowAgents = join(modules, '@kontourai/flow-agents');
+    writeFixturePackage(
+      flowAgents,
+      {
+        name: '@kontourai/flow-agents',
+        version: '9.14.0',
+        main: 'index.cjs',
+        dependencies: {
+          '@kontourai/surface': '5.0.0',
+          '@kontourai/surface-knowledge': 'npm:@kontourai/surface@6.3.0',
+        },
+      },
+      { 'index.cjs': 'module.exports = {};' },
+    );
+    writeFixturePackage(
+      join(flowAgents, 'node_modules/@kontourai/surface'),
+      surface('5.0.0'),
+      { 'index.cjs': "module.exports = '5.0.0';" },
+    );
+    writeFixturePackage(
+      join(modules, '@kontourai/surface-knowledge'),
+      surface('6.3.0'),
+      { 'index.cjs': "module.exports = '6.3.0';" },
+    );
+    writeFixturePackage(join(modules, '@kontourai/surface'), surface('6.3.0'), {
+      'index.cjs': "module.exports = '6.3.0';",
+    });
+    // An unscoped alias declared by the project itself, as a root import.
+    writeFixturePackage(project, {
+      name: 'fixture-project',
+      version: '0.0.0',
+      dependencies: { 'json-schema-v3': 'npm:zod-from-json-schema@^0.0.5' },
+    });
+    writeFixturePackage(
+      join(modules, 'json-schema-v3'),
+      { name: 'zod-from-json-schema', version: '0.0.5', main: 'index.cjs' },
+      { 'index.cjs': "module.exports = 'v3';" },
+    );
+    const output = join(root, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: [
+        '@kontourai/surface',
+        '@kontourai/flow-agents',
+        'json-schema-v3',
+      ],
+    });
+    const request = createRequire(
+      join(output, 'node_modules/@kontourai/flow-agents/index.cjs'),
+    );
+    expect(request('@kontourai/surface-knowledge')).toBe('6.3.0');
+    expect(request('@kontourai/surface')).toBe('5.0.0');
+    expect(request('json-schema-v3')).toBe('v3');
+
+    // Negative control: an alias directory holding a package other than the
+    // one the spec names is refused, not staged.
+    writeFixturePackage(join(modules, '@kontourai/surface-knowledge'), {
+      name: '@kontourai/other',
+      version: '6.3.0',
+    });
+    expect(() =>
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: join(root, 'refused'),
+        packages: ['@kontourai/flow-agents'],
+      }),
+    ).toThrow(
+      'Runtime dependency @kontourai/surface-knowledge required by @kontourai/flow-agents is not installed',
+    );
   });
 
   it('prunes Windows debug symbols but keeps the binaries beside them', () => {

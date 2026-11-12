@@ -18,7 +18,7 @@ import {
 } from '@kontourai/station-contracts/workspace-device-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
 
@@ -879,8 +879,11 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
 
-    expect(screen.getByText('Could not load workspace panes')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    // The Project room on the same page has its own Retry: ask the picker's.
+    const failure = screen
+      .getByText('Could not load workspace panes')
+      .closest<HTMLElement>('[role="alert"]');
+    fireEvent.click(within(failure!).getByRole('button', { name: 'Retry' }));
     expect(sdkMocks.refetchPanes).toHaveBeenCalledTimes(1);
   });
 });

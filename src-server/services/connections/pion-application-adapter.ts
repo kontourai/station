@@ -14,6 +14,7 @@ import {
   createStationTempDir,
   removeStationTempDir,
 } from '@kontourai/station-shared/temp-dir';
+import { sleep } from '../../utils/sleep.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -386,7 +387,7 @@ export async function startPionApplicationAdapter(
       }
       if (dependencies.now() >= deadline)
         throw new Error('pion_answer_timeout');
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await sleep(20);
     }
   } catch (error) {
     try {

@@ -20,6 +20,7 @@ import PINNED_KEYS from '../../config/release-manifest-keys.json' with {
 };
 import { admitManagedListener } from '../security/managed-network-exposure.js';
 import { runInProcessGroup } from '../utils/process-group-exec.js';
+import { sleep } from '../utils/sleep.js';
 import { readTelemetryCompanionHost } from './telemetry-companion.js';
 import {
   readCompanionFile,
@@ -748,7 +749,7 @@ export async function controlTelemetryCompanion(
           break;
         if (Date.now() > deadline)
           throw new Error('Postgres readiness deadline');
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await sleep(500);
       }
       await effect([
         'start',
@@ -770,7 +771,7 @@ export async function controlTelemetryCompanion(
         }
         if (Date.now() > deadline)
           throw new Error('Companion storage readiness deadline');
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await sleep(500);
       }
     }
     await input.requireOperator();

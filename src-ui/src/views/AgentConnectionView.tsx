@@ -872,7 +872,6 @@ export function AgentConnectionView({
          stop every view minting its own "No X" restatement of its noun. */
       listEmptyTitle="Add an engine to get started"
       listEmptyDescription="Engines Station finds on this computer appear here too."
-      emptyTitle="Select an engine"
       emptyDescription="Select an engine to review its status and setup."
       emptyContent={
         isAddRoute ? (

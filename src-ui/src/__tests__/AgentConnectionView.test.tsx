@@ -1158,7 +1158,7 @@ describe('AgentConnectionView', () => {
     expect(screen.getByRole('alert').textContent).not.toContain(
       'Could not add Claude Code',
     );
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test.each([
@@ -3266,6 +3266,23 @@ describe('AgentConnectionView', () => {
       (screen.getByRole('button', { name: 'Refresh models' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+
+    // A failed save leaves the edit unsaved, so the guidance stays.
+    saveFailure = new Error('The settings could not be saved.');
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Save changes before refreshing.')).toBeTruthy();
+
+    // A successful save clears it and lets Refresh models run.
+    saveFailure = null;
+    saveResult = { ...readyEngine(), name: 'Edited' };
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Save changes before refreshing.')).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: 'Refresh models' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 
   test('connection-scoped Usage says unattributed runs are not counted', async () => {

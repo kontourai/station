@@ -96,7 +96,7 @@ describe('ActiveChatsStore', () => {
     store.updateChat('chat', { input: 'original' });
     expect(prior.replaceInputIfUnchanged('stale')).toBe(false);
     const current = store.captureComposerDraft('chat')!;
-    store.updateChat('chat', { hasUnread: true });
+    store.updateChat('chat', { isProcessingStep: true });
     expect(current.replaceInputIfUnchanged('fresh')).toBe(true);
     expect(current.replaceInputIfUnchanged('twice')).toBe(false);
     expect(store.getSnapshot().chat.input).toBe('fresh');

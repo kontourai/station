@@ -101,6 +101,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     onClearInput: vi.fn(),
     onAddAttachments: vi.fn(),
     onRemoveAttachment: vi.fn(),
+    onAttachUnavailable: vi.fn(),
     onClearAttachments: vi.fn(),
     onModelSelect: vi.fn(),
     onModelReset: vi.fn(),
