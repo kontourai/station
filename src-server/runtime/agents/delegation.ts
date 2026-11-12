@@ -49,6 +49,14 @@ class DelegationDepthLimitError extends Error {
   }
 }
 
+class DelegationPolicyLimitError extends Error {
+  readonly code = 'delegation_lineage_unavailable' as const;
+  constructor() {
+    super('Delegation policy exceeds its tool-pattern bound (256).');
+    this.name = 'DelegationPolicyLimitError';
+  }
+}
+
 /**
  * The ONE derivation of a delegated child's context from its parent: the
  * parent Agent, its conversation, its Agent spec's delegation policy and the
@@ -71,10 +79,11 @@ export function createChildDelegationContext(options: {
   if (currentDepth >= maxDepth) {
     throw new DelegationDepthLimitError(maxDepth);
   }
-  const blockedTools = [
-    ...policy.blockedTools,
-    ...(options.current?.blockedTools ?? []),
-  ];
+  const blockedTools = [...policy.blockedTools];
+  for (const pattern of options.current?.blockedTools ?? []) {
+    if (!blockedTools.includes(pattern)) blockedTools.push(pattern);
+  }
+  if (blockedTools.length > 256) throw new DelegationPolicyLimitError();
   const denyApprovals = policy.denyApprovals || options.current?.denyApprovals;
 
   return {
