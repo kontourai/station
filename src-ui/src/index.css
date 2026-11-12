@@ -6163,8 +6163,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   padding: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 10000;
+  box-shadow: var(--k-elevation-overlay);
+  /* Opens from inside dialog-level overlays, so it shares their layer. */
+  z-index: var(--layer-dialog);
   min-width: 280px;
   max-width: 400px;
 }
@@ -6851,7 +6852,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   .tool-call-batch-sheet__panel {
     width: 100%;
     max-height: 80vh;
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
   }
 
   .chat-dock.is-maximized {

@@ -20,15 +20,14 @@ const UI_SRC = join(__dirname, '..');
 
 /**
  * Deliberately-ordered families whose internal offsets are not yet expressed
- * in the token scale. Each entry is here for a reason:
- * The dock launcher band and nested new-chat model picker use local values
- * below 100 inside their owning stacking contexts.
- * - attachment-menu opens above dialog-level overlays from inside them.
- * Migrating one means designing its slot, not just swapping the number.
+ * in the token scale. Each entry is here for a reason. The dock launcher band
+ * and nested new-chat model picker use local values below 100 inside their
+ * owning stacking contexts, so they are not listed. The attachment menu, the
+ * last entry, now reads `--layer-dialog`: it opens from inside dialog-level
+ * overlays, so it shares their layer. Migrating one means designing its slot,
+ * not just swapping the number.
  */
-const BASELINE: ReadonlyArray<{ file: string; value: number }> = [
-  { file: 'index.css', value: 10000 }, // .attachment-menu — opens above dialog-level overlays from inside them; needs a slot decision, not a renumber
-];
+const BASELINE: ReadonlyArray<{ file: string; value: number }> = [];
 
 function chromeScaleRawSites(): Array<{ file: string; value: number }> {
   const files = glob.sync('**/*.css', { cwd: UI_SRC, nodir: true });
