@@ -243,8 +243,9 @@ function integrationReadProjection(
 /** At most this many tool servers are probed at once by Check all. */
 export const CHECK_ALL_CONCURRENCY = 3;
 
-/** No one Check all probe waits longer than this (or the server's own startup
- *  timeout, when shorter). */
+/** No one Check all probe is waited on longer than this. The listing carries
+ *  no startup timeout, and a server's own startup timeout bounds only its
+ *  version negotiation, so this is the bound. */
 export const CHECK_ALL_PROBE_TIMEOUT_MS = 20_000;
 
 /** The whole batch finishes within this: a probe that would start after it,
@@ -297,11 +298,7 @@ export async function checkAllToolServers(
     async (server): Promise<ToolServerCheckResult> => {
       if (server.credentialOwnership)
         return { id: server.id, outcome: 'skipped' };
-      const budget = Math.min(
-        probeTimeoutMs,
-        server.timeouts?.startupMs ?? probeTimeoutMs,
-        deadline - Date.now(),
-      );
+      const budget = Math.min(probeTimeoutMs, deadline - Date.now());
       if (budget <= 0)
         return { id: server.id, outcome: 'failed', error: CHECK_ALL_TIMED_OUT };
       try {

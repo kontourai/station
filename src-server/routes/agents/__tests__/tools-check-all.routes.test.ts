@@ -232,21 +232,6 @@ describe('checkAllToolServers deadlines', () => {
     expect(result.reloaded).toBe(false);
   });
 
-  test("a server's own shorter startup timeout bounds its check", async () => {
-    const result = await checkAllToolServers(
-      {
-        listIntegrations: vi.fn(async () => [
-          remote('slow', { timeouts: { startupMs: 20 } }),
-        ]),
-        probeIntegration: vi.fn(hung),
-      } as never,
-      vi.fn(async () => {}),
-      new Map(),
-      { probeTimeoutMs: 60_000 },
-    );
-    expect(result.results[0]).toMatchObject({ id: 'slow', outcome: 'failed' });
-  });
-
   test('servers that would start after the batch deadline are not probed', async () => {
     const probeIntegration = vi.fn(hung);
     const servers = ['a', 'b', 'c', 'd', 'e'].map((id) => remote(id));
