@@ -19,7 +19,42 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
-### Finalizer and installed SDK checkpoint (2026-11-07)
+### Current finalizer qualification (2026-11-12)
+
+The 2026-11-07 pass below is historical. With installed Flow Agents 9.14.0,
+the full five-file selection at `08cbbfe5a6ca` passes 17 cases and fails the
+lost-reappraisal case at its unchanged 60-second limit. Earlier selections
+failed six and three cases respectively; later passes of the abort and cleanup
+cases do not establish a causal repair. Both production qualification flags
+remain false.
+
+At `0fb70f0cbba5`, the real report-runtime metadata GET uses an explicitly owned
+Home lease across its reads and revalidates the original request after lease
+retirement. It does not lend ambient authority to descendants. The corrected
+baseline measured 12 physical Home acquisitions against the existing maximum
+of eight. All 53 custody/local-grant cases pass after the repair. Removing the
+post-retirement guard fails the actual retirement control; byte-exact restoration
+passes. This qualifies the bounded read contract, not finalizer latency.
+
+At `ad91a5cf87d3`, publication checks retain pre-source, body and post-source
+validation in one synchronous Home span. The nested body admission preserves
+thenable validation, and a trusted result box prevents another caller-controlled
+getter after final validation. The canonical descriptor observer fails before
+the repair at six reads against a maximum of five. All 54 publication, custody
+and local-grant cases pass after it; the unboxed-result mutation fails the exact
+validation sequence and byte-exact restoration passes. An earlier observer used
+the wrong temporary-home path and measured zero; that attempt is invalid cost
+evidence. Server-test types pass. The full finalizer batch at this revision has
+again timed out in lost-reappraisal; its remaining cases are still running at
+this checkpoint. No end-to-end speedup or finalizer qualification follows.
+
+Installed Claude Agent SDK is now 0.3.318. The older CLI 2.1.318 / Agent SDK
+0.3.312 native witness remains historical, including its separate wrong-ACK
+control that was not reached. Authenticated portable lineage, native hard
+budget/effect/resource/credential enforcement, peer/SSH acceptance, topology,
+current documentation truth, readiness and combined delivery remain open.
+
+### Historical finalizer and installed SDK checkpoint (2026-11-07)
 
 The standalone durable Task transcript repair landed in
 [PR #4661](https://github.com/kontourai/station/pull/4661) as
