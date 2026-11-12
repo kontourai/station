@@ -1,0 +1,7 @@
+{
+  "revision": "391f4c756b2c7baa29c5ea0340bcf070ffd4ffd4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against slice 5: used-by route, contract, SDK hook, model detail tabs, Tools rows/Check all/guard","inputs":["docs/architecture/module-map.md","src-server/routes/connections/connections.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/connections/engine-route-observation.ts","src-ui/src/app-shell/AppViewContent.tsx","src-ui/src/app-shell/routing.ts"]}
+  ]
+}

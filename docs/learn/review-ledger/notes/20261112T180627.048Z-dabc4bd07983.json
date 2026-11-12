@@ -1,0 +1,7 @@
+{
+  "revision": "391f4c756b2c7baa29c5ea0340bcf070ffd4ffd4",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked against slice 5: used-by route, contract, SDK hook, model detail tabs, Tools rows/Check all/guard","inputs":["docs/guides/connections.md","packages/contracts/src/tool.ts","src-server/security/pairing-route-scopes.ts","src-server/services/connections/engine-route-observation.ts","src-ui/src/__tests__/EngineAccountOverview.test.tsx","src-ui/src/app-shell/routing.ts","src-ui/src/components/resource-hub/UsagePanel.tsx","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/engine-detail/EngineModelsTab.tsx","src-ui/src/views/engine-detail/EngineOverviewTab.tsx","src-ui/src/views/engine-detail/EngineSettingsTab.tsx","src-ui/src/views/engine-detail/EngineUsageTab.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","tests/connections-crud.spec.ts"]}
+  ]
+}

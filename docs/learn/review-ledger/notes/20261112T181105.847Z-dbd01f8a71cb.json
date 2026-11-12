@@ -1,0 +1,7 @@
+{
+  "revision": "391f4c756b2c7baa29c5ea0340bcf070ffd4ffd4",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked against slice 5: used-by route, contract, SDK hook, model detail tabs, Tools rows/Check all/guard","inputs":["docs/reference/sdk.md","packages/contracts/src/tool.ts","packages/sdk/src/index.ts","packages/sdk/src/query-domains/workspaceConnections.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}
