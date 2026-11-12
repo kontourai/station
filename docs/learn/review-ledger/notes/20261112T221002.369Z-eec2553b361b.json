@@ -1,0 +1,7 @@
+{
+  "revision": "2c77635f0f2ca9847cbebb4e9f406b5e74e2191a",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the Overview bullets against connection-section-signals.ts and ConnectionsHub.tsx after Computers became a section read: a failed or Station-less Computers read now joins the could-not-be-loaded banner (Retry only for a failed read), the attention list does not wait on Computers (it carries no mark), and a tile reads Not loaded when its list has no answer.","inputs":["docs/guides/connections.md","src-ui/src/views/connections-hub/connection-section-signals.ts"]}
+  ]
+}
