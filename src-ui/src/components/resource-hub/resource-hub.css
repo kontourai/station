@@ -25,6 +25,11 @@
   display: grid;
   gap: var(--k-space-3);
   min-width: 0;
+  padding-bottom: var(--k-space-6);
+}
+/* The header carries its own inset; everything under it lines up with it. */
+.resource-detail > :not(.detail-header) {
+  margin-inline: clamp(var(--k-space-4), 3vw, var(--k-space-6));
 }
 .resource-detail__reason {
   margin: 0;
@@ -81,14 +86,18 @@
 .fact-list__row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--k-space-2);
-  justify-content: space-between;
+  column-gap: var(--k-space-3);
+  row-gap: var(--k-space-1);
   min-width: 0;
 }
+/* A fixed label column; on a narrow pane the value wraps under its label. */
 .fact-list dt {
+  flex: 0 0 11rem;
   color: var(--k-text-muted);
 }
 .fact-list dd {
+  flex: 1 1 14rem;
+  min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
   max-width: 100%;

@@ -54,6 +54,9 @@
 .engine-models__table th {
   color: var(--k-text-muted);
   font-weight: 600;
+  /* A column name never breaks mid-word; the table scrolls instead. */
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .engine-settings__form,

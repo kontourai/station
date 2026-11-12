@@ -40,8 +40,8 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 Each Model and Engine row shows one readiness badge beside its name; the line
 under the name holds facts, not the state. An engine whose first add failed is
 listed as **Not connected yet** instead. An engine Station found on this
-computer that nobody has connected is listed as **Found, not connected**; its
-**Connect** opens that engine's step in Add engine. Listing it changes nothing.
+computer that nobody has connected is listed as **Found, not connected**;
+selecting it opens that engine's step in Add engine. Listing it changes nothing.
 Public registry listings stay in Add engine's own group. Model connections distinguish saved
 settings from a check that actually reached the provider:
 
@@ -128,6 +128,8 @@ An engine's page has tabs, each with its own address
 (`/connections/engines/<id>/<tab>`). Switching tabs, or going Back and
 Forward between them, keeps unsaved settings without asking; while there are
 unsaved edits every tab shows **Save** and **Discard**. Leaving the engine asks.
+**Discard** is unavailable while a save is in flight, so a save that lands
+later cannot bring back edits you discarded.
 What **Check connection** or a header fix reported shows under the header.
 
 - **Overview** — the route the engine actually uses, its default model, where
@@ -150,11 +152,19 @@ What **Check connection** or a header fix reported shows under the header.
   last.
 
 The route is observed from the launch Station gives the engine, including a
-managed policy's pinned settings: a saved proxy, or an endpoint set by the
-engine's saved settings, the policy or Station's own environment (its origin
-only). Station does not read the engine's settings files, so with no override
-the route reads **Route unknown** with that reason; an override Station cannot
-name reads **Route unknown** too
+managed policy's pinned settings: a saved proxy (its name and origin), or an
+endpoint set by the engine's saved settings, your organization's policy or
+Station's own environment (its origin only). An endpoint from the policy or
+Station's environment is host configuration: unless you are the operator in
+person (not an agent acting for you) or hold `access:manage`, the page reads
+**Another endpoint**
+with who set it, and notes that your access does not include where it points.
+Station does not read the engine's settings files, so with no override in its
+launch the route reads **Route unknown** with that reason. An override Station
+cannot name also reads **Route unknown**: a Bedrock or Vertex switch, an
+endpoint value that is not an `http` or `https` address, a pinned argument
+that can choose the route (Claude `--settings`, Codex provider configuration
+or `--profile`), or a saved proxy the launch would refuse
 ([observation](../../src-server/services/connections/engine-route-observation.ts)).
 
 ## Sign an engine profile in from a device
@@ -270,7 +280,8 @@ Reported costs and estimates remain separate. **Tokens**, **Reported cost** and
 **Estimated cost** select the daily chart measure. A cost measure with no values
 shows unavailable observations, never a token chart labeled as cost. Mixed
 currencies retain separate totals and a currency selector; Station does not
-convert or combine them. Missing days keep their place and are marked unreported.
+convert or combine them. Missing days keep their place as dashed, full-height
+empty columns marked **Not reported**, never as a zero bar.
 **Token breakdown & capture coverage** expands cache/input/output totals, pricing
 provenance and observed-versus-usage-reported turn counts. Missing values are not
 added as known zeros; reported subtotals can be incomplete. Subscription allowance

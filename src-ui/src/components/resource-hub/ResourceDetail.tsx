@@ -94,9 +94,8 @@ export function ResourceDetail<Tab extends string>({
         {fixNotice}
       </div>
       {unsaved && (
-        <div
+        <section
           className="resource-detail__unsaved"
-          role="region"
           aria-label="Unsaved changes"
         >
           <p>Unsaved changes</p>
@@ -117,7 +116,7 @@ export function ResourceDetail<Tab extends string>({
               </Button>
             }
           />
-        </div>
+        </section>
       )}
       <Tabs
         id={id}

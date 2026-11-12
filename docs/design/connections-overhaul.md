@@ -130,8 +130,8 @@ each; section tiles with health and count; and, for viewers with
 
 **Engines.**
 - Rows show the recorded label and facts such as last-week usage.
-- Detected, unconnected engines appear as **Found, not connected** rows. **Connect**
-  runs the existing Add result flow in place. **Add engine** keeps its one catalogue.
+- Detected, unconnected engines appear as **Found, not connected** rows. Selecting
+  one runs the existing Add result flow in place. **Add engine** keeps its one catalogue.
 - Detail tabs:
   - **Overview:** label and reason, dependents, last check, the route actually used.
   - **Usage:** usage panel and allowance history.

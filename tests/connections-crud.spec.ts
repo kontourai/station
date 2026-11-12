@@ -1189,6 +1189,12 @@ test.describe('Connections CRUD', () => {
       ),
     );
 
+    // No command-line engine detected on PATH either; one found there would
+    // be a "Found, not connected" row and the list would not be empty.
+    await page.route('**/acp/registry', (route) =>
+      route.fulfill(json({ success: true, data: [] })),
+    );
+
     await page.goto('/connections/engines');
     // The section's own empty copy (`views/AgentConnectionView.tsx:257`), and
     // its ONE add action, which the frame owns (`ConnectionsSectionFrame.tsx`).
