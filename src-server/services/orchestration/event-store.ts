@@ -919,17 +919,20 @@ export interface AllowanceEpochFactRow {
   proxyRouted: boolean;
 }
 
-/** The raw SQLite row behind an `AllowanceEpochFactRow`. */
-interface AllowanceEpochFactSqlRow {
+/**
+ * The raw SQLite row behind an `AllowanceEpochFactRow`. A type alias, not an
+ * interface, so a `Record<string, SQLOutputValue>` row converts to it.
+ */
+type AllowanceEpochFactSqlRow = {
   id: string;
   provider: string;
   thread_id: string;
   observed_at: string;
   global_sequence: number | bigint;
-  account_key: unknown;
-  connection_id: unknown;
+  account_key: SQLOutputValue;
+  connection_id: SQLOutputValue;
   proxy_routed: number | bigint;
-}
+};
 
 /** A provider quota refusal (`runtime.error` with `kind: 'quota_exhausted'`). */
 export interface AllowanceRefusalRow extends AllowanceEpochFactRow {
@@ -8406,7 +8409,10 @@ export class EventStore {
           LIMIT ?`,
       )
       .all(options.since, options.limit) as Array<
-      AllowanceEpochFactSqlRow & { code: unknown; details: unknown }
+      AllowanceEpochFactSqlRow & {
+        code: SQLOutputValue;
+        details: SQLOutputValue;
+      }
     >;
     return rows.map((row) => {
       let details: unknown;
