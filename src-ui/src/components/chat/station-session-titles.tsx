@@ -15,14 +15,18 @@ export function StationSessionTitlesProvider({
   children: ReactNode;
 }) {
   const { data: sessions } = useOrchestrationSessionsQuery();
-  const sessionTitle = useMemo<SessionTitle>(() => {
-    const titles = new Map<string, string>();
-    for (const session of sessions ?? []) {
+  // Keyed on the titles alone, so a Session-list refresh that changes no
+  // title does not re-render every tool row.
+  const key = JSON.stringify(
+    (sessions ?? []).flatMap((session) => {
       const title = session.displayTitle?.trim();
-      if (title) titles.set(session.threadId, title);
-    }
+      return title ? [[session.threadId, title]] : [];
+    }),
+  );
+  const sessionTitle = useMemo<SessionTitle>(() => {
+    const titles = new Map<string, string>(JSON.parse(key));
     return (sessionId) => titles.get(sessionId);
-  }, [sessions]);
+  }, [key]);
   return (
     <StationSessionTitles.Provider value={sessionTitle}>
       {children}
