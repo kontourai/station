@@ -109,10 +109,13 @@
   font-weight: 650;
 }
 
+/* The current row: the tint says where you are; the text stays full
+   strength (action-colored text on the tint measured under 4.5:1 in the
+   light theme). */
 .conversation-list__row--current,
 .conversation-list__row--current:hover {
   background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
-  color: var(--k-action);
+  color: var(--k-text);
 }
 
 .conversation-list__mark {
@@ -126,7 +129,7 @@
 }
 
 .conversation-list__row--current .conversation-list__mark {
-  color: inherit;
+  color: var(--k-action);
 }
 
 /* The mark, count and chevron are generated content: what the row shows as
