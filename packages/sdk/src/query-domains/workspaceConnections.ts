@@ -1,4 +1,5 @@
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import type { ConnectionUsedBy } from '@kontourai/station-contracts/connection-used-by';
 import type { FleetContributionManifest } from '@kontourai/station-contracts/fleet-contribution';
 import type { ConnectionInventoryFailure } from '@kontourai/station-contracts/model-inventory';
 import {
@@ -454,6 +455,41 @@ export function useEngineConnectionsQuery(
         await response.json(),
         'engine',
       );
+    },
+    config,
+  );
+}
+
+/** The viewer may not see what uses a connection (a Project member). */
+export class ConnectionUsedByWithheldError extends Error {
+  constructor(message?: string) {
+    super(message ?? 'What uses a connection is shown to the operator only');
+    this.name = 'ConnectionUsedByWithheldError';
+  }
+}
+
+/**
+ * What names each connection (`GET /api/connections/used-by`): Agents and
+ * Projects by slug, from their saved bindings. A caller that receives no
+ * operator Agent catalog gets {@link ConnectionUsedByWithheldError}.
+ */
+export function useConnectionUsedByQuery(
+  config?: QueryConfig<ConnectionUsedBy>,
+) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  return useApiQuery(
+    connectionQueryKey('connections', readTarget, 'used-by'),
+    async () => {
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
+      const response = await authenticatedFetch(
+        `${apiBase}/api/connections/used-by`,
+        ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
+      );
+      const result = await response.json();
+      if (response.status === 403)
+        throw new ConnectionUsedByWithheldError(result.error);
+      if (!result.success) throw new Error(result.error);
+      return result.data as ConnectionUsedBy;
     },
     config,
   );

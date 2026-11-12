@@ -1,8 +1,7 @@
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import type { ReactNode } from 'react';
-import { Button } from '../../components/Button';
 import { FactList } from '../../components/resource-hub/FactList';
-import { Empty } from '../../components/state';
+import { UsedByList } from '../../components/resource-hub/UsedByList';
 import type { AgentSummary } from '../../types';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
 import { engineCatalogSourceLabel } from './EngineModelsTab';
@@ -65,26 +64,17 @@ export function EngineOverviewTab({
           { label: 'Last check', value: lastCheckFact(connection) },
         ]}
       />
-      <section className="engine-overview__dependents" aria-label="Used by">
-        <h3>Used by</h3>
-        {dependents.length === 0 ? (
-          <Empty
-            variant="compact"
-            label="Not used by any agent yet"
-            description="Agents that choose this engine appear here."
-          />
-        ) : (
-          <ul>
-            {dependents.map((agent) => (
-              <li key={agent.slug}>
-                <Button variant="link" onClick={() => onOpenAgent(agent.slug)}>
-                  {agent.name}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <UsedByList
+        state={{
+          kind: 'ready',
+          entries: dependents.map((agent) => ({
+            key: agent.slug,
+            name: agent.name,
+            onOpen: () => onOpenAgent(agent.slug),
+          })),
+        }}
+        emptyDescription="Agents that choose this engine appear here."
+      />
     </>
   );
 }

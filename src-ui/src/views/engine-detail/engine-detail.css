@@ -5,15 +5,6 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
-.engine-overview__dependents {
-  display: grid;
-  gap: var(--k-space-2);
-}
-/* Each agent is a link-styled action; it keeps the 44px touch target. */
-.engine-overview__dependents li > button {
-  min-height: 44px;
-}
-.engine-overview__dependents ul,
 .engine-settings__commands,
 .engine-settings__prerequisites {
   margin: 0;
