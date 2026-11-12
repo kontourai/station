@@ -487,7 +487,7 @@ export function serviceUpdateProgressLine(
       const name = instance ?? '<instance>';
       return {
         tone: 'error',
-        text: `The update to ${progress.targetVersion} could not be rolled back: the Station home could not be restored after ${progress.restoreAttempts} attempts (${serviceUpdateReason(progress.reason)}). The service keeps the home’s backup and runs no Station until an operator acts. Fix the cause shown in the service log, then retry the restore on the host with: station service stop --instance=${name} && station service start --instance=${name}`,
+        text: `The update to ${progress.targetVersion} could not be rolled back after ${progress.restoreAttempts} attempts (${serviceUpdateReason(progress.reason)}). Station stays stopped and its backup is kept. Fix the cause in the service log, then run on the computer running Station: station service stop --instance=${name} && station service start --instance=${name}`,
       };
     }
     case 'up-to-date':

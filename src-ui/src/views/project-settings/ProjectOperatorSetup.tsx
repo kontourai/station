@@ -179,15 +179,23 @@ export function ProjectOperatorSetup({
           onChange={(event) => setTimeoutSeconds(Number(event.target.value))}
         />
         <p>
-          Include every file that affects this command. Only these files, the
-          execution root and Git HEAD are checked for freshness. Environment and
-          remote dependency changes are not tracked. Commands use the reviewed
-          deadline and bounded output; output is not retained.
-          Same-process-group background children are stopped when the shell
-          exits. Processes that deliberately leave the group are not contained.
-          Another writer can change inputs after the check. Reviewed setup
-          currently requires a POSIX host.
+          List every file that affects this command. Only these files, the
+          folder it runs in and Git HEAD are checked for changes.
         </p>
+        <details>
+          <summary>About this check</summary>
+          <p>
+            Environment and remote dependency changes aren’t tracked, and
+            another writer can still change inputs after the check. Commands
+            use the reviewed deadline and limited output, and output isn’t
+            kept.
+          </p>
+          <p>
+            Background processes in the same process group stop when the
+            shell exits; processes that leave the group keep running. Reviewed
+            setup needs macOS or Linux.
+          </p>
+        </details>
         {!intent && (
           <Button
             disabled={

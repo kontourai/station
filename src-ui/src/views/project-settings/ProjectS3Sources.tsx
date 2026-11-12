@@ -387,7 +387,7 @@ function ProjectS3SourceControls({
       <ConfirmModal
         isOpen={Boolean(selected)}
         title="Disconnect S3 source?"
-        message="This removes active access to this prefix through the registration. Original S3 objects stay intact. Any copies previously imported or saved elsewhere remain there."
+        message="Station stops reading this prefix. Your S3 objects and any copies already imported stay where they are."
         confirmLabel="Disconnect"
         confirmDisabled={
           !canManage || busy || sources.isError || sources.isFetching

@@ -77,12 +77,17 @@ function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
     <div>
       <h3>Offline reading on this device</h3>
       <p>
-        Off by default. Saves text from the last 20 conversations opened here,
-        up to 10 recent turns, 256 KiB each and 2 MiB total for 24 hours. Text
-        may contain pasted secrets and is stored without additional encryption.
-        Tools and attachments are excluded. Anyone with access to this browser
-        profile can read the saved copies while offline.
+        Saves text from recent chats on this device for 24 hours, unencrypted.
+        Anyone using this browser profile can read it, including pasted secrets.
       </p>
+      <details>
+        <summary>Details</summary>
+        <p>
+          Off by default. Keeps the last 20 chats opened here, up to 10 recent
+          turns each, 256 KiB per chat and 2 MiB in total. Tools and
+          attachments are left out.
+        </p>
+      </details>
       <Toggle
         label="Save offline reading copies"
         checked={saved.data?.enabled ?? false}
