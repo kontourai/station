@@ -40,7 +40,7 @@ export function TelemetryCompanion() {
   return (
     <PageSection
       title="Telemetry companion"
-      description="Store and explore telemetry alongside Station. Check this computer before installing the optional companion."
+      description="Store and explore telemetry alongside Station. Check the computer running Station before installing the optional companion."
     >
       {authority ? (
         <CompanionHost
@@ -72,7 +72,7 @@ function CompanionHost({
             : query.error instanceof StationHttpError &&
                 query.error.status === 404
               ? "This Station doesn't have companion controls yet. Update Station."
-              : "Couldn't check this computer. Check the Station connection and try again."}
+              : "Couldn't check the computer running Station. Check the Station connection and try again."}
         </p>
       ) : query.isFetching || !query.data ? (
         <SkeletonBlock count={1} label="Checking prerequisites" />

@@ -1931,7 +1931,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         title="Reset Station settings"
         message={
           resetPlan.keys.length === 0
-            ? 'Nothing to reset. Every Station setting already uses its default.'
+            ? 'Nothing to reset. The settings a reset can clear already use their defaults.'
             : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the engine choice for Station's agent are kept. Usage telemetry is not changed by a reset. Settings on this device are not affected. This cannot be undone.`
         }
         confirmLabel="Reset"

@@ -492,6 +492,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
+    // Section titles stand alone; no eyebrow label repeats them.
+    expect(container.querySelectorAll('.page-section__eyebrow')).toHaveLength(
+      0,
+    );
   });
 
   test('clearing the working directory reaches the update instead of retaining the old folder', async () => {

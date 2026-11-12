@@ -78,6 +78,12 @@ describe('Insights scan evidence reaches the actual dashboard', () => {
       render(<InsightsDashboard />);
       if (state === 'unknown') {
         expect(screen.getByText('Insights history unavailable')).toBeTruthy();
+        // Unknown coverage is not an empty history.
+        expect(
+          screen.getByText(
+            'Station can’t read monitoring history for this period, so totals are unknown.',
+          ),
+        ).toBeTruthy();
         expect(screen.queryByText('12')).toBeNull();
       } else if (state === 'partial') {
         expect(screen.getByRole('alert').textContent).toContain(

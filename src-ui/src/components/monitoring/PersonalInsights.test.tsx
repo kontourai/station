@@ -177,6 +177,9 @@ test('the mounted view saves scoped controls, restores a server definition, and 
   );
   await screen.findByText('1 USD · 2 EUR');
   expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  // The legend names the glyph the table actually renders for a gap.
+  expect(screen.getByText(/— means not reported\./)).toBeTruthy();
+  expect(screen.queryByText(/left blank/)).toBeNull();
   expect((screen.getByLabelText('Measure') as HTMLSelectElement).value).toBe(
     'reportedCost',
   );

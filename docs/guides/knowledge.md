@@ -154,8 +154,8 @@ Erasure remains unavailable until index cleanup and recovery are fenced
 
 ### Review, recall and brief
 
-With the preview on, **Settings → My knowledge → My knowledge store → What
-Station remembers about you** does three things with what your agents have
+With the preview on, **Settings → My knowledge → My knowledge store → Your
+saved memories** does three things with what your agents have
 learned about you and your work:
 
 - **You check the doubtful ones.** Station asks you only when a new memory

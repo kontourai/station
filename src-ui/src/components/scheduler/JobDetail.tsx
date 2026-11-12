@@ -280,7 +280,8 @@ export function JobDetail({
       {monitorState?.usageKnown === false ? (
         <>
           <p className="schedule__monitor-resolution" role="status">
-            Usage isn't final yet. It appears when the run finishes.
+            This run finished without reporting usage, so the monitor is paused.
+            Resolve it from Task evidence to continue.
           </p>
           {monitorState.triggerId ? (
             <Button

@@ -459,8 +459,6 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       '/schedule?run=schedule:built-in:station-starter-check:missing-run',
     );
     render(<ScheduleView />);
-    expect(screen.getByText(/That run is no longer available/i)).toBeTruthy();
-    // The promise this message exists for: no substitution (archive#3965).
     expect(screen.getByText('That run is no longer available.')).toBeTruthy();
     expect(document.querySelector('.schedule__log--focused')).toBeNull();
   });

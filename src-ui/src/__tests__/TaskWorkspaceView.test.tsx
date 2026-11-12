@@ -1068,9 +1068,7 @@ describe('TaskWorkspaceView', () => {
       screen.queryByText('No run details were recorded for this answer.'),
     ).toBeNull();
     expect(screen.getByText('No supporting claim linked yet.')).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Associate support' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Link support' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry support' })).toBeNull();
   });
 
@@ -1236,9 +1234,9 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     expect(
-      screen.getByRole('dialog', { name: 'Associate answer support' }),
+      screen.getByRole('dialog', { name: 'Link answer support' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
@@ -1269,7 +1267,7 @@ describe('TaskWorkspaceView', () => {
     );
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
@@ -1306,7 +1304,7 @@ describe('TaskWorkspaceView', () => {
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     expect(
       screen.getByRole('dialog').querySelector('.station-dialog__subtitle')
         ?.textContent,
@@ -1335,7 +1333,7 @@ describe('TaskWorkspaceView', () => {
     ];
     const view = render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
     answerSupportBundlesResult = {
@@ -1374,7 +1372,7 @@ describe('TaskWorkspaceView', () => {
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    const trigger = screen.getByRole('button', { name: 'Associate support' });
+    const trigger = screen.getByRole('button', { name: 'Link support' });
     trigger.focus();
     fireEvent.click(trigger);
     const dialog = screen.getByRole('dialog');
@@ -1431,9 +1429,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('alertdialog', { name: 'Replace answer support?' }),
     ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Replace association' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace link' }));
     await waitFor(() =>
       expect(replaceAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1448,7 +1444,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('alertdialog', { name: 'Remove answer support?' }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove association' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link' }));
     await waitFor(() =>
       expect(removeAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1464,9 +1460,7 @@ describe('TaskWorkspaceView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'Review replacement' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Replace association' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace link' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
         /Couldn't change answer support/i,
@@ -1484,7 +1478,7 @@ describe('TaskWorkspaceView', () => {
       new Error('unavailable server detail'),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove association' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
         /Couldn't change answer support/i,
@@ -1526,9 +1520,7 @@ describe('TaskWorkspaceView', () => {
       render(<TaskWorkspaceView taskId="task-alpha" />);
       openAnswerDetails();
       expect(screen.getByText(label)).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: 'Associate support' }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Link support' })).toBeNull();
       expect(
         screen.getByRole('button', { name: 'Retry support' }),
       ).toBeTruthy();
@@ -1716,6 +1708,24 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getByRole('button', { name: /Deliver/i })).toBeTruthy();
     // The other two still have no producer and stay behind the affordance.
     expect(screen.queryByRole('button', { name: /^Learn/i })).toBeNull();
+  });
+
+  test('an attached, available experience opens without a not-connected callout', () => {
+    pluginsResult.data = [
+      {
+        enabled: true,
+        manifest: { capabilities: ['station.task-experience.deliver'] },
+      },
+    ];
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Deliver/i }));
+    expect(
+      screen.getByRole('heading', { name: 'Deliver experience' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Continue delivery in Builder Kit.')).toBeTruthy();
+    expect(screen.queryByText(/isn't connected/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Manage plugins' })).toBeNull();
   });
 
   test('a disabled producer is not a producer this page can open', () => {

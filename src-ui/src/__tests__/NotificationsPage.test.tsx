@@ -434,11 +434,6 @@ describe('NotificationsPage', () => {
     };
     renderPage();
     expect(
-      screen.getByText(/That approval request is no longer available/i),
-    ).toBeTruthy();
-    // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (archive#3965).
-    expect(
       screen.getByText('That approval request is no longer available.'),
     ).toBeTruthy();
     expect(document.activeElement).not.toBe(
@@ -478,11 +473,6 @@ describe('NotificationsPage', () => {
       '/notifications?approval=missing-notification',
     );
     renderPage();
-    expect(
-      screen.getByText(/That approval request is no longer available/i),
-    ).toBeTruthy();
-    // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (archive#3965).
     expect(
       screen.getByText('That approval request is no longer available.'),
     ).toBeTruthy();

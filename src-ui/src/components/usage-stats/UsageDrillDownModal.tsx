@@ -114,8 +114,8 @@ export function UsageDrillDownModal({
               icon={<InboxGlyph />}
               label={
                 cacheInclusivity === 'disjoint'
-                  ? 'Input Tokens (uncached)'
-                  : 'Input Tokens'
+                  ? 'Input tokens (uncached)'
+                  : 'Input tokens'
               }
               value={
                 inputMeasured
@@ -140,7 +140,7 @@ export function UsageDrillDownModal({
             {promptTotal !== undefined && (
               <StatCard
                 icon={<InboxGlyph />}
-                label="Prompt Total"
+                label="Prompt total"
                 value={promptTotal.toLocaleString()}
               />
             )}

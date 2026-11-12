@@ -542,7 +542,7 @@ export function ProjectTasksSection({
       {starterLaunchProblem === 'retry-state-corrupt' && (
         <p role="status">
           Nothing was started. This device’s record of your first-task setup
-          can’t be read.
+          can’t be read; reload the page and try again.
         </p>
       )}
       {starterLaunchProblem === 'retry-state-unavailable' && (

@@ -434,6 +434,11 @@ test.each(['recovered', 'unconfirmed'] as const)(
       ).toBeTruthy();
     const stop = await screen.findByRole('button', { name: 'Stop companion' });
     await waitFor(() => expect(stop).toHaveProperty('disabled', false));
+    if (recovery !== 'recovered')
+      // Stopping is offered only because it is possible here.
+      expect(
+        screen.getByText(/or stop the companion to make sure/),
+      ).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'Check companion status' }),
     );
@@ -511,7 +516,7 @@ test('a malformed refresh replaces prior success with an error', async () => {
   );
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining("Couldn't check this computer"),
+    expect.stringContaining("Couldn't check the computer running Station"),
   );
   expect(screen.queryByText(/Prerequisites passed/)).toBeNull();
 });
@@ -539,7 +544,7 @@ test('the SDK refuses a response that promotes build evidence to installation au
   );
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining("Couldn't check this computer"),
+    expect.stringContaining("Couldn't check the computer running Station"),
   );
   expect(screen.queryByText(/Release 0.7.0/)).toBeNull();
 });

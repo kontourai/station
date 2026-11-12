@@ -166,7 +166,7 @@ export function PluginPermissionsSection({
       )}
 
       <p className="plugin-permissions__hint">
-        Removing a permission takes effect immediately.
+        Removing a permission stops new use right away.
       </p>
     </div>
   );

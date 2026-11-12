@@ -45,7 +45,7 @@ export type SchedulerAgentEligibility = { anyEngine?: boolean };
  * scheduler's own turn invocation, nothing else.
  */
 export const SCHEDULER_ENGINE_AGENT_REASON =
-  'Scheduled jobs need an agent that uses a model connection.';
+  "Scheduled jobs run on Station's engine. This agent uses another engine.";
 
 /** Said when a job names an Agent the catalog does not have. */
 function schedulerMissingAgentReason(slug: string): string {

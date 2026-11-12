@@ -438,7 +438,7 @@ describe('ProjectTasksSection', () => {
 
     expect(
       await screen.findByText(
-        /Nothing was started\. This device’s record of your first-task setup can’t be read/,
+        /Nothing was started\. This device’s record of your first-task setup can’t be read; reload the page and try again\./,
       ),
     ).toBeTruthy();
     expect(launchStarterTask).not.toHaveBeenCalled();

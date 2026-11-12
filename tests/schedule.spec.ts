@@ -295,7 +295,7 @@ test.describe('Schedule Page', () => {
     const dialog = page.getByRole('dialog', { name: 'New automation' });
     await expect(
       dialog.getByText(
-        'Scheduled jobs need an agent that uses a model connection.',
+        "Scheduled jobs need an agent that runs on Station's engine.",
       ),
     ).toBeVisible();
     await expect(

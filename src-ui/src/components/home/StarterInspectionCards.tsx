@@ -146,8 +146,9 @@ function StarterInspectionCard({
   return (
     <PageCallout
       calloutId={`starter-${id}`}
-      // An owner Station cannot reach is not an ordinary offer.
-      tone={unreachable ? 'warning' : 'info'}
+      // An owner Station cannot reach is not an ordinary offer; having nothing
+      // to inspect yet is simply the empty case.
+      tone={unreachable && ownerState !== 'missing' ? 'warning' : 'info'}
       ariaLabel={title}
       title={title}
       action={

@@ -294,7 +294,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       name: 'Run a scheduled readiness check',
     });
     await expect(completedStarter).toContainText(
-      'evidence input, not a gate verdict',
+      "The check completed. Its findings don't approve or block a gate.",
     );
     await completedStarter
       .getByRole('button', { name: 'Open scheduled check' })

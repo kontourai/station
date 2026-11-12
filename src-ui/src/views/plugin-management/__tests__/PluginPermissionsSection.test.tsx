@@ -122,7 +122,7 @@ test('the hint states the immediate effect instead of stale reload behavior', ()
     />,
   );
   expect(
-    screen.getByText('Removing a permission takes effect immediately.'),
+    screen.getByText('Removing a permission stops new use right away.'),
   ).toBeTruthy();
   expect(screen.queryByText(/until the plugin reloads/i)).toBeNull();
 });

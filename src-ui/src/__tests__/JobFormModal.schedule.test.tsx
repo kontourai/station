@@ -309,6 +309,34 @@ describe('JobFormModal schedule compatibility', () => {
     );
   });
 
+  // The Project is required for a pull-request monitor (the form and the
+  // server refuse without it), so its hint must not say "If set".
+  test('the monitor Project hint states what the required field does', () => {
+    const job = {
+      name: 'pr-monitor',
+      provider: 'built-in',
+      cron: '0 9 * * *',
+      prompt: 'Observe',
+      agent: 'station',
+      enabled: true,
+      monitor: {
+        kind: 'github-pull-request' as const,
+        objective: 'review-ready' as const,
+        target: 'https://github.com/kontourai/station/pull/4210',
+        projectId: 'station',
+        agentId: 'station',
+        budget: { maxTurns: 2, maxTokens: 200, maxRuntimeMs: 300 },
+      },
+    };
+    render(<JobFormModal job={job} onClose={vi.fn()} />);
+    expect(
+      screen.getByText(
+        'A pull request that needs changes opens or continues one Task in this Project.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/If set/)).toBeNull();
+  });
+
   test('formats every and one-time jobs instead of leaking object coercion', () => {
     expect(
       formatSchedule(
@@ -505,7 +533,7 @@ describe('JobFormModal schedule compatibility', () => {
     expect(addMutate).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        'Scheduled jobs need an agent that uses a model connection.',
+        "Scheduled jobs need an agent that runs on Station's engine.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/No Agent named/)).toBeNull();

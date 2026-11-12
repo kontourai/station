@@ -1138,19 +1138,23 @@ function TaskExperienceBoundary({
           <p>{experience.description}</p>
         </div>
       </div>
-      <div className="task-workspace__experience-callout">
-        <p>{experience.unavailableDescription}</p>
-        {experience.alternativeHref && experience.alternativeLabel ? (
-          <a
-            className="editor-btn"
-            href={experience.alternativeHref}
-            target={isExternalAlternative ? '_blank' : undefined}
-            rel={isExternalAlternative ? 'noreferrer' : undefined}
-          >
-            {experience.alternativeLabel}
-          </a>
-        ) : null}
-      </div>
+      {/* The callout and its alternative explain an experience that cannot
+          open; an attached, available one has nothing to apologize for. */}
+      {experience.availability === 'unavailable' && (
+        <div className="task-workspace__experience-callout">
+          <p>{experience.unavailableDescription}</p>
+          {experience.alternativeHref && experience.alternativeLabel ? (
+            <a
+              className="editor-btn"
+              href={experience.alternativeHref}
+              target={isExternalAlternative ? '_blank' : undefined}
+              rel={isExternalAlternative ? 'noreferrer' : undefined}
+            >
+              {experience.alternativeLabel}
+            </a>
+          ) : null}
+        </div>
+      )}
     </section>
   );
 }

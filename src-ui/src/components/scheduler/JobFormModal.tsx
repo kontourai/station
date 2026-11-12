@@ -652,7 +652,7 @@ export function JobFormModal({
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {needsAgentSetup
-                  ? 'Scheduled jobs need an agent that uses a model connection.'
+                  ? "Scheduled jobs need an agent that runs on Station's engine."
                   : jobAgentRunnability.reason}
               </span>
             )}
@@ -789,8 +789,8 @@ export function JobFormModal({
               placeholder="project-id"
             />
             <span className="schedule__field-hint">
-              If set, a pull request that needs changes opens or reuses one Task
-              in this Project instead of starting a new run.
+              A pull request that needs changes opens or continues one Task in
+              this Project.
             </span>
           </label>
         )}

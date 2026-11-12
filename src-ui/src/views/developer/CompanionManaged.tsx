@@ -356,9 +356,10 @@ export function CompanionManaged({
           </p>
           {uncertainAction ? (
             <p role="alert">
-              Station didn't confirm the last {current.latestAction?.action}.
-              Check status, or stop the companion to make sure its services are
-              stopped.
+              Station didn't confirm the last {current.latestAction?.action}.{' '}
+              {canStop
+                ? 'Check status, or stop the companion to make sure its services are stopped.'
+                : 'Check status before trying again.'}
             </p>
           ) : null}
         </>

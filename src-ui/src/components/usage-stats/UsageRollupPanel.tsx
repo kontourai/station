@@ -94,8 +94,8 @@ export function UsageRollupPanel() {
         <div>
           <h3 id="usage-rollup-title">Usage across Stations</h3>
           <p>
-            Reported usage and estimates are shown separately. Blank values
-            weren't reported.
+            Reported usage and estimates are shown separately. — means not
+            reported.
           </p>
           <p>
             Summary-generation tokens appear in compaction details, outside

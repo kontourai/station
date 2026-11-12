@@ -305,7 +305,7 @@ function AnswerSupport({
         </div>
         {state.canAssociate && (
           <Button size="sm" onClick={() => onOpen('associate')}>
-            Associate support
+            Link support
           </Button>
         )}
         {state.canRetry && (
@@ -677,7 +677,7 @@ function AnswerSupportDialog({
           referenceId: reference.id,
           expectedRevision: association.revision,
         });
-        onCompleted('Support association removed from this exact answer.');
+        onCompleted('Support link removed from this answer.');
       } else if (selectedBundleId && selectedClaimId) {
         if (intent === 'replace') {
           if (!association) return;
@@ -688,7 +688,7 @@ function AnswerSupportDialog({
             claimId: selectedClaimId,
             expectedRevision: association.revision,
           });
-          onCompleted('Support association replaced for this exact answer.');
+          onCompleted('Support link replaced for this answer.');
         } else {
           await create.mutateAsync({
             taskId,
@@ -696,7 +696,7 @@ function AnswerSupportDialog({
             bundleId: selectedBundleId,
             claimId: selectedClaimId,
           });
-          onCompleted('Support association added for this exact answer.');
+          onCompleted('Support link added to this answer.');
         }
       }
     } catch {
@@ -712,11 +712,11 @@ function AnswerSupportDialog({
       ? 'Replace answer support?'
       : intent === 'replace'
         ? 'Replace answer support'
-        : 'Associate answer support';
+        : 'Link answer support';
   const action = isRemoval
-    ? 'Remove association'
+    ? 'Remove link'
     : confirming
-      ? 'Replace association'
+      ? 'Replace link'
       : intent === 'replace'
         ? 'Review replacement'
         : 'Attach support';

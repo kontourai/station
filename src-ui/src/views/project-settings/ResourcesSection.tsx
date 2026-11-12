@@ -641,7 +641,6 @@ export function ResourcesSection({
           <PageSection
             id={embedded ? undefined : 'section-resources'}
             className="project-settings__section resources-section"
-            eyebrow="Project code"
             title={embedded ? 'Repositories' : 'Resources'}
             description="Where this Station finds this project's code."
           >

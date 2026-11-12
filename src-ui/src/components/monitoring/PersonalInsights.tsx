@@ -1087,8 +1087,8 @@ export function PersonalInsights() {
             <p>
               Two connections to the same Station can't be combined. A copied
               Station with a different identity is counted as a separate
-              Station. Project and engine filters need sources that report them,
-              and missing values are left blank.
+              Station. Project and engine filters need sources that report them.
+              — means not reported.
             </p>
           </details>
           <ActionRow

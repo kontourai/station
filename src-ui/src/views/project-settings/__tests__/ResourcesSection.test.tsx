@@ -189,6 +189,8 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     expect(screen.getByText('/Users/dev/code/api')).toBeTruthy();
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('button')).toBeNull();
+    // The section title stands alone, without an eyebrow restating it.
+    expect(container.querySelector('.page-section__eyebrow')).toBeNull();
   });
 
   it('unbound: names the resource and the reason, offers the point-at-a-checkout form, and names NO path', () => {

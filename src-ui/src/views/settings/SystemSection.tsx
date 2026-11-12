@@ -285,7 +285,8 @@ export function SystemSection({
           Reset Station settings
         </button>
         <span className="settings__field-hint">
-          Restores Station defaults. Device settings are kept.
+          Restores most Station settings to their defaults. Device settings are
+          kept.
         </span>
         {hasUnsavedChanges && (
           <span className="settings__field-hint">

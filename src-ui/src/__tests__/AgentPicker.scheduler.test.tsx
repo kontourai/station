@@ -243,3 +243,10 @@ describe('scheduler Agent options', () => {
     unmount();
   });
 });
+
+// Pin the literal: the row reason is derived from this constant everywhere.
+test("the engine-bound row reason names Station's engine", () => {
+  expect(SCHEDULER_ENGINE_AGENT_REASON).toBe(
+    "Scheduled jobs run on Station's engine. This agent uses another engine.",
+  );
+});

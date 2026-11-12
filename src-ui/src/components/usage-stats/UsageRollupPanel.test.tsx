@@ -107,6 +107,9 @@ import { UsageRollupPanel } from './UsageRollupPanel';
 describe('UsageRollupPanel (station#4135)', () => {
   test('explains mixed money and source gaps without rendering them as zero', () => {
     render(<UsageRollupPanel />);
+    // The header legend names the glyph a gap renders as.
+    expect(screen.getByText(/— means not\s+reported\./)).toBeTruthy();
+    expect(screen.queryByText(/Blank values/)).toBeNull();
     expect(screen.getByText('Mixed: 1.0000 USD, 2.0000 EUR')).toBeTruthy();
     expect(screen.getByText('Partially priced')).toBeTruthy();
     expect(

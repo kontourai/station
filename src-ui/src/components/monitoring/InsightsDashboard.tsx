@@ -104,7 +104,7 @@ export async function downloadInsightEvents(
       written: false,
       rows: 0,
       reason:
-        // Tool calls recorded without a user id can't be exported (#3130).
+        // Tool calls recorded without a user id can't be exported (archive#3130).
         "Nothing to export. Tool calls recorded without a user can't be exported yet.",
     };
   }
@@ -172,7 +172,7 @@ function UsageTab() {
     return (
       <Empty
         label="Insights history unavailable"
-        description="No monitoring history for this period."
+        description="Station can’t read monitoring history for this period, so totals are unknown."
       />
     );
 
