@@ -73,12 +73,12 @@ afterEach(() => {
   extraSources.length = 0;
 });
 
-const hillClimb = {
-  id: 'hill-climb',
+const exampleSource = {
+  id: 'example-source',
   kind: 'skills',
-  displayName: 'Bil0000/Hill-Climb',
+  displayName: 'example-org/example-skills-and-plugin',
   origin: 'user',
-  location: 'https://github.com/Bil0000/Hill-Climb',
+  location: 'https://github.com/example-org/example-skills-and-plugin',
   ref: 'main',
   adapter: 'github',
   enabled: true,
@@ -86,7 +86,7 @@ const hillClimb = {
   detection: {
     state: 'detected',
     index: 'claude-marketplace:.claude-plugin/marketplace.json',
-    revision: '551c997e9eb3ae81fed9edf1d8a66bd32cd0dbf8',
+    revision: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
     checkedAt: new Date().toISOString(),
     kinds: [
       { kind: 'skills', count: 1, via: 'skill-md', installable: true },
@@ -107,7 +107,9 @@ test('adds a source from a location and optional ref, with no type to choose, th
   const dialog = screen.getByRole('dialog', { name: 'Add source' });
   expect(within(dialog).queryByRole('combobox')).toBeNull();
   fireEvent.change(within(dialog).getByLabelText('Location'), {
-    target: { value: ' https://github.com/Bil0000/Hill-Climb ' },
+    target: {
+      value: ' https://github.com/example-org/example-skills-and-plugin ',
+    },
   });
   fireEvent.change(within(dialog).getByLabelText(/^Ref/), {
     target: { value: 'main' },
@@ -117,7 +119,7 @@ test('adds a source from a location and optional ref, with no type to choose, th
     {
       action: 'add',
       source: {
-        location: 'https://github.com/Bil0000/Hill-Climb',
+        location: 'https://github.com/example-org/example-skills-and-plugin',
         ref: 'main',
       },
     },
@@ -126,9 +128,9 @@ test('adds a source from a location and optional ref, with no type to choose, th
   const { onSuccess } = mutate.mock.calls[0]![1] as {
     onSuccess: (source: unknown) => void;
   };
-  act(() => onSuccess(hillClimb));
+  act(() => onSuccess(exampleSource));
   const result = screen.getByRole('dialog', {
-    name: 'Added Bil0000/Hill-Climb',
+    name: 'Added example-org/example-skills-and-plugin',
   });
   expect(result.textContent).toContain('1 skill');
   expect(result.textContent).toContain(
@@ -138,12 +140,12 @@ test('adds a source from a location and optional ref, with no type to choose, th
   fireEvent.click(
     within(result).getByRole('button', { name: 'Browse this source' }),
   );
-  expect(select).toHaveBeenCalledWith('hill-climb', 'skills', ['skills']);
+  expect(select).toHaveBeenCalledWith('example-source', 'skills', ['skills']);
 });
 
 test('a source card shows its trust tier, detected kinds with counts and its freshness', () => {
   extraSources.push(
-    hillClimb,
+    exampleSource,
     {
       id: 'default-skills',
       kind: 'skills',
@@ -172,11 +174,11 @@ test('a source card shows its trust tier, detected kinds with counts and its fre
   );
   render(<MarketplaceSources selected="all" onSelect={select} />);
   const card = screen
-    .getByText('Bil0000/Hill-Climb', { selector: 'strong' })
+    .getByText('example-org/example-skills-and-plugin', { selector: 'strong' })
     .closest('article') as HTMLElement;
   expect(within(card).getByText('Unverified')).toBeTruthy();
   expect(card.textContent).toContain(
-    'https://github.com/Bil0000/Hill-Climb @ main',
+    'https://github.com/example-org/example-skills-and-plugin @ main',
   );
   const kinds = within(card).getByRole('list', {
     name: 'What this source provides',
@@ -186,7 +188,7 @@ test('a source card shows its trust tier, detected kinds with counts and its fre
       .getAllByRole('listitem')
       .map((item) => item.textContent),
   ).toEqual(['1 skill', '1 plugin · recognized, not installable']);
-  expect(card.textContent).toContain('revision 551c997');
+  expect(card.textContent).toContain('revision a1b2c3d');
   const notes = screen
     .getByText('Notes', { selector: 'strong' })
     .closest('article') as HTMLElement;
@@ -206,11 +208,11 @@ test('a source card shows its trust tier, detected kinds with counts and its fre
 
 test('a kinds-filtered view includes a source that supplies that kind beside its primary one', () => {
   extraSources.push({
-    ...hillClimb,
+    ...exampleSource,
     id: 'mixed',
     displayName: 'Mixed folder',
     detection: {
-      ...hillClimb.detection,
+      ...exampleSource.detection,
       kinds: [
         { kind: 'skills', count: 2, via: 'skill-md', installable: true },
         {
@@ -230,7 +232,7 @@ test('a kinds-filtered view includes a source that supplies that kind beside its
     .map((option) => option.textContent);
   expect(options).toContain('Mixed folder');
   // Recognized-but-not-installable plugins do not make a source a plugin catalog.
-  expect(options).not.toContain('Bil0000/Hill-Climb');
+  expect(options).not.toContain('example-org/example-skills-and-plugin');
   expect(options).not.toContain('Community (disabled)');
 });
 
@@ -297,11 +299,11 @@ test('#4521: a source the managed policy refuses shows why and cannot be enabled
 
 test('a kind the managed policy refuses is marked on that kind, not on the whole source', () => {
   extraSources.push({
-    ...hillClimb,
+    ...exampleSource,
     id: 'partly',
     displayName: 'Partly refused',
     detection: {
-      ...hillClimb.detection,
+      ...exampleSource.detection,
       kinds: [
         {
           kind: 'skills',
