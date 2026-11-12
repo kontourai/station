@@ -797,8 +797,13 @@ settles once room history shows a message with its intent ID. The unsent draft
 session storage, keyed by the shell's reload partition rather than its
 per-reload authority epoch; `#general` keeps the key the room used before
 channels, and the channel on screen is remembered the same way, so a reload
-returns to it. Messages, `@agent` asks and retained Agent requests are addressed
-to the channel on screen; a restored recipient must still be an available
+returns to it. A host can own the channel through the route instead
+(`routeChannel` and `onRouteChannel`), and the open thread (`thread`): replies
+whose `replyTo` chain reaches a loaded message then sit in that message's
+thread, and the composer replies into the open thread. `screen` gives a phone's
+full-screen bar. The full room marks itself read through its discovery's
+`checkpoint.lastSeq` while it is on screen. Messages, `@agent` asks and
+retained Agent requests are addressed to the channel on screen; a restored recipient must still be an available
 Agent, shown under its current catalog name. While an Agent request is
 unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
 messages still send. A new `@agent` ask never reuses a retained Agent intent,
