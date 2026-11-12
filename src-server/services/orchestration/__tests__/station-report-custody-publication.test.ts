@@ -20,6 +20,7 @@ import { StationDelegationPersistence } from '../delegation-group-persistence.js
 import { withReportRoundsPublication } from '../report-rounds-publication.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
+import { requestFor } from './delegation-source-fixtures/report.js';
 import { recoveryFixture } from './report-recovery-fixture.js';
 
 function leaves(error: unknown): unknown[] {
@@ -507,6 +508,57 @@ test('metadata admission retains its returned callback and publication until fai
     captureBoundary.mockRestore();
     requestAdmission.mockRestore();
     persistence.mockRestore();
+    try {
+      await orchestration.shutdown();
+    } finally {
+      eventStore.close();
+      await runtimeOwner.shutdown();
+    }
+  }
+});
+
+test('report metadata GET bounds physical Home ownership and observes a later withdrawal', async () => {
+  const { h, orchestration, eventStore, runtimeOwner, owners } =
+    await recoveryFixture();
+  const runtime = new StationReportGroupRuntime(owners);
+  const lock = join(h.f.home, 'security', '.home-writer.mutation');
+  const link = fs.linkSync;
+  let holds = 0;
+  const observe = vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
+    if (String(to) === lock) holds++;
+    return link(from, to);
+  });
+  const metadataRead = vi.spyOn(
+    StationDelegationPersistence.prototype,
+    'readReportAdmission',
+  );
+  syncBuiltinESMExports();
+  try {
+    const read = () =>
+      runtime.get(h.f.context(requestFor(h, 'GET')), 'missing-read-group');
+    assert.equal(await read(), null);
+    assert.ok(holds > 0, 'physical Home acquisition observer must execute');
+    assert.ok(
+      holds <= 8,
+      `metadata GET acquired Home ${holds} times; maximum 8`,
+    );
+    const readsBeforeWithdrawal = metadataRead.mock.calls.length;
+    assert.ok(readsBeforeWithdrawal > 0, 'the real metadata read must run');
+    h.f.environment.devicePairing.revokeDevice(
+      h.f.paired.device.id,
+      'operator-credential',
+    );
+    await assert.rejects(read, { code: 'group_custody_unavailable' });
+    assert.equal(
+      metadataRead.mock.calls.length,
+      readsBeforeWithdrawal,
+      'withdrawal must refuse before another protected read',
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    metadataRead.mockRestore();
+    observe.mockRestore();
+    syncBuiltinESMExports();
     try {
       await orchestration.shutdown();
     } finally {
