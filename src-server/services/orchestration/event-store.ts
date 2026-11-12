@@ -2469,7 +2469,7 @@ const READABLE_CONTENT_METHODS = new Set([
   'turn.aborted',
   'runtime.error',
 ]);
-export function isReadableContentEvent(event: CanonicalRuntimeEvent): boolean {
+function isReadableContentEvent(event: CanonicalRuntimeEvent): boolean {
   if (READABLE_CONTENT_METHODS.has(event.method)) return true;
   return (
     event.method === 'turn.started' &&

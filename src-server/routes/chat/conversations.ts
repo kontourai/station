@@ -2517,7 +2517,7 @@ interface ConversationInventoryDeps {
  * Hosted requests read only the cursor-paged, authority-scoped runtime index;
  * personal requests also fold in one bounded page of local file records.
  */
-export async function readConversationInventoryPage(
+async function readConversationInventoryPage(
   {
     memoryAdapters,
     sessionConversationReader,
@@ -2588,7 +2588,7 @@ export async function readConversationInventoryPage(
 }
 
 /** An inventory item's read-marker version: epoch ms of its `updatedAt`. */
-export function conversationReadVersion(
+function conversationReadVersion(
   item: Pick<ConversationListItem, 'updatedAt'>,
 ): number | undefined {
   const version = Date.parse(item.updatedAt);

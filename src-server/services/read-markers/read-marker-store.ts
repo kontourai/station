@@ -10,7 +10,7 @@ const STORE_VERSION = 2 as const;
  * in the inventory's acknowledgement store as times. */
 const LEGACY_STORE_VERSION = 1 as const;
 /** Oldest-touched markers beyond this are dropped; a dropped one reads unread. */
-export const READ_MARKERS_PER_PERSON_MAX = 5_000;
+const READ_MARKERS_PER_PERSON_MAX = 5_000;
 export const READ_MARKER_STORE_FILE = 'read-markers.json';
 
 interface StoredMarker {
@@ -97,7 +97,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * a broken envelope cannot be scoped to one person. A first-format store is
  * refused here too until {@link FileReadMarkerStore.completeUpgrade} runs.
  */
-export function decodeReadMarkerStore(text: string): ReadMarkerStoreData {
+function decodeReadMarkerStore(text: string): ReadMarkerStoreData {
   const parsed: unknown = JSON.parse(text);
   if (!isRecord(parsed) || parsed.version !== STORE_VERSION)
     throw new Error('Unsupported read marker store version');
