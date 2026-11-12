@@ -1,0 +1,101 @@
+{
+  "revision": "14955de0700080735155f07222a46b2e0a50f336",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Updated the DesktopStartupReadiness cover description to the new rendering (renderer startup-screen palette for the window appearance, channel mark plus Fraunces wordmark, river track with crest unless Reduce Motion) and the overdue detail line; checked against populate_native_startup_cover and with_native_startup_cover in src-desktop/src/lib.rs. Key monitor, zero-opacity WebView, Restart default, fronting gate and main-thread statements unchanged and still true.","inputs":["docs/architecture/module-map.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/connection-broker.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-list-recovery.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/connection-list-recovery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/instance-registry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/mobile-credential-authority.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/notification-delivery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/design/ssh-launched-environments.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/glossary.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/android-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/connections.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/desktop-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/desktop-tray.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/local-collaboration-lab.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/mobile-release.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/native-releases.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Updated the macOS cover paragraph to the new look and quoted the new overdue detail text exactly as NATIVE_STARTUP_COVER_OVERDUE_DETAIL in src-desktop/src/lib.rs; headline text unchanged. Evidence-limits table unchanged and still accurate.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/nightly.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/release-channel-ports.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/release-rings.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/self-hosted-broker.md","docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/store-entry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/store-listing.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/guides/testing.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/reference/api.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Cover now described as matching the startup screen with the Station wordmark; overdue bullet adds the detail line (opens on its own; one-time upgrade after an update). Checked against lib.rs constants; Windows/Linux dialog text unchanged.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["patches/android-native-keyring-store/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"README.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["src-desktop/AGENTS.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Rewrote the fan-out paragraph for the new targets in scripts/lib/station-icon.mjs and generate-app-icons.mjs: macOS grid and rounded desktop masters fill with the map face, framed master feeds icon.png (tray) and the web install icon, iOS crop feeds Windows Square/Store tiles, square only the maskable icon; noted the startup cover uses the favicon mark. Verified by regenerating and by station-icon.test.ts composition checks.","inputs":["src-desktop/icons/README.md","scripts/__tests__/station-icon.test.ts","scripts/generate-app-icons.mjs","scripts/lib/station-icon.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["src-server/services/connections/pion-peer/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-read for claims touched by this change (macOS startup cover appearance and overdue detail text in src-desktop/src/lib.rs; desktop icon composition). This document makes no claim about the cover look, its wording or desktop icon art; existing statements remain accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}
