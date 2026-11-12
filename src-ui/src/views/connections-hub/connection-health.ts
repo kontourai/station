@@ -28,12 +28,11 @@ import {
 import type { ResourceStatus } from '../../components/resource-hub/resource-status';
 import {
   blockingPrerequisite,
+  modelCatalogInput,
   type ProviderCatalogInput,
   type ProviderReadiness,
   resolveProviderPresentation,
-  modelCatalogInput,
 } from '../provider-settings/providerCatalog';
-import type { ProviderConnection } from '../provider-settings/types';
 
 export type { ConnectionVerdict };
 

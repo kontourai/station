@@ -557,17 +557,17 @@ export function AgentConnectionView({
             {selectedAcpConnectionId &&
               health?.verdict !== 'ready' &&
               !selectedManagedState?.disallowed && (
-              <button
-                type="button"
-                className="editor-btn"
-                disabled={reconnectMutation.isPending}
-                onClick={() =>
-                  reconnectMutation.mutate(selectedAcpConnectionId)
-                }
-              >
-                {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
-              </button>
-            )}
+                <button
+                  type="button"
+                  className="editor-btn"
+                  disabled={reconnectMutation.isPending}
+                  onClick={() =>
+                    reconnectMutation.mutate(selectedAcpConnectionId)
+                  }
+                >
+                  {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
+                </button>
+              )}
           </DetailHeader>
           <div className="agent-editor__section">
             {/*
