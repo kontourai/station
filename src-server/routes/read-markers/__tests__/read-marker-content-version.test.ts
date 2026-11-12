@@ -9,8 +9,7 @@
  * `/api/conversations`, acknowledgement and read-marker routes; the restart
  * closes both and reopens them on the same database.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
@@ -19,8 +18,9 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileConversationAcknowledgementStore } from '../../../services/orchestration/conversation-acknowledgement-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -56,11 +56,10 @@ const logger = {
 } as never;
 
 let dir: string;
+// Removed after each test whether it passed or not (#2421).
+const makeTempDir = trackTempDirs();
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'read-marker-content-version-'));
-});
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  dir = makeTempDir('read-marker-content-version-');
 });
 
 /** One running Station over `dir`: event store, service and routes. */

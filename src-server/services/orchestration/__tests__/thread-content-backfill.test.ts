@@ -4,11 +4,10 @@
  * start resumes where it stopped instead of from zero. Completion records the
  * upgrade fence (the store's contiguous sequence prefix) in the same write.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ReadMarkerService } from '../../read-markers/read-marker-service.js';
 import { FileReadMarkerStore } from '../../read-markers/read-marker-store.js';
 import {
@@ -19,11 +18,10 @@ import { FileConversationAcknowledgementStore } from '../conversation-acknowledg
 import { EventStore, THREAD_CONTENT_BACKFILL_BATCH } from '../event-store.js';
 
 let dir: string;
+// Removed after each test whether it passed or not (#2421).
+const makeTempDir = trackTempDirs();
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'thread-content-backfill-'));
-});
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  dir = makeTempDir('thread-content-backfill-');
 });
 
 /** A home from before content versions: history but no projection. */

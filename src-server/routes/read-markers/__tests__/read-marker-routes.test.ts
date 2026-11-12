@@ -5,15 +5,7 @@
  * store in a temporary directory. Only the conversation/room readers below
  * the version sources are fixtures.
  */
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
@@ -30,8 +22,9 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { FileStorageNotFoundError } from '../../../domain/project-file-transactions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
@@ -114,11 +107,10 @@ const storedMarkers = () => {
       : {}),
   };
 };
+// Removed after each test whether it passed or not (#2421).
+const makeTempDir = trackTempDirs();
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'station-read-marker-routes-'));
-});
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  dir = makeTempDir('station-read-marker-routes-');
 });
 
 /**
