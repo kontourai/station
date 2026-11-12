@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Changed input is routing.ts (engine detail path now parsed by parseResourceDetailPath with an optional tab segment from ENGINE_DETAIL_TABS). Checked the DestinationRegistry entry: routing.ts consuming exact routes, and 'parameterized ... connection ... routes retain their domain parsers' remain true. Searched for connections-hub, resource-hub, ManagedEngine, station-tones and connection-health entries: the map has none for Connections UI leaf components (only ConnectionInspector, relay panels), and resource-hub/connection-health are presentational/derivation helpers inside one UI view family with no new seam, adapter or cross-package interface, so no entry added per the map's own rule (code that changes behaviour across a seam).","inputs":["docs/architecture/module-map.md","src-ui/src/app-shell/routing.ts"]}
+  ]
+}
