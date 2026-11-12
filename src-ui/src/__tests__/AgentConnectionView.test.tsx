@@ -1828,7 +1828,12 @@ describe('AgentConnectionView', () => {
     expect(screen.getAllByText('Unsaved Changes')).toHaveLength(1);
     expect(window.location.pathname).toBe('/connections/engines/muse/settings');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    // The confirmation's Discard, not the unsaved bar's.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Discard',
+      }),
+    );
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'connections-engine-edit',
       id: 'codex',
