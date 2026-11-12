@@ -3406,6 +3406,7 @@ const ROOM_SCENES = [
   { scene: 'agent-pending', room: 'project' },
   { scene: 'agent-abandon', room: 'project' },
   { scene: 'keyboard', room: 'project' },
+  { scene: 'channels', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3459,7 +3460,10 @@ function roomConversationScreens(): Screen[] {
             created = true;
             const project = (await response.json()).data;
             if (room === 'project') {
-              if (scene === 'keyboard' && viewport.width === MOBILE.width)
+              if (
+                (scene === 'keyboard' || scene === 'channels') &&
+                viewport.width === MOBILE.width
+              )
                 await installKeyboardEmulation(page);
               fixture = await installProjectRoomFixture(page, {
                 slug,
@@ -3681,6 +3685,89 @@ function roomConversationScreens(): Screen[] {
                   );
                 }
               }
+            }
+            if (scene === 'channels') {
+              // #4792 on the shared conversation: switch to #design, keep a
+              // draft across a real reload, then show the channel list over
+              // that channel's conversation.
+              const openChannels = async () => {
+                await roomRegion
+                  .getByRole('button', { name: /switch channel$/ })
+                  .click();
+                return page.getByRole('dialog', { name: 'Channels' });
+              };
+              const list = await openChannels();
+              await list
+                .getByRole('button', { name: 'design', exact: true })
+                .click();
+              await expect(
+                roomRegion.getByRole('button', {
+                  name: /^design\b.*switch channel$/,
+                }),
+              ).toBeVisible();
+              await expect(
+                conversation.getByText(
+                  'New checkout screens are up for review.',
+                ),
+              ).toBeVisible();
+              const draftText = 'Shorter CTA: “Pay now”';
+              await composer.fill(draftText);
+              await page.reload();
+              const reloaded = page.getByRole('region', {
+                name: 'Project room',
+              });
+              await expect(
+                reloaded.getByRole('button', {
+                  name: /^design\b.*switch channel$/,
+                }),
+              ).toBeVisible();
+              await expect(
+                reloaded.getByRole('textbox', { name: /^Message/ }),
+              ).toHaveValue(draftText);
+              await page.evaluate(
+                (selected) =>
+                  document.documentElement.setAttribute('data-theme', selected),
+                theme,
+              );
+              if (viewport.width === MOBILE.width) {
+                // #4810's keyboard keep-above, inside a non-default channel:
+                // the focused composer and Send stay above a 300px keyboard.
+                const field = reloaded.getByRole('textbox', {
+                  name: /^Message/,
+                });
+                await field.click();
+                await emulateKeyboard(page, 300);
+                const send = reloaded.getByRole('button', { name: /^Send/ });
+                await expect
+                  .poll(
+                    async () => {
+                      const box = await send.boundingBox();
+                      const visible = await page.evaluate(
+                        () =>
+                          window.visualViewport!.offsetTop +
+                          window.visualViewport!.height,
+                      );
+                      return box ? box.y + box.height - visible : Infinity;
+                    },
+                    { message: 'Send ends below the visible viewport (px)' },
+                  )
+                  .toBeLessThanOrEqual(0);
+                await expect(field).toBeFocused();
+                await expect(field).toHaveValue(draftText);
+                await emulateKeyboard(page, 0);
+              }
+              const reopened = await openChannels();
+              await expect(
+                reopened.getByRole('button', { name: 'design', exact: true }),
+              ).toBeFocused();
+              if (viewport.width === MOBILE.width)
+                await expectTouchTarget(
+                  reopened.getByRole('button', {
+                    name: 'launch-plan',
+                    exact: true,
+                  }),
+                  'Channel row',
+                );
             }
             if (scene === 'short' && viewport.width === MOBILE.width) {
               // A real reload mints a new activation epoch; the draft is
