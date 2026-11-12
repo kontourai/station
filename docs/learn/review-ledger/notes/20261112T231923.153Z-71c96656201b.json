@@ -1,0 +1,89 @@
+{
+  "revision": "020d4d3806cfa963018b57c042d356e1cfcf299f",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"StationRuntime's session.exited subscriber now delegates to session-exit-finalization.ts; no module-map claim names that subscriber or its ordering. Drain/account-sharing text unaffected.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Added the banner's per-task activity lines (BackgroundTaskActivity via useChatBackgroundTasks) and the rule that a server-reported live current execution outranks a stale local chat failure (chatLifecycleLabel); checked against ChatMessageList and home-view-model.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/connections-onboarding.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/hosted-execution-isolation.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/placement.md","note":"TaskRow's activity line moved to components/chat/BackgroundTaskActivity.tsx and the chat banner renders it too; sheet and Agents pane still render the same TaskRow. Noted in the #2050 paragraph.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/BackgroundTasksSheet.css","src-ui/src/components/chat-dock/backgroundTaskRows.tsx","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/principals.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/registry-trust-policy.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Session-exit finalization moved to session-exit-finalization.ts and now skips Station shutdown exits; Task-owned worktrees are still never finalized on Session exit (sessionExitWorktreeMetadata), so the Finishing section stays accurate.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Exit handling still reads the room binding for ordinary exits; Station shutdown exits (orchestration_shutdown) now skip it explicitly, which they already did in effect because the read refused during shutdown. Recovery wording unchanged and accurate.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/deployment.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/feature-previews.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/integrating-station.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/plugins.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/user/getting-started.md","src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["examples/builder-delivery-viewer/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["examples/fieldwork-review/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Checked: this change only moves StationRuntime's session-exit worktree/room finalization into session-exit-finalization.ts (skipping Station shutdown exits) and changes chat status/banner UI; this document makes no claim about either.","inputs":["examples/survey-review-workbench/README.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}
