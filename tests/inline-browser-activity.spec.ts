@@ -22,7 +22,7 @@ const base = {
   provider: 'codex',
   threadId: 'session-1',
   turnId: 'turn-1',
-  createdAt: '2026-04-05T12:00:00.000Z',
+  createdAt: new Date().toISOString(),
 } as const;
 
 async function setup(
@@ -197,12 +197,20 @@ async function setup(
   });
 }
 
-test('preview off keeps the ordinary transcript', async ({ page }) => {
+test('preview off keeps the ordinary transcript', async ({
+  page,
+}, testInfo) => {
   await setup(page, false);
   await expect(page.locator('.streaming-message .tool-call')).toBeVisible();
   await expect(page.getByText('Browser activity', { exact: true })).toHaveCount(
     0,
   );
+  const capture = testInfo.outputPath('inline-browser-preview-off.png');
+  await page.screenshot({ path: capture, animations: 'disabled' });
+  await testInfo.attach('inline-browser-preview-off', {
+    path: capture,
+    contentType: 'image/png',
+  });
 });
 
 for (const width of [390, 1440]) {

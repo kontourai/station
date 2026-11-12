@@ -278,7 +278,9 @@ On target/transport change or unmount, the viewer sends
 `{action: 'close-input-source', sourceId}` to the same lease route. The host seals
 the source before waiting for prior input to settle, then cancels only its held
 keys and buttons. Late input from the sealed source is refused; a newer viewer's
-press on the same key is preserved. Closing is not a control-lease release.
+press on the same key is preserved. A button changing pointer type first cancels
+the displaced gesture, so a mouse press cannot hide a still-held touch. Closing
+is not a control-lease release.
 The response waits at most ten seconds for cancellation; a failure or timeout
 does not establish physical release. Failed cleanup retains the held state and
 blocks further input as `surface-wedged` until an authorized whole-surface
