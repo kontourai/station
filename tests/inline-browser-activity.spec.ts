@@ -206,7 +206,10 @@ test('preview off keeps the ordinary transcript', async ({
     0,
   );
   const capture = testInfo.outputPath('inline-browser-preview-off.png');
-  await page.screenshot({ path: capture, animations: 'disabled' });
+  await page.screenshot({
+    path: testInfo.outputPath('inline-browser-preview-off.png'),
+    animations: 'disabled',
+  });
   await testInfo.attach('inline-browser-preview-off', {
     path: capture,
     contentType: 'image/png',
