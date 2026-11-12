@@ -733,7 +733,7 @@ describe('who is driving, when no one holds the lease (owner decision, D9)', () 
     renderFloat(chatArea().area);
     await screen.findByTestId('float-canvas');
     expect(
-      screen.getByRole('button', {
+      await screen.findByRole('button', {
         name: 'Floating browser controls. No one is in control.',
       }),
     ).toBeTruthy();
