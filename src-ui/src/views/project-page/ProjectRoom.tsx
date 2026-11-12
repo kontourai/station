@@ -612,7 +612,6 @@ function ProjectRoomSession({
   // A thread link can name a root older than the newest window: page back
   // to it, within the windows a room keeps loaded.
   const historyPages = room.history.data?.pages.length ?? 0;
-  const historyLoaded = room.history.data !== undefined;
   const threadRootLoaded =
     !!threadRoot &&
     messages.some((message) => message.messageId === threadRoot);
@@ -626,37 +625,28 @@ function ProjectRoomSession({
     !threadRootLoaded &&
     !!room.history.hasNextPage &&
     historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
-  // The seek advances on each page's own result rather than on a render in
-  // between: pages that settle quickly can batch those renders away, which
-  // left a valid link loading forever (#4855). It runs once per thread, per
-  // loaded history and per Retry; a failed page stops it until Retry.
-  const latestHistory = useRef(room.history);
-  latestHistory.current = room.history;
-  const [seekAttempt, setSeekAttempt] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: seekAttempt restarts the seek on Retry.
+  // Each history read that settles without the root starts the next window.
+  // The trigger is the read itself (`dataUpdatedAt`, whether anything is
+  // fetching), not a render between pages: pages that settle quickly batch
+  // those renders away, and a live refetch can cancel a page in flight; both
+  // left a valid link loading forever (#4855). A failed read waits for Retry.
+  const {
+    fetchNextPage,
+    isFetching: historyFetching,
+    isError: historyFailed,
+    dataUpdatedAt: historyReadAt,
+  } = room.history;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each settled read (historyReadAt) re-checks for the root.
   useEffect(() => {
-    if (!threadRoot || !historyLoaded) return;
-    let current = true;
-    void (async () => {
-      let result = latestHistory.current;
-      while (current) {
-        const pages = result.data?.pages ?? [];
-        if (
-          pages.some((page) =>
-            page.messages.some((message) => message.messageId === threadRoot),
-          ) ||
-          !result.hasNextPage ||
-          pages.length >= PROJECT_ROOM_HISTORY_MAX_PAGES
-        )
-          return;
-        result = await result.fetchNextPage();
-        if (result.isError) return;
-      }
-    })();
-    return () => {
-      current = false;
-    };
-  }, [threadRoot, historyLoaded, seekAttempt]);
+    if (awaitingThreadRoot && !historyFetching && !historyFailed)
+      void fetchNextPage();
+  }, [
+    awaitingThreadRoot,
+    historyFetching,
+    historyFailed,
+    historyReadAt,
+    fetchNextPage,
+  ]);
   // A send whose acknowledgement was lost is settled once the room shows it.
   const committed =
     !!proposal &&
@@ -1125,9 +1115,9 @@ function ProjectRoomSession({
                     action={
                       <Button
                         onClick={() =>
-                          room.history.isFetchNextPageError
-                            ? setSeekAttempt((attempt) => attempt + 1)
-                            : void room.history.refetch()
+                          void (room.history.isFetchNextPageError
+                            ? room.history.fetchNextPage()
+                            : room.history.refetch())
                         }
                       >
                         Retry

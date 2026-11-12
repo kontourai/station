@@ -1613,3 +1613,44 @@ test('an unsent thread reply stays with its thread; the channel composer has its
     ['Unsent answer for this thread', root.messageId],
   ]);
 });
+
+test('a live update that cancels the older page in flight still reaches the thread root', async () => {
+  // The real-Station failure: the room's live refetch cancels the older
+  // window the seek asked for, and the seek must ask again once it settles.
+  messages = Array.from({ length: 30 }, (_, index) =>
+    storedMessage(
+      index + 1,
+      index === 0 ? 'Root behind a refetch' : `Update ${index + 1}`,
+    ),
+  );
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let olderReads = 0;
+  watchMarks(async (url) => {
+    if (url.searchParams.get('after') === '0' && ++olderReads === 1) await held;
+    return undefined;
+  });
+  try {
+    mountThreadRoute(String(messages[0]!.messageId));
+    await waitFor(() => expect(olderReads).toBe(1));
+    // The stream reports a change (no new message, the same history key):
+    // the room refetches its history, cancelling the older page in flight.
+    await act(async () => {
+      for (const stream of streams.filter(
+        (stream) => stream.desiredSize !== null,
+      ))
+        stream.enqueue(
+          new TextEncoder().encode(
+            `event: changed\ndata: ${JSON.stringify({ roomId, lastSeq: messages.length })}\n\n`,
+          ),
+        );
+    });
+    release();
+    await screen.findByText('Root behind a refetch', {}, { timeout: 10_000 });
+    expect(olderReads).toBeGreaterThanOrEqual(2);
+  } finally {
+    release();
+  }
+});
