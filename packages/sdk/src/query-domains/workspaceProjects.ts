@@ -29,6 +29,7 @@ import { getProjectIdentity } from '../client/project-identity';
 import {
   captureConnectionReadTarget,
   connectionQueryKey,
+  invalidateConnectionUsedBy,
 } from '../connection-read-target';
 
 /** Re-exported at the domain boundary so placement surfaces share one classifier. */
@@ -1045,6 +1046,7 @@ export function useUpdateProjectMutation(
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects', variables.slug] });
+      void invalidateConnectionUsedBy(queryClient);
       // The selections it returns are the Project's own fields.
       queryClient.invalidateQueries({
         queryKey: [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX],
@@ -1381,6 +1383,7 @@ export function useDeleteProjectMutation(
     onSuccess: (data, slug) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.removeQueries({ queryKey: ['projects', slug] });
+      void invalidateConnectionUsedBy(queryClient);
       options?.onSuccess?.(data, slug);
     },
     onError: (error, slug) => {
