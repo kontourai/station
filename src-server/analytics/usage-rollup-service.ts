@@ -705,7 +705,9 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
     connectionId: _connectionId,
     modelConnectionId: _modelConnectionId,
     ...peerReceipt
-  } = receipt as unknown as Omit<UsageReceipt, 'pricing'>;
+  } = {
+    ...(receipt as unknown as Omit<UsageReceipt, 'pricing'>),
+  };
   return {
     // A peer's connection ids name its own configuration, never this one's.
     ...peerReceipt,

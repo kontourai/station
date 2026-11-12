@@ -12,10 +12,7 @@ import {
   isManagedEngineRefusal,
   managedEngineRefusalBody,
 } from '../../security/managed-engine-limits.js';
-import {
-  grantedPairingScope,
-  type PairingScopeContextStore,
-} from '../../security/pairing-route-scopes.js';
+import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import {
   ConnectionAlreadyExistsError,
   type ConnectionService,
@@ -317,7 +314,7 @@ export function createConnectionRoutes(
 function withViewerRoutes<
   T extends { routeObservation?: EngineRouteObservation },
 >(c: Context, connections: readonly T[]): T[] {
-  const scope = grantedPairingScope(c as unknown as PairingScopeContextStore);
+  const scope = grantedPairingScope(c);
   const mayRead =
     isOperatorInPersonNotAgent(c.req.raw) ||
     (scope !== undefined && pairingScopeIncludes(scope, 'access:manage'));

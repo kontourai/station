@@ -2705,12 +2705,18 @@ or `unknown`), read from the launch the engine child gets: the server's
 environment under the connection's launch env, with the managed policy's pinned
 arguments and environment merged as the spawn merges them. `ambient` names its
 `source` (`connection`, `policy` or `station`); `origin` is scheme, host and port
-only. A pinned Codex provider argument reads `unknown`. Engine settings files are
-not read, so clients present `account` as an unobserved route, not as the account.
-Access: the row is read at the `/api/connections` family's scope, which already
-returns the connection's saved `config.env` verbatim, so the observation is not
-withheld further. A `station` or `policy` origin is host configuration that row
-did not show before; it is limited to the origin for that reason.
+only. A pinned argument that can choose the route (Claude `--settings`, Codex
+provider configuration or `--profile`), a Bedrock or Vertex switch, an endpoint
+that is not an `http`/`https` URL, or a proxy the launch would refuse reads
+`unknown`. Engine settings files are not read, so clients present `account` as
+an unobserved route, not as the account.
+Access: `GET /api/connections/agents` and `GET /api/connections/agents/catalog`
+omit `origin` from an `ambient` observation whose `source` is `station` or
+`policy` unless the request is the operator in person (not an agent's request)
+or its pairing scope includes `access:manage`; the `kind` and `source` still say
+an override exists. Such an origin is host configuration. A `connection` origin
+is the connection's own saved `config.env`, which these rows already return, so
+it is never withheld.
 
 Engine rows can carry `allowanceEvidence`: fresh quota refusals the provider
 reported for real turns, newest per credential account
