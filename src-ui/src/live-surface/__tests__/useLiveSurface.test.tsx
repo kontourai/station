@@ -677,9 +677,7 @@ test('transport swap closes delayed registration on its original transport witho
     result.current.sendInput([{ kind: 'text', text: 'retired queued' }]),
   );
   rerender({ transport: b.transport });
-  act(() =>
-    result.current.sendInput([{ kind: 'text', text: 'fresh action' }]),
-  );
+  act(() => result.current.sendInput([{ kind: 'text', text: 'fresh action' }]));
   await waitFor(() => expect(b.requests).toHaveLength(2));
   await act(async () => {
     pendingOpen.resolve(sourceReply(swapSourceA));
@@ -727,7 +725,8 @@ test('late input response from retired transport cannot disturb replacement inpu
       bInputCount += 1;
       if (bInputCount === 1) return inputReply(2, 'page-dialog-open');
       if (bInputCount === 2) return pendingB.promise;
-      if (bInputCount === 3) return inputReply(3, undefined, body.events.length);
+      if (bInputCount === 3)
+        return inputReply(3, undefined, body.events.length);
     }
     throw new Error('Unexpected B request');
   });
@@ -748,9 +747,7 @@ test('late input response from retired transport cannot disturb replacement inpu
     result.current.sendInput([{ kind: 'text', text: 'old in flight' }]),
   );
   await waitFor(() => expect(a.requests).toHaveLength(2));
-  act(() =>
-    result.current.sendInput([{ kind: 'text', text: 'old queued' }]),
-  );
+  act(() => result.current.sendInput([{ kind: 'text', text: 'old queued' }]));
   rerender({ transport: b.transport });
   await waitFor(() => expect(a.requests).toHaveLength(3));
   act(() =>
