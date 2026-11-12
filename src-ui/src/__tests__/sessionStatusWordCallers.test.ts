@@ -144,10 +144,33 @@ function callsStatusProducer(file: string, allowAdapters = true): boolean {
 const CLASSIFYING_PROPS = new Set(['SessionPlanProgress.lifecycleLabel']);
 
 /**
+ * Whether `node` hands its value, or something computed from it, on to its
+ * parent expression: `x.toLowerCase()`, `String(x)`, `x + 'y'`, `c ? x : y`,
+ * `(x)`, `x as T`, `x!`. The walk stops at anything else (a statement, an
+ * arrow function, a JSX expression, a template span).
+ */
+function wrapsValue(parent: ts.Node): boolean {
+  return (
+    ts.isCallExpression(parent) ||
+    ts.isPropertyAccessExpression(parent) ||
+    ts.isElementAccessExpression(parent) ||
+    ts.isBinaryExpression(parent) ||
+    ts.isConditionalExpression(parent) ||
+    ts.isParenthesizedExpression(parent) ||
+    ts.isAsExpression(parent) ||
+    ts.isSatisfiesExpression(parent) ||
+    ts.isNonNullExpression(parent)
+  );
+}
+
+/**
  * Where a source puts the fold label in a printing position: a JSX child, a
  * template literal, or a JSX attribute other than a classifying prop (a
- * `title` or `aria-label` prints it as surely as a child does). A comparison
- * or an argument to another call is a predicate and is not reported.
+ * `title` or `aria-label` prints it as surely as a child does). The walk
+ * goes up through wrapping expressions first, so a label lower-cased,
+ * stringified or concatenated into one of those positions is reported too.
+ * A predicate computed outside JSX braces and templates is not reported;
+ * one written inside them is, as the original `{label(` scan did.
  */
 function labelPrintSites(fileName: string, text: string): string[] {
   const source = ts.createSourceFile(
@@ -164,7 +187,9 @@ function labelPrintSites(fileName: string, text: string): string[] {
       ts.isIdentifier(node.expression) &&
       node.expression.text === 'orchestrationLifecycleLabel'
     ) {
-      const holder = node.parent;
+      let value: ts.Node = node;
+      while (wrapsValue(value.parent)) value = value.parent;
+      const holder = value.parent;
       if (ts.isTemplateSpan(holder)) sites.push('template');
       else if (ts.isJsxExpression(holder)) {
         const attribute = holder.parent;
@@ -219,6 +244,41 @@ describe('the fold-label print scan', () => {
         'const row = <span title={orchestrationLifecycleLabel(s)} />;',
       ),
     ).toEqual(['span.title attribute']);
+  });
+
+  test.each([
+    ['lower-cased', '{orchestrationLifecycleLabel(s).toLowerCase()}'],
+    ['stringified', '{String(orchestrationLifecycleLabel(s))}'],
+    ['concatenated', "{orchestrationLifecycleLabel(s) + ' now'}"],
+    ['chosen by a ternary', "{live ? orchestrationLifecycleLabel(s) : ''}"],
+  ])('reports the label %s into JSX text', (_shape, child) => {
+    expect(
+      labelPrintSites('fixture.tsx', `const row = <span>${child}</span>;`),
+    ).toEqual(['JSX text']);
+  });
+
+  test('reports the label wrapped inside a template literal', () => {
+    expect(
+      labelPrintSites(
+        'fixture.ts',
+        `const word = \`\${orchestrationLifecycleLabel(s).toLowerCase()} now\`;`,
+      ),
+    ).toEqual(['template']);
+  });
+
+  test('exempts only the named component and prop', () => {
+    expect(
+      labelPrintSites(
+        'fixture.tsx',
+        `const rows = <>
+          <OtherComponent lifecycleLabel={orchestrationLifecycleLabel(s)} />
+          <SessionPlanProgress title={orchestrationLifecycleLabel(s)} />
+        </>;`,
+      ),
+    ).toEqual([
+      'OtherComponent.lifecycleLabel attribute',
+      'SessionPlanProgress.title attribute',
+    ]);
   });
 });
 
