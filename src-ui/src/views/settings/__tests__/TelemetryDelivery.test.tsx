@@ -195,7 +195,7 @@ test.each([403, 404, 503])(
       );
     else
       expect(screen.getByRole('alert').textContent).toContain(
-        'Delivery status is unavailable',
+        'Delivery status unavailable.',
       );
   },
 );

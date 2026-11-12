@@ -460,7 +460,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     );
     render(<ScheduleView />);
     expect(
-      screen.getByText(/That scheduled run isn’t available/i),
+      screen.getByText(/That run is no longer available/i),
     ).toBeTruthy();
     // The promise this message exists for: no substitution (archive#3965).
     expect(
@@ -485,7 +485,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     render(<ScheduleView />);
 
     expect(
-      screen.getByText(/That scheduled run isn’t available/i),
+      screen.getByText(/That run is no longer available/i),
     ).toBeTruthy();
     expect(screen.getByText('nightly-digest')).toBeTruthy();
     expect(document.querySelector('.schedule__log--focused')).toBeNull();

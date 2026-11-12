@@ -434,7 +434,7 @@ describe('NotificationsPage', () => {
     };
     renderPage();
     expect(
-      screen.getByText(/That approval request isn’t available/i),
+      screen.getByText(/That approval request is no longer available/i),
     ).toBeTruthy();
     // The load-bearing promise, and the reason this message exists at all:
     // Station declines to substitute a different approval (archive#3965).
@@ -479,7 +479,7 @@ describe('NotificationsPage', () => {
     );
     renderPage();
     expect(
-      screen.getByText(/That approval request isn’t available/i),
+      screen.getByText(/That approval request is no longer available/i),
     ).toBeTruthy();
     // The load-bearing promise, and the reason this message exists at all:
     // Station declines to substitute a different approval (archive#3965).
