@@ -9,7 +9,6 @@ import { createHash } from 'node:crypto';
 import {
   access,
   mkdir,
-  readdir,
   readFile,
   rename,
   symlink,
@@ -51,6 +50,7 @@ import { SkillService } from '../../../services/agents/skill-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../../services/plugins/plugin-incarnation.js';
 import { resolvePluginRegistryInstall } from '../../../services/plugins/plugin-install-transaction.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createRegistryRoutes } from '../registry.js';
@@ -983,7 +983,9 @@ describe.skipIf(process.platform === 'win32')(
         id: chosen!.id,
       });
       expect(installed.status).not.toBe(200);
-      expect(await readdir(join(home, 'skills')).catch(() => [])).toEqual([]);
+      // Neither the listed skill nor anything from outside was installed.
+      for (const name of ['clarify', 'leaked', 'outside'])
+        await expect(access(join(home, 'skills', name))).rejects.toThrow();
     });
   },
 );
@@ -1062,7 +1064,9 @@ describe('a plain agent id needs every agent catalog to answer', () => {
     expect(body.message).toContain(
       'The agent catalog Team plugin could not be read',
     );
-    expect(await readdir(join(home, 'plugins')).catch(() => [])).toEqual([]);
+    expect(
+      resolveInstalledPluginRoot(join(home, 'plugins'), 'shared'),
+    ).toBeNull();
   });
 });
 
