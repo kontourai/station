@@ -108,6 +108,14 @@ describe('UsagePanel', () => {
         .getByTitle('2026-10-01: Not reported')
         .hasAttribute('data-unreported'),
     ).toBe(true);
+    // Drawn full height by the stylesheet, never as a short (zero-like) bar.
+    expect(
+      (screen.getByTitle('2026-10-01: Not reported') as HTMLElement).style
+        .height,
+    ).toBe('');
+    expect(
+      (screen.getByTitle('2026-10-02: 1,200') as HTMLElement).style.height,
+    ).not.toBe('');
   });
 
   test.each([
