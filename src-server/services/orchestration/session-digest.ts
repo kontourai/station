@@ -1,4 +1,8 @@
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import {
+  stationToolOf,
+  stationToolPhrase,
+} from '@kontourai/station-contracts/station-tool-phrases';
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 /**
  * station#3413: the digest behind Station Control's `get_session_digest`, a
@@ -69,8 +73,13 @@ export interface DigestTurn {
   providerTriggered?: true;
   sender?: ClientOriginSender;
   outcome: DigestTurnOutcome;
-  /** Tool calls by name, most used first. */
-  toolCalls: Array<{ tool: string; calls: number }>;
+  /**
+   * Tool calls by name, most used first. A Station tool also carries its
+   * plain-language `label` (#3418), the words its transcript row uses, in
+   * the bare, argument-free form ("Wait for a Session"): the count covers
+   * every call whatever its outcome, so the label claims none.
+   */
+  toolCalls: Array<{ tool: string; calls: number; label?: string }>;
   /** Calls of tools beyond the listed names. */
   otherTools?: { names: number; calls: number };
   /** Files an engine reported editing, deleting or moving, when it reported any. */
@@ -169,10 +178,15 @@ export function digestTurn(
     ...(facts.providerTriggered ? { providerTriggered: true as const } : {}),
     ...(facts.sender ? { sender: facts.sender } : {}),
     outcome: digestTurnOutcome(facts.terminal),
-    toolCalls: listedTools.map((entry) => ({
-      tool: clipSerialized(entry.toolName, TOOL_NAME_MAX_BYTES),
-      calls: entry.calls,
-    })),
+    toolCalls: listedTools.map((entry) => {
+      const station = stationToolOf(entry.toolName);
+      const label = station && stationToolPhrase(station.tool, 'pending');
+      return {
+        tool: clipSerialized(entry.toolName, TOOL_NAME_MAX_BYTES),
+        calls: entry.calls,
+        ...(label ? { label } : {}),
+      };
+    }),
   };
   if (otherTools.length > 0)
     turn.otherTools = {

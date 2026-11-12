@@ -15,7 +15,11 @@
  * module the streaming progress indicator uses) is the shared fallback so
  * this doesn't invent a second naming scheme.
  */
-import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
+import {
+  type StationToolPhase,
+  stationToolOf,
+  stationToolPhrase,
+} from '@kontourai/station-contracts/station-tool-phrases';
 import {
   displayLines,
   displayText,
@@ -34,6 +38,8 @@ export type ToolCallKind =
   | 'delete'
   | 'exec'
   | 'search'
+  /** #3418: one of Station's own tools, worded by its phrase. */
+  | 'station'
   | 'other';
 
 interface KindVerbs {
@@ -73,6 +79,8 @@ const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
     progressiveVerb: 'Searching',
     pendingVerb: 'Search',
   },
+  // Only reached for a Station tool the phrase table does not word.
+  station: { verb: 'Used', progressiveVerb: 'Using', pendingVerb: 'Use' },
   other: { verb: 'Used', progressiveVerb: 'Using', pendingVerb: 'Use' },
 };
 
@@ -579,6 +587,19 @@ export interface ToolCallIdentity {
   toolName?: string;
   toolKind?: unknown;
   args?: unknown;
+  /** The MCP server, when the engine reports it apart from a bare name. */
+  server?: unknown;
+}
+
+/** The Station tool a call is, by its name and the engine's server field. */
+export function stationToolOfCall(call: {
+  toolName?: unknown;
+  server?: unknown;
+}) {
+  return stationToolOf(
+    typeof call.toolName === 'string' ? call.toolName : undefined,
+    typeof call.server === 'string' ? call.server : undefined,
+  );
 }
 
 /**
@@ -599,9 +620,10 @@ export interface ToolCallIdentity {
  * > gsd.mjs` guessed a read in one render and a search in another.
  */
 export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
-  // `terminal_run` (#3994) carries a command it only asks a person to run:
-  // the call itself ran nothing, so it is never labelled "Ran <command>".
-  if (stationControlToolName(call.toolName) === 'terminal_run') return 'other';
+  // #3418: Station's own tools are worded by their phrase, ahead of the
+  // command rule: `terminal_run` (#3994) carries a command it only asks a
+  // person to run, so it reads "Asked to run …", never "Ran …".
+  if (stationToolOfCall(call)) return 'station';
   if (hasCommandArgument(call.args)) return 'exec';
   if (typeof call.toolKind === 'string' && call.toolKind in ENGINE_KIND) {
     return ENGINE_KIND[call.toolKind]!;
@@ -895,10 +917,33 @@ export function runningCallLabelParts(
   args: unknown,
   label: string,
 ): { verb: string; target: string } | undefined {
+  // A Station phrase is not a verb and a target.
+  if (kind === 'station') return undefined;
   const target = extractTarget(kind, args, true);
   const verb = KIND_VERBS[kind].progressiveVerb;
   return target && label === `${verb} ${target}` ? { verb, target } : undefined;
 }
+
+/** What a Station call's phrase may read beyond the call itself (#3418). */
+export interface StationCallNaming {
+  /** The MCP server, when the engine reports it apart from a bare name. */
+  server?: unknown;
+  /** A Session's title by its id, when the reader knows it. */
+  sessionTitle?: (sessionId: string) => string | undefined;
+}
+
+/**
+ * The phrase form for a row phase. Only an observed success takes the past
+ * tense; a failed, denied or never-resolved call takes the bare verb, as a
+ * write does: "Declared PR #3271" would claim what may not have happened.
+ */
+const STATION_PHASE: Record<ToolCallPhase, StationToolPhase> = {
+  done: 'done',
+  running: 'running',
+  proposed: 'pending',
+  failed: 'pending',
+  unresolved: 'pending',
+};
 
 /** e.g. "Read app.tsx" (done), "Running npm run build:ui" (in flight),
  * "Edit approved.txt" (proposed, awaiting approval), "Edit config.json"
@@ -909,11 +954,24 @@ export function callLabel(
   toolName: string,
   args: unknown,
   phase: ToolCallPhase | boolean,
+  station?: StationCallNaming,
 ): string {
   const cfg = KIND_VERBS[kind];
   // Boolean form kept for the batch classifier's in-progress flag.
   const resolved: ToolCallPhase =
     typeof phase === 'boolean' ? (phase ? 'running' : 'done') : phase;
+  if (kind === 'station') {
+    const tool = stationToolOfCall({ toolName, server: station?.server });
+    const phrase =
+      tool &&
+      stationToolPhrase(tool.tool, STATION_PHASE[resolved], {
+        args,
+        ...(station?.sessionTitle
+          ? { sessionTitle: station.sessionTitle }
+          : {}),
+      });
+    if (phrase) return phrase;
+  }
   const verb =
     resolved === 'running'
       ? cfg.progressiveVerb
