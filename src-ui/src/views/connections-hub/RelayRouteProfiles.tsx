@@ -949,7 +949,8 @@ export function RelayRouteProfiles({
       </div>
       {profiles.length === 0 && (
         <p className="connections-computers__note">
-          No Stations yet. Open a setup link from the Station owner, or add one.
+          No Stations yet. Open a setup link from the Station operator, or add
+          one.
         </p>
       )}
       {profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
