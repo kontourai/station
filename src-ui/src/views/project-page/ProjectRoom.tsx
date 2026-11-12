@@ -464,6 +464,19 @@ function ProjectRoomSession({
       }),
     [setDraft],
   );
+  // A draft stored before revisions existed loads without one. Give it a
+  // fresh revision and persist it before it can be asked, so a late
+  // acknowledgement can still clear exactly that draft (#4855); the
+  // comparison itself stays identity-only.
+  const unrevised = !draft.revision && !PROJECT_DRAFT_CODEC.isEmpty(draft);
+  useEffect(() => {
+    if (!unrevised) return;
+    setDraft((current) =>
+      current.revision || PROJECT_DRAFT_CODEC.isEmpty(current)
+        ? current
+        : revised(current),
+    );
+  }, [unrevised, setDraft]);
   const [proposal, setProposal] = useState<ProjectRoomMessageIntent>();
   const [restored, setRestored] = useState(false);
   const [notice, setNotice] = useState('');

@@ -1743,3 +1743,58 @@ test('an acknowledgement keeps a newer draft retyped to the asked text, with its
     release();
   }
 });
+
+test('a draft stored before revisions existed is still cleared by a late acknowledgement after leaving its thread (#4855)', async () => {
+  const root = storedMessage(1, 'Legacy draft root');
+  messages = [root];
+  // A thread draft written by the build before revisions: text and an Agent
+  // recipient, no `revision`. The key is the thread's own draft key.
+  sessionStorage.setItem(
+    `station-room-draft:${JSON.stringify([
+      requestScope.authorityKey,
+      requestScope.apiBase,
+      'project',
+      'team',
+      'project-room',
+      'thread',
+      root.messageId,
+    ])}`,
+    JSON.stringify({
+      text: 'Legacy thread ask',
+      recipient: { id: 'researcher', name: 'Researcher' },
+    }),
+  );
+  mountThreadRoute();
+  await screen.findByText('Legacy draft root');
+  fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+  const thread = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  expect(thread.value).toBe('Legacy thread ask');
+  const release = holdAgentRequest();
+  try {
+    // Ask without editing, then leave before the acknowledgement arrives.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ask Researcher' }),
+    );
+    await waitFor(() => expect(agentWrites).toHaveLength(1));
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Back to #general' })[0]!,
+    );
+    await screen.findByRole('textbox', { name: 'Message the project' });
+    await act(async () => release());
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
+    // The asked draft was cleared, so its text does not come back.
+    fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+    const reopened = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply in thread',
+    });
+    expect(reopened.value).toBe('');
+    expect(screen.queryByText('@Researcher')).toBeNull();
+    expect(agentWrites[0]!.text).toBe('Legacy thread ask');
+  } finally {
+    release();
+  }
+});
