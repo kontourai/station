@@ -119,28 +119,32 @@ function projection(path: string): Record<string, number> {
 }
 
 test('each backfill statement seeks one thread on its own index, never a whole-history plan', () => {
-  // The real schema and indexes, with planner statistics gathered as a
-  // long-lived home might have them.
+  // The real schema and indexes, planned as a home has them (no statistics),
+  // then again with statistics gathered.
   const path = join(dir, 'orchestration.sqlite');
   oldHome(path, EVENTS, THREADS);
   const db = new DatabaseSync(path);
   try {
-    db.exec('ANALYZE');
     const plan = (sql: string) =>
       (
         db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all() as { detail: string }[]
       ).map((row) => row.detail);
-    const project = plan(THREAD_CONTENT_BACKFILL_PROJECT_SQL);
-    // A walk back from the thread's newest event at the cutoff: no table
-    // scan, no per-method index over every thread, no sort.
-    expect(project).toEqual([
-      'SEARCH e USING INDEX idx_events_thread_global_sequence (thread_id=? AND global_sequence<?)',
-    ]);
-    const next = plan(THREAD_CONTENT_BACKFILL_NEXT_THREAD_SQL);
-    expect(next).toHaveLength(1);
-    expect(next[0]).toMatch(
-      /^SEARCH orchestration_events USING COVERING INDEX \w+ \(thread_id>\?\)$/,
-    );
+    for (const statistics of [false, true]) {
+      if (statistics) db.exec('ANALYZE');
+      // A walk back from the thread's newest event at the cutoff: no table
+      // scan, no per-method index over every thread, no sort.
+      expect(
+        plan(THREAD_CONTENT_BACKFILL_PROJECT_SQL),
+        `${statistics}`,
+      ).toEqual([
+        'SEARCH e USING INDEX idx_events_thread_global_sequence (thread_id=? AND global_sequence<?)',
+      ]);
+      const next = plan(THREAD_CONTENT_BACKFILL_NEXT_THREAD_SQL);
+      expect(next).toHaveLength(1);
+      expect(next[0]).toMatch(
+        /^SEARCH orchestration_events USING COVERING INDEX \w+ \(thread_id>\?\)$/,
+      );
+    }
   } finally {
     db.close();
   }
