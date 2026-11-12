@@ -680,6 +680,7 @@ export function AgentConnectionView({
             connection={savedCopy}
             defaultModel={String(savedCopy.config.defaultModel || '')}
             managedFact={managedEngineFact(selectedManagedState)}
+            headerShowsUsageLimit={health?.label === 'Usage limit reached'}
             dependents={agentsUsingEngine(agents, current.id)}
             onOpenAgent={(slug) => onNavigate({ type: 'agent-edit', slug })}
             notices={

@@ -594,6 +594,22 @@ interface ModelCheckObservation {
   unreachable?: { since: string; consecutive: number; afterPass: boolean };
 }
 
+/**
+ * The adapter provider kind an engine view's recorded events carry. A
+ * runtime adapter's view states it as `config.provider`; an ACP connection's
+ * view (connection-inspector.ts) carries `engineId: 'acp'` and no provider,
+ * though its adapter records `provider: 'acp'`.
+ */
+function allowanceProviderKind(
+  connection: AgentConnectionView,
+): string | undefined {
+  const provider = connection.config.provider;
+  if (typeof provider === 'string') return provider;
+  return connection.type === 'acp' || connection.config.engineId === 'acp'
+    ? 'acp'
+    : undefined;
+}
+
 export class ConnectionService {
   private smokeRunner: ConnectionSmokeRunner | null = null;
   private allowanceEvidenceSource: AllowanceEvidenceSource | null = null;
@@ -809,8 +825,8 @@ export class ConnectionService {
       evidence = readEngineAllowanceEvidence(
         source,
         connections.flatMap((connection) => {
-          const provider = connection.config.provider;
-          if (typeof provider !== 'string') return [];
+          const provider = allowanceProviderKind(connection);
+          if (!provider) return [];
           const registry = normalizeCredentialProfileRegistry(
             appConfig.agentConnections?.[
               this.credentialRecoverySettingsId(connection.id)

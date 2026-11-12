@@ -18,7 +18,6 @@ import {
   providerQuotaEventDetails,
 } from '../../../providers/provider-plan-quota.js';
 import {
-  type AllowanceEpochFactRow,
   type AllowanceRefusalRow,
   EventStore,
 } from '../../orchestration/event-store.js';
@@ -73,7 +72,10 @@ function claudeUsageLimitError(
 }
 
 /** The details codex-adapter-notifications.ts attaches to a failed turn. */
-function codexUsageLimitDetailsFor(resetAtMs: number) {
+function codexUsageLimitDetailsFor(
+  resetAtMs: number,
+  codexErrorInfo = 'usageLimitExceeded',
+) {
   const state = {};
   observeCodexRateLimits(state, {
     rateLimits: {
@@ -81,10 +83,11 @@ function codexUsageLimitDetailsFor(resetAtMs: number) {
       primary: { usedPercent: 100, resetsAt: resetAtMs / 1_000 },
     },
   });
-  const usageLimit = codexUsageLimitDetails(state, 'usageLimitExceeded');
+  const usageLimit = codexUsageLimitDetails(state, codexErrorInfo);
+  if (!usageLimit) throw new Error('fixture: not a usage limit');
   return {
     additionalDetails: undefined,
-    codexErrorInfo: 'usageLimitExceeded',
+    codexErrorInfo,
     ...usageLimit,
   };
 }
@@ -116,21 +119,6 @@ function refusal(
   };
 }
 
-function accepted(
-  overrides: Partial<AllowanceEpochFactRow>,
-): AllowanceEpochFactRow {
-  return {
-    eventId: 'accepted',
-    provider: 'claude',
-    threadId: 'thread-2',
-    observedAt: at(-30 * 60 * 1_000),
-    globalSequence: 20,
-    accountKey: usageCredentialAccountKey('claude', null),
-    proxyRouted: false,
-    ...overrides,
-  };
-}
-
 const claude: AllowanceEvidenceConnection = {
   id: 'claude',
   provider: 'claude',
@@ -142,7 +130,7 @@ function project(
   refusals: AllowanceRefusalRow[],
   options: {
     connection?: AllowanceEvidenceConnection;
-    acceptedTurns?: AllowanceEpochFactRow[];
+    superseded?: (refusal: AllowanceRefusalRow) => boolean;
     now?: number;
   } = {},
 ) {
@@ -150,7 +138,7 @@ function project(
   return projectEngineAllowanceEvidence({
     connections: [connection],
     refusals,
-    acceptedTurns: options.acceptedTurns ?? [],
+    superseded: options.superseded ?? (() => false),
     now: options.now ?? NOW,
   }).get(connection.id);
 }
@@ -218,31 +206,26 @@ describe('projectEngineAllowanceEvidence', () => {
     ).toBeUndefined();
   });
 
-  test('a later accepted turn on the same account supersedes the refusal; another account does not', () => {
-    const row = refusal({ observedAt: at(-HOUR) });
-    expect(project([row], { acceptedTurns: [accepted({})] })).toBeUndefined();
+  test('supersession is asked of the newest fresh refusal per account only', () => {
+    const newer = refusal({ observedAt: at(-HOUR), globalSequence: 20 });
+    const older = refusal({ observedAt: at(-2 * HOUR), globalSequence: 10 });
+    const asked: number[] = [];
     expect(
-      project([row], {
-        acceptedTurns: [
-          accepted({ accountKey: usageCredentialAccountKey('claude', 'work') }),
-        ],
+      project([newer, older], {
+        superseded: (row) => {
+          asked.push(row.globalSequence);
+          return true;
+        },
       }),
-    ).toHaveLength(1);
-    // Accepted before the refusal says nothing about it.
-    expect(
-      project([row], { acceptedTurns: [accepted({ globalSequence: 5 })] }),
-    ).toHaveLength(1);
+    ).toBeUndefined();
+    // The older refusal is not shown in the newer one's place.
+    expect(asked).toEqual([20]);
   });
 
   test('proxy-routed runs do not speak for the account; a proxied engine is not marked', () => {
     expect(
       project([refusal({ observedAt: at(-HOUR), proxyRouted: true })]),
     ).toBeUndefined();
-    expect(
-      project([refusal({ observedAt: at(-HOUR) })], {
-        acceptedTurns: [accepted({ proxyRouted: true })],
-      }),
-    ).toHaveLength(1);
     expect(
       project([refusal({ observedAt: at(-HOUR) })], {
         connection: { ...claude, proxyRouted: true },
@@ -340,6 +323,61 @@ describe('projectEngineAllowanceEvidence', () => {
   });
 });
 
+describe('Codex refusals', () => {
+  const codex: AllowanceEvidenceConnection = {
+    id: 'codex',
+    provider: 'codex',
+    profileRefs: [],
+    proxyRouted: false,
+  };
+  const codexRefusal = (codexErrorInfo: string, code?: string) =>
+    refusal({
+      observedAt: at(-HOUR),
+      provider: 'codex',
+      accountKey: usageCredentialAccountKey('codex', null),
+      ...(code ? { code } : { code: undefined }),
+      details: codexUsageLimitDetailsFor(NOW + 2 * HOUR, codexErrorInfo),
+    });
+
+  test('a per-minute rate limit is not the allowance running out', () => {
+    // The adapter classifies both as a usage limit (for recovery's wait).
+    expect(codexRefusal('rateLimitExceeded').details).toMatchObject({
+      usageLimit: true,
+      scope: 'account',
+    });
+    expect(
+      project([codexRefusal('rateLimitExceeded', 'rateLimitExceeded')], {
+        connection: codex,
+      }),
+    ).toBeUndefined();
+    // The `error` notification records it in details with no `code`.
+    expect(
+      project([codexRefusal('rateLimitExceeded')], { connection: codex }),
+    ).toBeUndefined();
+    expect(
+      project([codexRefusal('usageLimitExceeded')], { connection: codex }),
+    ).toHaveLength(1);
+    // A rate limit newer than a usage limit does not hide the usage limit.
+    expect(
+      project(
+        [
+          codexRefusal('rateLimitExceeded', 'rateLimitExceeded'),
+          { ...codexRefusal('usageLimitExceeded'), globalSequence: 5 },
+        ],
+        { connection: codex },
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('a Codex refusal that does not say which limit is not counted', () => {
+    const unlabeled = codexRefusal('usageLimitExceeded');
+    const { codexErrorInfo: _dropped, ...details } = unlabeled.details!;
+    expect(
+      project([{ ...unlabeled, details }], { connection: codex }),
+    ).toBeUndefined();
+  });
+});
+
 describe('recorded refusals read from the event store', () => {
   let home: string;
   let store: EventStore;
@@ -349,30 +387,38 @@ describe('recorded refusals read from the event store', () => {
   });
   afterEach(() => store.close());
 
-  /** The start events claude-adapter.ts persists for one process epoch. */
-  function startClaudeSession(
+  /**
+   * The start events an adapter persists for one process epoch: Claude Code
+   * and Codex record the credential account key; ACP records its connection
+   * and no key.
+   */
+  function startSession(
+    provider: string,
     threadId: string,
     profileRef: string | null,
     options: { modelRoute?: object; connectionId?: string } = {},
   ) {
-    const usageAccountKey = usageCredentialAccountKey('claude', profileRef);
+    const account =
+      provider === 'acp'
+        ? {}
+        : { usageAccountKey: usageCredentialAccountKey(provider, profileRef) };
     const metadata = {
       userId: 'reader',
       ...(options.connectionId ? { connectionId: options.connectionId } : {}),
     };
     store.appendEvent({
       eventId: `${threadId}-started`,
-      provider: 'claude',
+      provider,
       threadId,
       sessionId: threadId,
       createdAt: new Date().toISOString(),
       method: 'session.started',
       initialState: 'created',
-      metadata: { ...metadata, cwd: '/work', usageAccountKey },
-    });
+      metadata: { ...metadata, cwd: '/work', ...account },
+    } as never);
     store.appendEvent({
       eventId: `${threadId}-configured`,
-      provider: 'claude',
+      provider,
       threadId,
       sessionId: threadId,
       createdAt: new Date().toISOString(),
@@ -380,16 +426,26 @@ describe('recorded refusals read from the event store', () => {
       cwd: '/work',
       metadata: {
         ...metadata,
-        usageAccountKey,
+        ...account,
         ...(options.modelRoute ? { modelRoute: options.modelRoute } : {}),
       },
-    });
+    } as never);
   }
+  const startClaudeSession = (
+    threadId: string,
+    profileRef: string | null,
+    options: { modelRoute?: object; connectionId?: string } = {},
+  ) => startSession('claude', threadId, profileRef, options);
 
-  function acceptTurn(threadId: string, turnId: string, finishReason: string) {
+  function acceptTurn(
+    threadId: string,
+    turnId: string,
+    finishReason: string,
+    provider = 'claude',
+  ) {
     store.appendEvent({
       eventId: `${turnId}-completed`,
-      provider: 'claude',
+      provider,
       threadId,
       turnId,
       createdAt: new Date().toISOString(),
@@ -461,6 +517,94 @@ describe('recorded refusals read from the event store', () => {
     expect(read()).toBeUndefined();
   });
 
+  test('a later accepted turn on the same account supersedes the refusal; another account, an earlier turn or a proxied run does not', () => {
+    startClaudeSession('before', null);
+    acceptTurn('before', 'before-stop', 'stop');
+    startClaudeSession('refused', null);
+    store.appendEvent(
+      claudeUsageLimitError('refused', Date.now() + 2 * HOUR) as never,
+    );
+    expect(read()).toHaveLength(1);
+    startClaudeSession('on-work', 'work');
+    acceptTurn('on-work', 'on-work-stop', 'stop');
+    expect(read()).toHaveLength(1);
+    startClaudeSession('proxied', null, {
+      modelRoute: {
+        connectionId: 'local-proxy',
+        label: 'Local',
+        endpoint: 'http://127.0.0.1:4000',
+      },
+    });
+    acceptTurn('proxied', 'proxied-stop', 'stop');
+    expect(read()).toHaveLength(1);
+    startClaudeSession('cleared', null);
+    acceptTurn('cleared', 'cleared-stop', 'stop');
+    expect(read()).toBeUndefined();
+  });
+
+  test('a turn accepted on another connection of the same account supersedes the refusal', () => {
+    startClaudeSession('refused', null);
+    store.appendEvent(
+      claudeUsageLimitError('refused', Date.now() + 2 * HOUR) as never,
+    );
+    expect(read()).toHaveLength(1);
+    // A second Claude Code connection running on the same default account.
+    startClaudeSession('elsewhere', null, { connectionId: 'claude-work' });
+    acceptTurn('elsewhere', 'elsewhere-stop', 'stop');
+    expect(read()).toBeUndefined();
+  });
+
+  test('heavy traffic on another account cannot bring back a refusal a later turn cleared', () => {
+    startClaudeSession('refused', null);
+    store.appendEvent(
+      claudeUsageLimitError('refused', Date.now() + 2 * HOUR) as never,
+    );
+    startClaudeSession('cleared', null);
+    acceptTurn('cleared', 'cleared-stop', 'stop');
+    // More newer accepted turns, on the same provider but another account,
+    // than the former shared read held (1,000).
+    startClaudeSession('busy', 'work');
+    for (let index = 0; index < 1_001; index += 1)
+      acceptTurn('busy', `busy-${index}`, 'stop');
+    expect(read()).toBeUndefined();
+  });
+
+  test("an ACP refusal is its connection's; only a turn accepted on that connection clears it", () => {
+    const opencode = { id: 'opencode', provider: 'acp', profileRefs: [] };
+    const readAcp = () =>
+      readEngineAllowanceEvidence(
+        store,
+        [{ ...opencode, proxyRouted: false }],
+        Date.now(),
+      ).get('opencode');
+    startSession('acp', 'acp-refused', null, { connectionId: 'opencode' });
+    store.appendEvent({
+      eventId: 'acp-refused-error',
+      provider: 'acp',
+      threadId: 'acp-refused',
+      turnId: 'acp-refused-turn',
+      createdAt: new Date().toISOString(),
+      method: 'runtime.error',
+      ...providerFailure('quota_exhausted'),
+      severity: 'error',
+      code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+      message: 'quota',
+      details: acpPlanQuotaDetails(),
+    } as never);
+    expect(readAcp()).toEqual([
+      expect.objectContaining({
+        source: 'plan-quota',
+        applies: 'current-account',
+      }),
+    ]);
+    startSession('acp', 'acp-kiro', null, { connectionId: 'kiro' });
+    acceptTurn('acp-kiro', 'acp-kiro-stop', 'stop', 'acp');
+    expect(readAcp()).toHaveLength(1);
+    startSession('acp', 'acp-again', null, { connectionId: 'opencode' });
+    acceptTurn('acp-again', 'acp-again-stop', 'stop', 'acp');
+    expect(readAcp()).toBeUndefined();
+  });
+
   test('a recorded connection id outranks the provider fallback', () => {
     startClaudeSession('elsewhere', null, { connectionId: 'claude-work' });
     store.appendEvent(
@@ -521,7 +665,7 @@ describe('engine connection listing', () => {
 
     service.setAllowanceEvidenceSource({
       listAllowanceRefusals,
-      listAllowanceAcceptedTurns: vi.fn(() => []),
+      hasAllowanceAcceptedTurnAfter: vi.fn(() => false),
     });
     const [connection] = await service.listRuntimeConnections();
     expect(connection?.allowanceEvidence).toEqual([
@@ -537,5 +681,56 @@ describe('engine connection listing', () => {
     });
     const [failed] = await service.listRuntimeConnections();
     expect(failed).not.toHaveProperty('allowanceEvidence');
+  });
+
+  test('an ACP engine view carries its plan-quota refusal', async () => {
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      } as any,
+      () => [] as any,
+      async () => [
+        { id: 'kiro', name: 'Kiro', command: 'kiro', enabled: true },
+      ],
+      () => ({ connections: [{ id: 'kiro', status: 'available' }] }),
+      async () => ({}) as any,
+      vi.fn(),
+    );
+    const hasAllowanceAcceptedTurnAfter = vi.fn(() => false);
+    service.setAllowanceEvidenceSource({
+      listAllowanceRefusals: () => [
+        refusal({
+          observedAt: new Date(Date.now() - HOUR).toISOString(),
+          provider: 'acp',
+          connectionId: 'kiro',
+          accountKey: undefined,
+          code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+          details: acpPlanQuotaDetails(),
+        }),
+      ],
+      hasAllowanceAcceptedTurnAfter,
+    });
+    const kiro = (await service.listRuntimeConnections()).find(
+      (connection) => connection.id === 'kiro',
+    );
+    // The inspector's ACP view: no `config.provider`, `engineId: 'acp'`.
+    expect(kiro?.config).not.toHaveProperty('provider');
+    expect(kiro?.config.engineId).toBe('acp');
+    expect(kiro?.allowanceEvidence).toEqual([
+      expect.objectContaining({
+        source: 'plan-quota',
+        account: { kind: 'default' },
+        applies: 'current-account',
+      }),
+    ]);
+    expect(hasAllowanceAcceptedTurnAfter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'acp',
+        account: { connectionId: 'kiro' },
+      }),
+    );
   });
 });

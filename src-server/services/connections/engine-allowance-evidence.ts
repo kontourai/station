@@ -8,13 +8,16 @@
  * - Claude Code and Codex: a `runtime.error` whose details are the adapter's
  *   `UsageLimitFailureDetails` (`usageLimit: true`, `scope: 'account'`). The
  *   same details arm the usage-limit recovery intent, and `resetAt` is the
- *   same provider reset that intent waits for.
+ *   same provider reset that intent waits for. Codex reports a per-minute
+ *   rate limit (`rateLimitExceeded`) through the same details; only its
+ *   `usageLimitExceeded` is allowance exhaustion, so only that counts.
  * - ACP engines: `provider-plan-quota-exhausted`. Its reset text has no
  *   timezone and is never parsed; only a validated `retryAfterMs` is timing.
  *
  * Each refusal is scoped to the credential account its process epoch
- * recorded, and to the engine connection. No provider is called, nothing is
- * polled, and nothing is written.
+ * recorded, and to the engine connection. A later accepted turn on the same
+ * account, on any connection, supersedes it. No provider is called, nothing
+ * is polled, and nothing is written.
  */
 
 import type { EngineAllowanceEvidence } from '@kontourai/station-contracts/engine-accounts';
@@ -42,20 +45,28 @@ export const ALLOWANCE_EVIDENCE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1_000;
  */
 export const ALLOWANCE_EVIDENCE_UNKNOWN_RESET_MS = 5 * 60 * 60 * 1_000;
 
-/** Bounds on the two reads, so a busy Station cannot make a listing slow. */
+/**
+ * Bound on the refusal read, so a busy Station cannot make a listing slow.
+ * It also bounds the supersession checks: at most one per refusal read.
+ */
 export const ALLOWANCE_REFUSAL_READ_LIMIT = 200;
-export const ALLOWANCE_ACCEPTED_TURN_READ_LIMIT = 1_000;
+
+/** The account a refusal ran on, as the supersession check matches it. */
+export type AllowanceRefusalAccount =
+  | { accountKey: string }
+  | { connectionId: string };
 
 export interface AllowanceEvidenceSource {
   listAllowanceRefusals(options: {
     since: string;
     limit: number;
   }): AllowanceRefusalRow[];
-  listAllowanceAcceptedTurns(options: {
-    since: string;
-    providers: readonly string[];
-    limit: number;
-  }): AllowanceEpochFactRow[];
+  hasAllowanceAcceptedTurnAfter(refusal: {
+    provider: string;
+    observedAt: string;
+    globalSequence: number;
+    account: AllowanceRefusalAccount;
+  }): boolean;
 }
 
 /** What the projection needs to know about one engine connection. */
@@ -103,10 +114,26 @@ function classifyRefusal(
   // A model connection's 429 (Station's own engine) or an unscoped engine
   // error is not an account's allowance verdict.
   if (row.details?.usageLimit === true && row.details.scope === 'account') {
+    // The adapter classifies Codex's per-minute `rateLimitExceeded` as a
+    // usage limit too, for recovery's wait; it is not the allowance running
+    // out, so only `usageLimitExceeded` counts here. An event that does not
+    // say which is not counted.
+    if (
+      row.provider === 'codex' &&
+      codexErrorInfo(row) !== 'usageLimitExceeded'
+    )
+      return undefined;
     const resetAt = validIso(row.details.resetAt);
     return { source: 'usage-limit', ...(resetAt ? { resetAt } : {}) };
   }
   return undefined;
+}
+
+/** The `codexErrorInfo` a Codex refusal recorded, as `code` or in details. */
+function codexErrorInfo(row: AllowanceRefusalRow): string | undefined {
+  const recorded = row.details?.codexErrorInfo;
+  if (typeof recorded === 'string') return recorded;
+  return row.code;
 }
 
 function expiresAt(observedAt: string, resetAt: string | undefined): number {
@@ -163,35 +190,44 @@ function belongsTo(
 }
 
 /**
+ * The account a supersession check matches: the recorded credential account
+ * key, which names the same account on any connection of the provider. An
+ * ACP adapter records no key and runs one account per connection.
+ */
+export function refusalAccount(
+  row: AllowanceRefusalRow,
+): AllowanceRefusalAccount | undefined {
+  if (row.provider === 'acp')
+    return row.connectionId ? { connectionId: row.connectionId } : undefined;
+  return row.accountKey ? { accountKey: row.accountKey } : undefined;
+}
+
+/**
  * Fresh, unsuperseded refusals per connection, newest per account, the
- * current account first. Pure: `now` and the recorded rows are its inputs.
+ * current account first. `superseded` is asked only of the newest fresh
+ * refusal per account: an older one is superseded by any turn that
+ * supersedes the newer. Pure apart from what `superseded` reads.
  */
 export function projectEngineAllowanceEvidence(input: {
   connections: readonly AllowanceEvidenceConnection[];
   refusals: readonly AllowanceRefusalRow[];
-  acceptedTurns: readonly AllowanceEpochFactRow[];
+  superseded: (refusal: AllowanceRefusalRow) => boolean;
   now: number;
 }): Map<string, EngineAllowanceEvidence[]> {
   const result = new Map<string, EngineAllowanceEvidence[]>();
   for (const connection of input.connections) {
-    const accepted = input.acceptedTurns.filter((row) =>
-      belongsTo(row, connection),
-    );
     const byAccount = new Map<string | null, EngineAllowanceEvidence>();
+    const settled = new Set<string | null>();
     for (const row of input.refusals) {
       if (!belongsTo(row, connection)) continue;
       const account = eventAccount(row, connection);
-      if (account === undefined || byAccount.has(account)) continue;
+      if (account === undefined || settled.has(account)) continue;
       const refusal = classifyRefusal(row);
       if (!refusal) continue;
       const expires = expiresAt(row.observedAt, refusal.resetAt);
       if (!Number.isFinite(expires) || expires <= input.now) continue;
-      const superseded = accepted.some(
-        (turn) =>
-          turn.globalSequence > row.globalSequence &&
-          eventAccount(turn, connection) === account,
-      );
-      if (superseded) continue;
+      settled.add(account);
+      if (input.superseded(row)) continue;
       const current = (connection.activeProfileRef ?? null) === account;
       byAccount.set(account, {
         source: refusal.source,
@@ -227,9 +263,10 @@ export function projectEngineAllowanceEvidence(input: {
 }
 
 /**
- * Reads the recorded refusals and accepted turns once for every listed
- * connection. Refusals are rows Station already wrote; this never asks a
- * provider. Accepted turns are read only when a refusal could be superseded.
+ * Reads the recorded refusals once for every listed connection, then asks
+ * the source, per candidate refusal, whether a later turn on its account
+ * was accepted. Every read is of rows Station already wrote; this never
+ * asks a provider.
  */
 export function readEngineAllowanceEvidence(
   source: AllowanceEvidenceSource,
@@ -242,18 +279,20 @@ export function readEngineAllowanceEvidence(
     limit: ALLOWANCE_REFUSAL_READ_LIMIT,
   });
   if (refusals.length === 0) return new Map();
-  // The source returns refusals newest first.
-  const oldest = refusals[refusals.length - 1]!.observedAt;
-  const providers = [...new Set(refusals.map((row) => row.provider))];
-  const acceptedTurns = source.listAllowanceAcceptedTurns({
-    since: oldest,
-    providers,
-    limit: ALLOWANCE_ACCEPTED_TURN_READ_LIMIT,
-  });
   return projectEngineAllowanceEvidence({
     connections,
     refusals,
-    acceptedTurns,
+    superseded: (row) => {
+      const account = refusalAccount(row);
+      // `eventAccount` already refused an unnamed account; nothing to match.
+      if (!account) return false;
+      return source.hasAllowanceAcceptedTurnAfter({
+        provider: row.provider,
+        observedAt: row.observedAt,
+        globalSequence: row.globalSequence,
+        account,
+      });
+    },
     now,
   });
 }

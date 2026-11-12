@@ -21,6 +21,7 @@ export function EngineOverviewTab({
   dependents,
   onOpenAgent,
   notices,
+  headerShowsUsageLimit,
 }: {
   connection: AgentConnectionView;
   /** The saved default (the draft's, when unsaved, is on Models). */
@@ -31,10 +32,15 @@ export function EngineOverviewTab({
   onOpenAgent: (slug: string) => void;
   /** Readiness instructions, sign-in and policy notices, when they apply. */
   notices?: ReactNode;
+  /**
+   * The header reads "Usage limit reached" (and so states the current
+   * account's reset); false when another status outranks it.
+   */
+  headerShowsUsageLimit: boolean;
 }) {
   const models = runtimeCatalogVisibleModels(connection);
   const route = engineRouteFact(connection.routeObservation);
-  const refusals = allowanceFacts(connection);
+  const refusals = allowanceFacts(connection, { headerShowsUsageLimit });
   const defaultName =
     models.find((model) => model.id === defaultModel)?.name ?? defaultModel;
   return (

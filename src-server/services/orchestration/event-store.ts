@@ -849,7 +849,7 @@ const ACCEPTED_LAUNCH_PLAN = `json_type(attribution.payload, '$.metadata.modelLa
  * never a scan of the thread's whole history: the planner otherwise prefers
  * the `(thread_id, sequence)` index and walks every event of the epoch.
  */
-const USAGE_RECEIPT_CONNECTION_COLUMNS = `,
+const USAGE_RECEIPT_ENGINE_CONNECTION_COLUMN = `,
                 COALESCE(
                   (SELECT json_extract(attribution.payload, '$.metadata.connectionId')
                      FROM orchestration_events attribution INDEXED BY idx_events_history_projection
@@ -867,7 +867,9 @@ const USAGE_RECEIPT_CONNECTION_COLUMNS = `,
                       AND started.sequence = ${USAGE_RECEIPT_EPOCH}
                       AND json_valid(started.payload)
                       AND json_type(started.payload, '$.metadata.connectionId') = 'text')
-                ) AS connection_id,
+                ) AS connection_id`;
+
+const USAGE_RECEIPT_CONNECTION_COLUMNS = `${USAGE_RECEIPT_ENGINE_CONNECTION_COLUMN},
                 (SELECT CASE WHEN json_extract(attribution.payload, '$.metadata.modelLaunchPlan.kind') = 'station-resolved'
                              THEN json_extract(attribution.payload, '$.metadata.modelLaunchPlan.modelConnectionId') END
                    FROM orchestration_events attribution INDEXED BY idx_events_history_projection
@@ -905,7 +907,7 @@ const ALLOWANCE_EPOCH_FACT_COLUMNS = `
                     AND route.sequence >= ${USAGE_RECEIPT_EPOCH}
                     AND route.sequence <= e.sequence
                     AND json_valid(route.payload)
-                    AND json_type(route.payload, '$.metadata.modelRoute') = 'object') AS proxy_routed${USAGE_RECEIPT_CONNECTION_COLUMNS}`;
+                    AND json_type(route.payload, '$.metadata.modelRoute') = 'object') AS proxy_routed${USAGE_RECEIPT_ENGINE_CONNECTION_COLUMN}`;
 
 /** One recorded event with the epoch facts allowance evidence is scoped by. */
 export interface AllowanceEpochFactRow {
@@ -8433,37 +8435,50 @@ export class EventStore {
   }
 
   /**
-   * Turns a provider finished with a proven finish reason after `since`,
-   * newest first, for these providers. A later accepted turn on the same
-   * account is the provider's own word that an earlier refusal no longer
-   * describes it.
+   * Whether the provider finished a turn with a proven finish reason after
+   * this refusal, on the same account and not through a proxy route: the
+   * provider's own word that the refusal no longer describes the account.
+   * One bounded EXISTS per refusal, so no amount of other traffic can push
+   * the superseding turn out of the read. The account is the recorded
+   * credential account key (Claude Code, Codex), on any connection; an ACP
+   * adapter records no key and runs one account per connection, so its
+   * account is its connection.
    */
-  listAllowanceAcceptedTurns(options: {
-    since: string;
-    providers: readonly string[];
-    limit: number;
-  }): AllowanceEpochFactRow[] {
-    if (options.providers.length === 0) return [];
+  hasAllowanceAcceptedTurnAfter(refusal: {
+    provider: string;
+    observedAt: string;
+    globalSequence: number;
+    account: { accountKey: string } | { connectionId: string };
+  }): boolean {
     const proven = [...PROVIDER_PROVEN_FINISH_REASONS];
-    const rows = this.db
+    const byKey = 'accountKey' in refusal.account;
+    const row = this.db
       .prepare(
-        `SELECT e.id, e.provider, e.thread_id, e.observed_at, e.global_sequence,${ALLOWANCE_EPOCH_FACT_COLUMNS}
-           FROM orchestration_events e INDEXED BY idx_events_usage_observed
-          WHERE e.method = 'turn.completed'
-            AND e.observed_at >= ?
-            AND e.provider IN (${options.providers.map(() => '?').join(', ')})
-            AND json_valid(e.payload)
-            AND json_extract(e.payload, '$.finishReason') IN (${proven.map(() => '?').join(', ')})
-          ORDER BY e.observed_at DESC, e.global_sequence DESC
-          LIMIT ?`,
+        `SELECT EXISTS (
+           SELECT 1 FROM (
+             SELECT e.global_sequence,${ALLOWANCE_EPOCH_FACT_COLUMNS}
+               FROM orchestration_events e INDEXED BY idx_events_usage_observed
+              WHERE e.method = 'turn.completed'
+                AND e.observed_at >= ?
+                AND e.provider = ?
+                AND e.global_sequence > ?
+                AND json_valid(e.payload)
+                AND json_extract(e.payload, '$.finishReason') IN (${proven.map(() => '?').join(', ')})
+           ) turn
+           WHERE turn.proxy_routed = 0
+             AND ${byKey ? 'turn.account_key' : 'turn.connection_id'} = ?
+         ) AS found`,
       )
-      .all(
-        options.since,
-        ...options.providers,
+      .get(
+        refusal.observedAt,
+        refusal.provider,
+        refusal.globalSequence,
         ...proven,
-        options.limit,
-      ) as AllowanceEpochFactSqlRow[];
-    return rows.map((row) => this.mapAllowanceEpochFactRow(row));
+        'accountKey' in refusal.account
+          ? refusal.account.accountKey
+          : refusal.account.connectionId,
+      ) as { found: number | bigint } | undefined;
+    return row?.found === 1 || row?.found === 1n;
   }
 
   private mapAllowanceEpochFactRow(

@@ -117,7 +117,9 @@ export function lastCheckFact(connection: AgentConnectionView): string {
 const ALLOWANCE_ACCOUNT: Record<EngineAllowanceEvidence['applies'], string> = {
   'current-account': "This engine's account",
   'other-account': 'Another account',
-  'proxy-route': 'Its account, not used while routed through a proxy',
+  // Every account reads `proxy-route` while the engine is proxied, so the
+  // line cannot claim the refused account is the engine's own.
+  'proxy-route': 'An account not used while routed through a proxy',
 };
 
 function shortTime(iso: string): string {
@@ -127,35 +129,45 @@ function shortTime(iso: string): string {
   });
 }
 
+function namedAccount(evidence: EngineAllowanceEvidence): string {
+  // The current account reads as the engine's own; a withheld account
+  // (below `access:manage`) reads by how it applies.
+  if (evidence.applies === 'current-account' || !evidence.account)
+    return ALLOWANCE_ACCOUNT[evidence.applies];
+  const named =
+    evidence.account.kind === 'profile'
+      ? `Saved account ${evidence.account.ref}`
+      : 'The default account';
+  return evidence.applies === 'proxy-route'
+    ? `${named}, not used while routed through a proxy`
+    : named;
+}
+
 /**
  * One line per account the provider refused a turn on, still fresh. A
  * viewer below `access:manage` receives no account identity, so another
- * account reads as "Another account" rather than by name. The
- * header carries the current account's reason, so its line names only the
- * account and when; another account's line adds its reset. Empty when
- * nothing fresh is recorded, which is unknown, not allowance left.
+ * account reads as "Another account" rather than by name. When the header
+ * shows the usage-limit label it carries the current account's reset, so
+ * that line names only the account and when; otherwise (another status
+ * outranks the label) every line adds its reset. Empty when nothing fresh
+ * is recorded, which is unknown, not allowance left.
  */
 export function allowanceFacts(
   connection: AgentConnectionView,
-  now: number = Date.now(),
+  options: { headerShowsUsageLimit: boolean; now?: number },
 ): string[] {
+  const now = options.now ?? Date.now();
   return (connection.allowanceEvidence ?? [])
     .filter((evidence) => Date.parse(evidence.expiresAt) > now)
     .map((evidence) => {
-      const account =
-        evidence.applies !== 'other-account' || !evidence.account
-          ? ALLOWANCE_ACCOUNT[evidence.applies]
-          : evidence.account.kind === 'profile'
-            ? `Saved account ${evidence.account.ref}`
-            : 'The default account';
       const reset =
-        evidence.applies === 'current-account'
+        evidence.applies === 'current-account' && options.headerShowsUsageLimit
           ? ''
           : evidence.resetAt
             ? ` · resets ${shortTime(evidence.resetAt)}`
             : evidence.resetReported
               ? ` · resets ${evidence.resetReported} (provider time)`
               : '';
-      return `${account} · refused ${shortTime(evidence.observedAt)}${reset}`;
+      return `${namedAccount(evidence)} · refused ${shortTime(evidence.observedAt)}${reset}`;
     });
 }
