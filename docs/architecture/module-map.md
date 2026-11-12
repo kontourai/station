@@ -2571,7 +2571,17 @@ unrecognised value, including every event persisted before the field, as
 `unknown`. Steers and engine-opened turns carry none. The value is the
 admitting Station's claim: a `turn.started` mirrored from another Station
 carries that Station's, so restart recovery must act only on this Station's
-own Sessions. Its one consumer is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+own Sessions. The [approval guardian](../../src-server/services/approvals/guardian-conversation.ts)
+reads it only as a routing fact (#4827): an `interactive` newest turn is what
+lets an external engine's guardian escalation ask a person. It never reads the
+field as authorship, because a child's result delivered into a person's chat
+is `interactive` too. Authorship is a separate, positive mark: the same
+propagation stamps `authoredBy: 'person'` only for a send or steer that a
+composer route proved a person typed (`personTypedRequest`), or that such a
+route queued on the inbox, and drops any value an adapter supplies.
+[`isPersonAuthoredTurn` and `isCurrentTurnPersonAuthored`](../../src-server/services/orchestration/turn-authorship.ts)
+are the one shared reading of it. The dispatch origin's one consumer that
+acts on a Session is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 (preview `continue-unattended-after-restart`): after boot it continues each
 `task-dispatch` or `delegation` turn interrupted-turn recovery settled
 (`whenInterruptedTurnsRecovered`), once, through the conversation inbox under

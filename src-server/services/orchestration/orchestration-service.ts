@@ -633,6 +633,13 @@ function telemetryEngine(
 interface OrchestrationDispatchInternalOptions {
   reservedStationTurn?: ReservedStationTurn;
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
+  /**
+   * #4827: a person typed this send or steer into one of Station's clients,
+   * as the admitting route classified it (`personTypedRequest`). Stamped on
+   * `turn.started` as `authoredBy: 'person'`. Internal only: no HTTP body
+   * reaches this parameter.
+   */
+  personAuthored?: true;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
@@ -10369,6 +10376,10 @@ export class OrchestrationService {
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
                           dispatchOrigin,
+                          // #4827: an MCP server wrote this prompt; the
+                          // approval guardian must not read it as typed.
+                          internal?.mcpPromptOrigin ? 'mcp-prompt' : undefined,
+                          internal?.personAuthored ? 'person' : undefined,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -11850,6 +11861,11 @@ export class OrchestrationService {
                 command.threadId,
                 context?.clientOrigin,
                 context?.principal,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                internal?.personAuthored ? 'person' : undefined,
               );
               const steerInvocationId =
                 this.sessionExecutionCoordinator.invocationForTurn(

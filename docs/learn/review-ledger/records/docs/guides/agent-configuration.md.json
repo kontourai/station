@@ -264,7 +264,13 @@
 
     "src-server/services/orchestration/create-request-claims.ts",
 
-    "src-server/services/orchestration/turn-submission-digest.ts"
+    "src-server/services/orchestration/turn-submission-digest.ts",
+
+    "src-server/services/approvals/guardian-conversation.ts",
+
+    "src-server/services/orchestration/turn-authorship.ts",
+
+    "src-server/security/person-authorship.ts"
   ],
 
   "checks": [

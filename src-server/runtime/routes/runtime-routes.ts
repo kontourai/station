@@ -7077,6 +7077,10 @@ export function configureRuntimeRoutes(
               ownerAttribution: payload.actor.ownerAttribution,
               clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
             },
+            // #4827: a steer a person typed and queued stays theirs.
+            payload.authoredBy === 'person'
+              ? { personAuthored: true }
+              : undefined,
           );
           const result = dispatched.result as
             | { outcome: string; turnId?: string }
