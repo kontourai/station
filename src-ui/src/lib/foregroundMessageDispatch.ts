@@ -60,6 +60,12 @@ type ForegroundInput = {
   skillExperienceAttachmentAssignments?: Record<string, string[]>;
   requestScope?: import('@kontourai/station-sdk/client').ClientRequestOptions['requestScope'];
   signal?: AbortSignal;
+  /**
+   * Called once, immediately before the request is made. A failure thrown
+   * before it (a send this Adapter refused to build) reached nothing; one
+   * after it proves nothing about delivery.
+   */
+  onRequest?: () => void;
 };
 
 async function foregroundRequest(input: ForegroundInput) {
@@ -246,11 +252,13 @@ async function foregroundRequest(input: ForegroundInput) {
 
 export async function dispatchForeground(input: ForegroundInput) {
   const { body, options } = await foregroundRequest(input);
+  input.onRequest?.();
   return sendExecutionMessage(input.apiBase, body, options);
 }
 
 export async function dispatchPossiblyQueuedForeground(input: ForegroundInput) {
   const { body, options } = await foregroundRequest(input);
+  input.onRequest?.();
   try {
     const receipt = await sendExecutionMessage(
       input.apiBase,
@@ -281,6 +289,7 @@ export async function dispatchQueuedForeground(input: ForegroundInput) {
     throw new Error(
       'Apply the pending approval choice before queuing a follow-up.',
     );
+  input.onRequest?.();
   return queueExecutionMessage(
     input.apiBase,
     {

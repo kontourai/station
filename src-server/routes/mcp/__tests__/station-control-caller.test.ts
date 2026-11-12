@@ -198,6 +198,7 @@ const productionResolver = createStationControlCallerRecordResolver(
       if (!id) throw new Error(`no project ${slug}`);
       return { id };
     },
+    coordinatorEnabled: () => true,
   }),
 );
 const resolveRecord = vi.fn((sessionId: string) =>
@@ -585,6 +586,7 @@ describe('station-control verified caller (HTTP MCP)', () => {
         '/api/orchestration',
         createCoordinatorRoutes({
           store: store.coordinatorStore(),
+          preview: { select: ({ enabled }) => enabled() },
           person: () => ({
             userId: 'human:test:alice',
             mayRead: () => true,
@@ -1238,6 +1240,7 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       '/api/orchestration',
       createCoordinatorRoutes({
         store: store.coordinatorStore(),
+        preview: { select: ({ enabled }) => enabled() },
         person: () => ({
           userId: 'human:test:alice',
           mayRead: () => true,

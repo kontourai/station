@@ -5,6 +5,7 @@ import { rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 
 export const REQUIRED_STATIC_WORKSPACES = [
   {
@@ -27,14 +28,8 @@ export const REQUIRED_STATIC_WORKSPACES = [
 ];
 
 function runNpmScript(script, cwd) {
-  const npmCli = process.env.npm_execpath;
-  const command = npmCli
-    ? { executable: process.execPath, args: [npmCli, 'run', script] }
-    : {
-        executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
-        args: ['run', script],
-      };
-  const result = spawnSync(command.executable, command.args, {
+  const { command, args } = npmInvocation(['run', script]);
+  const result = spawnSync(command, args, {
     cwd,
     env: process.env,
     stdio: 'inherit',

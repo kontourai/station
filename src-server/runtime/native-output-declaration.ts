@@ -18,6 +18,7 @@ import type {
 } from '@kontourai/station-contracts/session-output-declaration';
 import { DECLARED_SESSION_OUTPUT_V1 } from '@kontourai/station-contracts/session-output-declaration';
 import { isRecord } from '../utils/is-record.js';
+import { isCanonicalPathStrictlyWithin } from '../utils/path-containment.js';
 import {
   currentNativeOutputCallScope,
   currentNativeOutputDeclarationOperation,
@@ -197,11 +198,6 @@ function label(value: unknown): string | undefined {
     : undefined;
 }
 
-function inside(root: string, child: string): boolean {
-  const rel = relative(root, child);
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
-}
-
 async function readWorkspaceFile(input: {
   root: string;
   requestedPath: unknown;
@@ -215,7 +211,7 @@ async function readWorkspaceFile(input: {
   }
   const root = await realpath(input.root);
   const joined = resolve(root, requested);
-  if (!inside(root, joined))
+  if (!isCanonicalPathStrictlyWithin(root, joined))
     throw new Error('Declared output file is outside the workspace.');
   // Open once with O_NOFOLLOW, then read and verify the very same descriptor.
   // Path-based stat/read after a precheck is an attacker-controlled swap gap.
@@ -271,7 +267,7 @@ async function readWorkspaceFile(input: {
       !finalPath.isFile() ||
       finalPath.dev !== before.dev ||
       finalPath.ino !== before.ino ||
-      !inside(root, finalResolved) ||
+      !isCanonicalPathStrictlyWithin(root, finalResolved) ||
       finalResolved !== joined
     ) {
       throw new Error(

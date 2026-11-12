@@ -40,6 +40,7 @@ import {
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from './tool-request-preview.js';
@@ -1401,6 +1402,9 @@ export function projectRuntimeEventsToMessages(
           target.approvalServerGrant = toolRequestServerGrantFromPayload(
             ev.payload,
           );
+          const ruleGrant = toolRequestRuleGrantFromPayload(ev.payload);
+          if (ruleGrant) target.approvalRuleGrant = ruleGrant;
+          else delete target.approvalRuleGrant;
           // docs/design/event-content-spill.md: what a surface must load
           // whole before it offers Allow.
           approvalRequestByPart.set(target, ev);

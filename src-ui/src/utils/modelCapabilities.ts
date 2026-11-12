@@ -44,6 +44,10 @@ const UPPERCASE_PARTS = new Set(['gpt']);
  * but a fabricated one. For those the id itself is the most honest thing we
  * have, so it is returned unchanged (archive#3391).
  *
+ * Hyphenated version digits read as one version: 'claude-opus-5-5' is
+ * "Opus 5.5" and 'claude-3-5-sonnet' "3.5 Sonnet". A date stamp
+ * ('-20250929') stays a word of its own.
+ *
  * A dot BETWEEN DIGITS is a version number, not a provider qualifier
  * (#4402): `gpt-6.1-sol` reads "GPT 6.1 Sol" — the Codex catalog's own name —
  * where the transcript used to print the raw id because the dot alone sent
@@ -58,6 +62,19 @@ export function prettifyModelId(modelId: string): string {
     .replace(/\[1m\]$/i, '')
     .replace(/^claude-/i, '')
     .split('-')
+    // A short number after a number is the version's minor part:
+    // 'opus-5-5' is "Opus 5.5", not "Opus 5 5". A date stamp is not.
+    .reduce<string[]>((parts, part) => {
+      const previous = parts.at(-1);
+      if (
+        previous !== undefined &&
+        /^\d{1,2}$/.test(part) &&
+        /^\d{1,2}$/.test(previous)
+      )
+        parts[parts.length - 1] = `${previous}.${part}`;
+      else parts.push(part);
+      return parts;
+    }, [])
     .map((part) =>
       UPPERCASE_PARTS.has(part.toLowerCase())
         ? part.toUpperCase()

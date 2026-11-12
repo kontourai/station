@@ -10,13 +10,11 @@ import { useScopedProjectCheckoutFreshnessQuery } from '../../contexts/ProjectsC
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { copyToClipboard } from '../../lib/clipboard';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { plural } from '../../utils/plural';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import './ProjectCheckoutFreshnessNotice.css';
 
 type Stale = Extract<ProjectCheckoutFreshness, { status: 'stale' }>;
-
-const plural = (count: number, word: string) =>
-  `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /**
  * The warning itself. Station never runs the command: the person copies it

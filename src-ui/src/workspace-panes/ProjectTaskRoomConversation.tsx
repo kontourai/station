@@ -12,6 +12,10 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+
+/** Rows revealed per step when reading back through loaded history. */
+const HISTORY_WINDOW = 50;
+
 import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
@@ -19,13 +23,19 @@ import { ConversationStopControl } from '../components/conversation/Conversation
 import {
   projectTaskHistory,
   SharedTaskHistoryList,
-  SharedTaskHistoryRecord,
-  SharedTaskHistoryText,
 } from '../components/conversation/SharedTaskHistoryList';
 import { createTaskConversationActions } from '../components/conversation/task-conversation-actions';
 import { taskHistoryReadDenied } from '../components/conversation/task-history-policy';
 import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
+import { roomShortTime } from '../components/room/groupRows';
+import { RoomAvatar } from '../components/room/RoomAvatar';
+import { RoomComposer } from '../components/room/RoomComposer';
+import {
+  RoomConversation,
+  type RoomConversationRow,
+} from '../components/room/RoomConversation';
+import { roomDraftKey, useRoomDraft } from '../components/room/useRoomDraft';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -36,10 +46,8 @@ import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
-import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
 import { TaskRoomAttachmentImages } from './TaskRoomAttachmentImages';
 import { TaskRoomComposer } from './TaskRoomComposer';
-import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 
 function RoomAnswer({
   text,
@@ -97,17 +105,6 @@ function RoomAnswer({
   );
 }
 
-function Time({ at, compact = false }: { at?: string; compact?: boolean }) {
-  return at && Number.isFinite(Date.parse(at)) ? (
-    <time dateTime={at} title={new Date(at).toLocaleString()}>
-      {new Date(at).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        ...(compact ? { hour12: false } : {}),
-      })}
-    </time>
-  ) : null;
-}
 function systemText(record: ProjectTaskRoomBrowserRecord) {
   const body = record.body;
   if (body.kind === 'human-message') return body.text;
@@ -158,7 +155,19 @@ export function ProjectTaskRoomConversation({
     capabilities?.historyRead,
   );
   const [thread, setThread] = useState<string>();
-  const [reply, setReply] = useState('');
+  // A thread's unsent reply survives leaving the Task and a reload; keyed by
+  // the reload partition (not the per-reload authority epoch), Task and
+  // Session so it never reaches another agent (#4810 review 1).
+  const [reply, setReply] = useRoomDraft(
+    roomDraftKey(
+      scope?.draftRecoveryKey ?? scope?.authorityKey,
+      scope?.apiBase,
+      taskId,
+      thread,
+      'task-thread',
+    ),
+  );
+
   const replyAttachments = useTaskRoomAttachments(
     taskId,
     taskCreatedAt ?? '',
@@ -196,33 +205,8 @@ export function ProjectTaskRoomConversation({
         participant.publication === 'published' &&
         participant.actor.kind === 'agent',
     ) ?? [];
-  const messages = useRef<HTMLDivElement>(null);
-  const anchored = useRef(true);
-  const [jumpToLatest, setJumpToLatest] = useState(false);
-  const previousHeight = useRef<number | undefined>(undefined);
-  const [historyWindow, setHistoryWindow] = useState(50);
-  const lastSequence = records.at(-1)?.sequence;
-  const runningCount = running.length;
-  const now = useElapsedClock(runningCount > 0);
-  const goLatest = () => {
-    const list = messages.current;
-    if (list) list.scrollTop = list.scrollHeight;
-    anchored.current = true;
-    setJumpToLatest(false);
-  };
-  useLayoutEffect(() => {
-    void lastSequence;
-    void runningCount;
-    void records.length;
-    void historyWindow;
-    const list = messages.current;
-    if (!list) return;
-    if (previousHeight.current !== undefined) {
-      list.scrollTop += list.scrollHeight - previousHeight.current;
-      previousHeight.current = undefined;
-    } else if (anchored.current) list.scrollTop = list.scrollHeight;
-    else setJumpToLatest(true);
-  }, [lastSequence, runningCount, records.length, historyWindow]);
+  const [historyWindow, setHistoryWindow] = useState(HISTORY_WINDOW);
+  const now = useElapsedClock(running.length > 0);
   // The history contract pages forward through a fixed checkpoint. Read to that
   // checkpoint before presenting its newest messages; reveal older rows locally.
   useEffect(() => {
@@ -240,22 +224,6 @@ export function ProjectTaskRoomConversation({
     history.fetchNextPage,
     readable,
   ]);
-  const loadEarlier = () => {
-    previousHeight.current = messages.current?.scrollHeight;
-    setHistoryWindow((count) => count + 50);
-  };
-  useLayoutEffect(() => {
-    void thread;
-    const list = messages.current;
-    if (!list || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      if (anchored.current) list.scrollTop = list.scrollHeight;
-    });
-    observer.observe(list);
-    const content = list.querySelector('ol');
-    if (content) observer.observe(content);
-    return () => observer.disconnect();
-  }, [thread]);
   const followup = useMutation({
     mutationFn: async () => {
       if (!scope?.isCurrent() || !thread || !taskCreatedAt)
@@ -397,61 +365,74 @@ export function ProjectTaskRoomConversation({
           record.threadSessionId === thread,
       )
     : [];
-  const message = (
+  const viewerId = shared?.live?.viewerActorId;
+  const isKept = (execution: { sessionId: string; turnId: string }) =>
+    kept.has(`${execution.sessionId}:${execution.turnId}`) ||
+    !!references.data?.some(
+      (reference) =>
+        reference.state === 'available' &&
+        reference.sessionId === execution.sessionId &&
+        reference.turnId === execution.turnId,
+    );
+  const toRow = (
     record: ProjectTaskRoomBrowserRecord,
-    previous?: ProjectTaskRoomBrowserRecord,
     inThread = false,
-  ) => {
-    const authorLabel =
-      record.actor.standing === 'member' && !collaborationEnabled
-        ? 'Teammate'
-        : record.actor.label;
+  ): RoomConversationRow => {
+    const id = String(record.sequence);
     if (
       record.body.kind === 'live-work-finished' &&
       record.body.outcome === 'failed'
     ) {
       const sessionId = record.body.sessionId;
-      return (
-        <li className="task-room-system task-room-failed" key={record.sequence}>
-          <span>{record.actor.label} couldn’t finish</span>
-          <Time at={record.occurredAt} />
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={
-              !writable ||
-              retryFailed.isPending ||
-              !requests.data?.records.some(
-                (item) => item.sessionId === sessionId,
-              )
-            }
-            onClick={() => retryFailed.mutate(sessionId)}
-          >
-            Retry
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void openRun(sessionId)}
-          >
-            Open run
-          </Button>
-        </li>
-      );
+      return {
+        id,
+        kind: 'system',
+        tone: 'failed',
+        at: record.occurredAt,
+        text: `${record.actor.label} couldn’t finish`,
+        actions: (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={
+                !writable ||
+                retryFailed.isPending ||
+                !requests.data?.records.some(
+                  (item) => item.sessionId === sessionId,
+                )
+              }
+              onClick={() => retryFailed.mutate(sessionId)}
+            >
+              Retry
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void openRun(sessionId)}
+            >
+              Open run
+            </Button>
+          </>
+        ),
+      };
     }
     if (record.system || record.body.kind !== 'human-message')
-      return (
-        <li className="task-room-system" key={record.sequence}>
-          {record.system && <span>{record.actor.label} · </span>}
-          <span>{systemText(record)}</span> <Time at={record.occurredAt} />
-        </li>
-      );
-    const grouped =
-      previous?.body.kind === 'human-message' &&
-      !previous.system &&
-      (previous.actor.id ?? previous.actor.label) ===
-        (record.actor.id ?? record.actor.label) &&
-      previous.actor.kind === record.actor.kind;
+      return {
+        id,
+        kind: 'system',
+        at: record.occurredAt,
+        body: (
+          <>
+            {record.system && <span>{record.actor.label} · </span>}
+            <span>{systemText(record)}</span>
+          </>
+        ),
+      };
+    const authorLabel =
+      record.actor.standing === 'member' && !collaborationEnabled
+        ? 'Teammate'
+        : record.actor.label;
     const execution = record.execution;
     const replies = execution
       ? records.filter(
@@ -459,117 +440,213 @@ export function ProjectTaskRoomConversation({
             item.sequence !== record.sequence &&
             (item.execution?.sessionId === execution.sessionId ||
               item.threadSessionId === execution.sessionId),
-        ).length
-      : 0;
-    return (
-      <SharedTaskHistoryRecord
-        key={record.sequence}
-        record={record}
-        previous={previous?.system ? undefined : previous}
-        authorLabel={authorLabel}
-        header={<Time at={record.occurredAt} compact={grouped} />}
-        attachments={
-          <TaskRoomAttachmentImages
-            attachments={record.body.attachments}
-            taskId={taskId}
-            taskCreatedAt={taskCreatedAt ?? ''}
-          />
-        }
-        actions={
-          execution && (
-            <ActionRow
-              className="task-room-message-actions"
-              primary={
-                !inThread && (
+        )
+      : [];
+    const repliers = [
+      ...new Map(
+        replies.map((item) => [
+          item.actor.id ?? `${item.actor.kind}:${item.actor.label}`,
+          item.actor,
+        ]),
+      ).values(),
+    ].slice(0, 3);
+    const lastReply = replies.at(-1)?.occurredAt;
+    return {
+      id,
+      kind: 'message',
+      author: {
+        // Records without an actor id fall back to kind and label.
+        id: record.actor.id ?? `${record.actor.kind}:${record.actor.label}`,
+        label: authorLabel,
+        agent: record.actor.kind === 'agent',
+      },
+      at: record.occurredAt,
+      own: !!viewerId && record.actor.id === viewerId,
+      attachments: (
+        <TaskRoomAttachmentImages
+          attachments={record.body.attachments}
+          taskId={taskId}
+          taskCreatedAt={taskCreatedAt ?? ''}
+        />
+      ),
+      ...(execution
+        ? {
+            body: (
+              <RoomAnswer
+                text={record.body.text}
+                expanded={expanded.has(record.sequence)}
+                onToggle={() =>
+                  setExpanded((current) => {
+                    const next = new Set(current);
+                    if (next.has(record.sequence)) next.delete(record.sequence);
+                    else next.add(record.sequence);
+                    return next;
+                  })
+                }
+              />
+            ),
+            footer:
+              !inThread && replies.length ? (
+                <span className="task-room-thread-summary">
+                  <span className="task-room-thread-summary__faces">
+                    {repliers.map((actor) => (
+                      <RoomAvatar
+                        key={actor.id ?? `${actor.kind}:${actor.label}`}
+                        name={actor.label}
+                        agent={actor.kind === 'agent'}
+                      />
+                    ))}
+                  </span>
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="task-room-thread-summary__count"
                     disabled={followup.isPending}
                     onClick={() => changeThread(execution.sessionId)}
                   >
-                    {replies
-                      ? `${replies} ${replies === 1 ? 'reply' : 'replies'}`
-                      : 'Reply in thread'}
+                    {`${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
                   </Button>
-                )
-              }
-              secondary={
+                  {lastReply && Number.isFinite(Date.parse(lastReply)) && (
+                    <span className="task-room-thread-summary__last">
+                      Last reply {roomShortTime(lastReply)}
+                    </span>
+                  )}
+                </span>
+              ) : undefined,
+            actions: (
+              <ActionRow
+                className="task-room-message-actions"
+                primary={
+                  !inThread && !replies.length ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={followup.isPending}
+                      onClick={() => changeThread(execution.sessionId)}
+                    >
+                      Reply in thread
+                    </Button>
+                  ) : undefined
+                }
+                secondary={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={keep.isPending || isKept(execution)}
+                    onClick={async () => {
+                      try {
+                        await keep.mutateAsync({
+                          taskId,
+                          kind: 'turn',
+                          sessionId: execution.sessionId,
+                          turnId: execution.turnId,
+                          sourceSurface: 'task-room',
+                        });
+                        setKept((current) =>
+                          new Set(current).add(
+                            `${execution.sessionId}:${execution.turnId}`,
+                          ),
+                        );
+                        setNotice('Answer kept in Results.');
+                      } catch (error) {
+                        setNotice(describeStationFailure(error).body);
+                      }
+                    }}
+                  >
+                    {isKept(execution) ? 'Kept' : 'Keep'}
+                  </Button>
+                }
+                overflowLabel="More answer actions"
+                overflow={[
+                  {
+                    key: 'open-run',
+                    label: 'Open full run',
+                    onSelect: () => void openRun(execution.sessionId),
+                  },
+                ]}
+              />
+            ),
+          }
+        : { text: record.body.text }),
+    };
+  };
+  const runningRows = running.length ? (
+    <div className="task-room-live">
+      {running.map((participant) => (
+        <div
+          className="task-room-running"
+          role="status"
+          key={participant.actor.actorId}
+        >
+          <RoomAvatar name={participant.actor.label} agent />
+          <div className="task-room-running__main">
+            {participant.work.workState === 'blocked' &&
+            participant.work.workName === "Answer couldn't be posted" ? (
+              <span className="task-room-running__line">
+                <strong>{participant.actor.label}</strong>
+                <span>Answer couldn't be posted</span>
+              </span>
+            ) : (
+              <span className="task-room-running__text">
+                <span className="task-room-running__line">
+                  <strong>{participant.actor.label}</strong>
+                  <span>is {participant.work.workState}</span>
+                  <span className="task-room-live-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </span>
+                <span className="task-room-running__meta">
+                  {[
+                    participant.work.workName &&
+                    participant.work.workName !== 'Project task work'
+                      ? participant.work.workName
+                      : '',
+                    participant.work.startedAt
+                      ? `${Math.max(0, Math.floor((now - participant.work.startedAt) / 60000))}m`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </span>
+            )}
+            <span className="task-room-running__actions">
+              {participant.work.workState === 'blocked' &&
+              participant.work.workName === "Answer couldn't be posted" ? (
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={
-                    keep.isPending ||
-                    kept.has(`${execution.sessionId}:${execution.turnId}`) ||
-                    references.data?.some(
-                      (reference) =>
-                        reference.state === 'available' &&
-                        reference.sessionId === execution.sessionId &&
-                        reference.turnId === execution.turnId,
-                    )
-                  }
-                  onClick={async () => {
-                    try {
-                      await keep.mutateAsync({
-                        taskId,
-                        kind: 'turn',
-                        sessionId: execution.sessionId,
-                        turnId: execution.turnId,
-                        sourceSurface: 'task-room',
-                      });
-                      setKept((current) =>
-                        new Set(current).add(
-                          `${execution.sessionId}:${execution.turnId}`,
-                        ),
-                      );
-                      setNotice('Answer kept in Results.');
-                    } catch (error) {
-                      setNotice(describeStationFailure(error).body);
-                    }
-                  }}
+                  onClick={() => void openRun(participant.work.sessionId)}
                 >
-                  {kept.has(`${execution.sessionId}:${execution.turnId}`) ||
-                  references.data?.some(
-                    (reference) =>
-                      reference.state === 'available' &&
-                      reference.sessionId === execution.sessionId &&
-                      reference.turnId === execution.turnId,
-                  )
-                    ? 'Kept'
-                    : 'Keep'}
+                  Open full run
                 </Button>
-              }
-              overflowLabel="More answer actions"
-              overflow={[
-                {
-                  key: 'open-run',
-                  label: 'Open full run',
-                  onSelect: () => void openRun(execution.sessionId),
-                },
-              ]}
-            />
-          )
-        }
-      >
-        {execution ? (
-          <RoomAnswer
-            text={record.body.text}
-            expanded={expanded.has(record.sequence)}
-            onToggle={() => {
-              anchored.current = false;
-              setExpanded((current) => {
-                const next = new Set(current);
-                if (next.has(record.sequence)) next.delete(record.sequence);
-                else next.add(record.sequence);
-                return next;
-              });
-            }}
-          />
-        ) : (
-          <SharedTaskHistoryText text={record.body.text} />
-        )}
-      </SharedTaskHistoryRecord>
-    );
-  };
+              ) : (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void openRun(participant.work.sessionId)}
+                  >
+                    Watch
+                  </Button>
+                  <ConversationStopControl
+                    intent={{ kind: 'task', name: participant.actor.label }}
+                    capability={stopCapability}
+                    stopPending={stop.isPending}
+                    onCancel={() =>
+                      stop.mutateAsync(participant.work.sessionId)
+                    }
+                  />
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : undefined;
   const changeThread = (next?: string) => {
     if (next === thread || followupPending.current) return;
     guard(() => {
@@ -583,6 +660,12 @@ export function ProjectTaskRoomConversation({
       setNotice('');
     });
   };
+  const canReply =
+    writable &&
+    (!!reply.trim() || replyAttachments.files.length > 0) &&
+    !replyAttachments.busy &&
+    !followup.isPending &&
+    !uncertain;
   return (
     <section
       className={`project-task-room-conversation${thread ? ' task-room-conversation--thread-open' : ''}`}
@@ -606,57 +689,34 @@ export function ProjectTaskRoomConversation({
                   <CloseGlyph />
                 </IconButton>
               </header>
-              <ol className="task-room-thread-messages">
-                {threadRecords.map((record, index) =>
-                  message(record, threadRecords[index - 1], true),
-                )}
-              </ol>
-              <form
-                className="task-room-composer task-room-thread-composer"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (
-                    writable &&
-                    (reply.trim() || replyAttachments.files.length) &&
-                    !replyAttachments.busy &&
-                    !followup.isPending &&
-                    !uncertain
-                  )
-                    followup.mutate();
+              <RoomConversation
+                label="Thread messages"
+                regionLabel="Messages in this thread"
+                className="task-room-thread-messages"
+                rows={threadRecords.map((record) => toRow(record, true))}
+              />
+              <RoomComposer
+                id="task-thread-reply"
+                className="task-room-thread-composer"
+                label="Reply to this agent"
+                placeholder="Reply in thread…"
+                value={reply}
+                onValueChange={(value) => {
+                  setReply(value);
+                  setNotice('');
+                  replyOperation.current = undefined;
                 }}
-              >
-                <label className="sr-only" htmlFor="task-thread-reply">
-                  Reply to this agent
-                </label>
-                <TaskRoomAttachmentComposer
-                  attachments={replyAttachments}
-                  locked={!writable || followup.isPending || uncertain}
-                  owner={`${thread}|${scope?.authorityKey}`}
-                >
-                  <TaskRoomMessageInput
-                    onSend={() => {
-                      if (
-                        writable &&
-                        (reply.trim() || replyAttachments.files.length) &&
-                        !replyAttachments.busy &&
-                        !followup.isPending &&
-                        !uncertain
-                      )
-                        followup.mutate();
-                    }}
-                    id="task-thread-reply"
-                    value={reply}
-                    rows={1}
-                    placeholder="Reply…"
-                    onChange={(event) => {
-                      setReply(event.target.value);
-                      setNotice('');
-                      replyOperation.current = undefined;
-                    }}
-                    readOnly={!writable || followup.isPending || uncertain}
-                  />
-                </TaskRoomAttachmentComposer>
-                <div className="task-room-composer-actions">
+                onSend={() => followup.mutate()}
+                canSend={canReply}
+                pending={followup.isPending}
+                sendLabel="Send reply"
+                readOnly={!writable || followup.isPending || uncertain}
+                attachments={{
+                  port: replyAttachments,
+                  locked: !writable || followup.isPending || uncertain,
+                  owner: `${thread}|${scope?.authorityKey}`,
+                }}
+                tools={
                   <label className="task-room-brief-choice">
                     <input
                       type="checkbox"
@@ -666,150 +726,74 @@ export function ProjectTaskRoomConversation({
                     />
                     Brief attached
                   </label>
-                  <Button
-                    className="task-room-send"
-                    aria-label={followup.isPending ? 'Sending…' : 'Send reply'}
-                    pending={followup.isPending}
-                    pendingLabel="Sending…"
-                    type="submit"
-                    disabled={
-                      !writable ||
-                      (!reply.trim() && !replyAttachments.files.length) ||
-                      replyAttachments.busy ||
-                      followup.isPending ||
-                      uncertain
-                    }
-                  >
-                    Send
-                  </Button>
-                </div>
-              </form>
-              {attachBrief &&
-                requests.data?.context?.text.includes(
-                  'Brief shortened to fit',
-                ) && (
-                  <p className="task-room-inline-status" role="status">
-                    The brief exceeds 16,000 characters. A shortened version
-                    with a notice will be attached.
-                  </p>
-                )}
-              {notice && (
-                <p className="task-room-inline-status" role="status">
-                  {notice}{' '}
-                  {uncertain && (
-                    <Button size="sm" onClick={() => void openRun(thread)}>
-                      Open full run
-                    </Button>
-                  )}
-                </p>
-              )}
+                }
+                below={
+                  <>
+                    {attachBrief &&
+                      requests.data?.context?.text.includes(
+                        'Brief shortened to fit',
+                      ) && (
+                        <p className="room-composer__status" role="status">
+                          The brief exceeds 16,000 characters. A shortened
+                          version with a notice will be attached.
+                        </p>
+                      )}
+                    {notice && (
+                      <p className="room-composer__status" role="status">
+                        {notice}{' '}
+                        {uncertain && (
+                          <Button
+                            size="sm"
+                            onClick={() => void openRun(thread)}
+                          >
+                            Open full run
+                          </Button>
+                        )}
+                      </p>
+                    )}
+                  </>
+                }
+              />
             </section>
           ) : null
         }
       >
-        <div
-          className="task-room-messages"
-          ref={messages}
-          onScroll={() => {
-            const list = messages.current;
-            if (!list) return;
-            anchored.current =
-              list.scrollHeight - list.scrollTop - list.clientHeight < 80;
-            setJumpToLatest(!anchored.current);
-            if (
-              list.scrollTop === 0 &&
-              !anchored.current &&
-              allVisible.length > historyWindow
-            )
-              loadEarlier();
-          }}
-        >
-          <SharedTaskHistoryList
-            records={visible}
-            readable={readable}
-            pending={history.isLoading}
-            failed={history.isError}
-            outcome={historyProjection.outcome}
-            hasEarlier={
-              allVisible.length > historyWindow || history.hasNextPage
-            }
-            loadingEarlier={history.isFetchingNextPage}
-            onLoadEarlier={() =>
-              allVisible.length > historyWindow
-                ? loadEarlier()
-                : void history.fetchNextPage()
-            }
-            onRetry={() =>
-              void (history.isFetchNextPageError
-                ? history.fetchNextPage()
-                : history.refetch())
-            }
-            renderRecord={(record, previous) => message(record, previous)}
-            label="Task room history"
-            emptyLabel="Start the conversation"
-          />
-          {running.map((participant) => (
-            <div
-              className="task-room-running"
-              role="status"
-              key={participant.actor.actorId}
-            >
-              <span className="task-room-live-dot" />
-              <strong>{participant.actor.label}</strong>
-              {participant.work.workState === 'blocked' &&
-              participant.work.workName === "Answer couldn't be posted" ? (
-                <>
-                  <span>Answer couldn't be posted ·</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void openRun(participant.work.sessionId)}
-                  >
-                    Open full run
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span>is {participant.work.workState}</span>
-                  {participant.work.startedAt && (
-                    <span>
-                      ·{' '}
-                      {Math.max(
-                        0,
-                        Math.floor((now - participant.work.startedAt) / 60000),
-                      )}
-                      m
-                    </span>
-                  )}
-                  {participant.work.workName &&
-                    participant.work.workName !== 'Project task work' && (
-                      <span>· {participant.work.workName}</span>
-                    )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void openRun(participant.work.sessionId)}
-                  >
-                    Watch
-                  </Button>
-                  <ConversationStopControl
-                    intent={{ kind: 'task', name: participant.actor.label }}
-                    capability={stopCapability}
-                    stopPending={stop.isPending}
-                    onCancel={() =>
-                      stop.mutateAsync(participant.work.sessionId)
-                    }
-                  />
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        {jumpToLatest && (
-          <Button variant="ghost" className="task-room-jump" onClick={goLatest}>
-            Jump to latest
-          </Button>
-        )}
+        <SharedTaskHistoryList
+          records={visible}
+          readable={readable}
+          pending={history.isLoading}
+          failed={history.isError}
+          outcome={historyProjection.outcome}
+          hasEarlier={allVisible.length > historyWindow || history.hasNextPage}
+          loadingEarlier={history.isFetchingNextPage}
+          onLoadEarlier={() =>
+            allVisible.length > historyWindow
+              ? setHistoryWindow((count) => count + HISTORY_WINDOW)
+              : void history.fetchNextPage()
+          }
+          onRetry={() =>
+            void (history.isFetchNextPageError
+              ? history.fetchNextPage()
+              : history.refetch())
+          }
+          label="Task room history"
+          emptyLabel="Start the conversation"
+          renderList={(list) => (
+            <RoomConversation
+              label={list.label}
+              regionLabel="Messages in this Task room"
+              className="task-room-messages"
+              rows={list.records.map((record) => toRow(record))}
+              loading={list.pending}
+              status={list.status}
+              empty={list.empty}
+              hasOlder={list.hasEarlier}
+              loadingOlder={list.loadingEarlier}
+              onLoadOlder={list.onLoadEarlier}
+              trailing={runningRows}
+            />
+          )}
+        />
         {records
           .filter(
             (record) =>

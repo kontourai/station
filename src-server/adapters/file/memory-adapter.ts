@@ -39,6 +39,16 @@ import {
 
 const logger = createLogger({ name: 'memory-adapter' });
 
+function isSingleDirectoryName(value: string): boolean {
+  return (
+    value !== '.' &&
+    value !== '..' &&
+    !value.includes('/') &&
+    !value.includes('\\') &&
+    !value.includes('\0')
+  );
+}
+
 export interface FileMemoryAdapterOptions {
   projectHomeDir: string;
   usageAggregator?: any;
@@ -230,15 +240,40 @@ export class FileMemoryAdapter implements StorageAdapter {
     return applyConversationQueryOptions(conversations, { ...options, userId });
   }
 
+  /**
+   * The candidate set for a query, before `applyConversationQueryOptions`
+   * filters, orders and pages it.
+   *
+   * A query scoped to one `resourceId` reads that agent's directory only.
+   * Every write in this adapter publishes a conversation under
+   * `agents/<its resourceId>/memory/conversations` and an update can never
+   * change `resourceId`, so the directory already holds every conversation
+   * the `resourceId` filter would keep. Reading every agent's directory to
+   * then discard all but one made each per-agent list request cost a parse
+   * of every conversation in the home.
+   *
+   * A `resourceId` that is not one plain directory name keeps the full scan,
+   * so a caller-supplied value never becomes a path outside the agents
+   * directory.
+   */
+  private async loadConversationsForQuery(
+    options: ConversationQueryOptions,
+  ): Promise<Conversation[]> {
+    const resourceId = options.resourceId;
+    return resourceId && isSingleDirectoryName(resourceId)
+      ? this.conversations.listAgentConversations(resourceId)
+      : this.conversations.loadAllConversations();
+  }
+
   async queryConversations(
     options: ConversationQueryOptions,
   ): Promise<Conversation[]> {
-    const conversations = await this.conversations.loadAllConversations();
+    const conversations = await this.loadConversationsForQuery(options);
     return applyConversationQueryOptions(conversations, options);
   }
 
   async countConversations(options: ConversationQueryOptions): Promise<number> {
-    const conversations = await this.conversations.loadAllConversations();
+    const conversations = await this.loadConversationsForQuery(options);
     return applyConversationQueryOptions(conversations, {
       ...options,
       limit: undefined,

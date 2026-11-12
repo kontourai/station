@@ -25,6 +25,7 @@ const LIVE_RUN_STATES = new Set([
 const SOURCE_JOBS = new Set([
   'Repository source scans',
   'PR source admission',
+  'Pinned actionlint artifact',
   'fast-checks plan',
   'fast-checks statics',
   'PR title status publisher',

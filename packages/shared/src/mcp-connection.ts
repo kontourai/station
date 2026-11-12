@@ -20,6 +20,7 @@ import {
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { spawnChildWorkload } from './child-workload.js';
+import { isObjectRecord } from './object-record.js';
 import {
   type ClaudeDesktopConfig,
   normalizeMcpToolDef,
@@ -200,32 +201,32 @@ function clientRequestMethod(
   if (typeof property !== 'string') return undefined;
   if (Object.hasOwn(CLIENT_HELPER_METHODS, property))
     return CLIENT_HELPER_METHODS[property];
-  if (property === 'request' && isRecord(args[0]))
+  if (property === 'request' && isObjectRecord(args[0]))
     return typeof args[0].method === 'string' ? args[0].method : undefined;
   return undefined;
 }
 
 function hasForbiddenElicitationField(request: unknown): boolean {
   if (
-    !isRecord(request) ||
+    !isObjectRecord(request) ||
     request.method !== 'elicitation/create' ||
-    !isRecord(request.params)
+    !isObjectRecord(request.params)
   )
     return false;
   const schema = request.params.requestedSchema;
   return (
-    isRecord(schema) &&
-    isRecord(schema.properties) &&
+    isObjectRecord(schema) &&
+    isObjectRecord(schema.properties) &&
     Object.hasOwn(schema.properties, '__proto__')
   );
 }
 
 function hasForbiddenInputRequiredField(message: unknown): boolean {
   if (
-    !isRecord(message) ||
-    !isRecord(message.result) ||
+    !isObjectRecord(message) ||
+    !isObjectRecord(message.result) ||
     message.result.resultType !== 'input_required' ||
-    !isRecord(message.result.inputRequests)
+    !isObjectRecord(message.result.inputRequests)
   )
     return false;
   return Object.values(message.result.inputRequests).some(
@@ -514,7 +515,7 @@ export function prepareMCPConnection(
               description: t.description,
               readOnly: t.annotations?.readOnlyHint,
               inputSchema: t.inputSchema,
-              _meta: isRecord((t as { _meta?: unknown })._meta)
+              _meta: isObjectRecord((t as { _meta?: unknown })._meta)
                 ? (t as { _meta: Record<string, unknown> })._meta
                 : undefined,
               ui: extractMCPToolUIMetadata(t),
@@ -644,7 +645,7 @@ function describeNegotiation(client: Client): MCPNegotiation {
   const serverInfo = client.getServerVersion();
   const capabilities = client.getServerCapabilities();
   const discover = client.getDiscoverResult();
-  const extensions = isRecord(capabilities?.extensions)
+  const extensions = isObjectRecord(capabilities?.extensions)
     ? capabilities.extensions
     : undefined;
 
@@ -654,12 +655,12 @@ function describeNegotiation(client: Client): MCPNegotiation {
     serverInfo: serverInfo
       ? { name: serverInfo.name, version: serverInfo.version }
       : undefined,
-    serverCapabilities: isRecord(capabilities)
+    serverCapabilities: isObjectRecord(capabilities)
       ? (capabilities as Record<string, unknown>)
       : undefined,
     extensionIds: extensions ? Object.keys(extensions).sort() : [],
     fellBackToLegacy: era === 'legacy',
-    discoverResult: isRecord(discover)
+    discoverResult: isObjectRecord(discover)
       ? (discover as Record<string, unknown>)
       : undefined,
   };
@@ -668,10 +669,10 @@ function describeNegotiation(client: Client): MCPNegotiation {
 function extractMCPToolUIMetadata(
   tool: unknown,
 ): MCPToolUIMetadata | undefined {
-  if (!isRecord(tool)) return undefined;
+  if (!isObjectRecord(tool)) return undefined;
 
-  const meta = isRecord(tool._meta) ? tool._meta : undefined;
-  const ui = isRecord(meta?.ui) ? meta.ui : undefined;
+  const meta = isObjectRecord(tool._meta) ? tool._meta : undefined;
+  const ui = isObjectRecord(meta?.ui) ? meta.ui : undefined;
   const resourceUri =
     typeof ui?.resourceUri === 'string'
       ? ui.resourceUri
@@ -679,10 +680,6 @@ function extractMCPToolUIMetadata(
         ? meta['ui/resourceUri']
         : undefined;
   return resourceUri ? { resourceUri } : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

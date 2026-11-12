@@ -1708,7 +1708,37 @@
 
     "src-ui/src/connections/__tests__/station-state-partitions.test.ts",
 
-    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts"
+    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts",
+
+    "src-ui/src/components/browser-activity/InlineBrowserActivity.tsx",
+
+    "src-ui/src/components/chat/BrowserActivityRun.tsx",
+
+    "src-ui/src/components/chat/BrowserActivityContext.tsx",
+
+    "src-ui/src/components/chat/browser-activity-calls.ts",
+
+    "src-ui/src/float-over-chat/BrowserSessionSurface.tsx",
+
+    "src-ui/src/float-over-chat/useBrowserSessionReads.ts",
+
+    "src-ui/src/float-over-chat/BoundBrowserActivityProvider.tsx",
+
+    "src-ui/src/float-over-chat/shownSources.ts",
+
+    "tests/inline-browser-activity.spec.ts",
+
+    "packages/sdk/src/terminal-view/controller.ts",
+
+    "packages/sdk/src/__tests__/terminal-view/controller.test.ts",
+
+    "scripts/windows-owned-guard.cs",
+
+    "src-server/services/terminal/windows-command-guard.ts",
+
+    "src-server/services/terminal/command-process.ts",
+
+    "src-server/services/terminal/__tests__/command-process.process.test.ts"
   ],
 
   "checks": [

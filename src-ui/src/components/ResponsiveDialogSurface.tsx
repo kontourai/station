@@ -19,6 +19,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
+import { FOCUSABLE_SELECTOR } from '../utils/focusable';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
@@ -26,9 +27,6 @@ import {
   useResponsiveSheetGesture,
   useSheetGesturesPreview,
 } from './useResponsiveSheetGesture';
-
-const FOCUSABLE =
-  'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
 
 type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
 /**
@@ -60,9 +58,9 @@ type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
  *   so they already escape the dock and the free dialog layer is true for
  *   them.
  * - `ShareTargetPickerModal` reaches the dock through `ShareIntakeController`,
- *   which `ChatDock` mounts, and does NOT portal. It is inert today — the
- *   controller returns null unless the `share-intake` capability reports
- *   `enabled` — so it is a latent third instance rather than a live defect,
+ *   which `ChatDock` mounts, and does NOT portal. The controller renders it
+ *   only when the host reports `image-share-intake` enabled (the Android
+ *   app's image share target), so it is a third instance on Android only,
  *   and it is why "portal the two" is not the whole remedy.
  *
  * The sixth, `ProjectKnowledgeViewerModal`, is not in the dock at all, so
@@ -411,7 +409,8 @@ export function ResponsiveDialogSurface({
       panelRef.current?.querySelectorAll<HTMLElement>('*') ?? [],
     ).filter(
       (element) =>
-        element.matches(FOCUSABLE) && !element.hasAttribute('disabled'),
+        element.matches(FOCUSABLE_SELECTOR) &&
+        !element.hasAttribute('disabled'),
     );
     if (controls.length === 0) {
       event.preventDefault();

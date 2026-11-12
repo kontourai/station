@@ -650,7 +650,8 @@
   padding: 7.5px 12px;
 }
 
-.split-pane__detail-skeleton {
+.split-pane__detail-skeleton,
+.split-pane__detail-empty {
   display: flex;
   flex-direction: column;
   gap: 1rem;

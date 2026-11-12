@@ -261,7 +261,7 @@ test.each([500, 426])(
       'a failed acknowledgement was not disclosed',
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Try again' }),
+      screen.getByRole('button', { name: 'Retry' }),
       'the retry affordance disappeared with the failure',
     ).toBeTruthy();
     if (status === 426)
@@ -278,7 +278,7 @@ test.each([500, 426])(
         'the dialog survived an explicit dismissal, trapping the user',
       ).toBeNull(),
     );
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.getByText('App behind the dialog')).toBeTruthy();
     resetUsageTelemetryDisclosureDismissal();
   },

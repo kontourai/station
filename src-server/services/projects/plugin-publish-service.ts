@@ -18,6 +18,7 @@
 import { constants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 import type { Logger } from '../../utils/logger.js';
 import { parsePluginManifestDocument } from '../plugins/plugin-manifest-loader.js';
 import {
@@ -334,17 +335,10 @@ function validBranch(branch: string): boolean {
 
 // Two publishes of one folder at once would race for the same remote tip;
 // the second waits for the first.
-const folderQueues = new Map<string, Promise<unknown>>();
+const folderQueues = createKeyedSerialQueue();
 
 function serialized<T>(folder: string, run: () => Promise<T>): Promise<T> {
-  const previous = folderQueues.get(folder) ?? Promise.resolve();
-  const next = previous.then(run, run);
-  const settled = next.catch(() => undefined);
-  folderQueues.set(folder, settled);
-  void settled.then(() => {
-    if (folderQueues.get(folder) === settled) folderQueues.delete(folder);
-  });
-  return next;
+  return folderQueues.run(folder, run);
 }
 
 export function publishPlugin(

@@ -435,7 +435,7 @@ function RegionPaneFailed({
         description="Try again, or remove it from this region."
         action={
           <>
-            <Button onClick={onRetry}>Try again</Button>
+            <Button onClick={onRetry}>Retry</Button>
             <RemoveRegionPaneButton onRemove={onRemove} />
           </>
         }

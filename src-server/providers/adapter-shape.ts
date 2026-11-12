@@ -6,7 +6,10 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
-import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
+import type {
+  InputRequestContent,
+  SessionGrantScope,
+} from '@kontourai/station-contracts/input-request';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
 import type {
   EngineId,
@@ -294,6 +297,12 @@ export interface ProviderAdapterMetadata {
   /** Native process sandbox can enforce Station's independent-review policy. */
   reviewIsolation?: 'read-only';
   /**
+   * The narrowing session-grant scopes this adapter honours. Absent: none.
+   * A `rule` answer to an adapter that does not declare it is a one-call
+   * accept, because the adapter would read it as its wider per-tool grant.
+   */
+  sessionGrantScopes?: readonly 'rule'[];
+  /**
    * Positive declaration of model omission and override behavior at each
    * lifecycle point. Absence is intentionally fail-closed for model input.
    */
@@ -475,6 +484,17 @@ export interface ProviderAdapterShape {
     threadId: string,
     options?: { signal?: AbortSignal },
   ): Promise<void>;
+  /**
+   * Whether the live engine cannot apply this turn's resolved `modelOptions`
+   * but a fresh start of the same session would: Claude's full access, whose
+   * permission grant the engine only takes at spawn. Orchestration then
+   * relaunches the idle engine in place, from its resume cursor, before the
+   * turn. Absent or `false`: the turn goes to the live engine as is.
+   */
+  turnNeedsEngineRelaunch?(
+    threadId: string,
+    modelOptions: Record<string, unknown> | undefined,
+  ): boolean;
   sendTurn(input: ProviderSendTurnInput): Promise<ProviderTurnStartResult>;
   interruptTurn(
     threadId: string,
@@ -530,12 +550,14 @@ export interface ProviderAdapterShape {
       inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
       /**
-       * With `acceptForSession`: widen the grant to the whole in-process
-       * Station browser server. Honoured only by the Claude adapter, and only
-       * for a request that offered it; other adapters ignore it and grant as
+       * With `acceptForSession`: `server` widens the grant to the whole
+       * in-process Station browser server; `rule` narrows it to the Bash
+       * command prefixes the engine suggested. Honoured only by the Claude
+       * adapter, and only for a request that offered that scope (otherwise a
+       * one-call accept); other adapters ignore it and grant as
        * `acceptForSession` always did.
        */
-      sessionGrantScope?: 'server';
+      sessionGrantScope?: SessionGrantScope;
     },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;
@@ -556,6 +578,14 @@ export interface ProviderAdapterShape {
    * genuinely survives restarts may truthfully report `true`.
    */
   hasSession(threadId: string): Promise<boolean>;
+  /**
+   * Whether the live engine for the thread still runs work past its turn
+   * that dies with its process: background tasks, subagents, and commands
+   * it has not reported an end for. An idle park never stops such an
+   * engine, whatever Station's own child-work record says. Absent: the
+   * adapter cannot tell, and the child-work record alone decides.
+   */
+  hasOpenEngineWork?(threadId: string): boolean;
   stopAll(): Promise<void>;
   /** Implementations must settle pending reads when the signal is aborted. */
   streamEvents(

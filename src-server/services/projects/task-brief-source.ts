@@ -38,6 +38,7 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from '../orchestration/event-store.js';
 import {
   type DigestTurn,
@@ -193,7 +194,7 @@ type WorkClaimRecordLike = Awaited<
 >[number];
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }
 
 const incarnationOf = (task: TaskRecord): TaskMemoryIncarnation => ({

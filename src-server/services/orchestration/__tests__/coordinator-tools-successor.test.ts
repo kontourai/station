@@ -103,7 +103,9 @@ test.each(['codex', 'acp'] as const)(
     const store = new EventStore(
       join(makeTempDir('coordinator-tools-'), 'events.sqlite'),
     );
+    let coordinatorOn = true;
     const service = new OrchestrationService({
+      coordinatorEnabled: () => coordinatorOn,
       eventStore: store,
       eventBus: new EventBus(),
       logger: { debug: vi.fn(), warn: vi.fn() },
@@ -207,6 +209,22 @@ test.each(['codex', 'acp'] as const)(
       replace: false,
       now: Date.now(),
     });
+    // With the coordinator-session preview off the designated chat is an
+    // ordinary chat: no tools to add and no successor to start for them.
+    coordinatorOn = false;
+    expect(
+      await service.resolveCoordinatorStationControl('houston'),
+    ).toBeUndefined();
+    expect(
+      (
+        await service.resolveConversationContinuation(
+          'houston',
+          INTERNAL_SESSION_READ_SCOPE,
+          { provider: engine },
+        )
+      ).startRequired,
+    ).toBe(false);
+    coordinatorOn = true;
     expect(
       await service.resolveCoordinatorStationControl('houston'),
     ).toMatchObject({

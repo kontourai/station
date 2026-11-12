@@ -15,7 +15,7 @@ export const enUSCatalog = {
   'route.generic.title': 'This view stopped working.',
   'route.generic.description':
     'Trying again reloads just this view — the rest of Station, and anything open elsewhere, stays as it is.',
-  'route.retryAction': 'Try again',
+  'route.retryAction': 'Retry',
   'route.troubleshootAction': 'Troubleshoot',
   'route.moreActions': 'More actions for this view',
 } as const;

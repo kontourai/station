@@ -27,6 +27,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
+import { COORDINATOR_PRODUCT_NAME } from '../../../lib/productNames';
 import { FeaturePreviewsSection } from '../FeaturePreviewsSection';
 
 // archive#3313: the standalone /feature-previews view retired into this
@@ -100,5 +101,28 @@ describe('FeaturePreviewsSection', () => {
     expect(catalogEntry).toBeTruthy();
     expect(catalogEntry!.id).toBe('feature-previews');
     expect(catalogEntry!.tabIndex).toBe(-1);
+  });
+
+  test('the coordinator preview row carries the product name Home uses', () => {
+    state.query.error = null;
+    state.query.data = [
+      {
+        id: 'coordinator-session',
+        label: 'Coordinator chat',
+        description: 'Make one chat your personal agent.',
+        enabled: false,
+      },
+      {
+        id: 'coordinator-picture',
+        label: 'Coordinator working picture',
+        description: 'Notes.',
+        enabled: false,
+      },
+    ];
+    render(<FeaturePreviewsSection />);
+    expect(
+      screen.getByText(`Coordinator chat (${COORDINATOR_PRODUCT_NAME})`),
+    ).toBeTruthy();
+    expect(screen.getByText('Coordinator working picture')).toBeTruthy();
   });
 });

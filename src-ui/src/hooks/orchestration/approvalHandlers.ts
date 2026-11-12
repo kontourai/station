@@ -13,6 +13,7 @@ import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -203,6 +204,7 @@ export function raiseRequestOpenedToast(
       ...(toolRequestServerGrantFromPayload(event.payload) === 'server'
         ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
         : {}),
+      ...ruleGrantLabelView(event.payload),
     },
     station,
   );
@@ -216,7 +218,16 @@ type ApprovalToastView = {
   grantLabel?: string;
   /** Set only when the request offers the Station browser server grant. */
   serverGrantLabel?: string;
+  /** Set only when the request offers the command-prefix grant. */
+  ruleGrantLabel?: string;
 };
+
+function ruleGrantLabelView(payload: Record<string, unknown> | undefined): {
+  ruleGrantLabel?: string;
+} {
+  const ruleGrant = toolRequestRuleGrantFromPayload(payload);
+  return ruleGrant ? { ruleGrantLabel: ruleGrant.label } : {};
+}
 
 function showApprovalToast(
   apiBase: string,
@@ -231,7 +242,7 @@ function showApprovalToast(
   const needsContentLoad = requestNeedsContentLoad(event, station);
   const answer = (
     decision: 'accept' | 'acceptForSession' | 'decline',
-    sessionGrantScope?: 'server',
+    sessionGrantScope?: 'server' | 'rule',
   ) => {
     const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
@@ -292,7 +303,11 @@ function showApprovalToast(
         ? approvalDecisionBody(undefined).options.filter(
             (option) => option.effect === 'deny',
           )
-        : approvalDecisionBody(view.grantLabel, view.serverGrantLabel).options
+        : approvalDecisionBody(
+            view.grantLabel,
+            view.serverGrantLabel,
+            view.ruleGrantLabel,
+          ).options
       ).map((option) => ({
         label: option.label,
         variant:
@@ -373,7 +388,7 @@ async function answerFromToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
-  sessionGrantScope?: 'server',
+  sessionGrantScope?: 'server' | 'rule',
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);

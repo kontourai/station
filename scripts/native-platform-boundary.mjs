@@ -4,8 +4,8 @@
 // detection, commands, and events out of feature code and makes the web
 // fallback deterministic.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 export const TAURI_CAPABILITY_MANIFEST =
   'src-desktop/capabilities/default.json';
@@ -456,11 +456,7 @@ export function findTauriResourceBoundaryViolations(
 
 function listTrackedUiSources() {
   return (
-    execFileSyncBounded('git', ['ls-files', 'src-ui/src'], {
-      encoding: 'utf8',
-      windowsHide: true,
-    })
-      .split('\n')
+    gitLsFiles(['src-ui/src'])
       .filter((file) => /\.(?:ts|tsx)$/.test(file))
       // `git ls-files` includes a tracked file removed in the current working
       // tree. Do not make a removal itself prevent the static gate from

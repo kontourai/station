@@ -132,6 +132,8 @@ interface Harness {
 async function harness(
   options: {
     maxPeers?: number;
+    /** How many distinct offers the broker stub hands out; one by default. */
+    offerCount?: number;
     wrongIssuer?: boolean;
     application?: VirtualApplication;
     offerBrowserOrigin?: string;
@@ -218,12 +220,16 @@ async function harness(
     if (url.endsWith('/connections/offers')) {
       if (!h.live) return jsonResponse({ offers: [] });
       offersServed += 1;
-      if (offersServed > 1) return jsonResponse({ offers: [] });
+      if (offersServed > (options.offerCount ?? 1))
+        return jsonResponse({ offers: [] });
       return jsonResponse({
         offers: [
           {
-            clientId: CLIENT_ID,
-            nonce: NONCE,
+            clientId: offersServed === 1 ? CLIENT_ID : randomUUID(),
+            nonce:
+              offersServed === 1
+                ? NONCE
+                : randomBytes(32).toString('base64url'),
             offerSdp: OFFER_SDP,
             expiresAt: Date.now() + 60_000,
             browserOrigin: options.offerBrowserOrigin ?? scope.browserOrigin,
@@ -586,6 +592,38 @@ describe('self-hosted broker pion factory', () => {
       }
     },
   );
+
+  test('at the browser peer ceiling a further offer waits instead of failing the broker', async () => {
+    const statuses: Array<{ state: string; phase: string; reason?: string }> =
+      [];
+    const { h, runtime, startAdapter, fetchStub } = await harness({
+      maxPeers: 1,
+      offerCount: 2,
+      observeStatus: (status) => statuses.push(status),
+    });
+    const requestsTo = (suffix: string) =>
+      fetchStub.mock.calls.filter(([url]) => String(url).endsWith(suffix))
+        .length;
+    await runtime.start();
+    try {
+      await h.admitted;
+      // The first peer stays live (its fake cleanup is pending), so the offer
+      // the same poll reads next is over the ceiling: backpressure, never a
+      // second peer and never a failed runtime.
+      await waitFor(() => requestsTo('/connections/offers') >= 2);
+      // Later ticks leave the browser lane alone while it is full.
+      await new Promise((resolve) => setTimeout(resolve, 2_300));
+      expect(requestsTo('/connections/offers')).toBe(2);
+      expect(startAdapter).toHaveBeenCalledOnce();
+      expect(requestsTo('/connections/answer')).toBe(1);
+      expect(requestsTo('/leases/withdraw')).toBe(0);
+      expect(statuses.at(-1)).toMatchObject({ state: 'registered' });
+      expect(statuses.some((status) => status.state === 'failed')).toBe(false);
+    } finally {
+      h.live = false;
+      await runtime.shutdown().catch(() => undefined);
+    }
+  });
 
   test('wrong-issuer proof fails publication and releases capacity', async () => {
     const { h, runtime, startAdapter } = await harness({

@@ -135,7 +135,7 @@ export const ACCESS_REQUIRED_REGION_NAME = 'Station access required';
 export const PENDING_ACCESS_CHECK_SELECTOR =
   'main[aria-live="polite"]:not(.local-ui-session-recovery)';
 export const DEGRADED_ACCESS_ALERT = /taking longer than expected/i;
-export const HOST_RECOVERY_RELOAD_CONTROL = 'Try again';
+export const HOST_RECOVERY_RELOAD_CONTROL = 'Retry';
 /**
  * `PlatformBootstrap` sits ABOVE this gate (`src-ui/src/main.tsx`) and holds
  * this full-screen loader while it has no platform profile — and keeps it, with

@@ -27,6 +27,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { plural } from '../../utils/plural';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { PaneHeadSlotsContext } from '../../workspace-panes/PaneHeadSlots';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
@@ -117,8 +118,6 @@ const CHECK_STATE_TONE: Record<PullRequestCheckState, PullRequestChipTone> = {
   skipped: 'neutral',
 };
 
-const plural = (count: number, word: string) =>
-  `${count} ${word}${count === 1 ? '' : 's'}`;
 /** "passed", "passed or skipped", "passed, neutral or skipped". */
 const listWords = (words: readonly string[]) =>
   words.length <= 1

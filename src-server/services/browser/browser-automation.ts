@@ -46,6 +46,8 @@ import type {
   LiveSurfaceModifiers,
 } from '@kontourai/station-contracts/live-surface';
 import { BROWSER_SESSION_ID_PATTERN } from '@kontourai/station-contracts/workspace-browser-pane';
+import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
+import { sleep } from '../../utils/sleep.js';
 import type { AgentController } from '../live-surface/control-lease.js';
 import { jpegSize } from '../live-surface/jpeg-size.js';
 import {
@@ -755,7 +757,7 @@ const SELECT_OPTION_FN = `function (by, match) {
 const ACTIVE_ELEMENT = `${PROTO_GET('Document', 'activeElement')}.call(document)`;
 
 export class BrowserAutomation {
-  private readonly chains = new Map<string, Promise<unknown>>();
+  private readonly chains = createKeyedSerialQueue();
   /** Ref tables by agent session AND browser session (N4). */
   private readonly snapshots = new Map<string, SnapshotTable>();
   private readonly worlds = new Map<string, IsolatedWorld>();
@@ -764,8 +766,7 @@ export class BrowserAutomation {
   private readonly stepMs: number;
 
   constructor(private readonly deps: BrowserAutomationDeps) {
-    this.sleep =
-      deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.sleep = deps.sleep ?? sleep;
     this.now = deps.now ?? (() => Date.now());
     this.stepMs = deps.stepDeadlineMs ?? STEP_DEADLINE_MS;
   }
@@ -815,15 +816,7 @@ export class BrowserAutomation {
     browserSessionId: string,
     run: () => Promise<T>,
   ): Promise<T> {
-    const previous = this.chains.get(browserSessionId) ?? Promise.resolve();
-    const next = previous.then(run, run);
-    const tail = next.catch(() => {});
-    this.chains.set(browserSessionId, tail);
-    void tail.then(() => {
-      if (this.chains.get(browserSessionId) === tail)
-        this.chains.delete(browserSessionId);
-    });
-    return next;
+    return this.chains.run(browserSessionId, run);
   }
 
   /** Select, serialize and map failures to typed refusals. */

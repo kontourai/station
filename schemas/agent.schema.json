@@ -221,6 +221,19 @@
       "type": ["object", "null"],
       "description": "Runtime execution configuration",
       "properties": {
+        "sharedTurns": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "mode", "allowedModelIds"],
+          "properties": {
+            "version": { "const": "station.agent-shared-turns/v1" },
+            "mode": { "const": "model-only" },
+            "allowedModelIds": {
+              "type": "array", "minItems": 1, "maxItems": 160, "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^\\S(?:[\\s\\S]*\\S)?$" }
+            }
+          }
+        },
         "agentConnectionId": {
           "type": "string",
           "minLength": 1,

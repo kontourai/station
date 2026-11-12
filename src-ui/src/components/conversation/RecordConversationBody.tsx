@@ -201,6 +201,9 @@ function RecordBody(
             }
             modelSupportsAttachments={false}
             fileAttachmentsSupported={false}
+            // Record replies take no attachments: Paste image is not offered
+            // and the paperclip has no reason to report.
+            onAttachUnavailable={() => {}}
             fontSize={reader.fontSize ?? 14}
             dockHeight={700}
             canModelSelect={false}

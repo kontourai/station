@@ -19,6 +19,7 @@ import {
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -475,7 +476,7 @@ export class MuseServeSession {
     } catch (error) {
       await this.closeHost();
       throw new MuseServeUnavailableError(
-        `session/start failed: ${error instanceof Error ? error.message : String(error)}`,
+        `session/start failed: ${errorMessage(error)}`,
       );
     }
     const session =
@@ -618,7 +619,7 @@ export class MuseServeSession {
         this.deps.logger?.warn('Muse turn/interrupt was not admitted', {
           threadId: this.deps.threadId,
           turnId: live.turnId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }
@@ -754,7 +755,7 @@ export class MuseServeSession {
       spawned = this.deps.spawnHost(posture);
     } catch (error) {
       throw new MuseServeUnavailableError(
-        `could not start muse serve: ${error instanceof Error ? error.message : String(error)}`,
+        `could not start muse serve: ${errorMessage(error)}`,
       );
     }
     const epoch = ++this.hostEpoch;
@@ -790,7 +791,7 @@ export class MuseServeSession {
       throw new MuseServeUnavailableError(
         error instanceof MuseServeTimeoutError
           ? 'the host did not answer initialize'
-          : `initialize failed: ${error instanceof Error ? error.message : String(error)}`,
+          : `initialize failed: ${errorMessage(error)}`,
       );
     }
     const schema =
@@ -869,7 +870,7 @@ export class MuseServeSession {
     } catch (error) {
       await this.closeHost();
       throw new SendTurnRefusedError(
-        `Muse's host could not be restarted: ${error instanceof Error ? error.message : String(error)}`,
+        `Muse's host could not be restarted: ${errorMessage(error)}`,
         'provider_error',
       );
     }
@@ -907,7 +908,7 @@ export class MuseServeSession {
       this.deps.logger?.warn('Muse host termination was not confirmed', {
         threadId: this.deps.threadId,
         pid: host.spawned.process.pid,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       if (retainUnconfirmed) return false;
       const processHandle = host.spawned.process;
@@ -1924,7 +1925,7 @@ export class MuseServeSession {
             this.deps.logger?.warn('Muse approval stop was not admitted', {
               threadId: this.deps.threadId,
               approvalId,
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             });
           });
       }
@@ -2055,7 +2056,7 @@ export class MuseServeSession {
         this.deps.logger?.warn('Muse approval/decide was not admitted', {
           threadId: this.deps.threadId,
           approvalId: pending.approvalId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
         void this.retryDecide(pending, key);
       });
@@ -2251,7 +2252,7 @@ export class MuseServeSession {
       );
     } catch (error) {
       throw new SendTurnRefusedError(
-        `Muse refused to change its approval mode: ${error instanceof Error ? error.message : String(error)}`,
+        `Muse refused to change its approval mode: ${errorMessage(error)}`,
         'permission_denied',
       );
     }
@@ -2295,7 +2296,7 @@ export class MuseServeSession {
       });
     } catch (error) {
       throw new SendTurnRefusedError(
-        `Muse refused ${method}: ${error instanceof Error ? error.message : String(error)}`,
+        `Muse refused ${method}: ${errorMessage(error)}`,
         'provider_error',
       );
     }

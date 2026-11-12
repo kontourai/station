@@ -21,8 +21,15 @@ import {
   recordReplayConnection,
   recordReplaySnapshot,
 } from './replay/capture-tap';
-import { createStreamCursorTracker, parseStreamSequence } from './resumeCursor';
-import { clearSequencedLiveEvents } from './sequencedLiveEvents';
+import {
+  createStreamCursorTracker,
+  GENERAL_EVENTS_RESUMED_EVENT,
+  parseStreamSequence,
+} from './resumeCursor';
+import {
+  clearSequencedLiveEvents,
+  raiseSequencedLiveFloor,
+} from './sequencedLiveEvents';
 import {
   sharedOrchestrationStreamFailed,
   sharedOrchestrationStreamMessage,
@@ -39,6 +46,44 @@ import {
   sessionReadModelRefreshState,
 } from './streamQueryClientRegistry';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
+
+/**
+ * #3075: the inventory and read-marker queries this stream's Station and
+ * authority own. Unscoped keys belong to the current connection; scoped ones
+ * must name this API base and, when known, this authority.
+ */
+function isReadStateQuery(
+  queryKey: readonly unknown[],
+  apiBase: string,
+  authority: string | undefined,
+): boolean {
+  const [root, base, scope] = queryKey;
+  if (root === 'read-markers') return true;
+  if (root !== 'conversation-inventory') return false;
+  if (queryKey.length === 1) return true;
+  return base === apiBase && (authority === undefined || scope === authority);
+}
+
+/**
+ * #3075 review: this person read something on another client. Every cached
+ * read-state query is marked stale at once, which fetches nothing, so a
+ * surface mounted later reads fresh; the active ones are re-read through the
+ * inventory's own refresh ({@link requestConversationInventoryRefresh}): at
+ * most one now and one at the end of its window however many marks arrive,
+ * after any read in flight settles, never cancelling it.
+ */
+function requestReadStateRefresh(
+  client: QueryClient,
+  apiBase: string,
+  authority: string | undefined,
+): void {
+  void client.invalidateQueries({
+    predicate: (query) => isReadStateQuery(query.queryKey, apiBase, authority),
+    refetchType: 'none',
+  });
+  sessionReadModelRefreshState(apiBase).readMarkersOwed = true;
+  requestConversationInventoryRefresh(apiBase);
+}
 
 interface OwnedStream {
   connection: FetchSseConnection;
@@ -174,6 +219,40 @@ export function resyncOrchestrationEventStream(apiBase: string): void {
   const owned = activeSources.get(apiBase);
   if (owned?.parked) connectOrchestrationEventStream(apiBase);
   else notifyOrchestrationAuthorityChanged(apiBase);
+}
+
+/**
+ * Tells general-event listeners that the connection carrying those events
+ * re-opened after a failure (see `GENERAL_EVENTS_RESUMED_EVENT`). The
+ * transport knows which connection that is (the shared stream, or the legacy
+ * `/events` one), and a listener sees the same frame from both.
+ */
+function announceGeneralEventsResumed(apiBase: string): void {
+  sharedOrchestrationStreamMessage(apiBase, {
+    event: 'station:general',
+    data: JSON.stringify({ event: GENERAL_EVENTS_RESUMED_EVENT, data: '{}' }),
+  });
+}
+
+/**
+ * Cuts short the backoff of every live stream that is not parked. For the
+ * health poll's transition into `connected`: after a server restart the poll
+ * recovers within its own interval while a stream can be up to thirty seconds
+ * into a wait, and neither focus nor `online` fires to end it.
+ *
+ * `retry()` only ends a wait, so a healthy stream is untouched, and the
+ * ladder keeps its place: an attempt that fails again waits the next, longer
+ * step. A parked (401/403) stream is left to its floor (see
+ * `PARKED_RETRY_MIN_INTERVAL_MS`): the server answering again does not repair
+ * a refused credential.
+ */
+export function wakeOrchestrationEventStreams(): void {
+  for (const owned of activeSources.values()) {
+    if (owned.parked || owned.ended || owned.connection.signal.aborted)
+      continue;
+    owned.connection.retry();
+    owned.legacyGeneral?.retry();
+  }
 }
 
 function reensureRequestedStreams(): void {
@@ -322,9 +401,24 @@ function requestConversationInventoryRefresh(apiBase: string): void {
     );
     if (!client) return;
     const queryKey = streamQueryPrefix('conversation-inventory', apiBase);
-    if (client.isFetching({ queryKey, type: 'active' }) > 0) {
+    // #3075: owed read state is re-read in this same pass: every inventory
+    // this stream's Station and authority own, scoped or not (the dock's
+    // own query names no read target), and the read-marker summaries. They
+    // wait for their own reads in flight too.
+    const authority =
+      streamConnections.get(apiBase)?.requestScope.authorityKey ??
+      currentStreamAuthorityKey(apiBase, client);
+    const readState = {
+      type: 'active' as const,
+      predicate: (query: { queryKey: readonly unknown[] }) =>
+        isReadStateQuery(query.queryKey, apiBase, authority),
+    };
+    const busy = () =>
+      client.isFetching({ queryKey, type: 'active' }) > 0 ||
+      (state.readMarkersOwed && client.isFetching(readState) > 0);
+    if (busy()) {
       const stop = client.getQueryCache().subscribe(() => {
-        if (client.isFetching({ queryKey, type: 'active' }) > 0) return;
+        if (busy()) return;
         stop();
         state.inventoryAwaitingSettle = undefined;
         requestConversationInventoryRefresh(apiBase);
@@ -344,6 +438,10 @@ function requestConversationInventoryRefresh(apiBase: string): void {
       },
       { cancelRefetch: false },
     );
+    if (state.readMarkersOwed) {
+      state.readMarkersOwed = false;
+      void client.invalidateQueries(readState, { cancelRefetch: false });
+    }
   };
   const elapsed = Date.now() - state.inventoryLastAt;
   if (elapsed >= CONVERSATION_INVENTORY_REFRESH_WINDOW_MS) run();
@@ -483,8 +581,14 @@ export function ensureOrchestrationEventStream(
   if (station) {
     if (!station.isCurrent() || station.targetApiBase !== apiBase)
       return () => {};
-    authorityKey = station.runtimeKey;
+    // A host station names the host's own authority, which the app-wide
+    // transport and the dock ensure under the caller's plain key. Keying it by
+    // its runtime key made every alternating ensure of the same apiBase read
+    // as an authority change: the live stream closed, its cursor was dropped,
+    // and the reconnect's snapshot was taken for a first one, so the events
+    // in each gap never arrived. Only a remote station is its own authority.
     if (station.routeKind !== 'host') {
+      authorityKey = station.runtimeKey;
       general = false;
       sharedRealtime = false;
     }
@@ -674,6 +778,8 @@ function connectOrchestrationEventStream(
   // the catch-up a reconnect fallback triggers.
   let hasReceivedSnapshot = basesWithSnapshot.has(apiBase);
   let receiving = false;
+  // Set by a failure; the next open owes general-event listeners a notice.
+  let generalEventsMissed = false;
   sharedOrchestrationStreamRetrying(apiBase);
   const authenticatedStream = fetchSSE(
     `${apiBase}/api/orchestration/events${streamModes.get(apiBase) ? '?includeGeneral=1' : ''}`,
@@ -715,6 +821,11 @@ function connectOrchestrationEventStream(
           if (generalOwners.has(apiBase)) startLegacyGeneral(apiBase);
         }
         sharedOrchestrationStreamOpened(apiBase, response);
+        if (generalEventsMissed) {
+          generalEventsMissed = false;
+          // In legacy mode the `/events` connection announces its own.
+          if (streamModes.get(apiBase)) announceGeneralEventsResumed(apiBase);
+        }
       },
       onMessage: (raw) => {
         if (
@@ -744,6 +855,39 @@ function connectOrchestrationEventStream(
             } catch {
               caughtUp = {};
             }
+          }
+          const knownEpoch = streamEpochs.get(apiBase);
+          if (
+            caughtUp.epoch &&
+            knownEpoch !== undefined &&
+            caughtUp.epoch !== knownEpoch
+          ) {
+            // A retry in place sends the cursor without the epoch (the
+            // transport fixes its headers when it is created), so a different
+            // store whose head has reached that cursor answers with a replay
+            // of its own events. This marker is the first frame to name the
+            // store. Discard what the replay applied, as an epoch change on a
+            // snapshot does, and replace the transport: without a cursor the
+            // server sends a snapshot, which this document handles as a
+            // reconnect fallback.
+            activeChatsStore.clearConversationActivity(station);
+            clearSequencedLiveEvents(apiBase);
+            const client = currentStreamQueryClient(
+              apiBase,
+              station?.requestScope.authorityKey,
+            );
+            if (client) workObservation(client, station).resetStreamEpoch();
+            settleSemanticDeliveryBuffer(apiBase, true);
+            streamEpochs.set(apiBase, caughtUp.epoch);
+            appliedCursors.delete(apiBase);
+            activeSources.delete(apiBase);
+            clearDeferredParkedRetry(owned);
+            owned.legacyGeneral?.close();
+            owned.connection.close();
+            if (setStreamConnectionState(apiBase, 'interrupted'))
+              recordReplayConnection(apiBase, 'interrupted');
+            connectOrchestrationEventStream(apiBase);
+            return;
           }
           if (caughtUp.sessions) {
             applyOrchestrationSnapshot(
@@ -804,6 +948,9 @@ function connectOrchestrationEventStream(
           cursor.adopt(raw.id);
           if (parseStreamSequence(raw.id) !== undefined)
             appliedCursors.set(apiBase, raw.id!);
+          // Nothing at or below this cursor is delivered live: a transcript
+          // window served before it may be missing what lies between.
+          raiseSequencedLiveFloor(apiBase, parseStreamSequence(raw.id));
           if (!station || station.routeKind === 'host')
             recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
           applyOrchestrationSnapshot(payload, {
@@ -901,6 +1048,20 @@ function connectOrchestrationEventStream(
           // `lastEventAt` into a second silence detector; the watchdog's
           // narrower progress derivation is serialized on that projection.
           requestSessionReadModelRefresh(apiBase);
+        } else if (raw.event === SERVER_EVENTS.READ_MARKERS_CHANGED) {
+          // #3075: this person read something on another client. Re-read the
+          // server's answer; the frame itself says nothing more.
+          const client = currentStreamQueryClient(
+            apiBase,
+            station?.requestScope.authorityKey,
+          );
+          if (client)
+            requestReadStateRefresh(
+              client,
+              apiBase,
+              station?.requestScope.authorityKey ??
+                currentStreamAuthorityKey(apiBase, client),
+            );
         }
       },
       // `fetchSSE` owns transient retry. Keep its single-flight entry until it
@@ -914,6 +1075,7 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
+        generalEventsMissed = true;
         sharedOrchestrationStreamFailed(apiBase, error);
         // Do not leave the last partial answer invisible during retry/backoff.
         settleSemanticDeliveryBuffer(apiBase, false);
@@ -1022,6 +1184,12 @@ function startLegacyGeneral(apiBase: string): void {
   if (station && station.routeKind !== 'host') return;
   const owned = activeSources.get(apiBase);
   if (!owned || owned.legacyGeneral) return;
+  // Set by a failure; the next open owes listeners a notice.
+  let generalEventsMissed = false;
+  const current = () =>
+    activeSources.get(apiBase) === owned &&
+    owned.legacyGeneral === legacy &&
+    !legacy.signal.aborted;
   // General events have no replay cursor, so do not wait for orchestration.
   const legacy = fetchSSE(`${apiBase}/events`, {
     authentication: 'required',
@@ -1029,13 +1197,16 @@ function startLegacyGeneral(apiBase: string): void {
     headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
     retryDelayMs: 3000,
     maxRetryDelayMs: 30_000,
+    onOpen: () => {
+      if (!current() || !generalEventsMissed) return;
+      generalEventsMissed = false;
+      announceGeneralEventsResumed(apiBase);
+    },
+    onError: () => {
+      generalEventsMissed = true;
+    },
     onMessage: (message) => {
-      if (
-        activeSources.get(apiBase) !== owned ||
-        owned.legacyGeneral !== legacy ||
-        legacy.signal.aborted
-      )
-        return;
+      if (!current()) return;
       sharedOrchestrationStreamMessage(apiBase, {
         event: 'station:general',
         data: JSON.stringify({ event: message.event, data: message.data }),

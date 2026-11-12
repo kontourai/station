@@ -100,6 +100,26 @@ materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
 remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
 references describe cleanup and uncertain delivery outcomes.
 
+### Station orchestration instructions receipt
+
+`ResolvedAgentDefinition.stationInstructions` (`@kontourai/station-contracts/provider`)
+carries Station-owned orchestration guidance, composed for one Session from the
+Station Control tools it is actually offered. It is separate from the
+Agent-authored `systemPrompt`, and is set only for the Claude system-prompt
+append, after an authored prompt. `SessionCapabilityDeliveryMetadata.stationInstructions`
+(`StationInstructionsReceipt`) is the receipt: `version: 1`, the composed
+`sections` ids, the text `digest`, the `channel` (`system-prompt-append` or
+`first-turn`) and, for the first-turn channel, the `firstTurnText` that the
+first message carries. `delivered` is written only by the Claude adapter, after
+it checks that `station-control` is among the servers it gave the session; it
+reports whether the append reached the engine, not whether the model followed
+it. The first-turn channel never sets it, so absent means "not confirmed", not
+"not delivered". Both fields are additive and optional and are absent unless
+the `station-orchestration-instructions` Feature Preview was on when the
+Session was resolved. The
+[orchestration instructions section](../guides/self-configuring-agent.md#orchestration-instructions)
+describes delivery per engine.
+
 ## Modules
 
 `@kontourai/station-contracts/session-goal` owns provider-neutral Goal,
@@ -288,7 +308,8 @@ bytes, publication references, byte/height limits and theme variable names for
 conversation access. Filesystem preparation stays in the server.
 
 The `@kontourai/station-contracts/terminal-transport` subpath exports the
-terminal binary frame codec, limits, the socket's `restart` request
+terminal binary frame codec (with the version 2 resize frame and its size
+codec), limits, the socket's `restart` request
 (`TerminalRestartRequest`, with `TERMINAL_SUBDIRECTORY_MAX_LENGTH`) and the
 observe/operate scope predicate. The
 frame limit bounds unacknowledged output records independently of byte credit,
@@ -337,7 +358,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets. `RegistryItem.mcpServer` (`RegistryMcpServerListing`) describes an MCP subregistry entry: name, version, schema, usable remote, `authMode`, derived `qualification` (`qualified`, `setup-required`, `blocked`, `unqualified`), launch stage, `contentTrust`, `trustReadOnlyHints` and the `unavailable` reasons that refuse Add; `RegistryMcpSourceStatus` is one source's freshness and refusals ([design](../design/mcp-subregistry-curation.md)) |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from: a Claude subagent by session and agent id (`claude-subagent`), a Codex child by its thread id under the session's `CODEX_HOME` (`codex-thread`, its rollout file), never by a path. An `unresolved` child may carry `endedBy: 'engine-exit'`: the engine process it ran in died under it (a crash, a signal, memory exhaustion). A stop someone requested is not one: its children read "No result". Unlike a bare `unresolved` that is an observed end, so no later settle corrects it, and `childWorkDisplayStatus` reads it as `interrupted`. It is a field rather than a status so a client built before it, which drops unknown members, keeps showing "No result" instead of an unknown status; the wire statuses stay the six released clients know. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `workKind` says what it is (`agent`, `command` for a background shell command, `monitor` for one a Monitor launched); `childWorkKindOf` reads it, treating older Claude history whose `kindLabel` is the raw `local_bash` task type as a command and anything else as an agent, and only an agent has a model, instructions or transcript. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from: a Claude subagent by session and agent id (`claude-subagent`), a Codex child by its thread id under the session's `CODEX_HOME` (`codex-thread`, its rollout file), never by a path. An `unresolved` child may carry `endedBy: 'engine-exit'`: the engine process it ran in died under it (a crash, a signal, memory exhaustion). A stop someone requested is not one: its children read "No result". Unlike a bare `unresolved` that is an observed end, so no later settle corrects it, and `childWorkDisplayStatus` reads it as `interrupted`. It is a field rather than a status so a client built before it, which drops unknown members, keeps showing "No result" instead of an unknown status; the wire statuses stay the six released clients know. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
@@ -351,15 +372,15 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
-| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`, and the optional `owner` that marks a Task-owned worktree (`{ kind: 'task', taskId }`, [#4507](../design/task-dispatcher.md#workspace-isolation)); see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
-| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
+| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`, and the optional `owner` that marks a Task-owned worktree (`{ kind: 'task', taskId }`, [#4507](../design/task-dispatcher.md#workspace-isolation)); see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. It also names a worktree Session's one output settlement (`WorktreeOutputSettlement`, its outcome, actor, evidence, request and refusal codes); see [worktree output settlement](../design/isolated-agent-runs.md#worktree-output-settlement). Types only: the route validates the request. |
+| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494), and the content-free confinement preflight a Station reports before any start with its boundary parser `parseConfinementPreflight` (#4774); the restricted-network plan, the record's `network: 'restricted'`, the preflight's `restrictedNetwork` fact and the `confinedNetwork` setting's parser `parseConfinedNetworkSetting` (#4769); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). A validated continuation without an owned-worktree binding reports its server-read bound workspace; owned worktrees retain the existing repository-root receipt form; the optional `confinement` is the started session's recorded confinement, attached after the start |
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
-| `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
+| `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared. `SessionGrantScope` (`server` \| `rule`) scopes a session decision option |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
-| `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
+| `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, optional registered viewer `sourceId` on human batches and source open/close lease actions, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads, including bounded network metadata and picked-element provenance |
 | `@kontourai/station-contracts/knowledge-memory` | Wire shapes for private-memory review, recall, the session brief and the per-run measurement record (`station.memory-measurement/1`). Plain shapes only: the Knowledge Kit and Survey own what the words mean |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
@@ -907,6 +928,14 @@ and its status and limits, and
 `isCoordinatorWakeClientTurnId`. The handshake advertises the routes as
 `StationCapabilityFlags.coordinatorSession`, withdrawn on a hosted Station.
 
+`@kontourai/station-contracts/chat-attachment` also owns
+`QueuedChatAttachmentDescriptor` (kind, name, MIME type, size), the form a
+queued follow-up's files take on `ConversationInboxEntry.attachments`, and
+`QUEUED_ATTACHMENT_UNAVAILABLE_CODE` (`attachment_unavailable`), an inbox
+entry's refusal when a held file is no longer stored. A host that holds files
+with busy follow-ups advertises `StationCapabilityFlags.followUpAttachments`,
+withdrawn on a hosted Station.
+
 `@kontourai/station-contracts/station-control-refusal` owns the refusal view
 a transcript shows for a station-control tool (`StationControlRefusalView`:
 code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
@@ -914,6 +943,13 @@ reads it only from a station-control tool's whole result, and
 `stationControlToolName`. A history window carries it whole on
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
+
+`@kontourai/station-contracts/station-tool-phrases` words Station's own tool
+calls (#3418). `stationToolOf` recognises a Station tool by name (or a bare name
+plus `server`); `stationToolPhrase` returns its past, progressive or bare phrase
+from the call's arguments. Transcript rows, the live progress line and the
+Session digest's `label` all read it. A server test fails when a registered
+tool has no phrase.
 
 `@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
 (the claude.ai page a Claude Code `Artifact` publish produced, and its
@@ -1002,6 +1038,7 @@ non-retryable.
 | `delegation_files_turn_refused` | `provider_error` | `false` |
 | `delegation_files_outcome_unknown` | `indeterminate` | `false` |
 | `delegation_files_cleanup_failed` | `provider_error` | `false` |
+| `attachment_unavailable` | `input_unsupported` | `false` |
 | `stage_not_found` | `input_unsupported` | `false` |
 | `stage_expired` | `input_unsupported` | `false` |
 | `stage_forbidden` | `permission_denied` | `false` |
@@ -2258,8 +2295,130 @@ publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
 no such lock spans provider execution. Unsharing can withhold a pending answer,
 but does not retroactively redact text already published in the Room.
 
+A Project's room holds named channels (`ProjectRoomChannel`): each channel is
+one room, and its `channelId` is that room's `roomId`. The existing room is
+the default channel, named `PROJECT_ROOM_DEFAULT_CHANNEL_NAME` (`general`).
+`PROJECT_ROOM_LIMITS` bounds channels per Project (`channelsPerProject`, 50,
+archived included), name length (`channelNameLength`, 80) and topic size
+(`channelTopicBytes`, 250). `parseProjectRoomChannelName` accepts lowercase
+ASCII letters and digits in hyphen-separated runs and refuses anything else,
+including a name one character past the limit; it never trims, lowercases or
+truncates. `projectRoomChannelNameProblem` and `projectRoomChannelTopicProblem`
+name the reason (`empty`, `too_long`, `format`) so a client can explain it
+inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInput`
+(`topic: null` clears) and `parseProjectRoomChannelList` are the wire parsers.
+
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
+
+## Read marker contracts
+
+`@kontourai/station-contracts/read-markers` defines unread state that the
+server keeps (#3075). The server stores one marker per person and
+conversation: the highest version that person has been shown. It covers agent
+conversations, Project rooms and Task rooms. The
+[service](../../src-server/services/read-markers/read-marker-service.ts) enforces
+three rules:
+
+- The marker belongs to the request's person
+  ([`readMarkerPersonKey`](../../src-server/services/read-markers/read-marker-service.ts)).
+  On a personal Station the local operator and each paired device that holds
+  owner standing (`DevicePairingService.deviceHasOwnerStanding`) are one
+  person, so reading on one clears unread on the others. Any other device,
+  such as a read-only visitor, is its own person and never receives the
+  owner's changes. On a hosted Station it is the verified
+  person inside the tenant, so one member reading never clears another's; a
+  request that carries only the tenant has no read state and is refused. No
+  body field names a person.
+- Marking read keeps the higher of the stored and requested versions. An older
+  or repeated mark changes nothing.
+- A version above the conversation's current version is refused
+  (`read_marker_future_version`, HTTP 409). This applies to
+  `POST /api/conversations/:id/acknowledgement` too.
+
+Versions are content versions: they move only when something a person would
+read is appended, never on lifecycle bookkeeping (start, stop, exit, restore,
+reindex, settings or metadata). For an agent conversation the event store
+maintains the version as a projection
+([`orchestration_thread_content`](../../src-server/services/orchestration/event-store.ts)):
+the same write that appends readable transcript content (a person's prompt,
+assistant text, a tool result, host images, or a turn completing, ending
+unfinished or failing) raises the Session's version to that event's
+`global_sequence`. A conversation's `readState.version` is the highest across
+its Sessions, read as one primary-key lookup per Session, never a history
+scan. It is monotonic and opaque: compare it only with versions of the same
+conversation. A file-backed conversation has no lifecycle events and uses the
+epoch milliseconds of its own `updatedAt`.
+
+Every marker lives in the
+[read-marker store](../../src-server/services/read-markers/read-marker-store.ts).
+A client marks read the content version it rendered (`readVersion` on
+`POST /api/conversations/:id/acknowledgement`, or `version` on
+`POST /api/read-markers/mark`), never more than the current one. Nothing is
+inferred from timestamps: a false unread is acceptable, a false read is not.
+An older client that sends only `updatedAt` records "last viewed" and moves
+no marker, so its conversations read unread until it sends `readVersion`. The
+inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
+Just finished reads; an acknowledgement writes it alongside, and unread never
+reads it. A Project room uses its `checkpoint.lastSeq`; each named channel is
+its own room, so its `roomId` keys its own marker (#4792). A Task room uses
+`checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
+new marker.
+
+Read state begins once per home, at the event store's migration cutoff.
+Before server-kept unread there was no unread, so on a personal Station the
+owner reads every runtime conversation's content up to the cutoff, and every
+file-backed conversation's up to the moment read state began, as seen, as
+before upgrading. The owner is exactly one key, `personal:owner`, fixed by
+Station's own rules: the local operator, a bare personal principal, and a
+paired device with owner standing all resolve to it. Every other key,
+including a visitor device, has no baseline, so its history reads unread. A
+hosted Station gives nobody a baseline: all history from before the upgrade
+reads unread there. Who had a record before the upgrade is never sampled.
+Anything appended after the cutoff reads unread until rendered, for
+everyone.
+
+The cutoff is the store's high-water `global_sequence` (a contiguous prefix)
+when the event store opens, written once before the migration's first batch.
+A resumed or second initializer reuses it, and completion never changes it.
+The migration runs while the event store opens: a failure (another writer
+holding the lock past the busy timeout, an interrupted batch) fails the
+open, and the next open reuses the cutoff and resumes at the last committed
+batch.
+The event store backfills the projection up to the cutoff in bounded batches,
+each committed with its progress cursor under the writer lock, so an
+interrupted start resumes where it stopped and a batch finding the migration
+already complete does nothing. Content appended during or after the
+migration is projected by its own append and never falls inside the cutoff.
+Recorded views are not converted, and nothing is inferred from timestamps.
+
+Each field the built-in Home's work rows carry is part of the Home role's
+projection ([`workspace-home-role`](../../packages/contracts/src/workspace-home-role.ts)),
+so adding `unread`, `readVersion` and `readStateUnavailable` widens it. Under
+the role rules a widened projection is a new grant: an existing Home-role
+plugin grant needs re-consent, and until then the built-in Home is shown with
+an explanation. This is accepted, not worked around.
+
+A marker that moves emits `read-markers:changed` (scoped). The orchestration
+event stream forwards it only to that person's own streams, with an empty
+payload. Each open client re-reads its inventory and summaries through the
+inventory's own refresh: at most once now and once at the end of its window,
+never cancelling a read in flight.
+
+The marker store decodes strictly, and never reads a corrupt record as "read".
+One person's malformed record refuses only that person's read state (their
+rooms and conversations read as unknown). A store whose envelope does not
+decode has no read state for anyone. `GET /api/conversations` then still lists
+every conversation, with `readState: { version, unavailable: true }`. An
+acknowledgement store that does not decode costs only "last viewed".
+
+`parseReadMarkerSummaryRequest` refuses more than
+`READ_MARKER_SUMMARY_MAX_TARGETS` (100) targets rather than truncating. A target
+the caller cannot read is `{ target, unavailable: true }`, whether or not it
+exists. Room items carry `unreadCount` (every record after the marker,
+capped at `READ_MARKER_UNREAD_COUNT_CAP`). Agent conversations carry no count:
+their version is a time. There is no "mentions me" field yet: structured
+mentions (#4799) do not exist, so nothing could compute one.
 
 ## Project knowledge registration ownership
 
@@ -2489,3 +2648,25 @@ qualification limits.
 defaulting to `true`. It controls the installed app’s first-launch changelog
 after an upgrade; it does not control update downloads, installation, or
 release availability.
+
+### Shared Task agent request contracts
+
+`task-room-work` also declares separately negotiated shared work, context, and
+result versions. Shared requests bind an expected actor, Task incarnation,
+operation, Agent, exact model, brief revision and digest, selected published
+results, prompt, and new or existing thread. The expected actor is an equality
+precondition; it is not authority. Result content digests cover the published
+UTF-8 Markdown, including any published truncation notice. A reference does not
+grant the private full answer. Unknown request fields are rejected. The closed
+`SharedWithdrawalCommand` carries the work version, expected actor, Project and
+Task identity including incarnation, operation ID, and original canonical input
+digest. These are equality preconditions, not credentials or authority. A closed
+`SharedWorkRefusalReply` adds `kind: not-sent` and a bounded refusal reason to
+that identity. A future receiver may issue it only before durable acceptance or
+mutation; it is an attestation, not a credential.
+
+`AgentExecutionConfig.sharedTurns` is an operator-owned, versioned model-only
+declaration with a nonempty unique allowlist. It is separate from Agent audience
+and Project execute permission. It neither provides compute consent by itself
+nor establishes runtime confinement. Shared routes and admission are not
+implemented by these declarations.

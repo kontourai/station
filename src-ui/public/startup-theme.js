@@ -50,6 +50,12 @@
     }
   }
   root.dataset.theme = theme;
+  // Density and motion (#4692), from the same source as the mode and resolved
+  // like lib/display-preferences.ts: anything but `compact` is Comfortable,
+  // anything but `reduce` follows the device.
+  root.dataset.density =
+    saved?.density === 'compact' ? 'compact' : 'comfortable';
+  if (saved?.motion === 'reduce') root.dataset.motion = 'reduce';
 
   // Color theme (docs/decisions/user-color-themes.md): stamp the selection the
   // generated stylesheet keys on, and its page canvas as theme-color, before

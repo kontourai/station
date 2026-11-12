@@ -346,6 +346,7 @@ const merged = {
 };
 const sourceNames = [
   'PR source admission',
+  'Pinned actionlint artifact',
   'Repository source scans',
   'fast-checks plan',
   'fast-checks statics',
@@ -514,6 +515,36 @@ describe('merged optional-tail retirement through the real GitHub HTTP boundary'
     expect(result.stdout).toContain(
       'terminal cancellation is not yet verified',
     );
+  });
+  it('retires a run whose inventory includes the successful actionlint artifact producer (#4748)', async () => {
+    const world = mergedWorld();
+    const producer = world.jobs.find(
+      (job) => job.name === 'Pinned actionlint artifact',
+    );
+    // The row is really there and really succeeded: otherwise this proves nothing.
+    expect(producer?.conclusion).toBe('success');
+    expect((await exerciseMerged(world)).cancelled).toEqual([holder.id]);
+  });
+  it.each(['failure', 'cancelled', 'timed_out', 'neutral'])(
+    'a %s actionlint artifact producer does not authorize retirement (#4748)',
+    async (conclusion) => {
+      const world = mergedWorld();
+      const producer = world.jobs.find(
+        (job) => job.name === 'Pinned actionlint artifact',
+      );
+      if (!producer) throw new Error('Expected the producer row.');
+      producer.conclusion = conclusion;
+      expect((await exerciseMerged(world)).cancelled).toEqual([]);
+    },
+  );
+  it('does not treat a similarly named job as the reviewed producer (#4748)', async () => {
+    const world = mergedWorld();
+    const producer = world.jobs.find(
+      (job) => job.name === 'Pinned actionlint artifact',
+    );
+    if (!producer) throw new Error('Expected the producer row.');
+    producer.name = 'Pinned actionlint artifact (copy)';
+    expect((await exerciseMerged(world)).cancelled).toEqual([]);
   });
   it.each(['skipped', 'success', 'failure', 'cancelled'])(
     'a legacy corpus row with %s authorizes retirement only when skipped',

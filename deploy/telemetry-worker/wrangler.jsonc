@@ -11,6 +11,9 @@
   "preview_urls": false,
   "routes": [{ "pattern": "telemetry.kontourai.io", "custom_domain": true }],
   "vars": {
+    // Set ACCESS_TEAM_DOMAIN and ACCESS_AUDIENCE in deployment configuration
+    // for the Access application protecting /insights and its child paths.
+    // Without both, read-only browser insights fail closed with 503.
     // Retained Lite rows (pings plus feedback), database bytes and UTC days
     // kept including today. Ingestion refuses with 507 at either ceiling.
     "LITE_MAX_ROWS": "1000000",

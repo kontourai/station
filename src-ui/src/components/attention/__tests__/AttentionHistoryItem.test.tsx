@@ -4,12 +4,15 @@
 
 import type {
   ApprovalAttentionItem,
+  GateBlockedAttentionItem,
+  GateExceptionAttentionItem,
   GateReviewAttentionItem,
+  GateRouteBackAttentionItem,
   ProposedChangeAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const acknowledge = vi.fn();
 const acknowledgeAsync = vi.fn(() => Promise.resolve());
@@ -40,6 +43,7 @@ import {
   chooseRowAction,
   openRowAction,
 } from '../../../__tests__/helpers/row-menu';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { inboxContextParts } from '../../notifications/inboxContext';
 import { AttentionHistoryItem } from '../AttentionHistoryItem';
 
@@ -181,9 +185,9 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     // The tray's one-line context keeps the engine; the agent is on the page.
     const context = screen.getByTestId('inbox-context');
     expect(context.textContent).toContain('Engine: Claude Code');
-    // `formatNotificationTime` renders a fresh stamp as "Just now" — the
+    // `formatNotificationTime` renders a fresh stamp as "now" — the
     // point is that a <time> exists at all, which it did not before.
-    expect(screen.getByText('Just now')).toBeTruthy();
+    expect(screen.getByText('now')).toBeTruthy();
   });
 
   test('an unrecorded cause says so rather than rendering nothing', () => {
@@ -365,5 +369,107 @@ describe('AttentionHistoryItem — decision kinds', () => {
       screen.getByRole('link', { name: 'Open review' }).getAttribute('href'),
     ).toBe('/projects/campfit/layouts/review?review=review-session-1');
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
+  });
+});
+
+describe('AttentionHistoryItem Flow gate rows', () => {
+  const FLOW_HREF = '/projects/station/flow-console?run=run-1';
+  const base = {
+    createdAt: '2026-06-28T00:00:02.000Z',
+    updatedAt: '2026-06-28T00:00:02.000Z',
+    openHref: FLOW_HREF,
+    source: {
+      threadId: 'thread-1',
+      runId: 'run-1',
+      gateId: 'verify',
+      projectSlug: 'station',
+    },
+  };
+  const rows = [
+    {
+      ...base,
+      id: 'gate-route-back:run-1:verify',
+      kind: 'gate-route-back',
+      title: 'Route back: verify',
+    } as GateRouteBackAttentionItem,
+    {
+      ...base,
+      id: 'gate-blocked:run-1:verify',
+      kind: 'gate-blocked',
+      title: 'Blocked: verify',
+    } as GateBlockedAttentionItem,
+    {
+      ...base,
+      id: 'gate-exception:run-1:verify',
+      kind: 'gate-exception',
+      title: 'Exception needed: verify',
+      limitExceeded: true,
+    } as GateExceptionAttentionItem,
+  ].map((item) => ({ item }));
+
+  const renderRow = (item: (typeof rows)[number]['item']) =>
+    render(
+      <AttentionHistoryItem
+        item={item}
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+  afterEach(() =>
+    deviceSettingsStore.resetMany([
+      'developerToolsEnabled',
+      'experimentalFlowEnabled',
+    ]),
+  );
+
+  test.each(rows)(
+    '$item.kind: with the Flow preview off, the row offers no flow console link',
+    ({ item }) => {
+      // Developer tools on but the Flow switch off: still off on this device.
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', false);
+      renderRow(item);
+
+      expect(screen.getByText(item.title)).toBeTruthy();
+      expect(screen.queryByRole('link')).toBeNull();
+    },
+  );
+
+  test.each(rows)(
+    '$item.kind: with the Flow preview on, the row links to the run console',
+    ({ item }) => {
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      renderRow(item);
+
+      expect(
+        screen
+          .getByRole('link', { name: 'Open flow console' })
+          .getAttribute('href'),
+      ).toBe(FLOW_HREF);
+    },
+  );
+
+  test('a non-Flow row keeps its link with the Flow preview off', () => {
+    deviceSettingsStore.set('developerToolsEnabled', false);
+    deviceSettingsStore.set('experimentalFlowEnabled', false);
+    render(
+      <AttentionHistoryItem
+        item={baseApproval({ openHref: '/?surface=activity&session=thread-1' })}
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'Open session' }).getAttribute('href'),
+    ).toBe('/?surface=activity&session=thread-1');
   });
 });

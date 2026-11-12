@@ -100,3 +100,36 @@ export function assertExecutionOverrideDelivery(
     `Execution override cannot deliver the selected Agent capabilities: ${undelivered.map((entry) => `${entry.capability}:${entry.id ?? 'unknown'} (${entry.reason})`).join(', ')}`,
   );
 }
+
+/**
+ * Channel-stage confirmation of the Station orchestration instructions
+ * receipt (`stationInstructions`): the resolver stamps the receipt, the
+ * delivering adapter records whether it reached the engine. A session with no
+ * receipt is returned untouched (same object), so an adapter can call this
+ * unconditionally without inventing a receipt that nothing resolved.
+ */
+export function confirmStationInstructionsDelivery(
+  inputMetadata: Record<string, unknown>,
+  delivered: boolean,
+): Record<string, unknown>;
+export function confirmStationInstructionsDelivery(
+  inputMetadata: Record<string, unknown> | undefined,
+  delivered: boolean,
+): Record<string, unknown> | undefined;
+export function confirmStationInstructionsDelivery(
+  inputMetadata: Record<string, unknown> | undefined,
+  delivered: boolean,
+): Record<string, unknown> | undefined {
+  const existingDelivery = inputMetadata?.[
+    SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+  ] as SessionCapabilityDeliveryMetadata | undefined;
+  const receipt = existingDelivery?.stationInstructions;
+  if (!inputMetadata || !existingDelivery || !receipt) return inputMetadata;
+  return {
+    ...inputMetadata,
+    [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+      ...existingDelivery,
+      stationInstructions: { ...receipt, delivered },
+    },
+  };
+}

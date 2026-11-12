@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -137,6 +138,14 @@ describe('ConversationHistoryReadService', () => {
   });
 
   test('projects child Sessions into Environment-scoped conversation rows with the newest accepted model', () => {
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'same-conversation',
+      status: 'ready',
+      createdAt: '2026-08-08T12:00:00.000Z',
+      updatedAt: '2026-08-08T12:00:00.000Z',
+    });
+    let predecessorSessionId = 'same-conversation';
     const appendChild = (input: {
       threadId: string;
       conversationId: string;
@@ -144,6 +153,13 @@ describe('ConversationHistoryReadService', () => {
       model: string;
       at: string;
     }) => {
+      eventStore.reserveNextConversationSession({
+        conversationId: input.conversationId,
+        predecessorSessionId,
+        proposedSessionId: input.threadId,
+        createdAt: input.at,
+      });
+      predecessorSessionId = input.threadId;
       eventStore.upsertSession({
         provider: 'claude',
         threadId: input.threadId,
@@ -151,17 +167,6 @@ describe('ConversationHistoryReadService', () => {
         createdAt: input.at,
         updatedAt: input.at,
       });
-      // Legacy fallback fixture: no durable lineage row, so the reserved
-      // server metadata below is the authoritative pre-lineage identity.
-      (
-        eventStore as unknown as {
-          db: { prepare(sql: string): { run(...values: unknown[]): void } };
-        }
-      ).db
-        .prepare(
-          'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
-        )
-        .run(input.threadId);
       eventStore.appendEvent({
         eventId: `${input.threadId}-started`,
         provider: 'claude',
@@ -228,6 +233,20 @@ describe('ConversationHistoryReadService', () => {
     const reader = new ConversationHistoryReadService(
       readServiceOptions(eventStore),
     );
+    const database = (eventStore as unknown as { db: DatabaseSync }).db;
+    const prepare = database.prepare.bind(database);
+    const modelQueries: string[] = [];
+    const historyQueries: string[] = [];
+    const prepared = vi.spyOn(database, 'prepare').mockImplementation((sql) => {
+      if (
+        String(sql).includes('AS model') &&
+        String(sql).includes('appliedModel')
+      )
+        modelQueries.push(String(sql));
+      if (String(sql).includes('WITH ranked AS'))
+        historyQueries.push(String(sql));
+      return prepare(sql);
+    });
     const page = reader.list({
       authority: sessionReadAuthorityFromRequest(
         'owner-alpha',
@@ -237,6 +256,32 @@ describe('ConversationHistoryReadService', () => {
       limit: 10,
     });
 
+    prepared.mockRestore();
+    expect(historyQueries).toHaveLength(1);
+    const historyPlan = database
+      .prepare(`EXPLAIN QUERY PLAN ${historyQueries[0]}`)
+      .all('owner-alpha', 11)
+      .map((row) => String(row.detail))
+      .join('\n');
+    expect(historyPlan).toContain(
+      'USING INDEX idx_events_environment_identity',
+    );
+    expect(historyPlan).not.toContain('idx_events_thread (thread_id=?)');
+    expect(modelQueries.length).toBeGreaterThan(0);
+    for (const sql of modelQueries) {
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .all('same-conversation', 'station-a')
+        .map((row) => String(row.detail))
+        .join('\n');
+      expect(plan).toContain(
+        'SEARCH e USING INDEX idx_events_accepted_model (thread_id=?)',
+      );
+      expect(plan).toContain(
+        'SEARCH environment_event USING INDEX idx_events_environment_identity',
+      );
+      expect(plan).not.toContain('SCAN e');
+    }
     expect(page.items).toEqual([
       expect.objectContaining({
         id: 'same-conversation',
@@ -335,6 +380,10 @@ describe('ConversationHistoryReadService', () => {
         agentSlug: 'claude',
         conversationId: 'corrupt-metadata-conversation',
         environmentId: 'station-a',
+        modelSelectionReceipt: {
+          requestedModel: 'chosen',
+          appliedModel: 'chosen',
+        },
       },
     });
     eventStore.appendEvent({
@@ -384,8 +433,28 @@ describe('ConversationHistoryReadService', () => {
         id: 'canonical-conversation',
         environmentId: 'station-a',
         title: 'Owner alpha work',
+        acceptedModel: 'chosen',
       }),
     ]);
+    db.prepare(
+      'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
+    ).run('lineaged-child');
+    expect(
+      eventStore.readLatestAcceptedConversationModel({
+        conversationId: 'corrupt-metadata-conversation',
+        environmentId: 'station-a',
+      }),
+    ).toBeUndefined();
+    expect(
+      new ConversationHistoryReadService(readServiceOptions(eventStore)).list({
+        authority: sessionReadAuthorityFromRequest(
+          'owner-alpha',
+          undefined,
+          undefined,
+        ),
+        limit: 10,
+      }).items,
+    ).toEqual([]);
   });
 
   test('inherits the latest prior accepted model until a later child applies an override', () => {

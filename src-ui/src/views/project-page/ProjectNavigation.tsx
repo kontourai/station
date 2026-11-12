@@ -1,8 +1,7 @@
 import { useSyncExternalStore } from 'react';
+import { SectionNavigation } from '../../components/SectionNavigation';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import { useIsMobile } from '../../hooks/useIsMobile';
-import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectSearch } from './ProjectSearch';
 import {
   type ProjectDestination,
@@ -43,6 +42,9 @@ export function useProjectDestination(slug: string) {
   return { destination, selectDestination };
 }
 
+/** Project settings is its own page; the rail links to it beside the sections. */
+const SETTINGS_KEY = 'settings';
+
 export function ProjectNavigation({
   slug,
   member = false,
@@ -53,47 +55,38 @@ export function ProjectNavigation({
   projectId?: string;
 }) {
   const { destination, selectDestination } = useProjectDestination(slug);
-  const isMobile = useIsMobile();
   const { navigate } = useNavigation();
-  const destinations = [
-    ['overview', 'Overview'],
-    ['room', '# Project room'],
-    ['tasks', 'Tasks'],
-    ...(!member ? [['sources', 'Files & connections'] as const] : []),
-  ] as const;
   const projectPath = `/projects/${encodeURIComponent(slug)}`;
+  const section = (key: ProjectDestination, label: string) => ({
+    key,
+    label,
+    href: `${projectPath}?section=${key}`,
+  });
+  // The same section navigation Settings and Project settings use: a rail
+  // beside the page on desktop, a picker on a phone.
+  const items = [
+    section('overview', 'Overview'),
+    section('room', 'Room'),
+    section('tasks', 'Tasks'),
+    ...(member
+      ? []
+      : [
+          section('sources', 'Files & connections'),
+          { key: SETTINGS_KEY, label: 'Settings', href: `${projectPath}/edit` },
+        ]),
+  ];
   return (
-    <details className="project-page__navigation-panel" open={!isMobile}>
-      <summary>Project</summary>
-      <nav className="project-page__navigation" aria-label="Project">
-        {projectId && <ProjectSearch key={projectId} projectId={projectId} />}
-        {destinations.map(([id, label]) => (
-          <a
-            key={id}
-            href={`${projectPath}?section=${id}`}
-            aria-current={destination === id ? 'page' : undefined}
-            onClick={(event) => {
-              if (!isPlainLeftClick(event)) return;
-              event.preventDefault();
-              selectDestination(id);
-            }}
-          >
-            {label}
-          </a>
-        ))}
-        {!member && (
-          <a
-            href={`${projectPath}/edit`}
-            onClick={(event) => {
-              if (!isPlainLeftClick(event)) return;
-              event.preventDefault();
-              navigate(`${projectPath}/edit`);
-            }}
-          >
-            Settings
-          </a>
-        )}
-      </nav>
-    </details>
+    <SectionNavigation
+      label="Project"
+      pickerLabel="Project section"
+      items={items}
+      activeKey={destination}
+      onNavigate={(key) => {
+        if (key === SETTINGS_KEY) navigate(`${projectPath}/edit`);
+        else selectDestination(key as ProjectDestination);
+      }}
+    >
+      {projectId && <ProjectSearch key={projectId} projectId={projectId} />}
+    </SectionNavigation>
   );
 }

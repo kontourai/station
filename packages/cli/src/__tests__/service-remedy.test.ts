@@ -164,6 +164,33 @@ describe('service remedy rendering', () => {
     ).toMatchObject({ baseDir });
   });
 
+  // #3909: an install since writes no `features`; one before it recorded a
+  // value or null. The command repeats a recorded value faithfully (the CLI
+  // refuses it only for strands-runtime) and adds nothing otherwise.
+  test('repeats a recorded --features value and treats an absent or null one as none', () => {
+    const base = { ...completeConfiguration, baseDir: '/srv/station-home' };
+    const plain =
+      'station service install --instance=service-test --base=/srv/station-home --port=4242 --ui-port=5275 --host=127.0.0.1 --allowed-origin=https://station.example.test';
+    expect(renderServiceInstallRemedy({ ...base, features: undefined })).toBe(
+      plain,
+    );
+    expect(renderServiceInstallRemedy({ ...base, features: null })).toBe(plain);
+    const strands = renderServiceInstallRemedy({
+      ...base,
+      features: 'strands-runtime',
+    });
+    expect(strands).toBe(
+      plain.replace(
+        '--host=127.0.0.1',
+        '--host=127.0.0.1 --features=strands-runtime',
+      ),
+    );
+    expect(() =>
+      parseLifecycleArgs(parseRenderedInstallArguments(strands!)),
+    ).toThrow(/no longer selects the Strands runtime/);
+    expect(renderServiceInstallRemedy({ ...base, features: 42 })).toBeNull();
+  });
+
   test('renders a read-only status command only for a known instance and home', () => {
     expect(
       renderServiceStatusCommand({
