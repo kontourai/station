@@ -1149,7 +1149,7 @@ describe('the list lede describes the list it stands over', () => {
     expect(screen.queryByText(/set each one up/)).toBeNull();
     expect(
       screen.getByText(
-        'Station found these on this computer. None can be set up from here right now. Each row says why.',
+        'Station found these on this computer. None can be set up from here yet; each row says why.',
       ),
     ).toBeTruthy();
   });

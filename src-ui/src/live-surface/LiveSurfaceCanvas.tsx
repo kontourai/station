@@ -1504,7 +1504,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     surface.producerStatus.videoMode === 'snapshot-poll' &&
     surface.activeCodec !== 'h264'
       ? surface.producerStatus.videoDegradedReason === 'decoder-unavailable'
-        ? 'Live video unavailable. Showing a screenshot each second. Install ffmpeg on the computer running Station to fix this.'
+        ? 'Showing a screenshot each second. Install ffmpeg on the computer running Station for live video.'
         : 'Live video stopped. Showing a screenshot each second.'
       : null;
 

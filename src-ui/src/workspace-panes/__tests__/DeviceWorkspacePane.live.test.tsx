@@ -1055,7 +1055,7 @@ describe('the device toolbar', () => {
     );
     expect(
       screen.getByText(
-        /Live video unavailable\. Showing a screenshot each second\. Install ffmpeg/,
+        /Showing a screenshot each second\. Install ffmpeg on the computer running Station for live video\./,
       ),
     ).toBeTruthy();
   });

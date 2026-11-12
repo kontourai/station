@@ -114,9 +114,9 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     // about WHY — each row carries its own reason, and this lede must not
     // summarise a mix of them into one sentence that is wrong for some.
     reach: 'host-hands',
-    host: 'Station found these on this computer. None can be set up from here right now. Each row says why.',
+    host: 'Station found these on this computer. None can be set up from here yet; each row says why.',
     paired: (hostName) =>
-      `Station found these on ${hostName}, the computer it runs on. None can be set up from here right now. Each row says why.`,
+      `Station found these on ${hostName}, the computer it runs on. None can be set up from here yet; each row says why.`,
   },
   'engine-scan-pending': {
     reach: 'host-hands',
