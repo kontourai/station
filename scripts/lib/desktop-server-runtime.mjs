@@ -38,58 +38,81 @@ function readPackage(packageRoot) {
   return JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
 }
 
-function resolvePackageRoot(packageName, fromRoot) {
+/**
+ * The package a declared dependency installs. An npm alias
+ * (`"zod-from-json-schema-v3": "npm:zod-from-json-schema@^0.0.5"`) installs
+ * under the alias directory but keeps the real name in its package.json, so
+ * the identity to verify comes from the declaring package's own spec rather
+ * than from a list of known aliases.
+ */
+function declaredPackageName(dependencyName, spec) {
+  if (typeof spec !== 'string' || !spec.startsWith('npm:'))
+    return dependencyName;
+  const target = spec.slice('npm:'.length);
+  const versionAt = target.indexOf('@', target.startsWith('@') ? 1 : 0);
+  const name = versionAt === -1 ? target : target.slice(0, versionAt);
+  if (!/^(?:@[^/@\s]+\/)?[^/@\s]+$/.test(name)) {
+    throw new Error(
+      `Dependency ${dependencyName} declares an unreadable npm alias: ${spec}`,
+    );
+  }
+  return name;
+}
+
+function resolvePackageRoot(packageName, fromRoot, expectedName = packageName) {
   let current = realpathSync(fromRoot);
   while (true) {
     const candidate = join(current, 'node_modules', ...packageName.split('/'));
     const manifest = join(candidate, 'package.json');
     if (existsSync(manifest)) {
       const packageRoot = realpathSync(candidate);
-      const pkg = readPackage(packageRoot);
-      // npm aliases install under the alias name (e.g. zod-from-json-schema-v3
-      // -> npm:zod-from-json-schema) but keep the real package name inside
-      // package.json. Accept that mapping so alias dependencies resolve.
-      if (
-        pkg.name === packageName ||
-        (packageName === 'zod-from-json-schema-v3' &&
-          pkg.name === 'zod-from-json-schema')
-      ) {
-        return packageRoot;
-      }
+      if (readPackage(packageRoot).name === expectedName) return packageRoot;
     }
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
   }
-  throw new Error(`Could not locate installed package ${packageName}`);
+  throw new Error(
+    expectedName === packageName
+      ? `Could not locate installed package ${packageName}`
+      : `Could not locate installed package ${packageName} (alias of ${expectedName})`,
+  );
 }
 
-function installedRuntimeDependencies(pkg, packageRoot) {
-  const dependencies = {
+function declaredDependencySpecs(pkg) {
+  const specs = {
     ...pkg.dependencies,
     ...pkg.optionalDependencies,
   };
   for (const [name, version] of Object.entries(pkg.peerDependencies ?? {})) {
     if (pkg.peerDependenciesMeta?.[name]?.optional) continue;
-    dependencies[name] = version;
+    specs[name] = version;
   }
+  return specs;
+}
+
+/** The installed runtime dependencies of a package, as `[name, realName]`. */
+function installedRuntimeDependencies(pkg, packageRoot) {
   const excluded = new Set(
     RUNTIME_DEPENDENCY_EXCLUSIONS.filter(
       (rule) => rule.package === pkg.name,
     ).map((rule) => rule.dependency),
   );
-  return Object.keys(dependencies).filter((name) => {
-    if (excluded.has(name)) return false;
+  const dependencies = [];
+  for (const [name, spec] of Object.entries(declaredDependencySpecs(pkg))) {
+    if (excluded.has(name)) continue;
+    const realName = declaredPackageName(name, spec);
     try {
-      resolvePackageRoot(name, packageRoot);
-      return true;
+      resolvePackageRoot(name, packageRoot, realName);
     } catch {
-      if (pkg.optionalDependencies?.[name]) return false;
+      if (pkg.optionalDependencies?.[name]) continue;
       throw new Error(
         `Runtime dependency ${name} required by ${pkg.name} is not installed`,
       );
     }
-  });
+    dependencies.push([name, realName]);
+  }
+  return dependencies;
 }
 
 function targetPackageRoot(
@@ -132,10 +155,19 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
   };
   // Root imports must retain the versions selected by the server, regardless
   // of which transitive dependency happens to be traversed first.
+  // A root import may itself be an alias the project declares.
+  const projectManifest = join(projectRoot, 'package.json');
+  const projectSpecs = existsSync(projectManifest)
+    ? declaredDependencySpecs(readPackage(projectRoot))
+    : {};
   for (const name of packageNames) {
     let source;
     try {
-      source = resolvePackageRoot(name, projectRoot);
+      source = resolvePackageRoot(
+        name,
+        projectRoot,
+        declaredPackageName(name, projectSpecs[name]),
+      );
     } catch (error) {
       if (OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES.has(name)) continue;
       throw error;
@@ -146,11 +178,11 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
     const { target, source } = queue[index];
     // Reserve all siblings before visiting their descendants. Otherwise a
     // later sibling can silently shadow a dependency already hoisted for a child.
-    for (const name of installedRuntimeDependencies(
+    for (const [name, realName] of installedRuntimeDependencies(
       readPackage(source),
       source,
     )) {
-      const dependency = resolvePackageRoot(name, source);
+      const dependency = resolvePackageRoot(name, source, realName);
       add(
         targetPackageRoot(name, dependency, target, outputRoot, planned),
         dependency,
@@ -199,19 +231,6 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  * - RxJS's published exports choose dist/cjs under Node for both import and
  *   require, including internal/* and testing. Keep that shared identity and
  *   package metadata/licenses; omit browser distributions and TypeScript input.
- * - `@kontourai/flow-agents/dist/<runtime>` are the per-harness install
- *   bundles its `init`/`kit`/`workflow doctor` CLI verbs copy into a project.
- *   Station runs none of those verbs; it imports the package's exports, spawns
- *   `build/src/cli/{assignment-provider,effective-backlog-settings,
- *   pull-work-provider}.js`, loads `scripts/hooks/*`, and reads `skills/`,
- *   `kits/`, `schemas/` and `context/`. In the static closure of those
- *   entries the package's own `dist/` is read only by `workflow doctor`, a
- *   CLI verb Station never runs (workflow-steering's `dist/` check reads the
- *   project checkout, not the package). ~102 MB.
- * - `@kontourai/flow-agents/src` and `/evals` are the package's TypeScript
- *   input and its own test harness (~19 MB together). Everything Station reads
- *   from the package is under `build/`, `scripts/`, `skills/`, `kits/`,
- *   `schemas/` and `context/`; a kit's own `kits/<kit>/evals/` is kept.
  * - OTLP transformer's Node entry is build/src/index.js for both import and
  *   require. Its build/esm and build/esnext trees are alternate bundler
  *   distributions, including duplicate generated protobuf code. Keep the
@@ -279,28 +298,15 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
       (packageName === 'koffi' || packageName.startsWith('@koromix/koffi-')) &&
       !/^(?:package\.json|LICENSE(?:\.txt|\.md)?)$/i.test(segments.join('/')),
   }),
-  Object.freeze({
-    id: 'flow-agents-harness-bundles',
-    package: '@kontourai/flow-agents',
-    excludes: (segments) => segments[0] === 'dist',
-  }),
-  Object.freeze({
-    id: 'flow-agents-development-sources',
-    package: '@kontourai/flow-agents',
-    // Top-level only: `src/` is the TypeScript input of `build/` (the package's
-    // main and bin point into `build/`; its other exports point at `build/`,
-    // schemas, metadata and `integrations/`, never at `src/`) and `evals/` is the
-    // package's own acceptance and integration harness. Each kit's own
-    // `kits/<kit>/evals/` is a different directory and stays.
-    excludes: (segments) => segments[0] === 'src' || segments[0] === 'evals',
-  }),
 ]);
 
 /**
  * Dependency edges the stager does not follow (#2694). flow-agents depends
- * on esbuild only for `build-universal-bundles`, which regenerates the
- * `dist/` bundles pruned above; its runtime modules are written to load
- * without it ("unavailable in a stripped install", lib/local-artifact-root).
+ * on esbuild only for `build-universal-bundles` and its own build scripts,
+ * which regenerate per-harness `dist/` bundles the published package no longer
+ * ships (9.14 dropped `dist/`, `src/` and `evals/`, retiring the prune rules
+ * that removed them); its runtime modules are written to load without it
+ * ("unavailable in a stripped install", lib/local-artifact-root).
  * The edge pinned a second, nested esbuild (~21 MB) beside the root copy
  * Station itself externalizes, which stays staged, so a stray import still
  * resolves by ordinary node_modules lookup.
