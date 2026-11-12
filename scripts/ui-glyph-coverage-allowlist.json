@@ -212,10 +212,110 @@
       "category": "prose"
     },
     {
+      "codepoint": "U+23F0",
+      "character": "⏰",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+23F3",
+      "character": "⏳",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2611",
+      "character": "☑",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2615",
+      "character": "☕",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+261D",
+      "character": "☝",
+      "category": "emoji"
+    },
+    {
       "codepoint": "U+26A0",
       "character": "⚠",
       "category": "emoji",
       "note": "One occurrence, and it is parsed rather than drawn: a regex in chatErrorTranslation.ts matching a warning emoji the server produced."
+    },
+    {
+      "codepoint": "U+2705",
+      "character": "✅",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+270B",
+      "character": "✋",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+270C",
+      "character": "✌",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+270D",
+      "character": "✍",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2714",
+      "character": "✔",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2728",
+      "character": "✨",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+274C",
+      "character": "❌",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2753",
+      "character": "❓",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2757",
+      "character": "❗",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2764",
+      "character": "❤",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2795",
+      "character": "➕",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+27A1",
+      "character": "➡",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2B06",
+      "character": "⬆",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2B07",
+      "character": "⬇",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+2B50",
+      "character": "⭐",
+      "category": "emoji"
     },
     {
       "codepoint": "U+FE0F",
@@ -224,8 +324,38 @@
       "note": "Not a glyph of its own — the variation selector that puts the preceding character into emoji presentation."
     },
     {
+      "codepoint": "U+1F195",
+      "character": "🆕",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F197",
+      "character": "🆗",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F355",
+      "character": "🍕",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F381",
+      "character": "🎁",
+      "category": "emoji"
+    },
+    {
       "codepoint": "U+1F389",
       "character": "🎉",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F3AF",
+      "character": "🎯",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F3C1",
+      "character": "🏁",
       "category": "emoji"
     },
     {
@@ -234,8 +364,543 @@
       "category": "emoji"
     },
     {
+      "codepoint": "U+1F41B",
+      "character": "🐛",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F440",
+      "character": "👀",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F446",
+      "character": "👆",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F447",
+      "character": "👇",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F448",
+      "character": "👈",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F449",
+      "character": "👉",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F44B",
+      "character": "👋",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F44C",
+      "character": "👌",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F44D",
+      "character": "👍",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F44E",
+      "character": "👎",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F44F",
+      "character": "👏",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F450",
+      "character": "👐",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F494",
+      "character": "💔",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F496",
+      "character": "💖",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F499",
+      "character": "💙",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F49A",
+      "character": "💚",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F49B",
+      "character": "💛",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F49C",
+      "character": "💜",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4A1",
+      "character": "💡",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4AA",
+      "character": "💪",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4AF",
+      "character": "💯",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4B0",
+      "character": "💰",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4C5",
+      "character": "📅",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4C8",
+      "character": "📈",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4C9",
+      "character": "📉",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4CC",
+      "character": "📌",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4CE",
+      "character": "📎",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4DD",
+      "character": "📝",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F4E3",
+      "character": "📣",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F501",
+      "character": "🔁",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F511",
+      "character": "🔑",
+      "category": "emoji"
+    },
+    {
       "codepoint": "U+1F512",
       "character": "🔒",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F514",
+      "character": "🔔",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F525",
+      "character": "🔥",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F534",
+      "character": "🔴",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F535",
+      "character": "🔵",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F590",
+      "character": "🖐",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F5A4",
+      "character": "🖤",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F600",
+      "character": "😀",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F601",
+      "character": "😁",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F602",
+      "character": "😂",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F603",
+      "character": "😃",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F604",
+      "character": "😄",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F605",
+      "character": "😅",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F606",
+      "character": "😆",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F607",
+      "character": "😇",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F609",
+      "character": "😉",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F60A",
+      "character": "😊",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F60B",
+      "character": "😋",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F60C",
+      "character": "😌",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F60D",
+      "character": "😍",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F60E",
+      "character": "😎",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F60F",
+      "character": "😏",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F610",
+      "character": "😐",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F611",
+      "character": "😑",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F618",
+      "character": "😘",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F621",
+      "character": "😡",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F622",
+      "character": "😢",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F624",
+      "character": "😤",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F62C",
+      "character": "😬",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F62D",
+      "character": "😭",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F62E",
+      "character": "😮",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F631",
+      "character": "😱",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F633",
+      "character": "😳",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F634",
+      "character": "😴",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F636",
+      "character": "😶",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F642",
+      "character": "🙂",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F643",
+      "character": "🙃",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F644",
+      "character": "🙄",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F64C",
+      "character": "🙌",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F64F",
+      "character": "🙏",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F680",
+      "character": "🚀",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F6A9",
+      "character": "🚩",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F6AB",
+      "character": "🚫",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F6D1",
+      "character": "🛑",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F6E0",
+      "character": "🛠",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F7E1",
+      "character": "🟡",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F7E2",
+      "character": "🟢",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F90D",
+      "character": "🤍",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F910",
+      "character": "🤐",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F913",
+      "character": "🤓",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F914",
+      "character": "🤔",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F916",
+      "character": "🤖",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F917",
+      "character": "🤗",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F918",
+      "character": "🤘",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F919",
+      "character": "🤙",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F91A",
+      "character": "🤚",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F91D",
+      "character": "🤝",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F91E",
+      "character": "🤞",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F91F",
+      "character": "🤟",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F923",
+      "character": "🤣",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F926",
+      "character": "🤦",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F928",
+      "character": "🤨",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F929",
+      "character": "🤩",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F92D",
+      "character": "🤭",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F92F",
+      "character": "🤯",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F932",
+      "character": "🤲",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F937",
+      "character": "🤷",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F970",
+      "character": "🥰",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F972",
+      "character": "🥲",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F973",
+      "character": "🥳",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F97A",
+      "character": "🥺",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F9E0",
+      "character": "🧠",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F9E1",
+      "character": "🧡",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1F9EA",
+      "character": "🧪",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1FAE0",
+      "character": "🫠",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1FAE1",
+      "character": "🫡",
+      "category": "emoji"
+    },
+    {
+      "codepoint": "U+1FAF6",
+      "character": "🫶",
       "category": "emoji"
     },
     {

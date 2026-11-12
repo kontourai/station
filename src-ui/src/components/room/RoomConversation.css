@@ -544,3 +544,8 @@ a.room-attachments__file:focus-visible {
 .room-conversation--more .room-row__actions .button {
   min-height: 44px;
 }
+
+/* Touch and phone: icon actions are full 44px targets. */
+.room-conversation--more .room-row__actions {
+  --icon-button-size: 44px;
+}

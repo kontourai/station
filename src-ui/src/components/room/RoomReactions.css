@@ -179,7 +179,6 @@
   color: var(--k-text);
   font: inherit;
   font-size: var(--k-text-sm);
-  outline: none;
 }
 
 .room-emoji-picker__body {
@@ -245,13 +244,6 @@
 
 .room-sheet-overlay[data-sheet] .room-emoji-picker__search {
   min-height: 44px;
-}
-
-.room-emoji-picker__empty {
-  margin: var(--k-space-4) var(--k-space-2);
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-  text-align: center;
 }
 
 /* ── Who reacted ─────────────────────────────────────────────────────── */

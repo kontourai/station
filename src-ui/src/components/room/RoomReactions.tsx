@@ -13,6 +13,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { FilteredEmpty } from '../state';
 import { useTouchKeyboard } from './composerKeys';
 import {
   ROOM_EMOJI_GROUPS,
@@ -238,9 +239,16 @@ export function RoomEmojiPicker({
               found.map((entry) => entry.emoji),
             )
           ) : (
-            <p className="room-emoji-picker__empty" role="status">
-              No emoji match “{query.trim()}”.
-            </p>
+            <FilteredEmpty
+              query={query}
+              title={`No emoji match “${query.trim()}”`}
+              description="Try another word, like “thumbs” or “party”."
+              clearLabel="Clear search"
+              onClear={() => {
+                setQuery('');
+                searchRef.current?.focus();
+              }}
+            />
           )
         ) : (
           <>

@@ -42,6 +42,7 @@ import { IconButton } from '../../components/IconButton';
 import {
   CheckGlyph,
   EditGlyph,
+  PeopleGlyph,
   ReturnGlyph,
 } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -941,63 +942,60 @@ function ProjectRoomSession({
         />
       ) : undefined,
       // A tombstone takes no actions: there is nothing left to answer.
+      // Icon-only, as chat toolbars are; each says what it does by name and
+      // tooltip (#3045 keeps a row to two labelled actions).
       actions:
         view.capabilities.discuss && !message.deletedAt ? (
           <>
             {canAct && (
-              <Button
-                variant="ghost"
-                size="sm"
+              <IconButton
                 aria-label={`React to ${name}`}
+                title="React"
                 onClick={(event) =>
                   openPopover(setPicker, message.messageId, event.currentTarget)
                 }
               >
-                <ReactGlyph /> React
-              </Button>
+                <ReactGlyph />
+              </IconButton>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
+            <IconButton
               disabled={room.send.isPending}
               aria-label={`Reply to ${name}`}
+              title="Reply"
               onClick={() => {
                 setReplyTo(message.messageId);
                 composer.current?.focus();
               }}
             >
-              <ReturnGlyph /> Reply
-            </Button>
+              <ReturnGlyph />
+            </IconButton>
             {canAct && isOwn(message) && (
               <>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <IconButton
                   aria-label="Edit message"
+                  title="Edit"
                   disabled={!!proposal}
                   onClick={() => startEdit(message)}
                 >
-                  <EditGlyph /> Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                  <EditGlyph />
+                </IconButton>
+                <IconButton
                   aria-label="Delete message"
+                  title="Delete"
                   onClick={() => setDeleting(message.messageId)}
                 >
-                  <TrashGlyph /> Delete
-                </Button>
+                  <TrashGlyph />
+                </IconButton>
               </>
             )}
             {(compact || touch) && reactions.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
+              <IconButton
                 aria-label="Who reacted"
+                title="Who reacted"
                 onClick={(event) => showReactions(event.currentTarget)}
               >
-                Who reacted
-              </Button>
+                <PeopleGlyph />
+              </IconButton>
             )}
           </>
         ) : undefined,
