@@ -241,12 +241,29 @@ export function TaskRow({
                 <dd>{entry.delegationTitle}</dd>
               </>
             )}
-            <dt>Status</dt>
-            <dd>
-              {entry.state === 'running'
-                ? 'Running'
-                : (OUTCOME_LABEL[entry.state] ?? entry.state)}
-            </dd>
+            {entry.toolName && entry.toolName !== entry.title && (
+              <>
+                <dt>Tool</dt>
+                <dd>{entry.toolName}</dd>
+              </>
+            )}
+            {entry.toolInput && (
+              <>
+                <dt>Input</dt>
+                <dd>{entry.toolInput}</dd>
+              </>
+            )}
+            {/* A settled row already shows its outcome as a chip. */}
+            {!outcomeChip && (
+              <>
+                <dt>Status</dt>
+                <dd>
+                  {entry.state === 'running'
+                    ? 'Running'
+                    : (OUTCOME_LABEL[entry.state] ?? entry.state)}
+                </dd>
+              </>
+            )}
             {(entry.latestTool ?? latestTool) && (
               <>
                 <dt>Latest tool</dt>

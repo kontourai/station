@@ -40,6 +40,36 @@ const running: BackgroundTaskEntry = {
   state: 'running',
 };
 
+function Harness({ lazy }: { lazy: boolean }) {
+  const [actionsOpen, setActionsOpen] = useState(true);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  return (
+    <>
+      <p>Chat</p>
+      {actionsOpen && (
+        <ChatDockMobileOverflowSheet
+          overflow={{
+            onOpenBackgroundTasks: () => {
+              if (!lazy) return setTasksOpen(true);
+              setTimeout(() => setTasksOpen(true), 0);
+            },
+            backgroundTasksRunningCount: 1,
+          }}
+          onClose={() => setActionsOpen(false)}
+        />
+      )}
+      {tasksOpen && (
+        <BackgroundTasksSheet
+          chatThreadId="chat-1"
+          anchorRef={createRef<HTMLElement>()}
+          onOpenTranscript={vi.fn()}
+          onClose={() => setTasksOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
 /**
  * The phone's Back gesture is a history traversal, so the sheet must own a
  * history layer that Back pops — including on the path a phone actually takes,
@@ -52,60 +82,44 @@ const running: BackgroundTaskEntry = {
 describe('BackgroundTasksSheet and browser Back', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/background-tasks-back');
-    useChatBackgroundTasks.mockReturnValue({ running: [running], finished: [] });
+    useChatBackgroundTasks.mockReturnValue({
+      running: [running],
+      finished: [],
+    });
   });
 
-  test('Back closes the sheet opened from the ⋯ actions sheet, and only the sheet', async () => {
-    function Harness() {
-      const [actionsOpen, setActionsOpen] = useState(true);
-      const [tasksOpen, setTasksOpen] = useState(false);
-      return (
-        <>
-          <p>Chat</p>
-          {actionsOpen && (
-            <ChatDockMobileOverflowSheet
-              overflow={{
-                onOpenBackgroundTasks: () => setTasksOpen(true),
-                backgroundTasksRunningCount: 1,
-              }}
-              onClose={() => setActionsOpen(false)}
-            />
-          )}
-          {tasksOpen && (
-            <BackgroundTasksSheet
-              chatThreadId="chat-1"
-              anchorRef={createRef<HTMLElement>()}
-              onOpenTranscript={vi.fn()}
-              onClose={() => setTasksOpen(false)}
-            />
-          )}
-        </>
+  // ChatDock lazy-loads the sheet, so on a phone it mounts after the actions
+  // sheet's own layer has begun folding away; `lazy` reproduces that order.
+  test.each([
+    ['in the same tap', false],
+    ['after a lazy load', true],
+  ])(
+    'Back closes the sheet opened from the ⋯ actions sheet %s, and only the sheet',
+    async (_label, lazy) => {
+      render(<Harness lazy={lazy} />);
+      const startUrl = window.location.href;
+      fireEvent.click(
+        await screen.findByRole('menuitem', {
+          name: 'Background tasks — 1 running',
+        }),
       );
-    }
+      const sheet = () =>
+        screen.queryByRole('dialog', { name: 'Background tasks' });
+      await waitFor(() => expect(sheet()).not.toBeNull());
+      expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
+      // The sheet's own layer is the live entry once the handoff settles.
+      await waitFor(() =>
+        expect(
+          (window.history.state as Record<string, unknown> | null)?.[
+            DIALOG_HISTORY_KEY
+          ],
+        ).toEqual(expect.any(String)),
+      );
 
-    render(<Harness />);
-    const startUrl = window.location.href;
-    fireEvent.click(
-      await screen.findByRole('menuitem', {
-        name: 'Background tasks — 1 running',
-      }),
-    );
-    const sheet = () =>
-      screen.queryByRole('dialog', { name: 'Background tasks' });
-    expect(sheet()).not.toBeNull();
-    expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
-    // The sheet's own layer is the live entry once the handoff settles.
-    await waitFor(() =>
-      expect(
-        (window.history.state as Record<string, unknown> | null)?.[
-          DIALOG_HISTORY_KEY
-        ],
-      ).toEqual(expect.any(String)),
-    );
-
-    window.history.back();
-    await waitFor(() => expect(sheet()).toBeNull());
-    expect(window.location.href).toBe(startUrl);
-    expect(screen.getByText('Chat')).not.toBeNull();
-  });
+      window.history.back();
+      await waitFor(() => expect(sheet()).toBeNull());
+      expect(window.location.href).toBe(startUrl);
+      expect(screen.getByText('Chat')).not.toBeNull();
+    },
+  );
 });

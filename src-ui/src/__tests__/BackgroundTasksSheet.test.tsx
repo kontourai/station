@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { BackgroundTaskEntry } from '../contexts/background-tasks-store';
+import { formatDateTime } from '../utils/relativeTime';
 import type { SessionIconAgent } from '../utils/sessionDisplay';
 
 const agents: SessionIconAgent[] = [];
@@ -218,42 +219,69 @@ describe('BackgroundTasksSheet', () => {
    * title, status and timing. Restoring the old "no detail → disabled row"
    * gate fails the click; dropping the facts list fails the reads.
    */
-  test('a row with no detail still expands onto its full title, status and timing', () => {
+  test('a row with no detail still expands onto its full title, tool and timing', () => {
     const title =
       'CI failures and merges for every open pull request in the release queue';
+    const startedAt = Date.parse('2026-07-29T00:00:05.000Z');
+    const endedAt = Date.parse('2026-07-29T00:01:00.000Z');
     renderSheet({
-      running: [],
+      running: [
+        runningEntry({
+          title: 'Run tests',
+          toolName: 'local_bash',
+          toolInput: 'pnpm vitest run',
+        }),
+      ],
       finished: [
         finishedEntry({
           title,
           delegationTitle: 'Release queue sweep',
           latestTool: 'local_bash',
           detail: undefined,
+          startedAt,
+          endedAt,
           state: 'failed',
         }),
       ],
     });
-    fireEvent.click(screen.getByRole('button', { name: /Recent activity/ }));
-    const row = screen.getByRole('button', { name: new RegExp(title) });
-    expect(row.hasAttribute('disabled')).toBe(false);
-    expect(row.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(row);
-    expect(row.getAttribute('aria-expanded')).toBe('true');
+    const facts = (row: HTMLElement) => {
+      fireEvent.click(row);
+      expect(row.getAttribute('aria-expanded')).toBe('true');
+      const list = row
+        .closest('li')
+        ?.querySelector('.background-tasks-sheet__facts');
+      expect(list).not.toBeNull();
+      return Object.fromEntries(
+        [...list!.querySelectorAll('dt')].map((dt) => [
+          dt.textContent,
+          dt.nextElementSibling?.textContent,
+        ]),
+      );
+    };
 
-    const facts = document.querySelector('.background-tasks-sheet__facts');
-    expect(facts).not.toBeNull();
-    const pairs = Object.fromEntries(
-      [...facts!.querySelectorAll('dt')].map((dt) => [
-        dt.textContent,
-        dt.nextElementSibling?.textContent,
-      ]),
+    const runningRow = screen.getByRole('button', { name: /Run tests/ });
+    expect(runningRow.hasAttribute('disabled')).toBe(false);
+    expect(facts(runningRow)).toMatchObject({
+      Task: 'Run tests',
+      Tool: 'local_bash',
+      Input: 'pnpm vitest run',
+      Status: 'Running',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Recent activity/ }));
+    const finished = facts(
+      screen.getByRole('button', { name: new RegExp(title) }),
     );
-    expect(pairs.Task).toBe(title);
-    expect(pairs.Delegation).toBe('Release queue sweep');
-    expect(pairs.Status).toBe('Failed');
-    expect(pairs['Latest tool']).toBe('local_bash');
-    expect(pairs.Started).toMatch(/2026/);
-    expect(pairs.Ended).toMatch(/2026/);
+    expect(finished).toMatchObject({
+      Task: title,
+      Delegation: 'Release queue sweep',
+      'Latest tool': 'local_bash',
+      Started: formatDateTime(startedAt),
+      Ended: formatDateTime(endedAt),
+    });
+    expect(finished.Started).not.toBe(finished.Ended);
+    // The outcome is already the row's chip.
+    expect(finished.Status).toBeUndefined();
   });
 
   test('a running entry with detail expands on click to reveal it', () => {
@@ -615,4 +643,3 @@ test('a peer background sheet selects its Station partition and never invokes ho
     }),
   );
 });
-
