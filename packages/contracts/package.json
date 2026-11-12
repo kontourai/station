@@ -53,6 +53,7 @@
     "./relay-ice": "./src/relay-ice.ts",
     "./self-hosted-broker": "./src/self-hosted-broker.ts",
     "./connection-proof": "./src/connection-proof.ts",
+    "./connection-used-by": "./src/connection-used-by.ts",
     "./mobile-device": "./src/mobile-device.ts",
     "./device-toolchain": "./src/device-toolchain.ts",
     "./device-tools": "./src/device-tools.ts",

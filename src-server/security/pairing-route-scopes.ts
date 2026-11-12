@@ -4222,6 +4222,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/connections/:id' },
     { method: 'POST', path: '/api/connections/:id/smoke' },
     { method: 'POST', path: '/api/connections/:id/test' },
+    // Agent and Project slugs that name each connection. Ordinary read tier,
+    // like `GET /integrations`, which already lists the Agents per server;
+    // the handler withholds it from a Project member.
+    { method: 'GET', path: '/api/connections/used-by' },
     { method: 'DELETE', path: '/api/connections/agent/:id/app-home' },
     { method: 'GET', path: '/api/connections/agent/:id/app-home' },
     { method: 'POST', path: '/api/connections/agent/:id/app-home/import' },

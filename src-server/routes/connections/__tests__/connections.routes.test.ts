@@ -4,6 +4,7 @@ import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 import { createConnectionServiceForTest } from '../../../services/connections/__tests__/connection-service-test-helper.js';
 import { ModelSelectionRequiredError } from '../../../services/connections/connection-service.js';
+import { createConnectionUsedByReader } from '../../../services/connections/connection-used-by-reader.js';
 import { createConnectionRoutes } from '../connections.js';
 
 function createMockConnectionService() {
@@ -580,5 +581,87 @@ describe('Connection Routes', () => {
       name: 'Renamed',
       config: { apiKey: 'original-key' },
     });
+  });
+});
+
+describe('GET /used-by', () => {
+  function usedByApp(operator: boolean) {
+    const reader = createConnectionUsedByReader({
+      receivesOperatorCatalog: async () => operator,
+      listAgents: async () => [
+        {
+          slug: 'reviewer',
+          name: 'Reviewer',
+          execution: { agentConnectionId: 'codex-work' },
+        },
+        // Its slug starts with the engine id; it is bound to nothing.
+        { slug: 'codex-work-notes', name: 'Notes' },
+      ],
+      readAgentSpecs: async () => [
+        {
+          metadata: { slug: 'reviewer' },
+          spec: { tools: { mcpServers: ['github'] } },
+        },
+      ],
+      listProjects: () => [{ slug: 'site' }, { slug: 'gone' }],
+      getProject: (slug) => {
+        if (slug === 'gone') throw new Error('Project not found');
+        return {
+          slug,
+          name: 'Site',
+          defaultProviderId: 'ollama-local',
+          defaultModel: 'llama3',
+        };
+      },
+    });
+    return createConnectionRoutes(createMockConnectionService() as any, {
+      readUsedBy: reader,
+    });
+  }
+
+  test('lists the Agents and Projects whose saved bindings name each connection', async () => {
+    const response = await usedByApp(true).request('/used-by');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect((await json(response)).data).toEqual({
+      dependents: [
+        {
+          connectionId: 'codex-work',
+          kind: 'agent',
+          slug: 'reviewer',
+          name: 'Reviewer',
+          via: 'engine',
+        },
+        {
+          connectionId: 'github',
+          kind: 'agent',
+          slug: 'reviewer',
+          name: 'Reviewer',
+          via: 'tool-server',
+        },
+        {
+          connectionId: 'ollama-local',
+          kind: 'project',
+          slug: 'site',
+          name: 'Site',
+          via: 'project-default-model',
+        },
+      ],
+    });
+  });
+
+  test('is withheld from a caller that receives no operator Agent catalog', async () => {
+    const response = await usedByApp(false).request('/used-by');
+    expect(response.status).toBe(403);
+    expect(await json(response)).toMatchObject({ success: false });
+  });
+
+  test('is not read as a connection id', async () => {
+    const service = createMockConnectionService();
+    const response = await createConnectionRoutes(service as any).request(
+      '/used-by',
+    );
+    expect(response.status).toBe(501);
+    expect(service.getConnection).not.toHaveBeenCalled();
   });
 });

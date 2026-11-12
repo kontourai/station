@@ -723,6 +723,7 @@ import {
 } from '../../services/checkpoints/turn-checkpoint-capture.js';
 import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { createConnectionUsedByReader } from '../../services/connections/connection-used-by-reader.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
@@ -10292,6 +10293,15 @@ export function configureRuntimeRoutes(
     '/api/connections',
     createConnectionRoutes(context.connectionService, {
       applyConfigurationMutation: context.applyAgentConfigurationMutation,
+      readUsedBy: createConnectionUsedByReader({
+        // The same caller decision as `GET /api/agents`.
+        receivesOperatorCatalog: async (c) =>
+          (await agentCatalogForCaller(agentAudience, c)).kind === 'operator',
+        listAgents: () => context.agentService.listAgents(),
+        readAgentSpecs: () => context.configLoader.readAgentCatalog(),
+        listProjects: () => context.projectService.listProjects(),
+        getProject: (slug) => context.projectService.getProject(slug),
+      }),
     }),
   );
   context.app.route(
