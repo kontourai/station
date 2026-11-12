@@ -1,0 +1,25 @@
+{
+  "revision": "7fe601c064a8579514975b04b78d25b4a9a3b7ac",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"tool.ts change is the EngineRouteObservation doc comment only: origin is withheld from agents and narrowed grants, and default-scoped pairings (which include access:manage) still read it. No architecture claim here depends on who reads the origin.","inputs":["docs/architecture.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"connections.ts change: the access:manage branch now also refuses agent requests (requestMayBeAnAgent); operator in person unchanged. The module-map sentence naming withViewerRoutes/routeObservationForViewer still describes it (operator in person or access:manage holders read host origins).","inputs":["docs/architecture/module-map.md","src-server/routes/connections/connections.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md change rewords the /api/connections/agents access paragraph to the same rule. The terminal design's API citations are unrelated to that paragraph.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"tool.ts change is the EngineRouteObservation doc comment only: origin is withheld from agents and narrowed grants, and default-scoped pairings (which include access:manage) still read it. No glossary term changes.","inputs":["docs/glossary.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"tool.ts change is the EngineRouteObservation doc comment only: origin is withheld from agents and narrowed grants, and default-scoped pairings (which include access:manage) still read it. connections.ts change: the access:manage branch now also refuses agent requests (requestMayBeAnAgent); operator in person unchanged. The guide already says an agent acting for you does not read host endpoints and that operator in person or access:manage does; still accurate.","inputs":["docs/guides/connections.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md change rewords the /api/connections/agents access paragraph to the same rule. Integration guidance citing api.md is unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"api.md change rewords the /api/connections/agents access paragraph to the same rule. tool.ts change is the EngineRouteObservation doc comment only: origin is withheld from agents and narrowed grants, and default-scoped pairings (which include access:manage) still read it. connections.ts change: the access:manage branch now also refuses agent requests (requestMayBeAnAgent); operator in person unchanged. Checked the rewritten paragraph against withViewerRoutes: operator in person, or non-agent with access:manage; default-scope note matches DEFAULT_GRANT_PAIRING_SCOPE.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/connections/connections.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"tool.ts change is the EngineRouteObservation doc comment only: origin is withheld from agents and narrowed grants, and default-scoped pairings (which include access:manage) still read it. The tool row's description of routeObservation and its withholding is still accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"tool.ts change is the EngineRouteObservation doc comment only: origin is withheld from agents and narrowed grants, and default-scoped pairings (which include access:manage) still read it. SDK types are unchanged; no SDK claim affected.","inputs":["docs/reference/sdk.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"tool.ts change is the EngineRouteObservation doc comment only: origin is withheld from agents and narrowed grants, and default-scoped pairings (which include access:manage) still read it. No shared-package claim affected.","inputs":["docs/reference/shared.md","packages/contracts/src/tool.ts"]}
+  ]
+}

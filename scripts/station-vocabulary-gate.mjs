@@ -91,9 +91,6 @@ const VENDOR_PROFILE_FLAG_FILES = new Set([
   '.github/workflows/release.yml',
   'scripts/check-ios-store-profile.mjs',
   'scripts/__tests__/release-workflow.test.ts',
-  // Codex CLI's own `--profile` (a config profile that can pick a provider),
-  // pinned by managed policy; not Station's retired target flag.
-  'src-server/services/connections/__tests__/engine-route-observation.test.ts',
 ]);
 
 function extension(path) {
@@ -117,6 +114,14 @@ function isQualifiedVendorProfileFlag(file, line) {
     file === 'docs/guides/mobile-release.md' &&
     (line.includes('node scripts/ios-local-release-preflight.mjs --profile ') ||
       line.includes('node ../scripts/check-ios-store-profile.mjs --profile '))
+  )
+    return true;
+  // Codex CLI's own `--profile` (a config profile that can pick a provider),
+  // pinned by managed policy; not Station's retired target flag.
+  if (
+    file ===
+      'src-server/services/connections/__tests__/engine-route-observation.test.ts' &&
+    line.includes("['--profile=work']")
   )
     return true;
   return (

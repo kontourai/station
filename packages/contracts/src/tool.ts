@@ -924,8 +924,10 @@ export interface AgentConnectionView extends ConnectionConfig {
  *
  * `origin` is scheme, host and port only: never userinfo, path or query.
  * The engine lists omit it from an `ambient` route whose `source` is
- * `station` or `policy` unless the viewer is the operator in person or holds
- * `access:manage`; the kind and source still say an override exists.
+ * `station` or `policy` unless the viewer is the operator in person or a
+ * non-agent caller holding `access:manage`; the kind and source still say an
+ * override exists. Default-scoped pairings include `access:manage`, so this
+ * withholds from narrowed grants and agents, not from most paired devices.
  */
 export interface EngineRouteObservation {
   kind: 'account' | 'proxy' | 'ambient' | 'unknown';

@@ -8,7 +8,10 @@ import type {
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
-import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
+import {
+  isOperatorInPersonNotAgent,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import {
   isManagedEngineRefusal,
   managedEngineRefusalBody,
@@ -309,7 +312,8 @@ export function createConnectionRoutes(
 
 /**
  * These lists are readable at `orchestration:read`, but two things on them
- * are for the operator in person or a viewer granted `access:manage`:
+ * are for the operator in person or a non-agent viewer granted
+ * `access:manage`:
  *
  * - #4710: an endpoint from Station's environment or the managed policy is
  *   host configuration, so others do not read its origin.
@@ -324,9 +328,13 @@ function forViewer<
   },
 >(c: Context, connections: readonly T[]): T[] {
   const scope = grantedPairingScope(c);
+  // An agent's request never reads host endpoints or the refused account,
+  // whatever scope its credential carries.
   const mayRead =
     isOperatorInPersonNotAgent(c.req.raw) ||
-    (scope !== undefined && pairingScopeIncludes(scope, 'access:manage'));
+    (!requestMayBeAnAgent(c.req.raw) &&
+      scope !== undefined &&
+      pairingScopeIncludes(scope, 'access:manage'));
   return connections.map((connection) => ({
     ...connection,
     ...(connection.routeObservation

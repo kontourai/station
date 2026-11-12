@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { createConnectionServiceForTest } from '../../../services/connections/__tests__/connection-service-test-helper.js';
 import { ModelSelectionRequiredError } from '../../../services/connections/connection-service.js';
 import { createConnectionRoutes } from '../connections.js';
@@ -164,10 +165,15 @@ describe('Connection Routes', () => {
       failures: [],
     });
     service.listRuntimeConnectionCatalog.mockResolvedValue(listed);
-    const presenting = (scope: string) => {
+    const presenting = (
+      scope: string | undefined,
+      principal?: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
+    ) => {
       const outer = new Hono();
       outer.use('*', async (c, next) => {
-        setGrantedPairingScope(c, scope);
+        if (scope !== undefined) setGrantedPairingScope(c, scope);
+        if (principal)
+          setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
         await next();
       });
       outer.route('/', createConnectionRoutes(service as any));
@@ -188,11 +194,41 @@ describe('Connection Routes', () => {
         ['connection', 'https://own.example'],
         [undefined, 'http://127.0.0.1:4000'],
       ]);
-      expect(await origins(presenting('access:manage'), path)).toEqual([
+      const shown = [
         ['station', 'https://gw.example'],
         ['policy', 'https://pin.example'],
         ['connection', 'https://own.example'],
         [undefined, 'http://127.0.0.1:4000'],
+      ];
+      expect(await origins(presenting('access:manage'), path)).toEqual(shown);
+      // The operator in person reads them with no pairing scope at all.
+      expect(
+        await origins(
+          presenting(undefined, {
+            kind: 'credential',
+            credential: 'operator',
+            authority: 'operator-credential',
+            source: 'bearer',
+          }),
+          path,
+        ),
+      ).toEqual(shown);
+      // Station's internal caller is an agent's: refused even at access:manage.
+      expect(
+        (
+          await origins(
+            presenting('access:manage', {
+              kind: 'internal',
+              credential: 'internal',
+              authority: undefined,
+              source: 'bearer',
+            }),
+            path,
+          )
+        ).slice(0, 2),
+      ).toEqual([
+        ['station', undefined],
+        ['policy', undefined],
       ]);
     }
   });
@@ -234,10 +270,15 @@ describe('Connection Routes', () => {
       failures: [],
     });
     service.listRuntimeConnectionCatalog.mockResolvedValue(listed);
-    const presenting = (scope: string) => {
+    const presenting = (
+      scope: string | undefined,
+      principal?: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
+    ) => {
       const outer = new Hono();
       outer.use('*', async (c, next) => {
-        setGrantedPairingScope(c, scope);
+        if (scope !== undefined) setGrantedPairingScope(c, scope);
+        if (principal)
+          setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
         await next();
       });
       outer.route('/', createConnectionRoutes(service as any));
@@ -267,6 +308,30 @@ describe('Connection Routes', () => {
       expect(await evidence(presenting('access:manage'), path)).toEqual(
         listed[0]!.allowanceEvidence,
       );
+      // The operator in person reads the account with no pairing scope.
+      expect(
+        await evidence(
+          presenting(undefined, {
+            kind: 'credential',
+            credential: 'operator',
+            authority: 'operator-credential',
+            source: 'bearer',
+          }),
+          path,
+        ),
+      ).toEqual(listed[0]!.allowanceEvidence);
+      // Station's internal caller is an agent's: refused even at access:manage.
+      expect(
+        await evidence(
+          presenting('access:manage', {
+            kind: 'internal',
+            credential: 'internal',
+            authority: undefined,
+            source: 'bearer',
+          }),
+          path,
+        ),
+      ).toEqual(below);
     }
   });
 
