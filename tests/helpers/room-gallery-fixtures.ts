@@ -194,7 +194,9 @@ export type ProjectRoomScene =
   | 'new-messages'
   | 'mention'
   | 'agent-pending'
-  | 'agent-abandon';
+  | 'agent-abandon'
+  /** The short room with the composer focused and, on a phone, a keyboard. */
+  | 'keyboard';
 
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];

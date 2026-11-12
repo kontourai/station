@@ -22,6 +22,10 @@ import {
   auditGalleryScreen,
   type GalleryUiAudit,
 } from './helpers/gallery-ui-audit';
+import {
+  emulateKeyboard,
+  installKeyboardEmulation,
+} from './helpers/keyboard-emulation';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
   installProjectRoomFixture,
@@ -3401,6 +3405,7 @@ const ROOM_SCENES = [
   { scene: 'mention', room: 'project' },
   { scene: 'agent-pending', room: 'project' },
   { scene: 'agent-abandon', room: 'project' },
+  { scene: 'keyboard', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3454,6 +3459,8 @@ function roomConversationScreens(): Screen[] {
             created = true;
             const project = (await response.json()).data;
             if (room === 'project') {
+              if (scene === 'keyboard' && viewport.width === MOBILE.width)
+                await installKeyboardEmulation(page);
               fixture = await installProjectRoomFixture(page, {
                 slug,
                 projectId: project.id,
@@ -3566,6 +3573,32 @@ function roomConversationScreens(): Screen[] {
             if (scene === 'mention') {
               await composer.click();
               await composer.pressSequentially('@');
+            }
+            if (scene === 'keyboard') {
+              await composer.click();
+              if (viewport.width === MOBILE.width) {
+                // 844 tall, 544 visible: the keyboard takes 300px (#4810
+                // gallery delta 2). Send stays above it, and the room keeps
+                // the composer in view as the viewport changes.
+                await emulateKeyboard(page, 300);
+                const send = roomRegion.getByRole('button', { name: /^Send/ });
+                const overhang = async () => {
+                  const box = await send.boundingBox();
+                  const visible = await page.evaluate(
+                    () =>
+                      window.visualViewport!.offsetTop +
+                      window.visualViewport!.height,
+                  );
+                  return box ? box.y + box.height - visible : Infinity;
+                };
+                await expect
+                  .poll(overhang, {
+                    message: 'Send ends below the visible viewport (px)',
+                  })
+                  .toBeLessThanOrEqual(0);
+                expect((await send.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+                await expect(composer).toBeFocused();
+              }
             }
             if (scene === 'agent-pending' || scene === 'agent-abandon') {
               const mentionScout = async () => {
