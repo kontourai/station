@@ -656,11 +656,18 @@ describe('the /connections Overview', () => {
     state.sshLoading = true;
     state.connections = [failedModel];
     renderHub();
-    const engines = screen.getByRole('button', { name: /^Engines/ });
-    expect(engines.getAttribute('aria-busy')).toBe('true');
-    expect(engines.textContent).toBe('EnginesLoading');
-    const computers = screen.getByRole('button', { name: /^Computers/ });
-    expect(computers.textContent).toBe('ComputersLoading');
+    for (const title of ['Engines', 'Computers']) {
+      const tile = screen.getByRole('button', {
+        name: new RegExp(`^${title}`),
+      });
+      expect(tile.getAttribute('aria-busy')).toBe('true');
+      expect(
+        within(tile).getByRole('status', { name: `Loading ${title}` }),
+      ).toBeTruthy();
+      // No count and no mark until it answers.
+      expect(tile.querySelector('strong')).toBeNull();
+      expect(tile.textContent).not.toMatch(/\d|Needs attention/);
+    }
     // A section that answered shows its count meanwhile.
     expect(screen.getByRole('button', { name: /^Models/ }).textContent).toBe(
       'Models1Needs attention',
@@ -696,9 +703,9 @@ describe('the /connections Overview', () => {
       screen.getByRole('status', { name: 'Loading connections' }),
     ).toBeTruthy();
     expect(attentionItems()).toEqual([]);
-    expect(screen.getByRole('button', { name: /^Engines/ }).textContent).toBe(
-      'EnginesLoading',
-    );
+    expect(
+      screen.getByRole('status', { name: 'Loading Engines' }),
+    ).toBeTruthy();
 
     state.policyPending = false;
     state.policy = {

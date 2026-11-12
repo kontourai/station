@@ -32,7 +32,11 @@ export function OverviewAllowance({
 }) {
   if (!engines.length)
     return (
-      <Empty variant="compact" label="No engine with an account is added" />
+      <Empty
+        variant="compact"
+        label="Nothing here yet"
+        description="Add Claude Code or Codex to see its allowance."
+      />
     );
   return (
     <div className="connections-overview__allowance">
@@ -84,7 +88,11 @@ function EngineAllowance({
           action={<Button onClick={() => void failed.refetch()}>Retry</Button>}
         />
       ) : accounts.data && !account ? (
-        <Empty variant="compact" label="No account in use" />
+        <Empty
+          variant="compact"
+          label="Nothing here yet"
+          description="Choose the account its runs use on its Accounts tab."
+        />
       ) : account && !signedIn ? (
         <Empty
           variant="compact"

@@ -39,6 +39,9 @@
 .connections-overview__tile strong {
   font-size: var(--k-text-xl);
 }
+.connections-overview__tile-skeleton {
+  width: 3ch;
+}
 
 .connections-overview__allowance {
   display: grid;

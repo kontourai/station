@@ -1,5 +1,5 @@
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
-import { Badge, Skeleton } from '@kontourai/ui/react';
+import { Badge } from '@kontourai/ui/react';
 import { Button } from '../components/Button';
 import { PageSection } from '../components/PageSection';
 import { usePageHeader } from '../components/page-frame';
@@ -92,10 +92,11 @@ export function ConnectionsHub() {
                     {section.title}
                   </span>
                   {read === 'loading' ? (
-                    <>
-                      <span className="sr-only">Loading</span>
-                      <Skeleton variant="line" width="2ch" />
-                    </>
+                    <SkeletonBlock
+                      count={1}
+                      label={`Loading ${section.title}`}
+                      className="connections-overview__tile-skeleton"
+                    />
                   ) : read === 'answered' ? (
                     <>
                       <strong>{signals.count(section.id)}</strong>
