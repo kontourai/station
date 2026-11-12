@@ -1510,8 +1510,12 @@ function ProjectRoomComposer({
   const tooLong =
     new TextEncoder().encode(value).length > PROJECT_ROOM_LIMITS.textBytes;
   const hasFiles = !!files?.files.length;
+  // Saving an edit needs a change; an unchanged text has nothing to save.
   const canSend = editing
-    ? !editPending && (!!editing.text.trim() || editing.hasFiles) && !tooLong
+    ? !editPending &&
+      editing.text !== editing.original &&
+      (!!editing.text.trim() || editing.hasFiles) &&
+      !tooLong
     : restored &&
       !blocked &&
       (!!text.trim() || (hasFiles && !recipient)) &&

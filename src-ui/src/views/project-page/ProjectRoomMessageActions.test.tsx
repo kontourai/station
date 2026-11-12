@@ -314,6 +314,10 @@ test('Up in an empty composer edits your last message, saves it as an edit, and 
   expect((field as HTMLTextAreaElement).value).toBe(
     'Good catch, updating now.',
   );
+  // Nothing to save until the text changes.
+  expect(
+    screen.getByRole('button', { name: 'Save edit' }).matches(':disabled'),
+  ).toBe(true);
   fireEvent.change(field, { target: { value: 'Good catch, both fixed.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save edit' }));
   await waitFor(() =>

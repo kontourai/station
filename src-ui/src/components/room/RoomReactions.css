@@ -135,6 +135,7 @@
 .room-sheet-overlay[data-sheet] .room-sheet-panel {
   --room-sheet-width: 100%;
   max-height: min(70dvh, 560px);
+  overflow: hidden;
   border-width: var(--k-border-thin) 0 0;
   border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -160,6 +161,14 @@
 
 .room-emoji-picker__search:focus-within {
   border-color: var(--k-focus);
+  box-shadow: 0 0 0 1px var(--k-focus);
+}
+
+/* The field's frame carries the focus ring, so the input draws none. */
+.room-emoji-picker__search input:focus,
+.room-emoji-picker__search input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .room-emoji-picker__search input {
@@ -216,6 +225,13 @@
 .room-emoji-picker__emoji:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
   outline-offset: -2px;
+}
+
+/* Phones give every dialog panel `max-height: 100% !important` (index.css),
+   so a long picker would fill the screen. A set height keeps it a sheet over
+   the conversation; its body scrolls inside. */
+.room-sheet-overlay[data-sheet] .room-emoji-picker {
+  height: min(70dvh, 560px);
 }
 
 .room-sheet-overlay[data-sheet] .room-emoji-picker__grid {

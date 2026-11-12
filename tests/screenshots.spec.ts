@@ -3835,12 +3835,19 @@ function roomConversationScreens(): Screen[] {
               await expect(
                 picker.getByRole('heading', { name: 'Recent' }),
               ).toBeVisible();
-              if (viewport.width === MOBILE.width)
+              if (viewport.width === MOBILE.width) {
                 await expectTouchTarget(
                   picker.getByRole('button', { name: '👍' }).first(),
                   'Picker emoji',
                 );
-              else {
+                // A sheet over the conversation, not a full-screen takeover.
+                const sheet = await page
+                  .locator('.room-emoji-picker')
+                  .boundingBox();
+                expect(sheet!.y, 'picker sheet top (px)').toBeGreaterThan(
+                  MOBILE.height * 0.2,
+                );
+              } else {
                 // Search narrows the catalogue as the person types.
                 await picker.getByRole('searchbox').fill('par');
                 await expect(
