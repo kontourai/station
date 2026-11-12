@@ -634,9 +634,7 @@ describe('TaskRoomEditorPane', () => {
       expect(
         screen.getByText(kind === 'committed' ? 'Saved' : 'Saved'),
       ).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: 'Retry identical batch' }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry edit' })).toBeNull();
       expect(mocks.refetchAuthoritative).toHaveBeenCalledTimes(
         kind === 'duplicate' ? 1 : 0,
       );
@@ -710,7 +708,7 @@ describe('TaskRoomEditorPane', () => {
     fireEvent.blur(editor());
 
     expect(
-      await screen.findByRole('button', { name: 'Retry identical batch' }),
+      await screen.findByRole('button', { name: 'Retry edit' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('possibly saved');
     expect(screen.queryByText('Saved')).toBeNull();
@@ -736,7 +734,7 @@ describe('TaskRoomEditorPane', () => {
     fireEvent.blur(editor());
 
     expect(
-      await screen.findByRole('button', { name: 'Retry identical batch' }),
+      await screen.findByRole('button', { name: 'Retry edit' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('gap custody draft');
     expect(screen.queryByText('Saved')).toBeNull();
@@ -874,7 +872,7 @@ describe('TaskRoomEditorPane', () => {
     changeDraft('possibly saved');
     fireEvent.blur(editor());
     const retry = await screen.findByRole('button', {
-      name: 'Retry identical batch',
+      name: 'Retry edit',
     });
     expect(screen.getByText(/may already be saved/i)).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('possibly saved');
@@ -909,9 +907,7 @@ describe('TaskRoomEditorPane', () => {
     const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('possibly committed');
     fireEvent.blur(editor());
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Retry identical batch' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry edit' }));
     await waitFor(() => expect(mocks.batch).toHaveBeenCalledTimes(2));
     mocks.document.data = { kind: 'unavailable' } as never;
     rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
@@ -927,9 +923,7 @@ describe('TaskRoomEditorPane', () => {
       'task-1',
     );
     expect((editor() as HTMLTextAreaElement).value).toBe('concurrent truth');
-    expect(
-      screen.queryByRole('button', { name: 'Retry identical batch' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry edit' })).toBeNull();
     // A readable response does not itself restore query/stream write authority.
     expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
   });
@@ -1005,7 +999,7 @@ describe('TaskRoomEditorPane', () => {
     changeDraft('retained draft');
     fireEvent.blur(editor());
     const retry = await screen.findByRole('button', {
-      name: 'Retry identical batch',
+      name: 'Retry edit',
     });
 
     mocks.stream = 'terminal';
@@ -1014,7 +1008,7 @@ describe('TaskRoomEditorPane', () => {
     mocks.stream = 'live';
     rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
     const resumedRetry = screen.getByRole('button', {
-      name: 'Retry identical batch',
+      name: 'Retry edit',
     });
     expect(resumedRetry.matches(':disabled')).toBe(false);
     fireEvent.click(resumedRetry);
@@ -1031,7 +1025,7 @@ describe('TaskRoomEditorPane', () => {
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('first exact draft');
     fireEvent.blur(editor());
-    await screen.findByRole('button', { name: 'Retry identical batch' });
+    await screen.findByRole('button', { name: 'Retry edit' });
     changeDraft('new ordinary draft');
 
     fireEvent.blur(editor());
@@ -1073,13 +1067,9 @@ describe('TaskRoomEditorPane', () => {
       'terminal batch draft',
     );
     expect(
-      screen
-        .getByRole('button', { name: 'Retry identical batch' })
-        .matches(':disabled'),
+      screen.getByRole('button', { name: 'Retry edit' }).matches(':disabled'),
     ).toBe(true);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Retry identical batch' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry edit' }));
     expect(mocks.batch).toHaveBeenCalledTimes(1);
   });
 
@@ -1096,9 +1086,7 @@ describe('TaskRoomEditorPane', () => {
       'Stale edit plan',
     );
     expect((editor() as HTMLTextAreaElement).value).toBe('stale draft');
-    expect(
-      screen.queryByRole('button', { name: 'Retry identical batch' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry edit' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry autosave' })).toBeTruthy();
   });
 

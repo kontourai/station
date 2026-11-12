@@ -740,7 +740,7 @@ test.describe
         await heldOwnerBatch.route.abort('connectionfailed');
         heldOwnerBatch.release();
         await expect(
-          owner.getByRole('button', { name: 'Retry identical batch' }),
+          owner.getByRole('button', { name: 'Retry edit' }),
         ).toBeVisible();
 
         await owner.unroute(batchPattern);
@@ -754,9 +754,7 @@ test.describe
             response.request().method() === 'POST' &&
             new URL(response.url()).pathname.endsWith('/room/batches'),
         );
-        await owner
-          .getByRole('button', { name: 'Retry identical batch' })
-          .click();
+        await owner.getByRole('button', { name: 'Retry edit' }).click();
         expect((await duplicateRequest).postData()).toBe(heldOwnerBatch.body);
         const duplicateReceipt = await duplicateResponse;
         expect(duplicateReceipt.status()).toBe(200);

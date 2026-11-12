@@ -66,7 +66,9 @@ describe('ApprovalModeChip', () => {
         onChange={onChange}
       />,
     );
-    expect(trigger().getAttribute('title')).toBe('Approval: Ask first');
+    expect(trigger().getAttribute('title')).toBe(
+      'Approval: Ask first. Station approval coverage unknown.',
+    );
     expect(trigger().getAttribute('aria-label')).toContain(
       'Codex reviewer not reported here; sandbox escalations may be approved automatically.',
     );
@@ -135,7 +137,7 @@ describe('ApprovalModeChip', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  test('discloses pre-tool grant delivery in the sheet of a supported engine approval mode', async () => {
+  test('keeps a non-native approval boundary on the chip and details it in the sheet', async () => {
     const { rerender } = render(
       <ApprovalModeChip
         engineConnectionId="claude"
@@ -148,7 +150,12 @@ describe('ApprovalModeChip', () => {
     const claudeChip = screen.getByRole('button', {
       name: /^approval mode: ask first\./i,
     });
-    expect(claudeChip.getAttribute('title')).toBe('Approval: Ask first');
+    expect(claudeChip.getAttribute('title')).toBe(
+      'Approval: Ask first. Station approvals partly apply.',
+    );
+    expect(claudeChip.getAttribute('aria-label')).toMatch(
+      /^Approval mode: Ask first\. Station approvals partly apply\./,
+    );
     await openSheet();
     expect(screen.getByText(/Station approvals partly apply/)).toBeTruthy();
     expect(screen.getByText(/own approval flow/)).toBeTruthy();
@@ -166,11 +173,29 @@ describe('ApprovalModeChip', () => {
     const codexChip = screen.getByRole('button', {
       name: /^approval mode: ask first\./i,
     });
-    expect(codexChip.getAttribute('aria-label')).not.toMatch(
-      /Station approvals/,
+    expect(codexChip.getAttribute('aria-label')).toMatch(
+      /^Approval mode: Ask first\. Station approvals do not apply\./,
+    );
+    expect(codexChip.getAttribute('title')).toBe(
+      'Approval: Ask first. Station approvals do not apply.',
     );
     await openSheet();
     expect(screen.getByText(/Station approvals do not apply/)).toBeTruthy();
+  });
+
+  test('a native approval boundary is not repeated on the chip', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        toolPolicyDelivery={{ state: 'native', evidence: 'beforeToolCall' }}
+        sessionOverride="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(trigger().getAttribute('title')).toBe('Approval: Ask first.');
+    expect(trigger().getAttribute('aria-label')).not.toMatch(
+      /Station approvals/,
+    );
   });
   test('the trigger names the effective mode for a knob-supporting runtime', async () => {
     render(

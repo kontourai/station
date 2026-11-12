@@ -230,6 +230,14 @@ describe('translateChatError', () => {
       // The client cannot know a retry helps here (archive#3297: the underlying
       // cause in the observed instance was a stale credential).
       expect(result.hint).not.toBe('Retry your request.');
+      // That cause is this device's credential at Station, not the model
+      // connection, so the hint points at the device's connection.
+      expect(result.hint).toBe(
+        'This can be temporary. If it keeps happening, check this device’s connection to Station.',
+      );
+      expect(result.body).toBe(
+        'This app got an incomplete response from Station, so nothing more arrived for this turn.',
+      );
     });
 
     it('REPRO: a bare "Unexpected end of JSON input" (no stream-controller wrapper) classifies the same way', () => {

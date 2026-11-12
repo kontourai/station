@@ -247,8 +247,8 @@ const STREAM_BODY_ENDED_PATTERN =
  */
 const STREAM_BODY_ENDED_TRANSLATION: ChatErrorTranslation = {
   title: 'The reply ended early',
-  body: 'Station got an incomplete response, so nothing more arrived for this turn.',
-  hint: 'This can be temporary. If it keeps happening, check this Station’s model connection.',
+  body: 'This app got an incomplete response from Station, so nothing more arrived for this turn.',
+  hint: 'This can be temporary. If it keeps happening, check this device’s connection to Station.',
   callerHints: { noSend: true, noNewChat: true, neither: true },
   disclosureRaw: true,
 };
@@ -581,7 +581,7 @@ export function translateChatError(
     return {
       title: "This Station couldn't verify who's asking",
       body: "This device isn't authorized to chat on this Station yet. It needs to be paired and approved before it can send messages.",
-      hint: 'Retrying won’t fix this. Pair this device again, then try again.',
+      hint: 'Retrying won’t fix this. Pair this device, then try again.',
     };
   }
 
@@ -639,7 +639,8 @@ export function translateChatError(
     return {
       title: 'Sign in to this tool integration',
       body: text,
-      hint: 'Open Connections › Tools, sign in to the integration, then try again.',
+      // "→" matches the server's own sign-in body this hint sits under.
+      hint: 'Open Connections → Tools, sign in to the integration, then try again.',
       retryable: false,
     };
 

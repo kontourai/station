@@ -243,6 +243,17 @@ test('a real worker update and offline-reading action coexist and reload the new
     expect(reloadHit).toBe(true);
     await read.click();
     await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
+    // An open workspace is still behind the reader, so returning is primary.
+    expect(
+      await page
+        .getByRole('button', { name: 'Back to workspace' })
+        .getAttribute('class'),
+    ).toContain('button--primary');
+    expect(
+      await page
+        .getByRole('button', { name: 'Reconnect' })
+        .getAttribute('class'),
+    ).not.toContain('button--primary');
     await page.getByRole('button', { name: 'Back to workspace' }).click();
     await read.waitFor({ state: 'visible' });
     await context.setOffline(false);
@@ -706,6 +717,12 @@ test.each(['disconnect', 'unavailable'] as const)(
       await page.reload();
       expect(await page.evaluate(() => navigator.onLine)).toBe(true);
       await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
+      // The reload-time shell has no live workspace behind it: reload is primary.
+      expect(
+        await page
+          .getByRole('button', { name: 'Reconnect' })
+          .getAttribute('class'),
+      ).toContain('button--primary');
       await page.getByText('Chat route-offline', { exact: true }).click();
       await page.getByText('Route offline copy', { exact: true }).waitFor();
       navigationFailure = undefined;

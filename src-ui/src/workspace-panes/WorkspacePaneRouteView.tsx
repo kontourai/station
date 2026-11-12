@@ -25,7 +25,6 @@ import type { WorkspacePaneAvailabilityCatalogEntry } from './workspacePaneAvail
 import {
   WORKSPACE_PANE_ACTION_ELSEWHERE,
   WORKSPACE_PANE_AVAILABILITY_CHECKING,
-  WORKSPACE_PANE_CATALOG_LOAD_FAILED,
   WORKSPACE_PLUGIN_PANE_UNBOUND,
 } from './workspacePaneCopy';
 import { workspacePaneRequiresLayoutIdentity } from './workspacePaneDirectRoute';
@@ -158,8 +157,7 @@ export function WorkspacePaneRouteView({
   if (catalog.isError && catalog.data === undefined) {
     return (
       <ErrorState
-        title="Could not load workspace pane"
-        description={WORKSPACE_PANE_CATALOG_LOAD_FAILED}
+        title="Couldn’t load this pane"
         action={
           <Button
             onClick={() => void catalog.refetch()}

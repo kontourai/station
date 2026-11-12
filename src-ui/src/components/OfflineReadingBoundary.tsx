@@ -18,9 +18,12 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
   const evidence = captureCredentialEvidence();
   const binding = offlineReadingBinding(evidence);
   const profile = usePlatformProfile();
-  const initiallyOffline = () =>
-    navigator.onLine === false ||
+  const isReloadShell = () =>
     document.querySelector('meta[name="station-offline-shell"]') !== null;
+  const initiallyOffline = () => navigator.onLine === false || isReloadShell();
+  // In the reload-time shell there is no live workspace behind the reader, so
+  // reloading is the way back; in an open workspace, returning to it is.
+  const [reloadShell] = useState(isReloadShell);
   const [offline, setOffline] = useState(initiallyOffline);
   const [readerOpen, setReaderOpen] = useState(initiallyOffline);
   const [copies, setCopies] = useState<{
@@ -87,6 +90,22 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
   }, [offline, binding]);
   const values = copies?.binding === binding ? copies.values : [];
   const showReader = offline && readerOpen && !profile.isTauri;
+  const reconnectAction = (
+    <Button
+      variant={reloadShell ? 'primary' : 'secondary'}
+      onClick={() => window.location.reload()}
+    >
+      Reconnect
+    </Button>
+  );
+  const backAction = (
+    <Button
+      variant={reloadShell ? 'secondary' : 'primary'}
+      onClick={() => setReaderOpen(false)}
+    >
+      Back to workspace
+    </Button>
+  );
   return (
     <>
       <div
@@ -107,22 +126,14 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
           <ActionRow
             label="Offline reading actions"
             overflowLabel="More offline reading actions"
-            primary={
-              <Button onClick={() => window.location.reload()}>
-                Reconnect
-              </Button>
-            }
-            secondary={
-              <Button variant="secondary" onClick={() => setReaderOpen(false)}>
-                Back to workspace
-              </Button>
-            }
+            primary={reloadShell ? reconnectAction : backAction}
+            secondary={reloadShell ? backAction : reconnectAction}
           />
           {error && <p role="alert">{error}</p>}
           {!values.length && (
             <p>
               No saved copies. Turn on offline reading in Settings › Privacy &
-              sharing.
+              sharing while connected.
             </p>
           )}
           {values.map((copy) => (

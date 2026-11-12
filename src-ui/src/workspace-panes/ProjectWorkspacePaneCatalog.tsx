@@ -7,7 +7,6 @@ import type { ResolvedWorkspacePaneCatalogEntry } from './resolvedWorkspacePaneC
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
 import { WorkspacePaneCatalogRefreshNotice } from './WorkspacePaneCatalogRefreshNotice';
 import type { WorkspacePaneAvailabilityCatalogEntry } from './workspacePaneAvailabilityPresentation';
-import { WORKSPACE_PANE_CATALOG_LOAD_FAILED } from './workspacePaneCopy';
 import { isProjectPlaceableWorkspacePane } from './workspacePaneHostAdmission';
 
 interface CatalogProps {
@@ -57,8 +56,7 @@ function CatalogContents({
   if (error && entries.length === 0 && !hasData) {
     return (
       <ErrorState
-        title="Could not load workspace panes"
-        description={WORKSPACE_PANE_CATALOG_LOAD_FAILED}
+        title="Couldn’t load panes"
         action={
           <button type="button" onClick={onRetry}>
             Retry

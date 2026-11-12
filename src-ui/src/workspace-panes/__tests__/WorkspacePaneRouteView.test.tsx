@@ -301,7 +301,7 @@ describe('WorkspacePaneRouteView', () => {
         />,
       );
 
-      expect(screen.queryByText('Could not load workspace pane')).toBeNull();
+      expect(screen.queryByText('Couldn’t load this pane')).toBeNull();
       expect(screen.getByTestId('mounted-pane').textContent).toContain('demo');
     } finally {
       mock.isError = false;
@@ -324,7 +324,7 @@ describe('WorkspacePaneRouteView', () => {
         />,
       );
 
-      expect(screen.getByText('Could not load workspace pane')).toBeTruthy();
+      expect(screen.getByText('Couldn’t load this pane')).toBeTruthy();
     } finally {
       mock.isError = false;
       catalogMock.entries = entries;

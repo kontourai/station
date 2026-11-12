@@ -143,6 +143,10 @@ function ApprovalModeChipContent({
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
   const policyExplanation = toolPolicyDeliveryExplanation(toolPolicyDelivery);
   const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
+  // Where Station's approvals do not fully govern this engine, that boundary
+  // is safety copy: it stays on the chip itself, not only in the sheet.
+  const policyBoundary =
+    toolPolicyDelivery?.state === 'native' ? '' : ` ${policyLabel}.`;
 
   // #3290: the engine could not be moved onto the rules the pick needs, so
   // it runs what it ran before (its own settings, or the mode it reports).
@@ -312,8 +316,8 @@ function ApprovalModeChipContent({
             : isPendingRestrict || isRefused
               ? `${chipText} — ${pendingNote}`
               : accessibleLabel
-        }.${reviewerDisclosure} Approval ${chipText}`}
-        title={`Approval: ${selectedLabel}`}
+        }.${policyBoundary}${reviewerDisclosure} Approval ${chipText}`}
+        title={`Approval: ${selectedLabel}.${policyBoundary}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
         value={chipText}

@@ -911,7 +911,7 @@ export function TaskRoomEditorPane({
           onClick={() => void retry()}
           disabled={batch.isPending || !authorizationCurrent}
         >
-          Retry identical batch
+          Retry edit
         </button>
       ) : null}
     </section>

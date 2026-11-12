@@ -37,7 +37,6 @@ export function AcpSessionModeChip({
         /* The visible "Mode {name}" stays inside the accessible name
            (WCAG 2.5.3 Label in Name); the sheet carries each mode's description. */
         aria-label={`Session mode: ${selectedLabel}. Mode ${selectedLabel}`}
-        title={`Mode: ${selectedLabel}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Mode"
         value={selectedLabel}
