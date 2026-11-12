@@ -120,6 +120,18 @@
 .start-composer__box:focus-within {
   border-color: var(--k-focus);
 }
+/* The box is the field, so it carries the field's focus ring, drawn as the
+   reply composer's capsule draws it. The input's own outline would draw a
+   second, square ring inside the rounded box. A chip or tool inside the box
+   keeps its own ring and does not ring the box. */
+.start-composer__box:has(.start-composer__input:focus-visible) {
+  outline: 2px solid var(--k-focus);
+  outline-offset: -2px;
+}
+.start-composer__box .start-composer__input:focus-visible {
+  /* Match the global focus rule's priority; the box draws the ring. */
+  outline: none !important;
+}
 .start-composer--compact .start-composer__destination {
   justify-content: flex-start;
   padding-block: 0;
@@ -138,16 +150,8 @@
 .start-composer--compact .start-composer__input {
   min-height: 44px;
 }
-/* Touch: the box's focus border is the field's focus ring. A touch focus
-   matches :focus-visible on a text field, so the inner outline drew a second,
-   square ring inside the rounded one. The resize grip is too small to drag
-   with a finger; a long draft scrolls inside the field instead. */
-.start-composer[data-coarse-pointer]
-  .start-composer__box
-  .start-composer__input:focus-visible {
-  /* Match the global focus rule's priority; the box keeps its focus border. */
-  outline: none !important;
-}
+/* Touch: the resize grip is too small to drag with a finger; a long draft
+   scrolls inside the field instead. */
 .start-composer[data-coarse-pointer] .start-composer__input {
   resize: none;
 }

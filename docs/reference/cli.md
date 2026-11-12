@@ -3868,7 +3868,8 @@ any config read does, may still write a default `config/app.json` when none
 exists and may rewrite an existing one when it normalizes it (for example
 filling missing defaults or removing legacy, internal or retired keys). On
 macOS the first read may run the one-time Seatbelt
-probe a confined start would also run, in a throwaway temporary directory it
+probe a confined start would also run (on Linux, the bubblewrap probe), in a
+throwaway temporary directory it
 removes; that probe pauses the server for up to 10 seconds, and its result,
 a failure included, is kept for the server process and used by later
 starts.
@@ -3897,6 +3898,13 @@ be remote. Per engine:
   `appliesTo: starts-without-own-credential-profile` in `--json`); an Agent
   with its own credential profile, or a credential-recovery restart, is
   decided at start.
+- `Restricted network (<engine>: <mechanism>)` (#4769): `pass` when that
+  mechanism can limit a confined start to Station's egress broker on that
+  Station's host, `warn` with the reason when it cannot (Codex's own sandbox
+  and bubblewrap never can; an unavailable mechanism cannot either). Under a
+  restricted [`confinedNetwork`](config.md#optional-fields) policy, a start
+  that requires confinement is refused there. An older Station reports no
+  such row; `--json` carries it as `restrictedNetwork`.
 - `Confinement preflight`: one `warn` "Not checked: <reason>" row when no
   answer was obtained: no server answered, no credential is held, the
   Station refused it, an older Station answered HTTP 404, or the answer is
@@ -3990,6 +3998,10 @@ The JSON document has this top-level schema:
               "fallback": "confined-credential-unavailable",
               "remedy": "Give confined Claude sessions a credential of their own: ...",
               "appliesTo": "starts-without-own-credential-profile"
+            },
+            "restrictedNetwork": {
+              "state": "available",
+              "reason": "The Seatbelt profile allows outbound IPv4 TCP only to this host's addresses at the egress broker's port, and Mach lookups only to a reviewed list of local services; the broker admits the engine's model endpoint and the allowed hosts."
             }
           }
         ],
@@ -4058,7 +4070,7 @@ interface DoctorReport {
         preflight: {
           engines: Array<{
             engine: string;
-            mechanism: 'codex-sandbox' | 'seatbelt';
+            mechanism: 'codex-sandbox' | 'seatbelt' | 'bubblewrap';
             level: 'os-profile' | 'container' | 'microvm';
             mechanismState: 'available' | 'unavailable' | 'engine-reported';
             mechanismReason: string;
@@ -4080,6 +4092,11 @@ interface DoctorReport {
                   appliesTo: 'starts-without-own-credential-profile';
                 }
               | { state: 'not-applicable'; reason: string };
+            /** #4769: absent from a Station that predates it. */
+            restrictedNetwork?: {
+              state: 'available' | 'unavailable';
+              reason: string;
+            };
           }>;
           decidedAtStart: string[];
         };

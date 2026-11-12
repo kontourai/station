@@ -172,7 +172,9 @@ describe('RoomComposer', () => {
     const onSend = vi.fn();
     render(<Picker onPick={onPick} onSend={onSend} />);
     fireEvent.change(field(), { target: { value: '@' } });
-    expect(screen.getByRole('option', { name: 'Scout @scout' })).toBeTruthy();
+    expect(
+      screen.getByRole('option', { name: /^Scout Agent @scout\b/ }),
+    ).toBeTruthy();
     // Safari and some IMEs report composition only as keyCode 229.
     fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229 });
     fireEvent.keyDown(field(), { key: 'Enter', isComposing: true });

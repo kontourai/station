@@ -160,11 +160,6 @@ export function RoomMentionPicker({
           tabIndex={-1}
           variant="ghost"
           className="room-mention-picker__option"
-          aria-label={
-            candidate.agent
-              ? `${candidate.name} @${candidate.handle ?? candidate.id}`
-              : candidate.name
-          }
           aria-selected={selected === index}
           aria-disabled={!candidate.ready}
           disabled={!candidate.ready}
@@ -176,10 +171,13 @@ export function RoomMentionPicker({
           <span className="room-mention-picker__text">
             <span className="room-mention-picker__name">
               {candidate.name}
+              {/* Whitespace keeps the accessible name readable; flex
+                  layout does not draw it. */}
+              {candidate.agent && ' '}
               {candidate.agent && (
                 <span className="room-row__badge">Agent</span>
               )}
-            </span>
+            </span>{' '}
             <span className="room-mention-picker__description">
               {[
                 candidate.agent ? `@${candidate.handle ?? candidate.id}` : '',

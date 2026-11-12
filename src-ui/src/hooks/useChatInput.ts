@@ -499,6 +499,8 @@ export function useChatInput({
         ambientContext?: string;
         /** Hold this as a follow-up even when the engine can steer. */
         queueOnBusy?: boolean;
+        /** The host holds a queued follow-up's files (`followUpAttachments`). */
+        queueFilesOnBusy?: boolean;
       },
     ) => {
       if (!sessionId || !agentSlug) return;
@@ -659,6 +661,9 @@ export function useChatInput({
               }
             : {}),
           ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          ...(options?.queueOnBusy && options.queueFilesOnBusy
+            ? { queueFilesOnBusy: true }
+            : {}),
           connection,
           onDurable: handOffDraft,
         },

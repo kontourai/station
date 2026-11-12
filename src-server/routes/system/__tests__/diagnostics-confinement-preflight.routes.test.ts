@@ -120,6 +120,12 @@ describe('#4774: GET /api/diagnostics/confinement-preflight', () => {
         source: 'environment',
         appliesTo: 'starts-without-own-credential-profile',
       },
+      // #4769: a mechanism that is unavailable cannot restrict either.
+      restrictedNetwork: {
+        state: 'unavailable',
+        reason:
+          'seatbelt is unavailable here: Seatbelt is macOS-only; this host is linux',
+      },
     });
     expect(body.decidedAtStart).toEqual([
       'workspace-too-broad',
@@ -131,6 +137,18 @@ describe('#4774: GET /api/diagnostics/confinement-preflight', () => {
   test('mechanism available and a credential available', async () => {
     const { body } = await read(confinementProvidersForTests(), {
       ANTHROPIC_API_KEY: SECRET,
+    });
+    // #4769: Seatbelt can restrict the network here; Codex's sandbox never can.
+    expect(claude(body).restrictedNetwork).toMatchObject({
+      state: 'available',
+    });
+    expect(
+      body.engines.find((entry: any) => entry.engine === 'codex')
+        .restrictedNetwork,
+    ).toEqual({
+      state: 'unavailable',
+      reason:
+        "Codex's own sandbox cannot route the session through Station's egress broker, so a restricted network is not available for Codex sessions",
     });
     expect(claude(body)).toMatchObject({
       mechanismState: 'available',

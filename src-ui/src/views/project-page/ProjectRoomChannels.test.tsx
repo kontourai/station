@@ -391,7 +391,9 @@ test('a message and an @agent ask go to the selected channel', async () => {
   await waitFor(() => expect(composerField().value).toBe(''));
   fireEvent.change(composerField(), { target: { value: '@' } });
   fireEvent.click(
-    await screen.findByRole('option', { name: 'Researcher @researcher' }),
+    await screen.findByRole('option', {
+      name: /^Researcher Agent @researcher\b/,
+    }),
   );
   await screen.findByText('@Researcher');
   fireEvent.change(composerField(), { target: { value: 'Check the copy' } });
@@ -438,126 +440,6 @@ test('an archived channel offers no composer, no Agent asks and its own empty st
   expect(
     screen.queryByRole('textbox', { name: 'Message the project' }),
   ).toBeNull();
-});
-
-test('a host without channels shows its room as #general with no switcher', async () => {
-  channelsSupported = false;
-  mount();
-  expect(await screen.findByRole('heading', { name: 'general' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: /switch channel/ })).toBeNull();
-  expect(screen.queryByText('Channels unavailable')).toBeNull();
-});
-
-// #4810 integration: one shared conversation and composer, addressed per channel.
-
-test('each channel keeps its own unsent draft while switching', async () => {
-  mount('tab');
-  await screen.findByRole('textbox', { name: 'Message the project' });
-  fireEvent.change(composerField(), { target: { value: 'General draft' } });
-  await switchTo('general', 'design');
-  await waitFor(() => expect(composerField().value).toBe(''));
-  fireEvent.change(composerField(), { target: { value: 'Design draft' } });
-  await switchTo('design', 'general');
-  await waitFor(() => expect(composerField().value).toBe('General draft'));
-  await switchTo('general', 'design');
-  await waitFor(() => expect(composerField().value).toBe('Design draft'));
-});
-
-test('a reload in a non-default channel returns to that channel with its draft', async () => {
-  const first = mount('tab');
-  await screen.findByRole('textbox', { name: 'Message the project' });
-  await switchTo('general', 'design');
-  fireEvent.change(composerField(), { target: { value: 'Design draft' } });
-  first.unmount();
-  // A reload mints a new authority epoch; the reload partition is stable.
-  selectedAuthority = 'two';
-  mount('tab');
-  expect(
-    await screen.findByRole('button', { name: trigger('design') }),
-  ).toBeTruthy();
-  await waitFor(() => expect(composerField().value).toBe('Design draft'));
-  await waitFor(() =>
-    expect(reads).toContain(`/api/projects/team/channels/${design}/messages`),
-  );
-});
-
-test('a message and an @agent ask go to the selected channel', async () => {
-  execute = true;
-  mount('tab');
-  await screen.findByRole('textbox', { name: 'Message the project' });
-  await switchTo('general', 'design');
-  const user = userEvent.setup();
-  await user.type(composerField(), 'Hello design');
-  await user.keyboard('{Enter}');
-  await waitFor(() =>
-    expect(writes).toContainEqual(
-      expect.objectContaining({
-        method: 'POST',
-        path: `/api/projects/team/channels/${design}/messages`,
-        body: expect.objectContaining({
-          expectedRoomId: design,
-          text: 'Hello design',
-        }),
-      }),
-    ),
-  );
-  await waitFor(() => expect(composerField().value).toBe(''));
-  fireEvent.change(composerField(), { target: { value: '@' } });
-  fireEvent.click(
-    await screen.findByRole('option', { name: 'Researcher @researcher' }),
-  );
-  await screen.findByText('@Researcher');
-  fireEvent.change(composerField(), { target: { value: 'Check the copy' } });
-  await waitFor(() =>
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Ask Researcher' })
-        .disabled,
-    ).toBe(false),
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
-  await waitFor(() =>
-    expect(writes).toContainEqual(
-      expect.objectContaining({
-        method: 'POST',
-        path: `/api/projects/team/channels/${design}/agents`,
-        body: expect.objectContaining({
-          expectedRoomId: design,
-          agentId: 'researcher',
-          text: 'Check the copy',
-        }),
-      }),
-    ),
-  );
-  expect(
-    writes.filter(
-      (write) =>
-        write.path.startsWith('/api/projects/team/room/') ||
-        write.path.startsWith(`/api/projects/team/channels/${general}/`),
-    ),
-  ).toEqual([]);
-});
-
-test('an archived channel offers no composer, no Agent asks and its own empty state', async () => {
-  execute = true;
-  channels[1].archivedAt = '2026-11-10T00:00:00.000Z';
-  mount('tab');
-  await screen.findByRole('textbox', { name: 'Message the project' });
-  await switchTo('general', 'design');
-  const conversation = await screen.findByRole('list', {
-    name: 'Conversation',
-  });
-  const empty = await screen.findByText('No messages were posted here.');
-  // The empty state lives inside the shared conversation's own region.
-  expect(
-    empty.closest('.room-conversation') ??
-      conversation.closest('.room-conversation'),
-  ).toBe(conversation.closest('.room-conversation'));
-  expect(empty.closest('.room-conversation')).not.toBeNull();
-  expect(screen.queryByText('Start a chat with your project team.')).toBeNull();
-  expect(screen.getByText('This channel is read-only.')).toBeTruthy();
-  expect(
-    screen.queryByRole('textbox', { name: 'Message the project' }),
-  ).toBeNull();
   expect(screen.queryByRole('button', { name: /^Ask / })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Recap Project' })).toBeNull();
@@ -577,4 +459,15 @@ test('switching away from an unsaved notes draft asks first', async () => {
     await screen.findByRole('dialog', { name: 'Unsaved Changes' }),
   ).toBeTruthy();
   expect(screen.getByRole('button', { name: trigger('general') })).toBeTruthy();
+});
+
+test('the message region is named for the channel on screen', async () => {
+  mount('tab');
+  expect(
+    await screen.findByRole('region', { name: 'Messages in #general' }),
+  ).toBeTruthy();
+  await switchTo('general', 'design');
+  expect(
+    await screen.findByRole('region', { name: 'Messages in #design' }),
+  ).toBeTruthy();
 });

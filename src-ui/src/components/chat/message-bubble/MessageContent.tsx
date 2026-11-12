@@ -25,6 +25,7 @@ import { TranscriptAppTools } from '../TranscriptAppTools';
 import {
   foldTurnWork,
   isToolCallPart,
+  runWithoutCalls,
   splitToolCallRuns,
 } from '../tool-call-runs';
 import {
@@ -94,6 +95,13 @@ function MessageContentComponent({
     ) ?? [],
   );
   const keepChildAnchors = anchoredChildren.length > 0;
+  // A call that spawned child work is drawn as that child's card, which
+  // carries its status; its own row would only repeat the title.
+  const cardCallIds = new Set(
+    anchoredChildren.flatMap((child) =>
+      child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
+    ),
+  );
   const baseBlocks = useMemo(() => {
     const parts: MessageContentPart[] = contentParts?.length
       ? contentParts
@@ -196,12 +204,22 @@ function MessageContentComponent({
                 calls={block.calls}
               />
             );
+            // A call drawn as its child's card leaves the run, so the run
+            // neither repeats it nor folds it into "Ran N commands".
+            const run = runWithoutCalls(block, cardCallIds);
+            if (run.calls.length === 0)
+              return [
+                ...(run.interludes ?? []).map(({ part, index }) =>
+                  renderInterlude(part, index),
+                ),
+                subagents,
+              ];
             if (
-              block.calls.length + (block.interludes?.length ?? 0) <=
+              run.calls.length + (run.interludes?.length ?? 0) <=
               INLINE_RUN_LIMIT
             ) {
               return [
-                ...block.calls.map(({ part, index }) =>
+                ...run.calls.map(({ part, index }) =>
                   renderToolCall(part, index),
                 ),
                 subagents,
@@ -211,11 +229,11 @@ function MessageContentComponent({
             // back to its parts in original order — narration included — so
             // a load failure never drops the prose the fold moved.
             const inlineRows = [
-              ...block.calls.map(({ part, index }) => ({
+              ...run.calls.map(({ part, index }) => ({
                 index,
                 node: renderToolCall(part, index),
               })),
-              ...(block.interludes ?? []).map(({ part, index }) => ({
+              ...(run.interludes ?? []).map(({ part, index }) => ({
                 index,
                 node: renderInterlude(part, index),
               })),
@@ -225,7 +243,7 @@ function MessageContentComponent({
             return [
               <ToolCallBatchBoundary
                 key={block.key}
-                run={block}
+                run={run}
                 renderCall={renderToolCall}
                 renderInterlude={renderInterlude}
                 pending={inlineRows}

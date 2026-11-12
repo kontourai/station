@@ -63,6 +63,49 @@ mutation. Refresh is observation, not permission to retry an uncertain write.
 Goal completion never mutates Task or workflow status. Turning the preview off
 refuses all subsequent Goal requests; ordinary Session controls remain available.
 
+## Worktree output settlement
+
+`GET /api/orchestration/sessions/:threadId/worktree-settlement` returns
+`{success:true, data:{settlement}}`: the Session's one
+[`WorktreeOutputSettlement`](../../packages/contracts/src/workspace-isolation.ts),
+or `null`. It uses Session read authority and the orchestration read scope.
+
+`POST` to the same path settles it once. It requires an authenticated person
+with Session mutation authority and the orchestration operate scope; agent
+callers are refused. The strict body is one of
+`{requestKey, outcome:'discarded', acceptUncommittedLoss?}`,
+`{requestKey, outcome:'kept'}` or
+`{requestKey, outcome:'released', pullRequest:{provider, host, repository:{owner, name}, ref}}`.
+`requestKey` is 1–128 characters of `A-Z a-z 0-9 . _ : -`. A body that names
+an `actor` is refused with 400: the actor is the request's principal. The
+Session must have started in a worktree of its own, and no turn may be running
+in it. A discard removes files the repository ignores without
+`acceptUncommittedLoss`; the record counts the ignored paths `git status`
+listed (`ignoredEntries`). A discard is refused while the branch has moved on
+or another checkout has it; only when it completes an earlier discard whose
+worktree is already gone does it keep the branch in those cases, and the
+record says so (`branchKept`). A `kept` base must name a local or
+remote-tracking branch: a branch name is read as that branch even when a tag
+shares it, any spelling of `HEAD` is the branch it has checked out, and a
+detached checkout, a tag or a commit id is refused. The cleanup record's
+`afterCleanup` reports what was observed gone afterwards, not who removed it.
+
+A new record answers 201 with `data:{status:'recorded', settlement}`; a replay
+of the same request key and request, or a discard that completed an earlier
+half-done one, answers 200 with `status:'existing'`. Session authority is
+checked again after Station's Git and forge reads, immediately before anything
+is recorded or removed. A refusal answers 409 (404 for a Session without its
+own worktree, or `authority-changed`) with a `code` such as
+`already-settled`, `request-key-mismatch`, `settlement-pending`,
+`session-running`, `uncommitted-changes`, `branch-checked-out-elsewhere`,
+`branch-moved`, `worktree-path-not-a-directory`, `worktree-replaced`,
+`repository-missing`, `base-detached`, `base-is-session-branch`,
+`base-does-not-contain-head`, `no-new-commits`, `pull-request-mismatch` or
+`task-owned-worktree`, and the record in the way when there is one. A refusal
+records and removes nothing. Outcomes, evidence and crash behavior are described in
+[worktree output settlement](../design/isolated-agent-runs.md#worktree-output-settlement).
+No SDK or CLI command calls this route yet.
+
 This reference explains selected HTTP route families and their current owners.
 It is not a complete endpoint inventory. Request examples use illustrative IDs;
 replace them with identities returned by the selected Station. Response excerpts
@@ -158,7 +201,8 @@ engine or establish that the Session is active.
 ## Visual replies
 
 `html_preview` and `html_render` on station-control act only for the verified
-calling Session. The internal POST leaves `/api/html-replies/preview` and
+calling Session, and never for one whose network Station restricts (#4769:
+the guard answers 403 `station_control_network_restricted`). The internal POST leaves `/api/html-replies/preview` and
 `/api/html-replies/render` accept bounded self-contained HTML, not a caller-chosen
 Session or workspace. Preview returns PNG data, contentHeight and console output;
 render returns a page reference. Both POST leaves require operate scope; preview launches Chromium rather than performing a read-only query. `GET /api/html-replies/:sessionId/:pageId` reads
@@ -2354,7 +2398,9 @@ updated `data`, optional `ignoredKeys`, and an activation receipt when relevant.
 Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
 write it: first-run decisions and revisioned log-level changes have separate
-routes, and contribution/full-access choices have additional checks.
+routes, and contribution/full-access choices have additional checks. A
+`confinedNetwork` whose shape or any `allowedHosts` entry the egress broker
+cannot read is refused with 400 and nothing is saved (#4769).
 A change to a setting the managed policy locks is refused before any other
 check with 403, `code: 'managed_setting_locked'`, the setting's `key` and the
 policy's denial sentence; nothing in the request is saved. Sending exactly the
@@ -5942,7 +5988,9 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
   never a silently truncated page; use the terminal socket for larger replay.
-  `reset: true` means retention removed the resume point.
+  `reset: true` means retention removed the resume point. A record with
+  `resize: {cols, rows}` and empty `data` is the size the output after it
+  was written for.
   The server generates the UUID; a terminal from another Project or binding is
   refused even if the caller can access both Projects.
 - `POST /:terminalId/input` takes `{data, bindingKey?}` (at most 64 KiB of input).
@@ -6082,9 +6130,12 @@ admitted before the upgrade:
    base64url ticket valid for 30 seconds and redeemable once. An older host
    answers 404 (treat as unsupported); refusal is 403; more than eight
    unredeemed tickets per identity is 429.
-2. Open the socket offering two subprotocols, `station.terminal.v1` and
-   `station.terminal.ticket.<ticket>`. The server selects only
-   `station.terminal.v1` and sends `{type: "authenticated", protocolVersion: 1}`.
+2. Open the socket offering the version subprotocols, `station.terminal.v2`
+   then `station.terminal.v1`, and `station.terminal.ticket.<ticket>`. The
+   server selects only a version, the newest offered (a host older than
+   version 2 selects `station.terminal.v1`), and sends `{type:
+   "authenticated", protocolVersion: 1}`. Version 2 adds resize frames
+   (below); read the selected subprotocol to know which you got.
    A missing, reused, expired or malformed ticket gets HTTP 401 before any
    socket exists; the browser Origin allowlist is not consulted, because the
    ticket carries the HTTP admission decision. Query strings and unknown paths
@@ -6143,8 +6194,13 @@ Project/binding authority through TerminalSessions.
   It must name the current acknowledgement or an actually sent record.
   Future, backward and unsent acknowledgements return `invalid-ack`.
 
-Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output),
-uint32 channel, uint64 sequence, followed by UTF-8 bytes. Sequences must fit a
+Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output,
+`3` resize), uint32 channel, uint64 sequence, followed by UTF-8 bytes. A
+resize frame (version 2 only) carries two uint16 values, columns then rows:
+the terminal's size from that sequence on, as its journal recorded it when
+the PTY was resized. A view replays the output after it at that size. It is
+acknowledged like output, holds one of the 128 frame slots and costs no
+credit. On version 1 the same sequence arrives as an empty output frame. Sequences must fit a
 JavaScript safe integer. Input starts at one per channel and increments by one;
 duplicates, gaps and input before replay acknowledgement return
 `terminal-refused`. A current observer's complete mouse/focus reports return

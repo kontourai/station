@@ -237,8 +237,10 @@
 
 /* Phone layout: `useIsMobile` (MOBILE_MEDIA_QUERY) sets the class. */
 .room-composer--compact .room-mention-picker {
-  right: var(--k-space-3);
-  left: var(--k-space-3);
+  /* On a phone the list rides in the composer's flow, above the field, so it
+     never floats over a message's controls. */
+  position: static;
+  order: -1;
 }
 
 .room-composer.room-composer--compact {

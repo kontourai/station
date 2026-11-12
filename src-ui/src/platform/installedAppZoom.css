@@ -1,0 +1,8 @@
+/* Installed app (native mobile shell or home-screen web app): no pinch or
+   double-tap page zoom; a browser tab keeps pinch zoom. Panning stays, and
+   descendants intersect with this, so an existing `pan-y` or `none` surface
+   keeps its own gesture. Toggled by platform/installedAppZoom.ts. */
+html.is-zoom-locked,
+html.is-zoom-locked body {
+  touch-action: pan-x pan-y;
+}

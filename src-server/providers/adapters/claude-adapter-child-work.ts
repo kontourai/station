@@ -12,6 +12,7 @@ import {
   type ChildWorkDelta,
   type ChildWorkEndedBy,
   type ChildWorkItem,
+  type ChildWorkKind,
   type ChildWorkModel,
   type ChildWorkParent,
   type ChildWorkRegistryState,
@@ -106,6 +107,12 @@ export interface ClaudeChildWorkState {
   seenReplyFrames: Set<string>;
   seenReplyTools: Set<string>;
   seenResumeCalls: Set<string>;
+  /**
+   * Top-level `Monitor` tool call ids, bounded. A Monitor's task arrives as a
+   * `local_bash` like any background command; only the launching tool tells
+   * the two apart.
+   */
+  monitorCalls: Set<string>;
 }
 
 /** Bound on pending reply facts and corroborated resumes. */
@@ -144,6 +151,7 @@ function stateOf(record: ClaudeChildWorkRecord): ClaudeChildWorkState {
     seenReplyFrames: new Set(),
     seenReplyTools: new Set(),
     seenResumeCalls: new Set(),
+    monitorCalls: new Set(),
   };
   return record.childWork;
 }
@@ -345,6 +353,14 @@ export function observeClaudeTaskStarted(
   const title = nonEmpty(message.description);
   const kindLabel =
     nonEmpty(message.subagent_type) ?? nonEmpty(message.task_type);
+  // A `local_bash` task is a background shell command (a Monitor's included);
+  // every other task type is an agent with a conversation of its own.
+  const workKind: ChildWorkKind =
+    message.task_type === 'local_bash'
+      ? message.tool_use_id && state.monitorCalls.has(message.tool_use_id)
+        ? 'monitor'
+        : 'command'
+      : 'agent';
   const reply = message.tool_use_id
     ? state.pendingReplies.get(message.tool_use_id)
     : undefined;
@@ -375,6 +391,7 @@ export function observeClaudeTaskStarted(
     ...(Object.keys(parent).length > 0 ? { parent } : {}),
     ...(title ? { title } : {}),
     ...(kindLabel ? { kindLabel } : {}),
+    workKind,
     ...reply,
     ...(transcript ? { transcript } : {}),
     ...(typeof message.is_backgrounded === 'boolean'
@@ -433,6 +450,8 @@ export function observeClaudeSubagentReply(
   if (toolUseId === null) {
     if (!Array.isArray(content)) return;
     for (const block of content) {
+      if (block.type === 'tool_use' && block.name === 'Monitor')
+        rememberNewIdentity(state.monitorCalls, block.id);
       if (block.type !== 'tool_use' || block.name !== 'SendMessage') continue;
       if (!rememberNewIdentity(state.seenResumeCalls, block.id)) continue;
       const input = block.input;
@@ -705,6 +724,7 @@ function settle(
     ...(existing?.parent ? { parent: existing.parent } : {}),
     ...(existing?.title ? { title: existing.title } : {}),
     ...(existing?.kindLabel ? { kindLabel: existing.kindLabel } : {}),
+    ...(existing?.workKind ? { workKind: existing.workKind } : {}),
     ...(existing?.model ? { model: existing.model } : {}),
     ...(existing?.latestTool ? { latestTool: existing.latestTool } : {}),
     ...(existing?.transcript ? { transcript: existing.transcript } : {}),

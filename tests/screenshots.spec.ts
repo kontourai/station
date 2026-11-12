@@ -22,6 +22,10 @@ import {
   auditGalleryScreen,
   type GalleryUiAudit,
 } from './helpers/gallery-ui-audit';
+import {
+  emulateKeyboard,
+  installKeyboardEmulation,
+} from './helpers/keyboard-emulation';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
   installProjectRoomFixture,
@@ -3401,6 +3405,7 @@ const ROOM_SCENES = [
   { scene: 'mention', room: 'project' },
   { scene: 'agent-pending', room: 'project' },
   { scene: 'agent-abandon', room: 'project' },
+  { scene: 'keyboard', room: 'project' },
   { scene: 'channels', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
@@ -3455,6 +3460,8 @@ function roomConversationScreens(): Screen[] {
             created = true;
             const project = (await response.json()).data;
             if (room === 'project') {
+              if (scene === 'keyboard' && viewport.width === MOBILE.width)
+                await installKeyboardEmulation(page);
               fixture = await installProjectRoomFixture(page, {
                 slug,
                 projectId: project.id,
@@ -3462,26 +3469,15 @@ function roomConversationScreens(): Screen[] {
               });
               return;
             }
-            const task = await request.post(
-              `${resolveE2EApiBase()}/api/tasks`,
-              {
-                data: {
-                  projectId: slug,
-                  title: 'Fix the Android sign-in crash',
-                  createdBy: 'user',
-                },
-              },
-            );
-            expect(task.ok()).toBe(true);
-            const createdTask = (await task.json()).data;
+            // A fixture Task: a real one cannot be deleted and would change
+            // every later screen (see installTaskRoomFixture).
             const installed = await installTaskRoomFixture(page, {
-              taskId: createdTask.id,
-              taskCreatedAt: createdTask.createdAt,
-              projectId: project.id,
+              slug,
+              projectUuid: project.id,
               scene,
             });
             cleanupTask = installed.cleanup;
-            screen.path = `/tasks/${encodeURIComponent(createdTask.id)}?taskView=conversation`;
+            screen.path = `/tasks/${encodeURIComponent(installed.taskId)}?taskView=conversation`;
           },
           async afterGoto(page) {
             await page.evaluate(
@@ -3511,6 +3507,7 @@ function roomConversationScreens(): Screen[] {
             }
             const roomRegion = page.getByRole('region', {
               name: 'Project room',
+              exact: true,
             });
             await expect(roomRegion).toBeVisible();
             // Presence faces sit side by side; initials never overlap (#4810 review 8).
@@ -3578,12 +3575,59 @@ function roomConversationScreens(): Screen[] {
               await composer.click();
               await composer.pressSequentially('@');
             }
+            if (scene === 'keyboard') {
+              await composer.click();
+              if (viewport.width === DESKTOP.width) {
+                // No keyboard at 1440: a reply being typed, Send enabled.
+                await composer.pressSequentially('Updating both now');
+                await expect(
+                  roomRegion.getByRole('button', { name: /^Send/ }),
+                ).toBeEnabled();
+              }
+              if (viewport.width === MOBILE.width) {
+                // 844 tall, 544 visible: the keyboard takes 300px (#4810
+                // gallery delta 2). Send stays above it, and the room keeps
+                // the composer in view as the viewport changes.
+                await emulateKeyboard(page, 300);
+                const send = roomRegion.getByRole('button', { name: /^Send/ });
+                const overhang = async () => {
+                  const box = await send.boundingBox();
+                  const visible = await page.evaluate(
+                    () =>
+                      window.visualViewport!.offsetTop +
+                      window.visualViewport!.height,
+                  );
+                  return box ? box.y + box.height - visible : Infinity;
+                };
+                await expect
+                  .poll(overhang, {
+                    message: 'Send ends below the visible viewport (px)',
+                  })
+                  .toBeLessThanOrEqual(0);
+                expect((await send.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+                // It lands on the keyboard: measuring before the lift settles
+                // scrolled too far and left a blank band above the keyboard.
+                const gap = await page.evaluate(
+                  () =>
+                    window.visualViewport!.offsetTop +
+                    window.visualViewport!.height -
+                    document
+                      .querySelector('.project-room .room-composer')!
+                      .getBoundingClientRect().bottom,
+                );
+                expect(
+                  gap,
+                  'blank band above the keyboard (px)',
+                ).toBeLessThanOrEqual(8);
+                await expect(composer).toBeFocused();
+              }
+            }
             if (scene === 'agent-pending' || scene === 'agent-abandon') {
               const mentionScout = async () => {
                 await composer.click();
                 await composer.pressSequentially('@');
                 await roomRegion
-                  .getByRole('option', { name: 'Scout @scout' })
+                  .getByRole('option', { name: /^Scout Agent @scout\b/ })
                   .click();
               };
               await mentionScout();
@@ -3703,7 +3747,7 @@ function roomConversationScreens(): Screen[] {
               await page.reload();
               await expect(
                 page
-                  .getByRole('region', { name: 'Project room' })
+                  .getByRole('region', { name: 'Project room', exact: true })
                   .getByRole('textbox', { name: /^Message/ }),
               ).toHaveValue(draftText);
               // Boot re-applies the saved theme; set the scene's after it.

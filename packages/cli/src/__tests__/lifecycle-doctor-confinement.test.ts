@@ -153,7 +153,7 @@ function confinementRows(
   report: Awaited<ReturnType<typeof collectDoctorReport>>,
 ) {
   return report.checks.filter((check) =>
-    /^(Confinement|Confined credential)/.test(check.label),
+    /^(Confinement|Confined credential|Restricted network)/.test(check.label),
   );
 }
 
@@ -203,6 +203,101 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
     expect(rows[1].detail).toBe(
       `A credential a confined start can use is enrolled in Station's confined configuration. ${SCOPE_TEXT}`,
     );
+  });
+
+  test('#4770: a Linux Station reporting bubblewrap is read and rendered, not "Not checked"', async () => {
+    const report = await reportFor(
+      readerDeps(
+        answering(
+          preflight({
+            mechanism: 'bubblewrap',
+            mechanismState: 'available',
+            mechanismReason:
+              'the bubblewrap sandbox applies and enforces on this host',
+            confinedAuthentication: {
+              state: 'available',
+              source: 'environment',
+              appliesTo: SCOPE,
+            },
+          }),
+        ),
+      ),
+    );
+    const rows = confinementRows(report).filter((row) =>
+      row.label.includes('claude'),
+    );
+    expect(rows).toEqual([
+      {
+        label: 'Confinement mechanism (claude: bubblewrap)',
+        status: 'pass',
+        detail:
+          'Available on the host of Station "laptop": the bubblewrap sandbox applies and enforces on this host.',
+      },
+      expect.objectContaining({
+        label: 'Confined credential (claude)',
+        status: 'pass',
+      }),
+    ]);
+  });
+
+  test('#4769: whether a restricted network is enforceable is a row of its own, pass or warn; an older Station adds none', async () => {
+    const report = await reportFor(
+      readerDeps(
+        answering({
+          engines: [
+            {
+              ...CODEX,
+              restrictedNetwork: {
+                state: 'unavailable',
+                reason:
+                  "Codex's own sandbox cannot route the session through Station's egress broker",
+              },
+            },
+            {
+              engine: 'claude',
+              mechanism: 'seatbelt',
+              level: 'os-profile',
+              mechanismState: 'available',
+              mechanismReason: 'the Seatbelt profile applies on this host',
+              confinedAuthentication: {
+                state: 'available',
+                source: 'environment',
+                appliesTo: SCOPE,
+              },
+              restrictedNetwork: {
+                state: 'available',
+                reason:
+                  "A restricted start reaches only Station's egress broker.",
+              },
+            },
+          ],
+          decidedAtStart: DECIDED_AT_START,
+        } as ConfinementPreflight),
+      ),
+    );
+    const rows = confinementRows(report).filter((row) =>
+      row.label.startsWith('Restricted network'),
+    );
+    expect(rows).toEqual([
+      {
+        label: 'Restricted network (codex: codex-sandbox)',
+        status: 'warn',
+        detail:
+          'Not enforceable on the host of Station "laptop": Codex\'s own sandbox cannot route the session through Station\'s egress broker. Under a restricted confined network policy, a codex start that requires os-profile confinement is refused there.',
+      },
+      {
+        label: 'Restricted network (claude: seatbelt)',
+        status: 'pass',
+        detail:
+          'Enforceable on the host of Station "laptop": A restricted start reaches only Station\'s egress broker.',
+      },
+    ]);
+    // A Station that predates the fact reports no such row.
+    expect(
+      confinementRows(
+        await reportFor(readerDeps(answering(BOTH_AVAILABLE))),
+      ).filter((row) => row.label.startsWith('Restricted network')),
+    ).toEqual([]);
   });
 
   test('credential unavailable: a warn row naming the fallback and the remedy', async () => {

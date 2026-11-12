@@ -30,6 +30,10 @@ import {
 import type { IProviderAdapterRegistry } from '../../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../../providers/sessions/async-event-queue.js';
 import {
+  queuedAttachmentsOf,
+  readQueuedAttachmentFrom,
+} from '../../../../runtime/routes/conversation-start-ports.js';
+import {
   type ExecutionSessionBinding,
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
@@ -249,6 +253,8 @@ export function createInboxHarness() {
       inbox?: boolean;
       continueThroughExecutor?: true;
       stagedAttachments?: true;
+      /** Busy sends with files are held, as on a host with `followUpAttachments`. */
+      queuedFiles?: true;
       /** Reopen another process's home (a restart). */
       root?: string;
       /** This process's birth: an earlier birth's claims read as dead. */
@@ -285,7 +291,7 @@ export function createInboxHarness() {
         : []),
     );
     const adapter = new ScriptedAdapter();
-    if (options.stagedAttachments)
+    if (options.stagedAttachments || options.queuedFiles)
       adapter.metadata.capabilities = [
         ...adapter.metadata.capabilities,
         'file-input',
@@ -518,11 +524,17 @@ export function createInboxHarness() {
           const gate = inboxStartGate.wait;
           inboxStartGate.wait = undefined;
           if (gate) await gate;
+          // Production's read-back, before the start (a missing file refuses).
+          const attachments = queuedAttachmentsOf(
+            { readQueuedAttachment: readQueuedAttachmentFrom(store) },
+            payload,
+          );
           try {
             const handle = await executeForegroundMessage(
               {
                 target: { environment: { kind: 'current' }, agent: AGENT },
                 message: payload.message,
+                ...(attachments ? { attachments } : {}),
                 conversationId,
                 clientTurnId,
                 userId: payload.actor.userId,
@@ -606,6 +618,12 @@ export function createInboxHarness() {
         eventBus: bus,
         logger: { debug: vi.fn() },
         getUserId: () => caller,
+        ...(options.queuedFiles
+          ? {
+              storeQueuedAttachment: (bytes: Buffer) =>
+                store.storeQueuedAttachmentBlob(bytes),
+            }
+          : {}),
         ...(options.stagedAttachments
           ? {
               resolvePrincipal: () => ({
