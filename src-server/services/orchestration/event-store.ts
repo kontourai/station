@@ -919,6 +919,18 @@ export interface AllowanceEpochFactRow {
   proxyRouted: boolean;
 }
 
+/** The raw SQLite row behind an `AllowanceEpochFactRow`. */
+interface AllowanceEpochFactSqlRow {
+  id: string;
+  provider: string;
+  thread_id: string;
+  observed_at: string;
+  global_sequence: number | bigint;
+  account_key: unknown;
+  connection_id: unknown;
+  proxy_routed: number | bigint;
+}
+
 /** A provider quota refusal (`runtime.error` with `kind: 'quota_exhausted'`). */
 export interface AllowanceRefusalRow extends AllowanceEpochFactRow {
   code?: string;
@@ -8393,7 +8405,9 @@ export class EventStore {
           ORDER BY e.observed_at DESC, e.global_sequence DESC
           LIMIT ?`,
       )
-      .all(options.since, options.limit) as any[];
+      .all(options.since, options.limit) as Array<
+      AllowanceEpochFactSqlRow & { code: unknown; details: unknown }
+    >;
     return rows.map((row) => {
       let details: unknown;
       try {
@@ -8442,11 +8456,13 @@ export class EventStore {
         ...options.providers,
         ...proven,
         options.limit,
-      ) as any[];
+      ) as AllowanceEpochFactSqlRow[];
     return rows.map((row) => this.mapAllowanceEpochFactRow(row));
   }
 
-  private mapAllowanceEpochFactRow(row: any): AllowanceEpochFactRow {
+  private mapAllowanceEpochFactRow(
+    row: AllowanceEpochFactSqlRow,
+  ): AllowanceEpochFactRow {
     return {
       eventId: row.id,
       provider: row.provider,
