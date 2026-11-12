@@ -363,10 +363,13 @@ settle the flush attempt while its exporter remains active, so stream completion
 is not proof that every exporter or other run resource has settled. This change
 does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
 
-The process keeper audits Core 2.11.0 with AI 6.0.322. Requalification on Node 24
-and macOS inspected the installed patched CJS/ESM exports and AI's stream-finish
-source, then passed all eight format/strategy cases with the held-processor,
-callback, EOF-ordering, and child/resource-settlement assertions intact. A
+The process keeper audits Core 2.11.0 with the locked AI 6.0.330. Requalification
+on Node 24 and macOS verified the installed CJS/ESM entries against the official
+archive and reviewed the stream-source changes since AI 6.0.322. The newer
+array-output parser and telemetry redaction do not alter the normal text
+finish callback chain. All eight format/strategy cases passed with the
+held-processor, callback, EOF-ordering, and child/resource-settlement assertions
+intact. These cases do not qualify every structured-output or telemetry path. A
 dependency change that trips its version guard requires that source review and
 full matrix before advancing the audited pair; retain the watchdogs and assertions.
 
