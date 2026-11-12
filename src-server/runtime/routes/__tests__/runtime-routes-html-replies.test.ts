@@ -35,6 +35,15 @@ function deepStub<T extends object>(overrides: T): T {
   });
 }
 
+/** A browser on this machine, dialling its loopback directly. */
+const SAME_MACHINE = {
+  incoming: { socket: { remoteAddress: '127.0.0.1' } },
+} as never;
+/** A phone reaching this host over the tailnet. */
+const REMOTE_PHONE = {
+  incoming: { socket: { remoteAddress: '100.96.12.7' } },
+} as never;
+
 const makeTempDir = trackTempDirs();
 test('runtime composition binds page reads to current session authority before reading persisted bytes', async () => {
   const home = makeTempDir('html-reply-runtime-auth-');
@@ -73,7 +82,11 @@ test('runtime composition binds page reads to current session authority before r
     app,
     port: 4321,
     appConfig: {},
-    configLoader: { getProjectHomeDir: () => home, loadAppConfig: () => ({}) },
+    configLoader: {
+      getProjectHomeDir: () => home,
+      loadAppConfig: () => ({}),
+      loadStoredAppConfig: async () => ({}),
+    },
     logger: { debug() {}, info() {}, warn() {}, error() {} },
     activeAgents: new Map(),
     agentService: { listAgents: () => [] },
@@ -116,9 +129,11 @@ test('runtime composition binds page reads to current session authority before r
     );
     await runtime.kitLifecycleReady;
     const path = `/api/html-replies/publisher/${reference.pageId}`;
-    const response = await app.request(path, {
-      headers: { Authorization: `Bearer ${operator}` },
-    });
+    const response = await app.request(
+      path,
+      { headers: { Authorization: `Bearer ${operator}` } },
+      SAME_MACHINE,
+    );
     expect(response.status).toBe(200);
     const responseSchema = z.object({
       data: z.object({ html: z.string() }),
@@ -128,12 +143,56 @@ test('runtime composition binds page reads to current session authority before r
     expect(body.data.html).toBe('<h1>Authorized page</h1>');
     expect(body.frameOrigin).toBe(frameOrigin);
     frameOrigin = 'http://sandbox-two.test';
-    const afterRestart = await app.request(path, {
-      headers: { Authorization: `Bearer ${operator}` },
-    });
+    const afterRestart = await app.request(
+      path,
+      { headers: { Authorization: `Bearer ${operator}` } },
+      SAME_MACHINE,
+    );
     expect(responseSchema.parse(await afterRestart.json()).frameOrigin).toBe(
       frameOrigin,
     );
+    // The frame listener binds the host's loopback: a phone would dial its
+    // own and be refused, so it is offered no frame origin and renders the
+    // page in the opaque-origin sandbox instead.
+    const remote = await app.request(
+      path,
+      { headers: { Authorization: `Bearer ${operator}` } },
+      REMOTE_PHONE,
+    );
+    expect(remote.status).toBe(200);
+    const remoteBody = (await remote.json()) as {
+      data: { html: string };
+      frameOrigin?: string;
+    };
+    expect(remoteBody.data.html).toBe('<h1>Authorized page</h1>');
+    expect(remoteBody.frameOrigin).toBeUndefined();
+    // Nor does the app config hand it one for MCP Apps, whether read
+    // directly or through the boot payload.
+    for (const [read, config] of [
+      ['/config/app', (body: any) => body.data],
+      ['/api/boot', (body: any) => body.sections.config.data.data],
+    ] as const) {
+      const local = config(
+        await (
+          await app.request(
+            read,
+            { headers: { Authorization: `Bearer ${operator}` } },
+            SAME_MACHINE,
+          )
+        ).json(),
+      );
+      expect(local.mcpUiFrameOrigin).toBe(frameOrigin);
+      const phone = config(
+        await (
+          await app.request(
+            read,
+            { headers: { Authorization: `Bearer ${operator}` } },
+            REMOTE_PHONE,
+          )
+        ).json(),
+      );
+      expect(phone.mcpUiFrameOrigin).toBeUndefined();
+    }
     expect(canRead).toHaveBeenCalledWith(
       'publisher',
       expect.objectContaining({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),
@@ -141,9 +200,11 @@ test('runtime composition binds page reads to current session authority before r
     allow = false;
     expect(
       (
-        await app.request(path, {
-          headers: { Authorization: `Bearer ${operator}` },
-        })
+        await app.request(
+          path,
+          { headers: { Authorization: `Bearer ${operator}` } },
+          SAME_MACHINE,
+        )
       ).status,
     ).toBe(404);
   } finally {
