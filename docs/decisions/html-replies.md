@@ -37,7 +37,9 @@ forwards only bounded HTTP(S) link requests. It has no MCP AppBridge, tool calls
 resource reads, message sending, or session APIs. Even a forged link message
 requires confirmation in trusted Station chrome before external opening.
 The viewer checks both the frame window and its exact origin on every message.
-An absent or same-origin frame configuration refuses rendering.
+A same-origin frame configuration refuses rendering. A client the frame
+listener cannot serve renders in the opaque-origin fallback described in the
+remote-client amendment.
 
 `prepareHtmlReply` accepts a caller-owned authorized workspace root, never a
 root chosen by public tool input. Quoted absolute PNG/JPEG/GIF/WebP paths in
@@ -231,3 +233,41 @@ named skip with the missing executable path. The process-heavy CI lane installs
 Chromium alone, so WebKit viewer-residual evidence is local-only and is not a
 claim of WebKit verification by that lane. Neither engine's absence is treated
 as a passing browser execution.
+
+## Remote-client amendment (2026-11-12, #4821)
+
+The sandbox listener binds the host's loopback only, so its origin is reachable
+only from a browser on the Station host. It used to be offered to every client:
+the phone app, and any LAN or tailnet browser, dialled its own loopback and
+showed a refused connection instead of the reply. The owner chose to render
+for those clients rather than refuse (decided 2026-11-12):
+
+- The server offers the frame origin only to a same-machine browser
+  (`isSameMachineBrowserCaller` in `runtime-routes.ts`: a loopback socket, no
+  ingress identity, and an attested loopback `Host` behind Station's own
+  proxy). This applies to page reads, workspace visual-file previews, and the
+  MCP Apps origin in `/config/app` and the boot payload. Plugin frames still
+  receive it because they have no fallback.
+- Without an origin, `HtmlReply` renders the same host-built page document in
+  one frame with `sandbox="allow-scripts"` and no `allow-same-origin`. Its
+  origin is opaque, so page scripts still cannot reach Station's origin,
+  cookies or storage. The page's own CSP still precedes the authored bytes.
+  Theme tokens are written as a stylesheet, and the viewer accepts link
+  requests only from that frame window with origin `null`. It never loads
+  pages by message in this mode.
+
+Residual risks, accepted for these clients only:
+
+- There is no outer proxy frame. The page is a direct child of Station's
+  window, so a Station message listener that checks only the origin, not the
+  source window, could see its messages. The listener sees origin `null`,
+  which listeners pinned to exact origins refuse.
+- The page inherits the embedding app's Content Security Policy, not the
+  proxy's `frame-src 'none'`. Child navigation is bounded by the app's own
+  policy, and inline scripts may be refused where the app allows only `'self'`
+  (the desktop and mobile apps). HTML, CSS and inline SVG still render.
+
+Evidence: `runtime-routes-html-replies.test.ts` (a loopback client receives the
+origin; a tailnet phone receives none for the page, `/config/app` and
+`/api/boot`) and `HtmlReply.test.tsx` (opaque sandbox, no load by message, link
+origin `null`). Fault injection of either rule fails its test.

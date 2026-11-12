@@ -284,6 +284,10 @@ The web host follows the Apps sandbox-proxy lifecycle:
 
 1. Station starts a minimal proxy on a different origin. It uses an ephemeral
    loopback port by default; `MCP_UI_FRAME_PORT` may pin a nonzero port.
+   Because it listens on loopback, Station offers its origin
+   (`mcpUiFrameOrigin`, and a visual reply's frame origin) only to a browser
+   on the Station host (#4821). Every other client gets none and takes the
+   fallback below.
 2. The Station page embeds that proxy with
    `sandbox="allow-scripts allow-same-origin"`.
 3. The proxy sends `ui/notifications/sandbox-proxy-ready`.
@@ -312,8 +316,8 @@ window source. The inner frame receives no same-origin access, top-level
 navigation, popup or modal permissions. Network restrictions retain the policy
 validation limits described above.
 
-If the proxy cannot start or its origin is not distinct from Station, the host
-degrades to an opaque-origin static `srcdoc` render. It never grants
+If the proxy cannot start, its origin is not distinct from Station, or this
+client cannot reach it, the host degrades to an opaque-origin `srcdoc` render. It never grants
 `allow-scripts` plus `allow-same-origin` to untrusted content on Station's own
 origin.
 
