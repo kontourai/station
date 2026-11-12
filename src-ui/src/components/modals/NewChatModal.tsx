@@ -78,7 +78,10 @@ import {
 } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
-import { AgentPickerGroups } from '../chat-start/AgentPickerRow';
+import {
+  AgentPickerGroups,
+  NO_AGENT_SETUP_HINT,
+} from '../chat-start/AgentPickerRow';
 import {
   ContextLabelSeparator,
   ContextPickerOptions,
@@ -1866,7 +1869,7 @@ export function NewChatModal({
             <input
               ref={agentInputRef}
               type="text"
-              placeholder="Search agents..."
+              placeholder="Search agents…"
               value={agentSearch}
               onChange={(e) => {
                 preservedAgentSlug.current = undefined;
@@ -2280,7 +2283,7 @@ export function NewChatModal({
               <Empty
                 variant="compact"
                 label="Nothing to chat with yet"
-                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
+                description={NO_AGENT_SETUP_HINT}
                 action={
                   <button
                     type="button"

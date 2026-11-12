@@ -1478,7 +1478,7 @@ describe('the start composer in the dock', () => {
     const onSelect = start();
     fireEvent.change(message(), { target: { value: 'Keep this draft' } });
     expect(
-      (await screen.findByRole('region', { name: 'Set up an AI connection' }))
+      (await screen.findByRole('region', { name: 'Set up an engine' }))
         .textContent,
     ).toContain('connection offline');
     expect(startButton().disabled).toBe(true);
