@@ -3069,7 +3069,7 @@ describe('AgentConnectionView', () => {
     });
     expect(save).not.toHaveBeenCalled();
   });
-  test('an endpoint from the engine\'s saved settings is labelled as such', async () => {
+  test("an endpoint from the engine's saved settings is labelled as such", async () => {
     connectionQueryData = readyEngine({
       id: 'claude',
       type: 'claude',
@@ -3149,7 +3149,9 @@ describe('AgentConnectionView', () => {
     await render(
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
-    expect(screen.getByRole('button', { name: 'Check connection' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Check connection' }),
+    ).toBeTruthy();
     expect(
       screen.getByText(
         'Check connection sends one short message (uses a little model allowance).',
@@ -3166,7 +3168,9 @@ describe('AgentConnectionView', () => {
         onNavigate={vi.fn()}
       />,
     );
-    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: 'Unsaved changes' }),
+    ).toBeNull();
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'My OpenCode' },
     });
@@ -3175,7 +3179,9 @@ describe('AgentConnectionView', () => {
     );
     const bar = screen.getByRole('region', { name: 'Unsaved changes' });
     fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
-    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: 'Unsaved changes' }),
+    ).toBeNull();
     rerender(
       <AgentConnectionView
         selectedRuntimeId="opencode"
@@ -3263,8 +3269,11 @@ describe('AgentConnectionView', () => {
     );
     expect(screen.getByText('Save changes before refreshing.')).toBeTruthy();
     expect(
-      (screen.getByRole('button', { name: 'Refresh models' }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole('button', {
+          name: 'Refresh models',
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
 
     // A failed save leaves the edit unsaved, so the guidance stays.
@@ -3280,8 +3289,11 @@ describe('AgentConnectionView', () => {
     expect(save).toHaveBeenCalledTimes(2);
     expect(screen.queryByText('Save changes before refreshing.')).toBeNull();
     expect(
-      (screen.getByRole('button', { name: 'Refresh models' }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole('button', {
+          name: 'Refresh models',
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(false);
   });
 
@@ -3302,7 +3314,6 @@ describe('AgentConnectionView', () => {
       ).length,
     ).toBeGreaterThan(0);
   });
-
 });
 
 test('guided proxy setup saves a reference and checks only saved settings', async () => {

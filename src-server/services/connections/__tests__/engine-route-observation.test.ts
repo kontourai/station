@@ -224,7 +224,6 @@ describe('observeEngineRoute under a managed policy', () => {
 });
 
 describe('engine connection projection', () => {
-
   function serviceFor(engine: 'claude' | 'codex', config: object) {
     return createConnectionServiceForTest(
       {

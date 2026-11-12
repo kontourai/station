@@ -810,10 +810,13 @@ describe('app-shell routing', () => {
     });
   });
 
-  test('only a move between one engine record\'s tabs is a same-record traversal', () => {
+  test("only a move between one engine record's tabs is a same-record traversal", () => {
     const same = [
       ['/connections/engines/claude', '/connections/engines/claude/settings'],
-      ['/connections/engines/claude/usage', '/connections/engines/claude/models'],
+      [
+        '/connections/engines/claude/usage',
+        '/connections/engines/claude/models',
+      ],
       ['/connections/engines/team%2Fx/usage', '/connections/engines/team%2Fx'],
     ];
     for (const [from, to] of same)

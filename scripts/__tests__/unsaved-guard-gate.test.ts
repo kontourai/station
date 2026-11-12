@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
 import {
   findDirtyStateDeclarations,
   findHostsMissingDiscardModal,
-  KNOWN_EDITOR_HOSTS,
   findMissingGuardImports,
+  KNOWN_EDITOR_HOSTS,
   runEditorMembershipCheck,
   scanForBannedConfirmPrompt,
 } from '../unsaved-guard-gate.mjs';

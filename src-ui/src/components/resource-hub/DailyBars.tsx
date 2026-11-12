@@ -70,25 +70,25 @@ export function DailyBars({
         >
           <summary>View daily values</summary>
           {tableOpen && (
-          <div className="daily-bars__table">
-            <table>
-              <caption className="sr-only">{caption}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Day</th>
-                  <th scope="col">{unit ? `Value (${unit})` : 'Value'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bars.map((bar) => (
-                  <tr key={bar.day}>
-                    <td>{bar.day}</td>
-                    <td>{barText(bar)}</td>
+            <div className="daily-bars__table">
+              <table>
+                <caption className="sr-only">{caption}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Day</th>
+                    <th scope="col">{unit ? `Value (${unit})` : 'Value'}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {bars.map((bar) => (
+                    <tr key={bar.day}>
+                      <td>{bar.day}</td>
+                      <td>{barText(bar)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </details>
       )}

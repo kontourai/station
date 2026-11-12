@@ -78,8 +78,10 @@ export function observeEngineRoute(
   if (pinnedArgs.some((arg) => ROUTE_ARG[engine].test(arg)))
     return { kind: 'unknown' };
   const name = ENDPOINT_ENV[engine];
-  const read = (env: Record<string, string | undefined> | undefined, key: string) =>
-    envValue(env, key, platform);
+  const read = (
+    env: Record<string, string | undefined> | undefined,
+    key: string,
+  ) => envValue(env, key, platform);
   if (proxyLaunch.route) {
     // Claude's proxy is the endpoint variable; a locked policy variable
     // would replace it (Codex's proxy is an argument the policy follows).

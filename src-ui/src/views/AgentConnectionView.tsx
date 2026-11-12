@@ -642,7 +642,7 @@ export function AgentConnectionView({
         </p>
       ),
     ].filter(Boolean);
-    return parts.length ? <>{parts}</> : undefined;
+    return parts.length ? parts : undefined;
   }
 
   function renderTab(

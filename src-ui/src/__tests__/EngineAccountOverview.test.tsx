@@ -415,7 +415,9 @@ test.each([
         'Limit access requires credential-management permission.',
       );
     expect(
-      screen.getByText(`This Station · every ${engine === 'codex' ? 'Codex' : 'Claude Code'} connection · all accounts`),
+      screen.getByText(
+        `This Station · every ${engine === 'codex' ? 'Codex' : 'Claude Code'} connection · all accounts`,
+      ),
     ).toBeTruthy();
     fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), {
       target: { value: 'work' },
@@ -502,14 +504,18 @@ test.each([
     }
     if (management) {
       expect(
-        screen.getByText(`This Station · every ${engine === 'codex' ? 'Codex' : 'Claude Code'} connection · selected account`),
+        screen.getByText(
+          `This Station · every ${engine === 'codex' ? 'Codex' : 'Claude Code'} connection · selected account`,
+        ),
       ).toBeTruthy();
       fireEvent.change(screen.getByRole('combobox', { name: 'Usage for' }), {
         target: { value: '*' },
       });
     }
     expect(
-      screen.getByText(`This Station · every ${engine === 'codex' ? 'Codex' : 'Claude Code'} connection · all accounts`),
+      screen.getByText(
+        `This Station · every ${engine === 'codex' ? 'Codex' : 'Claude Code'} connection · all accounts`,
+      ),
     ).toBeTruthy();
     if (management)
       expect(await screen.findByText('Some activity is missing.')).toBeTruthy();
