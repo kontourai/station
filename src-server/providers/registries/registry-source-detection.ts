@@ -558,9 +558,9 @@ export async function detectRegistrySourceTree(
         await readDefinition(tree, path, limits, budget),
       );
       if (!kinds) continue;
-      const declared = kinds.filter(
-        (kind) => kind.count > 0 && !claimed.has(kind.kind),
-      );
+      // An index claims every kind its format can declare, a declared zero
+      // included: the packages it lists are not counted again by a scan.
+      const declared = kinds.filter((kind) => !claimed.has(kind.kind));
       if (declared.length === 0) break;
       indexes.push(`${detector.id}:${path}`);
       if (detector === stationManifestDetector) stationManifestPath = path;

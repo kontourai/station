@@ -31,6 +31,7 @@ import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
 import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
 import { mcpSubregistryIntegrationProviders } from '../../providers/registries/mcp-subregistry-provider.js';
+import { AMBIGUOUS_AGENT_SOURCE_STATUS } from '../../providers/registries/agent-registry-provider.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
@@ -648,6 +649,24 @@ export function createRegistryRoutes(
       const body = getBody(c);
       const { id } = body;
       registryOps.add(1, { operation: 'install-agent', item: id });
+
+      // A plain id offered by more than one agent catalog is refused here,
+      // before the plugin path below could install it from whichever plugin
+      // registry resolves it first. A source-qualified id names its source.
+      if (!readRegistryCatalogSelection(id)) {
+        const offered = (await getAgentRegistryProvider().listAvailable()).filter(
+          (item) =>
+            item.id === id && item.status === AMBIGUOUS_AGENT_SOURCE_STATUS,
+        );
+        if (offered.length > 0)
+          return c.json(
+            {
+              success: false,
+              message: `${id} is offered by more than one agent catalog (${offered.map((item) => item.catalogSourceName).join(', ')}). Disable or remove one of them first.`,
+            },
+            409,
+          );
+      }
 
       // A JSON-manifest registry serves the same catalog through the agent
       // face and the plugin face (`register-manifest-registry.ts`), so an id
