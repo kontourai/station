@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readdir,
+  readFile,
   rename,
   rm,
   writeFile,
@@ -525,4 +526,114 @@ it('starts a scan-bounded history page at the recent end of a busy day', async (
   expect(
     await log.queryEvents(0, Date.now() + 1e12, 'one', { limit: 1 }),
   ).toMatchObject({ truncated: true, events: [{ recent: true }] });
+});
+
+describe('RuntimeEventLog line integrity', () => {
+  const quietLogger = () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  });
+  const now = () => new Date('2026-11-12T12:00:00.000Z');
+  const file = (root: string) => join(root, 'events-2026-11-12.ndjson');
+
+  it('keeps every line valid when a large event is persisted concurrently with small ones', async () => {
+    const root = makeTempDir('station-event-concurrent-');
+    const log = new RuntimeEventLog(root, quietLogger(), { now });
+    // Larger than Node's 512 KiB writeFile chunk, so an unserialized
+    // appendFile is split across several writes that others can land between.
+    const large = {
+      timestamp: '2026-11-12T11:00:00.000Z',
+      userId: 'u1',
+      text: 'x'.repeat(3 * 1024 * 1024),
+    };
+    await Promise.all([
+      log.persist(large),
+      ...Array.from({ length: 50 }, (_, index) =>
+        log.persist({
+          timestamp: '2026-11-12T11:00:01.000Z',
+          userId: 'u1',
+          index,
+        }),
+      ),
+    ]);
+    const lines = (await readFile(file(root), 'utf8'))
+      .split('\n')
+      .filter(Boolean);
+    const invalid = lines.filter((line) => {
+      try {
+        JSON.parse(line);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(invalid).toHaveLength(0);
+    expect(lines).toHaveLength(51);
+  });
+
+  it('starts a new line after a torn tail left by a writer that died mid-line', async () => {
+    const root = makeTempDir('station-event-torn-tail-');
+    const torn = JSON.stringify({
+      timestamp: '2026-11-12T10:00:00.000Z',
+      userId: 'u1',
+      'gen_ai.tool.call.arguments': { command: 'ls -la' },
+    }).slice(0, 60);
+    await writeFile(file(root), torn);
+    const logger = quietLogger();
+    const log = new RuntimeEventLog(root, logger, { now });
+    await log.persist({
+      timestamp: '2026-11-12T11:00:00.000Z',
+      userId: 'u1',
+      after: true,
+    });
+
+    await expect(
+      log.queryEvents(0, Date.parse('2026-11-13T00:00:00.000Z'), 'u1'),
+    ).resolves.toEqual([
+      { timestamp: '2026-11-12T11:00:00.000Z', userId: 'u1', after: true },
+    ]);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips malformed lines with one warning per file per query', async () => {
+    const root = makeTempDir('station-event-malformed-');
+    const good = (index: number) =>
+      JSON.stringify({
+        timestamp: '2026-11-12T11:00:00.000Z',
+        userId: 'u1',
+        index,
+      });
+    await writeFile(
+      file(root),
+      [good(0), '{"a":"b{"c":1}', good(1), '{"a":1 "b":2}', '{"x', good(2)]
+        .map((line) => `${line}\n`)
+        .join(''),
+    );
+    await writeFile(
+      join(root, 'events-2026-11-11.ndjson'),
+      `{"broken\n${JSON.stringify({ timestamp: '2026-11-11T11:00:00.000Z', userId: 'u1', index: 3 })}\n`,
+    );
+    const logger = quietLogger();
+    const log = new RuntimeEventLog(root, logger, { now });
+    const end = Date.parse('2026-11-13T00:00:00.000Z');
+
+    const page = await log.queryEvents(0, end, 'u1', { limit: 100 });
+    expect(page.events.map((event) => event.index).sort()).toEqual([
+      0, 1, 2, 3,
+    ]);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Skipped malformed event lines',
+      expect.objectContaining({ file: 'events-2026-11-12.ndjson', count: 3 }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Skipped malformed event lines',
+      expect.objectContaining({ file: 'events-2026-11-11.ndjson', count: 1 }),
+    );
+
+    await expect(log.queryEvents(0, end, 'u1')).resolves.toHaveLength(4);
+    expect(logger.warn).toHaveBeenCalledTimes(4);
+  });
 });

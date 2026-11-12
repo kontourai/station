@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, test, vi } from 'vitest';
 import { K, OP, SPAN } from '../../../../src-shared/monitoring-keys.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
+import { AcpToolUpdateSupervisor } from '../../../providers/adapters/acp-tool-update-supervisor.js';
 import { OrchestrationMonitoringBridge } from '../orchestration-monitoring-bridge.js';
 
 const context = () => ({
@@ -455,5 +456,126 @@ describe('OrchestrationMonitoringBridge', () => {
     );
     await emitter.flush();
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  test('records one start span per ACP tool call although the supervisor re-publishes tool.started on metadata updates', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, () => ({
+      slug: 'opencode',
+      conversationId: 'conversation-1',
+      userId: 'u1',
+    }));
+    bridge.onTurnDispatched({
+      provider: 'acp',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    // The real supervisor, wired the way the ACP adapter stamps a call's turn.
+    const published: string[] = [];
+    const supervisor = new AcpToolUpdateSupervisor(
+      {
+        provider: 'acp',
+        threadId: 'conversation-1',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      (event) => {
+        published.push(event.method);
+        bridge.onRuntimeEvent({ ...event, turnId: 'turn-1' });
+      },
+    );
+    // OpenCode's shape: a pending call, then updates that fill in its title,
+    // kind and input before the terminal update.
+    supervisor.acceptStarted({
+      toolCallId: 'call-1',
+      title: 'bash',
+      hasTitle: true,
+      rawInput: {},
+      hasRawInput: true,
+      status: 'pending',
+      hasStatus: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-1',
+      kind: 'execute',
+      hasKind: true,
+      status: 'in_progress',
+      hasStatus: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-1',
+      title: 'List files',
+      hasTitle: true,
+      rawInput: { command: 'ls' },
+      hasRawInput: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-1',
+      rawOutput: { output: 'a b' },
+      hasRawOutput: true,
+      status: 'completed',
+      hasStatus: true,
+    });
+    supervisor.dispose();
+    await emitter.flush();
+
+    // Precondition: the supervisor really did re-publish the start.
+    expect(
+      published.filter((m) => m === 'tool.started').length,
+    ).toBeGreaterThan(1);
+    const toolRows = persisted.filter(
+      (event) => event[K.OP_NAME] === OP.EXECUTE_TOOL,
+    );
+    expect(
+      toolRows.map((event) => [event[K.SPAN_KIND], event[K.TOOL_CALL_ID]]),
+    ).toEqual([
+      [SPAN.START, 'call-1'],
+      [SPAN.END, 'call-1'],
+    ]);
+    expect(typeof toolRows[1]?.[K.TOOL_DURATION_MS]).toBe('number');
+  });
+
+  test('a completed call id that is reused starts a new span', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, context);
+    bridge.onTurnDispatched({
+      provider: 'codex',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    for (let round = 0; round < 2; round++) {
+      bridge.onRuntimeEvent(
+        runtimeEvent({
+          method: 'tool.started',
+          itemId: 'tool-1',
+          toolCallId: 'tool-1',
+          toolName: 'shell',
+        }),
+      );
+      bridge.onRuntimeEvent(
+        runtimeEvent({
+          method: 'tool.completed',
+          itemId: 'tool-1',
+          toolCallId: 'tool-1',
+          toolName: 'shell',
+          status: 'success',
+        }),
+      );
+    }
+    await emitter.flush();
+    expect(
+      persisted
+        .filter((event) => event[K.OP_NAME] === OP.EXECUTE_TOOL)
+        .map((event) => event[K.SPAN_KIND]),
+    ).toEqual([SPAN.START, SPAN.END, SPAN.START, SPAN.END]);
   });
 });

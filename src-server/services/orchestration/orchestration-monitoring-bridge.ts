@@ -106,6 +106,17 @@ export class OrchestrationMonitoringBridge {
       : undefined;
     if (!context || !turnId) return;
     if (event.method === 'tool.started') {
+      // `tool.started` is an upsert, not a lifecycle edge: the ACP tool-update
+      // supervisor re-publishes it whenever a call's title, kind or input
+      // changes. Monitoring records one start span per open call, so a repeat
+      // for an id still awaiting its completion is not a new execution, and
+      // must not restart its clock either.
+      if (
+        event.toolCallId &&
+        context.toolStartedAt &&
+        Object.hasOwn(context.toolStartedAt, event.toolCallId)
+      )
+        return;
       // Remember when it started so the result can carry elapsed time too
       // (archive#3077). Without this, duration exists for Station-engine
       // tools and silently not for external ones — the same
