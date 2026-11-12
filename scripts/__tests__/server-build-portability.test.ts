@@ -716,6 +716,16 @@ function assertRealRuntimePrune(release: string) {
     expect(existsSync(join(flowAgents, required)), required).toBe(true);
   }
   expect(existsSync(join(flowAgents, 'node_modules', 'esbuild'))).toBe(false);
+  // The installed copy carries the harness bundle pack (so the rule has
+  // something to remove); the staged copy does not. The packaged server this
+  // fixture then boots runs without it.
+  const bundlePack = join('bundles', 'flow-agents-bundles.pack');
+  expect(
+    existsSync(
+      join(repoRoot, 'node_modules/@kontourai/flow-agents', bundlePack),
+    ),
+  ).toBe(true);
+  expect(existsSync(join(flowAgents, bundlePack))).toBe(false);
   // Station's own externalized esbuild is untouched by the edge exclusion.
   expect(existsSync(join(modules, 'esbuild', 'package.json'))).toBe(true);
 }
@@ -990,6 +1000,7 @@ describe('server build package portability', () => {
       'otlp-transformer-node-runtime-only',
       'node-pty-foreign-prebuilds',
       'koffi-build-sources',
+      'flow-agents-harness-bundle-pack',
       'koffi-off-windows',
     ]);
     expect(RUNTIME_DEPENDENCY_EXCLUSIONS.map((rule) => rule.id)).toEqual([
@@ -1145,6 +1156,7 @@ describe('server build package portability', () => {
         'kits/builder/skills/deliver/SKILL.md': '# kit skill',
         'kits/builder/evals/workflow.test.mjs':
           'export const evaluation = true;',
+        'bundles/flow-agents-bundles.pack': 'pack',
         'schemas/workflow.schema.json': '{}',
         'context/settings/backlog-provider-settings.json': '{}',
         LICENSE: 'MIT',
@@ -1189,6 +1201,10 @@ describe('server build package portability', () => {
       expect(existsSync(join(staged, kept)), kept).toBe(true);
     }
     expect(existsSync(join(staged, 'node_modules/esbuild'))).toBe(false);
+    // Only flow-agents' own CLI expands its harness bundle pack.
+    expect(existsSync(join(staged, 'bundles/flow-agents-bundles.pack'))).toBe(
+      false,
+    );
     expect(
       readFileSync(
         join(staged, 'kits/builder/evals/workflow.test.mjs'),
