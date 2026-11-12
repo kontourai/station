@@ -110,6 +110,20 @@ authorized device Screen; see [device capture](https://github.com/kontourai/stat
 Turning the preview off hides Review and Timeline; a
 `taskView=review` link then opens Overview.
 
+Overview also offers **Code review** on personal hosts. Its checkout label,
+branch and commit describe the Task's recorded working directory; they do not
+establish where every linked conversation runs or whether dependencies are
+prepared. Expand **Checkout and comparison** to inspect the path and base
+commit. Assign a lead Agent and configure a different Codex Agent in the Project
+to request a read-only review. Requesting review can spend provider credits.
+
+Reviews cover committed changes only. Reviewer failures and the comparison with
+the current checkout are separate observations. A recorded review is neither
+approval nor a passed gate. Refresh after changes to inspect freshness. If a
+reply is lost, **Retry request** uses the original Project, request and commit
+pair, including after reloading the same browser tab. Unavailable history is
+shown explicitly instead of an empty review list.
+
 With **Walkthroughs** also enabled, Browser clips made by the Task's bound
 agent appear under **Screens** with their commit and duration. With **Device
 developer loop** enabled too, people and bound agents can record Device clips.

@@ -7103,6 +7103,48 @@ authorization, failure, privacy and preview lifecycle limits.
 
 ## Task review threads
 
+### Independent code review
+
+Personal hosts expose `GET /api/tasks/:taskId/review/code?taskCreatedAt=...&projectId=...`
+with the existing Task review preview enabled. It returns
+`station.task-code-review/v1`: the Project ID and creation time, Task checkout
+observation, configured distinct Codex reviewer choices, and the newest 20
+Task-associated review requests. A supplied `projectId` is compared with the
+authorized current Project. `omittedRequests`, `requestsUnavailable`, and
+per-request `omittedFindings` disclose bounds and partial reads. Each request
+includes at most eight findings. Checkout availability, uncommitted changes,
+revision freshness and reviewer outcomes are separate; none is a gate verdict.
+
+`POST /api/tasks/:taskId/review/code` accepts `requestId`, `projectId`,
+`projectCreatedAt`, `taskCreatedAt`, `baseSha`, `headSha` and
+`reviewerAgentSlug`. Project identity fields are equality preconditions from the
+observed view, not authority. A changed Project returns 409 `project-changed`
+before admission; this refusal does not settle an earlier uncertain request.
+Both commits must be full 40-character lowercase Git object IDs. New requests
+require an observable Task checkout at the submitted head, a non-terminal Task,
+a lead Agent and a distinct configured Codex reviewer. The server rechecks Task
+execution authority and implementer identity before provider effects. Stable-key
+retries join retained requests even after the checkout advances. Reusing an ID
+for different work is 409 `review_request_conflict`; uncertain outcomes are not
+authorization for a new request ID.
+
+The read uses current Task person-review authority; submission also needs Task
+execution authority. Responses are `Cache-Control: no-store`. Hosted runtimes
+do not mount these routes. Older hosts return 404; clients must show unsupported
+host guidance. On personal hosts, disabling Task review refuses these code-review
+leaves with typed 404 `feature_preview_disabled`, `previewId: "task-review"`
+and the Feature previews `settingsPath`, before parsing a submission body.
+A bound Agent's existing Project independent-review request also derives its
+Task association from the server-owned execution binding. Callers cannot supply
+a Task association in the generic review body.
+
+Task/Project incarnation is retained in the review submission record before
+reviewer invocation. Task-associated submission rows use private schema version
+2; older binaries refuse those rows rather than execute them without their
+binding. Immutable review receipt format remains unchanged.
+
+### Anchored feedback
+
 Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
 Task room request authority. Reads require `orchestration:read`; comment
 mutations and persisting Browser captures require `orchestration:operate`.

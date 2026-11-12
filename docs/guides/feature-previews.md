@@ -67,12 +67,18 @@ The existing composition example is
 [`bindFleetConsumerProbesPreview` and `fleetProbes`](../../src-server/runtime/bootstrap/station-runtime.ts).
 Its disabled branch skips optional probe work and continues ordinary routing.
 
-A preview with no server branch, whose only consumer is the UI (`task-review`,
-`continue-interrupted-turn`), is offered by the
+A preview with no server branch, whose only consumer is the UI
+(`continue-interrupted-turn`), is offered by the
 [registry's](../../src-server/services/feature-previews/feature-preview-registry.ts)
 own constructor through `rememberConsumer`, not a composition bind. The UI reads
 its choice from the catalog at each entry point; any server operation it uses
 keeps its ordinary access checks and is not gated by the preview.
+
+Task review keeps its constructor-owned catalog definition and its existing
+anchored-feedback access checks. The independent code-review leaves additionally
+bind that same definition in runtime composition and select the current choice
+before requests, reviewer effects and result delivery. When off, these new leaves
+return the typed 404 below. The switch grants no execution authority.
 
 ## Gate every entry point
 
