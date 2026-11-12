@@ -2808,6 +2808,49 @@ describe('AgentConnectionView', () => {
     expect(line).toMatch(/^Saved account work · refused .* · resets /);
   });
 
+  test('below access:manage, refusals read without naming the account', async () => {
+    // The server withholds `account` for this viewer; status and reset stay.
+    connectionQueryData = readyEngine({
+      id: 'claude',
+      type: 'claude',
+      name: 'Claude Code',
+      allowanceEvidence: [
+        {
+          source: 'usage-limit',
+          applies: 'current-account',
+          observedAt: '2099-01-01T10:00:00.000Z',
+          resetAt: '2099-01-01T15:00:00.000Z',
+          expiresAt: '2099-01-01T15:00:00.000Z',
+        },
+        {
+          source: 'usage-limit',
+          applies: 'other-account',
+          observedAt: '2099-01-01T09:00:00.000Z',
+          resetAt: '2099-01-01T14:00:00.000Z',
+          expiresAt: '2099-01-01T14:00:00.000Z',
+        },
+      ],
+    });
+    await render(
+      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+    );
+    expect(screen.getAllByText('Usage limit reached').length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      screen.getByText(
+        /^The provider refused a turn on its usage limit\. Resets /,
+      ),
+    ).toBeTruthy();
+    const lines = within(screen.getByLabelText('Engine facts'))
+      .getByText('Usage limit')
+      .nextElementSibling?.querySelectorAll('li');
+    expect([...(lines ?? [])].map((line) => line.textContent)).toEqual([
+      expect.stringMatching(/^This engine's account · refused /),
+      expect.stringMatching(/^Another account · refused .* · resets /),
+    ]);
+  });
+
   test('Overview never reads an unobserved route as the account', async () => {
     connectionQueryData = readyEngine({
       id: 'codex',

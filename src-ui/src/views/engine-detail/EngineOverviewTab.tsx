@@ -67,8 +67,10 @@ export function EngineOverviewTab({
             label: 'Usage limit',
             value: (
               <ul className="engine-overview__refusals">
-                {refusals.map((line) => (
-                  <li key={line}>{line}</li>
+                {/* Two withheld accounts can read alike, so lines key by
+                    position; the list is rebuilt whole on each read. */}
+                {refusals.map((line, index) => (
+                  <li key={index}>{line}</li>
                 ))}
               </ul>
             ),

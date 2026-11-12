@@ -128,7 +128,9 @@ function shortTime(iso: string): string {
 }
 
 /**
- * One line per account the provider refused a turn on, still fresh. The
+ * One line per account the provider refused a turn on, still fresh. A
+ * viewer below `access:manage` receives no account identity, so another
+ * account reads as "Another account" rather than by name. The
  * header carries the current account's reason, so its line names only the
  * account and when; another account's line adds its reset. Empty when
  * nothing fresh is recorded, which is unknown, not allowance left.
@@ -141,12 +143,11 @@ export function allowanceFacts(
     .filter((evidence) => Date.parse(evidence.expiresAt) > now)
     .map((evidence) => {
       const account =
-        evidence.applies === 'other-account' &&
-        evidence.account.kind === 'profile'
-          ? `Saved account ${evidence.account.ref}`
-          : evidence.applies === 'other-account'
-            ? 'The default account'
-            : ALLOWANCE_ACCOUNT[evidence.applies];
+        evidence.applies !== 'other-account' || !evidence.account
+          ? ALLOWANCE_ACCOUNT[evidence.applies]
+          : evidence.account.kind === 'profile'
+            ? `Saved account ${evidence.account.ref}`
+            : 'The default account';
       const reset =
         evidence.applies === 'current-account'
           ? ''

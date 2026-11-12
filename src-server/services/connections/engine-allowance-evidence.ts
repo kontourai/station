@@ -257,3 +257,17 @@ export function readEngineAllowanceEvidence(
     now,
   });
 }
+
+/**
+ * The evidence a viewer may read. Every viewer of the engine list sees that
+ * the provider refused a turn, on which kind of account (`applies`), and
+ * when it resets. Only a viewer who may manage access learns which account:
+ * a saved account's ref names credential management state.
+ */
+export function allowanceEvidenceForViewer(
+  evidence: readonly EngineAllowanceEvidence[],
+  mayReadAccounts: boolean,
+): EngineAllowanceEvidence[] {
+  if (mayReadAccounts) return [...evidence];
+  return evidence.map(({ account: _withheld, ...rest }) => rest);
+}

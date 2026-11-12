@@ -163,8 +163,13 @@ export interface EngineAccountLogin {
  */
 export interface EngineAllowanceEvidence {
   source: 'usage-limit' | 'plan-quota';
-  /** The credential account the refused turn ran on. */
-  account: { kind: 'default' } | { kind: 'profile'; ref: string };
+  /**
+   * The credential account the refused turn ran on. Absent for a viewer
+   * below `access:manage` (not the operator in person): evidence is
+   * Station-wide, but which saved accounts exist is credential management.
+   * `applies` still says whether it is this engine's account.
+   */
+  account?: { kind: 'default' } | { kind: 'profile'; ref: string };
   /**
    * Whether that account is the one this engine uses now:
    * `other-account` when an agent pin or credential recovery ran the turn on
