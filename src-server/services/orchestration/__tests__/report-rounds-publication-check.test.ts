@@ -48,7 +48,10 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
       const observe = vi
         .spyOn(fs, 'openSync')
         .mockImplementation((path, flags, mode) => {
-          if (String(path) === join(home, 'security', '.home-writer.mutation'))
+          if (
+            String(path) ===
+            join(owner.homeDir, 'security', '.home-writer.mutation')
+          )
             inspections++;
           return open(path, flags, mode);
         });
