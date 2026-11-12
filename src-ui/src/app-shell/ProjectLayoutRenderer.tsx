@@ -94,7 +94,6 @@ import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePa
 import {
   WORKSPACE_PANE_ACTION_ELSEWHERE,
   WORKSPACE_PANE_AVAILABILITY_CHECKING,
-  WORKSPACE_PANE_CATALOG_LOAD_FAILED,
   WORKSPACE_PLUGIN_PANE_UNBOUND,
 } from '../workspace-panes/workspacePaneCopy';
 import {
@@ -857,8 +856,7 @@ export function LayoutStackHost({
   if (catalog.isError && catalog.data === undefined) {
     return chatOnly(
       <ErrorState
-        title={`Could not load ${workspaceName}`}
-        description={WORKSPACE_PANE_CATALOG_LOAD_FAILED}
+        title={`Couldn’t load ${workspaceName}`}
         action={
           <button type="button" onClick={() => void catalog.refetch()}>
             Retry

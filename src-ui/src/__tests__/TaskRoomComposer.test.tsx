@@ -885,7 +885,7 @@ test('a reload during dispatch retains its exact uncertain operation before the 
 test.each([
   [
     'starting',
-    'This request is still starting. Check its run before retrying.',
+    'This request was saved but not confirmed as sent. Check its run before retrying.',
   ],
   [
     'dispatched',
@@ -895,7 +895,10 @@ test.each([
     'indeterminate',
     'Couldn’t confirm whether this request ran. Check its run before retrying.',
   ],
-  ['refused', 'This request was refused, so it didn’t run.'],
+  [
+    'refused',
+    'This request was refused, so it didn’t run. Send it again as a new request.',
+  ],
 ] as const)(
   'a recorded %s saved request is described in words, not its raw state',
   async (state, notice) => {

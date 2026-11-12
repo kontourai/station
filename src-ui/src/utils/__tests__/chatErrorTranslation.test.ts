@@ -236,7 +236,7 @@ describe('translateChatError', () => {
         'This can be temporary. If it keeps happening, check this device’s connection to Station.',
       );
       expect(result.body).toBe(
-        'This app got an incomplete response from Station, so nothing more arrived for this turn.',
+        'The response ended before the reply finished, so nothing more arrived for this turn.',
       );
     });
 

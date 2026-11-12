@@ -2,9 +2,6 @@
  * Pane copy shared by the Project layout renderer, the direct pane route and
  * the pane picker, so the same state reads the same way on each surface.
  */
-export const WORKSPACE_PANE_CATALOG_LOAD_FAILED =
-  'Couldn’t load this Project’s panes.';
-
 export const WORKSPACE_PANE_AVAILABILITY_CHECKING =
   'Checking which panes are available…';
 

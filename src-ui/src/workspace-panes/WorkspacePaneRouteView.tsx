@@ -176,7 +176,7 @@ export function WorkspacePaneRouteView({
   if (!entry && catalog.isRefetchError) {
     return (
       <ErrorState
-        title="Could not refresh workspace panes"
+        title="Couldn’t refresh panes"
         description="Station couldn’t check this Project’s current panes, so it can’t tell whether this one exists."
         action={
           <Button

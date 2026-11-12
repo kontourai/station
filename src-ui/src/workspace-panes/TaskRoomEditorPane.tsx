@@ -734,7 +734,7 @@ export function TaskRoomEditorPane({
       : !authorizationCurrent
         ? 'You no longer have access to this Task. The document is read-only.'
         : possibleEffect
-          ? 'This edit may already be saved. Retry it or resync before editing again.'
+          ? 'This edit may already be saved. Retry it or reload the brief before editing again.'
           : document.isError
             ? 'Couldn’t load the shared document. Resync to edit again.'
             : document.data?.kind === 'gap'

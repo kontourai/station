@@ -247,7 +247,7 @@ const STREAM_BODY_ENDED_PATTERN =
  */
 const STREAM_BODY_ENDED_TRANSLATION: ChatErrorTranslation = {
   title: 'The reply ended early',
-  body: 'This app got an incomplete response from Station, so nothing more arrived for this turn.',
+  body: 'The response ended before the reply finished, so nothing more arrived for this turn.',
   hint: 'This can be temporary. If it keeps happening, check this device’s connection to Station.',
   callerHints: { noSend: true, noNewChat: true, neither: true },
   disclosureRaw: true,

@@ -44,13 +44,13 @@ export function savedRequestStateNotice(
 ): string {
   switch (state) {
     case 'starting':
-      return 'This request is still starting. Check its run before retrying.';
+      return 'This request was saved but not confirmed as sent. Check its run before retrying.';
     case 'dispatched':
       return 'This request was sent to the agent. Check its run before retrying.';
     case 'indeterminate':
       return 'Couldn’t confirm whether this request ran. Check its run before retrying.';
     case 'refused':
-      return 'This request was refused, so it didn’t run.';
+      return 'This request was refused, so it didn’t run. Send it again as a new request.';
   }
 }
 
