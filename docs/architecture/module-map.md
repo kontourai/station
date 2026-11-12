@@ -2731,9 +2731,11 @@ it is disclosure, so it never invalidates a recorded check. The `/agents` and
 nor holders of `access:manage` (`routeObservationForViewer`). The engine page reads
 it with the [resource-hub kit](../../src-ui/src/components/resource-hub/ResourceDetail.tsx)
 and the [engine detail tabs](../../src-ui/src/views/engine-detail/EngineOverviewTab.tsx).
-Last, it attaches `allowanceEvidence`: one read of recorded quota refusals and
-later accepted turns from the orchestration `EventStore` (wired by
-`setAllowanceEvidenceSource`), scoped per account by each run's process epoch
+Last, it attaches `allowanceEvidence`: one bounded read of recorded quota
+refusals from the orchestration `EventStore` (wired by
+`setAllowanceEvidenceSource`), scoped per account by each run's process epoch,
+then one bounded check per candidate refusal for a later accepted turn on the
+same account
 ([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
 A failed read attaches nothing. Dispatch does not read it. The same two routes
 drop each refusal's `account` for those viewers (`allowanceEvidenceForViewer`).
