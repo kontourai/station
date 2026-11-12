@@ -72,10 +72,8 @@ export function createChildDelegationContext(options: {
     throw new DelegationDepthLimitError(maxDepth);
   }
   const blockedTools = [
-    ...new Set([
-      ...policy.blockedTools,
-      ...(options.current?.blockedTools ?? []),
-    ]),
+    ...policy.blockedTools,
+    ...(options.current?.blockedTools ?? []),
   ];
   const denyApprovals = policy.denyApprovals || options.current?.denyApprovals;
 
