@@ -95,6 +95,8 @@ async function fixture() {
   });
   const request = {
     requestId: 'review-1',
+    projectId: project.id,
+    projectCreatedAt: project.createdAt,
     taskCreatedAt: scope.task.createdAt,
     baseSha: base,
     headSha: head,
@@ -115,6 +117,41 @@ async function fixture() {
 }
 
 describe('Task code review producer and consumer', () => {
+  it.each([
+    { id: 'replacement-project', createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'project-1', createdAt: '2026-01-03T00:00:00Z' },
+  ])(
+    'refuses unadmitted saved intent after the Project incarnation changes to %j',
+    async (replacement) => {
+      const f = await fixture();
+      const scope = {
+        ...f.scope,
+        project: { ...f.scope.project, ...replacement },
+        task: { ...f.scope.task, projectId: f.scope.project.slug },
+      };
+      await expect(f.module.run(scope, f.request)).rejects.toMatchObject({
+        code: 'project-changed',
+      });
+      expect(f.execute).not.toHaveBeenCalled();
+      expect(
+        await f.store.hasTaskRequest(scope.project.slug, f.request.requestId, {
+          projectId: scope.project.id,
+          projectCreatedAt: scope.project.createdAt,
+          taskId: scope.task.id,
+          taskCreatedAt: scope.task.createdAt,
+        }),
+      ).toBe(false);
+      const current = await f.module.run(scope, {
+        ...f.request,
+        requestId: 'new-project-intent',
+        projectId: scope.project.id,
+        projectCreatedAt: scope.project.createdAt,
+      });
+      expect(current.state).toBe('completed');
+      expect(f.execute).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('keeps an exact Task review through retries and distinguishes moved HEAD from dirty files', async () => {
     const f = await fixture();
     const before = await f.module.read(f.scope);
