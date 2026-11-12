@@ -56,6 +56,7 @@ import {
 } from '../../components/room/useRoomDraft';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
 import {
@@ -228,6 +229,13 @@ export function ProjectRoom(props: ProjectRoomProps) {
 function useFillPageHeight(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
+  /**
+   * The on-screen keyboard covers the dock's band too, so while it is open
+   * the room reserves nothing for the dock: the composer's lift (the
+   * keyboard's height) then lands it on the keyboard's top edge, with no
+   * band between them, on a phone's full-screen room as on the page (#4795).
+   */
+  keyboardOpen = false,
 ) {
   useLayoutEffect(() => {
     const element = ref.current;
@@ -237,7 +245,7 @@ function useFillPageHeight(
       probe.style.cssText =
         'position:absolute;visibility:hidden;pointer-events:none;height:calc(var(--dock-slot-size, 0px) + var(--safe-bottom, 0px))';
       element.append(probe);
-      const clearance = probe.getBoundingClientRect().height;
+      const clearance = keyboardOpen ? 0 : probe.getBoundingClientRect().height;
       probe.remove();
       // Where the room starts with every ancestor scrolled to its top.
       let top = element.getBoundingClientRect().top;
@@ -265,7 +273,7 @@ function useFillPageHeight(
       window.removeEventListener('resize', update);
       element.style.minHeight = '';
     };
-  }, [ref, enabled]);
+  }, [ref, enabled, keyboardOpen]);
 }
 const ROOM_MIN_HEIGHT_PX = 320;
 
@@ -439,7 +447,12 @@ function ProjectRoomSession({
       mounted.current = false;
     };
   }, []);
-  useFillPageHeight(section, variant === 'full' && !!view);
+  const keyboardOpen = useMobileVisualViewport().bottomInset > 0;
+  useFillPageHeight(
+    section,
+    variant === 'full' && !!view,
+    compact && keyboardOpen,
+  );
   const clearProposal = () => {
     sessionStorage.removeItem(storageKey);
     setProposal(undefined);
