@@ -115,7 +115,8 @@ test('guarded bound Session source custody survives token rotation and refuses f
     eventStore,
     projects,
     membership,
-    coordinatorEnabled: () => false,  });
+    coordinatorEnabled: () => false,
+  });
   const app = new Hono();
   app.use('*', async (c, next) => {
     setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
