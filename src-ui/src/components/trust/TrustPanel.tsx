@@ -252,8 +252,8 @@ export function TrustPanel({ projectSlug }: { projectSlug: string }) {
               label="No trust bundles yet"
               description={
                 <>
-                  Run a review to see trust state here. Plugins and tools save it
-                  in <code>.station/trust-bundles/</code>.
+                  Run a review to see trust state here. Plugins and tools save
+                  it in <code>.station/trust-bundles/</code>.
                 </>
               }
             />

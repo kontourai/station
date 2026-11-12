@@ -186,14 +186,13 @@ export function ProjectOperatorSetup({
           <summary>About this check</summary>
           <p>
             Environment and remote dependency changes aren’t tracked, and
-            another writer can still change inputs after the check. Commands
-            use the reviewed deadline and limited output, and output isn’t
-            kept.
+            another writer can still change inputs after the check. Commands use
+            the reviewed deadline and limited output, and output isn’t kept.
           </p>
           <p>
-            Background processes in the same process group stop when the
-            shell exits; processes that leave the group keep running. Reviewed
-            setup needs macOS or Linux.
+            Background processes in the same process group stop when the shell
+            exits; processes that leave the group keep running. Reviewed setup
+            needs macOS or Linux.
           </p>
         </details>
         {!intent && (

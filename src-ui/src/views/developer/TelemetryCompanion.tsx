@@ -48,9 +48,7 @@ export function TelemetryCompanion() {
           authority={authority}
         />
       ) : (
-        <p role="status">
-          Connect to this Station to check the companion.
-        </p>
+        <p role="status">Connect to this Station to check the companion.</p>
       )}
     </PageSection>
   );
@@ -83,9 +81,8 @@ function CompanionHost({
           {query.data.kind === 'available' ? (
             <>
               <p>
-                Prerequisites passed: Linux {query.data.architecture},
-                Docker {query.data.dockerVersion}, Compose{' '}
-                {query.data.composeVersion}.
+                Prerequisites passed: Linux {query.data.architecture}, Docker{' '}
+                {query.data.dockerVersion}, Compose {query.data.composeVersion}.
               </p>
               {query.data.artifact?.kind === 'parent-envelope-verified' ? (
                 <p>

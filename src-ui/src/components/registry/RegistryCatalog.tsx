@@ -278,13 +278,13 @@ function RegistryCatalogState({
           action={
             tab === 'plugins' ? (
               <a
-              href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="page__empty-action"
-            >
-              Open plugin guidance
-            </a>
+                href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="page__empty-action"
+              >
+                Open plugin guidance
+              </a>
             ) : undefined
           }
         />

@@ -2256,9 +2256,7 @@ describe('settings catalog completeness', () => {
       }) as HTMLButtonElement;
       expect(reset.disabled).toBe(true);
       expect(
-        screen.getByText(
-          'Save or discard your changes first.',
-        ),
+        screen.getByText('Save or discard your changes first.'),
       ).toBeTruthy();
       fireEvent.click(reset);
       expect(updateConfig).not.toHaveBeenCalled();

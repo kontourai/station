@@ -141,8 +141,6 @@ describe('StarterInspectionCards', () => {
     expect(
       screen.queryByRole('button', { name: 'Inspect approval' }),
     ).toBeNull();
-    expect(
-      screen.getAllByText('Nothing to inspect yet.'),
-    ).toHaveLength(2);
+    expect(screen.getAllByText('Nothing to inspect yet.')).toHaveLength(2);
   });
 });

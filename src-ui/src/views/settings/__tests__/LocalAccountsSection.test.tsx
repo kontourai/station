@@ -212,9 +212,7 @@ test('a refused connection explains account-management access without exposing r
   );
   vi.stubGlobal('fetch', requests);
   mount();
-  await screen.findByText(
-    /This device can’t manage accounts/,
-  );
+  await screen.findByText(/This device can’t manage accounts/);
   expect(screen.getByRole('status').textContent).toContain(
     'Open Settings on the computer running Station',
   );

@@ -11,9 +11,7 @@ describe('task experiences', () => {
         owner,
         availability,
       })),
-    ).toEqual([
-      { id: 'direct', owner: 'Station', availability: 'available' },
-    ]);
+    ).toEqual([{ id: 'direct', owner: 'Station', availability: 'available' }]);
   });
 
   test('adds only owner experiences whose capability is attached', () => {

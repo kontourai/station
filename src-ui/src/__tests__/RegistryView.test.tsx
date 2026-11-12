@@ -949,7 +949,9 @@ describe('RegistryView', () => {
     emptyTabs.add('agents');
     render(<RegistryView />);
 
-    expect(screen.getByText('No agents in your marketplaces yet.')).toBeTruthy();
+    expect(
+      screen.getByText('No agents in your marketplaces yet.'),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage plugins' })).toBeNull();
     expect(
       screen.getByText(
@@ -966,7 +968,9 @@ describe('RegistryView', () => {
   test('offers plugin guidance on an empty Plugins tab', () => {
     emptyTabs.add('plugins');
     render(<RegistryView initialTab="plugins" />);
-    expect(screen.getByText('No plugins in your marketplaces yet.')).toBeTruthy();
+    expect(
+      screen.getByText('No plugins in your marketplaces yet.'),
+    ).toBeTruthy();
 
     const docsLink = screen.getByRole('link', { name: 'Open plugin guidance' });
     expect(docsLink.getAttribute('href')).toBe(

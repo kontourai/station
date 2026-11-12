@@ -84,8 +84,8 @@ function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
         <summary>Details</summary>
         <p>
           Off by default. Keeps the last 20 chats opened here, up to 10 recent
-          turns each, 256 KiB per chat and 2 MiB in total. Tools and
-          attachments are left out.
+          turns each, 256 KiB per chat and 2 MiB in total. Tools and attachments
+          are left out.
         </p>
       </details>
       <Toggle

@@ -171,9 +171,7 @@ describe('StarterScheduledCheckCard', () => {
       );
       launch.mockResolvedValue(launchResult);
       render(<StarterScheduledCheckCard />);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Resume check' }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Resume check' }));
       await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
       expect(launch).toHaveBeenCalledWith({
         starterId: 'run-scheduled-check',

@@ -242,8 +242,8 @@ export function StationUsagePanel({
               </p>
               <p>
                 — means not reported. Context size isn't token use, and dates
-                are UTC. Usage without a recorded person stays unassigned.
-                Costs are partial totals and estimates, not a bill.
+                are UTC. Usage without a recorded person stays unassigned. Costs
+                are partial totals and estimates, not a bill.
               </p>
               <dl className="station-usage__sources">
                 <div>

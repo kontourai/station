@@ -1537,7 +1537,9 @@ describe('TaskWorkspaceView', () => {
       ).toBeTruthy();
       if (state === 'unavailable') {
         expect(
-          screen.getByText("This Station can't reopen support for this answer."),
+          screen.getByText(
+            "This Station can't reopen support for this answer.",
+          ),
         ).toBeTruthy();
       }
     },
@@ -1758,9 +1760,7 @@ describe('TaskWorkspaceView', () => {
       screen.getByRole('heading', { name: 'Task inspection' }),
     ).toBeTruthy();
     expect(
-      screen
-        .getByRole('link', { name: 'Add plugins' })
-        .getAttribute('href'),
+      screen.getByRole('link', { name: 'Add plugins' }).getAttribute('href'),
     ).toBe('/plugins');
     expect(screen.queryByRole('button', { name: /Deliver/i })).toBeNull();
   });
@@ -2777,9 +2777,7 @@ describe('TaskWorkspaceView', () => {
         'Add a completed assistant answer to this Task to reopen it here.',
       ),
     ).toBeTruthy();
-    expect(inputs.textContent).toContain(
-      'Pinned to this Task by a person.',
-    );
+    expect(inputs.textContent).toContain('Pinned to this Task by a person.');
     expect(inputs.textContent).toContain(
       'brief.pdf · application/pdf · 2,048 bytes',
     );

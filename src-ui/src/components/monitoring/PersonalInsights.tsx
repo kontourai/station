@@ -126,8 +126,8 @@ function OutcomeWindowResult({
         {label} · {window.from} – {window.to} UTC
       </h5>
       <p>
-        How kept turns ended for this source. Coverage is unknown, so counts
-        are not full reliability or error rates.
+        How kept turns ended for this source. Coverage is unknown, so counts are
+        not full reliability or error rates.
       </p>
       {result.error ? (
         <>
@@ -146,9 +146,7 @@ function OutcomeWindowResult({
             · retained for {data.coverage.retentionDays} days
           </p>
           {!data.rows.length ? (
-            <p>
-              No outcomes reported for this period.
-            </p>
+            <p>No outcomes reported for this period.</p>
           ) : null}
           <table>
             <thead>
@@ -255,9 +253,7 @@ function UsageWindowResult({
               : 'Snapshot matched the source when checked.'}
           </p>
           {!data.summary?.rows.length ? (
-            <p>
-              No usage reported for this period.
-            </p>
+            <p>No usage reported for this period.</p>
           ) : (
             <div className="personal-insights-table">
               <table>
@@ -1091,8 +1087,8 @@ export function PersonalInsights() {
             <p>
               Two connections to the same Station can't be combined. A copied
               Station with a different identity is counted as a separate
-              Station. Project and engine filters need sources that report
-              them, and missing values are left blank.
+              Station. Project and engine filters need sources that report them,
+              and missing values are left blank.
             </p>
           </details>
           <ActionRow

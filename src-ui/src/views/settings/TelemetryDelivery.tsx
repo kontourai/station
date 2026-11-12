@@ -29,8 +29,7 @@ const failures: Record<TelemetryRequestFailureCode, string> = {
   service_stopped: 'Station is stopping.',
   credential_unavailable:
     'The destination key is unavailable or no longer authorized.',
-  restart_required:
-    'Restart Station to apply the new collector settings.',
+  restart_required: 'Restart Station to apply the new collector settings.',
 };
 
 function checked(probe: TelemetryConnectionProbeStatus): string {

@@ -136,9 +136,9 @@ export function PluginVisibilitySection() {
     >
       <div {...settingsRow('plugin-visibility')} tabIndex={-1}>
         <p className="plugin-visibility__intro">
-          Choose which plugins each paired person can see and build Boards
-          from. Hidden plugins don’t appear for them, and their Board panes say
-          the plugin isn’t shared.
+          Choose which plugins each paired person can see and build Boards from.
+          Hidden plugins don’t appear for them, and their Board panes say the
+          plugin isn’t shared.
         </p>
 
         {installed.isLoading && <Skeleton variant="line" />}

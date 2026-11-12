@@ -34,9 +34,9 @@ export function ApprovalGuardianEditor({
           <>
             {definition.label}
             <InfoTip label={definition.label}>
-              Judges each call against what you typed, never tool output.
-              Review asks you when it objects; Enforce blocks the call and asks
-              you after three blocks in a row.
+              Judges each call against what you typed, never tool output. Review
+              asks you when it objects; Enforce blocks the call and asks you
+              after three blocks in a row.
             </InfoTip>
           </>
         }

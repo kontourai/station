@@ -164,9 +164,7 @@ test('a grant that predates content binding says what Station cannot tell, witho
     />,
   );
 
-  expect(
-    screen.getByText(/can’t tell if the code changed/i),
-  ).toBeTruthy();
+  expect(screen.getByText(/can’t tell if the code changed/i)).toBeTruthy();
   // The permission is still held, and still removable.
   expect(
     screen.getByRole('button', {

@@ -81,9 +81,9 @@ export function PluginPermissionsSection({
       )}
       {contentBinding === 'unverified' && (
         <p className="plugin-permissions__binding">
-          Approved before Station tracked plugin code versions, so it can’t
-          tell if the code changed. They stay in effect; the next approval or
-          update pins the version.
+          Approved before Station tracked plugin code versions, so it can’t tell
+          if the code changed. They stay in effect; the next approval or update
+          pins the version.
         </p>
       )}
 

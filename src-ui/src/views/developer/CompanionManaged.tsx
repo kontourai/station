@@ -330,9 +330,7 @@ export function CompanionManaged({
       </p>
       {pendingText}
       {!current.supported ? (
-        <p>
-          This Station doesn't support installing the companion.
-        </p>
+        <p>This Station doesn't support installing the companion.</p>
       ) : null}
       {installed ? (
         <>
@@ -359,8 +357,8 @@ export function CompanionManaged({
           {uncertainAction ? (
             <p role="alert">
               Station didn't confirm the last {current.latestAction?.action}.
-              Check status, or stop the companion to make sure its services
-              are stopped.
+              Check status, or stop the companion to make sure its services are
+              stopped.
             </p>
           ) : null}
         </>

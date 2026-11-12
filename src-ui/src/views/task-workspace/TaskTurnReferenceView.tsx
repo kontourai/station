@@ -703,9 +703,7 @@ function AnswerSupportDialog({
       setSelectedBundleId(null);
       setSelectedClaimId(null);
       setConfirming(false);
-      setSubmissionError(
-        "Couldn't change answer support. Try again.",
-      );
+      setSubmissionError("Couldn't change answer support. Try again.");
     }
   };
   const title = isRemoval
@@ -809,9 +807,7 @@ function SupportSelector({
   bundleFocus,
 }: SupportSelectorProps) {
   if (bundles.isLoading)
-    return (
-      <SkeletonList count={2} label="Loading bundles" />
-    );
+    return <SkeletonList count={2} label="Loading bundles" />;
   if (bundles.error)
     return (
       <p className="task-workspace__answer-support-dialog-error" role="alert">
@@ -837,9 +833,7 @@ function SupportSelector({
             <code>{bundle.id}</code>
           </button>
         ))}
-        {(bundles.data ?? []).length === 0 && (
-          <p>No bundles available.</p>
-        )}
+        {(bundles.data ?? []).length === 0 && <p>No bundles available.</p>}
       </fieldset>
       {selectedBundleId && (
         <fieldset>

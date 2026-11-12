@@ -248,9 +248,7 @@ test('same-origin authority replacement discards pending probe and cached succes
       }),
     );
   });
-  expect(
-    screen.queryByText('Connection and storage check passed.'),
-  ).toBeNull();
+  expect(screen.queryByText('Connection and storage check passed.')).toBeNull();
   expect(screen.queryByText(/Receiver acknowledged/)).toBeNull();
 });
 

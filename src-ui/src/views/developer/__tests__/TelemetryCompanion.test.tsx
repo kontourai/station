@@ -427,9 +427,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
     fireEvent.click(start);
     await waitFor(() => expect(control).toHaveBeenCalledTimes(1));
     if (recovery === 'recovered')
-      expect(
-        await screen.findByText(/Running. Storage is ready/),
-      ).toBeTruthy();
+      expect(await screen.findByText(/Running. Storage is ready/)).toBeTruthy();
     else
       expect(
         await screen.findByText(/Station didn.t confirm the last start/),
@@ -445,9 +443,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
     h.unmount();
     mount(options);
     if (recovery === 'recovered')
-      expect(
-        await screen.findByText(/Running. Storage is ready/),
-      ).toBeTruthy();
+      expect(await screen.findByText(/Running. Storage is ready/)).toBeTruthy();
     else
       expect(
         await screen.findByText(/Station didn.t confirm the last start/),
@@ -510,7 +506,9 @@ test('a malformed refresh replaces prior success with an error', async () => {
   vi.mocked(fetch).mockResolvedValueOnce(
     Response.json({ data: { kind: 'available' } }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Check prerequisites again' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check prerequisites again' }),
+  );
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
     expect.stringContaining("Couldn't check this computer"),
@@ -536,7 +534,9 @@ test('the SDK refuses a response that promotes build evidence to installation au
       },
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Check prerequisites again' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check prerequisites again' }),
+  );
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
     expect.stringContaining("Couldn't check this computer"),
@@ -566,7 +566,9 @@ test('a delayed prior-authority result cannot replace the newly selected authori
   await waitFor(() => expect(h.probe).toHaveBeenCalledTimes(1));
   host.authorityKey = 'operator-two';
   h.rerender();
-  await screen.findByText(/Install Docker and Compose on the computer running Station/);
+  await screen.findByText(
+    /Install Docker and Compose on the computer running Station/,
+  );
   await act(async () => {
     release?.(available);
     await old;
