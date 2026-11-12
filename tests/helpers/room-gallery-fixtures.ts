@@ -9,6 +9,8 @@ import type {
 } from '@kontourai/station-contracts/project-task-room-browser';
 import { TASK_ROOM_WORK_VERSION } from '@kontourai/station-contracts/task-room-work';
 import type { Page, Route } from '@playwright/test';
+import { createProjectTaskRoomRoutes } from '../../src-server/routes/orchestration/project-task-rooms';
+import type { ProjectTaskRoomRuntime } from '../../src-server/services/orchestration/project-task-room-runtime';
 import { rejectUnexpectedFixtureRequest } from './fixture-audit';
 
 /**
@@ -485,6 +487,15 @@ const agent = (
   body: { kind: 'human-message', text },
 });
 
+/**
+ * The real Task-room routes, used only for their request validation: the
+ * runtime answers every accepted command `unavailable`, and the fixture then
+ * gives its own answer.
+ */
+const LIVE_COMMAND_ROUTE = createProjectTaskRoomRoutes({
+  live: async () => ({ kind: 'unavailable' }),
+} as unknown as ProjectTaskRoomRuntime);
+
 export type TaskRoomScene = 'thread' | 'working';
 
 function taskRecords(scene: TaskRoomScene): TaskRecordInput[] {
@@ -731,9 +742,24 @@ export async function installTaskRoomFixture(
     ],
     [
       `**/api/tasks/${encoded}/room/live`,
-      (route) => {
+      async (route) => {
         if (route.request().method() !== 'POST')
           return rejectUnexpectedFixtureRequest(route);
+        // The Station's own route validates the body first, so a command it
+        // would refuse is refused here with its 400 (#4810 gallery delta 2).
+        const checked = await LIVE_COMMAND_ROUTE.request(
+          `/${encoded}/room/live`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: route.request().postData() ?? '',
+          },
+        );
+        if (checked.status === 400 || checked.status === 413)
+          return route.fulfill({
+            status: checked.status,
+            json: await checked.json(),
+          });
         // The Station answers a join with `joined` and other commands with
         // `updated`; the viewer is a published participant once joined.
         const command = route.request().postDataJSON()?.command;

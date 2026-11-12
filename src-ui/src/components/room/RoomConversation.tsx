@@ -124,13 +124,24 @@ function Row({
   const moreButton = useRef<HTMLButtonElement>(null);
   const rowElement = useRef<HTMLDivElement>(null);
   const actionsElement = useRef<HTMLDivElement>(null);
-  // Opening by the button or a long press moves focus into the actions.
+  // Opening by the button or a long press moves focus into the actions; with
+  // none enabled (a send in flight), focus rests on the button instead.
   useEffect(() => {
     if (!actionsOpen || !showMore) return;
-    actionsElement.current
-      ?.querySelector<HTMLElement>('button:not(:disabled), [href]')
-      ?.focus();
+    (
+      actionsElement.current?.querySelector<HTMLElement>(
+        'button:not(:disabled), [href]',
+      ) ?? moreButton.current
+    )?.focus();
   }, [actionsOpen, showMore]);
+  // Escape closes from the button or the actions and returns to the button.
+  const closeOnEscape = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Escape' || !actionsOpen) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onCloseActions();
+    moreButton.current?.focus();
+  };
   // A tap outside closes them; focus that was inside returns to the button.
   useEffect(() => {
     if (!actionsOpen) return;
@@ -289,6 +300,7 @@ function Row({
             onClick={() =>
               actionsOpen ? onCloseActions() : onLongPress(row.id)
             }
+            onKeyDown={closeOnEscape}
           >
             <MoreGlyph />
           </IconButton>
@@ -300,13 +312,7 @@ function Row({
             className="room-row__actions"
             role="toolbar"
             aria-label={`Actions for ${row.author?.label ?? 'message'}`}
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape' || !actionsOpen) return;
-              event.preventDefault();
-              event.stopPropagation();
-              onCloseActions();
-              moreButton.current?.focus();
-            }}
+            onKeyDown={closeOnEscape}
           >
             {row.actions}
           </div>

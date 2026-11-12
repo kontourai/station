@@ -3,6 +3,7 @@ import {
   type ReactNode,
   type Ref,
   type TextareaHTMLAttributes,
+  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
@@ -19,6 +20,19 @@ import { IconButton } from '../IconButton';
 import { AttachmentGlyph } from '../icons/Glyph';
 import { composerEnterAction, useTouchKeyboard } from './composerKeys';
 import './RoomComposer.css';
+
+/** The nearest ancestor that scrolls vertically, else the document. */
+function scrollParent(element: HTMLElement): Element {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll') &&
+      node.scrollHeight > node.clientHeight
+    )
+      return node;
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
 
 /** The attachment port a room offers when its messages can carry files. */
 export type RoomComposerAttachments = Pick<
@@ -99,6 +113,40 @@ export function RoomComposer({
   const touchKeyboard = useTouchKeyboard();
   const mobile = useIsMobile();
   const viewport = useMobileVisualViewport();
+
+  // When the visible viewport shrinks (a keyboard opening), a focused phone
+  // composer scrolls back above it rather than staying behind the keyboard.
+  useEffect(() => {
+    const element = root.current;
+    if (!mobile || viewport.height <= 0) return;
+    if (!element?.contains(document.activeElement)) return;
+    let current = true;
+    const keepInView = () => {
+      if (!current || !element.contains(document.activeElement)) return;
+      const overhang =
+        element.getBoundingClientRect().bottom -
+        (viewport.offsetTop + viewport.height);
+      if (overhang > 0) scrollParent(element).scrollBy({ top: overhang });
+    };
+    // The lift over the keyboard animates; measure where the composer lands,
+    // not its first frame, or the page scrolls a keyboard's height too far.
+    const lifting =
+      element
+        .getAnimations?.()
+        .filter(
+          (animation) =>
+            animation instanceof CSSTransition &&
+            animation.transitionProperty === 'margin-bottom',
+        ) ?? [];
+    if (lifting.length)
+      void Promise.allSettled(
+        lifting.map((animation) => animation.finished),
+      ).then(keepInView);
+    else keepInView();
+    return () => {
+      current = false;
+    };
+  }, [mobile, viewport.height, viewport.offsetTop]);
 
   // Grow with the text up to the CSS cap, then scroll inside the field.
   useLayoutEffect(() => {

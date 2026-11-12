@@ -3597,6 +3597,20 @@ function roomConversationScreens(): Screen[] {
                   })
                   .toBeLessThanOrEqual(0);
                 expect((await send.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+                // It lands on the keyboard: measuring before the lift settles
+                // scrolled too far and left a blank band above the keyboard.
+                const gap = await page.evaluate(
+                  () =>
+                    window.visualViewport!.offsetTop +
+                    window.visualViewport!.height -
+                    document
+                      .querySelector('.project-room .room-composer')!
+                      .getBoundingClientRect().bottom,
+                );
+                expect(
+                  gap,
+                  'blank band above the keyboard (px)',
+                ).toBeLessThanOrEqual(8);
                 await expect(composer).toBeFocused();
               }
             }
