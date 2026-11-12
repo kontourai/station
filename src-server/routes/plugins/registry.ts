@@ -29,9 +29,9 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
+import { AMBIGUOUS_AGENT_SOURCE_STATUS } from '../../providers/registries/agent-registry-provider.js';
 import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
 import { mcpSubregistryIntegrationProviders } from '../../providers/registries/mcp-subregistry-provider.js';
-import { AMBIGUOUS_AGENT_SOURCE_STATUS } from '../../providers/registries/agent-registry-provider.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
@@ -654,7 +654,9 @@ export function createRegistryRoutes(
       // before the plugin path below could install it from whichever plugin
       // registry resolves it first. A source-qualified id names its source.
       if (!readRegistryCatalogSelection(id)) {
-        const offered = (await getAgentRegistryProvider().listAvailable()).filter(
+        const offered = (
+          await getAgentRegistryProvider().listAvailable()
+        ).filter(
           (item) =>
             item.id === id && item.status === AMBIGUOUS_AGENT_SOURCE_STATUS,
         );

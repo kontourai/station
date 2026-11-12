@@ -85,12 +85,16 @@ export function createAgentRegistryProvider(
     async install(id) {
       const found = await owner(id, 'listAvailable');
       if (isCatalog(found)) return found.provider.install(id);
-      return found ?? { success: false, message: `No agent catalog offers ${id}` };
+      return (
+        found ?? { success: false, message: `No agent catalog offers ${id}` }
+      );
     },
     async update(id) {
       const found = await owner(id, 'listAvailable');
       if (!isCatalog(found))
-        return found ?? { success: false, message: `No agent catalog offers ${id}` };
+        return (
+          found ?? { success: false, message: `No agent catalog offers ${id}` }
+        );
       return (
         (await found.provider.update?.(id)) ?? {
           success: false,
@@ -108,7 +112,10 @@ export function createAgentRegistryProvider(
         const result = await catalog.provider.uninstall(id);
         if (result.success) return result;
       }
-      return { success: false, message: `No agent catalog could uninstall ${id}` };
+      return {
+        success: false,
+        message: `No agent catalog could uninstall ${id}`,
+      };
     },
   };
 }

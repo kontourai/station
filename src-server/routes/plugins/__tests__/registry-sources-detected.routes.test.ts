@@ -30,9 +30,9 @@ import {
   registerAgentRegistryProvider,
 } from '../../../providers/registries/registry.js';
 import {
+  detectRegistrySourceTree,
   REGISTRY_SOURCE_SCAN_LIMITS,
   RegistrySourceScanRefusal,
-  detectRegistrySourceTree,
   readLocalSourceTree,
 } from '../../../providers/registries/registry-source-detection.js';
 import { installManagedCapabilityLimits } from '../../../security/managed-capability-limits.js';
@@ -540,9 +540,9 @@ describe('legacy registry-sources.json migrates with no action', () => {
     });
     expect(installed.status, await installed.clone().text()).toBe(200);
     await access(join(home, 'skills/clarify/SKILL.md'));
-    expect(await resolvePluginRegistryInstall(storedPlugin.id)).toMatchObject(
-      { source: join(manifestRoot, 'packages/hello') },
-    );
+    expect(await resolvePluginRegistryInstall(storedPlugin.id)).toMatchObject({
+      source: join(manifestRoot, 'packages/hello'),
+    });
 
     // The first catalog read detects what each source provides: the
     // manifest also lists an agent, which the old adapter never exposed.
@@ -745,9 +745,9 @@ describe('scans are bounded and refuse past a bound', () => {
       location: 'https://github.com/Bil0000/Hill-Climb',
     });
     expect(source.detection).toMatchObject({ state: 'refused', kinds: [] });
-    expect(
-      github.requested.some((url) => url.startsWith('https://raw.')),
-    ).toBe(false);
+    expect(github.requested.some((url) => url.startsWith('https://raw.'))).toBe(
+      false,
+    );
   });
 });
 
@@ -777,9 +777,9 @@ describe('updates are detected against the source as it is now', () => {
       ...HILL_CLIMB,
       'skills/hill-climb/SKILL.md': `${HILL_CLIMB['skills/hill-climb/SKILL.md']}\nNew step.\n`,
     };
-    const refreshed = (
-      await (await request(`/sources/${source.id}/refresh`, 'POST')).json()
-    ) as { data: RegistrySource };
+    const refreshed = (await (
+      await request(`/sources/${source.id}/refresh`, 'POST')
+    ).json()) as { data: RegistrySource };
     expect(refreshed.data.detection).toMatchObject({
       revision: 'b'.repeat(40),
       changedAt: expect.any(String),

@@ -361,7 +361,9 @@ export class RegistrySourceManager {
         revision: result.revision,
         checkedAt,
         ...(changedAt === undefined ? {} : { changedAt }),
-        ...(result.indexes[0] === undefined ? {} : { index: result.indexes[0] }),
+        ...(result.indexes[0] === undefined
+          ? {}
+          : { index: result.indexes[0] }),
         ...(result.stationManifestPath === undefined
           ? {}
           : { stationManifestPath: result.stationManifestPath }),
@@ -525,10 +527,8 @@ export class RegistrySourceManager {
         ),
     ) as JsonManifestRegistryProvider;
     if (kind === 'plugins') return manifest;
-    return cached(
-      snapshotKey(source.id, kind),
-      signature,
-      () => manifest.agentCatalog(),
+    return cached(snapshotKey(source.id, kind), signature, () =>
+      manifest.agentCatalog(),
     );
   }
 
@@ -660,7 +660,8 @@ export class RegistrySourceManager {
       facets.length > 0 &&
       facets.every((facet) => facet.source.managedDenial !== undefined);
     const managedDenial =
-      locationDenial ?? (allDenied ? facets[0]!.source.managedDenial : undefined);
+      locationDenial ??
+      (allDenied ? facets[0]!.source.managedDenial : undefined);
     const enabled = source.enabled && managedDenial === undefined;
     const facetStatuses = facets.map((facet) =>
       this.statuses.get(snapshotKeyOf(facet)),

@@ -347,10 +347,7 @@ export function normalizeRegistrySourceLocation(
       'Remove the query or fragment from the address.',
     );
   if (url.hostname === 'github.com') {
-    const parts = url.pathname
-      .replace(/\/$/, '')
-      .split('/')
-      .slice(1);
+    const parts = url.pathname.replace(/\/$/, '').split('/').slice(1);
     if (
       parts.length !== 2 ||
       parts.some((part) => !/^[A-Za-z0-9_.-]+$/.test(part))

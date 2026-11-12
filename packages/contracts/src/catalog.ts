@@ -40,7 +40,9 @@ export interface RegistryCatalogSelection {
  * Everything a source can be recognized as providing. `integrations` is
  * reported by detection but has no catalog selection yet.
  */
-export type RegistrySourceKind = RegistryCatalogSelection['kind'] | 'integrations';
+export type RegistrySourceKind =
+  | RegistryCatalogSelection['kind']
+  | 'integrations';
 
 /** One kind a source's content was recognized as providing. */
 export interface RegistrySourceDetectedKind {
