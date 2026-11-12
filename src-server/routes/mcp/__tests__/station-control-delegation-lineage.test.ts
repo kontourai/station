@@ -682,51 +682,37 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
     expect(delegateTask).not.toHaveBeenCalled();
   });
 
-  test('refuses a child policy that cannot retain all inherited denials within the wire bound', async () => {
-    const original = STARTED['session-child'];
-    STARTED['session-child'] = {
-      ...original,
-      delegation: {
-        ...ROOT_CHILD,
-        blockedTools: Array.from({ length: 256 }, (_, i) => `restricted_${i}`),
-      },
-    };
-    try {
-      const result = await callTool(
-        'session-child',
-        'delegate_task',
-        DELEGATE_ARGS,
-      );
-      expect(result.isError).toBe(true);
-      expect(result.text).toContain(
-        'Delegation policy exceeds its tool-pattern bound',
-      );
-      expect(delegateTask).not.toHaveBeenCalled();
-    } finally {
-      STARTED['session-child'] = original;
-    }
-  });
-
-  test('recorded inherited allowlists survive verified-caller child derivation', async () => {
-    const original = STARTED['session-child'];
-    STARTED['session-child'] = {
-      ...original,
-      delegation: { ...ROOT_CHILD, toolAllowlistConstraints: [['github_*']] },
-    };
-    try {
-      const result = await callTool(
-        'session-child',
-        'delegate_task',
-        DELEGATE_ARGS,
-      );
-      expect(result.isError).toBe(false);
-      expect(stampedDelegation(delegateTask)).toMatchObject({
-        toolAllowlistConstraints: [['github_*']],
-      });
-    } finally {
-      STARTED['session-child'] = original;
-    }
-  });
+  test.each(
+    [
+      Array.from({ length: 65 }, () => ['github_*']),
+      [Array.from({ length: 257 }, () => 'github_*')],
+      [['x'.repeat(257)]],
+      [[42]],
+    ].map((clauses) => ({ clauses })),
+  )(
+    'malformed recorded inherited clauses refuse before fan-out (%#)',
+    async ({ clauses }) => {
+      const original = STARTED['session-child'];
+      STARTED['session-child'] = {
+        ...original,
+        delegation: { ...ROOT_CHILD, toolAllowlistConstraints: clauses },
+      };
+      try {
+        const result = await callTool(
+          'session-child',
+          'delegate_task',
+          DELEGATE_ARGS,
+        );
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.text)).toMatchObject({
+          code: 'delegation_lineage_unavailable',
+        });
+        expect(delegateTask).not.toHaveBeenCalled();
+      } finally {
+        STARTED['session-child'] = original;
+      }
+    },
+  );
 
   test('a verified session with no recorded Agent is refused rather than starting a root', async () => {
     const result = await callTool(

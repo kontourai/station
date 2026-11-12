@@ -122,6 +122,15 @@ station-control caller: a Codex URL token, an ACP header token or the Claude
 in-process server. A shell `station` CLI run under an operator credential is not
 that caller, so this is not coverage of every way a child could start work.
 
+Requests that carry inherited `toolAllowlistConstraints` require full
+conjunction enforcement. Station-agent sessions use the pre-tool chain; native
+and unknown engines refuse these requests before provisioning or turn dispatch
+with `delegation_lineage_unavailable`. Existing native sessions without these
+clauses keep the partial-delivery limits above. This admission refusal does not
+qualify native enforcement, portable resource/credential authority or finite
+budgets. The `delegationToolConstraintsV1` handshake advertises preservation and
+Station-owned enforcement or refusal, not full native interception.
+
 ### Codex approval policy and reviewer
 
 The session-level engine Ask mode is separate from the authored per-tool Ask

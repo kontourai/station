@@ -409,6 +409,16 @@ the calling Session's own recorded delegation context, so a request body cannot
 re-allow it. See [tool-policy delivery](../conformance/tool-policy-delivery.md)
 for the callers this covers.
 
+Inherited tool allowlists use `delegation.toolAllowlistConstraints`: each
+bounded inner list is a separate clause, and every clause must match a tool.
+An empty clause denies all tools. These requests currently require the
+Station-agent engine; native or unknown engines refuse before launch or turn
+dispatch with `delegation_lineage_unavailable`. Reusing an existing Session
+requires its recorded policy to retain every required clause. The same durable
+create or foreground key with changed required policy returns HTTP 409 rather
+than replaying the earlier result. These checks grant no portable authority;
+see [delegated child restrictions](../guides/agent-configuration.md#delegated-child-restrictions).
+
 A delegation's dispatch response (`POST /api/orchestration/delegations`) also
 carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own

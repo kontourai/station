@@ -89,6 +89,17 @@ describe('delegation helpers', () => {
       ],
     };
     const required = [...current.blockedTools!];
+    expect(() =>
+      createChildDelegationContext({
+        agentSlug: 'parent',
+        spec: {
+          name: 'Parent',
+          prompt: 'Retain every denial',
+          delegation: { maxDepth: 4, blockedTools: ['one_more_tool'] },
+        },
+        current,
+      }),
+    ).toThrow('Delegation policy exceeds its tool-pattern bound');
     for (let depth = 2; depth <= 4; depth++) {
       current = createChildDelegationContext({
         agentSlug: 'parent',
