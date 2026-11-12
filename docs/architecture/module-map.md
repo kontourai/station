@@ -2339,7 +2339,9 @@ anything else as `unknown`. Who passes what:
   context Station derived or attested (`executeExecutionTargetMessage`, by
   its `caller-derived`/`runtime-attested` provenance; Station Control
   `send_message` arrives through `/chat/delegated`), pass `delegation` when
-  it starts a new conversation or the conversation's current Session is
+  it starts a new conversation (including one whose id the send names but no
+  Session holds yet, #4830; an unreadable lineage counts as new) or the
+  conversation's current Session is
   itself unattended (`OrchestrationService.sessionDispatchFacts`: bound to a
   Task, or a Station-derived delegated child); an agent's message into a
   person's own chat passes `unknown`. A requester's own `direct-claim`
