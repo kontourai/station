@@ -275,7 +275,7 @@ test.describe('Project channels on a phone (#4795)', () => {
       await expect(sent).toBeVisible();
 
       // The message's phone actions open its thread as its own page.
-      await openMessageActions(room, sent);
+      await openMessageActions(room, 'Hello from the phone');
       await room.getByRole('button', { name: /Reply/ }).first().click();
       await expect
         .poll(() => new URL(page.url()).searchParams.get('thread'))
@@ -323,7 +323,7 @@ test.describe('Project channels on a phone (#4795)', () => {
 });
 
 /** A phone shows a message's actions from its More button. */
-async function openMessageActions(room: Locator, message: Locator) {
-  const row = room.locator('.room-row').filter({ has: message });
+async function openMessageActions(room: Locator, text: string) {
+  const row = room.locator('.room-row').filter({ hasText: text });
   await row.getByRole('button', { name: /^More actions for / }).click();
 }
