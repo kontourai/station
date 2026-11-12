@@ -8,6 +8,8 @@ evidence:
   - kind: doc
     ref: src-server/providers/registries/registry-source-manager.ts
   - kind: doc
+    ref: src-server/providers/registries/confined-local-read.ts
+  - kind: doc
     ref: src-server/providers/registries/registry-source-configuration.ts
   - kind: doc
     ref: src-server/providers/registries/agent-registry-provider.ts
@@ -87,14 +89,27 @@ A scan stops at any of these bounds and refuses the whole source:
 
 - 8192 files and folders (`.git` excluded);
 - 16 folder levels;
-- 1 MiB per index or definition file, or per single-document source;
+- 1 MiB per index or definition file, per `SKILL.md` (checked against the
+  listed size before any is read, and again while the skill provider reads
+  it), or per single-document source;
 - 128 definition reads;
 - 512 skills;
 - a GitHub tree that the API reports as truncated.
 
 Station refuses rather than truncates because a partial scan could hide an
-item, or turn an ambiguous name into a first match. Symlinks are never
-followed.
+item, or turn an ambiguous name into a first match.
+
+A folder source is read only inside itself
+([`confined-local-read.ts`](../../src-server/providers/registries/confined-local-read.ts)).
+The scan lists no symlink. Every later read, by detection and by the skill
+provider, walks each path component below the source root and refuses a link.
+It re-checks containment by real path, opens with `O_NOFOLLOW`, and refuses
+unless the opened file is the one it checked (device and inode). So a
+directory swapped for a link after the scan refuses the read, and the source
+shows `refused` or an unreadable catalog. A linked `SKILL.md` is neither
+counted nor listed. Station's default skill folders are not confined, because
+a person may link skills into them on purpose. Their `SKILL.md` reads are
+bounded the same way.
 
 ## Several kinds from one source
 
@@ -113,7 +128,9 @@ more case.
 catalog. It now merges every registered catalog, like integrations, but
 without picking a winner. Each row names its catalog. An id that two catalogs
 offer is listed from both, marked `ambiguous-source`, and installing it is
-refused with the catalogs named. Agents from added sources are listed beside
+refused (409) with the catalogs named. Ownership is decided only when every
+catalog answers: if one cannot be read, a plain-id install is refused (503,
+naming it) rather than given to another catalog that offers the same id. Agents from added sources are listed beside
 these rows with source-qualified ids, and they install through the plugin
 pipeline, because a manifest agent entry is a package. A plugin-contributed
 JSON agent registry now gets the manifest's agent view, not its whole plugin
@@ -140,9 +157,22 @@ A `registry-sources.json` written before detection loads unchanged:
 - The first catalog read detects each enabled source and records the result.
   From then on, the source provides what its content shows.
 
-The rewritten file keeps the earlier source keys, an `adapter` on each source
-and at most 32 snapshots, so an older Station still reads it. That stops
-holding once a person sets a `ref`: an older Station refuses an unknown key.
+The rewritten file stays readable by a Station that predates detection. That
+reader validates every source and every `snapshots` row strictly, but drops
+unknown top-level keys. So the file keeps:
+
+- the earlier source keys and an `adapter` on each source;
+- at most 32 `snapshots`, holding only `skills` and `plugins` rows;
+- `detections`, and catalogs of a newer kind (`agents`), under top-level keys
+  (`detections`, `kindSnapshots`) that the older reader ignores. It loses only
+  their offline cache.
+
+The one exception is a source with a `ref`. The older reader refuses the
+whole file ("restore your file") rather than silently dropping the ref and
+reading the default branch. To downgrade, remove those sources first; the
+older Station then reads the rest. A test pins both outcomes against the
+older reader's schema.
+
 An older client's `adapter` on add is accepted and ignored, except as the way
 to read a local path that does not exist yet.
 
