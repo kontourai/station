@@ -2,11 +2,17 @@
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import { buildHomeWorkItems } from '../../../views/home/home-view-model';
 import { buildWorkFacts } from '../../../views/home/work-facts';
 import { renderHomeWorkRow } from '../HomeWorkRow';
+
+// #4695: a Session row reads its plan; these rows report none.
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
+}));
 
 const AT = '2026-08-24T12:00:00.000Z';
 
