@@ -41,8 +41,9 @@ When Station needs something a primitive doesn't expose, the move is an upstream
 ### Conduit 0.2.1
 
 Station consumes Conduit's public `createStrandsAdapter`,
-`createVoltAgentAdapter`, shared conformance probe/report functions, and exported
-types. The package also ships its JSON schema and reference evidence as package
+`createVoltAgentAdapter`, `createInProcessHostAdapter` (since 0.8, so the probe
+takes its inert install path), shared conformance probe/report functions, and
+exported types. The package also ships its JSON schema and reference evidence as package
 assets. Station binds those adapters to its existing `IAgentHooks` seam and
 generates host-bound evidence against the exact Strands and VoltAgent versions
 in `pnpm-lock.yaml`; Conduit's adapter-contract reference rows are not
