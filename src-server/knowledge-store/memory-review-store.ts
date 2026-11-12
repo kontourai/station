@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import type { ReviewDecision, ReviewSessionEvent } from '@kontourai/survey';
@@ -20,13 +20,14 @@ import { assertExistingPathInside } from '../utils/path-containment.js';
  *
  * Records hold only identifiers, decision fields and, for a correction, the
  * reviewer's own value. When the memory they refer to is erased they are
- * ignored on every read and dropped on the next write. The retained prior copy
- * can still hold them until the write after that.
+ * filtered on reads. Station erasure and reconciliation prune them and rewrite
+ * the prior copy before completing cleanup. External copies have their own retention.
  */
 export interface MemoryReviewState {
   version: 1;
   decisions: ReviewDecision[];
   events: ReviewSessionEvent[];
+  bindings?: Record<string, string>;
 }
 
 const EMPTY: MemoryReviewState = { version: 1, decisions: [], events: [] };
@@ -35,12 +36,41 @@ const MAX_RECORDS = 100_000;
 
 function isState(value: unknown): value is MemoryReviewState {
   const state = value as Partial<MemoryReviewState> | null;
+  const bindings = state?.bindings;
   return (
     !!state &&
     state.version === 1 &&
     Array.isArray(state.decisions) &&
-    Array.isArray(state.events)
+    Array.isArray(state.events) &&
+    (bindings === undefined ||
+      (bindings !== null &&
+        typeof bindings === 'object' &&
+        !Array.isArray(bindings) &&
+        Object.keys(bindings).length <= MAX_RECORDS &&
+        Object.entries(bindings).every(
+          ([key, id]) =>
+            /^memory-change\.[a-f0-9]{32}$/.test(key) &&
+            typeof id === 'string' &&
+            id.length > 0 &&
+            id.length <= 200,
+        )))
   );
+}
+
+export function bindReviewItems(
+  state: MemoryReviewState,
+  live: Record<string, string>,
+): Record<string, string> {
+  const names = new Set([
+    ...state.decisions.map((decision) => decision.spec.reviewItemName),
+    ...state.events.flatMap((event) =>
+      event.spec.reviewItemName ? [event.spec.reviewItemName] : [],
+    ),
+  ]);
+  const bindings = { ...state.bindings };
+  for (const name of names)
+    if (!bindings[name] && live[name]) bindings[name] = live[name];
+  return bindings;
 }
 
 const MAX_READ_BYTES = 64 * 1024 * 1024;
@@ -89,6 +119,47 @@ export class MemoryReviewStore {
     return this.json.read(decode);
   }
 
+  async bindItems(live: Record<string, string>): Promise<void> {
+    if (!existsSync(this.file) && !existsSync(`${this.file}.previous`)) return;
+    await this.mutate(
+      () => {},
+      (state) => ({
+        state: { ...state, bindings: bindReviewItems(state, live) },
+        result: undefined,
+      }),
+    );
+  }
+
+  async pruneItems(live: Record<string, string>): Promise<void> {
+    if (!existsSync(this.file) && !existsSync(`${this.file}.previous`)) return;
+    await this.mutate(
+      () => {},
+      (state) => {
+        const keep = (id: string) =>
+          Boolean(
+            live[id] &&
+              (!state.bindings?.[id] || state.bindings[id] === live[id]),
+          );
+        return {
+          state: {
+            version: 1,
+            decisions: state.decisions.filter((d) =>
+              keep(d.spec.reviewItemName),
+            ),
+            events: state.events.filter(
+              (e) => !e.spec.reviewItemName || keep(e.spec.reviewItemName),
+            ),
+            bindings: Object.fromEntries(
+              Object.entries(state.bindings ?? {}).filter(([id]) => keep(id)),
+            ),
+          },
+          result: undefined,
+        };
+      },
+      { rewritePrevious: true },
+    );
+  }
+
   /** Runs `change` on the current state under the lock and writes the state it returns. `change` may read other stores: the lock is held across it. */
   async mutate<T>(
     assertCurrent: () => void,
@@ -97,6 +168,7 @@ export class MemoryReviewStore {
     ) =>
       | { state: MemoryReviewState; result: T }
       | Promise<{ state: MemoryReviewState; result: T }>,
+    options: { rewritePrevious?: boolean } = {},
   ): Promise<T> {
     this.ensureDirectory();
     assertCurrent();
@@ -104,6 +176,8 @@ export class MemoryReviewStore {
     try {
       assertCurrent();
       const { state, result } = await change(this.read());
+      if (!isState(state))
+        throw new Error('Memory review records are invalid.');
       if (
         state.decisions.length > MAX_RECORDS ||
         state.events.length > MAX_RECORDS
@@ -111,6 +185,9 @@ export class MemoryReviewStore {
         throw new Error('Memory review history is full.');
       assertCurrent();
       this.json.write(state);
+      // The shared JSON owner retains the prior value on each durable write.
+      // A second write makes that recoverable copy contain the pruned state too.
+      if (options.rewritePrevious) this.json.write(state);
       return result;
     } finally {
       await release();

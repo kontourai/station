@@ -599,8 +599,14 @@ a conflicting key returns 409 with `REQUEST_KEY_CONFLICT`. `GET
 query. Pending proposals do not appear in ordinary record lists or search.
 
 `GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
-returns the target's `{ kind, id, title }` without changing it. It does not
-calculate a cascade or expose erasure.
+returns the target's `{ kind, id, title, impact }` without changing it. The
+impact and revision come from Corpus's purge preview. The host operator may
+confirm with `POST /api/knowledge/memory/erase` using `{ kind, id, revision,
+purgeId }`, where `purgeId` is a UUID retained for retries. A changed revision
+returns 409 `STALE_REVISION` without erasing; fetch a new preview and confirm
+again. Success returns the Corpus receipt, or `null` if recovery completed but
+the original receipt could not be retained. A 503 can mean cleanup is pending;
+retry with the same `purgeId`. If it still fails, restart Station.
 
 Review, recall and briefing use the same authority, root-access check and
 delivery-time recheck, advertised by the `privateMemoryReview` handshake flag
@@ -634,8 +640,7 @@ delivery-time recheck, advertised by the `privateMemoryReview` handshake flag
 
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard
-`feature_preview_disabled` 404. Erasure is not exposed by these routes. See
-[Private memory](../guides/knowledge.md#private-memory-preview).
+`feature_preview_disabled` 404. See [Private memory](../guides/knowledge.md#private-memory-preview).
 
 ## Project knowledge source identity
 

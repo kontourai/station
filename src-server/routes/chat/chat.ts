@@ -221,7 +221,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
     // (delivered when the agent is invoked) or, if the turn never reaches the stream,
     // abandoned below so the conversation can be briefed on a retry.
     let memoryBriefDelivery:
-      | { delivered(): void; abandoned(): void }
+      | import('../../knowledge-store/memory-brief-provider.js').MemoryBriefDelivery
       | undefined;
     let briefHandedToStream = false;
     try {

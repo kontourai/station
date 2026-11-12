@@ -27,6 +27,7 @@ import { knowledgeEmbeddingIdentity } from '../../knowledge-index/embedding-iden
 import { RebuildInProgressError } from '../../knowledge-index/inflight-guard.js';
 import { migratePreIndexKnowledge } from '../../knowledge-index/migrate-pre-index-knowledge.js';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
+import { MEMORY_ADAPTER_ID } from '../../knowledge-store/memory-root.js';
 import {
   knowledgeRootReadKind,
   SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
@@ -79,7 +80,16 @@ interface KnowledgeIndexRouteDeps {
     request: Request,
     roots: readonly KnowledgeStoreRoot[],
     response: Response,
+    validateDelivery?: () => Promise<boolean>,
   ) => Promise<Response>;
+  memoryRebuildFence?: (
+    request: Request,
+    root: KnowledgeStoreRoot,
+  ) => Parameters<KnowledgeIndexProvider['rebuildRoot']>[1]['withRootRevision'];
+  runAsReader?: <T>(
+    request: Request,
+    operation: () => Promise<T>,
+  ) => Promise<T>;
 }
 
 interface RebuildRootReport {
@@ -282,10 +292,25 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         }
         try {
           const snapshot = snapshots.get(rootId);
+          const memoryFence =
+            expected?.adapterId === MEMORY_ADAPTER_ID
+              ? deps.memoryRebuildFence?.(c.req.raw, expected)
+              : undefined;
+          if (expected?.adapterId === MEMORY_ADAPTER_ID && !memoryFence)
+            throw new Error('Private memory rebuild fence is unavailable.');
           const withRootRevision: Parameters<
             KnowledgeIndexProvider['rebuildRoot']
-          >[1]['withRootRevision'] =
-            snapshot && deps.store.withRootRevision
+          >[1]['withRootRevision'] = memoryFence
+            ? (operation, phase) =>
+                memoryFence(async (adapter) => {
+                  if (
+                    !deps.mayBuildPrivateRoot ||
+                    !(await deps.mayBuildPrivateRoot(c.req.raw, expected!))
+                  )
+                    throw new Error('Knowledge root access ended.');
+                  return operation(adapter);
+                }, phase)
+            : snapshot && deps.store.withRootRevision
               ? (operation) =>
                   deps.store.withRootRevision!(snapshot, async (adapter) => {
                     if (
@@ -534,12 +559,90 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         staleRecords: staleRecordKeys.size,
         scanLimitReached,
       };
-      const response = c.json({ success: true, data: results, index });
+      let deliveredResults: KnowledgeSearchResult[] | undefined;
+      const stillCurrent = (hit: KnowledgeSearchResult) => {
+        const read = async () => {
+          const root = await deps.store.getRoot(hit.rootId);
+          if (
+            !root ||
+            deps.previewDisabledForRoot?.(hit.rootId) ||
+            (deps.mayReadHitRoot &&
+              !(await deps.mayReadHitRoot(c.req.raw, root)))
+          )
+            return null;
+          const adapter = await deps.store.adapterFor(hit.rootId);
+          const record = await adapter.get(hit.recordId);
+          return record && chunkKnowledgeText(record.body).includes(hit.excerpt)
+            ? record
+            : null;
+        };
+        return deps.runAsReader ? deps.runAsReader(c.req.raw, read) : read();
+      };
+      // The response body can wait after assembly. Re-read each record when
+      // the transport pulls it so an erased or changed excerpt is withheld.
+      const response = new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            async pull(controller) {
+              try {
+                const currentResults: KnowledgeSearchResult[] = [];
+                for (const hit of results) {
+                  if (c.req.raw.signal.aborted)
+                    throw new Error('Request ended.');
+                  const record = await stillCurrent(hit);
+                  if (!record) {
+                    staleRecordKeys.add(
+                      JSON.stringify([hit.rootId, hit.recordId]),
+                    );
+                    continue;
+                  }
+                  currentResults.push({
+                    ...hit,
+                    title: record.title,
+                    category: record.category,
+                  });
+                }
+                deliveredResults = currentResults;
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    JSON.stringify({
+                      success: true,
+                      data: currentResults,
+                      index: { ...index, staleRecords: staleRecordKeys.size },
+                    }),
+                  ),
+                );
+                controller.close();
+              } catch {
+                controller.error(
+                  new Error('Knowledge results are unavailable.'),
+                );
+              }
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        { headers: { 'Content-Type': 'application/json; charset=UTF-8' } },
+      );
       return deps.guardReadResponse
         ? deps.guardReadResponse(
             c.req.raw,
             [...visibleRoots.values()],
             response,
+            async () => {
+              if (c.req.raw.signal.aborted) return false;
+              if (!deliveredResults) return true;
+              for (const hit of deliveredResults) {
+                const record = await stillCurrent(hit);
+                if (
+                  !record ||
+                  record.title !== hit.title ||
+                  record.category !== hit.category
+                )
+                  return false;
+              }
+              return !c.req.raw.signal.aborted;
+            },
           )
         : response;
     } catch (e: unknown) {

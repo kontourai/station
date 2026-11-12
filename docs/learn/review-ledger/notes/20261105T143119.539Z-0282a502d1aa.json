@@ -1,0 +1,9 @@
+{
+  "revision": "7450c7618d0611df91e4f6eb60428a0d259a8e93",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed the Knowledge guide recovery and re-registration disclosure against the ADR reading-status caveat and canonical-store/index split. The historical decision remains unchanged.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the pending-cleanup re-registration and replaced-store limits against the coordinator binding check and route/coordinator tests; immediate recovery after recreation while Station is running remains tracked separately.","inputs":["docs/guides/knowledge.md"]}
+  ]
+}

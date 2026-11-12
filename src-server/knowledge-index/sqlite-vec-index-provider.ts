@@ -201,6 +201,14 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     // file does not wait out `busy_timeout`. Still advisory — the mode is
     // persistent in the file header, so a later uncontended open converts it.
     applyWalJournalMode(db, { store: 'knowledge index' });
+    db.exec('PRAGMA secure_delete = ON');
+    const secureDelete = db.prepare('PRAGMA secure_delete').get() as
+      | { secure_delete: number }
+      | undefined;
+    if (secureDelete?.secure_delete !== 1) {
+      db.close();
+      throw new Error('Knowledge index secure deletion is unavailable.');
+    }
     db.exec(
       `CREATE TABLE IF NOT EXISTS ${META_TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
     );
@@ -394,6 +402,27 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     knowledgeIndexOps.add(1, { op: 'removeByRecord', rootId });
   }
 
+  async removeErasedRecords(
+    rootId: string,
+    recordIds: string[],
+  ): Promise<void> {
+    const db = this.open();
+    if (recordIds.length > 0 && this.tableExists(VEC_TABLE)) {
+      const placeholders = recordIds.map(() => '?').join(', ');
+      db.prepare(
+        `DELETE FROM ${VEC_TABLE} WHERE store = ? AND recordId IN (${placeholders})`,
+      ).run(rootId, ...recordIds);
+    }
+    // Older index pages can predate secure_delete; rewrite them before settling
+    // the caller's durable cleanup intent. Checkpoint also removes old WAL frames.
+    db.exec('VACUUM');
+    const checkpoint = db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get() as
+      | { busy: number }
+      | undefined;
+    if (!checkpoint || checkpoint.busy !== 0)
+      throw new Error('Knowledge index cleanup is waiting for readers.');
+  }
+
   async removeRoot(rootId: string): Promise<void> {
     this.deleteRootRows(rootId);
     this.clearLastRebuiltAt(rootId);
@@ -527,7 +556,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       return records;
     };
     const records = deps.withRootRevision
-      ? await deps.withRootRevision(readRecords)
+      ? await deps.withRootRevision(readRecords, 'snapshot')
       : await readRecords(await deps.store.adapterFor(rootId));
 
     const embeddingIdentity = knowledgeEmbeddingIdentity(deps.embedder);
@@ -554,7 +583,8 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       });
     }
 
-    if (deps.withRootRevision) await deps.withRootRevision(async () => {});
+    if (deps.withRootRevision)
+      await deps.withRootRevision(async () => {}, 'pre-embed');
     const vectors =
       pending.length > 0
         ? await deps.embedder.embed(pending.map((p) => p.text))
@@ -584,7 +614,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
 
       this.setLastRebuiltAt(rootId);
     };
-    if (deps.withRootRevision) await deps.withRootRevision(publish);
+    if (deps.withRootRevision) await deps.withRootRevision(publish, 'publish');
     else await publish();
 
     const durationMs = performance.now() - start;

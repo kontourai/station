@@ -1,0 +1,21 @@
+{
+  "revision": "c22743b28b726c3257ab6483860f11924eb55035",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the private-memory lookup text against the Corpus next.3 preview and UI. The returned plan is displayed without exposing erasure; survivors and referrers can retain content.","inputs":["docs/guides/knowledge.md","src-server/knowledge-index/sqlite-vec-index-provider.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the private-memory lookup response against the route and manager. It includes Corpus's read-only impact and revision; it does not expose a destructive operation.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed the canonical-store and derived-index decision against the preview and sqlite-vec cleanup primitive. Corpus remains record authority; the index remains derived, and no erasure route is exposed.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md","src-server/knowledge-index/sqlite-vec-index-provider.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the Knowledge provider-choice and personal-root observations against the index cleanup primitive. Provider selection and personal-root classification are unchanged; the primitive is not yet a wired erasure flow.","inputs":["docs/architecture/abstraction-review.md","src-server/knowledge-index/sqlite-vec-index-provider.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Knowledge index ownership, root-scoped rebuild and search claims against the sqlite-vec cleanup primitive. The optional primitive removes erased rows and compacts local storage; it is not yet called by an erasure route or a recovery coordinator.","inputs":["docs/architecture/module-map.md","src-server/knowledge-index/sqlite-vec-index-provider.ts"]},
+
+    {"path":"docs/design/knowledge-foundation.md","note":"Reviewed the current and historical store/index boundaries against the optional index cleanup method. Canonical records remain in Corpus and the index remains derived; no purge or recovery flow is claimed by this partial implementation.","inputs":["docs/design/knowledge-foundation.md","packages/contracts/src/knowledge-index.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Compared the API-reference change with the terminal design. It only documents additional private-memory preview response data and does not change terminal routes or authority.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Compared the API-reference change with the integration guide. The new read-only private-memory impact data does not change the documented Project integration or hosted boundary.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

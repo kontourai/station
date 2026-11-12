@@ -1,0 +1,7 @@
+{
+  "revision": "2c28902d1473ab0eaea791abc9a495f10d33dd9e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed chat changes against composer guidance; the brief freshness refusal happens at server invocation and does not change layout or message controls.","inputs":["docs/design/chat-composer.md","src-server/routes/chat/chat.ts"]}
+  ]
+}

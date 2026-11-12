@@ -98,7 +98,7 @@ export function buildChatHarnessApp(options: {
   dedupStore: ChatTurnDedupStore;
   nativeForeground?: NativeForegroundRelayCompanion;
   /** A private-memory brief reserved for each turn; see `streamPrimaryAgentChat`. */
-  memoryBrief?: { delivered(): void; abandoned(): void };
+  memoryBrief?: import('../knowledge-store/memory-brief-provider.js').MemoryBriefDelivery;
   /** The turn's text; default `hello`. */
   input?: string;
 }): Hono {

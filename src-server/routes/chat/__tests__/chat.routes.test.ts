@@ -257,10 +257,15 @@ describe('Chat Routes', () => {
             options: { model: 'model-a' },
           }),
         });
-      const prepared = (delivery: {
-        delivered: () => void;
-        abandoned: () => void;
-      }) => ({
+      const makeDelivery = () => ({
+        delivered: vi.fn(),
+        abandoned: vi.fn(),
+        invokeIfCurrent: async <T>(invoke: () => Promise<T>) => ({
+          current: true as const,
+          result: await invoke(),
+        }),
+      });
+      const prepared = (delivery: ReturnType<typeof makeDelivery>) => ({
         options: { model: 'model-a' },
         resolvedProviderConn: provider,
         injectContext: null,
@@ -268,7 +273,7 @@ describe('Chat Routes', () => {
         contextInjection: {},
         memoryBriefDelivery: delivery,
       });
-      const refused = { delivered: vi.fn(), abandoned: vi.fn() };
+      const refused = makeDelivery();
       vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(refused));
       vi.mocked(resolveChatAgentModelOverride).mockResolvedValueOnce({
         error: 'A configured provider connection is required.',
@@ -278,7 +283,7 @@ describe('Chat Routes', () => {
       expect(refused.abandoned).toHaveBeenCalledTimes(1);
       expect(refused.delivered).not.toHaveBeenCalled();
 
-      const sent = { delivered: vi.fn(), abandoned: vi.fn() };
+      const sent = makeDelivery();
       vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(sent));
       vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
         realModelOverride.resolveChatAgentModelOverride,
@@ -291,7 +296,7 @@ describe('Chat Routes', () => {
 
       // The configuration changing while the turn was prepared is refused (409) after
       // preparation has already reserved the brief: it is still given back.
-      const stale = { delivered: vi.fn(), abandoned: vi.fn() };
+      const stale = makeDelivery();
       vi.mocked(prepareChatRequest).mockImplementationOnce(async () => {
         configurationRevision.value += 1;
         return prepared(stale);
@@ -302,7 +307,7 @@ describe('Chat Routes', () => {
       configurationRevision.value = 0;
 
       // A stream that throws before starting hands nothing over: the brief is abandoned.
-      const broken = { delivered: vi.fn(), abandoned: vi.fn() };
+      const broken = makeDelivery();
       vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(broken));
       vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
         realModelOverride.resolveChatAgentModelOverride,

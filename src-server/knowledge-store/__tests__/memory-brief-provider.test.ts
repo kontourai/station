@@ -1,9 +1,18 @@
+import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test, vi } from 'vitest';
+import {
+  buildChatHarnessApp,
+  createHarnessConversationStore,
+  emptyAgentResult,
+} from '../../__test-utils__/chat-primary-stream-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { SqliteVecIndexProvider } from '../../knowledge-index/sqlite-vec-index-provider.js';
+import { ChatTurnDedupStore } from '../../routes/chat/chat-turn-dedup.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
 import { createMemoryBriefProvider } from '../memory-brief-provider.js';
+import { MemoryErasureCoordinator } from '../memory-erasure-coordinator.js';
 import { MemoryReviewService } from '../memory-review.js';
 import { MemoryRootManager } from '../memory-root.js';
 import { candidate, claim, OWNER } from './memory-claim-fixtures.js';
@@ -45,7 +54,7 @@ async function setup(options: { maxInFlight?: number } = {}) {
     value: 'eu-west-1',
     excerpt: 'Billing runs in eu-west-1.',
   });
-  await manager.propose(
+  const proposalId = await manager.propose(
     owner,
     root,
     () => {},
@@ -76,6 +85,11 @@ async function setup(options: { maxInFlight?: number } = {}) {
   });
   return {
     state,
+    home,
+    manager,
+    store,
+    root,
+    proposalId,
     provider,
     request: new Request('http://station.test/chat'),
   };
@@ -316,4 +330,74 @@ test('turns in flight are capped, so pinned reservations cannot grow without bou
     (await provider(request, { relayOwner: OWNER, conversationId: 'pin-over' }))
       ?.entries,
   ).toBe(1);
+});
+
+test('a brief assembled before erasure cannot reach the agent afterwards', async () => {
+  const h = await setup();
+  const brief = await h.provider(h.request);
+  expect(brief?.text).toContain('eu-west-1');
+  const positive = await h.provider(h.request);
+  const positiveCall = vi.fn(async () => emptyAgentResult());
+  const positiveApp = buildChatHarnessApp({
+    agent: {
+      getMemory: () => null,
+      model: { modelId: 'test' },
+      streamText: positiveCall,
+    },
+    conversations: createHarnessConversationStore(),
+    dedupStore: new ChatTurnDedupStore(join(h.home, 'positive-dedup.json')),
+    memoryBrief: positive!,
+    input: positive!.text!,
+  });
+  await (
+    await positiveApp.request('/chat?clientTurnId=live-brief', {
+      method: 'POST',
+    })
+  ).text();
+  expect(positiveCall).toHaveBeenCalledTimes(1);
+  const index = new SqliteVecIndexProvider({
+    dbPath: join(h.home, 'index.db'),
+  });
+  try {
+    const coordinator = new MemoryErasureCoordinator(
+      h.home,
+      h.store,
+      h.manager,
+      index,
+    );
+    const preview = await h.manager.previewErasureTarget(
+      owner,
+      h.root,
+      () => {},
+      'proposal',
+      h.proposalId,
+    );
+    await coordinator.erase(
+      owner,
+      h.root,
+      () => {},
+      'proposal',
+      h.proposalId,
+      preview!.impact.revision,
+      'brief-erasure-test',
+    );
+    expect(await brief!.invokeIfCurrent(async () => 'should not run')).toEqual({
+      current: false,
+    });
+    const streamText = vi.fn(async () => emptyAgentResult());
+    const app = buildChatHarnessApp({
+      agent: { getMemory: () => null, model: { modelId: 'test' }, streamText },
+      conversations: createHarnessConversationStore(),
+      dedupStore: new ChatTurnDedupStore(join(h.home, 'dedup.json')),
+      memoryBrief: brief!,
+      input: brief!.text!,
+    });
+    const response = await app.request('/chat?clientTurnId=erased-brief', {
+      method: 'POST',
+    });
+    expect(await response.text()).toContain('The response stream failed.');
+    expect(streamText).not.toHaveBeenCalled();
+  } finally {
+    index.close();
+  }
 });

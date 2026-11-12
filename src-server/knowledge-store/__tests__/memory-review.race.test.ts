@@ -1,4 +1,9 @@
-import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import type { KitCreateProposal } from '@kontourai/corpus-store';
+import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import {
+  type SessionReadAuthority,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
@@ -20,13 +25,21 @@ test('a review that read the store before another decision landed does not erase
   const store = new KnowledgeStoreProvider(persistence);
   let between: (() => Promise<void>) | undefined;
 
-  // Runs `between` once, after the first listing has been read and before it is returned:
-  // the window in which a stale snapshot would be acted on.
+  // Pause after the snapshot's root lease is released, so the intervening
+  // decision runs before the first review acts on its stale snapshot.
   class SlowManager extends MemoryRootManager {
-    override async listProposals(
-      ...args: Parameters<MemoryRootManager['listProposals']>
-    ) {
-      const result = await super.listProposals(...args);
+    override async withProposals<T>(
+      authority: SessionReadAuthority,
+      root: KnowledgeStoreRoot,
+      assertCurrent: () => void,
+      operation: (proposals: KitCreateProposal[]) => Promise<T>,
+    ): Promise<T> {
+      const result = await super.withProposals(
+        authority,
+        root,
+        assertCurrent,
+        operation,
+      );
       const hook = between;
       between = undefined;
       if (hook) await hook();
@@ -62,6 +75,10 @@ test('a review that read the store before another decision landed does not erase
   await propose(first, 'a');
 
   between = async () => {
+    const before = await review.recall(owner, root, () => {}, '');
+    expect(
+      before.entries.find((entry) => entry.claimId === first.id)?.review.label,
+    ).toBe('unreviewed');
     await propose(second, 'b');
     await review.decide(
       owner,

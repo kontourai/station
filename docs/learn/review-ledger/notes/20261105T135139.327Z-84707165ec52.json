@@ -1,0 +1,11 @@
+{
+  "revision": "d260d2c2d0dee8b279a19b1d0e7d57b221624e9b",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the shared Vitest worker policy against the isolated SIGKILL recovery suite: it owns one temp home and child, so the process-heavy two-worker group fits the documented bounded policy.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Compared the manifest-only classification of the Station memory erasure crash suite with the model-runtime context and its separately owned process-death evidence. No model-runtime contract or test changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the child-process classification and test-effectiveness instructions against the new process-heavy entry; the suite uses a real isolated child and retains the SIGKILL recovery assertion.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

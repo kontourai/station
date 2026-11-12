@@ -81,12 +81,14 @@ export async function prepareChatRequest(
    * Set when a memory brief was added. The caller must report how the turn ended:
    * `delivered` once the agent is invoked with it, `abandoned` otherwise.
    */
-  memoryBriefDelivery?: { delivered(): void; abandoned(): void };
+  memoryBriefDelivery?: import('../../knowledge-store/memory-brief-provider.js').MemoryBriefDelivery;
 }> {
   const options = { ...context.options };
   let resolvedProviderConn: ProviderConnectionConfig | null = null;
   const contextInjection: TurnProvenanceContextInjection = {};
-  let memoryBriefDelivery: { delivered(): void; abandoned(): void } | undefined;
+  let memoryBriefDelivery:
+    | import('../../knowledge-store/memory-brief-provider.js').MemoryBriefDelivery
+    | undefined;
 
   // Resolve provider-managed bindings even for an already-active Station
   // agent. The route passes the resolved connection and model into

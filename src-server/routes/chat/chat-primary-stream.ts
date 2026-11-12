@@ -108,7 +108,7 @@ interface StreamPrimaryAgentChatArgs {
    * `delivered` when the agent is invoked with it and `abandoned` whenever the
    * turn ends without reaching the agent (a refusal, a replayed turn, an error).
    */
-  memoryBrief?: { delivered(): void; abandoned(): void };
+  memoryBrief?: import('../../knowledge-store/memory-brief-provider.js').MemoryBriefDelivery;
   c: Context;
   ctx: RuntimeContext;
   slug: string;
@@ -627,27 +627,42 @@ export function streamPrimaryAgentChat({
           completionReason = 'aborted';
           throw new Error('Stream aborted by client');
         }
-        // The durable marker precedes the physical call inside the final
-        // foreground guard; a guard refusal has invoked nothing.
         if (clientTurnId && ownsClientTurnClaim)
           dedupStore?.beginInvocation(clientTurnId);
         agentInvoked = true;
         memoryBrief?.delivered();
         return agent.streamText(input as string, streamOptions);
       };
-      result = nativeForeground
-        ? await nativeForeground.invoke(
-            {
-              get spec() {
-                return ctx.agentSpecs.get(slug);
+      const callWithForeground = () =>
+        nativeForeground
+          ? nativeForeground.invoke(
+              {
+                get spec() {
+                  return ctx.agentSpecs.get(slug);
+                },
+                isCurrent: () =>
+                  runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
+                  ctx.activeAgents.get(slug) === nativeRuntimeAgent,
               },
-              isCurrent: () =>
-                runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
-                ctx.activeAgents.get(slug) === nativeRuntimeAgent,
-            },
-            invokeAgent,
-          )
-        : await invokeAgent();
+              invokeAgent,
+            )
+          : invokeAgent();
+      if (memoryBrief) {
+        const checked = await memoryBrief.invokeIfCurrent(async () => {
+          const pending = callWithForeground();
+          void pending.catch(() => {});
+          if (nativeForeground)
+            await nativeForeground.waitForInvocation(abortController.signal);
+          return { pending };
+        });
+        if (!checked.current)
+          throw new Error(
+            'Private memory changed before the turn was sent. Retry the message.',
+          );
+        result = await checked.result.pending;
+      } else {
+        result = await callWithForeground();
+      }
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 
