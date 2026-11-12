@@ -1,5 +1,11 @@
 import type { LiveSurfaceFrameHeader } from '@kontourai/station-contracts/live-surface';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  closeHumanInputSource,
+  dispatchHumanInput,
+  LiveSurfaceRegistry,
+  openHumanInputSource,
+} from '../../live-surface/registry.js';
 import type { CdpTransport } from '../browser-host.js';
 import { CdpProtocolError } from '../cdp-pipe-transport.js';
 import {
@@ -1047,4 +1053,76 @@ describe("ChromiumScreencastProducer: a person's answer that does not land", () 
     });
     expect(broken.producer.pendingDialog()).toMatchObject({ dialogId: 'd1' });
   });
+});
+
+test('registry cancels displaced touch before a replacement mouse press and retires both sources', async () => {
+  const { fake, producer: p } = producer();
+  const inputEvents = () =>
+    fake.calls
+      .filter(({ method }) => method.startsWith('Input.'))
+      .map(({ method, params }) => [method, params?.type]);
+  const registry = new LiveSurfaceRegistry();
+  registry.register(p, { authorize: () => true });
+  const entry = registry.get(p.surfaceId)!;
+  const human = {
+    kind: 'human',
+    principal: 'human:test',
+    device: 'device:test',
+  } as const;
+  const first = openHumanInputSource(entry, human)!;
+  const second = openHumanInputSource(entry, human)!;
+  try {
+    expect(
+      await dispatchHumanInput(
+        entry,
+        human,
+        0,
+        [
+          {
+            kind: 'pointer',
+            type: 'down',
+            x: 4,
+            y: 4,
+            button: 'left',
+            pointerType: 'touch',
+          },
+        ],
+        first,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await dispatchHumanInput(
+        entry,
+        human,
+        1,
+        [
+          {
+            kind: 'pointer',
+            type: 'down',
+            x: 8,
+            y: 8,
+            button: 'left',
+            pointerType: 'mouse',
+          },
+        ],
+        second,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(inputEvents()).toEqual([
+      ['Input.dispatchTouchEvent', 'touchStart'],
+      ['Input.dispatchTouchEvent', 'touchCancel'],
+      ['Input.dispatchMouseEvent', 'mousePressed'],
+    ]);
+    expect(await closeHumanInputSource(entry, human, first)).toBe(true);
+    expect(await closeHumanInputSource(entry, human, second)).toBe(true);
+    expect(inputEvents()).toEqual([
+      ['Input.dispatchTouchEvent', 'touchStart'],
+      ['Input.dispatchTouchEvent', 'touchCancel'],
+      ['Input.dispatchMouseEvent', 'mousePressed'],
+      ['Input.dispatchMouseEvent', 'mouseMoved'],
+      ['Input.dispatchMouseEvent', 'mouseReleased'],
+    ]);
+  } finally {
+    await registry.dispose();
+  }
 });

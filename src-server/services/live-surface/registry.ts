@@ -233,6 +233,17 @@ class PressedInput {
     return true;
   }
 
+  displacedButton(
+    event: LiveSurfaceInput,
+  ): LiveSurfacePointerButton | undefined {
+    if (event.kind !== 'pointer' || event.type !== 'down') return undefined;
+    const button = event.button ?? 'left';
+    const held = this.buttons.get(button);
+    return held && held.pointerType !== (event.pointerType ?? 'mouse')
+      ? button
+      : undefined;
+  }
+
   snapshot() {
     return {
       buttons: new Map(this.buttons),
@@ -258,13 +269,17 @@ class PressedInput {
   }
 
   /** Everything held, then forget it; null when nothing is held. */
-  take(sourceId?: string): LiveSurfaceHeldInput | null {
-    if (sourceId) {
+  take(
+    sourceId?: string,
+    button?: LiveSurfacePointerButton,
+  ): LiveSurfaceHeldInput | null {
+    if (sourceId || button) {
       const buttons = [...this.buttons].filter(
-        ([, value]) => value.owner === sourceId,
+        ([id, value]) =>
+          (!sourceId || value.owner === sourceId) && (!button || id === button),
       );
       const keys = [...this.keys].filter(
-        ([, value]) => value.owner === sourceId,
+        ([, value]) => !button && value.owner === sourceId,
       );
       if (!buttons.length && !keys.length) return null;
       for (const [id] of buttons) this.buttons.delete(id);
@@ -600,53 +615,60 @@ function cancelHeld(
   entry: LiveSurfaceEntry,
   sourceId?: string,
 ): Promise<boolean> {
+  return enqueue(entry, () => cancelHeldNow(entry, sourceId));
+}
+
+/** Run only while owning the serialized input chain. */
+async function cancelHeldNow(
+  entry: LiveSurfaceEntry,
+  sourceId?: string,
+  button?: LiveSurfacePointerButton,
+): Promise<boolean> {
   const own = internalsOf(entry);
-  return enqueue(entry, async () => {
-    while (own.orphan) await own.orphan;
-    const snapshot = own.pressed.snapshot();
-    const held = own.pressed.take(sourceId);
-    if (!held) {
-      if (!sourceId && own.cleanupFailed) {
-        own.cleanupFailed = false;
-        own.wedgedSince = null;
-        entry.hub.announce();
-      }
-      return true;
-    }
-    const producer = entry.producer;
-    const outcomes = producer.cancelHeldInput
-      ? [
-          await dispatchWithTimeout(
-            entry,
-            () => producer.cancelHeldInput!(held),
-            'held-input cancel',
-          ),
-        ]
-      : [];
-    if (!producer.cancelHeldInput)
-      for (const event of neutralCancelEvents(held))
-        outcomes.push(
-          await dispatchWithTimeout(
-            entry,
-            () => producer.dispatch(event),
-            `held-input cancel ${describeInput(event)}`,
-          ),
-        );
-    if (outcomes.some((outcome) => outcome !== 'ok')) {
-      own.pressed.restore(snapshot);
-      own.cleanupFailed = true;
-      own.wedgedSince ??= Date.now();
-      entry.hub.announce();
-      own.onError('live surface held-input cancel failed', outcomes);
-      return false;
-    }
-    if (!sourceId && own.cleanupFailed) {
+  while (own.orphan) await own.orphan;
+  const snapshot = own.pressed.snapshot();
+  const held = own.pressed.take(sourceId, button);
+  if (!held) {
+    if (!sourceId && !button && own.cleanupFailed) {
       own.cleanupFailed = false;
       own.wedgedSince = null;
       entry.hub.announce();
     }
     return true;
-  });
+  }
+  const producer = entry.producer;
+  const outcomes = producer.cancelHeldInput
+    ? [
+        await dispatchWithTimeout(
+          entry,
+          () => producer.cancelHeldInput!(held),
+          'held-input cancel',
+        ),
+      ]
+    : [];
+  if (!producer.cancelHeldInput)
+    for (const event of neutralCancelEvents(held))
+      outcomes.push(
+        await dispatchWithTimeout(
+          entry,
+          () => producer.dispatch(event),
+          `held-input cancel ${describeInput(event)}`,
+        ),
+      );
+  if (outcomes.some((outcome) => outcome !== 'ok')) {
+    own.pressed.restore(snapshot);
+    own.cleanupFailed = true;
+    own.wedgedSince ??= Date.now();
+    entry.hub.announce();
+    own.onError('live surface held-input cancel failed', outcomes);
+    return false;
+  }
+  if (!sourceId && !button && own.cleanupFailed) {
+    own.cleanupFailed = false;
+    own.wedgedSince = null;
+    entry.hub.announce();
+  }
+  return true;
 }
 
 function refuseUnsupported(
@@ -687,6 +709,30 @@ async function dispatchFenced(
     if (refused) return { ...refused, accepted };
     const check = entry.lease.isCurrent(fence, controller);
     if (!check.ok) return { ...check, accepted };
+    const displaced = own.pressed.displacedButton(event);
+    if (displaced) {
+      // A button name cannot hold two modalities; neutralize the old gesture
+      // before its ownership is replaced, retaining custody on failure.
+      if (!(await cancelHeldNow(entry, undefined, displaced)))
+        return {
+          ok: false,
+          code: 'surface-wedged',
+          accepted,
+          lease: entry.lease.snapshot(),
+        };
+      if (
+        sourceId &&
+        own.sources.get(sourceId)?.owner !== controllerKey(controller)
+      )
+        return {
+          ok: false,
+          code: 'invalid-source',
+          accepted,
+          lease: entry.lease.snapshot(),
+        };
+      const current = entry.lease.isCurrent(fence, controller);
+      if (!current.ok) return { ...current, accepted };
+    }
     if (!own.pressed.mayRelease(event, sourceId ?? controllerKey(controller)))
       continue;
     // Recorded as SENT: an event in flight at a takeover, or one that times
