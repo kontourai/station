@@ -1722,7 +1722,9 @@
 
     "src-server/services/terminal/__tests__/command-process.process.test.ts",
 
-    "src-server/services/approvals/guardian-conversation.ts"
+    "src-server/services/approvals/guardian-conversation.ts",
+
+    "src-server/services/orchestration/turn-authorship.ts"
   ],
 
   "checks": [
