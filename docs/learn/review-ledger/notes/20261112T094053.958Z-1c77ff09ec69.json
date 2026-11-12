@@ -1,0 +1,11 @@
+{
+  "revision": "ed9dffcd70dcacc6325e7d3fba47e85d5c603fff",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"docs/reference/contracts.md changed by one clause: parseProjectRoomAttachments refuses a repeated attachment id. Searched this document for Project Room, attachment and contracts-reference claims; none describes per-message attachment parsing, so the prose stays accurate unchanged.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/reference/contracts.md changed by one clause: parseProjectRoomAttachments refuses a repeated attachment id. Searched this document for Project Room, attachment and contracts-reference claims; none describes per-message attachment parsing, so the prose stays accurate unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"docs/reference/contracts.md changed by one clause: parseProjectRoomAttachments refuses a repeated attachment id. Searched this document for Project Room, attachment and contracts-reference claims; none describes per-message attachment parsing, so the prose stays accurate unchanged.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
