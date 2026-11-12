@@ -1176,9 +1176,11 @@ reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
 StrictMode/remounts share one module-owned attempt. The host retains early
 page/mount facts until DesktopServerState exists and replays them in order.
 
-While waiting on macOS, the host can show a native startup cover laid out like
-the renderer startup screen: the application icon (which carries the channel
-art) centered at 96 pt and a short centered status line below it. The WebView
+While waiting on macOS, the host can show a native startup cover drawn like the
+renderer startup screen at rest: its background and text colors for the
+window's appearance, the channel mark and "tation" in Fraunces as one centered
+wordmark, the river track (with its moving crest unless Reduce Motion is on)
+and a short centered status line below it. The WebView
 stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
@@ -1224,8 +1226,9 @@ the in-app recovery UI, so it releases the loader at once for a terminal
 sidecar, or after that budget for a progressing one, and then stops polling.
 Because the mount commit sits outside `PlatformBootstrap`, identity commit plus
 renderer mount can reveal the window while the bootstrap is still authorizing. On macOS the cover switches
-in place to a "taking longer than usual" message with **Restart** (the default
-button) and **Quit**; a background (tray-only) launch defers it until
+in place to a "taking longer than usual" message, a line naming the usual cause
+(a one-time upgrade after an update), **Restart** (the default button) and
+**Quit**; a background (tray-only) launch defers it until
 activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
 that did not start, or an overdue cover task that failed) show a native dialog
 with **Restart**, **Quit** and **Keep Waiting**. The dialog does not block the
