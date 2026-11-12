@@ -1188,7 +1188,9 @@ Alternatively, point `module` at a JSON file and the server auto-wraps it with
 `JsonManifestRegistryProvider`, whose agent view lists only the manifest's
 `type: "agent"` entries. Every registered agent registry is listed: rows carry
 `catalogSourceName`, and an ID that two registries offer is marked
-`ambiguous-source` and refused at install rather than taken from the first.
+`ambiguous-source` and refused at install rather than taken from the first. A
+plain-ID install is also refused while any agent registry cannot be read, since
+it might offer the same ID.
 
 ### integrationRegistry
 

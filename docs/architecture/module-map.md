@@ -527,7 +527,8 @@ limits and the remaining encrypted-path acceptance.
 composes the existing visible Skill/plugin providers with sources a person
 adds by location and optional ref. [Detection](../../src-server/providers/registries/registry-source-detection.ts)
 reads each source within fixed bounds, refusing rather than truncating past
-them. Root indexes (a Station manifest, a Claude Code marketplace) decide the
+them, and [reads a folder source only inside itself](../../src-server/providers/registries/confined-local-read.ts),
+following no link. Root indexes (a Station manifest, a Claude Code marketplace) decide the
 kinds they declare, a structural scan finds the rest, and one source can supply
 skills, plugins and agents through one catalog entry per kind
 ([decision](../decisions/registry-sources-detected-by-structure.md)). It
