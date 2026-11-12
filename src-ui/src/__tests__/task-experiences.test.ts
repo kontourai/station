@@ -6,13 +6,13 @@ describe('task experiences', () => {
     const experiences = resolveTaskExperiences();
 
     expect(
-      experiences.map(({ id, authority, availability }) => ({
+      experiences.map(({ id, owner, availability }) => ({
         id,
-        authority,
+        owner,
         availability,
       })),
     ).toEqual([
-      { id: 'direct', authority: 'Station', availability: 'available' },
+      { id: 'direct', owner: 'Station', availability: 'available' },
     ]);
   });
 
@@ -35,7 +35,7 @@ describe('task experiences', () => {
     const allowedKeys = new Set([
       'id',
       'label',
-      'authority',
+      'owner',
       'description',
       'unavailableDescription',
       'alternativeHref',

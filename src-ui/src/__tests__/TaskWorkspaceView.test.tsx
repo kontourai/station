@@ -1756,14 +1756,14 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getByText('Inspect worktree diff')).toBeTruthy();
     expect(screen.getByText('Local references')).toBeTruthy();
     expect(
-      screen.getByText(/Inspection is not a verification claim/i),
+      screen.getByText('Files and references recorded for this Task.'),
     ).toBeTruthy();
     expect(
       screen.getByRole('heading', { name: 'Task inspection' }),
     ).toBeTruthy();
     expect(
       screen
-        .getByRole('link', { name: 'Add capabilities' })
+        .getByRole('link', { name: 'Add plugins' })
         .getAttribute('href'),
     ).toBe('/plugins');
     expect(screen.queryByRole('button', { name: /Deliver/i })).toBeNull();
@@ -1773,7 +1773,7 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     expect(screen.getAllByText('Inspect the workspace')).toHaveLength(2);
     expect(screen.getByText('task-alpha')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Add capabilities' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
     expect(screen.queryByText('Task experiences')).toBeNull();
     expect(
       within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
@@ -1802,11 +1802,11 @@ describe('TaskWorkspaceView', () => {
     });
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
-    expect(screen.getByRole('link', { name: 'Add capabilities' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /attacker\.example/i }),
     ).toBeTruthy();
-    expect(screen.queryByText('Authority: Builder Kit')).toBeNull();
+    expect(screen.queryByText('From Builder Kit')).toBeNull();
     expect(
       within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
         /^(complete|completed|done)$/i,
