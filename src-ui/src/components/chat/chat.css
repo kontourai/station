@@ -3043,21 +3043,9 @@
 .station-switcher__row[aria-checked="true"] .station-switcher__name {
   color: var(--k-text);
 }
-.station-switcher__identity {
-  gap: 2px;
-}
-.station-switcher__row {
-  padding-block: var(--k-space-2);
-}
 .station-switcher__status {
   font-size: var(--k-text-sm);
-  line-height: 1.3;
   color: var(--k-text-muted);
-}
-/* The reason and age are secondary to the state they qualify. */
-.station-switcher__detail {
-  font-size: var(--k-text-xs);
-  color: var(--k-text-faint);
 }
 /* Over the row's trailing edge, so the row keeps its full hit area. */
 .station-switcher__remove {
