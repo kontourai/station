@@ -1798,9 +1798,13 @@ export function matchStationControlRoute(
  *   which dispatch tools read. It names the directory every Project resolves
  *   to on this Station, including a manifest-bound execution root no other
  *   read returns; the start composer is its only consumer.
+ * - `GET /api/connections/used-by` matches `/api/connections/:id`, which
+ *   connection tools read. It lists every saved agent and Project binding on
+ *   this Station; the Connections detail pages are its only consumer.
  */
 const UNMAPPED_LITERAL_ROUTES: readonly { method: string; path: string }[] = [
   { method: 'GET', path: '/api/projects/run-locations' },
+  { method: 'GET', path: '/api/connections/used-by' },
 ];
 
 /**

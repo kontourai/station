@@ -437,6 +437,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       notificationService,
       configLoader,
       mcpProbe,
+      agentService,
     };
   }
 
@@ -1114,6 +1115,36 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     );
     expect([answered.status, answered.body]).toEqual([200, { success: true }]);
     expect(approvalRegistry.has('live-approval')).toBe(false);
+  });
+
+  // What names each connection lists saved configuration to the operator
+  // only: B is a member, so B is refused, and an engine's registry default
+  // Agent (listed by the Agent service, saved nowhere) is not a dependent.
+  test('connections used-by lists stored Agents to the operator only, never a registry default Agent', async () => {
+    const { base, agentService } = await setup();
+    const stored = await agentService.listAgents();
+    vi.spyOn(agentService, 'listAgents').mockResolvedValue([
+      ...stored,
+      {
+        slug: 'codex',
+        name: 'Codex',
+        updatedAt: NOW,
+        execution: { agentConnectionId: 'codex' },
+      } as (typeof stored)[number],
+    ]);
+    const operator = await asOperator(base, '/api/connections/used-by');
+    expect(operator.status).toBe(200);
+    expect(operator.body.data.dependents).toEqual([
+      {
+        connectionId: 'private-crm',
+        kind: 'agent',
+        slug: 'concierge',
+        name: 'Concierge',
+        via: 'tool-server',
+      },
+    ]);
+    const member = await asAccount(base, '/api/connections/used-by');
+    expect([member.status, member.body?.success]).toEqual([403, false]);
   });
 
   test('an account whose authentication is unavailable is refused before boot or the Agent list answers', async () => {

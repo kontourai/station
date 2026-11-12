@@ -585,22 +585,34 @@ describe('Connection Routes', () => {
 });
 
 describe('GET /used-by', () => {
-  function usedByApp(operator: boolean) {
+  function usedByApp(caller: 'operator' | 'member' | 'none') {
     const reader = createConnectionUsedByReader({
-      receivesOperatorCatalog: async () => operator,
-      listAgents: async () => [
+      audience: {
+        caller: async () =>
+          caller === 'member'
+            ? { kind: 'member', admissions: () => [] }
+            : { kind: caller },
+      },
+      readAgentDefinitions: async () => [
         {
-          slug: 'reviewer',
-          name: 'Reviewer',
-          execution: { agentConnectionId: 'codex-work' },
+          metadata: {
+            slug: 'reviewer',
+            name: 'Reviewer',
+            execution: { agentConnectionId: 'codex-work' },
+          },
+          spec: { tools: { mcpServers: ['github'] } },
         },
         // Its slug starts with the engine id; it is bound to nothing.
-        { slug: 'codex-work-notes', name: 'Notes' },
-      ],
-      readAgentSpecs: async () => [
+        { metadata: { slug: 'codex-work-notes', name: 'Notes' }, spec: {} },
+        // The Station Agent's stored engine id is reserved, not saved
+        // configuration: its engine is resolved each boot.
         {
-          metadata: { slug: 'reviewer' },
-          spec: { tools: { mcpServers: ['github'] } },
+          metadata: {
+            slug: 'station',
+            name: 'Station Assistant',
+            execution: { agentConnectionId: 'claude' },
+          },
+          spec: {},
         },
       ],
       listProjects: () => [{ slug: 'site' }, { slug: 'gone' }],
@@ -620,7 +632,7 @@ describe('GET /used-by', () => {
   }
 
   test('lists the Agents and Projects whose saved bindings name each connection', async () => {
-    const response = await usedByApp(true).request('/used-by');
+    const response = await usedByApp('operator').request('/used-by');
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect((await json(response)).data).toEqual({
@@ -650,11 +662,14 @@ describe('GET /used-by', () => {
     });
   });
 
-  test('is withheld from a caller that receives no operator Agent catalog', async () => {
-    const response = await usedByApp(false).request('/used-by');
-    expect(response.status).toBe(403);
-    expect(await json(response)).toMatchObject({ success: false });
-  });
+  test.each(['member', 'none'] as const)(
+    'is withheld from a %s caller, which receives no operator Agent catalog',
+    async (caller) => {
+      const response = await usedByApp(caller).request('/used-by');
+      expect(response.status).toBe(403);
+      expect(await json(response)).toMatchObject({ success: false });
+    },
+  );
 
   test('is not read as a connection id', async () => {
     const service = createMockConnectionService();

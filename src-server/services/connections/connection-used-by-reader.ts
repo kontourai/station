@@ -1,3 +1,4 @@
+import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
 import {
   type ConnectionUsedBy,
   type ConnectionUsedByAgentInput,
@@ -5,22 +6,25 @@ import {
   projectConnectionUsedBy,
 } from '@kontourai/station-contracts/connection-used-by';
 import type { Context } from 'hono';
+import { withoutReservedStationBinding } from '../../domain/agent-registry.js';
+import type { AgentAudienceGateDeps } from '../../runtime/bootstrap/agent-audience-gate.js';
 
 export interface ConnectionUsedByReaderDeps {
   /**
-   * Whether this caller receives the operator Agent catalog. A Project member
-   * gets only admitted Agents from `GET /api/agents`, so it gets no used-by
-   * listing, which names every Agent and Project that selects a connection.
+   * Who the request acts for: the same caller decision `GET /api/agents`
+   * makes. Only the operator gets the listing, which names every Agent and
+   * Project that selects a connection; a Project member gets only admitted
+   * Agents from the catalog, so it gets no used-by listing.
    */
-  receivesOperatorCatalog: (c: Context) => Promise<boolean>;
-  /** The Agent catalog with each saved `execution` binding. */
-  listAgents: () => Promise<
-    ReadonlyArray<Omit<ConnectionUsedByAgentInput, 'tools'>>
-  >;
-  /** Saved Agent specs, for their tool servers (the catalog omits them). */
-  readAgentSpecs: () => Promise<
+  audience: Pick<AgentAudienceGateDeps, 'caller'>;
+  /**
+   * The stored Agent definitions, read once. Not the Agent service listing,
+   * which adds registry default Agents and the Station Agent's per-boot
+   * engine binding: neither is saved configuration.
+   */
+  readAgentDefinitions: () => Promise<
     ReadonlyArray<{
-      metadata: { slug: string };
+      metadata: Omit<ConnectionUsedByAgentInput, 'tools'>;
       spec: { tools?: ConnectionUsedByAgentInput['tools'] };
     }>
   >;
@@ -32,14 +36,8 @@ export interface ConnectionUsedByReaderDeps {
 /** `GET /api/connections/used-by` for one caller. */
 export function createConnectionUsedByReader(deps: ConnectionUsedByReaderDeps) {
   return async (c: Context): Promise<ConnectionUsedBy | 'withheld'> => {
-    if (!(await deps.receivesOperatorCatalog(c))) return 'withheld';
-    const [agents, specs] = await Promise.all([
-      deps.listAgents(),
-      deps.readAgentSpecs(),
-    ]);
-    const tools = new Map(
-      specs.map(({ metadata, spec }) => [metadata.slug, spec.tools]),
-    );
+    if ((await deps.audience.caller(c)).kind !== 'operator') return 'withheld';
+    const definitions = await deps.readAgentDefinitions();
     const projects = deps.listProjects().flatMap(({ slug }) => {
       try {
         return [deps.getProject(slug)];
@@ -48,9 +46,13 @@ export function createConnectionUsedByReader(deps: ConnectionUsedByReaderDeps) {
       }
     });
     return projectConnectionUsedBy({
-      agents: agents.map((agent) => ({
-        ...agent,
-        tools: tools.get(agent.slug),
+      agents: definitions.map(({ metadata, spec }) => ({
+        // The Station Agent's stored engine id is reserved: the engine it runs
+        // on is resolved each boot, so its file names no engine connection.
+        ...(isStationAgentIdentity(metadata.slug)
+          ? withoutReservedStationBinding(metadata)
+          : metadata),
+        tools: spec.tools,
       })),
       projects,
     });

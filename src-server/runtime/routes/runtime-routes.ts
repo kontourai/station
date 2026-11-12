@@ -10295,10 +10295,8 @@ export function configureRuntimeRoutes(
       applyConfigurationMutation: context.applyAgentConfigurationMutation,
       readUsedBy: createConnectionUsedByReader({
         // The same caller decision as `GET /api/agents`.
-        receivesOperatorCatalog: async (c) =>
-          (await agentCatalogForCaller(agentAudience, c)).kind === 'operator',
-        listAgents: () => context.agentService.listAgents(),
-        readAgentSpecs: () => context.configLoader.readAgentCatalog(),
+        audience: agentAudience,
+        readAgentDefinitions: () => context.configLoader.readAgentCatalog(),
         listProjects: () => context.projectService.listProjects(),
         getProject: (slug) => context.projectService.getProject(slug),
       }),
