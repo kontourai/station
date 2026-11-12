@@ -272,11 +272,12 @@ function RegistryCatalogState({
           label={getRegistryTabCopy(tab).empty}
           description={
             tab === 'layouts'
-              ? 'Install a plugin that contributes a layout, then add that layout to a project.'
-              : 'Ask an administrator to include an item in a configured registry source, or browse the installed Plugins area to manage existing plugins.'
+              ? 'Install a plugin that contributes a layout, then add that layout to a Project.'
+              : 'Add a marketplace, or ask the Station operator to add one.'
           }
           action={
-            <a
+            tab === 'plugins' ? (
+              <a
               href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md"
               target="_blank"
               rel="noopener noreferrer"
@@ -284,6 +285,7 @@ function RegistryCatalogState({
             >
               Open plugin guidance
             </a>
+            ) : undefined
           }
         />
       )}
