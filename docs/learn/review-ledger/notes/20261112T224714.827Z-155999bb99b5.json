@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"useCheckAllIntegrationsMutation unchanged; added that the Tools page no longer passes a signal, so the mutation's integrations invalidation runs after leaving. Checked useCheckAllToolServers and useApiMutation.","inputs":["docs/reference/sdk.md","packages/contracts/src/tool.ts"]}
+  ]
+}

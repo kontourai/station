@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"examples/mcp-ui-demo/README.md","note":"tools.ts changes are limited to Check all; the demo's integration add/reconnect and UI tool flow are unchanged.","inputs":["examples/mcp-ui-demo/README.md","src-server/routes/agents/tools.ts"]}
+  ]
+}

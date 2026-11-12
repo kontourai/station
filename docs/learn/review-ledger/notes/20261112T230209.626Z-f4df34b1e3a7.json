@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Package-supplied tool servers are still probed without persisting; Check all now compares them with the previous batch instead of always counting a change. Guide makes no claim about Check all reload counting; claims remain accurate.","inputs":["docs/guides/plugins.md","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

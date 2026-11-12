@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Knowledge attention now requires a turned-on vector store (connection-section-signals reads vectorDb.enabled); Check all names refused keys and 20s timeouts as failed. Checked against connection-section-signals.ts and tools.ts.","inputs":["docs/guides/connections.md","packages/contracts/src/tool.ts","src-ui/src/views/connections-hub/connection-section-signals.ts","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/provider-settings/providerCatalog.tsx","src-ui/src/views/connections-hub/connection-health.ts"]}
+  ]
+}

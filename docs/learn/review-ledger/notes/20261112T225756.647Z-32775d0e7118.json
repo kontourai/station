@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"mcp-service probe now records toolsDigest and classifies check-only 401/403 by saved sign-in or OAuth discovery; module ownership and boundaries described in the map are unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Check all and probe classification changes do not alter the smoke-confidence routes or evidence this reference describes.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts","src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}

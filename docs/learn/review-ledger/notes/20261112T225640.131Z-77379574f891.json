@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"tool.ts probe toolsDigest addition is a field-level change; architecture overview makes no claim about probe record fields.","inputs":["docs/architecture.md","packages/contracts/src/tool.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/reference/agent-plugins.md","note":"mcp-service changes (probe digest, check-only sign-in classification) leave plugin-contributed integration definitions read-only and unpersisted as documented.","inputs":["docs/reference/agent-plugins.md","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}
