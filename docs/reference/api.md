@@ -2712,6 +2712,18 @@ returns the connection's saved `config.env` verbatim, so the observation is not
 withheld further. A `station` or `policy` origin is host configuration that row
 did not show before; it is limited to the origin for that reason.
 
+Engine rows can carry `allowanceEvidence`: fresh quota refusals the provider
+reported for real turns, newest per credential account
+(`EngineAllowanceEvidence`). Each names its `source` (`usage-limit` or
+`plan-quota`), the `account` (`default` or a profile `ref`), whether it
+`applies` to the engine's `current-account`, an `other-account` or a
+`proxy-route`, `observedAt`, the provider's `resetAt` or unqualified
+`resetReported` when reported, and `expiresAt`. The server reads it from
+recorded events without calling a provider; absent means none is fresh, not
+that allowance remains. Clients re-check `expiresAt`
+(`currentAccountAllowanceRefusal`). It does not change what dispatch accepts
+([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
+
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;
 do not label every listed selector as a model that completed a turn.

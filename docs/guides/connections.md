@@ -54,13 +54,14 @@ settings from a check that actually reached the provider:
 - **Found, not connected** — Station observed a service-specific setup signal; connect it to Station.
 - **Setup required** — finish the remaining setup.
 - **Limited** — reduced capabilities; review the details. An engine in this state does not run agents until it reports ready again.
+- **Usage limit reached** — the provider refused a real turn on this engine's current account for its usage limit or plan quota. See [Usage limits](#usage-limits). Station still dispatches to the engine.
 - **Disabled** — configured but turned off.
 - **Not allowed** — the managed policy does not allow this engine. It is its own state, not **Disabled**, because there is nothing to turn on.
 - **Unreachable** — configured, but Station cannot reach it.
 
 The engine page's header shows the same state as its row, with the reason and
 at most one fix. A section tab carries an attention mark when an engine
-cannot run agents for a reason you can fix, a model connection
+cannot run agents for a reason you can fix or reads **Usage limit reached**, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
 failed; or Knowledge has no vector store. Engines the managed policy refuses,
@@ -70,6 +71,33 @@ for up to 1.5 seconds, then opens the first section that needs
 attention, or Models when none does. The rows, the engine page, the marks and
 that redirect share one [readiness
 derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
+
+### Usage limits
+
+An engine reads **Usage limit reached** only from a refusal the provider
+reported for a real turn, never from an allowance percentage: a Claude Code or
+Codex usage-limit stop, or an ACP engine's provider plan quota
+(`provider-plan-quota-exhausted`). The refusal belongs to the credential
+account the refused run started under, and counts only while that is the
+account the engine uses now. A run routed through a saved proxy does not
+spend the account, so its refusal is ignored, and an engine now routed through
+a proxy is not marked. The reason gives the provider's reset when it reported
+one.
+
+The refusal stops counting at the provider's reset, five hours after it was
+recorded when no reset was reported (the shortest window these providers
+report), or when the provider accepts a later turn on the same account, for
+example on another model. A refusal on another account, such as one an agent
+pins, does not change the badge; the engine's **Overview** lists it under
+**Usage limit**. Station reads these refusals from the events it already
+recorded and calls no provider to do so. The engine's **Accounts** tab still
+shows live allowance to viewers with `access:manage`.
+
+Status and dispatch can differ here: Station keeps dispatching new work to an
+engine that reads **Usage limit reached**. A Session stopped on the limit
+resumes at the reset only when automatic resume after usage limits is on, and
+opt-in credential recovery can switch it to another account
+([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
@@ -104,8 +132,8 @@ unsaved edits every tab shows **Save** and **Discard**. Leaving the engine asks.
 What **Check connection** or a header fix reported shows under the header.
 
 - **Overview** — the route the engine actually uses, its default model, where
-  its model list comes from, any managed policy, the last **Check connection**
-  and the agents bound to it. Setup steps, and a command engine's sign-in,
+  its model list comes from, any managed policy, recorded usage-limit refusals
+  per account, the last **Check connection** and the agents bound to it. Setup steps, and a command engine's sign-in,
   appear here when the engine needs them.
 - **Usage** — Station-observed usage over 7 or 30 days. Claude Code and Codex
   are read by engine kind, with an account filter and allowance history. Other
