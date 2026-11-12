@@ -11,6 +11,8 @@ import {
 const submission = z
   .object({
     requestId: z.string().min(1).max(160),
+    projectId: z.string().min(1).max(160),
+    projectCreatedAt: z.string().min(1).max(64),
     taskCreatedAt: z.string().min(1).max(64),
     baseSha: z.string().regex(/^[0-9a-f]{40}$/),
     headSha: z.string().regex(/^[0-9a-f]{40}$/),
@@ -84,6 +86,12 @@ export function createTaskCodeReviewRoutes(deps: {
           data: await deps.module.run(scope, parsed.data),
         });
       }
+      const projectId = c.req.query('projectId');
+      if (projectId !== undefined && projectId !== scope.project.id)
+        throw new TaskCodeReviewError(
+          'project-changed',
+          'The Project changed. Reopen this Task before requesting review.',
+        );
       if (c.req.query('taskCreatedAt') !== scope.task.createdAt)
         return c.json(
           {
@@ -106,6 +114,16 @@ export function createTaskCodeReviewRoutes(deps: {
         );
       if (error instanceof TaskCodeReviewError) {
         switch (error.code) {
+          case 'project-changed':
+            return c.json(
+              {
+                success: false,
+                error:
+                  'The Project changed. Reopen this Task before requesting review.',
+                code: 'project-changed',
+              },
+              409,
+            );
           case 'feature_preview_disabled':
             return c.json(
               {

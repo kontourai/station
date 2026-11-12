@@ -1613,6 +1613,8 @@ import type {
 /** Personal-host code review, separate from anchored feedback and gate verdicts. */
 export interface TaskCodeReviewRequest {
   requestId: string;
+  projectId: string;
+  projectCreatedAt: string;
   taskCreatedAt: string;
   baseSha: string;
   headSha: string;
@@ -1646,6 +1648,8 @@ export interface TaskCodeReviewEntry {
 
 export interface TaskCodeReviewView {
   version: 'station.task-code-review/v1';
+  projectId: string;
+  projectCreatedAt: string;
   taskCreatedAt: string;
   projectSlug: string;
   workspace: TaskCodeReviewWorkspace;

@@ -36,6 +36,7 @@ export class TaskCodeReviewError extends Error {
     readonly code:
       | 'forbidden'
       | 'invalid-request'
+      | 'project-changed'
       | 'unavailable'
       | 'feature_preview_disabled',
     message: string,
@@ -137,6 +138,8 @@ export class TaskCodeReviewModule {
     }
     return {
       version: 'station.task-code-review/v1',
+      projectId: scope.project.id,
+      projectCreatedAt: scope.project.createdAt,
       taskCreatedAt: scope.task.createdAt,
       projectSlug: scope.project.slug,
       workspace: publicWorkspace,
@@ -164,6 +167,14 @@ export class TaskCodeReviewModule {
     input: TaskCodeReviewRequest,
   ): Promise<IndependentReviewRequestStatus> {
     scope.assertCurrent();
+    if (
+      input.projectId !== scope.project.id ||
+      input.projectCreatedAt !== scope.project.createdAt
+    )
+      throw new TaskCodeReviewError(
+        'project-changed',
+        'The Project changed. Reopen this Task before requesting review.',
+      );
     scope.assertMayExecute();
     if (
       input.taskCreatedAt !== scope.task.createdAt ||

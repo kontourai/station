@@ -36,23 +36,27 @@ const stateLabels = {
 
 export function TaskCodeReviewPanel({
   authority,
+  projectId,
   taskId,
   taskCreatedAt,
   visible,
 }: {
   authority: ApiRequestScope & { draftRecoveryKey?: string };
+  projectId: string;
   taskId: string;
   taskCreatedAt: string;
   visible: boolean;
 }) {
   const query = useTaskCodeReviewQuery(
     authority,
+    projectId,
     taskId,
     taskCreatedAt,
     visible,
   );
   const mutation = useRequestTaskCodeReviewMutation(
     authority,
+    projectId,
     taskId,
     taskCreatedAt,
   );
@@ -63,6 +67,7 @@ export function TaskCodeReviewPanel({
     'task-code-review',
     authority.apiBase,
     authority.draftRecoveryKey ?? authority.authorityKey,
+    projectId,
     taskId,
     taskCreatedAt,
   ]);
@@ -70,7 +75,10 @@ export function TaskCodeReviewPanel({
     () => {
       try {
         const saved = JSON.parse(sessionStorage.getItem(recoveryKey) ?? 'null');
-        return saved?.taskCreatedAt === taskCreatedAt &&
+        return saved?.projectId === projectId &&
+          typeof saved.projectCreatedAt === 'string' &&
+          saved.projectCreatedAt.length > 0 &&
+          saved.taskCreatedAt === taskCreatedAt &&
           typeof saved.requestId === 'string' &&
           typeof saved.reviewerAgentSlug === 'string' &&
           /^[0-9a-f]{40}$/.test(saved.baseSha) &&
@@ -156,6 +164,8 @@ export function TaskCodeReviewPanel({
         ? operation
         : {
             requestId: randomCorrelationId(),
+            projectId,
+            projectCreatedAt: view.projectCreatedAt,
             taskCreatedAt,
             baseSha: selectedBase.trim().toLowerCase(),
             headSha: view.workspace.headSha,

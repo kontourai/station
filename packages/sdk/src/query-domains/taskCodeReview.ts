@@ -13,6 +13,7 @@ import {
 
 export const taskCodeReviewQueryKey = (
   scope: ApiRequestScope,
+  projectId: string,
   taskId: string,
   taskCreatedAt: string,
 ) =>
@@ -20,6 +21,7 @@ export const taskCodeReviewQueryKey = (
     'task-code-review',
     scope.apiBase,
     scope.authorityKey,
+    projectId,
     taskId,
     taskCreatedAt,
   ] as const;
@@ -28,22 +30,26 @@ const path = (scope: ApiRequestScope, taskId: string) =>
 
 export function useTaskCodeReviewQuery(
   scope: ApiRequestScope,
+  projectId: string,
   taskId: string,
   taskCreatedAt: string,
   enabled = true,
 ) {
   const query = useQuery({
-    queryKey: taskCodeReviewQueryKey(scope, taskId, taskCreatedAt),
+    queryKey: taskCodeReviewQueryKey(scope, projectId, taskId, taskCreatedAt),
     enabled,
     retry: false,
     queryFn: async ({ signal }) => {
       const response = await getJson(
-        `${path(scope, taskId)}?taskCreatedAt=${encodeURIComponent(taskCreatedAt)}`,
+        `${path(scope, taskId)}?taskCreatedAt=${encodeURIComponent(taskCreatedAt)}&projectId=${encodeURIComponent(projectId)}`,
         { requestScope: scope, signal },
       );
       const view = await readEnvelopeOrThrow<TaskCodeReviewView>(response);
       if (
         view?.version !== 'station.task-code-review/v1' ||
+        view.projectId !== projectId ||
+        typeof view.projectCreatedAt !== 'string' ||
+        !view.projectCreatedAt ||
         view.taskCreatedAt !== taskCreatedAt
       )
         throw new Error('Task review identity changed. Reopen this Task.');
@@ -63,6 +69,7 @@ export function useTaskCodeReviewQuery(
 
 export function useRequestTaskCodeReviewMutation(
   scope: ApiRequestScope,
+  projectId: string,
   taskId: string,
   taskCreatedAt: string,
 ) {
@@ -70,7 +77,10 @@ export function useRequestTaskCodeReviewMutation(
   return useMutation({
     retry: false,
     mutationFn: async (request: TaskCodeReviewRequest) => {
-      if (request.taskCreatedAt !== taskCreatedAt)
+      if (
+        request.projectId !== projectId ||
+        request.taskCreatedAt !== taskCreatedAt
+      )
         throw new Error('Task review identity changed. Reopen this Task.');
       return readEnvelopeOrThrow<IndependentReviewRequestStatus>(
         await mutateJson(
@@ -83,7 +93,12 @@ export function useRequestTaskCodeReviewMutation(
     },
     onSettled: () =>
       client.invalidateQueries({
-        queryKey: taskCodeReviewQueryKey(scope, taskId, taskCreatedAt),
+        queryKey: taskCodeReviewQueryKey(
+          scope,
+          projectId,
+          taskId,
+          taskCreatedAt,
+        ),
         exact: true,
       }),
   });

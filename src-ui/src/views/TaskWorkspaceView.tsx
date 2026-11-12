@@ -719,8 +719,9 @@ function TaskWorkspaceContent({
             graph.task.taskWorktree ||
             graph.task.taskWorktreeUnknown) && (
             <TaskCodeReviewPanel
-              key={`${supervisionAuthority.apiBase}:${supervisionAuthority.authorityKey}:${graph.task.id}:${graph.task.createdAt}`}
+              key={`${supervisionAuthority.apiBase}:${supervisionAuthority.authorityKey}:${projectId}:${graph.task.id}:${graph.task.createdAt}`}
               authority={supervisionAuthority}
+              projectId={projectId}
               taskId={graph.task.id}
               taskCreatedAt={graph.task.createdAt}
               visible={tab === 'Overview'}

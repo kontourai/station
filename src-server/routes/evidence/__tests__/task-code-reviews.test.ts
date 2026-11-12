@@ -40,6 +40,11 @@ function refusalApp(error: unknown) {
 
 const publicRefusals = [
   {
+    code: 'project-changed',
+    status: 409,
+    message: 'The Project changed. Reopen this Task before requesting review.',
+  },
+  {
     code: 'feature_preview_disabled',
     status: 404,
     message: 'Enable Task review in Settings → Advanced → Feature previews.',
