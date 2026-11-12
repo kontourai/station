@@ -721,7 +721,9 @@ function assertRealRuntimePrune(release: string) {
   // fixture then boots runs without it.
   const bundlePack = join('bundles', 'flow-agents-bundles.pack');
   expect(
-    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents', bundlePack)),
+    existsSync(
+      join(repoRoot, 'node_modules/@kontourai/flow-agents', bundlePack),
+    ),
   ).toBe(true);
   expect(existsSync(join(flowAgents, bundlePack))).toBe(false);
   // Station's own externalized esbuild is untouched by the edge exclusion.
@@ -1200,9 +1202,9 @@ describe('server build package portability', () => {
     }
     expect(existsSync(join(staged, 'node_modules/esbuild'))).toBe(false);
     // Only flow-agents' own CLI expands its harness bundle pack.
-    expect(
-      existsSync(join(staged, 'bundles/flow-agents-bundles.pack')),
-    ).toBe(false);
+    expect(existsSync(join(staged, 'bundles/flow-agents-bundles.pack'))).toBe(
+      false,
+    );
     expect(
       readFileSync(
         join(staged, 'kits/builder/evals/workflow.test.mjs'),

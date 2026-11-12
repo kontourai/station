@@ -330,9 +330,9 @@ describe('survey-review-workbench server module', () => {
         await readFile((await res.json()).path, 'utf-8'),
       );
 
-      expect(bundle.policies.map((policy: { id: string }) => policy.id)).toEqual(
-        ['survey.review-outcome.v1'],
-      );
+      expect(
+        bundle.policies.map((policy: { id: string }) => policy.id),
+      ).toEqual(['survey.review-outcome.v1']);
       const reviewed = bundle.claims.filter(
         (claim: { verificationPolicyId?: string }) =>
           claim.verificationPolicyId === 'survey.review-outcome.v1',
