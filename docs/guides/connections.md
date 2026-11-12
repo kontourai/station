@@ -372,16 +372,23 @@ responds, not that this device still has access. Stations reached through a
 broker route are not checked, nor, from an HTTPS page, a plain-HTTP address
 other than loopback, which the browser would block; those rows show the last
 failure this device saved and how old it is, or **Not checked**. A Station that
-refused this device reads **Needs access** with when it refused. The current
-Station's row shows its live status, why its last check failed if it did, and
-when it was checked. Station checks the current Station every 10 seconds while
-it is healthy and sooner, backing off to 10 seconds, while it is failing, and
-again whenever the app returns to the foreground.
+refused this device reads **Needs access**, with when it refused where that is
+known, and keeps its needs-pairing mark even when its handshake answers. The
+current Station's row shows its live status, why its last check failed if it
+did, and when it was checked. Station checks the current Station every 10
+seconds while it is healthy; while it is failing it retries sooner, backing off
+to every 10 seconds, except after a refused credential, which waits for a
+manual retry, a credential change or the network returning. It also checks
+whenever the app returns to the foreground. The app's own supervised local
+Station is not probed, so its row has no check time.
 
 After you choose a Station, the app names it, its address and the step it is
-on while it verifies access. If that takes longer than six seconds, it offers
-**Try again**, **Back to** the Station you came from, and **Manage Stations**,
-instead of waiting out the request deadline.
+on while it verifies access. If that takes longer than six seconds, it says it
+has had no answer and offers **Try again**, **Back to** the Station most
+recently used before it, and **Manage Stations**, instead of waiting out the
+request deadline. In the desktop and phone apps, a Station that answered but is
+still loading its data says so after six seconds and offers **Back to** and
+**Manage Stations**.
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**

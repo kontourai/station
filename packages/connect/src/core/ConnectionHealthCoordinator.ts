@@ -48,8 +48,9 @@ export interface ConnectionHealthSnapshot {
   /** Per-route outcome of the last completed run, in probe order. */
   routes: ReadonlyArray<ConnectionRouteResult>;
   /**
-   * When the last run finished (epoch ms), whatever its outcome; null until
-   * one has. An aborted run is not a check and leaves it unchanged.
+   * When the last probe run finished (epoch ms), whatever its outcome; null
+   * until one has. An aborted run is not a check and leaves it unchanged, and
+   * a supervised managed-loopback server is never probed, so it has none.
    */
   checkedAt: number | null;
 }
@@ -181,7 +182,9 @@ export class ConnectionHealthCoordinator {
           endpointId: endpoint.id,
           state: index === 0 ? 'in-use' : 'not-checked',
         })),
-        checkedAt: Date.now(),
+        // Nothing was probed: the supervisor vouches for this server, so
+        // there is no check time to report.
+        checkedAt: this.snapshot.checkedAt,
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
       this.runQueuedCheck();

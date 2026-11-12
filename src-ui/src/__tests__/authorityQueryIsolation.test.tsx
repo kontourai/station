@@ -1871,16 +1871,20 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       const hostB = new URL(urlB).host;
       // Which Station, which step — not anonymous placeholder cards.
       expect(
-        screen.getByRole('status', { name: 'Connecting to Home-slowb' }),
+        screen.getByRole('heading', { name: 'Connecting to Home-slowb' }),
       ).toBeTruthy();
       expect(screen.getByText(hostB)).toBeTruthy();
-      expect(screen.getByText('Checking Station access…')).toBeTruthy();
+      expect(screen.getByRole('status').textContent).toBe(
+        'Checking Station access…',
+      );
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
 
       await act(async () => {
         vi.advanceTimersByTime(7_000);
       });
-      expect(screen.getByText(/Still waiting after 7s/)).toBeTruthy();
+      expect(screen.getByRole('status').textContent).toBe(
+        'Still no answer from Home-slowb. It may be offline or unreachable from this device.',
+      );
       const callsBefore = harness.observationCalls.filter(
         (call) => call.apiBase === urlB,
       ).length;

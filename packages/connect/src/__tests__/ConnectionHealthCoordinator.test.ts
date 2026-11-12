@@ -286,6 +286,8 @@ describe('ConnectionHealthCoordinator', () => {
     expect(check).not.toHaveBeenCalled();
     expect(onFailure).not.toHaveBeenCalled();
     expect(coordinator.getSnapshot().reason).toBeNull();
+    // Nothing was probed, so there is no check time to show.
+    expect(coordinator.getSnapshot().checkedAt).toBeNull();
     unsubscribe();
   });
 

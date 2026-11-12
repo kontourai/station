@@ -4,17 +4,19 @@ import {
   useConnections,
 } from '@kontourai/station-connect';
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { toastStore } from '../contexts/ToastContext';
-import { useActiveStationName } from '../hooks/useActiveStationName';
+import {
+  SEEDED_STATION_CONNECTION_NAME,
+  useActiveStationName,
+} from '../hooks/useActiveStationName';
 import { openConnectionsModal } from '../lib/connectionModalEvents';
 import { retainInitialStartup } from '../lib/startup-presentation';
 import { readRecentStations } from '../lib/stationSwitcher';
 import './StationConnectingScreen.css';
 
 /**
- * How long a Station may take to verify before the screen offers a way out.
- * A healthy Station answers well inside this; the observation read itself
- * may wait far longer (its deadline is the client request timeout).
+ * How long a Station may take before the screen offers a way out. A healthy
+ * Station answers well inside this; the observation read itself may wait far
+ * longer (its deadline is the client request timeout).
  */
 export const STATION_CONNECTING_SLOW_MS = 6_000;
 
@@ -36,12 +38,21 @@ function canSwitchTo(connection: SavedConnection): boolean {
   );
 }
 
+/** A saved name, unless it is the seeded placeholder that names no machine. */
+function savedName(connection: SavedConnection): string {
+  const name = connection.name?.trim();
+  return name && name !== SEEDED_STATION_CONNECTION_NAME
+    ? name
+    : hostOf(connection.url);
+}
+
 /**
  * What the app shows while the selected Station is being verified, instead of
- * anonymous placeholder cards: which Station, which step, and — once it has
- * taken longer than a Station should — a way to retry, go back, or manage
+ * anonymous placeholder cards: which Station, which step, and, once it has
+ * taken longer than a Station should, a way to retry, go back, or manage
  * Stations rather than waiting out the request deadline.
  *
+ * The caller keys this on the Station and step, so each wait starts fresh.
  * On a cold launch the launch presentation covers this screen; it is held
  * only until the wait turns slow, so a launch against an unreachable Station
  * lands on these actions instead of a splash that waits out the deadline.
@@ -49,42 +60,39 @@ function canSwitchTo(connection: SavedConnection): boolean {
 export function StationConnectingScreen({
   step,
   onRetry,
+  answered = false,
 }: {
   /** The current step, e.g. "Checking Station access". */
   step: string;
   /** Restarts the step; omitted where the step cannot be restarted. */
   onRetry?: () => void;
+  /** The Station already answered and only its data is still loading. */
+  answered?: boolean;
 }) {
   const { activeConnection, connections, setActiveConnection } =
     useConnections();
   const displayName = useActiveStationName();
   const host = hostOf(activeConnection?.url);
-  const name = displayName || host || 'Station';
+  const name =
+    (displayName && displayName !== SEEDED_STATION_CONNECTION_NAME
+      ? displayName
+      : host) || 'Station';
   const connectionId = activeConnection?.id;
   const [startedAt, setStartedAt] = useState(Date.now);
   const [now, setNow] = useState(Date.now);
   const [leaving, setLeaving] = useState(false);
-  // A new Station, step, or retry is a new wait.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the reset is keyed on these.
-  useEffect(() => {
-    const start = Date.now();
-    setStartedAt(start);
-    setNow(start);
-    setLeaving(false);
-  }, [connectionId, step]);
+  const [backError, setBackError] = useState<string | null>(null);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
-  const elapsed = Math.max(0, now - startedAt);
-  const slow = elapsed >= STATION_CONNECTING_SLOW_MS;
+  const slow = now - startedAt >= STATION_CONNECTING_SLOW_MS;
   useLayoutEffect(
     () => (slow ? undefined : retainInitialStartup(step)),
     [slow, step],
   );
 
-  const recent = readRecentStations();
-  const previous = recent
+  const previous = readRecentStations()
     .map((id) => connections.find((connection) => connection.id === id))
     .find(
       (connection): connection is SavedConnection =>
@@ -92,20 +100,18 @@ export function StationConnectingScreen({
         connection.id !== connectionId &&
         canSwitchTo(connection),
     );
-  const previousName = previous ? previous.name || hostOf(previous.url) : '';
+  const previousName = previous ? savedName(previous) : '';
 
   const goBack = () => {
     if (!previous || leaving) return;
     setLeaving(true);
+    setBackError(null);
+    // The toast layer lives in the tree this screen stands in for, so a
+    // failure is shown here.
     setActiveConnection(previous.id).catch((error: unknown) => {
       setLeaving(false);
-      toastStore.show(
-        `Could not switch back to ${previousName}: ${error instanceof Error ? error.message : String(error)}`,
-        undefined,
-        5000,
-        undefined,
-        undefined,
-        'error',
+      setBackError(
+        `Could not switch to ${previousName}: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
   };
@@ -117,18 +123,19 @@ export function StationConnectingScreen({
     onRetry();
   };
 
+  const message = !slow
+    ? `${step}…`
+    : answered
+      ? `${name} answered, but is still loading its data.`
+      : `Still no answer from ${name}. It may be offline or unreachable from this device.`;
+
   return (
-    <div
-      className="station-connecting"
-      role="status"
-      aria-busy={!slow}
-      aria-label={`Connecting to ${name}`}
-    >
+    <div className="station-connecting" aria-busy={!slow}>
       <div className="station-connecting__panel">
         <div className="station-connecting__identity">
           <span aria-hidden="true">
             <ConnectionStatusDot
-              status={slow ? 'error' : 'connecting'}
+              status={slow && !answered ? 'error' : 'connecting'}
               size={10}
             />
           </span>
@@ -139,14 +146,11 @@ export function StationConnectingScreen({
             )}
           </div>
         </div>
-        {slow ? (
-          <p className="station-connecting__message">
-            Still waiting after {Math.round(elapsed / 1000)}s. {name} may be
-            offline or unreachable from this device.
-          </p>
-        ) : (
-          <p className="station-connecting__message">{step}…</p>
-        )}
+        {/* Only the sentence is live, so it is announced when it changes and
+            the actions below are not read out as status. */}
+        <p className="station-connecting__message" role="status">
+          {message}
+        </p>
         {slow && (
           <div className="station-connecting__actions">
             {onRetry && (
@@ -176,6 +180,11 @@ export function StationConnectingScreen({
               Manage Stations
             </button>
           </div>
+        )}
+        {backError && (
+          <p className="station-connecting__error" role="alert">
+            {backError}
+          </p>
         )}
       </div>
     </div>

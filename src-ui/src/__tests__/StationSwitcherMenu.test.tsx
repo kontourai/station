@@ -675,7 +675,7 @@ test('a Station this page cannot probe shows its saved failure with its age', ()
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('a refused Station says since when it has needed access', () => {
+test('a refused Station says since when it has needed access', async () => {
   const refused = {
     ...laptop,
     lastError: {
@@ -683,8 +683,17 @@ test('a refused Station says since when it has needed access', () => {
       at: Date.now() - 5 * 60_000,
     },
   };
+  reachable.add('https://two.example.test');
   openMenu([station, refused]);
   expect(row('Laptop — Needs access · refused 5m ago')).toBeTruthy();
+  // Its handshake answering does not make it healthy: the dot keeps saying
+  // it needs access.
+  await act(async () => {
+    await probeStation(refused.url);
+  });
+  expect(
+    row(/^Laptop/).querySelector('[aria-label="needs pairing"]'),
+  ).not.toBeNull();
 });
 
 test('the ages in an open menu keep up with the clock', async () => {

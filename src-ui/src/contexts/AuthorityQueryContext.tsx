@@ -382,17 +382,18 @@ export function AuthorityQueryProvider({
     void refetchObservation();
   }, [refetchObservation]);
   // A first read still in flight has no data, and React Query's `refetch`
-  // joins such a fetch rather than restarting it, so "Try again" cancels
-  // the stuck read (aborting its request) before reading again.
+  // joins such a fetch rather than restarting it. "Try again" therefore
+  // RESETS the query: that aborts the stuck read and refetches from an empty
+  // state. `cancelQueries` would revert to the pre-fetch state instead, which
+  // for a re-read of a previously verified key is a settled success, and
+  // would verify a non-live observation for a render.
   const observationClient = useQueryClient();
   const observationKeyText = JSON.stringify(observationKey);
   const restartObservation = useCallback(() => {
     const queryKey: unknown[] | null = JSON.parse(observationKeyText);
     if (!queryKey) return;
-    void observationClient
-      .cancelQueries({ queryKey, exact: true })
-      .then(() => refetchObservation());
-  }, [observationClient, observationKeyText, refetchObservation]);
+    void observationClient.resetQueries({ queryKey, exact: true });
+  }, [observationClient, observationKeyText]);
 
   // A cached success from a previous activation must never verify the
   // current one: while the current key's fetch is in flight React Query
@@ -694,7 +695,14 @@ export function AuthorityQueryProvider({
     // Let the native aggregate seed before boot-critical hooks mount; otherwise
     // it would compete with the individual requests it is meant to replace.
     if (profile.isTauri && nativeBootFinished !== active.queryClient) {
-      return <StationConnectingScreen step="Loading Station" />;
+      // The Station already answered; only its data is still loading.
+      return (
+        <StationConnectingScreen
+          key={`${connectionId}:loading`}
+          step="Loading Station"
+          answered
+        />
+      );
     }
     return (
       <AuthorityPersistenceContext.Provider
@@ -758,6 +766,7 @@ export function AuthorityQueryProvider({
       value={{ status: 'unavailable', namespace: null, observation: null }}
     >
       <StationConnectingScreen
+        key={`${connectionId}:checking`}
         step="Checking Station access"
         onRetry={restartObservation}
       />

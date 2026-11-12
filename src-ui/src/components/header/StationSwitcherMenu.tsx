@@ -371,14 +371,19 @@ export function StationSwitcherMenu({
               const current = connection.id === activeConnectionId;
               const unavailable = isUnavailable(connection);
               const probed = probes[connection.id]?.reachability;
-              // A fresh probe outranks the saved failure it may have outlived.
+              const { label, detail } = rowStatus(connection);
+              // A fresh probe outranks a saved network failure it may have
+              // outlived, but not a refusal: an anonymous handshake answering
+              // says nothing about whether this device is still accepted.
               const status: ConnectionIndicatorState = current
                 ? activeStatus
-                : probed === 'online'
-                  ? 'connected'
-                  : probed === 'unreachable' || connection.lastError
-                    ? 'error'
-                    : 'idle';
+                : label === 'Needs access'
+                  ? 'needs-credential'
+                  : probed === 'online'
+                    ? 'connected'
+                    : probed === 'unreachable' || connection.lastError
+                      ? 'error'
+                      : 'idle';
               // One display name: the active row says what the chip that
               // opened this menu says (#4402 reads the seeded "Default" as the
               // machine's name). Only the active Station's host is known
@@ -387,7 +392,6 @@ export function StationSwitcherMenu({
                 (current ? activeDisplayName : undefined) ||
                 connection.name ||
                 connection.url;
-              const { label, detail } = rowStatus(connection);
               const armed = armedId === connection.id;
               const summary = detail ? `${label} · ${detail}` : label;
               return (
