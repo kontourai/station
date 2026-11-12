@@ -3510,6 +3510,7 @@ function roomConversationScreens(): Screen[] {
             }
             const roomRegion = page.getByRole('region', {
               name: 'Project room',
+              exact: true,
             });
             await expect(roomRegion).toBeVisible();
             // Presence faces sit side by side; initials never overlap (#4810 review 8).
@@ -3646,7 +3647,7 @@ function roomConversationScreens(): Screen[] {
               await page.reload();
               await expect(
                 page
-                  .getByRole('region', { name: 'Project room' })
+                  .getByRole('region', { name: 'Project room', exact: true })
                   .getByRole('textbox', { name: /^Message/ }),
               ).toHaveValue(draftText);
               // Boot re-applies the saved theme; set the scene's after it.
