@@ -106,7 +106,6 @@ export function useChatDockActions({
         dismissPhoneLayer();
         setDockState(true, isMobile ? true : lastDockMaximized);
       }
-      updateChat(sessionId, { hasUnread: false });
     },
     [
       sessions,
@@ -115,7 +114,6 @@ export function useChatDockActions({
       setDockState,
       lastDockMaximized,
       isMobile,
-      updateChat,
       dismissPhoneLayer,
     ],
   );

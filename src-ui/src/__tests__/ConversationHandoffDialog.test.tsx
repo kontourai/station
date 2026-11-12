@@ -233,7 +233,6 @@ describe('ConversationHandoffDialog', () => {
       source: 'manual',
       createdAt: 1,
       updatedAt: 1,
-      hasUnread: false,
     };
     const accepted = vi.fn();
     const overrideReceipt = {
@@ -463,7 +462,6 @@ describe('ConversationHandoffDialog', () => {
       source: 'manual',
       createdAt: 1,
       updatedAt: 1,
-      hasUnread: false,
     };
     // Mirrors `ConversationBoundaryDialogs`: the hook's reason is the
     // dialog's `blockedReason` for the active conversation.

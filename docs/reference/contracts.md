@@ -2288,6 +2288,114 @@ but does not retroactively redact text already published in the Room.
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
 
+## Read marker contracts
+
+`@kontourai/station-contracts/read-markers` defines unread state that the
+server keeps (#3075). The server stores one marker per person and
+conversation: the highest version that person has been shown. It covers agent
+conversations, Project rooms and Task rooms. The
+[service](../../src-server/services/read-markers/read-marker-service.ts) enforces
+three rules:
+
+- The marker belongs to the request's person
+  ([`readMarkerPersonKey`](../../src-server/services/read-markers/read-marker-service.ts)).
+  On a personal Station the local operator and each paired device that holds
+  owner standing (`DevicePairingService.deviceHasOwnerStanding`) are one
+  person, so reading on one clears unread on the others. Any other device,
+  such as a read-only visitor, is its own person and never receives the
+  owner's changes. On a hosted Station it is the verified
+  person inside the tenant, so one member reading never clears another's; a
+  request that carries only the tenant has no read state and is refused. No
+  body field names a person.
+- Marking read keeps the higher of the stored and requested versions. An older
+  or repeated mark changes nothing.
+- A version above the conversation's current version is refused
+  (`read_marker_future_version`, HTTP 409). This applies to
+  `POST /api/conversations/:id/acknowledgement` too.
+
+Versions are content versions: they move only when something a person would
+read is appended, never on lifecycle bookkeeping (start, stop, exit, restore,
+reindex, settings or metadata). For an agent conversation the event store
+maintains the version as a projection
+([`orchestration_thread_content`](../../src-server/services/orchestration/event-store.ts)):
+the same write that appends readable transcript content (a person's prompt,
+assistant text, a tool result, host images, or a turn completing, ending
+unfinished or failing) raises the Session's version to that event's
+`global_sequence`. A conversation's `readState.version` is the highest across
+its Sessions, read as one primary-key lookup per Session, never a history
+scan. It is monotonic and opaque: compare it only with versions of the same
+conversation. A file-backed conversation has no lifecycle events and uses the
+epoch milliseconds of its own `updatedAt`.
+
+Every marker lives in the
+[read-marker store](../../src-server/services/read-markers/read-marker-store.ts).
+A client marks read the content version it rendered (`readVersion` on
+`POST /api/conversations/:id/acknowledgement`, or `version` on
+`POST /api/read-markers/mark`), never more than the current one. Nothing is
+inferred from timestamps: a false unread is acceptable, a false read is not.
+An older client that sends only `updatedAt` records "last viewed" and moves
+no marker, so its conversations read unread until it sends `readVersion`. The
+inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
+Just finished reads; an acknowledgement writes it alongside, and unread never
+reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
+`checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
+new marker.
+
+Read state begins once per home, at the event store's migration cutoff.
+Before server-kept unread there was no unread, so on a personal Station the
+owner reads every runtime conversation's content up to the cutoff, and every
+file-backed conversation's up to the moment read state began, as seen, as
+before upgrading. The owner is exactly one key, `personal:owner`, fixed by
+Station's own rules: the local operator, a bare personal principal, and a
+paired device with owner standing all resolve to it. Every other key,
+including a visitor device, has no baseline, so its history reads unread. A
+hosted Station gives nobody a baseline: all history from before the upgrade
+reads unread there. Who had a record before the upgrade is never sampled.
+Anything appended after the cutoff reads unread until rendered, for
+everyone.
+
+The cutoff is the store's high-water `global_sequence` (a contiguous prefix)
+when the event store opens, written once before the migration's first batch.
+A resumed or second initializer reuses it, and completion never changes it.
+The migration runs while the event store opens: a failure (another writer
+holding the lock past the busy timeout, an interrupted batch) fails the
+open, and the next open reuses the cutoff and resumes at the last committed
+batch.
+The event store backfills the projection up to the cutoff in bounded batches,
+each committed with its progress cursor under the writer lock, so an
+interrupted start resumes where it stopped and a batch finding the migration
+already complete does nothing. Content appended during or after the
+migration is projected by its own append and never falls inside the cutoff.
+Recorded views are not converted, and nothing is inferred from timestamps.
+
+Each field the built-in Home's work rows carry is part of the Home role's
+projection ([`workspace-home-role`](../../packages/contracts/src/workspace-home-role.ts)),
+so adding `unread`, `readVersion` and `readStateUnavailable` widens it. Under
+the role rules a widened projection is a new grant: an existing Home-role
+plugin grant needs re-consent, and until then the built-in Home is shown with
+an explanation. This is accepted, not worked around.
+
+A marker that moves emits `read-markers:changed` (scoped). The orchestration
+event stream forwards it only to that person's own streams, with an empty
+payload. Each open client re-reads its inventory and summaries through the
+inventory's own refresh: at most once now and once at the end of its window,
+never cancelling a read in flight.
+
+The marker store decodes strictly, and never reads a corrupt record as "read".
+One person's malformed record refuses only that person's read state (their
+rooms and conversations read as unknown). A store whose envelope does not
+decode has no read state for anyone. `GET /api/conversations` then still lists
+every conversation, with `readState: { version, unavailable: true }`. An
+acknowledgement store that does not decode costs only "last viewed".
+
+`parseReadMarkerSummaryRequest` refuses more than
+`READ_MARKER_SUMMARY_MAX_TARGETS` (100) targets rather than truncating. A target
+the caller cannot read is `{ target, unavailable: true }`, whether or not it
+exists. Room items carry `unreadCount` (every record after the marker,
+capped at `READ_MARKER_UNREAD_COUNT_CAP`). Agent conversations carry no count:
+their version is a time. There is no "mentions me" field yet: structured
+mentions (#4799) do not exist, so nothing could compute one.
+
 ## Project knowledge registration ownership
 
 `ProjectStartIntent` names initial `workspace | knowledge | connections | blank`
