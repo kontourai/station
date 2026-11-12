@@ -2099,3 +2099,7 @@
   /* The base rule above outranks the 640px floor; phones get 44px. */
   min-height: 44px;
 }
+/* Controls under a collapsed answer's fold are not targets until Show more. */
+.task-room-answer--clamped .code-block-actions .button {
+  visibility: hidden;
+}

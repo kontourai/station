@@ -3461,26 +3461,15 @@ function roomConversationScreens(): Screen[] {
               });
               return;
             }
-            const task = await request.post(
-              `${resolveE2EApiBase()}/api/tasks`,
-              {
-                data: {
-                  projectId: slug,
-                  title: 'Fix the Android sign-in crash',
-                  createdBy: 'user',
-                },
-              },
-            );
-            expect(task.ok()).toBe(true);
-            const createdTask = (await task.json()).data;
+            // A fixture Task: a real one cannot be deleted and would change
+            // every later screen (see installTaskRoomFixture).
             const installed = await installTaskRoomFixture(page, {
-              taskId: createdTask.id,
-              taskCreatedAt: createdTask.createdAt,
-              projectId: project.id,
+              slug,
+              projectUuid: project.id,
               scene,
             });
             cleanupTask = installed.cleanup;
-            screen.path = `/tasks/${encodeURIComponent(createdTask.id)}?taskView=conversation`;
+            screen.path = `/tasks/${encodeURIComponent(installed.taskId)}?taskView=conversation`;
           },
           async afterGoto(page) {
             await page.evaluate(

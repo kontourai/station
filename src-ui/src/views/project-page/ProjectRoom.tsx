@@ -137,7 +137,9 @@ function useFillPageHeight(
         getComputedStyle(element.closest('.project-page__layout') ?? element)
           .paddingBottom,
       );
-      element.style.height = `${Math.max(
+      // A floor, not a fixed height: when the room's chrome leaves too
+      // little for the messages, the room grows and the page scrolls.
+      element.style.minHeight = `${Math.max(
         ROOM_MIN_HEIGHT_PX,
         Math.floor(
           window.innerHeight -
@@ -151,7 +153,7 @@ function useFillPageHeight(
     window.addEventListener('resize', update);
     return () => {
       window.removeEventListener('resize', update);
-      element.style.height = '';
+      element.style.minHeight = '';
     };
   }, [ref, enabled]);
 }

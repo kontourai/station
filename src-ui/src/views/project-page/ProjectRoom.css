@@ -25,6 +25,13 @@
   background: var(--k-bg);
 }
 
+/* The messages fill what the room's chrome leaves, and keep at least three
+   rows: the room grows past its fill height before the list collapses. */
+.project-room--full > .room-conversation {
+  flex: 1 1 0;
+  min-height: 132px;
+}
+
 .project-room--preview .project-room__conversation {
   max-height: 24rem;
   min-height: 12rem;

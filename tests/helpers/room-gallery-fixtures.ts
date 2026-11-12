@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -584,21 +585,54 @@ function taskHistory(scene: TaskRoomScene): ProjectTaskRoomBrowserHistory {
 }
 
 /**
- * Installs the Task room's history, live stream, agent-request and attachment
- * routes over a real Task. Discovery, capabilities, agent options and the
- * document stay with the Station.
+ * Installs a fixture Task and its room. The Task is never written to the
+ * Station: the task graph has no delete, so a real Task would outlive the
+ * scene and change every later screen (Home would stop being first-run and
+ * the Inbox would list it). Every task-scoped read is answered here in the
+ * shape the server returns (captured from a real Task), the Task joins the
+ * Task list only while the scene runs, and any task-scoped request this file
+ * does not model is refused. The Project is real and the caller deletes it.
  */
 export async function installTaskRoomFixture(
   page: Page,
   input: {
-    taskId: string;
-    taskCreatedAt: string;
-    projectId: string;
+    /** Project slug; a Task's `projectId` is its Project's slug. */
+    slug: string;
+    /** The Project's id, as agent-request records carry it. */
+    projectUuid: string;
     scene: TaskRoomScene;
   },
 ) {
-  const { taskId, taskCreatedAt, projectId, scene } = input;
+  const { slug, projectUuid, scene } = input;
+  const digest = createHash('sha256').update(slug).digest('hex');
+  const taskId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+  const taskCreatedAt = at(2, 12, 0);
+  const projectId = slug;
   const encoded = encodeURIComponent(taskId);
+  const origin = {
+    version: 1,
+    actor: { kind: 'operator' },
+    reported: { version: 1, surface: 'unknown', build: null },
+  };
+  const task = {
+    id: taskId,
+    projectId,
+    title: 'Fix the Android sign-in crash',
+    description: '',
+    priority: 'normal',
+    status: 'todo',
+    createdBy: 'user',
+    createdAt: taskCreatedAt,
+    updatedAt: taskCreatedAt,
+    createdClientOrigin: origin,
+    updatedClientOrigin: origin,
+    workspaceBinding: {
+      availability: 'available',
+      workingDirectory: `/srv/station/workspaces/${slug}`,
+      capturedAt: taskCreatedAt,
+    },
+  };
+  const taskRef = { taskId, taskCreatedAt };
   const live: ProjectTaskRoomBrowserLiveSnapshot = {
     generation: 'gallery-generation',
     viewerActorId: 'person:maya',
@@ -627,17 +661,117 @@ export async function installTaskRoomFixture(
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
+  const get =
+    (data: unknown) =>
+    (route: Route): Promise<void> =>
+      route.request().method() !== 'GET'
+        ? rejectUnexpectedFixtureRequest(route)
+        : route.fulfill({ json: { success: true, data } });
   const handlers: [string, (route: Route) => Promise<void> | void][] = [
+    // Registered first, so every handler below takes precedence over it.
     [
-      `**/api/tasks/${encoded}/room/history*`,
+      `**/api/tasks/${encoded}/**`,
+      (route) => rejectUnexpectedFixtureRequest(route),
+    ],
+    [
+      '**/api/tasks',
+      async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        const response = await route.fetch();
+        const body = await response.json();
+        if (body?.success && Array.isArray(body.data))
+          body.data.push({ ...task, workChatConversationIds: [] });
+        return route.fulfill({ response, json: body });
+      },
+    ],
+    [`**/api/tasks/${encoded}/graph`, get({ task, links: [] })],
+    [`**/api/tasks/${encoded}/children*`, get({ task: taskRef, children: [] })],
+    [`**/api/tasks/${encoded}/work-chats*`, get({ task: taskRef, chats: [] })],
+    [`**/api/tasks/${encoded}/outputs`, get([])],
+    [`**/api/tasks/${encoded}/kept-pull-requests`, get([])],
+    [`**/api/tasks/${encoded}/user-input-references`, get([])],
+    [`**/api/tasks/${encoded}/turn-references`, get([])],
+    [
+      `**/api/tasks/${encoded}/room/memory`,
+      get({
+        version: 'station.task-memory/v1',
+        taskId,
+        records: [],
+        limits: {
+          summaryChars: 4000,
+          recordTextChars: 1000,
+          recordReasonChars: 500,
+          recordKeyChars: 64,
+          liveRecords: { decision: 40, question: 20, dead_end: 30 },
+        },
+      }),
+    ],
+    [
+      `**/api/tasks/${encoded}/room`,
+      get({
+        kind: 'existing',
+        scope: { projectId, taskId },
+        channelId: `project-task:${digest}`,
+        assurance: 'L0',
+        capabilities: {
+          historyRead: true,
+          messageWrite: true,
+          live: true,
+          documentRead: true,
+          documentWrite: true,
+          revisionLinks: true,
+        },
+      }),
+    ],
+    [
+      `**/api/tasks/${encoded}/room/document*`,
+      get({ kind: 'snapshot', revision, text: '' }),
+    ],
+    [
+      `**/api/tasks/${encoded}/room/live`,
       (route) => {
-        if (route.request().method() !== 'GET')
+        if (route.request().method() !== 'POST')
           return rejectUnexpectedFixtureRequest(route);
+        // The Station answers a join with `joined` and other commands with
+        // `updated`; the viewer is a published participant once joined.
+        const command = route.request().postDataJSON()?.command;
+        const result = { outcome: command === 'join' ? 'joined' : 'updated' };
+        const snapshot = {
+          ...live,
+          participants: [
+            {
+              actor: {
+                actorId: live.viewerActorId,
+                kind: 'human',
+                label: 'Maya Chen',
+              },
+              work: {
+                sessionId: live.generation,
+                workName: 'Project task work',
+                workState: 'working',
+                startedAt: Date.now(),
+              },
+              publication: 'published',
+            },
+            ...live.participants,
+          ],
+          result,
+        };
         return route.fulfill({
-          json: { success: true, data: taskHistory(scene) },
+          json: {
+            success: true,
+            data: {
+              kind: 'available',
+              generation: live.generation,
+              viewerActorId: live.viewerActorId,
+              result,
+              snapshot,
+            },
+          },
         });
       },
     ],
+    [`**/api/tasks/${encoded}/room/history*`, get(taskHistory(scene))],
     [
       `**/api/tasks/${encoded}/room/events*`,
       async (route) => {
@@ -660,26 +794,37 @@ export async function installTaskRoomFixture(
     ],
     [
       `**/api/tasks/${encoded}/room/agent-requests`,
-      async (route) => {
-        if (route.request().method() !== 'GET') return route.fallback();
-        const response = await route.fetch();
-        const body = await response.json();
-        if (scene === 'working' && body?.success && body.data?.records)
-          body.data.records.push({
-            version: TASK_ROOM_WORK_VERSION,
-            taskId,
-            projectId,
-            taskCreatedAt,
-            operationId: uuid(1, 'e1'),
-            requesterId: 'person:maya',
-            agentId: 'scout',
-            prompt: 'Run the onboarding checks on the latest build.',
-            sessionId: 'session-failed',
-            createdAt: at(2, 14, 1),
-            state: 'dispatched',
-          });
-        return route.fulfill({ response, json: body });
-      },
+      get({
+        version: TASK_ROOM_WORK_VERSION,
+        kind: 'available',
+        records:
+          scene === 'working'
+            ? [
+                {
+                  version: TASK_ROOM_WORK_VERSION,
+                  taskId,
+                  projectId: projectUuid,
+                  taskCreatedAt,
+                  operationId: uuid(1, 'e1'),
+                  requesterId: 'person:maya',
+                  agentId: 'scout',
+                  prompt: 'Run the onboarding checks on the latest build.',
+                  sessionId: 'session-failed',
+                  createdAt: at(2, 14, 1),
+                  state: 'dispatched',
+                },
+              ]
+            : [],
+        contextVersion: 'station.task-room-context/v1',
+        context: {
+          version: 'station.task-room-context/v1',
+          digest,
+          title: task.title,
+          description: '',
+          documentRevision: `swsr-v2:${digest}`,
+          text: '',
+        },
+      }),
     ],
     [
       `**/api/tasks/${encoded}/room/attachments/*`,
@@ -696,6 +841,7 @@ export async function installTaskRoomFixture(
   ];
   for (const [pattern, handler] of handlers) await page.route(pattern, handler);
   return {
+    taskId,
     async cleanup() {
       release?.();
       for (const [pattern, handler] of handlers)
