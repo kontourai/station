@@ -81,11 +81,13 @@ rather than a section. Each section's **Connections** eyebrow links back to it.
   that performs it; Claude Code and Codex sign in on their **Accounts** tab.
   A tool server whose last check failed reads **Needs attention**, as on the
   Tools page; a turned-off one is not listed. The list shows a loading state
-  until the section lists (and any managed engine policy) load, says so when
-  one could not be loaded, and reads **Nothing needs attention** only when
-  every list loaded clean.
-- **Sections** has a tile per section with its count and mark, or a loading
-  state until that section's list loads. A tile opens its section.
+  until every section list that can carry a mark (and any managed engine
+  policy) loads, says so when any section list, Computers included, could not
+  be loaded (with **Retry** when the read failed), and reads **Nothing needs
+  attention** only when every list loaded clean.
+- **Sections** has a tile per section with its count and mark, a loading
+  state until that section's list loads, or **Not loaded** when it could not
+  be loaded. A tile opens its section.
 - **Allowance** and **Usage, last 7 days** appear only for a viewer with
   `access:manage`, and the page asks for neither otherwise. Allowance shows
   the provider-reported limits of the account Claude Code's and Codex's runs
