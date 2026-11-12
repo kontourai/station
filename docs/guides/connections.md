@@ -40,8 +40,8 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 Each Model and Engine row shows one readiness badge beside its name; the line
 under the name holds facts, not the state. An engine whose first add failed is
 listed as **Not connected yet** instead. An engine Station found on this
-computer that nobody has connected is listed as **Found, not connected**; its
-**Connect** opens that engine's step in Add engine. Listing it changes nothing.
+computer that nobody has connected is listed as **Found, not connected**;
+selecting it opens that engine's step in Add engine. Listing it changes nothing.
 Public registry listings stay in Add engine's own group. Model connections distinguish saved
 settings from a check that actually reached the provider:
 

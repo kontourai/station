@@ -3083,12 +3083,13 @@ describe('AgentConnectionView', () => {
     expect(save).not.toHaveBeenCalled();
     expect(acpInstall).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    // The row itself is the Connect action.
+    fireEvent.click(screen.getByRole('button', { name: /^Kiro CLI/ }));
     expect(onNavigate).toHaveBeenLastCalledWith({
       type: 'connections-engine-new',
       providerId: 'kiro',
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Muse Code' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Muse Code/ }));
     expect(onNavigate).toHaveBeenLastCalledWith({
       type: 'connections-engine-new',
       providerId: 'muse',
