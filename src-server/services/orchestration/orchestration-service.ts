@@ -8373,7 +8373,7 @@ export class OrchestrationService {
         },
         validateReattach: (input, existing) => {
           assertInheritedDelegationToolPolicy(
-            existing.session.provider,
+            existing.adapter?.provider ?? existing.session.provider,
             this.firstStartedMetadataOfThread(input.threadId)?.delegation,
           );
           const reattach = normalizeOmittedModelId(input);
@@ -9381,10 +9381,10 @@ export class OrchestrationService {
     return () => this.turnAdmissions.delete(admission);
   }
 
-  private assertTurnAdmitted(threadId: string): void {
+  private assertTurnAdmitted(threadId: string, actualProvider?: string): void {
     const started = this.firstStartedRecordOfThread(threadId);
     assertInheritedDelegationToolPolicy(
-      started?.provider,
+      actualProvider ?? started?.provider,
       started?.metadata.delegation,
     );
     for (const admission of this.turnAdmissions) {
@@ -10364,7 +10364,10 @@ export class OrchestrationService {
                             );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
-                            this.assertTurnAdmitted(turnInput.threadId);
+                            this.assertTurnAdmitted(
+                              turnInput.threadId,
+                              adapter.provider,
+                            );
                             this.assertForkContextAtProviderTurn(
                               turnInput,
                               context,
@@ -17244,7 +17247,7 @@ export class OrchestrationService {
     );
     const current = () => {
       try {
-        this.assertTurnAdmitted(threadId);
+        this.assertTurnAdmitted(threadId, adapter.provider);
         return (
           authorized() &&
           this.isAdapterCurrent(adapter) &&
