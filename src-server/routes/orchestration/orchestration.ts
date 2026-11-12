@@ -2277,6 +2277,12 @@ export function createOrchestrationRoutes(
     ) => boolean;
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
+    /**
+     * #3075: the request's read-marker person key (`readMarkerPersonKey`),
+     * `undefined` for a caller that is not a person. A `/events` subscriber
+     * receives `read-markers:changed` only for its own key.
+     */
+    readMarkerPersonKey?: (c: Context) => string | undefined;
     /** Personal-only producer binding authority. Hosted requires a tenant adapter. */
     answerAssessmentModule?: AnswerAssessmentModule;
     /** Personal-only exact retained narrative binding owner. */
@@ -7319,6 +7325,19 @@ export function createOrchestrationRoutes(
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
     const cursor = parseResumeCursor(c.req.header('Last-Event-ID'));
+    // #3075 review: whose read-marker changes this stream carries is
+    // resolved when each change is published, never captured at connect: a
+    // device whose owner standing is withdrawn (narrowed to read-only, bound
+    // to a person, revoked) stops receiving the owner's changes at once. A
+    // per-session stream carries none.
+    const readMarkerPerson = (): string | undefined => {
+      if (threadId !== undefined) return undefined;
+      try {
+        return deps.readMarkerPersonKey?.(c);
+      } catch {
+        return undefined;
+      }
+    };
     if (c.req.query('includeGeneral') === '1' && deps.generalEventProducer) {
       c.header('X-Station-General-Stream', '1');
     }
@@ -7664,6 +7683,17 @@ export function createOrchestrationRoutes(
             const isAuthorized = () => canRead(authority) === true;
             if (isAuthorized())
               forward({ event: evt.event, data: '{}', isAuthorized });
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.READ_MARKERS_CHANGED) {
+            // Only this person's own clients; the frame names no one.
+            const personKey = (evt.data as { personKey?: unknown } | undefined)
+              ?.personKey;
+            if (
+              typeof personKey === 'string' &&
+              personKey === readMarkerPerson()
+            )
+              forward({ event: evt.event, data: '{}' });
             return;
           }
           if (evt.event === SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED) {

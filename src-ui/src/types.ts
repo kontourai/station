@@ -439,7 +439,6 @@ export interface ChatSession {
   error?: string | null;
   createdAt: number;
   updatedAt: number;
-  hasUnread: boolean;
   provider?: EngineId;
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */

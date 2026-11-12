@@ -157,7 +157,6 @@ function Composer() {
           queuedMessages: sessions[sessionId]?.queuedMessages ?? [],
           status: sessions[sessionId]?.status ?? 'idle',
           createdAt: 0,
-          hasUnread: false,
           inputHistory: [],
           requestedModel: sessions[sessionId]?.requestedModel ?? undefined,
           source: 'manual',

@@ -89,7 +89,7 @@ describe('conversation handoff UI state', () => {
 
   test('accepts a server-receipted deleted target without resolving stale Agent execution', () => {
     const accepted = acceptConversationHandoffUiState(
-      { hasUnread: false } as ChatUIState,
+      {} as ChatUIState,
       undefined,
       {
         predecessorSessionId: 'session-a',

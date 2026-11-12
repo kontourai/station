@@ -23,7 +23,6 @@ import { chatBelongsToStation } from '../../connections/station-state';
 import { useChatStationConnection } from '../../connections/use-chat-station-connection';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useModelImageSupport } from '../../contexts/ModelCapabilitiesContext';
-import { countOpenChatAttention } from '../../contexts/open-chats-store';
 import { useProject } from '../../contexts/ProjectsContext';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import type { ChatSession } from '../../types';
@@ -590,7 +589,6 @@ export function useChatDockViewModel({
   const imageAttachmentCaveat = composerImageSupport.caveat;
   const fileAttachmentsSupported =
     runtimeConnection?.capabilities.includes('file-input') ?? false;
-  const unreadCount = countOpenChatAttention(sessions);
   const executionSummary = resolveSessionExecutionSummary(activeSession);
 
   return {
@@ -622,6 +620,5 @@ export function useChatDockViewModel({
     sessionDisplayCwd,
     sessionCwdManaged,
     sessionProjectName,
-    unreadCount,
   };
 }
