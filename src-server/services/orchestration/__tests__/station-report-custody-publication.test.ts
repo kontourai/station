@@ -19,6 +19,7 @@ import {
 } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { withReportRoundsPublication } from '../report-rounds-publication.js';
+import { StationReportCustodyUnavailable } from '../station-report-group-custody.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { requestFor } from './delegation-source-fixtures/report.js';
@@ -42,6 +43,75 @@ function hasReturnedCleanupFailure(error: unknown): boolean {
     error.errors.some(hasReturnedCleanupFailure)
   );
 }
+
+test('active finalizer duplicates refuse before Home queuing while other operations retain queue admission', async () => {
+  const { h, owners, orchestration, eventStore, runtimeOwner } =
+    await recoveryFixture();
+  const dispatchRoot = join(h.f.root, 'finalizer-queue-dispatch');
+  fs.mkdirSync(dispatchRoot, { mode: 0o700 });
+  const dispatch = new FileAuthorizationLedger({ root: dispatchRoot });
+  const home = await HomeWriterOwner.forHome(h.f.home);
+  let held: HomeWriterLease | undefined = await home.acquire();
+  let admissions = 0;
+  const acquire = HomeWriterOwner.prototype.acquire;
+  const observe = vi
+    .spyOn(HomeWriterOwner.prototype, 'acquire')
+    .mockImplementation(function (this: HomeWriterOwner, signal) {
+      if (this.homeDir === home.homeDir) admissions++;
+      return acquire.call(this, signal);
+    });
+  const pending: Promise<unknown>[] = [];
+  const run = (operationKey: string) =>
+    h.custody.finalizeContinuation(
+      h.f.context(requestFor(h, 'POST')),
+      'missing-finalizer-group',
+      { operationKey, expectedRevision: 1, continuationOperationKey: 'lost' },
+      dispatch,
+      h.f.owner,
+      owners.publicationParticipant,
+      (historical) => historical.group,
+    );
+  const keep = (work: ReturnType<typeof run>) => {
+    const result = work.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    pending.push(result);
+    return result;
+  };
+  try {
+    const first = keep(run('finalize-one'));
+    await vi.waitFor(() => assert.equal(admissions, 1));
+    await assert.rejects(run('finalize-one'), {
+      name: 'HomeWriterUnavailableError',
+      reason: 'busy',
+      operationRan: false,
+    });
+    assert.equal(
+      admissions,
+      1,
+      'a same-operation duplicate must refuse before another Home queue admission',
+    );
+    const other = keep(run('finalize-two'));
+    await vi.waitFor(() => assert.equal(admissions, 2));
+    await held.release();
+    held = undefined;
+    for (const outcome of await Promise.all([first, other]))
+      assert.ok(outcome instanceof StationReportCustodyUnavailable);
+    await assert.rejects(run('finalize-one'), StationReportCustodyUnavailable);
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    await held?.release();
+    await Promise.allSettled(pending);
+    observe.mockRestore();
+    try {
+      await orchestration.shutdown();
+    } finally {
+      eventStore.close();
+      await runtimeOwner.shutdown();
+    }
+  }
+}, 30_000);
 
 test.each([
   'intent-return',
