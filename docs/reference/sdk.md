@@ -793,7 +793,8 @@ session storage before sending, per channel. Until it is confirmed, the message 
 conversation; a lost acknowledgement or reload offers an explicit retry of that
 exact payload and UUID and never resends automatically. The retained intent
 settles once room history shows a message with its intent ID. The unsent draft
-(text, reply target and Agent recipient) is kept per channel in the same tab's
+(text, reply target and Agent recipient) is kept per channel, and an open
+thread keeps its own, in the same tab's
 session storage, keyed by the shell's reload partition rather than its
 per-reload authority epoch; `#general` keeps the key the room used before
 channels, and the channel on screen is remembered the same way, so a reload

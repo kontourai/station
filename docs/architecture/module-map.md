@@ -3659,8 +3659,11 @@ so the sidebar, links and Back all address them; opening one is a pushed entry
 that asks the room's unsaved-send guard first. A thread is a channel message and
 the replies whose `replyTo` chain reaches it; with threads on, those replies leave
 the channel stream for the root's summary, and every send from the open thread
-replies to its root, read from the route. A thread link to a root older than
-the loaded history pages back to it, within `PROJECT_ROOM_HISTORY_MAX_PAGES`. [`ProjectConversationList`](../../src-ui/src/components/project-conversations/ProjectConversationList.tsx)
+replies to its root, read from the route; an open thread keeps its own unsent
+draft, so text never moves between a thread and its channel. A thread link to
+a root older than the loaded history pages back to it, one window per settled
+page, within `PROJECT_ROOM_HISTORY_MAX_PAGES`. Reading only through a thread
+leaves the channel unread until the channel itself is shown. [`ProjectConversationList`](../../src-ui/src/components/project-conversations/ProjectConversationList.tsx)
 lists a Project's live channels (the server's order) and the Task rooms the
 read-marker summary can read, newest updated first and capped, in one summary
 request per Project ([`useProjectConversationIndex`](../../src-ui/src/components/project-conversations/useProjectConversationIndex.ts)).
