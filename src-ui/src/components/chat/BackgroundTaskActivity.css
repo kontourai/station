@@ -36,3 +36,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* In the chat, the time follows the activity rather than the row's edge. */
+.background-tasks-banner__task
+  .background-tasks-sheet__meta
+  > .child-work-activity {
+  flex: 0 1 auto;
+  min-width: 0;
+}
