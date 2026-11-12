@@ -28,6 +28,13 @@ import {
   writeConversationContextBoundaryUiState,
 } from './conversationContextBoundaryUiState';
 
+function describeNextStart(policy: ConversationContextBoundaryPolicy) {
+  if (policy === 'empty-next-cold-start') return 'starts fresh';
+  return isSummaryContextBoundary(policy)
+    ? 'continues from a summary'
+    : 'continues from chat history';
+}
+
 export function ConversationContextResetDialog({
   apiBase,
   conversationId,
@@ -71,15 +78,16 @@ export function ConversationContextResetDialog({
           kind: 'blocked' as const,
           reason: 'Send a message first.',
         });
+  const [stored, setStored] = useState(() =>
+    readConversationContextBoundaryUiState(conversationId),
+  );
+  // A reopened dialog shows the reset already chosen, not the default.
   const [policy, setPolicy] = useState<ConversationContextBoundaryPolicy>(
-    'empty-next-cold-start',
+    () => stored?.policy ?? 'empty-next-cold-start',
   );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [stopNote, setStopNote] = useState<string>();
-  const [stored, setStored] = useState(() =>
-    readConversationContextBoundaryUiState(conversationId),
-  );
   const onReservedRef = useRef(onReserved);
   onReservedRef.current = onReserved;
   useEffect(() => {
@@ -274,7 +282,7 @@ export function ConversationContextResetDialog({
         {statusValue && (
           <p role="status">
             {statusValue === 'reserved'
-              ? `Ready. On your next message the agent ${policy === 'empty-next-cold-start' ? 'starts fresh' : isSummaryContextBoundary(policy) ? 'continues from a summary' : 'continues from chat history'}.`
+              ? `Ready. On your next message the agent ${describeNextStart(boundary?.policy ?? stored?.policy ?? policy)}.`
               : statusValue === 'claimed'
                 ? "Starting the agent's next context. You can't cancel now."
                 : statusValue === 'indeterminate'
@@ -306,7 +314,7 @@ export function ConversationContextResetDialog({
         )}
         {eligibility.kind === 'stop-session' && !statusValue && (
           <button type="button" onClick={stopThenReserve} disabled={pending}>
-            {pending ? 'Stopping agent…' : 'Stop agent'}
+            {pending ? 'Stopping agent…' : 'Stop agent and reset'}
           </button>
         )}
         {canCancel && (

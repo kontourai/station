@@ -1098,4 +1098,30 @@ describe('TurnProvenanceCard', () => {
       'Started fresh without chat history',
     );
   });
+
+  // The server marks a summary reset as not injecting the prior transcript,
+  // so the policy, not that flag, has to name it.
+  it.each([
+    ['summary-next-cold-start', 'Continued from a summary'],
+    ['task-state-next-cold-start', 'Continued from a summary'],
+    ['continue-from-history', 'Continued from chat history'],
+  ] as const)('names a consumed %s boundary by its policy', (policy, value) => {
+    render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          contextBoundary: {
+            state: 'observed',
+            value: {
+              boundaryId: 'boundary-a',
+              policy,
+              priorTranscriptInjected: policy === 'continue-from-history',
+            },
+            observedFrom: [{ eventId: 'terminal-a', method: 'turn.completed' }],
+          },
+        })}
+      />,
+    );
+    expand();
+    expect(valueFor('Context reset')).toBe(value);
+  });
 });

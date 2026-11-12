@@ -23,7 +23,7 @@ export function ConversationContextBoundary({
       </strong>
       <span>
         {summarized
-          ? 'Earlier tool results, approvals and attachments were dropped.'
+          ? 'The agent sees a summary, without its tool state, approvals, attachments or earlier tool results. Messages above stay readable.'
           : empty
             ? 'The agent no longer sees messages above this line.'
             : 'The agent rebuilt its context from this chat.'}
