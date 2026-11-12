@@ -650,6 +650,7 @@ export class LocalSourceAdmissionOwner {
     eventStore: EventStore;
     projects: ProjectService;
     membership: ProjectMembershipService;
+    coordinatorEnabled(): boolean;
   };
   constructor(
     home: string,
@@ -660,6 +661,7 @@ export class LocalSourceAdmissionOwner {
       eventStore: EventStore;
       projects: ProjectService;
       membership: ProjectMembershipService;
+      coordinatorEnabled(): boolean;
     },
   ) {
     this.#environment = environment;
@@ -770,6 +772,7 @@ export class LocalSourceAdmissionOwner {
         stationControlCallerRecordSources({
           orchestrationService: owners.orchestration,
           eventStore: owners.eventStore,
+          coordinatorEnabled: owners.coordinatorEnabled,
           getProject: (slug) => owners.projects.getProject(slug),
         }),
       );

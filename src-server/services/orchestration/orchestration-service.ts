@@ -15894,7 +15894,7 @@ export class OrchestrationService {
     // `shared`: a provider that needs a proven worktree is refused, never
     // granted one on the persisted metadata's say-so.
     return {
-      input: this.withConfinement(
+      input: await this.withConfinement(
         provider,
         modelOptions ? { ...restamped, modelOptions } : restamped,
         confinement,

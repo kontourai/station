@@ -715,7 +715,9 @@ export class PortableGroupPreparation {
     let lineageDigest: string | undefined;
     if (caller?.kind === 'caller') {
       if (!this.owners.resolveDelegation) refuse();
-      const resolved = await this.owners.resolveDelegation(request, {});
+      const resolved = await this.owners.resolveDelegation(request, {
+        tool: 'delegate_task',
+      });
       delegation = resolved ? structuredClone(resolved) : undefined;
       authority.assertCurrent();
       if (

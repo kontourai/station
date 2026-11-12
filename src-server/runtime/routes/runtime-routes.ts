@@ -8150,6 +8150,7 @@ export function configureRuntimeRoutes(
           eventStore: context.orchestrationEventStore,
           projects: context.projectService,
           membership: context.projectMembership,
+          coordinatorEnabled: coordinatorSessionEnabled,
         },
       });
     } catch {

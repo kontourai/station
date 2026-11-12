@@ -158,6 +158,7 @@ test('guarded Session owner creates and reads its own V2 group across token rota
       orchestrationService: orchestration,
       eventStore,
       getProject: (slug) => projects.getProject(slug),
+      coordinatorEnabled: () => false,
     }),
   );
   const runtime = new DelegationGroupRuntime({
@@ -178,7 +179,13 @@ test('guarded Session owner creates and reads its own V2 group across token rota
           (agent) => String(agent.id) === slug,
         ),
     }),
-    stationControl: { orchestration, eventStore, projects, membership },
+    stationControl: {
+      orchestration,
+      eventStore,
+      projects,
+      membership,
+      coordinatorEnabled: () => false,
+    },
   });
   const app = new Hono();
   app.use('*', async (context, next) => {

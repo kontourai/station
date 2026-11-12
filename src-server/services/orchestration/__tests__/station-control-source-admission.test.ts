@@ -107,6 +107,7 @@ test('guarded bound Session source custody survives token rotation and refuses f
       orchestrationService: orchestration,
       eventStore,
       getProject: (slug) => projects.getProject(slug),
+      coordinatorEnabled: () => false,
     }),
   );
   const source = new LocalSourceAdmissionOwner(f.home, f.environment, f.store, {
@@ -114,7 +115,7 @@ test('guarded bound Session source custody survives token rotation and refuses f
     eventStore,
     projects,
     membership,
-  });
+    coordinatorEnabled: () => false,  });
   const app = new Hono();
   app.use('*', async (c, next) => {
     setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {

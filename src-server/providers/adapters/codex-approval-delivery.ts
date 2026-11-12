@@ -92,7 +92,7 @@ export function refuseCodexApprovalReply(
     case 'mcpServer/elicitation/request':
       if (result.action === 'accept' && Object.hasOwn(result, 'content'))
         return readInputRequestResponse(result) &&
-          isPlainObject(result.content) &&
+          isRecord(result.content) &&
           Object.values(result.content).every(
             (value) =>
               typeof value === 'string' ||

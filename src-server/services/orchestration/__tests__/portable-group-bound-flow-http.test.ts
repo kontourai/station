@@ -154,6 +154,7 @@ test('bound Station Control SDK Flow follows actual frontier through a join', as
       orchestrationService: orchestration,
       eventStore,
       getProject: (slug) => projects.getProject(slug),
+      coordinatorEnabled: () => false,
     }),
   );
   const runtime = new DelegationGroupRuntime({
@@ -174,7 +175,13 @@ test('bound Station Control SDK Flow follows actual frontier through a join', as
           (agent) => String(agent.id) === slug,
         ),
     }),
-    stationControl: { orchestration, eventStore, projects, membership },
+    stationControl: {
+      orchestration,
+      eventStore,
+      projects,
+      membership,
+      coordinatorEnabled: () => false,
+    },
   });
   const app = new Hono();
   app.use('*', async (context, next) => {
