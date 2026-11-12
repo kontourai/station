@@ -40,7 +40,7 @@ test.each([
       // exercises the real caller without silently skipping its manifest step.
       writeFileSync(
         join(app, 'src/main/AndroidManifest.xml'),
-        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>',
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity></application></manifest>',
       );
       for (let build = 0; build < 2; build++) {
         writeFileSync(
