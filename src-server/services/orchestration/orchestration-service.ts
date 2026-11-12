@@ -9382,9 +9382,10 @@ export class OrchestrationService {
   }
 
   private assertTurnAdmitted(threadId: string): void {
+    const started = this.firstStartedRecordOfThread(threadId);
     assertInheritedDelegationToolPolicy(
-      this.firstStartedEngineOfThread(threadId),
-      this.firstStartedMetadataOfThread(threadId)?.delegation,
+      started?.provider,
+      started?.metadata.delegation,
     );
     for (const admission of this.turnAdmissions) {
       const result = admission({ threadId });

@@ -1207,12 +1207,15 @@ describe('OrchestrationService', () => {
       input: { threadId: 'constrained-native', provider: 'claude' },
     });
     expect(claude.startSession).toHaveBeenCalledTimes(1);
+    await claude.startSession({ threadId: 'recorded-constrained-native' });
+    expect(claude.sessions.has('recorded-constrained-native')).toBe(true);
     eventStore.appendEvent({
       provider: 'claude', threadId: 'recorded-constrained-native',
       eventId: 'constrained-native-record', createdAt: new Date().toISOString(),
       method: 'session.started', sessionId: 'recorded-constrained-native',
       metadata: { delegation },
     } as CanonicalRuntimeEvent);
+    expect(service.firstStartedMetadataOfThread('recorded-constrained-native')?.delegation).toEqual(delegation);
     await expect(service.dispatch({
       type: 'sendTurn',
       input: { threadId: 'recorded-constrained-native', input: 'No unqualified effect' },
