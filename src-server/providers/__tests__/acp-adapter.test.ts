@@ -7520,3 +7520,58 @@ describe('chat-host-images: which ACP engine exit ends its launch', () => {
     ).toBe(false);
   });
 });
+
+describe('after an untrusted read, ACP changes to instructions are declined (#4828)', () => {
+  /** An edit whose name the agent left out: the SDK makes `name` optional. */
+  const unnamedEdit = (toolCallId: string, kind: string) =>
+    ({
+      sessionId: 'ignored-by-adapter',
+      toolCall: {
+        toolCallId,
+        title: 'Edit file',
+        kind,
+        locations: [{ path: '/tmp/project/CLAUDE.md' }],
+        rawInput: {},
+      },
+      options: PERMISSION_OPTIONS,
+    }) as unknown as RequestPermissionRequest;
+
+  test('an unnamed edit of CLAUDE.md is declined after a mark and asks before one', async () => {
+    const { sharedUntrustedContentLedger } = await import(
+      '../../services/plugins/untrusted-content-policy.js'
+    );
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-persistence',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0]!;
+    await adapter.sendTurn({
+      threadId: 'thread-acp-persistence',
+      input: 'Edit it',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    // Before any untrusted read the request goes to a person as usual.
+    void proc.client.requestPermission(unnamedEdit('tool-before', 'edit'));
+    expect(await nextEvent(iterator, 'request.opened')).toMatchObject({
+      method: 'request.opened',
+    });
+
+    sharedUntrustedContentLedger.markConversation(
+      'thread-acp-persistence',
+      Promise.resolve(true),
+    );
+    for (const kind of ['edit', 'move', 'delete'])
+      await expect(
+        proc.client.requestPermission(unnamedEdit(`tool-${kind}`, kind)),
+      ).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+  });
+});

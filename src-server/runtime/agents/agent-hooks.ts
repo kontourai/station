@@ -25,6 +25,7 @@ import type { ApprovalGuardianService } from '../../services/approvals/approval-
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { recordPersonApprovedCall } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
+  DELEGATED_RESULT_TOOLS,
   sharedUntrustedContentLedger,
   type UntrustedContentLedger,
   untrustedContentDecision,
@@ -112,14 +113,6 @@ export interface AgentHooksDeps {
  * station-control tools whose result can carry a delegated child's output
  * back into the parent's turn.
  */
-const DELEGATED_RESULT_TOOLS = new Set([
-  'delegate_task',
-  'get_task',
-  'get_task_events',
-  'continue_task',
-  'respond_to_task_request',
-  'list_delegated_tasks',
-]);
 
 // ── Factory ────────────────────────────────────────────
 

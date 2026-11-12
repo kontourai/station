@@ -3,8 +3,13 @@
  * outlive the conversation from. The staged evaluator applies the verdict;
  * see the Claude adapter and Station engine tests for that.
  */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
+  acpPersistenceTarget,
+  isPersistenceRelevantTool,
   isUntrustedPersistencePath,
   untrustedPersistenceTarget,
 } from '../untrusted-persistence-protection.js';
@@ -145,6 +150,95 @@ describe('untrustedPersistenceTarget', () => {
     ).toBeUndefined();
     expect(
       untrustedPersistenceTarget('Grep', { path: '.git/config' }),
+    ).toBeUndefined();
+  });
+});
+
+describe('fix round 1 (#4828)', () => {
+  const makeTempDir = trackTempDirs();
+
+  test("a worktree's effective hooks folder is read from the common config", () => {
+    const main = makeTempDir('wru-main-');
+    mkdirSync(join(main, '.git', 'worktrees', 'lane'), { recursive: true });
+    writeFileSync(
+      join(main, '.git', 'config'),
+      '[core]\n\thooksPath = "ci/hooks"\n',
+    );
+    writeFileSync(
+      join(main, '.git', 'worktrees', 'lane', 'commondir'),
+      '../..\n',
+    );
+    const lane = makeTempDir('wru-lane-');
+    writeFileSync(
+      join(lane, '.git'),
+      `gitdir: ${join(main, '.git', 'worktrees', 'lane')}\n`,
+    );
+    expect(
+      untrustedPersistenceTarget('Write', {
+        file_path: join(lane, 'ci/hooks/pre-push'),
+      }),
+    ).toEqual({ kind: 'write', target: join(lane, 'ci/hooks/pre-push') });
+    expect(
+      untrustedPersistenceTarget('Write', {
+        file_path: join(lane, 'ci/build.sh'),
+      }),
+    ).toBeUndefined();
+  });
+
+  test('every path a move, rename or copy names is checked, lists included', () => {
+    expect(
+      untrustedPersistenceTarget('copy_file', {
+        src: 'notes.md',
+        dest: 'pkg/CLAUDE.md',
+      }),
+    ).toEqual({ kind: 'write', target: 'pkg/CLAUDE.md' });
+    expect(
+      untrustedPersistenceTarget('write_file', {
+        paths: ['a.md', '.husky/pre-commit'],
+      }),
+    ).toEqual({ kind: 'write', target: '.husky/pre-commit' });
+  });
+
+  test('only an editor whose view reads is exempt by `command: "view"`', () => {
+    for (const tool of ['Write', 'write_file', 'move_file'])
+      expect(
+        untrustedPersistenceTarget(tool, {
+          command: 'view',
+          path: 'CLAUDE.md',
+        }),
+      ).toEqual({ kind: 'write', target: 'CLAUDE.md' });
+    expect(
+      untrustedPersistenceTarget('str_replace_editor', {
+        command: 'view',
+        path: 'CLAUDE.md',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('tool names compare without case or separators', () => {
+    expect(isPersistenceRelevantTool('writeFile')).toBe(true);
+    expect(isPersistenceRelevantTool('MoveFile')).toBe(true);
+    expect(isPersistenceRelevantTool('filesystem_writeFile')).toBe(false);
+  });
+
+  test('ACP: an edit, move or delete is read from its kind and locations', () => {
+    expect(
+      acpPersistenceTarget({
+        kind: 'edit',
+        locations: [{ path: '/r/.git/hooks/pre-commit' }],
+      }),
+    ).toEqual({ kind: 'write', target: '/r/.git/hooks/pre-commit' });
+    expect(
+      acpPersistenceTarget({
+        kind: 'move',
+        rawInput: { source: '/r/a.md', destination: '/r/AGENTS.md' },
+      }),
+    ).toEqual({ kind: 'write', target: '/r/AGENTS.md' });
+    expect(
+      acpPersistenceTarget({
+        kind: 'read',
+        locations: [{ path: '/r/CLAUDE.md' }],
+      }),
     ).toBeUndefined();
   });
 });

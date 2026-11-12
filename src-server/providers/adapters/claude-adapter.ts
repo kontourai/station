@@ -136,7 +136,11 @@ import {
   CLAUDE_NATIVE_WEB_READ_TOOLS,
   markNativeWebRead,
 } from '../../services/plugins/native-web-read-marks.js';
-import type { UntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
+import {
+  DELEGATED_RESULT_TOOLS,
+  sharedUntrustedContentLedger,
+  type UntrustedContentLedger,
+} from '../../services/plugins/untrusted-content-policy.js';
 import {
   agentCapabilityUndelivered,
   agentSystemPromptSessions,
@@ -1448,6 +1452,9 @@ function serverDelegation(
  * the oldest; one dropped early costs a prompt, never a grant.
  */
 const MAX_PENDING_POLICY_ALLOWS = 256;
+
+/** #4828: station-control tools as the engine names them. */
+const STATION_CONTROL_TOOL_PREFIX = 'mcp__station-control__';
 
 /** JSON with object keys sorted at every depth, so key order is no difference. */
 function stableJson(value: unknown): unknown {
@@ -4990,14 +4997,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           {
             hooks: [
               async (hookInput) => {
-                if (
-                  hookInput.hook_event_name === 'PostToolUse' &&
-                  CLAUDE_NATIVE_WEB_READ_TOOLS.has(hookInput.tool_name)
-                )
+                if (hookInput.hook_event_name !== 'PostToolUse')
+                  return { continue: true };
+                const ledger =
+                  this.options.untrustedContentLedger ??
+                  sharedUntrustedContentLedger;
+                if (CLAUDE_NATIVE_WEB_READ_TOOLS.has(hookInput.tool_name))
                   markNativeWebRead([input.threadId], {
-                    ledger: this.options.untrustedContentLedger,
+                    ledger,
                     delegation: serverDelegation(input.metadata),
                   });
+                // A delegated child's result: when that child read
+                // untrusted content, this conversation has read it too.
+                const delegatedTool = hookInput.tool_name.startsWith(
+                  STATION_CONTROL_TOOL_PREFIX,
+                )
+                  ? hookInput.tool_name.slice(
+                      STATION_CONTROL_TOOL_PREFIX.length,
+                    )
+                  : undefined;
+                if (delegatedTool && DELEGATED_RESULT_TOOLS.has(delegatedTool))
+                  ledger.carryDescendantRead(input.threadId);
                 return { continue: true };
               },
             ],

@@ -6,6 +6,8 @@
  * composed from the same external untrusted-content stages Station's runtime
  * uses.
  */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 
@@ -45,9 +47,11 @@ vi.mock('../auth/cli-auth.js', () => ({
   runCliCommand: vi.fn(),
 }));
 
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import { externalUntrustedContentStages } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import { UntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
+import { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 
 /** A server whose tools send things; nobody set an untrusted-content entry. */
@@ -71,10 +75,16 @@ type Hook = (
   options: { signal: AbortSignal },
 ) => Promise<Record<string, unknown>>;
 
-async function start(threadId: string) {
+async function start(
+  threadId: string,
+  session: {
+    ledger?: UntrustedContentLedger;
+    metadata?: Record<string, unknown>;
+  } = {},
+) {
   mockQuery.mockReset();
   mockQuery.mockReturnValue(emptyQuery());
-  const ledger = new UntrustedContentLedger();
+  const ledger = session.ledger ?? new UntrustedContentLedger();
   const adapter = new ClaudeAdapter({
     untrustedContentLedger: ledger,
     resolvePreToolPolicy: async () =>
@@ -96,6 +106,7 @@ async function start(threadId: string) {
     provider: 'claude',
     threadId,
     agent: { slug: 'engine-lab' },
+    ...(session.metadata ? { metadata: session.metadata } : {}),
   });
   const options = mockQuery.mock.calls[0]![0].options;
   const signal = new AbortController().signal;
@@ -245,5 +256,179 @@ describe('after a web read, instructions and repository hooks stay as they were 
         }),
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('fix round 1: delegation carries the mark both ways (#4828)', () => {
+  const tempDirs = trackTempDirs();
+  /** A Station delegation as `delegation.ts` builds it for a child. */
+  const childOf = (parentThread: string) => ({
+    delegation: {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 3,
+      parentAgentSlug: 'engine-lab',
+      parentConversationId: `conversation-of-${parentThread}`,
+      parentSessionId: parentThread,
+      rootAgentSlug: 'engine-lab',
+      rootConversationId: `conversation-of-${parentThread}`,
+    },
+  });
+  const writeClaude = { file_path: '/workspace/CLAUDE.md', content: 'x' };
+
+  test("a delegated Claude child inherits its parent's web read", async () => {
+    const ledger = new UntrustedContentLedger();
+    const parent = await start('parent-a', { ledger });
+    const child = await start('child-a', {
+      ledger,
+      metadata: childOf('parent-a'),
+    });
+    expect(decision(await child.preToolUse('Write', writeClaude))).toBe(
+      undefined,
+    );
+
+    await parent.postToolUse('WebFetch');
+
+    expect(decision(await child.preToolUse('Write', writeClaude))).toBe('deny');
+  });
+
+  test("a child's web read marks its parent durably once the child's result returns", async () => {
+    const ledger = new UntrustedContentLedger();
+    const marks = new UntrustedConversationMarks(tempDirs('wru-marks-'));
+    ledger.attachDurableMarks(marks);
+    const parent = await start('parent-b', { ledger });
+    const child = await start('child-b', {
+      ledger,
+      metadata: childOf('parent-b'),
+    });
+    const writeAgents = {
+      file_path: '/workspace/AGENTS.md',
+      content: 'x',
+    };
+
+    await child.postToolUse('WebSearch');
+    // The parent has not read the child's output yet.
+    expect(decision(await parent.preToolUse('Write', writeAgents))).toBe(
+      undefined,
+    );
+
+    await parent.postToolUse('mcp__station-control__get_task');
+
+    expect(decision(await parent.preToolUse('Write', writeAgents))).toBe(
+      'deny',
+    );
+    expect(marks.isMarked('parent-b')).toBe(true);
+  });
+});
+
+describe('fix round 1: writes that install protected files (#4828)', () => {
+  const tempDirs = trackTempDirs();
+
+  test('a move or rename into CLAUDE.md is refused after a mark', async () => {
+    const { postToolUse, preToolUse } = await start('thread-move');
+    const move = {
+      source: '/workspace/payload.md',
+      destination: '/workspace/CLAUDE.md',
+    };
+    expect(decision(await preToolUse('mcp__fs__move_file', move))).toBe(
+      undefined,
+    );
+    await postToolUse('WebFetch');
+    expect(decision(await preToolUse('mcp__fs__move_file', move))).toBe('deny');
+    expect(
+      decision(
+        await preToolUse('mcp__fs__rename', {
+          from: '/workspace/.git/hooks/x',
+          to: '/workspace/.git/hooks/pre-commit',
+        }),
+      ),
+    ).toBe('deny');
+  });
+
+  test("a Write cannot opt out with the file editor's view command", async () => {
+    const { postToolUse, preToolUse } = await start('thread-view');
+    await postToolUse('WebFetch');
+    expect(
+      decision(
+        await preToolUse('Write', {
+          file_path: '/workspace/CLAUDE.md',
+          content: 'x',
+          command: 'view',
+        }),
+      ),
+    ).toBe('deny');
+  });
+
+  test("the repository's effective hooks folder, .githooks and .husky are protected", async () => {
+    const repo = tempDirs('wru-hookspath-');
+    mkdirSync(join(repo, '.git'));
+    writeFileSync(
+      join(repo, '.git', 'config'),
+      '[core]\n\trepositoryformatversion = 0\n\thooksPath = tools/hooks # local\n',
+    );
+    const { postToolUse, preToolUse } = await start('thread-hookspath');
+    const custom = {
+      file_path: join(repo, 'tools/hooks/pre-commit'),
+      content: 'x',
+    };
+    expect(decision(await preToolUse('Write', custom))).toBe(undefined);
+
+    await postToolUse('WebFetch');
+
+    expect(decision(await preToolUse('Write', custom))).toBe('deny');
+    expect(
+      decision(
+        await preToolUse('Write', {
+          file_path: join(repo, '.githooks/pre-push'),
+          content: 'x',
+        }),
+      ),
+    ).toBe('deny');
+    expect(
+      decision(
+        await preToolUse('Edit', {
+          file_path: join(repo, '.husky/pre-commit'),
+          old_string: 'a',
+          new_string: 'b',
+        }),
+      ),
+    ).toBe('deny');
+    // An ordinary file beside the hooks folder is not protected.
+    expect(
+      decision(
+        await preToolUse('Write', {
+          file_path: join(repo, 'tools/build.sh'),
+          content: 'x',
+        }),
+      ),
+    ).toBe(undefined);
+  });
+
+  test.each([
+    'git -c core.hooksPath=/tmp/evil commit -m x',
+    'git -ccore.fsmonitor=/tmp/evil status',
+    "git -c core.sshCommand='sh -c evil' fetch",
+    "git -c alias.st='!sh -c evil' st",
+    'git --config-env=core.hooksPath=EVIL commit',
+    'GIT_DIR=/tmp/evil git status',
+    'export GIT_CONFIG_GLOBAL=/tmp/evil.cfg',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/tmp/h git commit',
+  ])('after a mark, `%s` asks the person', async (command) => {
+    const { postToolUse, preToolUse } = await start(
+      `thread-git-${command.length}`,
+    );
+    expect(decision(await preToolUse('Bash', { command }))).toBe(undefined);
+    await postToolUse('WebFetch');
+    expect(decision(await preToolUse('Bash', { command }))).toBe('ask');
+  });
+
+  test('git configuration that runs nothing keeps its usual answer', async () => {
+    const { postToolUse, preToolUse } = await start('thread-git-benign');
+    await postToolUse('WebFetch');
+    expect(
+      decision(
+        await preToolUse('Bash', { command: 'git -c user.name=x log -1' }),
+      ),
+    ).toBe(undefined);
   });
 });

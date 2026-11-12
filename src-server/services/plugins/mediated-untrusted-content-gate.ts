@@ -20,10 +20,12 @@ import type {
   ToolDef,
   UntrustedContentPermission,
 } from '@kontourai/station-contracts/tool';
+import type { InvocationContext } from '../../runtime/types.js';
 import { stationControlToolPolicy } from '../../tools/station-control-policy.js';
 import {
   sharedUntrustedContentLedger,
   type UntrustedContentLedger,
+  untrustedContentAncestry,
   untrustedContentDecision,
 } from './untrusted-content-policy.js';
 
@@ -188,12 +190,20 @@ export function externalUntrustedContentPermission(deps: {
 }) {
   return async (
     tool: { toolName: string },
-    invocation: { conversationId?: string },
+    invocation: {
+      conversationId?: string;
+      delegation?: InvocationContext['delegation'];
+    },
   ): Promise<UntrustedContentPermission | undefined> => {
     const parsed = parseExternalMcpToolName(tool.toolName);
     if (!parsed) return undefined;
     const ledger = deps.ledger ?? sharedUntrustedContentLedger;
-    if (!(await ledger.conversationHasRead(invocation.conversationId)))
+    // #4828: a marked ancestor marks its delegated descendants.
+    if (
+      !(await ledger.conversationHasRead(
+        ...untrustedContentAncestry(invocation),
+      ))
+    )
       return undefined;
     return untrustedContentDecision(
       mediatedToolDefinition(
@@ -221,8 +231,11 @@ export function externalUntrustedContentStages(deps: {
       loadIntegration: deps.loadIntegration,
       ledger,
     }),
-    untrustedContentRead: (invocation: { conversationId?: string }) =>
-      ledger.conversationHasRead(invocation.conversationId),
+    // A conversation, or one that delegated to it, read untrusted content.
+    untrustedContentRead: (invocation: {
+      conversationId?: string;
+      delegation?: InvocationContext['delegation'];
+    }) => ledger.conversationHasRead(...untrustedContentAncestry(invocation)),
   };
 }
 

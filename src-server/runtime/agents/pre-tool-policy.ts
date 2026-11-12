@@ -6,7 +6,10 @@ import {
 } from '@kontourai/station-shared/mcp-tool-selection';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
-import { untrustedPersistenceTarget } from '../../services/plugins/untrusted-persistence-protection.js';
+import {
+  isPersistenceRelevantTool,
+  untrustedPersistenceTarget,
+} from '../../services/plugins/untrusted-persistence-protection.js';
 import { toolDenials } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
@@ -505,15 +508,26 @@ export function createStagedPreToolPolicyEvaluator(
     };
 
     // #4828: an injection must not persist itself past this conversation.
-    // The path is checked first, so an ordinary call never waits on the
-    // ledger.
-    const persistence = deps.untrustedContentRead
-      ? untrustedPersistenceTarget(
-          identity.configProtectionToolName,
-          tool.toolArgs,
-        )
-      : undefined;
-    if (persistence && (await deps.untrustedContentRead!(invocation))) {
+    // The operation is the tool's own name: on the Station engine the
+    // loader's provenance (an MCP tool's original name), never the display
+    // name the loader composed; on an external engine its own leaf name.
+    // Only a write or shell tool waits on the ledger, and only a marked
+    // conversation's call has its targets read.
+    const operationName =
+      options.interaction === 'external'
+        ? identity.configProtectionToolName
+        : (tool.mcp?.provenance?.originalToolName ??
+          deps.toolNameMapping.get(tool.toolName)?.provenance
+            ?.originalToolName ??
+          deps.toolNameMapping.get(tool.toolName)?.tool ??
+          tool.toolName);
+    const persistence =
+      deps.untrustedContentRead &&
+      isPersistenceRelevantTool(operationName) &&
+      (await deps.untrustedContentRead(invocation))
+        ? untrustedPersistenceTarget(operationName, tool.toolArgs)
+        : undefined;
+    if (persistence) {
       deps.logger.warn('Untrusted-content persistence protection applied', {
         toolName: tool.toolName,
         agentSlug: invocation.agentSlug,
