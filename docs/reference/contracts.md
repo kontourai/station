@@ -2341,8 +2341,13 @@ that baseline: uncertain reads unread. Anything appended after the cutoff
 reads unread until rendered.
 
 The cutoff is the store's high-water `global_sequence` (a contiguous prefix),
-written once, atomically, before the migration's first batch. A resumed or
-second initializer reads the same cutoff, and completion never changes it.
+written once, atomically, before the migration's first batch, together with
+the recipient snapshot: the established principals, read from the
+acknowledgement store and any first-format marker store in that same
+transaction. A resumed or second initializer reuses both and never
+re-samples, and completion changes neither, so a person whose first record
+comes after the cutoff is not established. A missing or unreadable snapshot
+establishes nobody.
 The event store backfills the projection up to the cutoff in bounded batches,
 each committed with its progress cursor under the writer lock, so an
 interrupted start resumes where it stopped and a batch finding the migration
