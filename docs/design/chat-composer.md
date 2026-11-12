@@ -4,7 +4,7 @@
 > records the 2026-07-26 audit; the sequencing and shipped-status statements
 > belong to their recorded work. Section 4 below describes the current public
 > HTTP entry points. Current control rendering and sending are owned by
-> [ChatDockBody](../../src-ui/src/components/chat-dock/ChatDockBody.tsx) and
+> [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx) and
 > [foreground dispatch](../../src-ui/src/lib/foregroundMessageDispatch.ts).
 > The mobile product decisions remain binding; this document is not a fresh
 > browser, accessibility, or native-device test result.
