@@ -359,7 +359,7 @@
     "@kontourai/console-server": "^1.1.0",
     "@kontourai/console-ui": "^0.3.0",
     "@kontourai/corpus-store": "0.1.0-next.4",
-    "@kontourai/dispatch": "0.8.0",
+    "@kontourai/dispatch": "0.8.1",
     "@kontourai/ephemeris": "0.4.1",
     "@kontourai/ferry": "0.7.0",
     "@kontourai/fieldwork": "0.15.0",

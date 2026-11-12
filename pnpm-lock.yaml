@@ -147,8 +147,8 @@ importers:
         specifier: 0.1.0-next.4
         version: 0.1.0-next.4
       '@kontourai/dispatch':
-        specifier: 0.8.0
-        version: 0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))
+        specifier: 0.8.1
+        version: 0.8.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))
       '@kontourai/ephemeris':
         specifier: 0.4.1
         version: 0.4.1(@kontourai/flow@5.4.0(supports-color@7.2.0))
@@ -2436,6 +2436,22 @@ packages:
     peerDependencies:
       '@ai-sdk/provider': '>=3.0.0'
       '@kontourai/bearing': ^0.2.0
+      '@kontourai/datum': ^0.7.0 || ^0.8.0
+    peerDependenciesMeta:
+      '@ai-sdk/provider':
+        optional: true
+      '@kontourai/bearing':
+        optional: true
+      '@kontourai/datum':
+        optional: true
+
+  '@kontourai/dispatch@0.8.1':
+    resolution: {integrity: sha512-2zSRPCmgIXICEjJlqPH8nZ5zvVohgUBWW78+3xD0+Z8vfeicVM3Kl3lWpfH7NJF5BSAkYMSrIxoM/xfbJKdmQg==}
+    engines: {node: '>=22'}
+    hasBin: true
+    peerDependencies:
+      '@ai-sdk/provider': '>=3.0.0'
+      '@kontourai/bearing': ^0.2.0 || ^0.4.0
       '@kontourai/datum': ^0.7.0 || ^0.8.0
     peerDependenciesMeta:
       '@ai-sdk/provider':
@@ -10702,9 +10718,9 @@ snapshots:
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
 
-  '@kontourai/dispatch@0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))':
+  '@kontourai/dispatch@0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@1.8.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))':
     dependencies:
-      '@kontourai/relay': 0.7.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))
+      '@kontourai/relay': 0.7.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@1.8.0(zod@4.6.7))
     optionalDependencies:
       '@ai-sdk/provider': 3.0.19
       '@kontourai/bearing': 0.2.0(playwright@1.64.1)
@@ -10712,9 +10728,9 @@ snapshots:
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
 
-  '@kontourai/dispatch@0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@1.8.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))':
+  '@kontourai/dispatch@0.8.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))':
     dependencies:
-      '@kontourai/relay': 0.7.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@1.8.0(zod@4.6.7))
+      '@kontourai/relay': 0.7.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))
     optionalDependencies:
       '@ai-sdk/provider': 3.0.19
       '@kontourai/bearing': 0.2.0(playwright@1.64.1)
