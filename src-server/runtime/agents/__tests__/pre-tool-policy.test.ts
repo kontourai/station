@@ -142,6 +142,39 @@ describe('createStagedPreToolPolicyEvaluator', () => {
     ).resolves.toMatchObject({ behavior: 'deny' });
   });
 
+  test('an inherited allowlist refuses the real pre-tool grant path', async () => {
+    const isGranted = vi.fn(() => true);
+    const evaluator = createEvaluator({ isGranted });
+    const delegation = createChildDelegationContext({
+      agentSlug: 'parent',
+      current: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('ancestor'),
+        rootAgentSlug: agentId('root'),
+        allowedTools: ['github_*'],
+      },
+    });
+    await expect(
+      evaluator(
+        tool,
+        { ...invocation, delegation },
+        {
+          interaction: 'external',
+          identity: {
+            delegationToolName: 'station-control_list_agents',
+            configProtectionToolName: 'list_agents',
+          },
+        },
+      ),
+    ).resolves.toMatchObject({
+      behavior: 'deny',
+      denial: { reason: expect.stringContaining('delegated child session') },
+    });
+    expect(isGranted).not.toHaveBeenCalled();
+  });
+
   test('matches a raw MCP name against delegated-tool restrictions', async () => {
     const evaluator = createEvaluator();
 

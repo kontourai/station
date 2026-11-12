@@ -140,6 +140,7 @@ describe('public handshake capability flags (station#1095)', () => {
     );
     expect(handshake.capabilities).toEqual({
       delegationGroups: false,
+      delegationToolConstraintsV1: true,
       delegationLocalConversationV1: true,
       childWorkSteering: true,
       privateOperationalOutcomes: true,
@@ -186,6 +187,7 @@ describe('public handshake capability flags (station#1095)', () => {
     // ships those surfaces.
     expect(body.capabilities).toEqual({
       delegationGroups: false,
+      delegationToolConstraintsV1: true,
       delegationLocalConversationV1: true,
       childWorkSteering: true,
       privateOperationalOutcomes: true,

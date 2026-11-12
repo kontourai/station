@@ -1218,6 +1218,8 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /** Preserves inherited allowlist groups and checks their conjunction at Station-owned pre-tool seams. Not universal native interception. */
+  delegationToolConstraintsV1?: boolean;
   /**
    * The authenticated delegation-group lifecycle and supervision routes are
    * mounted with their host authority owners. Absent/false means unsupported;

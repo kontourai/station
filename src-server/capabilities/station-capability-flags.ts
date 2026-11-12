@@ -19,6 +19,7 @@
 import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
+  delegationToolConstraintsV1: true,
   // UNWIRED(#91): full group qualification remains open; personal report routes are mounted.
   // Keep this advertisement false until the remaining ownership and journey checks pass.
   delegationGroups: false,

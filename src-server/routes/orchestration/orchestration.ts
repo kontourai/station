@@ -810,6 +810,10 @@ const agentDelegationContextSchema = z.object({
   rootAgentSlug: z.string().min(1).max(64),
   rootConversationId: z.string().min(1).max(512).optional(),
   allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  toolAllowlistConstraints: z
+    .array(z.array(z.string().min(1).max(256)).max(256))
+    .max(64)
+    .optional(),
   blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
   denyApprovals: z.boolean().optional(),
 });

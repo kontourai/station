@@ -2054,6 +2054,26 @@ async function postCanonical<T>(
   return payload.data;
 }
 
+async function requireDelegationToolConstraintSupport(
+  target: DelegationTarget,
+  delegation: AgentDelegationContext | undefined,
+): Promise<void> {
+  if (!delegation?.toolAllowlistConstraints?.length) return;
+  const handshake = await readJson<StationHandshake>(
+    target,
+    `${target.apiBase}/.well-known/station/v1`,
+    { headers: target.requestOptions?.headers ?? {} },
+    'The selected Station could not confirm inherited tool-policy support.',
+  );
+  if (
+    handshake.environmentId !== target.environmentId ||
+    handshake.capabilities?.delegationToolConstraintsV1 !== true
+  )
+    throw new Error(
+      'The selected Station cannot preserve inherited tool restrictions.',
+    );
+}
+
 /** Error envelopes the runtime auth boundary and the delegation route emit. */
 interface PeerPortableErrorEnvelope {
   success?: boolean;
@@ -5698,17 +5718,19 @@ export async function delegateTask(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
-    const pinnedTarget = await pinSshDispatchWorkspace(
-      selectedTarget,
-      input.target,
-    );
-    // #2601: settled before the authority recheck below, so no await sits
-    // between that recheck and the forward.
     const forwarded = input.stationControlToolCall
       ? delegationToForward(input)
       : input.delegation
         ? { delegation: input.delegation }
         : {};
+    await requireDelegationToolConstraintSupport(
+      selectedTarget,
+      forwarded.delegation,
+    );
+    const pinnedTarget = await pinSshDispatchWorkspace(
+      selectedTarget,
+      input.target,
+    );
     // Target discovery and capability probes awaited above. Recheck the
     // sending request before its stored peer credential can cause an effect.
     // postCanonical reaches fetch without another asynchronous preparation.
@@ -6823,6 +6845,15 @@ export async function executeExecutionTargetMessage(
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_not_offered,
       );
     }
+    const forwarded = input.stationControlToolCall
+      ? delegationToForward(input)
+      : input.delegation
+        ? { delegation: input.delegation }
+        : {};
+    await requireDelegationToolConstraintSupport(
+      selectedTarget,
+      forwarded.delegation,
+    );
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
       input.target,
@@ -6841,11 +6872,6 @@ export async function executeExecutionTargetMessage(
       delegationProvenance: _delegationProvenance,
       ...remoteInput
     } = input;
-    const forwarded = input.stationControlToolCall
-      ? delegationToForward(input)
-      : input.delegation
-        ? { delegation: input.delegation }
-        : {};
     return postForegroundMessage(
       selectedTarget,
       forwarded.delegation

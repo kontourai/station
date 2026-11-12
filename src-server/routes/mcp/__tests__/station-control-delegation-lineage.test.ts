@@ -708,6 +708,27 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
     }
   });
 
+  test('recorded inherited allowlists survive verified-caller child derivation', async () => {
+    const original = STARTED['session-child'];
+    STARTED['session-child'] = {
+      ...original,
+      delegation: { ...ROOT_CHILD, toolAllowlistConstraints: [['github_*']] },
+    };
+    try {
+      const result = await callTool(
+        'session-child',
+        'delegate_task',
+        DELEGATE_ARGS,
+      );
+      expect(result.isError).toBe(false);
+      expect(stampedDelegation(delegateTask)).toMatchObject({
+        toolAllowlistConstraints: [['github_*']],
+      });
+    } finally {
+      STARTED['session-child'] = original;
+    }
+  });
+
   test('a verified session with no recorded Agent is refused rather than starting a root', async () => {
     const result = await callTool(
       'session-agentless',
@@ -773,6 +794,7 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       conversationId: 'conversation-in-process',
       sessionId: 'session-in-process',
       spec: SPECS.planner,
+      current: { ...ROOT_CHILD, allowedTools: ['station-control_list_agents'] },
     });
     const response = await fetch(
       `${baseUrl}/api/orchestration/chat/delegated`,
@@ -811,6 +833,13 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       },
       {
         delegation: { ...genuine, parentSessionId: 'session-victim' },
+        delegationAttestation: attestDelegationContext(genuine),
+      },
+      {
+        delegation: {
+          ...genuine,
+          toolAllowlistConstraints: [['station-control_delete_agent']],
+        },
         delegationAttestation: attestDelegationContext(genuine),
       },
     ]) {

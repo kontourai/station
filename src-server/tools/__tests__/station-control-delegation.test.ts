@@ -1274,6 +1274,59 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
+  test.each([undefined, false, true])(
+    'forwards inherited allowlists only with receiver support %s',
+    async (supported) => {
+      const handle = delegationHandle({
+        taskId: 'task-constrained',
+        status: 'running',
+        sessionId: 'task-constrained',
+      });
+      installRemoteStationFetch('/api/orchestration/delegations', handle);
+      const base = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) =>
+        String(input) === `${REMOTE_API}/.well-known/station/v1`
+          ? json({
+              environmentId: 'environment-remote',
+              capabilities: { delegationToolConstraintsV1: supported },
+            })
+          : base(input, init),
+      );
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const delegation = {
+        mode: 'isolated-child' as const,
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('planner'),
+        rootAgentSlug: agentId('planner'),
+        toolAllowlistConstraints: [['github_*']],
+      };
+      const pending = delegateTask({
+        prompt: 'Stay scoped',
+        target: savedTarget(),
+        delegation,
+      });
+      if (supported) {
+        await expect(pending).resolves.toEqual(handle);
+        const call = fetchMock.mock.calls.find(
+          ([url]) =>
+            String(url) === `${REMOTE_API}/api/orchestration/delegations`,
+        );
+        expect(bodyOf(call!)).toMatchObject({ delegation });
+      } else {
+        await expect(pending).rejects.toThrow(
+          'cannot preserve inherited tool restrictions',
+        );
+        expect(
+          fetchMock.mock.calls.some(
+            ([url]) =>
+              String(url) === `${REMOTE_API}/api/orchestration/delegations`,
+          ),
+        ).toBe(false);
+      }
+    },
+  );
+
   test("answers a receiver's folder refusal with this Station's own sentence, never the receiver's text", async () => {
     installRemoteStationFetch('/api/orchestration/delegations', {});
     const base = fetchMock.getMockImplementation()!;

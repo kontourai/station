@@ -51,8 +51,10 @@ class DelegationDepthLimitError extends Error {
 
 class DelegationPolicyLimitError extends Error {
   readonly code = 'delegation_lineage_unavailable' as const;
-  constructor() {
-    super('Delegation policy exceeds its tool-pattern bound (256).');
+  constructor(
+    message = 'Delegation policy exceeds its tool-pattern bound (256).',
+  ) {
+    super(message);
     this.name = 'DelegationPolicyLimitError';
   }
 }
@@ -84,6 +86,15 @@ export function createChildDelegationContext(options: {
     if (!blockedTools.includes(pattern)) blockedTools.push(pattern);
   }
   if (blockedTools.length > 256) throw new DelegationPolicyLimitError();
+  const toolAllowlistConstraints = (
+    options.current?.toolAllowlistConstraints ?? []
+  ).map((group) => [...group]);
+  if (options.current?.allowedTools?.length)
+    toolAllowlistConstraints.push([...options.current.allowedTools]);
+  if (toolAllowlistConstraints.length > 64)
+    throw new DelegationPolicyLimitError(
+      'Delegation allowlist ancestry exceeds 64 groups.',
+    );
   const denyApprovals = policy.denyApprovals || options.current?.denyApprovals;
 
   return {
@@ -98,6 +109,9 @@ export function createChildDelegationContext(options: {
       options.current?.rootConversationId ?? options.conversationId,
     ...(policy.allowedTools.length > 0
       ? { allowedTools: policy.allowedTools }
+      : {}),
+    ...(toolAllowlistConstraints.length > 0
+      ? { toolAllowlistConstraints }
       : {}),
     ...(blockedTools.length > 0 ? { blockedTools } : {}),
     ...(denyApprovals ? { denyApprovals: true } : {}),
@@ -124,6 +138,14 @@ export function isDelegatedToolAllowed(options: {
   ) {
     return false;
   }
+
+  if (
+    delegation.toolAllowlistConstraints?.some(
+      (group) =>
+        !matchesToolPattern(options.toolName, group, options.toolNameMapping),
+    )
+  )
+    return false;
 
   if (
     delegation.blockedTools?.length &&

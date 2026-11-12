@@ -167,6 +167,10 @@ const delegationContextSchema = z.object({
   rootAgentSlug: z.string().transform(agentId),
   rootConversationId: z.string().optional(),
   allowedTools: z.array(z.string()).optional(),
+  toolAllowlistConstraints: z
+    .array(z.array(z.string().min(1).max(256)).max(256))
+    .max(64)
+    .optional(),
   blockedTools: z.array(z.string()).optional(),
   denyApprovals: z.boolean().optional(),
 });

@@ -44,6 +44,7 @@ function mac(context: AgentDelegationContext): string {
         context.rootAgentSlug,
         context.rootConversationId ?? null,
         context.allowedTools ?? null,
+        context.toolAllowlistConstraints ?? null,
         context.blockedTools ?? null,
         context.denyApprovals ?? null,
       ]),

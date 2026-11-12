@@ -105,6 +105,64 @@ describe('delegation helpers', () => {
     }
   });
 
+  test('conjoins wildcard allowlists across parent, child and grandchild', () => {
+    const context = (
+      allowedTools: string[],
+      current?: AgentDelegationContext,
+    ) =>
+      createChildDelegationContext({
+        agentSlug: 'planner',
+        spec: {
+          name: 'Planner',
+          prompt: 'Stay scoped',
+          delegation: { maxDepth: 3, allowedTools },
+        },
+        current,
+      });
+    const parent = context(['github/*']);
+    const child = context(['github_repo_*'], parent);
+    const grandchild = context(['github_*'], child);
+    const mapping = new Map([
+      [
+        'github_repo_search',
+        {
+          original: 'github/repo_search',
+          normalized: 'github_repo_search',
+          server: 'github',
+          tool: 'repo_search',
+        },
+      ],
+    ]);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'github_repo_search',
+        delegation: grandchild,
+        toolNameMapping: mapping,
+      }),
+    ).toBe(true);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'github_issue_search',
+        delegation: grandchild,
+        toolNameMapping: mapping,
+      }),
+    ).toBe(false);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'files_read',
+        delegation: grandchild,
+        toolNameMapping: mapping,
+      }),
+    ).toBe(false);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'github_repo_search',
+        delegation: { ...grandchild, toolAllowlistConstraints: [[]] },
+        toolNameMapping: mapping,
+      }),
+    ).toBe(false);
+  });
+
   test('applies allowlists and blocklists to delegated child tools', () => {
     const toolNameMapping = new Map([
       [
