@@ -153,8 +153,8 @@ importers:
         specifier: 0.4.1
         version: 0.4.1(@kontourai/flow@5.4.0(supports-color@7.2.0))
       '@kontourai/ferry':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.0
+        version: 0.7.0
       '@kontourai/fieldwork':
         specifier: 0.15.0
         version: 0.15.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(ws@8.22.1)(zod@4.6.7))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)
@@ -195,8 +195,8 @@ importers:
         specifier: 8.4.0
         version: 8.4.0(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/thread':
-        specifier: 0.5.0
-        version: 0.5.0
+        specifier: 0.6.0
+        version: 0.6.0
       '@kontourai/ui':
         specifier: ^1.19.0
         version: 1.20.1(react@19.3.1)
@@ -826,8 +826,8 @@ importers:
         specifier: ^6.2.1
         version: 6.2.1(supports-color@7.2.0)
       '@kontourai/thread':
-        specifier: 0.5.0
-        version: 0.5.0
+        specifier: 0.6.0
+        version: 0.6.0
 
   packages/monument: {}
 
@@ -852,8 +852,8 @@ importers:
         specifier: ^6.2.1
         version: 6.2.1(supports-color@7.2.0)
       '@kontourai/thread':
-        specifier: 0.5.0
-        version: 0.5.0
+        specifier: 0.6.0
+        version: 0.6.0
       '@kontourai/ui':
         specifier: ^1.19.0
         version: 1.20.1(react@19.3.1)
@@ -886,8 +886,8 @@ importers:
         specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/thread':
-        specifier: 0.5.0
-        version: 0.5.0
+        specifier: 0.6.0
+        version: 0.6.0
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0(patch_hash=2501897259233d420cf716d5490c38a87df5ff9f02de1d06587e74fc08bb0835)
@@ -2460,6 +2460,11 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
+  '@kontourai/ferry@0.7.0':
+    resolution: {integrity: sha512-5pceGMilfl+goyHWTh2ERVXR763C6fTk+CZPobMqK6TfB8gXOHHRUVkUCPT4eGVwc9VHTa5SaaFFDDTo5WIjvg==}
+    engines: {node: '>=22'}
+    hasBin: true
+
   '@kontourai/fieldwork@0.15.0':
     resolution: {integrity: sha512-e+RkOYwqFWGocqYx3gBoUsnbQoWqhQ8x9lyq5gY+tv9zdFxJ22MoAxaNlgdlN9tQsTzYXLHLTzcdNQ6EZ39VVQ==}
     engines: {node: '>=22'}
@@ -2583,6 +2588,10 @@ packages:
 
   '@kontourai/thread@0.5.0':
     resolution: {integrity: sha512-MhHKngKoKAWIEkvANx4YMrdYgBH5pRAGU3ocMiKRW1qcw6eluUyDB659vEgxFFcYy+FUXUrWb2EGt/7cI0WgIg==}
+    engines: {node: '>=22'}
+
+  '@kontourai/thread@0.6.0':
+    resolution: {integrity: sha512-IgVJtZT1ovUMxRqf2BjUP4G9lVeDYsKU8P6BjJbXsMbpevnkokq8Wgib+SuulJKLdOwmZV8RmvfwMscI7Y11Hw==}
     engines: {node: '>=22'}
 
   '@kontourai/traverse@5.0.1':
@@ -10738,6 +10747,12 @@ snapshots:
       commander: 15.0.0
       zod: 4.6.7
 
+  '@kontourai/ferry@0.7.0':
+    dependencies:
+      '@kontourai/thread': 0.6.0
+      commander: 15.0.0
+      zod: 4.6.7
+
   '@kontourai/fieldwork@0.15.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(ws@8.22.1)(zod@4.6.7))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/datum': 0.8.0(playwright@1.64.1)
@@ -10938,6 +10953,10 @@ snapshots:
   '@kontourai/telemetry@0.1.0': {}
 
   '@kontourai/thread@0.5.0':
+    dependencies:
+      zod: 4.6.7
+
+  '@kontourai/thread@0.6.0':
     dependencies:
       zod: 4.6.7
 
