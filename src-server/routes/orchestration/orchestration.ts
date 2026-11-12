@@ -3510,10 +3510,8 @@ export function createOrchestrationRoutes(
   app.post('/chat', validate(foregroundMessageSchema), (c) =>
     handleForegroundMessage(c, { composer: true }),
   );
-  app.post(
-    '/chat/delegated',
-    validate(delegatedForegroundMessageSchema),
-    (c) => handleForegroundMessage(c),
+  app.post('/chat/delegated', validate(delegatedForegroundMessageSchema), (c) =>
+    handleForegroundMessage(c),
   );
   app.post('/chat/background', validate(foregroundMessageSchema), async (c) => {
     const body = getBody(c);
@@ -7206,10 +7204,10 @@ export function createOrchestrationRoutes(
           },
           // #4827: a steer typed into Station's composer is the person's own.
           // `sendTurn` here is not the composer's path, so it never is.
-          command.type === 'steerTurn' &&
-            personTypedRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
-            ? { personAuthored: true }
-            : undefined,
+          ...(command.type === 'steerTurn' &&
+          personTypedRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+            ? ([{ personAuthored: true }] as const)
+            : ([] as const)),
         );
         if (actionOperation && command.type === 'adoptSession') {
           const targetSessionId =
