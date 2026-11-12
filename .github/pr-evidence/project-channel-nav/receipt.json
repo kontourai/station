@@ -4,9 +4,9 @@
   "capture": "node scripts/heavy-check-slot.mjs test:e2e:screenshot scripts/run-e2e-suite.mjs --suite=screenshot --screens=<the scenes below>, local isolated e2e Station, Chromium",
   "assets": {
     "branch": "pr-assets/project-channel-nav-4794",
-    "commit": "b8b2d7b500fb50053a8d8cf9c5367f8d20f1843d",
+    "commit": "a1feb24489f909258855761c46967244fdfedcc0",
     "path": "project-channel-nav-4794/",
-    "rawBase": "https://raw.githubusercontent.com/kontourai/station/b8b2d7b500fb50053a8d8cf9c5367f8d20f1843d/project-channel-nav-4794"
+    "rawBase": "https://raw.githubusercontent.com/kontourai/station/a1feb24489f909258855761c46967244fdfedcc0/project-channel-nav-4794"
   },
   "pixelComparison": "NOT_VERIFIED: channel-nav scenes are new; room scenes have no tracked baseline",
   "files": [
