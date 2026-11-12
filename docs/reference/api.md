@@ -1773,6 +1773,18 @@ includes up to 200 `probe.tools` entries with raw `name`, optional `description`
 can return this metadata without persisting it to a local integration definition.
 Discovery metadata is a browsing snapshot, not execution authority.
 
+`POST /integrations/check-all` (operator; integration operate tier) probes every
+enabled tool server Station does not run itself, three at a time, and returns
+`{success: true, data: {results, reloaded}}`
+([`ToolServerCheckAll`](../../packages/contracts/src/tool.ts)). Each result is
+`ready`, `failed` (with `error`), `sign-in-required` or `skipped` (a server
+signed in per person). The probe never begins a sign-in: a server that wants
+one is recorded with `probe.authorization` `never-authorized`, or
+`token-expired-refresh-failed` when a saved sign-in could not be refreshed, and
+no authorization URL or pending sign-in is created. A request that arrives while
+a batch runs joins it. Agents reload once at the end, and only when a probe
+changed a server's reachability or tool names. No Station agent tool reaches it.
+
 ### Discover transcript App tools
 
 `GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`
@@ -2705,7 +2717,10 @@ connection, model connection or tool server, with `connectionId`, `kind`,
 bindings count; nothing is matched by slug or name. A Project's default
 provider counts only with its default model. Access: the `/api/connections`
 family's read tier. A caller that receives only admitted Agents from
-`GET /api/agents` (a Project member) gets 403. `Cache-Control: no-store`.
+`GET /api/agents` (a Project member) gets 403, and no Station agent tool
+reaches it (`station_control_route_unmapped`). Agents come from their stored
+definitions only: registry default Agents and the Station Agent's per-boot
+engine are not saved configuration and are not listed. `Cache-Control: no-store`.
 The [contract](../../packages/contracts/src/connection-used-by.ts) holds the
 projection; `GET /integrations` still returns its older `usedBy` display names.
 
