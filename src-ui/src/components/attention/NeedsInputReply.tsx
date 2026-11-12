@@ -266,6 +266,7 @@ export function NeedsInputReply({
           onClearInput={() => setText('')}
           selectAttachmentFiles={composer.selectFiles}
           attachmentError={composer.error}
+          onAttachUnavailable={composer.setError}
           attachmentStages={stages}
           sendBlockedReason={composer.sendBlockedReason}
           onRetryAttachmentStage={composer.retry}

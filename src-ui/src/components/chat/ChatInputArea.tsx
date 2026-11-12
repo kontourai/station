@@ -51,6 +51,7 @@ import { ConversationStopControl } from '../conversation/ConversationStopControl
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
+import { ClipboardImagePasteButton } from './ClipboardImagePasteButton';
 import { ComposerIconAction } from './ComposerIconAction';
 import {
   appendComposerSessionReference,
@@ -301,7 +302,12 @@ interface ChatInputAreaProps {
   removalUnblocksSend?: boolean;
   /** Why nothing can be attached; tapping the paperclip reports it. */
   attachUnavailableReason?: string;
-  onAttachUnavailable?: (reason: string) => void;
+  /**
+   * Shows why nothing was attached: the paperclip's reason and Paste image's
+   * failures (no image on the clipboard, a refused read). Required so a
+   * composer cannot render Paste image with nowhere to report.
+   */
+  onAttachUnavailable: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
   /**
@@ -1759,6 +1765,14 @@ export function ChatInputArea({
               onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
+          {modelSupportsAttachments && (
+            <ClipboardImagePasteButton
+              className="attachment-btn"
+              disabled={disabled}
+              onFiles={selectAttachmentFiles}
+              onMessage={onAttachUnavailable}
+            />
+          )}
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}
