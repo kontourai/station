@@ -17,6 +17,7 @@ import {
   DRIVER_TEXT,
   LiveSurfaceViewerControls,
 } from '../../live-surface/LiveSurfaceViewerControls';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import type { BrowserActivityScope } from '../chat/BrowserActivityContext';
 import { ErrorState, SkeletonBlock } from '../state';
@@ -115,6 +116,35 @@ export function InlineBrowserActivity({
             : result;
         }
       : null;
+  const placementAction = session ? (
+    floating ? (
+      <Button
+        variant="secondary"
+        onClick={() => {
+          closeFloat(scope.conversationKey);
+        }}
+      >
+        Bring back
+      </Button>
+    ) : (
+      <Button
+        variant="secondary"
+        onClick={() => {
+          openFloat(
+            scope.conversationKey,
+            {
+              kind: 'browser',
+              browserSessionId: session.browserSessionId,
+              surfaceId: session.surfaceId!,
+            },
+            { requested: true },
+          );
+        }}
+      >
+        Float
+      </Button>
+    )
+  ) : null;
   return (
     <section className="inline-browser-activity">
       <div className="inline-browser-activity__heading">
@@ -221,40 +251,22 @@ export function InlineBrowserActivity({
             </p>
           )}
           {session && (
-            <div className="inline-browser-activity__actions">
-              {floating ? (
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    closeFloat(scope.conversationKey);
-                  }}
-                >
-                  Bring back
-                </Button>
-              ) : (
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    openFloat(
-                      scope.conversationKey,
-                      {
-                        kind: 'browser',
-                        browserSessionId: session.browserSessionId,
-                        surfaceId: session.surfaceId!,
-                      },
-                      { requested: true },
-                    );
-                  }}
-                >
-                  Float
-                </Button>
-              )}
-              {openInPanel && (
-                <Button variant="secondary" onClick={() => void openInPanel()}>
-                  Open in pane
-                </Button>
-              )}
-            </div>
+            <ActionRow
+              overflowLabel="More browser activity actions"
+              primary={
+                openInPanel ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void openInPanel()}
+                  >
+                    Open in pane
+                  </Button>
+                ) : (
+                  placementAction
+                )
+              }
+              secondary={openInPanel ? placementAction : undefined}
+            />
           )}
         </div>
       )}

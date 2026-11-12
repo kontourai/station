@@ -13,8 +13,7 @@
   min-height: 0;
   overflow: hidden;
 }
-.inline-browser-activity__heading,
-.inline-browser-activity__actions {
+.inline-browser-activity__heading {
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-2);
