@@ -11,28 +11,31 @@
  *
  * The staged pre-tool evaluator applies this. A file-write, move, rename or
  * copy tool with either endpoint at one of these is refused; a shell command
- * that names one, writes git configuration, or runs git with configuration
- * that executes programs (`-c core.hooksPath`, `core.fsmonitor`,
- * `core.sshCommand`, an alias, `GIT_CONFIG*` or `GIT_DIR`) is sent to the
- * person, because Station cannot tell what a shell command does. Paths are
+ * that names one, writes git configuration, gives git a global option that
+ * configures it or points it elsewhere (`-c`, `--config-env`, `--git-dir`,
+ * `--work-tree`, `--exec-path`, `--namespace`, or one Station does not
+ * recognise), or assigns `GIT_DIR` or `GIT_CONFIG*`, is sent to the person,
+ * because Station cannot tell what a shell command does. Paths are
  * compared by segment, case-insensitively (macOS and Windows checkouts are
  * case-insensitive), never by substring. Tool names are compared without
  * case or separators, so a loader's `writeFile` and an engine's `write_file`
  * are one operation.
  *
- * The effective hooks folder is read from the repository's own configuration
- * files (and the user's global one) by parsing them: no git command or other
- * program the repository could control runs. It is resolved for an absolute
+ * The effective hooks folder is what git itself reports for the worktree
+ * (`git config --get core.hooksPath`, which reads configuration and runs no
+ * hook, monitor or other program the repository names). When git cannot be
+ * asked, every directory a raw `hooksPath` line names is protected instead,
+ * and every `git config` shell command asks. It is resolved for an absolute
  * target only; a relative one is protected by name.
  *
  * Not covered here: a write through a link whose name is not protected, a
- * path a shell command builds at run time, a hooks path set through an
- * `include` or the system configuration, and an engine whose writes do not
+ * path a shell command builds at run time, and an engine whose writes do not
  * reach Station's pre-tool evaluator (Codex's own file changes and commands).
  * A confined session's sandbox keeps `.git/hooks` and `.git/config` read-only
  * regardless of any mark (src-server/security/confinement/seatbelt.ts,
  * bubblewrap.ts, src-server/providers/adapters/codex-confinement.ts).
  */
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -160,45 +163,88 @@ export function isUntrustedPersistencePath(candidate: string): boolean {
   return below.at(-1) === 'config' || below.at(-1) === 'config.worktree';
 }
 
-/** The last `core.hooksPath` a git configuration file sets, if any. */
-function hooksPathIn(file: string): string | undefined {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch {
-    return undefined;
-  }
-  let section = '';
-  let found: string | undefined;
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    const header = /^\[\s*([^\]\s"]+)(?:\s+"[^"]*")?\s*\]/.exec(line);
-    if (header) {
-      section = header[1]!.toLowerCase();
-      continue;
-    }
-    if (section !== 'core') continue;
-    const entry = /^hookspath\s*=\s*(.*)$/i.exec(line);
-    if (!entry) continue;
-    let value = entry[1]!;
-    if (value.startsWith('"')) {
-      const end = value.indexOf('"', 1);
-      value = end === -1 ? value.slice(1) : value.slice(1, end);
-    } else {
-      value = value.replace(/\s[#;].*$/, '').trim();
-    }
-    found = value;
-  }
-  return found;
-}
+/** How long git may take to answer one configuration read. */
+const GIT_CONFIG_TIMEOUT_MS = 3_000;
 
 /**
- * The repository's effective hooks folder for an absolute path inside it:
- * the last `core.hooksPath` its global, local and worktree configuration
- * files set, resolved as git resolves it (relative to the worktree root).
- * Read by parsing those files; nothing runs.
+ * The environment git reads configuration under: Station's own, without
+ * anything that would point git at another repository, and with no prompt
+ * or pager. System and global configuration stay in, because the effective
+ * value is what a hook run in that worktree would see.
  */
-function effectiveHooksDirectory(absolute: string): string | undefined {
+function gitConfigEnvironment(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_PAGER: 'cat',
+    PAGER: 'cat',
+    GIT_OPTIONAL_LOCKS: '0',
+  };
+  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR'])
+    delete env[key];
+  return env;
+}
+
+type GitConfigAnswer =
+  | { kind: 'set'; value: string }
+  | { kind: 'unset' }
+  | { kind: 'unavailable' };
+
+/**
+ * Asks git for the effective `core.hooksPath` of a worktree, with `~`
+ * expanded (`--type=path`). A fixed argument list, no shell, a short
+ * timeout. `git config` reads configuration only: it does not refresh the
+ * index or run hooks, `core.fsmonitor` or any other program the repository
+ * names (pinned by a test with a monitor that would leave a marker).
+ */
+function gitHooksPath(worktree: string): GitConfigAnswer {
+  const result = spawnSync(
+    'git',
+    ['-C', worktree, 'config', '--type=path', '--get', 'core.hooksPath'],
+    {
+      encoding: 'utf8',
+      env: gitConfigEnvironment(),
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: GIT_CONFIG_TIMEOUT_MS,
+      windowsHide: true,
+    },
+  );
+  if (result.error || result.signal) return { kind: 'unavailable' };
+  if (result.status === 0) {
+    const value = result.stdout.replace(/\r?\n$/, '');
+    return value ? { kind: 'set', value } : { kind: 'unset' };
+  }
+  // `git config --get` answers 1 for a key that is not set; anything else
+  // (no repository it trusts, a broken file) is not an answer.
+  return result.status === 1 ? { kind: 'unset' } : { kind: 'unavailable' };
+}
+
+/** Whether git can be asked at all; checked once. */
+let gitPresent: boolean | undefined;
+function gitAvailable(): boolean {
+  if (gitPresent === undefined) {
+    const probe = spawnSync('git', ['--version'], {
+      env: gitConfigEnvironment(),
+      shell: false,
+      stdio: 'ignore',
+      timeout: GIT_CONFIG_TIMEOUT_MS,
+      windowsHide: true,
+    });
+    gitPresent = !probe.error && probe.status === 0;
+  }
+  return gitPresent;
+}
+
+/** For tests: forget whether git was found. */
+export function resetGitAvailabilityForTests(): void {
+  gitPresent = undefined;
+}
+
+/** A worktree's root, its git directory and its common git directory. */
+function repositoryOf(
+  absolute: string,
+): { root: string; gitDir: string; commonDir: string } | undefined {
   let root = path.dirname(absolute);
   let dotGit: string | undefined;
   for (let depth = 0; depth < 64; depth += 1) {
@@ -216,11 +262,10 @@ function effectiveHooksDirectory(absolute: string): string | undefined {
   try {
     if (fs.statSync(dotGit).isFile()) {
       const pointer = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dotGit, 'utf8'));
-      if (!pointer) return undefined;
-      gitDir = path.resolve(root, pointer[1]!.trim());
+      if (pointer) gitDir = path.resolve(root, pointer[1]!.trim());
     }
   } catch {
-    return undefined;
+    // Unreadable: the configuration files below are simply not found.
   }
   let commonDir = gitDir;
   try {
@@ -231,20 +276,72 @@ function effectiveHooksDirectory(absolute: string): string | undefined {
   } catch {
     // A main repository has no `commondir`.
   }
+  return { root, gitDir, commonDir };
+}
+
+/**
+ * When git cannot answer: every directory any `hooksPath` line in the
+ * repository's or the user's configuration files could name, read
+ * generously (with and without quotes, comments and a continuation), so a
+ * value git would read differently is still covered.
+ */
+function rawHooksPathCandidates(repository: {
+  gitDir: string;
+  commonDir: string;
+}): string[] {
   const home = os.homedir();
   const xdg = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
-  let value: string | undefined;
+  const candidates = new Set<string>();
   for (const file of [
     path.join(xdg, 'git', 'config'),
     path.join(home, '.gitconfig'),
-    path.join(commonDir, 'config'),
-    path.join(gitDir, 'config.worktree'),
-  ])
-    value = hooksPathIn(file) ?? value;
-  if (!value) return undefined;
-  if (value === '~' || value.startsWith('~/'))
-    value = path.join(home, value.slice(1));
-  return path.resolve(root, value);
+    path.join(repository.commonDir, 'config'),
+    path.join(repository.gitDir, 'config.worktree'),
+  ]) {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const match of text.matchAll(/hookspath\s*=([^\n]*)/gi)) {
+      const raw = match[1]!.trim();
+      for (const value of [
+        raw,
+        raw.replace(/^"|"$/g, ''),
+        raw.split(/[#;]/)[0]!.trim(),
+        raw.replace(/\\$/, '').replace(/^"/, '').trim(),
+        // Escapes resolved, then quotes: `"a\"b"` is `a"b`.
+        raw.replace(/\\(.)/g, '$1').replace(/^"|"$/g, ''),
+      ])
+        if (value) candidates.add(value);
+    }
+  }
+  return [...candidates];
+}
+
+function expandHome(value: string): string {
+  return value === '~' || value.startsWith('~/')
+    ? path.join(os.homedir(), value.slice(1))
+    : value;
+}
+
+/**
+ * The hooks folders a write to an absolute path inside a repository could
+ * plant a hook in: the effective `core.hooksPath` git reports, resolved as
+ * git resolves it (relative to the worktree root). When git cannot answer,
+ * every directory a raw `hooksPath` line names.
+ */
+function effectiveHooksDirectories(absolute: string): string[] {
+  const repository = repositoryOf(absolute);
+  if (!repository) return [];
+  const answer = gitHooksPath(repository.root);
+  if (answer.kind === 'set')
+    return [path.resolve(repository.root, expandHome(answer.value))];
+  if (answer.kind === 'unset') return [];
+  return rawHooksPathCandidates(repository).map((value) =>
+    path.resolve(repository.root, expandHome(value)),
+  );
 }
 
 function isInside(directory: string, candidate: string): boolean {
@@ -262,8 +359,10 @@ function isInside(directory: string, candidate: string): boolean {
 function isProtectedTarget(candidate: string): boolean {
   if (isUntrustedPersistencePath(candidate)) return true;
   if (!path.isAbsolute(candidate)) return false;
-  const hooks = effectiveHooksDirectory(path.resolve(candidate));
-  return hooks !== undefined && isInside(hooks, path.resolve(candidate));
+  const absolute = path.resolve(candidate);
+  return effectiveHooksDirectories(absolute).some((hooks) =>
+    isInside(hooks, absolute),
+  );
 }
 
 /** Paths an `apply_patch`-style envelope adds, updates, deletes or moves to. */
@@ -335,43 +434,59 @@ function shellWords(command: string): string[] {
   return words;
 }
 
-/** Configuration keys that make git run a program the value names. */
-function runsProgram(key: string): boolean {
-  const lower = key.toLowerCase();
-  return (
-    lower === 'core.hookspath' ||
-    lower === 'core.fsmonitor' ||
-    lower === 'core.sshcommand' ||
-    lower.startsWith('alias.')
-  );
-}
+/** Git's global options that take no value and change nothing persistent. */
+const GIT_FLAG_OPTIONS: ReadonlySet<string> = new Set([
+  '-p',
+  '--paginate',
+  '-P',
+  '--no-pager',
+  '--no-replace-objects',
+  '--no-lazy-fetch',
+  '--no-optional-locks',
+  '--no-advice',
+  '--bare',
+  '--literal-pathspecs',
+  '--glob-pathspecs',
+  '--noglob-pathspecs',
+  '--icase-pathspecs',
+  '-v',
+  '--version',
+  '-h',
+  '--help',
+  '--html-path',
+  '--man-path',
+  '--info-path',
+]);
 
 /**
- * What a git invocation in these words does that persists or runs a
- * program: `git config` setting a value, or `-c`/`--config-env` with a key
- * that runs one. `undefined` when neither.
+ * What a git invocation in these words does that Station sends to a person:
+ * a global option that configures git, points it at another repository or
+ * program (`-c`, `--config-env`, `--git-dir`, `--work-tree`, `--exec-path`,
+ * `--namespace`), or any global option this does not recognise; then a
+ * `git config` that sets a value, or any `git config` when git itself
+ * cannot be asked (Station could not tell what it would change). Every
+ * global option before the subcommand is read, not only the first.
  */
 function gitConfigEffect(words: readonly string[]): string | undefined {
   for (let index = 0; index < words.length; index += 1) {
-    if (path.posix.basename(words[index]!) !== 'git') continue;
+    const program = path.posix.basename(words[index]!.replaceAll('\\', '/'));
+    if (program !== 'git' && program !== 'git.exe') continue;
     let next = index + 1;
     while (next < words.length && words[next]!.startsWith('-')) {
       const option = words[next]!;
-      let setting: string | undefined;
-      if (option === '-c' || option === '--config-env') {
-        setting = words[next + 1];
-        next += 1;
-      } else if (option.startsWith('-c')) setting = option.slice(2);
-      else if (option.startsWith('--config-env='))
-        setting = option.slice('--config-env='.length);
-      else if (option === '-C') next += 1;
-      if (setting !== undefined) {
-        const key = setting.split('=')[0] ?? '';
-        if (runsProgram(key)) return `git -c ${key}`;
+      if (option === '-C') {
+        // `-C <dir>` only changes where git starts.
+        next += 2;
+        continue;
       }
-      next += 1;
+      if (GIT_FLAG_OPTIONS.has(option)) {
+        next += 1;
+        continue;
+      }
+      return `git ${option.split('=')[0]}`;
     }
     if (words[next] !== 'config') continue;
+    if (!gitAvailable()) return 'git config';
     const rest = words.slice(next + 1);
     const reads = rest.some((word) =>
       /^--(get|get-all|get-regexp|get-urlmatch|list|show-origin|show-scope)$|^-l$/.test(

@@ -3,14 +3,22 @@
  * outlive the conversation from. The staged evaluator applies the verdict;
  * see the Claude adapter and Station engine tests for that.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   acpPersistenceTarget,
   isPersistenceRelevantTool,
   isUntrustedPersistencePath,
+  resetGitAvailabilityForTests,
   untrustedPersistenceTarget,
 } from '../untrusted-persistence-protection.js';
 
@@ -240,5 +248,132 @@ describe('fix round 1 (#4828)', () => {
         locations: [{ path: '/r/CLAUDE.md' }],
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('fix round 2: git reports the effective hooks folder (#4828)', () => {
+  const makeTempDir = trackTempDirs();
+  const saved = {
+    global: process.env.GIT_CONFIG_GLOBAL,
+    path: process.env.PATH,
+  };
+  beforeEach(() => {
+    // The user's own global configuration must not decide these cases.
+    const home = makeTempDir('wru-git-home-');
+    writeFileSync(join(home, 'empty.gitconfig'), '');
+    process.env.GIT_CONFIG_GLOBAL = join(home, 'empty.gitconfig');
+    resetGitAvailabilityForTests();
+  });
+  afterEach(() => {
+    if (saved.global === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = saved.global;
+    process.env.PATH = saved.path;
+    resetGitAvailabilityForTests();
+  });
+
+  /** A real repository, so git answers rather than the fallback. */
+  function repository(config: string): string {
+    const repo = makeTempDir('wru-git-repo-');
+    const init = spawnSync('git', ['init', '-q', repo], { encoding: 'utf8' });
+    expect(init.status).toBe(0);
+    appendFileSync(join(repo, '.git', 'config'), config);
+    return repo;
+  }
+  const writes = (file: string) =>
+    untrustedPersistenceTarget('Write', { file_path: file, content: 'x' });
+
+  test.each([
+    [
+      'an inline comment without a space',
+      '\thooksPath = tools/hooks#comment\n',
+      'tools/hooks',
+    ],
+    ['a continued value', '\thooksPath = tools/\\\nhooks\n', 'tools/hooks'],
+    ['an escaped quote', '\thooksPath = "tools/ho\\"oks"\n', 'tools/ho"oks'],
+  ])('%s: the folder git reports is protected', (_name, line, actual) => {
+    const repo = repository(`[core]\n${line}`);
+    const hook = join(repo, actual, 'pre-commit');
+    expect(writes(hook)).toEqual({ kind: 'write', target: hook });
+    expect(writes(join(repo, 'tools', 'build.sh'))).toBeUndefined();
+  });
+
+  test("a subsection's hooksPath is not git's, so its folder stays writable", () => {
+    // A raw reading of the file would protect `tools/subsection`; git
+    // answers that core.hooksPath is not set there.
+    const repo = repository('[core "other"]\n\thooksPath = tools/subsection\n');
+    expect(writes(join(repo, 'tools/subsection/pre-commit'))).toBeUndefined();
+  });
+
+  test('a 16 MiB configuration with an include still yields the hooks folder', () => {
+    const repo = repository(
+      `${'#'.repeat(16 * 1024 * 1024)}\n[include]\n\tpath = !echo SHOULD_NOT_RUN\n[core]\n\thooksPath = ci/hooks\n`,
+    );
+    const hook = join(repo, 'ci/hooks/pre-commit');
+    expect(writes(hook)).toEqual({ kind: 'write', target: hook });
+  });
+
+  test('reading the configuration runs no program the repository names', () => {
+    const repo = repository('');
+    const marker = join(makeTempDir('wru-marker-'), 'monitor-ran');
+    const monitor = join(repo, 'monitor.sh');
+    writeFileSync(monitor, `#!/bin/sh\ntouch '${marker}'\n`);
+    chmodSync(monitor, 0o755);
+    appendFileSync(
+      join(repo, '.git', 'config'),
+      `[core]\n\tfsmonitor = ${monitor}\n\thooksPath = guarded\n`,
+    );
+    const hook = join(repo, 'guarded/pre-commit');
+    expect(writes(hook)).toEqual({ kind: 'write', target: hook });
+    expect(existsSync(marker)).toBe(false);
+    // The monitor is real: a command that refreshes the index runs it.
+    spawnSync('git', ['-C', repo, 'status'], { stdio: 'ignore' });
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  test('without git, every raw hooksPath folder is protected and git config asks', () => {
+    const repo = repository('[core]\n\thooksPath = "tools/ho\\"oks"\n');
+    expect(
+      untrustedPersistenceTarget('Bash', {
+        command: 'git config --get user.name',
+      }),
+    ).toBeUndefined();
+    process.env.PATH = makeTempDir('wru-no-git-');
+    resetGitAvailabilityForTests();
+    const hook = join(repo, 'tools/ho"oks/pre-commit');
+    expect(writes(hook)).toEqual({ kind: 'write', target: hook });
+    expect(
+      untrustedPersistenceTarget('Bash', {
+        command: 'git config --get user.name',
+      }),
+    ).toEqual({ kind: 'shell', target: 'git config' });
+  });
+});
+
+describe('fix round 2: every global git option is read (#4828)', () => {
+  test.each([
+    'git --git-dir /tmp/project/.git -c core.hooksPath=/tmp/evil commit -m x',
+    'git --work-tree /tmp/project -c core.fsmonitor=/tmp/evil status',
+    'git --git-dir=/tmp/project/.git status',
+    'git --exec-path=/tmp/evil status',
+    'git --namespace other fetch',
+    'git -C /tmp/project --config-env core.fsmonitor=MONITOR status',
+    'git -C /tmp/project -c alias.st=!id st',
+    'git -c user.name=x log -1',
+    'git --super-prefix=x status',
+    'env GIT_CONFIG_SYSTEM=/tmp/other.cfg git status',
+    'GIT_CONFIG=/tmp/other.cfg git config --list',
+  ])('`%s` asks', (command) => {
+    expect(untrustedPersistenceTarget('Bash', { command })).toMatchObject({
+      kind: 'shell',
+    });
+  });
+
+  test.each([
+    'git -C /tmp/project status',
+    'git --no-pager log -1',
+    'git -P --no-optional-locks diff',
+    'git config --get user.name',
+  ])('`%s` keeps its usual answer', (command) => {
+    expect(untrustedPersistenceTarget('Bash', { command })).toBeUndefined();
   });
 });

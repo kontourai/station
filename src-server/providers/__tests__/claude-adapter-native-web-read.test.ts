@@ -6,10 +6,11 @@
  * composed from the same external untrusted-content stages Station's runtime
  * uses.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 const { mockQuery } = vi.hoisted(() => ({ mockQuery: vi.fn() }));
 
@@ -146,6 +147,27 @@ async function start(
     );
   return { ledger, postToolUse, preToolUse };
 }
+
+/** A real repository with this configuration appended, so git answers. */
+function gitRepository(repo: string, config: string): string {
+  const init = spawnSync('git', ['init', '-q', repo], { encoding: 'utf8' });
+  expect(init.status).toBe(0);
+  appendFileSync(join(repo, '.git', 'config'), config);
+  return repo;
+}
+
+// The user's own global git configuration must not decide these cases.
+const savedGlobalGitConfig = process.env.GIT_CONFIG_GLOBAL;
+const fileTempDirs = trackTempDirs({ lifetime: 'file' });
+beforeAll(() => {
+  const home = fileTempDirs('wru-git-global-');
+  writeFileSync(join(home, 'empty.gitconfig'), '');
+  process.env.GIT_CONFIG_GLOBAL = join(home, 'empty.gitconfig');
+});
+afterAll(() => {
+  if (savedGlobalGitConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+  else process.env.GIT_CONFIG_GLOBAL = savedGlobalGitConfig;
+});
 
 const decision = (output: Record<string, unknown>) =>
   (output.hookSpecificOutput as { permissionDecision?: string } | undefined)
@@ -360,11 +382,9 @@ describe('fix round 1: writes that install protected files (#4828)', () => {
   });
 
   test("the repository's effective hooks folder, .githooks and .husky are protected", async () => {
-    const repo = tempDirs('wru-hookspath-');
-    mkdirSync(join(repo, '.git'));
-    writeFileSync(
-      join(repo, '.git', 'config'),
-      '[core]\n\trepositoryformatversion = 0\n\thooksPath = tools/hooks # local\n',
+    const repo = gitRepository(
+      tempDirs('wru-hookspath-'),
+      '[core]\n\thooksPath = tools/hooks # local\n',
     );
     const { postToolUse, preToolUse } = await start('thread-hookspath');
     const custom = {
@@ -422,13 +442,96 @@ describe('fix round 1: writes that install protected files (#4828)', () => {
     expect(decision(await preToolUse('Bash', { command }))).toBe('ask');
   });
 
-  test('git configuration that runs nothing keeps its usual answer', async () => {
+  test('git without configuring global options keeps its usual answer', async () => {
     const { postToolUse, preToolUse } = await start('thread-git-benign');
     await postToolUse('WebFetch');
     expect(
       decision(
-        await preToolUse('Bash', { command: 'git -c user.name=x log -1' }),
+        await preToolUse('Bash', { command: 'git -C /workspace log -1' }),
       ),
     ).toBe(undefined);
+  });
+});
+
+describe('fix round 2: the verification probes (#4828)', () => {
+  const tempDirs = trackTempDirs();
+
+  test.each([
+    [
+      'inline-comment',
+      '[core]\n hooksPath = tools/hooks#comment\n',
+      'tools/hooks',
+    ],
+    [
+      'continued-value',
+      '[core]\n hooksPath = tools/\\\nhooks\n',
+      'tools/hooks',
+    ],
+    [
+      'escaped-quote',
+      '[core]\n hooksPath = "tools/ho\\"oks"\n',
+      'tools/ho"oks',
+    ],
+  ])(
+    'the active hooks folder stays protected with %s',
+    async (name, config, actual) => {
+      const repo = gitRepository(tempDirs('wru-verify-config-'), config);
+      const session = await start(`verify-config-${name}`);
+      const hook = {
+        file_path: join(repo, actual, 'pre-commit'),
+        content: 'x',
+      };
+      expect(decision(await session.preToolUse('Write', hook))).toBe(undefined);
+      await session.postToolUse('WebFetch');
+      expect(decision(await session.preToolUse('Write', hook))).toBe('deny');
+    },
+  );
+
+  test.each([
+    [
+      'mcp__mail__moveFile',
+      { source: '/workspace/payload.md', destination: '/workspace/CLAUDE.md' },
+    ],
+    [
+      'mcp__mail__rename_file',
+      { oldPath: '/workspace/AGENTS.md', newPath: '/workspace/notes.md' },
+    ],
+    [
+      'mcp__mail__copy_file',
+      { src: '/workspace/payload.md', dest: '/workspace/.husky/pre-push' },
+    ],
+    [
+      'mcp__mail__writeFile',
+      { path: '/workspace/.githooks/pre-commit', command: 'view' },
+    ],
+  ])(
+    'an explicitly allowed writer %s still cannot persist',
+    async (name, input) => {
+      const original = MAIL.untrustedContentPermissions;
+      MAIL.untrustedContentPermissions = { default: 'allow' };
+      try {
+        const session = await start(`verify-writer-${name}`);
+        await session.postToolUse('WebFetch');
+        expect(decision(await session.preToolUse(name, input))).toBe('deny');
+      } finally {
+        MAIL.untrustedContentPermissions = original;
+      }
+    },
+  );
+
+  test.each([
+    'git -C /tmp/project --config-env core.fsmonitor=MONITOR status',
+    'git -C /tmp/project -c alias.st=!id st',
+    'env GIT_CONFIG_SYSTEM=/tmp/other.cfg git status',
+    'GIT_CONFIG=/tmp/other.cfg git config --list',
+    'git --git-dir /tmp/project/.git -c core.hooksPath=/tmp/evil commit -m x',
+    'git --work-tree /tmp/project -c core.fsmonitor=/tmp/evil status',
+  ])('`%s` asks after a mark', async (command) => {
+    const session = await start(`verify-git-${command.length}`);
+    expect(decision(await session.preToolUse('Bash', { command }))).toBe(
+      undefined,
+    );
+    await session.postToolUse('WebSearch');
+    expect(decision(await session.preToolUse('Bash', { command }))).toBe('ask');
   });
 });

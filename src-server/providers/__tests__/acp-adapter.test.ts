@@ -7577,5 +7577,40 @@ describe('after an untrusted read, ACP changes to instructions are declined (#48
       ).toEqual({
         outcome: { outcome: 'selected', optionId: 'reject-once' },
       });
+    // Verification probes: an input-only path behind a view command, a
+    // decoy location beside a protected move destination, a hooks delete.
+    for (const toolCall of [
+      {
+        toolCallId: 'verify-input-view',
+        kind: 'edit',
+        locations: [],
+        rawInput: { path: '/tmp/project/AGENTS.md', command: 'view' },
+      },
+      {
+        toolCallId: 'verify-input-move',
+        kind: 'move',
+        locations: [{ path: '/tmp/project/notes.md' }],
+        rawInput: {
+          src: '/tmp/project/payload.md',
+          dest: '/tmp/project/.claude/settings.json',
+        },
+      },
+      {
+        toolCallId: 'verify-delete-hooks',
+        kind: 'delete',
+        locations: [{ path: '/tmp/project/.githooks/pre-commit' }],
+        rawInput: {},
+      },
+    ])
+      expect(
+        await Promise.race([
+          proc.client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall,
+            options: PERMISSION_OPTIONS,
+          } as unknown as RequestPermissionRequest),
+          new Promise((resolve) => setTimeout(() => resolve('PENDING'), 1_000)),
+        ]),
+      ).toEqual({ outcome: { outcome: 'selected', optionId: 'reject-once' } });
   });
 });
