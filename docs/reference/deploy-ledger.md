@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-12T20:08:33Z | nightly-desktop | 0.1.11-nightly.20261112.1 | `f53648a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43272588376) |
 | 2026-11-12T20:08:30Z | nightly-android | 0.1.11-nightly.20261112.1 | `f53648a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43272588376) |
 | 2026-11-12T18:10:50Z | nightly-npm | 0.11.0-nightly.20261112.43272588376 | `f53648a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43272588376) |
 | 2026-11-12T10:52:10Z | nightly-desktop | 0.1.11-nightly.20261112 | `e6fdd74` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43186262579) |
@@ -469,6 +470,34 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-12T20:08:33Z · nightly-desktop · 0.1.11-nightly.20261112.1
+
+- Ship SHA: `f53648ab2f41c3ad68c2a0b26e9aabcdf6bddd07`
+- Artifact built at: `2026-11-12T18:11:27.769Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 43272588376)
+
+### Changelog
+
+Commits since `e6fdd74` ([full sha](https://github.com/kontourai/station/commit/e6fdd745384f671e2ba978df3ae00e80c2877037)):
+
+**Features**
+
+- [#4864](https://github.com/kontourai/station/pull/4864) feat(ui): show agent-reported plan progress on Home and Activity Session rows
+- [#4824](https://github.com/kontourai/station/pull/4824) feat(chat): Station tool calls carry Station's mark and read as plain-language actions
+- [#4809](https://github.com/kontourai/station/pull/4809) feat(projects): named channels per Project, today's room becomes #general (#4792)
+- [#4835](https://github.com/kontourai/station/pull/4835) feat(connect): say why and when in the Station switcher, and name the Station while switching
+- [#4826](https://github.com/kontourai/station/pull/4826) feat(browser): show browser activity beside conversation calls
+
+**Fixes**
+
+- [#4841](https://github.com/kontourai/station/pull/4841) fix(chat-dock): keep the Background tasks sheet inside phone safe areas and show each task's full details
+- [#4840](https://github.com/kontourai/station/pull/4840) fix(native): allow If-Match and Idempotency-Key through the native Station broker
+
+**Other**
+
+- [#4847](https://github.com/kontourai/station/pull/4847) build(deps): catch Station up to current Kontour primitives
 
 ## 2026-11-12T20:08:30Z · nightly-android · 0.1.11-nightly.20261112.1
 
