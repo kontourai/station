@@ -338,7 +338,12 @@ The personal Task-room leaves separately compose current Device scope and
 account standing with the exact shared Task incarnation and Project membership.
 `view` permits reads and presence, `discuss` permits messages, and `edit`
 permits edit planning. The account-bound allowlist excludes batch settlement,
-attachments, memory, review and agent requests. A changed membership revision
+attachments, memory, review and agent requests. Task-room files are excluded because
+they flow into Agent requests that run on the operator's credentials (#4136).
+Project-room files differ: an Agent request there captures only message text,
+and each file is bound to the person who uploaded it, so account-bound members
+may upload and read Project-room files under the room's `discuss` and `view`
+checks. A changed membership revision
 invalidates the captured stream admission; an in-process notification prompts
 closure and the idle cadence rechecks within its 15-second interval. Per-delivery
 checks remain. Neither the member preview nor a Task share grants host execution
