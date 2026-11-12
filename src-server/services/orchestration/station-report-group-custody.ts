@@ -486,7 +486,12 @@ export class StationReportGroupCustody {
     wireIntents: FileFinalWireIntentStore,
     dispatchLedger: RecoverableAuthorizationLedger,
     publication: ReportRoundsPublication,
-  ) {
+  ): Promise<
+    Awaited<ReturnType<typeof recoverAuthorizedDelegationAccountingV1>> & {
+      replayed: boolean;
+      operationKey: string;
+    }
+  > {
     if (!publication) refuse();
     id(command.seatId);
     id(command.invocationId);

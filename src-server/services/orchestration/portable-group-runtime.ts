@@ -12,6 +12,7 @@ import { canonicalJson } from '@kontourai/relay';
 import {
   DELEGATION_GROUP_LIMITS,
   DELEGATION_GROUP_TRANSPORT_VERSION,
+  type DelegationGroupEventPage,
   type DelegationGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -244,7 +245,7 @@ export class DelegationGroupRuntime {
     context: RuntimeSourceRequestContext,
     groupId: string,
     afterRevision = 0,
-  ) {
+  ): Promise<DelegationGroupEventPage> {
     const rows = await this.#execution.events(context, groupId, afterRevision);
     const page = rows.slice(0, 64);
     return {
