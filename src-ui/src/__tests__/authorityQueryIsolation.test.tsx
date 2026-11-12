@@ -1901,7 +1901,14 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
         vi.advanceTimersByTime(7_000);
       });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Manage Stations' }));
+      // With Try again and Back to both offered, Manage Stations is the
+      // row's third action and waits in its menu (#3045).
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More Station actions' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Manage Stations' }),
+      );
       expect(opened).toEqual([{ mode: 'list' }]);
 
       vi.useRealTimers();

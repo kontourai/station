@@ -11,6 +11,7 @@ import {
 import { openConnectionsModal } from '../lib/connectionModalEvents';
 import { retainInitialStartup } from '../lib/startup-presentation';
 import { readRecentStations } from '../lib/stationSwitcher';
+import { ActionRow } from './ActionRow';
 import { Button } from './Button';
 import './StationConnectingScreen.css';
 
@@ -129,6 +130,23 @@ export function StationConnectingScreen({
     onRetry();
   };
 
+  const manageStations = () => openConnectionsModal({ mode: 'list' });
+  const labelled = [
+    onRetry && (
+      <Button key="retry" variant="primary" onClick={retry}>
+        Try again
+      </Button>
+    ),
+    previous && (
+      <Button key="back" disabled={leaving} onClick={goBack}>
+        {leaving ? 'Switching…' : `Back to ${previousName}`}
+      </Button>
+    ),
+    <Button key="manage" onClick={manageStations}>
+      Manage Stations
+    </Button>,
+  ].filter(Boolean);
+
   const message = !slow
     ? `${step}…`
     : answered
@@ -158,21 +176,27 @@ export function StationConnectingScreen({
           {message}
         </p>
         {slow && (
-          <div className="station-connecting__actions">
-            {onRetry && (
-              <Button variant="primary" onClick={retry}>
-                Try again
-              </Button>
-            )}
-            {previous && (
-              <Button disabled={leaving} onClick={goBack}>
-                {leaving ? 'Switching…' : `Back to ${previousName}`}
-              </Button>
-            )}
-            <Button onClick={() => openConnectionsModal({ mode: 'list' })}>
-              Manage Stations
-            </Button>
-          </div>
+          // Two labelled actions at most (#3045): retrying and going back are
+          // the likely next steps, so Manage Stations takes a button only
+          // when one of them is unavailable and otherwise waits in the menu.
+          <ActionRow
+            className="station-connecting__actions"
+            overflowLabel="More Station actions"
+            primary={labelled[0]}
+            secondary={labelled[1]}
+            overflow={
+              labelled.length > 2
+                ? [
+                    {
+                      key: 'manage',
+                      label: 'Manage Stations',
+                      haspopup: 'dialog',
+                      onSelect: manageStations,
+                    },
+                  ]
+                : []
+            }
+          />
         )}
         {backError && (
           <p className="station-connecting__error" role="alert">
