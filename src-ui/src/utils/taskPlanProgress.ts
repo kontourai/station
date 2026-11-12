@@ -111,17 +111,15 @@ export function taskPlanProgressLabel(progress: TaskPlanProgress): string {
 
 /**
  * How a Session row on Home or in Activity reads its plan, from the row's own
- * lifecycle label. Ended Sessions (their row already says how they ended) and
- * Drafts (never ran) are not read, which keeps the reads to work that is
- * still open. Running and needs-attention rows refresh; at-rest rows read once.
+ * lifecycle label. A Draft never ran, so it is not read. Running and
+ * needs-attention rows refresh. Every other row is read once: a Session at
+ * rest or ended still shows how far its plan got (and Stopped when its turn
+ * was stopped or it failed with steps open).
  */
 export function sessionPlanProgressRead(
   label: HomeLifecycleLabel,
 ): 'skip' | 'live' | 'settled' {
   switch (label) {
-    case 'Completed':
-    case 'Failed':
-    case 'Stopped':
     case 'Draft':
       return 'skip';
     case 'Running':

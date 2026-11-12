@@ -190,7 +190,7 @@ describe('projectTaskPlanProgress', () => {
 });
 
 describe('sessionPlanProgressRead', () => {
-  test('reads only open Session rows, refreshing those that are running or need someone', () => {
+  test('reads every Session row but a Draft, refreshing those that are running or need someone', () => {
     const reads = Object.fromEntries(
       HOME_LIFECYCLE_LABELS.map((label) => [
         label,
@@ -199,15 +199,15 @@ describe('sessionPlanProgressRead', () => {
     );
     expect(reads).toEqual({
       'Needs attention': 'live',
-      Failed: 'skip',
-      Stopped: 'skip',
+      Failed: 'settled',
+      Stopped: 'settled',
       Running: 'live',
       Current: 'settled',
       Ready: 'settled',
       Recent: 'settled',
       Draft: 'skip',
       Unanswerable: 'settled',
-      Completed: 'skip',
+      Completed: 'settled',
     });
   });
 });

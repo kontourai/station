@@ -1178,7 +1178,7 @@ describe('SessionsView', () => {
     );
   });
 
-  test("#4695: a live row reads its Session's agent-reported plan; ended rows and plan-less Sessions show none", () => {
+  test("#4695: Activity rows read their Session's agent-reported plan; a plan-less Session and a Draft show none", () => {
     const base = { ...sessions[0], delegation: undefined, projectSlug: 'demo' };
     sessions = [
       {
@@ -1201,9 +1201,18 @@ describe('SessionsView', () => {
         ...base,
         threadId: 'thread-ended',
         displayTitle: 'Ended session',
-        status: 'completed',
-        lifecycleState: 'completed',
+        status: 'failed',
+        lifecycleState: 'failed',
         hasActiveTurn: false,
+      },
+      {
+        ...base,
+        threadId: 'thread-draft',
+        displayTitle: 'Draft session',
+        status: 'idle',
+        lifecycleState: 'queued',
+        hasActiveTurn: false,
+        draft: true,
       },
     ];
     const plan = (threadId: string, lifecycleState: string) => ({
@@ -1232,8 +1241,9 @@ describe('SessionsView', () => {
           { sequence: 1, event: { method: 'turn.started', turnId: 'turn-1' } },
         ],
       },
-      // Even a cached plan never shows on a row whose Session ended.
-      'thread-ended': plan('thread-ended', 'completed'),
+      'thread-ended': plan('thread-ended', 'failed'),
+      // Even a cached plan never shows on a Draft: it never ran.
+      'thread-draft': plan('thread-draft', 'queued'),
     };
     renderView();
 
@@ -1255,10 +1265,23 @@ describe('SessionsView', () => {
     expect(
       rowButton('Unplanned session').querySelector('.task-plan-progress'),
     ).toBeNull();
-    expect(rowButton('Ended session').textContent).not.toContain('Agent plan');
+    // An ended row still shows how far its plan got, read once.
+    expect(
+      screen.getByRole('button', {
+        name: 'Ended session',
+        description: /, Agent-reported plan: 1 of 3 steps done, stopped$/,
+      }).textContent,
+    ).toContain('Agent plan 1/3 · Stopped');
+    expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+      'thread-ended',
+      'http://test.local',
+      expect.objectContaining({ enabled: true, refetchInterval: undefined }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '1 older draft' }));
+    expect(rowButton('Draft session').textContent).not.toContain('Agent plan');
     expect(
       useOrchestrationSessionActivityQuery.mock.calls.some(
-        ([threadId]) => threadId === 'thread-ended',
+        ([threadId]) => threadId === 'thread-draft',
       ),
     ).toBe(false);
   });

@@ -132,8 +132,8 @@ export function TaskPlanProgressForTask({
 
 /**
  * A Session row on Home or in Activity. The row's own lifecycle label decides
- * the read: none for ended or never-run Sessions (no read is mounted), a 5 s
- * refresh while running or waiting on someone, one read otherwise.
+ * the read: none for a Draft (no read is mounted), a 5 s refresh while running
+ * or waiting on someone, one read otherwise.
  */
 export function SessionPlanProgress({
   lifecycleLabel,

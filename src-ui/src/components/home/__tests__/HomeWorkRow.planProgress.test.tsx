@@ -150,7 +150,22 @@ describe("Home rows show the Session's agent-reported plan (#4695)", () => {
     ).toBe('Agent plan 1/2 · Earlier turn');
   });
 
-  test('no plan, an empty plan, an ended Session, a one-line row and another Station show nothing', () => {
+  test('an ended Session still shows how far its plan got, read once without refreshing', () => {
+    windows['thread-1'] = planWindow('failed', ['completed', 'in_progress']);
+    renderRow(session({ lifecycleState: 'failed', hasActiveTurn: false }));
+    expect(
+      screen.getByRole('img', {
+        name: 'Agent-reported plan: 1 of 2 steps done, stopped',
+      }).textContent,
+    ).toBe('Agent plan 1/2 · Stopped');
+    expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+      'thread-1',
+      undefined,
+      expect.objectContaining({ enabled: true, refetchInterval: undefined }),
+    );
+  });
+
+  test('no plan, an empty plan, a Draft, a one-line row and another Station show nothing', () => {
     windows['thread-1'] = {
       session: { lifecycleState: 'running' },
       events: [],
@@ -166,10 +181,14 @@ describe("Home rows show the Session's agent-reported plan (#4695)", () => {
     cleanup();
 
     useOrchestrationSessionActivityQuery.mockClear();
-    windows['thread-1'] = planWindow('completed', ['completed', 'pending']);
+    windows['thread-1'] = planWindow('queued', ['completed', 'pending']);
     expect(
       renderRow(
-        session({ lifecycleState: 'completed', hasActiveTurn: false }),
+        session({
+          lifecycleState: 'queued',
+          hasActiveTurn: false,
+          draft: true,
+        }),
       ).container.querySelector('.task-plan-progress'),
     ).toBeNull();
     cleanup();
@@ -189,7 +208,7 @@ describe("Home rows show the Session's agent-reported plan (#4695)", () => {
         environmentLabel: 'Build box',
       }).container.querySelector('.task-plan-progress'),
     ).toBeNull();
-    // The ended, one-line and remote rows never read the Session at all.
+    // The Draft, one-line and remote rows never read the Session at all.
     expect(useOrchestrationSessionActivityQuery).not.toHaveBeenCalled();
   });
 });
