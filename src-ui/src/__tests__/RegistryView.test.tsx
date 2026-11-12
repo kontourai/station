@@ -16,6 +16,7 @@ import { useRegistryItemsQuery } from '../../../packages/sdk/src/query-domains/c
 import type { RegistryItem } from '../components/registry/registryCatalogModel';
 import * as remotePluginBundleConsent from '../core/remotePluginBundleConsent';
 
+const registrySources = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const catalogRecovery = vi.hoisted(() => ({
   useItems: vi.fn(),
   fetch: vi.fn(),
@@ -275,7 +276,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
   useInvalidateQuery: () => vi.fn(),
   useRegistrySourcesQuery: () => ({
-    data: [],
+    data: registrySources,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -562,6 +563,65 @@ describe('RegistryView', () => {
     expect(mutationCalls).toEqual([
       { tab: 'skills', id: 'skill-one', action: 'install' },
     ]);
+  });
+
+  test('choosing a source opens its catalog tab unless it supplies the current one', () => {
+    registrySources.push(
+      {
+        id: 'skills-only',
+        kind: 'skills',
+        displayName: 'Skill library',
+        origin: 'user',
+        adapter: 'github',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            { kind: 'skills', count: 3, via: 'skill-md', installable: true },
+            {
+              kind: 'plugins',
+              count: 1,
+              via: 'claude-marketplace',
+              installable: false,
+            },
+          ],
+        },
+      },
+      {
+        id: 'mixed',
+        kind: 'skills',
+        displayName: 'Team catalog',
+        origin: 'user',
+        adapter: 'directory',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            { kind: 'skills', count: 2, via: 'skill-md', installable: true },
+            {
+              kind: 'agents',
+              count: 1,
+              via: 'station-manifest',
+              installable: true,
+            },
+          ],
+        },
+      },
+    );
+    try {
+      render(<RegistryView />);
+      const browse = screen.getByLabelText('Browse marketplace');
+      fireEvent.change(browse, { target: { value: 'mixed' } });
+      expect(navigateMock).not.toHaveBeenCalled();
+      fireEvent.change(browse, { target: { value: 'skills-only' } });
+      expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
+    } finally {
+      registrySources.length = 0;
+    }
   });
 
   test('updates the URL when switching Registry tabs', () => {

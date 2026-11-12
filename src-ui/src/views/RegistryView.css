@@ -161,8 +161,7 @@
   border: var(--k-border-thin) solid var(--k-line-strong);
   color: var(--k-text-muted);
 }
-.marketplaces__trust--station,
-.marketplaces__trust--configured {
+.marketplaces__trust--station {
   border-color: var(--k-positive);
   color: var(--k-text);
   background: var(--k-positive-soft);

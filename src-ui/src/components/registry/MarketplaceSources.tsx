@@ -32,6 +32,19 @@ function supplies(source: RegistrySource, kinds?: readonly CatalogKind[]) {
   );
 }
 
+/** The catalog kinds a source supplies, primary first. */
+function suppliedKinds(source: RegistrySource): CatalogKind[] {
+  const kinds: CatalogKind[] = [source.kind];
+  for (const detected of source.detection?.kinds ?? [])
+    if (
+      detected.installable &&
+      detected.kind !== 'integrations' &&
+      !kinds.includes(detected.kind)
+    )
+      kinds.push(detected.kind);
+  return kinds;
+}
+
 const KIND_NAMES: Record<RegistrySourceDetectedKind['kind'], [string, string]> =
   {
     skills: ['skill', 'skills'],
@@ -46,9 +59,9 @@ function kindLabel(kind: RegistrySourceDetectedKind) {
 }
 
 /**
- * Who stands behind a source. Only Station's own collection and an operator's
- * configuration are vouched for by this Station; a source a person added, and
- * its publisher metadata, are not verified.
+ * Who stands behind a source. Only Station's own bundled collection ships
+ * with Station. A default or configured catalog, a plugin's, and a person's
+ * own are not verified by Station, whatever their publisher metadata says.
  */
 function trust(source: RegistrySource): { label: string; detail: string } {
   switch (source.origin) {
@@ -56,8 +69,9 @@ function trust(source: RegistrySource): { label: string; detail: string } {
       return { label: 'Station', detail: 'Ships with Station' };
     case 'configured':
       return {
-        label: 'Operator',
-        detail: 'Configured for this Station by its operator',
+        label: 'Default',
+        detail:
+          'A default or configured catalog of this Station. Its publisher is not verified.',
       };
     case 'plugin':
       return {
@@ -142,7 +156,15 @@ export function MarketplaceSources({
   kinds,
 }: {
   selected: string;
-  onSelect: (id: string, kind?: RegistrySource['kind']) => void;
+  /**
+   * `kind` is the source's primary catalog kind; `supplied` lists every
+   * catalog kind it supplies, so a view can keep its tab when it is one.
+   */
+  onSelect: (
+    id: string,
+    kind?: RegistrySource['kind'],
+    supplied?: readonly RegistrySource['kind'][],
+  ) => void;
   kinds?: readonly RegistrySource['kind'][];
 }) {
   const sources = useRegistrySourcesQuery();
@@ -192,13 +214,16 @@ export function MarketplaceSources({
           <select
             className="choice-trigger"
             value={selected}
-            onChange={(event) =>
+            onChange={(event) => {
+              const source = sources.data?.find(
+                (candidate) => candidate.id === event.target.value,
+              );
               onSelect(
                 event.target.value,
-                sources.data?.find((source) => source.id === event.target.value)
-                  ?.kind,
-              )
-            }
+                source?.kind,
+                source ? suppliedKinds(source) : undefined,
+              );
+            }}
           >
             <option value="all">All sources</option>
             {visible.map((source) => (
@@ -257,7 +282,9 @@ export function MarketplaceSources({
                   >
                     {tier.label}
                   </span>
-                  <span className="page__meta-pill">{source.status}</span>
+                  {source.status !== 'unknown' && (
+                    <span className="page__meta-pill">{source.status}</span>
+                  )}
                 </header>
                 <p className="marketplaces__meta">{tier.detail}</p>
                 {source.location && (
@@ -352,7 +379,7 @@ export function MarketplaceSources({
               <Button
                 variant="primary"
                 onClick={() => {
-                  onSelect(added.id, added.kind);
+                  onSelect(added.id, added.kind, suppliedKinds(added));
                   closeDialog();
                 }}
               >

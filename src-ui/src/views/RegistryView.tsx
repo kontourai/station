@@ -533,7 +533,14 @@ export function RegistryView({
       {!toolPicker && (
         <MarketplaceSources
           selected={selectedSource}
-          onSelect={setSelectedSource}
+          onSelect={(id, _kind, supplied) => {
+            setSelectedSource(id);
+            // Show the chosen source's catalog: keep the tab when the source
+            // supplies it, otherwise open its primary kind's tab.
+            const tabs: readonly RegistryCatalogTab[] = supplied ?? [];
+            if (tabs.length > 0 && !tabs.includes(activeTab))
+              selectTab(tabs[0]!);
+          }}
         />
       )}
       {installTarget ? (

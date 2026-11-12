@@ -138,25 +138,38 @@ test('adds a source from a location and optional ref, with no type to choose, th
   fireEvent.click(
     within(result).getByRole('button', { name: 'Browse this source' }),
   );
-  expect(select).toHaveBeenCalledWith('hill-climb', 'skills');
+  expect(select).toHaveBeenCalledWith('hill-climb', 'skills', ['skills']);
 });
 
 test('a source card shows its trust tier, detected kinds with counts and its freshness', () => {
-  extraSources.push(hillClimb, {
-    id: 'notes',
-    kind: 'skills',
-    displayName: 'Notes',
-    origin: 'user',
-    location: '/notes',
-    adapter: 'directory',
-    enabled: true,
-    status: 'ready',
-    detection: {
-      state: 'nothing-recognized',
-      kinds: [],
-      checkedAt: new Date().toISOString(),
+  extraSources.push(
+    hillClimb,
+    {
+      id: 'default-skills',
+      kind: 'skills',
+      displayName: 'anthropics/skills',
+      origin: 'configured',
+      location: 'github:anthropics/skills/main/skills',
+      adapter: 'github',
+      enabled: true,
+      status: 'unknown',
     },
-  });
+    {
+      id: 'notes',
+      kind: 'skills',
+      displayName: 'Notes',
+      origin: 'user',
+      location: '/notes',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+      detection: {
+        state: 'nothing-recognized',
+        kinds: [],
+        checkedAt: new Date().toISOString(),
+      },
+    },
+  );
   render(<MarketplaceSources selected="all" onSelect={select} />);
   const card = screen
     .getByText('Bil0000/Hill-Climb', { selector: 'strong' })
@@ -182,6 +195,13 @@ test('a source card shows its trust tier, detected kinds with counts and its fre
     .getByText('Station', { selector: 'strong' })
     .closest('article') as HTMLElement;
   expect(within(station).getByText('Ships with Station')).toBeTruthy();
+  // A default catalog is not vouched for, and an unread status adds nothing.
+  const defaults = screen
+    .getByText('anthropics/skills', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  expect(within(defaults).getByText('Default')).toBeTruthy();
+  expect(defaults.textContent).toContain('Its publisher is not verified.');
+  expect(defaults.textContent).not.toContain('unknown');
 });
 
 test('a kinds-filtered view includes a source that supplies that kind beside its primary one', () => {
@@ -219,7 +239,7 @@ test('filters by host source identity and keeps plugin ownership and offline sta
   fireEvent.change(screen.getByLabelText('Browse marketplace'), {
     target: { value: 'publisher' },
   });
-  expect(select).toHaveBeenCalledWith('publisher', 'plugins');
+  expect(select).toHaveBeenCalledWith('publisher', 'plugins', ['plugins']);
   expect(screen.getByText('Provided by plugin publisher-plugin')).toBeTruthy();
   expect(
     screen.getByText('Offline catalog. Last successful snapshot retained.'),
