@@ -2,6 +2,17 @@
 
 Canonical cross-package contract ownership for Station.
 
+`AgentDelegationContext` in `@kontourai/station-contracts/agent` carries
+`toolAllowlistConstraints`: bounded inherited wildcard allowlists whose clauses
+all apply. Empty clauses deny every tool; an absent or empty outer list adds no
+clause. `allowedTools` retains its legacy empty-list meaning. These fields are
+policy data, not credentials or a published Flow delegation envelope. The
+`delegationToolConstraintsV1` handshake flag in `StationCapabilityFlags` promises
+preservation and Station-owned enforcement or refusal; unsupported native engines
+refuse inherited constraints before launch. See
+[delegated child restrictions](../guides/agent-configuration.md#delegated-child-restrictions)
+for bounds, Session reuse and remaining authority limits.
+
 The `delegation-group` module separates caller-owned portable group observations
 from Station Session groups. `DelegationGroupView` includes the authenticated
 Agent/runtime protocol/provider/model selection for each member.

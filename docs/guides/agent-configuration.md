@@ -221,10 +221,29 @@ it invalidates the attestation. A valid stamp authenticates the context, not a
 caller credential or remote execution grant. Ownership and cancellation still
 require their server-derived provenance checks.
 
+Inherited allowlists remain separate clauses in
+`AgentDelegationContext.toolAllowlistConstraints`. A tool must match every
+inherited clause and the current Agent's nonempty `allowedTools`, and must not
+match a blocked pattern. An empty inherited clause denies every tool; an empty
+legacy `allowedTools` retains its unrestricted meaning. Derivation retains at
+most 64 clauses, each with at most 256 patterns of at most 256 characters;
+exceeding a bound refuses the child rather than dropping a restriction.
+
+Station-agent execution enforces these clauses at its pre-tool policy boundary.
+Native engines currently refuse a request carrying inherited clauses before
+launch because their complete enforcement is not qualified. Reusing a Session
+also requires its persisted policy to retain the requested clauses; a new
+request cannot install them into an already running Session. Durable request
+keys include the required policy, so the same key with changed restrictions
+conflicts instead of replaying an earlier result.
+
+Forwarding to a local, peer or SSH-selected Station requires that exact
+Environment's handshake to advertise `delegationToolConstraintsV1`. This flag
+promises clause preservation and Station-owned enforcement or refusal. It does
+not authenticate portable authority or establish universal native interception.
 These lineage checks do not establish finite token, cost or attempt enforcement,
-native-engine confinement, or authenticated portable authority across Stations.
-Inherited wildcard allowlist conjunctions remain an unfinished part of the
-child-work epic; do not interpret the retained denials as full policy inheritance.
+mutable-resource confinement, or inherited credential authority. Those remain
+unfinished parts of the child-work epic.
 
 ### Guardrails
 

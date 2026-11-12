@@ -1134,6 +1134,18 @@ These legacy coding endpoints are separate from the built-in Workspace File Prev
 See the [reader](../../src-server/services/projects/file-tree-service.ts) and
 [route](../../src-server/routes/projects/coding.ts).
 
+### Inherited delegation policy
+
+A durable delegation or foreground-create key is bound to the inherited tool
+policy when the request carries `toolAllowlistConstraints`. Reusing that key
+with a different required policy produces HTTP 409; it does not return the
+previous result under the new restrictions. Continuation into an existing
+Session requires its persisted policy to retain the requested clauses.
+`delegationToolConstraintsV1` advertises preservation plus Station-owned
+enforcement or refusal. Capability discovery does not qualify a native engine
+or grant portable authority. See
+[delegated child restrictions](../guides/agent-configuration.md#delegated-child-restrictions).
+
 ### Conversation input-origin support
 
 `OrchestrationSessionSummary.inputOrigin` is a closed, optional server-issued
