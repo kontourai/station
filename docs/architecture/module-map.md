@@ -2726,7 +2726,15 @@ After the readiness fingerprint, the projection adds Claude Code's and Codex's
 ([observation](../../src-server/services/connections/engine-route-observation.ts));
 it is disclosure, so it never invalidates a recorded check. The engine page reads
 it with the [resource-hub kit](../../src-ui/src/components/resource-hub/ResourceDetail.tsx)
-and the [engine detail tabs](../../src-ui/src/views/engine-detail/EngineOverviewTab.tsx).
+and the [engine detail tabs](../../src-ui/src/views/engine-detail/EngineOverviewTab.tsx);
+model connections use the same kit through the
+[model detail tabs](../../src-ui/src/views/model-detail/ModelOverviewTab.tsx).
+What depends on a connection is a separate read, not part of the inspection:
+`GET /api/connections/used-by`
+([reader](../../src-server/services/connections/connection-used-by-reader.ts))
+projects saved Agent and Project bindings through the pure
+[used-by contract](../../packages/contracts/src/connection-used-by.ts), and the kit's
+[used-by list](../../src-ui/src/components/resource-hub/UsedByList.tsx) presents it.
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims

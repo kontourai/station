@@ -2695,6 +2695,20 @@ does not establish that no Model connections exist. Provider-reported
 `/api/connections/runtimes` spelling is not registered here.
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
+### What uses a connection
+
+`GET /api/connections/used-by` returns `{success: true, data: {dependents}}`:
+one entry per Agent or Project whose saved configuration names an engine
+connection, model connection or tool server, with `connectionId`, `kind`,
+`slug`, `name` and `via` (`engine`, `model`, `tool-server`,
+`project-default-model`, `project-embedding`, `project-tools`). Only explicit
+bindings count; nothing is matched by slug or name. A Project's default
+provider counts only with its default model. Access: the `/api/connections`
+family's read tier. A caller that receives only admitted Agents from
+`GET /api/agents` (a Project member) gets 403. `Cache-Control: no-store`.
+The [contract](../../packages/contracts/src/connection-used-by.ts) holds the
+projection; `GET /integrations` still returns its older `usedBy` display names.
+
 Rows can include `runtimeCatalog` model observations and readiness evidence.
 Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
 OpenAI-compatible Model connection; its current address/key are resolved at

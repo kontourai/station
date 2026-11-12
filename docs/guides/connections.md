@@ -93,6 +93,33 @@ prove chat, tool calling, images, or other model features. See the
 [readiness projection](../../src-ui/src/views/provider-settings/providerCatalog.tsx)
 and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectionForm.tsx).
 
+## Read a model connection's page
+
+A saved model connection's page has tabs, each with its own address
+(`/connections/models/<id>/<tab>`). As on an engine's page, switching tabs
+keeps unsaved settings, edits show **Save** and **Discard**, and leaving asks.
+The header shows the row's status, the reason and at most one fix; what a
+check reported shows under it.
+
+- **Overview** — the service, what it is used for, the default model, how many
+  models are listed, the last check, and what uses it.
+- **Usage** — Station-observed usage by this model connection over 7 or 30
+  days, on this Station only, on a Station that supports the filter. Runs from
+  before Station recorded each run's model connection are not counted. Usage
+  needs `access:manage`; without it the tab says so.
+- **Models** — the listed models, with favorites, order and visibility for this
+  device, or **Load models** when none are listed.
+- **Settings** — the connection's fields, **Test Connection** with its cost,
+  and **Delete** last.
+
+**Used by** lists the Agents and Projects whose saved settings choose the
+connection: an Agent's engine, model connection or tool servers, and a
+Project's chat default, embeddings or tool defaults. Each opens its page. A
+name that merely looks like the connection's is not a dependent. Scheduled
+jobs choose an Agent, so they depend on a connection through it. Someone who
+is only a Project member sees **Not shown**
+([projection](../../packages/contracts/src/connection-used-by.ts)).
+
 ---
 
 ## Read an engine's page
@@ -2201,7 +2228,14 @@ Connections has one clear home for each relationship:
   **Connect a Station** in the Station manager.
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
-  or tool availability.
+  or tool availability. Each row shows its status, the tool count and date of
+  its last check, and how many Agents and Projects use it; a server's page
+  lists them under **Used by**. **Check all** checks the saved servers, three
+  at a time. It skips Station's own servers, turned-off servers, and any
+  server whose check could ask you to sign in (a remote server not yet checked
+  without sign-in, or one signed in per person), and names the skipped ones.
+  Leaving a server with unsaved edits asks first
+  ([plan](../../src-ui/src/views/integrations/tool-server-status.ts)).
   For a saved integration configured to use personal accounts, **Your account**
   shows whether tools use your account, a Project-specific account, an explicitly
   allowed shared account, or no account. Choose **Connect your account**, then

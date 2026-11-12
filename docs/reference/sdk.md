@@ -1336,6 +1336,14 @@ Returns model/provider-backed connections from `GET /api/connections/models`.
 
 Use this when you need provider readiness, editable provider config, or provider-scoped `config.modelOptions`.
 
+#### `useConnectionUsedByQuery()`
+
+Returns what names each connection from `GET /api/connections/used-by`, under
+`['connections', 'used-by']`. A caller the server withholds it from gets
+`ConnectionUsedByWithheldError`; render that as an access state, not as
+"nothing uses it". Filter one connection with `dependentsOfConnection` from
+`@kontourai/station-contracts/connection-used-by`.
+
 <a id="useruntimeconnectionsquery"></a>
 
 #### `useEngineConnectionsQuery()`
