@@ -16,7 +16,7 @@ const ROOTS = [
 // `--k-negative`, `--k-caution`, `--k-positive` and `--k-shadow`. Station's
 // own role families (`--layer-*`, `--motion-*`, `--ease-*`) and
 // component-scoped custom properties are not legacy and stay out.
-const LEGACY_TOKEN =
+export const LEGACY_TOKEN =
   /var\(\s*(--(?:space|text|radius|font|bg|border|accent|color|error|warning|success|shadow)-[\w-]+)/g;
 const STANDARD_ACTION =
   /(?:__action\b|__confirm\b|--(?:primary|secondary|danger)\b)/;

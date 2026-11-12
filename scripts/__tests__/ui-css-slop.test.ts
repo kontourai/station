@@ -65,14 +65,24 @@ describe('UI CSS slop policy', () => {
     // component-style-hygiene counts the legacy --accent reference; one edit
     // must not fail two gates.
     for (const css of [
-      '.a { outline-color: var(--accent, #5b8cff); }',
+      '.a { outline-color: var(--accent-primary, #5b8cff); }',
       '.a { color: var(--k-text, var(--text-primary, #fff)); }',
+      // Nested parentheses inside a legacy fallback are matched, balanced.
+      '.a{box-shadow: var(--shadow-x, 0 0 calc(2px) #000)}',
       '.a { mask-image: linear-gradient(to bottom, #000 80%, transparent); }',
       '.a { -webkit-mask-image: linear-gradient(#000, transparent); }',
       '.a { mask: radial-gradient(circle, #000 60%, transparent) }',
       '.a { -webkit-mask: conic-gradient(#000, transparent) }',
     ]) {
       expect(kinds(css), css).toEqual([]);
+    }
+    // A non-legacy fallback hex is a hard-coded color nothing else counts.
+    for (const css of [
+      '.a { color: var(--k-text, #fff); }',
+      '.a { border-color: var(--my-local, #5b8cff); }',
+      '.a { color: var(--k-text, var(--k-text-muted, #777)); }',
+    ]) {
+      expect(kinds(css), css).toEqual(['hex-color']);
     }
     // The mask exemption is for masks only.
     expect(

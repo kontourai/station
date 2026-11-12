@@ -149,6 +149,9 @@ describe('UI copy length policy', () => {
       `// ${VERBOSE}\nconst x = <p>Saved. Synced.</p>;`,
       `<p>Pairing failed. Try again.</p>`,
       `<Row ariaLabel="${VERBOSE}" />`,
+      // Object-property accessible names are opt-in (ui-copy-style only).
+      `const a = { ariaLabel: '${VERBOSE}' };`,
+      `const a = { 'aria-label': '${VERBOSE}' };`,
     ]) {
       expect(kinds('src-ui/src/Quiet.tsx', source), source).toEqual([]);
     }

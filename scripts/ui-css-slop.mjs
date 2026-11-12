@@ -15,8 +15,9 @@
  *   layer; use a `--layer-*` role from `src-ui/src/tokens.css`.
  * - `hex-color`: a `#rgb`/`#rrggbb`/`#rrggbbaa` color outside a custom
  *   property definition. Colors come from `--k-*` tokens. A hex that is only
- *   the fallback of a `var(--x, #hex)` is not counted: component-style-hygiene
- *   already counts that legacy reference, and one edit should fail one gate.
+ *   the fallback of a legacy-token `var(--text-primary, #hex)` is not
+ *   counted: component-style-hygiene already counts that reference, and one
+ *   edit should fail one gate. Any other fallback hex counts.
  *
  * `mask`, `mask-image` and their `-webkit-` forms are skipped for `gradient`
  * and `hex-color`: a mask gradient is an alpha ramp (a fade at a scroll
@@ -41,6 +42,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { LEGACY_TOKEN } from './component-style-hygiene.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { compareUiCopy } from './ui-copy-length.mjs';
@@ -59,14 +61,24 @@ const LOCAL_Z_INDEX = /^(?:-1|0|1)$/;
 const MASK_PROPERTY = /^(?:-webkit-)?mask(?:-|$)/;
 
 /**
- * A value with each `var(...)` call removed, balanced, so a hex that is only
- * a var() fallback is gone and a hex elsewhere in the value stays.
+ * A value with each legacy-token `var(...)` call removed, balanced, so a hex
+ * that is only the fallback of a legacy reference is gone. Legacy means
+ * component-style-hygiene's `LEGACY_TOKEN`, which already counts that
+ * reference. A non-legacy call (`var(--k-text, #fff)`, a component-local
+ * property) is kept, so its fallback hex still counts here; scanning
+ * continues inside it, so a legacy call nested in its fallback is removed.
  */
-export function withoutVarCalls(value) {
+export function withoutLegacyVarCalls(value) {
+  const legacy = new RegExp(LEGACY_TOKEN.source, 'y');
   let out = '';
   let i = 0;
   for (;;) {
-    const start = value.indexOf('var(', i);
+    let start = value.indexOf('var(', i);
+    while (start !== -1) {
+      legacy.lastIndex = start;
+      if (legacy.test(value)) break;
+      start = value.indexOf('var(', start + 4);
+    }
     if (start === -1) return out + value.slice(i);
     out += `${value.slice(i, start)} `;
     let depth = 0;
@@ -138,7 +150,7 @@ export function declarationKinds({ property, value }) {
     )
       kinds.push('numeric-z-index');
   }
-  if (!custom && !mask && HEX_COLOR.test(withoutVarCalls(value)))
+  if (!custom && !mask && HEX_COLOR.test(withoutLegacyVarCalls(value)))
     kinds.push('hex-color');
   return kinds;
 }

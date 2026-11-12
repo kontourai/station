@@ -70,7 +70,7 @@ and the pre-push static gates.
 | --- | --- |
 | `npm run ui-copy-length:ratchet` ([script](../../scripts/ui-copy-length.mjs)) | copy over 140 characters or over two sentences |
 | `npm run ui-copy-style:ratchet` ([script](../../scripts/ui-copy-style.mjs)) | internal vocabulary (`jargon:<word>`), an issue reference, filler or `!`, "not just", `...`, emoji, an em-dash aside, or a `title` that repeats the element's own visible text (`title-dup`) |
-| `npm run ui-css-slop:ratchet` ([script](../../scripts/ui-css-slop.mjs)) | a gradient, backdrop blur, infinite animation, literal `z-index` other than -1, 0 or 1, or a hex color outside a custom-property definition or a `var()` fallback (masks are exempt from the gradient and hex kinds) |
+| `npm run ui-css-slop:ratchet` ([script](../../scripts/ui-css-slop.mjs)) | a gradient, backdrop blur, infinite animation, literal `z-index` other than -1, 0 or 1, or a hex color outside a custom-property definition or a legacy-token `var()` fallback, which `lint:component-style` already counts (masks are exempt from the gradient and hex kinds) |
 | `npm run lint:component-style` ([script](../../scripts/component-style-hygiene.mjs)) | a reference to a pre-`--k-*` token (`legacy-token`), among its other kinds |
 | `npm run noun-consistency:gate` ([script](../../scripts/noun-consistency-gate.mjs)) | zero tolerance: a retired noun in UI copy |
 
