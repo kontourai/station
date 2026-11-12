@@ -188,13 +188,13 @@ export function useConversationBoundaryDialogs({
     : isSessionExecutionActive(activeSession)
       ? 'Wait for the current turn to finish.'
       : hasLocalDeferredMessages
-        ? 'Resolve queued or offline messages first.'
+        ? 'Send or discard queued messages first.'
         : durableHandoffQueue.status === 'pending'
           ? 'Checking queued messages…'
           : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
             : durableHandoffQueueCount > 0
-              ? 'Resolve queued or offline messages first.'
+              ? 'Send or discard queued messages first.'
               : undefined;
 
   const openConversationHandoff = useCallback(

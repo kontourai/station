@@ -111,11 +111,7 @@ export function ComposerActionsMenu({
                 role="menuitem"
                 className="composer-actions-menu__item"
                 disabled={handoffDisabled}
-                title={
-                  handoffDisabled
-                    ? handoffDisabledReason
-                    : 'Continue this conversation with another Agent'
-                }
+                title={handoffDisabled ? handoffDisabledReason : undefined}
                 onClick={() => {
                   close();
                   onOpenHandoff();
@@ -126,7 +122,7 @@ export function ComposerActionsMenu({
                   className="composer-actions-menu__item-hint"
                   aria-hidden="true"
                 >
-                  Another Agent
+                  Another agent
                 </span>
               </button>
             )}

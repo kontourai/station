@@ -6,6 +6,7 @@ import {
   CONVERSATION_HANDOFF_CARRIED_FIELDS,
   CONVERSATION_HANDOFF_DISCLOSURE_LABELS,
   CONVERSATION_HANDOFF_RESET_FIELDS,
+  type ConversationHandoffEffectStatus,
 } from '@kontourai/station-contracts/orchestration';
 import {
   type ConversationHandoffReceipt,
@@ -153,6 +154,27 @@ function isDefiniteHandoffFailure(error: unknown): boolean {
   );
 }
 
+/** What an observed, not-yet-applied switch status means for the user. */
+export function handoffStatusFeedback(
+  status: ConversationHandoffEffectStatus,
+): string {
+  switch (status) {
+    case 'reserved':
+      return "The switch started but the new agent hasn't replied. Restore its setup, then retry.";
+    case 'accepted':
+    case 'completed':
+      return 'The switch went through. Check status to open it.';
+    case 'failed':
+      return 'The switch failed. Your message is kept, so you can retry.';
+    case 'indeterminate':
+      return "Station couldn't confirm whether the switch ran. Check status before retrying.";
+    default: {
+      const unhandled: never = status;
+      return unhandled;
+    }
+  }
+}
+
 export function ConversationHandoffDialog({
   apiBase,
   conversationId,
@@ -263,7 +285,7 @@ export function ConversationHandoffDialog({
 
   const changeLabel = executionPreset
     ? 'switching engines'
-    : 'continuing with another Agent';
+    : 'continuing with another agent';
   // A precondition the caller must resolve outside this dialog. The submit is
   // disabled while one holds and the reason is shown beside it, so the form
   // never offers an action it would refuse. An uncertain request whose
@@ -497,11 +519,7 @@ export function ConversationHandoffDialog({
         return;
       }
       setState('indeterminate');
-      setFeedback(
-        result.status === 'reserved'
-          ? "The switch started but the new agent hasn't replied. Restore its setup, then retry."
-          : `The switch is ${result.status}. Your message is kept for a retry.`,
-      );
+      setFeedback(handoffStatusFeedback(result.status));
     } catch (error) {
       setState('indeterminate');
       setFeedback(
@@ -514,7 +532,7 @@ export function ConversationHandoffDialog({
     <ResponsiveDialogSurface
       layer="dialog"
       ariaLabel={
-        executionPreset ? 'Change chat engine' : 'Continue with another Agent'
+        executionPreset ? 'Change chat engine' : 'Continue with another agent'
       }
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
@@ -529,7 +547,7 @@ export function ConversationHandoffDialog({
         </div>
         <ResponsiveDialogCloseButton
           label={
-            executionPreset ? 'Cancel engine change' : 'Cancel Agent handoff'
+            executionPreset ? 'Cancel engine change' : 'Cancel agent handoff'
           }
           onClick={onClose}
           disabled={closeLocked}

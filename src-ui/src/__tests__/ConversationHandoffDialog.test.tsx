@@ -6,7 +6,10 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ConversationHandoffDialog } from '../components/chat-dock/ConversationHandoffDialog';
+import {
+  ConversationHandoffDialog,
+  handoffStatusFeedback,
+} from '../components/chat-dock/ConversationHandoffDialog';
 import { acceptConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
 import { useConversationBoundaryDialogs } from '../components/chat-dock/useConversationBoundaryDialogs';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -704,7 +707,7 @@ describe('ConversationHandoffDialog', () => {
     const { onClose } = renderDialog();
     expect(screen.queryByText('Offline Agent')).toBeNull();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Cancel Agent handoff' }),
+      screen.getByRole('button', { name: 'Cancel agent handoff' }),
     );
     expect(onClose).toHaveBeenCalledOnce();
     expect(handoffExecutionMessage).not.toHaveBeenCalled();
@@ -929,7 +932,7 @@ describe('ConversationHandoffDialog', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: 'Cancel Agent handoff',
+          name: 'Cancel agent handoff',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
@@ -1037,6 +1040,64 @@ describe('ConversationHandoffDialog', () => {
       ),
     ).toBeNull();
   });
+
+  test.each([
+    ['failed', 'The switch failed. Your message is kept, so you can retry.'],
+    [
+      'indeterminate',
+      "Station couldn't confirm whether the switch ran. Check status before retrying.",
+    ],
+    [
+      'reserved',
+      "The switch started but the new agent hasn't replied. Restore its setup, then retry.",
+    ],
+  ] as const)(
+    'an observed %s switch says what it means, not its status name',
+    async (status, feedback) => {
+      handoffExecutionMessage.mockRejectedValueOnce(
+        new TypeError('response lost'),
+      );
+      const view = renderDialog();
+      fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+      );
+      await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+      getConversationHandoffStatus.mockResolvedValueOnce({
+        ...acceptedStatus(),
+        status,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+      await waitFor(() =>
+        expect(screen.getByRole('alert').textContent).toBe(feedback),
+      );
+      expect(view.onAccepted).not.toHaveBeenCalled();
+    },
+  );
+});
+
+test('every handoff status has its own plain sentence', () => {
+  const statuses = [
+    'reserved',
+    'accepted',
+    'completed',
+    'failed',
+    'indeterminate',
+  ] as const;
+  for (const status of statuses) {
+    // Never the raw union member as a word ("The switch is indeterminate").
+    expect(handoffStatusFeedback(status)).not.toMatch(
+      new RegExp(`is ${status}`),
+    );
+    expect(handoffStatusFeedback(status)).toMatch(/^[A-Z].*\.$/);
+  }
+  expect(handoffStatusFeedback('failed')).toBe(
+    'The switch failed. Your message is kept, so you can retry.',
+  );
+  expect(handoffStatusFeedback('indeterminate')).toBe(
+    "Station couldn't confirm whether the switch ran. Check status before retrying.",
+  );
 });
 
 /** The refusal the REAL SDK fetcher throws for a validation 400 (#2708). */
