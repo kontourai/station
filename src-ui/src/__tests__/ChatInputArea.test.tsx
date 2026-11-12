@@ -109,6 +109,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     selectAttachmentFiles: vi.fn(async () => {}),
     attachmentError: null,
     onRemoveAttachment: vi.fn(),
+    onAttachUnavailable: vi.fn(),
     onClearAttachments: vi.fn(),
     onModelSelect: vi.fn(),
     onModelReset: vi.fn(),
@@ -131,7 +132,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
-  test('keeps Send and Stop available during a turn, with Queue as the default', () => {
+  test('keeps Send and Stop available during a turn, steering natively by default', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -140,12 +141,59 @@ describe('ChatInputArea', () => {
       onQueueFollowUp,
       onSend,
     });
+    expect(screen.getByRole('textbox').getAttribute('placeholder')).toBe(
+      'Steer this turn…',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(onQueueFollowUp).toHaveBeenCalledOnce();
-    expect(onSend).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onQueueFollowUp).not.toHaveBeenCalled();
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
+  });
+
+  test('an explicit Queue choice wins over the native steer default', () => {
+    const onQueueFollowUp = vi.fn(async () => {});
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onQueueFollowUp,
+      onSend,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Queue for next turn' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onQueueFollowUp).toHaveBeenCalledOnce();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      label: 'safe-stop steering',
+      busySteeringKind: 'safe-stop' as const,
+      busyFollowUp: 'steer' as const,
+    },
+    {
+      label: 'no steering',
+      busySteeringKind: 'native' as const,
+      busyFollowUp: 'queue' as const,
+    },
+  ])('queues by default with $label', ({ busySteeringKind, busyFollowUp }) => {
+    const onQueueFollowUp = vi.fn(async () => {});
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp,
+      busySteeringKind,
+      onQueueFollowUp,
+      onSend,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onQueueFollowUp).toHaveBeenCalledOnce();
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   test('newline preference preserves Return and Shift+Return; Ctrl/Cmd+Return sends outside IME', async () => {
@@ -1924,6 +1972,7 @@ function renderProps(overrides: Record<string, unknown> = {}) {
     selectAttachmentFiles: vi.fn(async () => {}),
     attachmentError: null,
     onRemoveAttachment: vi.fn(),
+    onAttachUnavailable: vi.fn(),
     onClearAttachments: vi.fn(),
     onModelSelect: vi.fn(),
     onModelReset: vi.fn(),

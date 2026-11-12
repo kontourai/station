@@ -1930,7 +1930,7 @@ describe('Orchestration Routes', () => {
     ).toBe(200);
     expect(resolveRequestDelegation).toHaveBeenLastCalledWith(
       expect.any(Request),
-      { delegation, attestation: 'attestation' },
+      { tool: 'send_message', delegation, attestation: 'attestation' },
     );
     const forwarded = executeForegroundMessage.mock.lastCall![0];
     expect(forwarded.delegation).toEqual(resolvedDelegation);

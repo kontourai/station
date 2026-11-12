@@ -306,6 +306,10 @@ endpoints `source: 'advertised'` and pruning those it stops reporting except
 the one in use; `addRoute` and `removeRoute` change the routes a user added.
 Relay, SSH-tunnel and native shared profiles keep their single route
 ([Station routes](../design/station-routes.md)).
+Each completed probe run, success or failure, also stamps `checkedAt`, so a
+surface can say how old the status it shows is; Station's switcher prints it as
+"checked 2m ago" beside the active Station. A managed-loopback server is
+trusted to its supervisor without a probe and reports `checkedAt: null`.
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.
 
@@ -456,6 +460,11 @@ query string, or ordinary connection-profile localStorage record.
 Returns the composed connection list, including a host-injected entry when it
 has not been folded into its matching saved profile. Injected entries are not
 persisted. The result is cached between invalidations.
+
+Stored rows are read one at a time. A row this build cannot read, such as a
+shape written by a newer build, is left out of the list and written back
+unchanged, in place, by later writes. A stored value that is not a JSON list
+reads as an empty list.
 
 #### `getActive(): SavedConnection | null`
 
@@ -831,11 +840,19 @@ unsub(); // cleanup
 
 Reads a URL stored under a legacy single-URL key and imports it when no saved
 entry has the same URL. It retains the legacy key, so repeated calls do not
-delete the old client's fallback or duplicate the same entry.
+delete the old client's fallback or duplicate the same entry. It imports nothing
+while `hasUnreadableStoredList()` is true.
 
 ```ts
 store.migrate('project-station-api-base');
 ```
+
+#### `hasUnreadableStoredList(): boolean`
+
+True when storage holds a saved-connection value that is not a JSON list. The
+store then reads as empty, and `ConnectionsProvider` skips its `Default`
+seeding so the stored value is not replaced; `apiBase` falls back to
+`defaultUrl`. An explicit `add` still replaces the value.
 
 ### example
 
@@ -998,6 +1015,9 @@ interface ConnectionStatusResult {
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
   routes: ReadonlyArray<ConnectionRouteResult>; // per-route outcome of the last check
+  checkedAt: number | null;   // epoch ms the last probe run finished, whatever its outcome;
+                               // null until one has; unchanged by an aborted run, and null
+                               // for a supervised managed-loopback server, which is not probed
   recheck: () => void;        // manually trigger a check
 }
 ```
@@ -1017,6 +1037,9 @@ package exports. The host must preserve selected-connection authentication,
 identity checks, cancellation and failure reasons. Station's own caller uses
 authenticated `/api/system/status`, not an unauthenticated `/api/health`
 endpoint. See [the host health adapter](../../src-ui/src/lib/serverHealth.ts).
+The coordinator sets no deadline of its own and queues later triggers behind a
+running check, so a `probeEndpoint` must always settle. Station's adapter ends
+the whole probe, route resolution included, at `HEALTH_PROBE_TIMEOUT_MS`.
 
 ---
 
@@ -1066,7 +1089,11 @@ exchange. Strict transaction durability must be supported; unavailable storage
 blocks the send. Independent tabs share this authority on nonsecure HTTP origins
 without depending on Web Locks. Redirects are refused. A lost response, abort,
 invalid response or failed local credential/profile custody retains an
-`indeterminate` hold. Ordinary pending-slot clear/save does not erase it.
+`indeterminate` hold. Ordinary pending-slot clear/save does not erase it. A
+failed-custody outcome also carries the completion owner's own `failure`. A
+flight that stops after its claim but before sending anything releases that
+claim as unconsumed and reports `aborted`; nothing is held. If the release
+cannot be recorded, the outcome stays `indeterminate`.
 
 Only the exact unconsumed `request_not_confirmed` 409 or `rate_limited` 429
 response permits a retry. Held attempts survive expiry. Completed/retired

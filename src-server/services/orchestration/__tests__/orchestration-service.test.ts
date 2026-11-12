@@ -15,6 +15,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { EventEmitter as NodeEventEmitter } from 'node:events';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -25,8 +26,9 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
@@ -56,7 +58,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, assert, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   awaitSessionAttachmentSettled,
   awaitSessionRecoveryCompleted,
@@ -952,6 +954,7 @@ describe('OrchestrationService', () => {
           firstStartedMetadataOfThread: (threadId) =>
             service.firstStartedMetadataOfThread(threadId),
         },
+        coordinatorEnabled: () => true,
         getProject: (slug) => {
           const project = configuredProjects.find((p) => p.slug === slug);
           if (!project?.id) throw new Error('no project');
@@ -3148,6 +3151,35 @@ describe('OrchestrationService', () => {
           running: [{ ...subagent, childId: 'task-1', status: 'running' }],
         },
         createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // The engine still runs a task it never reported an end for (a
+      // backgrounded agent woken by its own command, which Station's
+      // child-work record missed): its word keeps it, whatever that record
+      // says.
+      await startResumable('engine-open-work-conversation');
+      await runTurn('engine-open-work-conversation', 'turn-e');
+      (
+        claude as FakeAdapter & {
+          hasOpenEngineWork?: (threadId: string) => boolean;
+        }
+      ).hasOpenEngineWork = (threadId) =>
+        threadId === 'engine-open-work-conversation';
+
+      // A subagent still reporting progress under a finished turn does not
+      // move the session row; that progress is still recent activity.
+      await startResumable('progress-conversation');
+      await runTurn('progress-conversation', 'turn-p');
+      claude.events.push({
+        eventId: 'progress-conversation-progress',
+        provider: 'claude',
+        threadId: 'progress-conversation',
+        itemId: 'toolu-subagent',
+        method: 'tool.progress',
+        toolCallId: 'toolu-subagent',
+        message: 'Committing the fix',
+        createdAt: new Date(Date.now() + 100_000).toISOString(),
       } as CanonicalRuntimeEvent);
       await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -18945,47 +18977,130 @@ describe('OrchestrationService', () => {
     });
   });
 
-  test('startSession expands a stored literal-~ working directory before it reaches the adapter (#686 review HIGH-1)', async () => {
-    // Project workingDirectory is persisted with a literal `~` (see
-    // terminal-service); adapters spawn/chdir with the value, so the
-    // resolver must expand exactly like every other server-side consumer.
-    //
-    // HOME is redirected at the temp dir so the expanded path can actually
-    // exist: since archive#791 the resolver fails closed on a missing directory, and
-    // asserting expansion against a path nobody created would only prove the
-    // two behaviours had been wired together wrongly.
-    const previousHome = process.env.HOME;
-    process.env.HOME = tmp;
-    mkdirSync(join(tmp, 'station-686-tilde'), { recursive: true });
-    configuredProjects.push({
-      slug: 'proj-tilde',
-      workingDirectory: '~/station-686-tilde',
-    });
-    const claudeLocal = new FakeAdapter('claude');
-    const localService = new OrchestrationService({
-      adapterRegistry: createRegistry([claudeLocal]),
-      eventBus,
-      eventStore,
-      listProjects: () => configuredProjects,
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
-
-    await localService.dispatch({
-      type: 'startSession',
-      input: {
+  // Projects persist literal `~`; CLI and Station Control callers can pass it
+  // through verbatim. Both entry points need the real filesystem boundary.
+  test.each([
+    [
+      'startSession expands a stored literal-~ working directory before it reaches the adapter (#686 review HIGH-1)',
+      {
+        folder: 'station-686-tilde',
+        slug: 'proj-tilde',
         threadId: 'thread-cwd-tilde',
-        provider: 'claude',
-        modelId: 'claude-sonnet',
-        metadata: { projectSlug: 'proj-tilde' },
+        supplied: false,
       },
-    });
-
-    expect(claudeLocal.startSession).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cwd: join(homedir(), 'station-686-tilde'),
-      }),
+    ],
+    [
+      'startSession expands a tilde in a caller-supplied cwd (#1011)',
+      {
+        folder: 'station-1011-supplied',
+        slug: 'proj-supplied-tilde',
+        threadId: 'thread-supplied-tilde',
+        supplied: true,
+      },
+    ],
+  ] as const)('%s', async (_name, { folder, slug, threadId, supplied }) => {
+    const runRoot = process.env.STATION_VITEST_RUN_ROOT;
+    assert(runRoot, 'fixture setup requires the canonical Vitest run root');
+    const ownedRoot = realpathSync.native(tmp);
+    const withinRun = relative(realpathSync.native(runRoot), ownedRoot);
+    assert(
+      withinRun !== '' &&
+        withinRun !== '..' &&
+        !withinRun.startsWith(`..${sep}`) &&
+        !isAbsolute(withinRun),
+      'fixture setup must stay inside its owned run root',
     );
-    process.env.HOME = previousHome;
+    const target = join(ownedRoot, 'fixture-parent');
+    const alias = join(ownedRoot, 'fixture-parent-alias');
+    const marker = join(target, 'owned-marker.txt');
+    const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
+    const failures: unknown[] = [];
+    let aliasCreated = false;
+    try {
+      mkdirSync(target);
+      const targetStat = lstatSync(target);
+      assert(
+        targetStat.isDirectory() &&
+          !targetStat.isSymbolicLink() &&
+          realpathSync.native(target) === target,
+        'fixture setup target must be a new owned regular directory',
+      );
+      assert(
+        lstatSync(alias, { throwIfNoEntry: false }) === undefined,
+        'fixture setup alias must not already exist',
+      );
+      writeFileSync(marker, 'owned tilde fixture\n');
+      symlinkSync(target, alias, process.platform === 'win32' ? 'junction' : 'dir');
+      aliasCreated = true;
+      assert(
+        lstatSync(alias).isSymbolicLink() &&
+          realpathSync.native(alias) === target,
+        'fixture setup alias must resolve to its owned target',
+      );
+      const profilePath = join(alias, 'profile');
+      mkdirSync(profilePath);
+      const profile = realpathSync.native(profilePath);
+      const projectDir = join(profile, folder);
+      mkdirSync(projectDir);
+      process.env.HOME = profile;
+      process.env.USERPROFILE = profile;
+      configuredProjects.push({ slug, workingDirectory: `~/${folder}` });
+      const adapter = supplied ? claude : new FakeAdapter('claude');
+      const actualService = supplied
+        ? service
+        : new OrchestrationService({
+            adapterRegistry: createRegistry([adapter]),
+            eventBus,
+            eventStore,
+            listProjects: () => configuredProjects,
+            logger: { debug: vi.fn(), warn: vi.fn() },
+          });
+      await actualService.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+          ...(supplied ? { cwd: `~/${folder}` } : {}),
+          metadata: { projectSlug: slug },
+        },
+      });
+      if (supplied) {
+        expect(adapter.startSession.mock.calls.at(-1)?.[0].cwd).toBe(
+          realpathSync.native(projectDir),
+        );
+      } else {
+        expect(adapter.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({ cwd: realpathSync.native(projectDir) }),
+        );
+      }
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousUserProfile;
+      if (aliasCreated) {
+        try {
+          assert(
+            lstatSync(alias).isSymbolicLink() &&
+              realpathSync.native(alias) === target,
+            'fixture cleanup refuses an alias whose identity changed',
+          );
+          await unlink(alias);
+          expect(lstatSync(alias, { throwIfNoEntry: false })).toBeUndefined();
+          expect(statSync(target).isDirectory()).toBe(true);
+          expect(readFileSync(marker, 'utf8')).toBe('owned tilde fixture\n');
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, 'Tilde fixture and alias cleanup failed');
   });
 
   test('startSession refuses a project whose working directory no longer exists (#791)', async () => {
@@ -19109,23 +19224,51 @@ describe('OrchestrationService', () => {
       });
     }
 
-    test('a new no-project chat starts its engine in <Station home>/scratch/<conversation>', async () => {
-      const stationHome = tempDir('station-4389-home-');
-      await scratchService(stationHome).dispatch({
-        type: 'startSession',
-        input: {
-          threadId: 'thread-no-slug',
-          provider: 'claude',
-          modelId: 'claude-sonnet',
-        },
-      });
-      const start = claude.startSession.mock.calls.at(-1)?.[0];
-      const scratch = realpathSync(join(stationHome, 'scratch', 'thread-no-slug'));
-      expect(start?.cwd).toBe(scratch);
-      expect(start?.cwd).not.toBe(homedir());
-      expect(statSync(scratch).isDirectory()).toBe(true);
-      // Still Station's choice, not a folder the person bound.
-      expect(start?.cwdDefaulted).toBe(true);
+    test('a new no-project chat starts its engine in its platform-specific scratch workspace', async () => {
+      const profile = tempDir('station-4389-profile-');
+      const stationHome = join(profile, '.station', 'instances', 'test');
+      mkdirSync(stationHome, { recursive: true });
+      const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
+      try {
+        process.env.HOME = profile;
+        process.env.USERPROFILE = profile;
+        await scratchService(stationHome).dispatch({
+          type: 'startSession',
+          input: {
+            threadId: 'thread-no-slug',
+            provider: 'claude',
+            modelId: 'claude-sonnet',
+          },
+        });
+        const start = claude.startSession.mock.calls.at(-1)?.[0];
+        assert(start?.cwd, 'adapter must receive a scratch working directory');
+        const scratch = start.cwd;
+        if (process.platform === 'win32') {
+          expect(relative(realpathSync(profile), scratch).split(sep)).toEqual([
+            '.station-workspaces',
+            expect.stringMatching(/^[0-9a-f]{64}$/),
+            'scratch',
+            'thread-no-slug',
+          ]);
+          expect(
+            relative(realpathSync(stationHome), scratch).startsWith(`..${sep}`),
+          ).toBe(true);
+        } else {
+          expect(scratch).toBe(
+            realpathSync(join(stationHome, 'scratch', 'thread-no-slug')),
+          );
+        }
+        expect(scratch).not.toBe(realpathSync(profile));
+        expect(statSync(scratch).isDirectory()).toBe(true);
+        // Still Station's choice, not a folder the person bound.
+        expect(start?.cwdDefaulted).toBe(true);
+      } finally {
+        if (previousHome === undefined) delete process.env.HOME;
+        else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
+      }
     });
 
     test('the Station-level opt-out runs a new no-project chat in the home folder', async () => {
@@ -19237,35 +19380,6 @@ describe('OrchestrationService', () => {
       /bound to project 'missing-project', which this Station does not have/,
     );
     expect(claude.startSession).not.toHaveBeenCalled();
-  });
-
-  test('startSession expands a tilde in a caller-supplied cwd (#1011)', async () => {
-    // `station chat --project=<slug>` and station-control delegation both pass
-    // the project's stored workingDirectory through verbatim, and Station
-    // stores it with a literal `~`. Unexpanded, no chdir can satisfy it and
-    // the engine never reaches the project.
-    const previousHome = process.env.HOME;
-    process.env.HOME = tmp;
-    mkdirSync(join(tmp, 'station-1011-supplied'), { recursive: true });
-    configuredProjects.push({
-      slug: 'proj-supplied-tilde',
-      workingDirectory: '~/station-1011-supplied',
-    });
-
-    await service.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: 'thread-supplied-tilde',
-        provider: 'claude',
-        modelId: 'claude-sonnet',
-        cwd: '~/station-1011-supplied',
-        metadata: { projectSlug: 'proj-supplied-tilde' },
-      },
-    });
-    expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(
-      join(homedir(), 'station-1011-supplied'),
-    );
-    process.env.HOME = previousHome;
   });
 
   test('startSession keeps an explicit cwd inside the bound project (#686)', async () => {

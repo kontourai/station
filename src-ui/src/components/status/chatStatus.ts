@@ -3,6 +3,7 @@ import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { turnToolsRunning } from '../../utils/turn-tools-running';
 import { receivedDeliveryLabel } from '../chat/deliveryLabels';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
@@ -66,12 +67,6 @@ export interface ChatStatusInput {
 
 const STREAM_DETAIL =
   'Live updates are paused; the remote request may still be running.';
-
-function epochMs(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? undefined : ms;
-}
 
 /**
  * The one status a chat pane shows: transport recovery, then failed-read
@@ -194,7 +189,9 @@ export function deriveChatStatus(
     label = 'Retrying';
     details.push({ text: retryActivityLabel(input.activityHint) });
   }
-  const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
+  const silentSince = parseEpochMs(
+    activity?.progressSilence?.silentSinceEventAt,
+  );
   if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
     // The ladder's word for a quiet run, not a second one: the strip says
     // "No progress" with the clock, and its detail reads exactly like the

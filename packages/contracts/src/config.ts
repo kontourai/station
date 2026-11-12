@@ -4,6 +4,10 @@ import {
 } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
+import {
+  type ConfinedNetworkSetting,
+  parseConfinedNetworkSetting,
+} from './execution-confinement.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
 import type { TelemetryTierChoices } from './product-telemetry.js';
 import type { ApprovalMode } from './provider.js';
@@ -167,6 +171,15 @@ export interface AppConfig {
   mobileDeviceHubUrl?: string;
   disableDefaultSkillRegistries?: boolean;
   approvalGuardian?: ApprovalGuardianConfig;
+  /**
+   * #4769: the network a confined session may reach. Absent or `full`: open,
+   * as before. `restricted`: every start that requires confinement reaches
+   * only Station's loopback egress broker, which admits the engine's own
+   * model endpoint and `allowedHosts`. A start whose mechanism cannot
+   * restrict the network is refused. The operator's own `host` sessions are
+   * not confined and are unaffected. A managed policy can lock it.
+   */
+  confinedNetwork?: ConfinedNetworkSetting;
   /**
    * Render resolved MCP tool UIs in a sandboxed iframe (MCP Apps host).
    * **Default on** — set `false` to opt out, which makes a successfully-resolved
@@ -650,8 +663,15 @@ export function hasAppConfigStationDecision(
  */
 export function appConfigSemanticError(config: unknown): string | undefined {
   if (!config || typeof config !== 'object') return undefined;
-  const { templateVariables, builtinAgentEngineConnectionId } =
+  const { templateVariables, builtinAgentEngineConnectionId, confinedNetwork } =
     config as Partial<AppConfig>;
+  // #4769: every allowed host as the broker reads it, so a value that would
+  // refuse every confined start is refused when it is written.
+  if (
+    confinedNetwork !== undefined &&
+    !parseConfinedNetworkSetting(confinedNetwork)
+  )
+    return 'confinedNetwork: each allowedHosts entry must be host, host:port, *.domain or an IP literal (IPv6 in brackets), with an optional port.';
   const formatError = templateVariableFormatError(templateVariables);
   if (formatError) return `templateVariables: ${formatError}`;
   if (

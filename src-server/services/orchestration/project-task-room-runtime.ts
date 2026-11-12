@@ -57,6 +57,7 @@ import {
   sharedWorkingStateEditBatchDigest,
 } from '../../domain/shared-working-state-editing.js';
 import { taskRoomDocumentSeedRefusal } from '../../domain/task-room-document-capacity.js';
+import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 import type { TaskRoomAttachments } from '../projects/task-room-attachments.js';
 import { ProjectTaskLiveWorkHistoryAdapter } from './project-task-live-work-history-adapter.js';
 import {
@@ -413,7 +414,7 @@ export class ProjectTaskRoomRuntime {
   readonly #activeLiveRecovery = new Set<string>();
   readonly #history: RecoverableRoomHistory;
   readonly #live = new Map<string, LiveRoomEntry>();
-  readonly #liveStateChains = new Map<string, Promise<void>>();
+  readonly #liveStateChains = createKeyedSerialQueue();
   readonly #recovery = new Map<string, Promise<boolean>>();
   readonly #subscribers = new Map<string, Set<RoomSubscriber>>();
   /**
@@ -2586,18 +2587,7 @@ export class ProjectTaskRoomRuntime {
     taskId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const prior = this.#liveStateChains.get(taskId) ?? Promise.resolve();
-    const result = prior.then(operation);
-    const settled = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.#liveStateChains.set(taskId, settled);
-    void settled.then(() => {
-      if (this.#liveStateChains.get(taskId) === settled)
-        this.#liveStateChains.delete(taskId);
-    });
-    return result;
+    return this.#liveStateChains.run(taskId, operation);
   }
 
   live(input: LiveCommandInput) {

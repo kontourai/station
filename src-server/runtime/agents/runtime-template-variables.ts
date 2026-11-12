@@ -25,10 +25,11 @@ export function replaceRuntimeTemplateVariables(
   };
 
   for (const [key, value] of Object.entries(allReplacements)) {
-    result = result.replace(
-      new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-      value,
-    );
+    // A replacer function, not the value itself: as a replacement STRING a
+    // value containing `$&`, `$'`, `` $` `` or `$$` is expanded as a pattern,
+    // so a user name or a custom variable could splice the rest of the
+    // prompt into itself.
+    result = result.replaceAll(key, () => value);
   }
 
   return result;

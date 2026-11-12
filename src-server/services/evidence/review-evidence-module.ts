@@ -19,6 +19,7 @@ import {
   type ReviewReviewerDeclaration,
   type ReviewRoutingBinding,
 } from '@kontourai/station-contracts/review-evidence';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { reviewEvidenceId } from './review-evidence-identity.js';
 
@@ -392,7 +393,7 @@ export class ReviewEvidenceModule {
         updatedAt: this.#now().toISOString(),
       });
       reviewerBoundaryEntered = true;
-      const reviewerOutcomes = await mapConcurrent(
+      const reviewerOutcomes = await mapWithConcurrency(
         reviewers,
         this.#maxConcurrentReviewers,
         (reviewer) =>
@@ -1046,26 +1047,6 @@ function sameTarget(left: ReviewGitTarget, right: ReviewGitTarget): boolean {
     left.headSha === right.headSha &&
     left.diffSha256 === right.diffSha256
   );
-}
-
-async function mapConcurrent<Input, Output>(
-  inputs: readonly Input[],
-  concurrency: number,
-  operation: (input: Input) => Promise<Output>,
-): Promise<Output[]> {
-  const outputs = new Array<Output>(inputs.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, inputs.length) }, async () => {
-      while (true) {
-        const index = next;
-        next += 1;
-        if (index >= inputs.length) return;
-        outputs[index] = await operation(inputs[index]);
-      }
-    }),
-  );
-  return outputs;
 }
 
 const WORKSPACE_ERRNO_CODES = new Set([

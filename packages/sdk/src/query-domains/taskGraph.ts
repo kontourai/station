@@ -24,7 +24,7 @@ import {
   getTaskAnswerSupportCards,
   type TaskAnswerSupportStandingWithCard,
 } from '../client/answer-support';
-import { getJson, StationHttpError } from '../client/http';
+import { getJson, readEnvelopeOrThrow } from '../client/http';
 import {
   type AttachTaskUserInputReferenceInput,
   attachTaskUserInputReference as attachTaskUserInputReferenceClient,
@@ -38,6 +38,7 @@ import {
   resolveApiBase,
   useApiMutation,
   useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount,
 } from '../query-core';
 import { taskQueries } from '../queryFactories';
 import { mapConversationMessages } from './chatRuntimeStream';
@@ -100,21 +101,15 @@ export class TaskDestinationRequestError extends Error {
   }
 }
 
-interface ApiResult<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
-
+/**
+ * Reads through the canonical envelope reader, so a refusal keeps its status
+ * and `code` and a body that is not JSON (a proxy's error page, an empty
+ * body) reports the status instead of a parse exception.
+ */
 async function readApiResult<T>(response: Response): Promise<T> {
-  const result = (await response.json()) as ApiResult<T>;
-  if (!response.ok || !result.success || result.data === undefined) {
-    throw new StationHttpError(
-      response.status,
-      apiErrorMessage(result, `HTTP ${response.status}`),
-    );
-  }
-  return result.data;
+  const data = await readEnvelopeOrThrow<T>(response);
+  if (data === undefined) throw new Error('Task response is missing data');
+  return data;
 }
 
 export async function fetchTasks(
@@ -320,7 +315,7 @@ export function useTasksQuery(
   config?: TaskDestinationQueryConfig,
 ) {
   const scoped = isApiRequestScope(config?.requestScope);
-  const query = useApiQuery(
+  const query = useApiQueryRefetchingInvalidatedOnMount(
     taskQueries.list(projectId, config?.requestScope).queryKey,
     (signal) =>
       fetchTasks({
@@ -530,5 +525,4 @@ export function useDispatchTaskMutation() {
   });
 }
 
-import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';

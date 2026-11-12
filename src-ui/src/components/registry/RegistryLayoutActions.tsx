@@ -66,7 +66,7 @@ export function RegistryLayoutActions({
           else onAction(primary);
         }}
       >
-        {pending ? 'Working...' : actionLabel(primary)}
+        {pending ? 'Working…' : actionLabel(primary)}
       </Button>
       {showSecondary && installed && (
         <Button

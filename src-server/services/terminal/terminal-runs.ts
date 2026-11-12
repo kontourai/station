@@ -10,6 +10,7 @@
  * and the agent reads them as gone.
  */
 import { randomUUID } from 'node:crypto';
+import { errorMessage } from '../../utils/error-message.js';
 
 export type TerminalRunState =
   | 'needs_approval'
@@ -187,7 +188,7 @@ export class TerminalRunRequests {
       (error: unknown) =>
         this.transition(run, {
           state: 'failed',
-          failure: error instanceof Error ? error.message : String(error),
+          failure: errorMessage(error),
           endedAt: this.now(),
         }),
     );

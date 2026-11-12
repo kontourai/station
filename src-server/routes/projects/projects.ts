@@ -290,7 +290,8 @@ interface ProjectRouteDeps {
    * isolated worktree rather than the checkout.
    */
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory;
-  visualFileFrameOrigin?: () => string | undefined;
+  /** The frame origin, only when this request's client can reach it. */
+  visualFileFrameOrigin?: (c: Context) => string | undefined;
   /** Restricts the Project catalogue for an authenticated shared member. */
   memberProjectAdmissions?: (c: Context) => Promise<
     | readonly {

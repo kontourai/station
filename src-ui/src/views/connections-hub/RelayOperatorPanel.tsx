@@ -187,7 +187,7 @@ function OperatorPanel({ scope }: { scope: Scope }) {
     return (
       <ErrorState
         title="Devices unavailable"
-        action={<Button onClick={() => void query.refetch()}>Try again</Button>}
+        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
       />
     );
   }

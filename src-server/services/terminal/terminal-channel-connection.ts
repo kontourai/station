@@ -1,11 +1,14 @@
 import {
   decodeTerminalFrame,
   encodeTerminalFrame,
+  encodeTerminalSize,
   TERMINAL_CLOSE,
   TERMINAL_INPUT,
   TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_MIN_WINDOW_BYTES,
   TERMINAL_OUTPUT,
+  TERMINAL_RESIZE,
+  TERMINAL_SOCKET_PROTOCOL_V2,
   TERMINAL_SUBDIRECTORY_MAX_LENGTH,
   TERMINAL_WINDOW_BYTES,
   type TerminalRestartRequest,
@@ -161,12 +164,15 @@ export class TerminalChannelConnection<Principal> {
   private stopped = false;
   private unsubscribe: () => void;
   private heartbeat: ReturnType<typeof setInterval>;
+  /** The client speaks version 2 and is told each recorded size (#4625). */
+  private readonly resizeFrames: boolean;
 
   constructor(
     private ws: WebSocket,
     private sessions: TerminalSessions<Principal>,
     private principal: Principal,
   ) {
+    this.resizeFrames = ws.protocol === TERMINAL_SOCKET_PROTOCOL_V2;
     this.unsubscribe = sessions.onChange((id) => {
       for (const [number, channel] of this.channels)
         if (channel.terminalId === id) this.pump(number, channel);
@@ -526,6 +532,27 @@ export class TerminalChannelConnection<Principal> {
           channel.outstanding.length >= TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES
         )
           break;
+        if (record.resize) {
+          // A recorded size costs no output credit but holds a frame slot.
+          // A version 1 client gets its sequence as empty output.
+          const frame = this.resizeFrames
+            ? encodeTerminalFrame(
+                TERMINAL_RESIZE,
+                number,
+                record.seq,
+                encodeTerminalSize(record.resize.cols, record.resize.rows),
+              )
+            : encodeTerminalFrame(
+                TERMINAL_OUTPUT,
+                number,
+                record.seq,
+                new Uint8Array(),
+              );
+          if (!this.send(frame)) return;
+          channel.outstanding.push({ seq: record.seq, bytes: 0 });
+          channel.cursor = record.seq;
+          continue;
+        }
         const filter = channel.filter.fork();
         const data = Buffer.from(filter.append(record.data));
         if (data.byteLength > available) break;

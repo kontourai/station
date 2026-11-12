@@ -513,7 +513,8 @@ export async function requestJson<T>(
  * Fetches a route that returns a RAW body (not the {success,data} envelope) —
  * e.g. conversation exports, which emit thread JSON or markdown directly.
  * Error statuses still carry the JSON envelope, so failures surface its
- * `error` message when present.
+ * `error` message when present, with the HTTP `status` (and envelope `code`)
+ * on the thrown error.
  */
 export async function requestText(
   apiBase: string,
@@ -527,16 +528,27 @@ export async function requestText(
   const body = await response.text();
   if (!response.ok) {
     let message = `Request failed with HTTP ${response.status}`;
+    let code: unknown;
     try {
       const envelope = JSON.parse(body) as {
         error?: unknown;
         message?: string;
+        code?: unknown;
       };
       message = describeApiError(envelope.error ?? envelope.message, message);
+      code = envelope.code;
     } catch {
       // Non-JSON error body; keep the status message.
     }
-    throw new Error(message);
+    // The status (and a stable refusal code, when the envelope names one)
+    // ride along as they do for `requestJson`, so a caller can branch on a
+    // 404 instead of matching the message text.
+    throw Object.assign(new Error(message), {
+      status: response.status,
+      ...(typeof code === 'string' && /^[a-z][a-z_-]{0,63}$/.test(code)
+        ? { code }
+        : {}),
+    });
   }
   return { body, contentType: response.headers.get('content-type') ?? '' };
 }
@@ -570,6 +582,72 @@ export function optionalValueFlag(
     throw new Error(`--${name} requires a non-empty value.`);
   }
   return value;
+}
+
+interface WholeNumberBounds {
+  /** Smallest accepted value. Defaults to 0. */
+  min?: number;
+  /** Largest accepted value. Unbounded when omitted. */
+  max?: number;
+}
+
+function wholeNumberRequirement(
+  label: string,
+  bounds: WholeNumberBounds,
+): string {
+  const min = bounds.min ?? 0;
+  const range =
+    bounds.max !== undefined
+      ? `a whole number from ${min} to ${bounds.max}`
+      : min === 0
+        ? 'a whole number'
+        : min === 1
+          ? 'a positive integer'
+          : `a whole number of at least ${min}`;
+  return `${label} must be ${range}.`;
+}
+
+/**
+ * Parses a whole number an operator typed: decimal digits only, so `7abc`,
+ * `30s`, `1e3`, `-1` and the empty string are refused instead of being
+ * truncated or coerced (`parseInt('30s')` is 30, `Number('')` is 0). `label`
+ * names the input in the error as the operator typed it (`--limit`, or a
+ * positional's name).
+ */
+export function parseWholeNumber(
+  raw: string,
+  label: string,
+  bounds: WholeNumberBounds = {},
+): number {
+  const value = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (
+    !Number.isSafeInteger(value) ||
+    value < (bounds.min ?? 0) ||
+    (bounds.max !== undefined && value > bounds.max)
+  ) {
+    throw new Error(`${wholeNumberRequirement(label, bounds)} Got: ${raw}`);
+  }
+  return value;
+}
+
+/**
+ * Reads an optional `--<name>=<n>` whole-number flag through
+ * `parseWholeNumber`. A bare `--<name>` (which is what `--<name> <n>` parses
+ * to) is refused like any other malformed value rather than read as unset.
+ */
+export function parseWholeNumberFlag(
+  parsed: ParsedCoreArgs,
+  name: string,
+  bounds: WholeNumberBounds = {},
+): number | undefined {
+  const raw = parsed.flags[name];
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string') {
+    throw new Error(
+      `${wholeNumberRequirement(`--${name}`, bounds)} Pass it as --${name}=<n>.`,
+    );
+  }
+  return parseWholeNumber(raw, `--${name}`, bounds);
 }
 
 async function readStdin(): Promise<string> {
@@ -641,6 +719,27 @@ export async function loadTextInput(
   throw new Error(
     'Provide message text as positional args, --data=<text>, --file=<path>, or piped stdin.',
   );
+}
+
+/**
+ * Resolves after `ms`, or at once when `signal` aborts (or already has), so a
+ * polling wait ends on Ctrl-C instead of sleeping out its interval. It never
+ * rejects, and leaves neither a timer nor an abort listener behind.
+ */
+export function abortableSleep(
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
 }
 
 export async function streamSse(

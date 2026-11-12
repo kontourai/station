@@ -394,6 +394,64 @@ function render(
   return view;
 }
 
+// jsdom has no layout: make each tab's viewport rectangle depend on the
+// actual scroll position, including the strip's padding and scroll limits.
+function installTaskTabGeometry(strip: HTMLElement, tabs: HTMLElement[]) {
+  const width = 200;
+  const padding = 10;
+  const tabWidth = 100;
+  const currentTabs = () =>
+    Array.from(strip.querySelectorAll<HTMLElement>('[role="tab"]'));
+  const contentWidth = () => padding * 2 + currentTabs().length * tabWidth;
+  let scrollLeft = 0;
+  strip.style.paddingLeft = `${padding}px`;
+  strip.style.paddingRight = `${padding}px`;
+  Object.defineProperties(strip, {
+    clientWidth: { configurable: true, value: width },
+    clientLeft: { configurable: true, value: 0 },
+    scrollWidth: { configurable: true, get: contentWidth },
+    scrollLeft: {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => {
+        scrollLeft = Math.max(0, Math.min(contentWidth() - width, value));
+      },
+    },
+    getBoundingClientRect: {
+      configurable: true,
+      value: () => new DOMRect(0, 0, width, 44),
+    },
+  });
+  tabs.forEach((tab) => {
+    Object.defineProperties(tab, {
+      offsetParent: { configurable: true, value: strip },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () =>
+          new DOMRect(
+            padding + currentTabs().indexOf(tab) * tabWidth - scrollLeft,
+            0,
+            tabWidth,
+            44,
+          ),
+      },
+    });
+  });
+}
+
+function expectTaskTabVisible(strip: HTMLElement, tab: HTMLElement) {
+  const bounds = tab.getBoundingClientRect();
+  expect(bounds.left).toBeGreaterThanOrEqual(10);
+  expect(bounds.right).toBeLessThanOrEqual(strip.clientWidth - 10);
+}
+
+function expectTaskTabSelected(tab: HTMLElement) {
+  expect(tab.getAttribute('aria-selected')).toBe('true');
+  expect(
+    screen.getByRole('tabpanel', { name: tab.textContent ?? '' }),
+  ).toBeTruthy();
+}
+
 function openAnswerDetails() {
   fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
   fireEvent.click(screen.getByText('Answer details', { selector: 'summary' }));
@@ -741,6 +799,108 @@ describe('TaskWorkspaceView', () => {
     ).toBe('Raw room history');
   });
 
+  test.each([false, true])(
+    'reveals keyboard-selected Task tabs at both edges (Review enabled: %s)',
+    (reviewEnabled) => {
+      if (reviewEnabled)
+        featurePreviews = [{ id: 'task-review', enabled: true }];
+      render(<TaskWorkspaceView taskId="task-alpha" />, { openDetails: false });
+      const strip = screen.getByRole('tablist', { name: 'Task views' });
+      const tabs = within(strip).getAllByRole('tab');
+      installTaskTabGeometry(strip, tabs);
+      const first = tabs[0];
+      const last = tabs[tabs.length - 1];
+      const readingPosition = strip.parentElement!;
+      readingPosition.scrollTop = 75;
+      first.focus();
+
+      fireEvent.keyDown(first, { key: 'End' });
+      expect(document.activeElement).toBe(last);
+      expectTaskTabSelected(last);
+      expect(strip.scrollLeft).toBeGreaterThan(0);
+      expectTaskTabVisible(strip, last);
+      expect(readingPosition.scrollTop).toBe(75);
+      strip.scrollLeft = 0;
+      fireEvent.keyDown(last, { key: 'End' });
+      expectTaskTabSelected(last);
+      expectTaskTabVisible(strip, last);
+
+      fireEvent.keyDown(last, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(first);
+      expectTaskTabSelected(first);
+      expectTaskTabVisible(strip, first);
+      expect(strip.scrollLeft).toBe(0);
+      strip.scrollLeft = strip.scrollWidth;
+      fireEvent.keyDown(first, { key: 'Home' });
+      expectTaskTabSelected(first);
+      expectTaskTabVisible(strip, first);
+      fireEvent.keyDown(first, { key: 'ArrowLeft' });
+      expect(document.activeElement).toBe(last);
+      expectTaskTabVisible(strip, last);
+      fireEvent.keyDown(last, { key: 'Home' });
+      expect(document.activeElement).toBe(first);
+      expectTaskTabVisible(strip, first);
+      fireEvent.keyDown(first, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(tabs[1]);
+      expectTaskTabVisible(strip, tabs[1]);
+      expect(readingPosition.scrollTop).toBe(75);
+    },
+  );
+
+  test('reveals changed URL-selected tabs without stealing focus or undoing later manual scrolling', () => {
+    featurePreviews = [{ id: 'task-review', enabled: true }];
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    const strip = screen.getByRole('tablist', { name: 'Task views' });
+    const tabs = within(strip).getAllByRole('tab');
+    installTaskTabGeometry(strip, tabs);
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    const readingPosition = strip.parentElement!;
+    readingPosition.scrollTop = 75;
+
+    act(() => navigationStore.updateParams({ taskView: 'details' }));
+    const details = within(strip).getByRole('tab', { name: 'Details' });
+    expect(strip.scrollLeft).toBeGreaterThan(0);
+    expectTaskTabVisible(strip, details);
+    expect(document.activeElement).toBe(outside);
+    expect(readingPosition.scrollTop).toBe(75);
+
+    act(() => navigationStore.updateParams({ taskView: 'review' }));
+    const review = within(strip).getByRole('tab', { name: 'Review' });
+    expectTaskTabVisible(strip, review);
+    expect(document.activeElement).toBe(outside);
+    strip.scrollLeft = 0;
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(strip.scrollLeft).toBe(0);
+    expect(readingPosition.scrollTop).toBe(75);
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
+  test('reveals the selected Details tab when Review becomes available later', () => {
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    const strip = screen.getByRole('tablist', { name: 'Task views' });
+    installTaskTabGeometry(strip, within(strip).getAllByRole('tab'));
+    act(() => navigationStore.updateParams({ taskView: 'details' }));
+    const details = within(strip).getByRole('tab', { name: 'Details' });
+    expectTaskTabSelected(details);
+    expectTaskTabVisible(strip, details);
+
+    featurePreviews = [{ id: 'task-review', enabled: true }];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(within(strip).getByRole('tab', { name: 'Review' })).toBeTruthy();
+    expectTaskTabSelected(details);
+    expectTaskTabVisible(strip, details);
+    strip.scrollLeft = 0;
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(strip.scrollLeft).toBe(0);
+  });
+
   test('renders a retained Task as orphaned when its Project has been deleted', () => {
     projectsResult.data = [];
 
@@ -842,7 +1002,7 @@ describe('TaskWorkspaceView', () => {
       await screen.findByRole('button', { name: 'Ask an agent' }),
     );
     fireEvent.click(
-      screen.getByRole('option', { name: 'Researcher @researcher' }),
+      screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
     );
     fireEvent.click(
       screen.getByRole('checkbox', {

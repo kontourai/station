@@ -1,5 +1,6 @@
 import { chatBelongsToStation } from '../../connections/station-state';
 import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
+import { usePublishConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import '../chat/TaskShaping.css';
@@ -102,6 +103,7 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useFoldSplit } from '../../hooks/useFoldSplit';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
@@ -144,6 +146,10 @@ import {
   sessionTitle,
 } from '../../utils/sessionDisplay';
 import { withConversationInventory } from '../../views/home/conversation-inventory-facts';
+import {
+  isCurrentInboxItem,
+  rowReadsUnread,
+} from '../../views/home/conversation-read-state';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
   openChatInboxRows,
@@ -827,11 +833,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [inboxItems, inventoryById],
   );
   const acknowledgeTaskConversation = useCallback(
-    (item: { id: string; conversationUpdatedAt?: string }) => {
+    (item: {
+      id: string;
+      conversationUpdatedAt?: string;
+      readVersion?: number;
+    }) => {
       if (!item.conversationUpdatedAt) return;
       acknowledgeConversation.mutate({
         conversationId: item.id,
         updatedAt: item.conversationUpdatedAt,
+        ...(item.readVersion === undefined
+          ? {}
+          : { readVersion: item.readVersion }),
       });
     },
     [acknowledgeConversation],
@@ -1099,7 +1112,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionDisplayCwd,
     sessionCwdManaged,
     sessionProjectName,
-    unreadCount,
     conversationConnection,
     conversationAgents,
   } = useChatDockViewModel({
@@ -1694,7 +1706,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // handed to a host that folds the inbox (the Coding edge's tooltip).
   const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
   const inboxClock = useCoarseNow();
-  const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock);
+  const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock, workFacts);
   const inboxWorking = useInboxWorkingCount(taskItems, inboxClock, workFacts);
   useEffect(() => {
     onInboxNeedsYouChange?.(inboxNeedsYou);
@@ -1708,9 +1720,28 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // #4266: the chat on screen is viewed. Watching a thread finish clears it
   // from "Just finished" on every device; the phone's task switcher and a
   // New chat draft cover the transcript, so neither counts as viewing it.
-  useAcknowledgeVisibleConversation(
-    activeTaskItem,
-    isPaneOpen && !(isMobile && mobileInboxOpen) && !showNewChatModal,
+  // #3075: the same answer decides which inbox row is being read.
+  const activeChatOnScreen =
+    isPaneOpen && !(isMobile && mobileInboxOpen) && !showNewChatModal;
+  useAcknowledgeVisibleConversation(activeTaskItem, activeChatOnScreen);
+  // #3075: every surface that draws a work row reads which one is on screen.
+  usePublishConversationOnScreen(
+    activeChatOnScreen ? (importedSessionId ?? activeSessionId) : null,
+  );
+  // #3075: the header's unread count is the inbox rows' own server answer.
+  const documentFocused = useDocumentFocused();
+  const inboxActiveChatId = importedSessionId ?? activeSessionId;
+  const unreadCount = useMemo(
+    () =>
+      taskItems.filter((item) =>
+        rowReadsUnread(
+          item,
+          activeChatOnScreen &&
+            documentFocused &&
+            isCurrentInboxItem(item, inboxActiveChatId),
+        ),
+      ).length,
+    [taskItems, activeChatOnScreen, documentFocused, inboxActiveChatId],
   );
   const activeWorkStatus = useOptionalObservedWorkStatus(
     activeTaskItem,

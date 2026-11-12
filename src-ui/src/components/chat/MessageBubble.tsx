@@ -229,7 +229,7 @@ interface MessageBubbleProps {
     agentSlug: string,
     approvalId: string,
     toolName: string,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
     approvalThreadId?: string,
     approvalEventId?: string,
   ) => Promise<ToolApprovalOutcome>;
@@ -356,7 +356,7 @@ function MessageBubbleComponent({
   const handleContentToolApproval = useCallback(
     (
       part: MessageContentPart,
-      action: 'once' | 'trust' | 'trust-server' | 'deny',
+      action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
     ) => {
       if (!onToolApproval)
         return Promise.reject(new Error('This chat cannot answer requests.'));

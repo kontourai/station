@@ -1285,7 +1285,7 @@ function DisclosureDecisionActions({
         aria-busy={decision.busy}
         onClick={decision.keep}
       >
-        {decision.retry ? 'Try again' : decision.labels.keep}
+        {decision.retry ? 'Retry' : decision.labels.keep}
       </Button>
     </>
   );

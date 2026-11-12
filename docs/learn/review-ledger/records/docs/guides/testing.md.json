@@ -290,7 +290,9 @@
 
     "scripts/lib/windows-worker-diagnostics.mjs",
 
-    "scripts/__tests__/windows-portable-floor.test.ts"
+    "scripts/__tests__/windows-portable-floor.test.ts",
+
+    "scripts/__tests__/server-scenario-probe.test.ts"
   ],
 
   "checks": [

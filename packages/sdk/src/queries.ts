@@ -196,6 +196,7 @@ export {
   useStartIntegrationOAuthMutation,
 } from './query-domains/catalog';
 export {
+  type AcknowledgeConversationVariables,
   type AdoptOrchestrationSessionIntent,
   AdoptSessionError,
   type AdoptSessionFailureClass,
@@ -586,7 +587,9 @@ export {
   useProjectTaskRoomDocumentQuery,
   useProjectTaskRoomHistoryQuery,
   useProjectTaskRoomStream,
+  useSharedTaskRoomCapabilitiesQuery,
   useSubmitProjectTaskRoomBatchMutation,
+  useSubmitSharedTaskRoomAgentRequestMutation,
   useSubmitTaskRoomAgentRequestMutation,
   useTaskRoomAgentOptionsQuery,
   useTaskRoomAgentRequestsQuery,
@@ -606,6 +609,13 @@ export {
   useProposedChangesQuery,
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
+export {
+  fetchReadMarkerSummary,
+  markRead,
+  readMarkerQueries,
+  useMarkReadMutation,
+  useReadMarkerSummaryQuery,
+} from './query-domains/readMarkers';
 export {
   useCancelReportGroup,
   useCreateReportGroup,

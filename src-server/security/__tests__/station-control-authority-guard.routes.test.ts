@@ -132,6 +132,8 @@ let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let port: number;
 const refusals: string[] = [];
+/** #4769: the sessions whose start ran with a restricted network. */
+const restrictedSessions = new Set<string>();
 const PEER_ENVIRONMENT_ID = 'env-authority-peer';
 let peerServer: ReturnType<typeof serve>;
 const peerReceived: Array<{ path: string; body: any }> = [];
@@ -246,6 +248,8 @@ beforeAll(async () => {
         });
         return verdict.allowed ? undefined : verdict.reason;
       },
+      networkRestrictedSession: (sessionId) =>
+        restrictedSessions.has(sessionId),
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -1023,6 +1027,41 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
       ),
     ).toEqual({ status: 403, code: 'station_control_caller_required' });
     expect(hits).toEqual([]);
+  });
+
+  test('#4769: a restricted session acting for the operator is refused the routes of withheld tools, and keeps the rest', async () => {
+    const sessionId = nextSession('op-');
+    const headers = () =>
+      internalHeaders({
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+          'bound',
+          sessionId,
+        )!,
+      });
+    // Unrestricted, the operator's bound session may change a setting.
+    hits.length = 0;
+    expect(await rest('PUT', '/config/app', headers(), { theme: 'x' })).toEqual(
+      { status: 200 },
+    );
+    restrictedSessions.add(sessionId);
+    try {
+      hits.length = 0;
+      for (const [method, path, body] of [
+        ['PUT', '/config/app', { theme: 'x' }],
+        ['POST', '/api/device-agent/open', {}],
+        ['POST', '/api/orchestration/delegations', {}],
+      ] as const)
+        expect(await rest(method, path, headers(), body), path).toEqual({
+          status: 403,
+          code: 'station_control_network_restricted',
+        });
+      expect(hits).toEqual([]);
+      // A read the allow-list keeps still reaches its route.
+      expect(await rest('GET', '/agents', headers())).toEqual({ status: 200 });
+      expect(hits).toEqual(['GET /agents']);
+    } finally {
+      restrictedSessions.delete(sessionId);
+    }
   });
 
   test('a route handler that authorizes the caller itself (notify_user) is left to it', async () => {

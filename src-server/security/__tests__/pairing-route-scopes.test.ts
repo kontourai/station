@@ -341,6 +341,25 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     );
   });
 
+  test('read markers sit at the read tier as two exact leaves; nothing else under the prefix is mapped', () => {
+    expect(requiredPairingScope('POST', '/api/read-markers/summary')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('POST', '/api/read-markers/mark')).toBe(
+      'orchestration:read',
+    );
+    // Not a family: a sibling, nested leaf or other method is refused.
+    expect(
+      requiredPairingScope('POST', '/api/read-markers/other'),
+    ).toBeUndefined();
+    expect(
+      requiredPairingScope('POST', '/api/read-markers/mark/x'),
+    ).toBeUndefined();
+    expect(
+      requiredPairingScope('DELETE', '/api/read-markers/mark'),
+    ).toBeUndefined();
+  });
+
   test('declares the protected Task tool-result projection leaf at the read tier', () => {
     const path = '/api/tasks/:taskId/tool-result-references';
     expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({

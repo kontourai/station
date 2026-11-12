@@ -772,6 +772,26 @@ export function useKeyboardShortcuts(): Omit<
   return useShortcutStore();
 }
 
+const NO_REGISTRY_SUBSCRIPTION = () => () => {};
+const NO_REGISTRY_SIGNATURE = () => '';
+
+/**
+ * `useShortcutRegistry` for always-mounted chrome that may render outside the
+ * provider (shell fixtures, an isolated header): undefined there instead of a
+ * throw. Inside the provider it subscribes exactly like `useShortcutRegistry`.
+ */
+export function useOptionalShortcutRegistry():
+  | Omit<ShortcutRegistryStore, 'subscribe' | 'getSignature'>
+  | undefined {
+  const store = useContext(KeyboardShortcutsContext);
+  useSyncExternalStore(
+    store?.subscribe ?? NO_REGISTRY_SUBSCRIPTION,
+    store?.getSignature ?? NO_REGISTRY_SIGNATURE,
+    store?.getSignature ?? NO_REGISTRY_SIGNATURE,
+  );
+  return store ?? undefined;
+}
+
 /** Subscribe to registry content and registration identity for displayed commands. */
 export function useShortcutRegistry(): Omit<
   ShortcutRegistryStore,

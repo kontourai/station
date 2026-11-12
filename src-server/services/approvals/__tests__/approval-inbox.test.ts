@@ -359,6 +359,54 @@ describe('approval inbox notifications', () => {
     expect(card!.actions?.map((action) => action.label)).toEqual(['Deny']);
   });
 
+  test('a Claude Bash ask with a suggested prefix offers the prefix action, which sends the rule scope', async () => {
+    emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+          decisionReason: 'This command requires approval',
+          claudeAsk: { decisionReasonType: 'other' },
+          suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+              behavior: 'allow',
+              destination: 'localSettings',
+            },
+          ],
+        },
+        provider: 'claude',
+        requestId: 'req-npm',
+        eventId: 'event-npm',
+        requestType: 'approval',
+        threadId: 'thread-npm',
+        title: 'Allow Bash',
+      },
+    });
+    await vi.waitFor(async () =>
+      expect(await notificationService.list()).toHaveLength(1),
+    );
+    const [card] = await notificationService.list();
+    expect(card!.actions?.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Allow "npm ls *" for this session',
+      'Allow all Bash commands for this session',
+      'Deny',
+    ]);
+    await notificationService.action(card!.id, 'acceptForSessionRule');
+    expect(orchestrationService.dispatch).toHaveBeenCalledWith({
+      type: 'respondToRequest',
+      threadId: 'thread-npm',
+      requestId: 'req-npm',
+      expectedRequestEventId: 'event-npm',
+      decision: 'acceptForSession',
+      sessionGrantScope: 'rule',
+    });
+  });
+
   describe('the Station browser server grant', () => {
     const open = (payload: Record<string, unknown>) =>
       emit('orchestration:event', {
@@ -384,7 +432,7 @@ describe('approval inbox notifications', () => {
       const [card] = await notificationService.list();
       expect(card.actions?.map((action) => action.label)).toEqual([
         'Allow Once',
-        'Allow station-browser.browser_click for this session',
+        'Allow all station-browser.browser_click calls for this session',
         'Allow the Station browser for this session',
         'Deny',
       ]);
@@ -615,17 +663,17 @@ describe('approval inbox notifications', () => {
       [
         'a reported tool name',
         { toolName: 'bash.exec' },
-        'Allow bash.exec for this session',
+        'Allow all bash.exec calls for this session',
       ],
       [
         'an MCP wire name, read the way a person would',
         { toolName: 'mcp__station-control__list_agents' },
-        'Allow station-control.list_agents for this session',
+        'Allow all station-control.list_agents calls for this session',
       ],
       [
         'a station-agent payload naming the tool under `tool`',
         { tool: 'Bash', toolArgs: { command: 'ls' } },
-        'Allow Bash for this session',
+        'Allow all Bash commands for this session',
       ],
       [
         // #2915: a Claude read-only tool's session grant is its folder rule.

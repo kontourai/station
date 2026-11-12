@@ -4,6 +4,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
 
@@ -93,7 +94,7 @@ export class ConversationTitleGeneration {
     const run = this.title(event, firstUserText).catch((error: unknown) =>
       this.deps.logger.warn('Conversation title generation failed', {
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       }),
     );
     this.inflight.add(run);

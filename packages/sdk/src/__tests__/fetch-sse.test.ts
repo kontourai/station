@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchSSE,
   notifyCredentialChanged,
+  StationRequestTimeoutError,
   StationSseStallError,
   setClientCredentialResolver,
 } from '../client/http';
@@ -1516,6 +1517,147 @@ describe('bounded and failed SSE attempts', () => {
       await stream.completed;
       expect(onMessage).toHaveBeenCalledOnce();
       expect(onCheckpoint).not.toHaveBeenCalled();
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+});
+
+describe('SSE connection recovery before headers', () => {
+  afterEach(() => {
+    setClientCredentialResolver(undefined);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  it('retires a request that never returns headers, resumes its cursor, and discards a late response', async () => {
+    vi.useFakeTimers();
+    let release: ((response: Response) => void) | undefined;
+    const lateCancelled = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        failingSseResponse('id: checkpoint-7\ndata: first\n\n'),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        silentAfterSseResponse('id: checkpoint-8\ndata: recovered\n\n'),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const messages: string[] = [];
+    const errors: unknown[] = [];
+    const stream = fetchSSE('https://station.example.test/events', {
+      authentication: 'required',
+      credential: CREDENTIAL,
+      credentialOrigin: 'https://station.example.test',
+      retryDelayMs: 10,
+      timeoutMs: 300,
+      stallTimeoutMs: 300,
+      onMessage: (message) => messages.push(message.data),
+      onError: (error) => errors.push(error),
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(10);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(299);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(21);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(messages).toEqual(['first', 'recovered']);
+      expect(
+        errors.find((error) => error instanceof StationRequestTimeoutError),
+      ).toMatchObject({ method: 'GET', mutation: false, timeoutMs: 300 });
+      expect(
+        new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get('Last-Event-ID'),
+      ).toBe('checkpoint-7');
+      release?.(new Response(new ReadableStream({ cancel: lateCancelled })));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(lateCancelled).toHaveBeenCalledOnce();
+      expect(messages).toEqual(['first', 'recovered']);
+    } finally {
+      stream.close();
+      release?.(sseResponse('data: stale\n\n'));
+      await stream.completed;
+    }
+  });
+
+  it('close settles an opening attempt even when its transport ignores abort', async () => {
+    let release: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const onMessage = vi.fn();
+    const onError = vi.fn();
+    const cancelled = vi.fn();
+    const stream = fetchSSE('https://station.example.test/events', {
+      authentication: 'required',
+      credential: CREDENTIAL,
+      credentialOrigin: 'https://station.example.test',
+      onMessage,
+      onError,
+    });
+    try {
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      stream.close();
+      let completed = false;
+      void stream.completed.then(() => {
+        completed = true;
+      });
+      await vi.waitFor(() => expect(completed).toBe(true));
+      release?.(new Response(new ReadableStream({ cancel: cancelled })));
+      await vi.waitFor(() => expect(cancelled).toHaveBeenCalledOnce());
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(onError).not.toHaveBeenCalled();
+    } finally {
+      stream.close();
+      release?.(sseResponse('data: stale\n\n'));
+      await stream.completed;
+    }
+  });
+
+  it('restart cancels the current body even when the transport ignores its abort signal', async () => {
+    const cancelled = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('id: checkpoint-9\ndata: first\n\n'),
+              );
+            },
+            cancel: cancelled,
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      )
+      .mockResolvedValueOnce(silentAfterSseResponse('data: resumed\n\n'));
+    vi.stubGlobal('fetch', fetchMock);
+    const onMessage = vi.fn();
+    const stream = fetchSSE('https://station.example.test/events', {
+      authentication: 'required',
+      credential: CREDENTIAL,
+      credentialOrigin: 'https://station.example.test',
+      onMessage,
+    });
+    try {
+      await vi.waitFor(() => expect(onMessage).toHaveBeenCalledOnce());
+      stream.restart();
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      expect(cancelled).toHaveBeenCalledOnce();
+      expect(
+        new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get('Last-Event-ID'),
+      ).toBe('checkpoint-9');
     } finally {
       stream.close();
       await stream.completed;

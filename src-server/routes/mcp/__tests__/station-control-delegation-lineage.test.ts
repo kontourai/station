@@ -201,6 +201,7 @@ const resolveRecord = createStationControlCallerRecordResolver(
           ? { conversationId: CONVERSATIONS[sessionId] }
           : undefined,
     },
+    coordinatorEnabled: () => true,
     getProject: () => {
       throw new Error('no projects in this suite');
     },
@@ -643,43 +644,41 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
     expect(stampedProvenance(delegateTask)).toBe('caller-derived');
   });
 
-  test('a verified child session that omits _delegation starts a grandchild under the TRUE root', async () => {
+  // A delegated child may not fan out at all (`delegated_tool_blocked`); the
+  // relay of the route's code to the MCP caller is what these three observe.
+  test('a verified child session that omits _delegation is refused: it may not start a grandchild', async () => {
     const result = await callTool(
       'session-child',
       'delegate_task',
       DELEGATE_ARGS,
     );
-    expect(result.isError).toBe(false);
-    expect(stampedDelegation(delegateTask)).toMatchObject({
-      depth: 2,
-      parentAgentSlug: 'planner',
-      parentConversationId: 'conversation-child',
-      rootAgentSlug: 'planner',
-      rootConversationId: 'conversation-root',
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.text)).toMatchObject({
+      success: false,
+      code: 'delegated_tool_blocked',
     });
+    expect(delegateTask).not.toHaveBeenCalled();
   });
 
-  test('a forged _delegation naming another tree is ignored', async () => {
+  test('a forged _delegation naming another tree does not lift the refusal for a child', async () => {
     const result = await callTool('session-child', 'delegate_task', {
       ...DELEGATE_ARGS,
       _delegation: FORGED,
     });
-    expect(result.isError).toBe(false);
-    const stamped = stampedDelegation(delegateTask) as AgentDelegationContext;
-    expect(stamped.rootConversationId).toBe('conversation-root');
-    expect(stamped.parentConversationId).toBe('conversation-child');
-    expect(stamped.maxDepth).toBe(2);
-    expect(JSON.stringify(stamped)).not.toContain('victim');
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('delegated_tool_blocked');
+    expect(delegateTask).not.toHaveBeenCalled();
   });
 
-  test('a session already at its maxDepth is refused before any child starts', async () => {
+  test('a session already at its maxDepth is refused as a child before the depth limit is read', async () => {
     const result = await callTool('session-deep', 'delegate_task', {
       ...DELEGATE_ARGS,
-      // A model claiming a shallow depth does not lift the limit.
+      // A model claiming a shallow depth does not lift the refusal.
       _delegation: { ...ROOT_CHILD, depth: 0 },
     });
     expect(result.isError).toBe(true);
-    expect(result.text).toContain('Delegation depth limit reached (2)');
+    expect(result.text).toContain('delegated_tool_blocked');
+    expect(result.text).not.toContain('Delegation depth limit reached');
     expect(delegateTask).not.toHaveBeenCalled();
   });
 
@@ -742,15 +741,14 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
 });
 
 describe('#2601 send_message stamps lineage from the verified caller', () => {
-  test('omitted _delegation: the child still names its true parent and root', async () => {
+  test('omitted _delegation: a delegated child is refused rather than starting a grandchild turn', async () => {
     const result = await callTool('session-child', 'send_message', SEND_ARGS);
-    expect(result.isError).toBe(false);
-    expect(stampedDelegation(executeForegroundMessage)).toMatchObject({
-      depth: 2,
-      parentConversationId: 'conversation-child',
-      rootConversationId: 'conversation-root',
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.text)).toMatchObject({
+      success: false,
+      code: 'delegated_tool_blocked',
     });
-    expect(stampedProvenance(executeForegroundMessage)).toBe('caller-derived');
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
   });
 
   test('a forged _delegation (with a forged attestation) is ignored', async () => {
@@ -768,10 +766,11 @@ describe('#2601 send_message stamps lineage from the verified caller', () => {
     });
   });
 
-  test('beyond maxDepth is refused for an external engine', async () => {
+  test('beyond maxDepth is refused as a child for an external engine, before the depth limit is read', async () => {
     const result = await callTool('session-deep', 'send_message', SEND_ARGS);
     expect(result.isError).toBe(true);
-    expect(result.text).toContain('Delegation depth limit reached (2)');
+    expect(result.text).toContain('delegated_tool_blocked');
+    expect(result.text).not.toContain('Delegation depth limit reached');
     expect(executeForegroundMessage).not.toHaveBeenCalled();
   });
 });
@@ -955,7 +954,7 @@ describe('#2601 registry default Agents delegate under the default policy', () =
 
 describe('#2601 send_message continuing a conversation', () => {
   test('a verified caller continuing an existing conversation still stamps the context derived from ITS session, not the model claim', async () => {
-    const result = await callTool('session-child', 'send_message', {
+    const result = await callTool('session-root', 'send_message', {
       ...SEND_ARGS,
       conversationId: 'conversation-existing',
       _delegation: FORGED,
@@ -965,10 +964,20 @@ describe('#2601 send_message continuing a conversation', () => {
       conversationId: 'conversation-existing',
     });
     expect(stampedDelegation(executeForegroundMessage)).toMatchObject({
-      depth: 2,
-      parentConversationId: 'conversation-child',
+      depth: 1,
+      parentConversationId: 'conversation-root',
       rootConversationId: 'conversation-root',
     });
+  });
+
+  test('a delegated child continuing an existing conversation is refused', async () => {
+    const result = await callTool('session-child', 'send_message', {
+      ...SEND_ARGS,
+      conversationId: 'conversation-existing',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('delegated_tool_blocked');
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -976,7 +985,7 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
   const peerArgs = { environmentId: PEER_ENVIRONMENT_ID };
 
   test('delegate_task: the peer receives THIS Station’s derivation, not the forged claim, and no attestation', async () => {
-    const result = await callTool('session-child', 'delegate_task', {
+    const result = await callTool('session-root', 'delegate_task', {
       ...DELEGATE_ARGS,
       ...peerArgs,
       _delegation: FORGED,
@@ -992,8 +1001,8 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
     expect(peerReceived).toHaveLength(1);
     expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
     expect(peerReceived[0]!.body.delegation).toMatchObject({
-      depth: 2,
-      parentConversationId: 'conversation-child',
+      depth: 1,
+      parentConversationId: 'conversation-root',
       rootConversationId: 'conversation-root',
       maxDepth: 2,
     });
@@ -1013,7 +1022,7 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
       // The calling session's own conversation, from the derived context the
       // route resolved, never the forged claim: the usage tree finds the
       // peer record by it.
-      parentConversationId: 'conversation-child',
+      parentConversationId: 'conversation-root',
       delegationProvenance: 'caller-derived',
     });
     expect((delegateTask.mock.calls[0]![0] as { userId?: string }).userId).toBe(
@@ -1040,7 +1049,7 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
     });
   });
 
-  test('a caller at its depth limit is refused before anything reaches the peer, for both tools', async () => {
+  test('a delegated child is refused before anything reaches the peer, for both tools', async () => {
     for (const [name, args] of [
       ['delegate_task', DELEGATE_ARGS],
       ['send_message', SEND_ARGS],
@@ -1051,7 +1060,7 @@ describe('#2601 forwards to a saved Environment carry the derived context', () =
         _delegation: { ...ROOT_CHILD, depth: 0 },
       });
       expect(result.isError).toBe(true);
-      expect(result.text).toContain('Delegation depth limit reached (2)');
+      expect(result.text).toContain('delegated_tool_blocked');
     }
     expect(peerReceived).toHaveLength(0);
   });

@@ -124,7 +124,10 @@ Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported
 delivery channel is reported as undelivered on the ordinary saved-binding path;
 an absent request is not a failed delivery. Explicit `askBeforeUse` tool rules
-are an exception: unsupported engines refuse the saved Agent as well. An explicit conversation engine
+are an exception: unsupported engines refuse the saved Agent as well. Station's own orchestration guidance
+(Feature Preview `station-orchestration-instructions`) is separate from authored content: it is composed from the
+Station tools the Session is offered and sent on the system-prompt append (Claude with an authored prompt) or
+the first message, and it has its own receipt rather than appearing as undelivered Agent content. An explicit conversation engine
 override must preserve required profile delivery and refuses unsupported or
 undelivered content instead of starting a reduced profile. See
 [execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).

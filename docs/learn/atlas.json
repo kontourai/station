@@ -47,6 +47,7 @@
         "Durable Station Agent",
         "ChildWork",
         "DelegationGroupRuntime",
+        "StationOrchestrationInstructions",
         "SessionQueryModule",
         "SessionGoalModule",
         "ConversationSessionLineage",

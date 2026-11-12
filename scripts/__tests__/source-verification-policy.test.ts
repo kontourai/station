@@ -480,6 +480,43 @@ describe('source verification reconciler API boundary', () => {
     state.jobs.set(11, structuredClone(legacyMetadataJobs));
     expect((await execute()).state).toBe('success');
   });
+  // #4748: the actionlint artifact producer is a source job that runs before
+  // plan, statics and fork-smoke. When it is skipped the run is the usual
+  // metadata run; when it ran and failed, every consumer is skipped behind it
+  // and that must never read as metadata or as the older green.
+  test('a skipped actionlint artifact producer leaves a metadata run ignorable (control)', async () => {
+    const { state, execute, newer } = fixture();
+    newer('skipped');
+    state.runs[0].conclusion = 'failure';
+    state.jobs.set(11, [
+      ...structuredClone(legacyMetadataJobs),
+      {
+        id: 902,
+        name: 'Pinned actionlint artifact',
+        status: 'completed',
+        conclusion: 'skipped',
+      },
+    ]);
+    expect((await execute()).state).toBe('success');
+  });
+  test.each(['failure', 'cancelled', 'timed_out'])(
+    'an actionlint artifact producer that %s cannot hide behind skipped consumers or the older green',
+    async (conclusion) => {
+      const { state, execute, newer } = fixture();
+      newer('skipped');
+      state.runs[0].conclusion = 'failure';
+      state.jobs.set(11, [
+        ...structuredClone(legacyMetadataJobs),
+        {
+          id: 902,
+          name: 'Pinned actionlint artifact',
+          status: 'completed',
+          conclusion,
+        },
+      ]);
+      expect((await execute()).state).toBe('failure');
+    },
+  );
   test.each([
     'aggregate failure',
     'aggregate cancelled',

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -206,15 +205,12 @@ export async function runFallowAudit(root, scope = 'changed') {
   const inventoryPath =
     scope === 'whole-tree' ? join(rawDirectory, 'inventory.json') : undefined;
   if (inventoryPath) {
-    const paths = execFileSync(
+    // The helper's bound, not a local 4 MiB one: this listing grows with the
+    // repository, and the tracked set alone is already over a third of that.
+    const paths = execFileSyncBounded(
       'git',
       ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
-      {
-        cwd: root,
-        encoding: 'utf8',
-        windowsHide: true,
-        maxBuffer: 4 * 1024 * 1024,
-      },
+      { cwd: root, encoding: 'utf8', windowsHide: true },
     )
       .split('\0')
       .filter(Boolean);
@@ -241,7 +237,7 @@ export async function runFallowAudit(root, scope = 'changed') {
     scope,
     completed: true,
     inventory: inventoryPath ? relative(root, inventoryPath) : undefined,
-    source_revision: execFileSync('git', ['rev-parse', 'HEAD'], {
+    source_revision: execFileSyncBounded('git', ['rev-parse', 'HEAD'], {
       cwd: root,
       encoding: 'utf8',
       windowsHide: true,

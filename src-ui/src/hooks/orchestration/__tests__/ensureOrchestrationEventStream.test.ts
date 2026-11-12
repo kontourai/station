@@ -2,7 +2,7 @@ import type {
   FetchSseConnection,
   FetchSseOptions,
 } from '@kontourai/station-sdk/client';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applyOrchestrationSnapshot = vi.fn();
@@ -43,6 +43,8 @@ import {
 } from '../ensureOrchestrationEventStream';
 import {
   readSequencedLiveEvents,
+  readSequencedLiveFloor,
+  readSequencedLiveTruncation,
   recordSequencedLiveEvent,
 } from '../sequencedLiveEvents';
 import { subscribeSharedOrchestrationStream } from '../sharedStreamListeners';
@@ -121,6 +123,122 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       releaseRetired();
       client.clear();
       retired.clear();
+    }
+  });
+
+  test('#3075: a read-marker change re-reads the inventory and read-marker queries for this stream’s authority only', () => {
+    const apiBase = 'https://read-markers-changed.example.test';
+    const client = new QueryClient();
+    const matching = [
+      ['conversation-inventory'],
+      ['conversation-inventory', apiBase, 'current'],
+      ['read-markers', 'summary', ['agent-conversation:c1']],
+    ];
+    const foreign = [
+      ['conversation-inventory', apiBase, 'retired'],
+      ['conversation-inventory', 'https://other.example.test', 'current'],
+      ['orchestration-sessions', apiBase, 'current'],
+    ];
+    const releaseScope = registerOrchestrationStreamQueryClient(
+      apiBase,
+      client,
+      'current',
+    );
+    const release = ensureOrchestrationEventStream(apiBase, client);
+    try {
+      for (const key of [...matching, ...foreign]) client.setQueryData(key, []);
+      capturedOnMessage()({ event: 'read-markers:changed', data: '{}' });
+      for (const key of matching)
+        expect(
+          client.getQueryState(key)?.isInvalidated,
+          JSON.stringify(key),
+        ).toBe(true);
+      for (const key of foreign)
+        expect(
+          client.getQueryState(key)?.isInvalidated,
+          JSON.stringify(key),
+        ).toBe(false);
+    } finally {
+      release();
+      releaseScope();
+      client.clear();
+    }
+  });
+
+  test('#3075 review: a burst of read-marker changes refetches each read-state query a bounded number of times and never cancels a refetch', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const apiBase = 'https://read-markers-burst.example.test';
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const releaseScope = registerOrchestrationStreamQueryClient(
+      apiBase,
+      client,
+      'current',
+    );
+    const release = ensureOrchestrationEventStream(apiBase, client);
+    const fetches = { inventory: 0, dockInventory: 0, summary: 0 };
+    let cancelled = 0;
+    const settle: Array<() => void> = [];
+    const observe = (
+      queryKey: readonly unknown[],
+      kind: keyof typeof fetches,
+    ) =>
+      new QueryObserver(client, {
+        queryKey,
+        queryFn: ({ signal }) => {
+          fetches[kind] += 1;
+          signal.addEventListener('abort', () => {
+            cancelled += 1;
+          });
+          return new Promise<string[]>((resolve) => {
+            settle.push(() => resolve([]));
+          });
+        },
+      }).subscribe(() => {});
+    const settleAll = async () => {
+      for (const done of settle.splice(0)) done();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    const stops = [
+      observe(['conversation-inventory', apiBase, 'current'], 'inventory'),
+      // The dock's own inventory query names no read target, so its key is
+      // unscoped (`useConversationInventoryQuery()`); it must refresh too.
+      observe(['conversation-inventory'], 'dockInventory'),
+      observe(
+        ['read-markers', 'summary', ['agent-conversation:c1']],
+        'summary',
+      ),
+    ];
+    try {
+      await settleAll();
+      expect(fetches).toEqual({ inventory: 1, dockInventory: 1, summary: 1 });
+
+      // 25 marks from another client, the first refetch still in flight.
+      for (let i = 0; i < 25; i += 1) {
+        capturedOnMessage()({ event: 'read-markers:changed', data: '{}' });
+        await vi.advanceTimersByTimeAsync(10);
+      }
+      // Well past the refresh window, settling every read along the way.
+      for (let i = 0; i < 4; i += 1) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        await settleAll();
+      }
+
+      expect(cancelled).toBe(0);
+      // At most one refetch now and one trailing refetch for the burst.
+      expect(fetches.inventory - 1).toBeGreaterThanOrEqual(1);
+      expect(fetches.inventory - 1).toBeLessThanOrEqual(2);
+      expect(fetches.summary - 1).toBeGreaterThanOrEqual(1);
+      expect(fetches.summary - 1).toBeLessThanOrEqual(2);
+      expect(fetches.dockInventory - 1).toBeGreaterThanOrEqual(1);
+      expect(fetches.dockInventory - 1).toBeLessThanOrEqual(2);
+    } finally {
+      for (const stop of stops) stop();
+      release();
+      releaseScope();
+      client.clear();
+      vi.useRealTimers();
     }
   });
 
@@ -313,6 +431,28 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     expect(readSequencedLiveEvents(apiBase)).toEqual([]);
   });
 
+  // A snapshot delivers no events, so a transcript window served before its
+  // cursor may be missing what lies between (see `useActiveChatTranscript`).
+  test('a snapshot records its cursor as the live floor and leaves the truncation mark alone', () => {
+    const apiBase = 'http://api-snapshot-floor';
+    ensureOrchestrationEventStream(apiBase);
+    expect(readSequencedLiveFloor(apiBase)).toBe(0);
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [] }),
+      id: '5000',
+    });
+    expect(readSequencedLiveFloor(apiBase)).toBe(5000);
+    expect(readSequencedLiveTruncation(apiBase)).toBe(0);
+    // A caught-up marker ends a replay, whose events did arrive live.
+    capturedOnMessage()({
+      event: 'orchestration:caughtUp',
+      data: '{}',
+      id: '6000',
+    });
+    expect(readSequencedLiveFloor(apiBase)).toBe(5000);
+  });
+
   test('a replacement stream echoes the known store epoch', async () => {
     const apiBase = 'http://api-epoch-echo';
     ensureOrchestrationEventStream(apiBase);
@@ -328,6 +468,73 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       initialLastEventId: '7',
       headers: { 'X-Station-Stream-Epoch': 'known-epoch' },
     });
+  });
+
+  // An in-place retry carries the cursor but not the epoch, so a different
+  // store whose head is at or past that cursor answers with a replay. The
+  // caught-up marker is the first frame that says which store it was.
+  test('a replay that ends on a different store epoch is replaced by a cursorless stream', () => {
+    mocks.clearConversationActivity.mockClear();
+    applyOrchestrationSnapshot.mockClear();
+    const apiBase = 'http://api-epoch-replay';
+    ensureOrchestrationEventStream(apiBase);
+    const retired = mocks.fetchSSE.mock.results[0]?.value as {
+      close: ReturnType<typeof vi.fn>;
+    };
+    const first = capturedOnMessage();
+    first({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'old-epoch' }),
+      id: '100',
+    });
+    // Control: a marker for the same store replaces nothing.
+    first({
+      event: 'orchestration:caughtUp',
+      data: JSON.stringify({ epoch: 'old-epoch' }),
+      id: '100',
+    });
+    expect(mocks.fetchSSE).toHaveBeenCalledTimes(1);
+    recordSequencedLiveEvent(
+      apiBase,
+      {
+        eventId: 'foreign',
+        method: 'turn.started',
+        provider: 'claude',
+        threadId: 'conversation',
+        turnId: 'foreign',
+        createdAt: '2026-09-24T00:00:00.000Z',
+        prompt: 'foreign',
+      },
+      101,
+    );
+
+    first({
+      event: 'orchestration:caughtUp',
+      data: JSON.stringify({ epoch: 'new-epoch' }),
+      id: '150',
+    });
+
+    expect(mocks.clearConversationActivity).toHaveBeenCalledOnce();
+    expect(readSequencedLiveEvents(apiBase)).toEqual([]);
+    expect(retired.close).toHaveBeenCalledOnce();
+    expect(mocks.fetchSSE).toHaveBeenCalledTimes(2);
+    const replacement = mocks.fetchSSE.mock.calls[1]?.[1] as FetchSseOptions;
+    // No cursor: the old one names a position in the other store.
+    expect(replacement.initialLastEventId).toBeUndefined();
+    expect(replacement.headers).toMatchObject({
+      'X-Station-Stream-Epoch': 'new-epoch',
+    });
+    // Its snapshot repairs what the foreign replay applied.
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'new-epoch' }),
+      id: '150',
+    });
+    expect(applyOrchestrationSnapshot).toHaveBeenLastCalledWith(
+      { sessions: [], epoch: 'new-epoch' },
+      { apiBase, isReconnectFallback: true },
+    );
+    expect(mocks.clearConversationActivity).toHaveBeenCalledOnce();
   });
 
   test('a replay caught-up frame reconciles present-tense session state once', () => {

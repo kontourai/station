@@ -188,8 +188,8 @@ Muse can run one `muse serve` host per Session, with `muse exec` per-turn fallba
 
 The pending-message section starts collapsed. Expanding it reveals each mode,
 status and its explicit Send now action. Send remains separate from Stop. The
-Send-mode picker defaults to Queue; native Steer is available for Claude Code
-and Codex. Other engines hold steering until a supported safe boundary can be
+Send-mode picker defaults to native Steer for Claude Code and Codex, and to
+Queue elsewhere. Other engines hold steering until a supported safe boundary can be
 proven, and currently wait for turn completion. Send now explicitly overrides
 that waiting, stopping immediately and sending after a settled receipt.
 

@@ -39,8 +39,11 @@ import {
 import {
   configureApiCredential,
   loadJsonPayload,
+  optionalValueFlag,
   type ParsedCoreArgs,
   parseCoreArgs,
+  parseWholeNumber,
+  parseWholeNumberFlag,
   printFetched,
   printJson,
   printResolvedTarget,
@@ -709,16 +712,12 @@ async function runScheduleCommand(args: string[]) {
       // ZONED job's schedule could not express the one fact that decides its
       // instants. Absent stays absent — the server treats an unzoned schedule
       // as UTC and the preview must agree rather than substitute a default.
-      const timezone =
-        typeof parsed.flags.timezone === 'string' &&
-        parsed.flags.timezone.trim().length > 0
-          ? parsed.flags.timezone.trim()
-          : undefined;
+      const timezone = optionalValueFlag(parsed, 'timezone')?.trim();
       printFetched(
         await previewSchedule(
           apiBase,
           cron,
-          count === undefined ? undefined : Number.parseInt(count, 10),
+          count === undefined ? undefined : parseWholeNumber(count, 'count'),
           timezone ? { timezone } : undefined,
         ),
       );
@@ -729,7 +728,8 @@ async function runScheduleCommand(args: string[]) {
       const count = parsed.positionals[2];
       printFetched(
         await getJobLogs(apiBase, target, {
-          count: count === undefined ? undefined : Number.parseInt(count, 10),
+          count:
+            count === undefined ? undefined : parseWholeNumber(count, 'count'),
         }),
       );
       return;
@@ -795,13 +795,11 @@ async function runAutomationCommand(args: string[]) {
 
   switch (action) {
     case 'deliveries': {
-      const raw = parsed.flags.limit;
-      if (raw !== undefined && (typeof raw !== 'string' || !/^\d+$/.test(raw)))
-        throw new Error('--limit must be a positive integer.');
+      const limit = parseWholeNumberFlag(parsed, 'limit', { min: 1 });
       printFetched(
         await listAutomationDeliveries(
           apiBase,
-          raw === undefined ? {} : { limit: Number(raw) },
+          limit === undefined ? {} : { limit },
         ),
       );
       return;
@@ -947,10 +945,7 @@ async function runKnowledgeCommand(args: string[]) {
     case 'documents': {
       const subaction = requirePositional(parsed, 1, 'documents action');
       const project = requirePositional(parsed, 2, 'project slug');
-      const namespace =
-        typeof parsed.flags.namespace === 'string'
-          ? parsed.flags.namespace
-          : undefined;
+      const namespace = optionalValueFlag(parsed, 'namespace');
       const base = getNamespaceBase(project, namespace);
 
       if (subaction === 'list') {
@@ -1215,14 +1210,8 @@ async function runInsightsCommand(args: string[]) {
     // never ends — the command hangs (station#3076 review). `station
     // monitoring events` gets this right by branching to streamSse; this verb
     // is a bounded read, so it supplies a default window instead.
-    const rawDays = parsed.flags.days;
-    const days = Number.parseInt(String(rawDays ?? ''), 10);
-    if (rawDays !== undefined && !(days > 0)) {
-      throw new Error(
-        `--days must be a positive integer, got: ${String(rawDays)}`,
-      );
-    }
-    const window = (days > 0 ? days : 14) * 86_400_000;
+    const days = parseWholeNumberFlag(parsed, 'days', { min: 1 });
+    const window = (days ?? 14) * 86_400_000;
     if (parsed.flags.start === undefined) {
       // Anchor the default window on --end when one was given. Anchoring it
       // on `now` regardless produced start > end for any historical --end,
@@ -1369,10 +1358,7 @@ async function runAcpCommand(args: string[]) {
       const data = await getProviderCommands<
         Array<{ name?: string; description?: string }>
       >(apiBase, 'acp');
-      const q =
-        typeof parsed.flags.q === 'string'
-          ? parsed.flags.q.toLowerCase()
-          : undefined;
+      const q = optionalValueFlag(parsed, 'q')?.toLowerCase();
       const filtered = q
         ? data.filter(
             (cmd) =>
@@ -1490,19 +1476,11 @@ function requireStringFlag(parsed: ParsedCoreArgs, flag: string): string {
   return value;
 }
 
-function optionalStringFlag(
-  parsed: ParsedCoreArgs,
-  flag: string,
-): string | undefined {
-  const value = parsed.flags[flag];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
 function optionalListFlag(
   parsed: ParsedCoreArgs,
   flag: string,
 ): string[] | undefined {
-  const entries = optionalStringFlag(parsed, flag)
+  const entries = optionalValueFlag(parsed, flag)
     ?.split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
@@ -1526,7 +1504,7 @@ async function runFlowCommand(args: string[]) {
     case 'start': {
       const body = {
         definition: requireStringFlag(parsed, 'definition'),
-        runId: optionalStringFlag(parsed, 'run-id'),
+        runId: optionalValueFlag(parsed, 'run-id'),
       };
       await requestAndPrint(apiBase, `${base}/runs`, {
         method: 'POST',
@@ -1549,16 +1527,16 @@ async function runFlowCommand(args: string[]) {
       const runId = requirePositional(parsed, 2, 'run id');
       const expectationIds = optionalListFlag(parsed, 'expectation-ids');
       const supersede = optionalListFlag(parsed, 'supersede');
-      const timeoutMs = optionalStringFlag(parsed, 'timeout-ms');
+      const timeoutMs = parseWholeNumberFlag(parsed, 'timeout-ms', { min: 1 });
       const body = {
         gate: requireStringFlag(parsed, 'gate'),
         command: requireStringFlag(parsed, 'command'),
         claimType: requireStringFlag(parsed, 'claim-type'),
-        producer: optionalStringFlag(parsed, 'producer'),
-        label: optionalStringFlag(parsed, 'label'),
+        producer: optionalValueFlag(parsed, 'producer'),
+        label: optionalValueFlag(parsed, 'label'),
         ...(expectationIds ? { expectationIds } : {}),
         ...(supersede ? { supersede } : {}),
-        ...(timeoutMs ? { timeoutMs: Number.parseInt(timeoutMs, 10) } : {}),
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       };
       await requestAndPrint(
         apiBase,
@@ -1576,7 +1554,7 @@ async function runFlowCommand(args: string[]) {
     }
     case 'evaluate': {
       const runId = requirePositional(parsed, 2, 'run id');
-      const body = { gate: optionalStringFlag(parsed, 'gate') };
+      const body = { gate: optionalValueFlag(parsed, 'gate') };
       await requestAndPrint(
         apiBase,
         `${base}/runs/${encodeURIComponent(runId)}/evaluate`,

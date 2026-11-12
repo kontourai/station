@@ -24,6 +24,7 @@ import {
   findVerdictBearingContinueOnError,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
   REQUIRED_FAST_CHECKS_CONDITION,
+  REQUIRED_FAST_CHECKS_STATICS_CONDITION,
 } from '../ci-workflow-governance.mjs';
 
 const primaryTriggers =
@@ -38,6 +39,18 @@ function block(text: string, indent: number) {
     .map((line) => `${pad}${line}`)
     .join('\n')}`;
 }
+
+// The producer's admission guard is internal to the governance module, so the
+// fixture reads the same text from the checked-in workflow's data.
+const ACTIONLINT_ARTIFACT_IF = String(
+  parsedJob(
+    readFileSync(
+      new URL('../../.github/workflows/ci.yml', import.meta.url),
+      'utf8',
+    ),
+    'actionlint-artifact',
+  )?.if,
+);
 
 // The same shape as ci.yml (#2709): plan, shards, statics, and the required
 // fast-checks aggregator over them. Single-quoted YAML scalars keep the
@@ -71,7 +84,7 @@ jobs:
         if: ${FAST_CHECKS_PLANNED_STEP_IF}
         uses: actions/upload-artifact@v7
   fast-checks-shard:
-    needs: fast-checks-plan
+    needs: [fast-checks-plan, actionlint-artifact]
     if: ${FAST_CHECKS_SHARD_IF}
     strategy:
       fail-fast: false
@@ -88,8 +101,8 @@ jobs:
         with:
           if-no-files-found: error
   fast-checks-statics:
-    needs: [classify, pr-admission]
-    if: ${REQUIRED_FAST_CHECKS_CONDITION}
+    needs: [classify, pr-admission, actionlint-artifact]
+    if: ${REQUIRED_FAST_CHECKS_STATICS_CONDITION}
     steps:
       - name: Run fast CI
         env:
@@ -100,6 +113,12 @@ jobs:
       - name: Upload bounded fast-feedback diagnostics
         continue-on-error: true
         uses: actions/upload-artifact@v7
+  actionlint-artifact:
+    needs: [classify, pr-admission]
+    if: ${ACTIONLINT_ARTIFACT_IF}
+    steps:
+      - name: Download and verify pinned actionlint
+        run: echo fixture
   fast-checks:
     needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
     if: ${REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION}
@@ -361,7 +380,7 @@ describe('primary CI workflow governance', () => {
     expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+      "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
     expect(fastChecks?.['runs-on']).toBe('ubuntu-24.04');
     // The fence is the gate's constant, not a second literal (#2577: this pin
@@ -394,8 +413,9 @@ describe('primary CI workflow governance', () => {
     const forkSmoke = parsedJob(workflow, 'fork-smoke');
     expect(forkSmoke?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}",
+      "${{ always() && !cancelled() && needs.actionlint-artifact.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}",
     );
+    expect(forkSmoke?.needs).toBe('actionlint-artifact');
     expect(forkSmoke?.permissions).toEqual({ contents: 'read' });
     expect(forkSmoke?.['runs-on']).toBe('ubuntu-24.04');
     expect(JSON.stringify(forkSmoke)).not.toContain('secrets.');
@@ -731,6 +751,10 @@ describe('required browser evidence cannot silently disappear', () => {
 
 describe('the required fast-checks aggregator cannot pass over a missing part (#2709)', () => {
   test('accepts the checked-in workflow and the fixture', () => {
+    // The fixture's producer guard is the checked-in one, not an empty string.
+    expect(ACTIONLINT_ARTIFACT_IF).toContain(
+      "needs.pr-admission.outputs.admitted != 'false'",
+    );
     expect(collectRequiredBrowserSmokeFindings(cleanWorkflow)).toEqual([]);
     expect(
       collectRequiredBrowserSmokeFindings(
@@ -798,6 +822,42 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
       'a shard admitted without a successful plan',
       `    if: ${FAST_CHECKS_SHARD_IF}\n`,
       '    if: always()\n',
+      'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
+    ],
+    [
+      'a missing actionlint artifact producer (#4748)',
+      '  actionlint-artifact:\n',
+      '  other-job:\n',
+      'Required actionlint-artifact must admit exactly its consumers without swallowing failures.',
+    ],
+    [
+      'an actionlint artifact producer admitted on every run (#4748)',
+      `    if: ${ACTIONLINT_ARTIFACT_IF}\n`,
+      '    if: always()\n',
+      'Required actionlint-artifact must admit exactly its consumers without swallowing failures.',
+    ],
+    [
+      'a statics job that does not need the actionlint artifact (#4748)',
+      'needs: [classify, pr-admission, actionlint-artifact]',
+      'needs: [classify, pr-admission]',
+      'Required fast-checks-statics must admit PR and merge candidates without swallowing failures.',
+    ],
+    [
+      'a statics guard that never checks the actionlint artifact succeeded (#4748)',
+      `    if: ${REQUIRED_FAST_CHECKS_STATICS_CONDITION}\n`,
+      `    if: ${REQUIRED_FAST_CHECKS_CONDITION}\n`,
+      'Required fast-checks-statics must admit PR and merge candidates without swallowing failures.',
+    ],
+    [
+      'a shard that does not need the actionlint artifact (#4748)',
+      'needs: [fast-checks-plan, actionlint-artifact]',
+      'needs: fast-checks-plan',
+      'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
+    ],
+    [
+      'a shard admitted without the actionlint artifact having succeeded (#4748)',
+      `    if: ${FAST_CHECKS_SHARD_IF}\n`,
+      `    if: ${FAST_CHECKS_SHARD_IF.replace("needs.actionlint-artifact.result == 'success' && ", '')}\n`,
       'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
     ],
     [

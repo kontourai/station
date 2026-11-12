@@ -236,6 +236,7 @@ async function loadCliWithLifecycleMocks() {
     shortcut: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
+    supervisorStatus: vi.fn(),
     upgrade: vi.fn(),
     validateLifecyclePorts: vi.fn(),
   };
@@ -466,6 +467,22 @@ describe('runCli', () => {
 
     expect(doctor.doctorJson).toHaveBeenCalledOnce();
     expect(doctor.doctor).not.toHaveBeenCalled();
+    // #4774: both forms ask the selected Station for its confinement
+    // preflight.
+    expect(doctor.doctorJson).toHaveBeenCalledWith(
+      {},
+      { inspectConfinement: expect.any(Function) },
+    );
+  });
+
+  test('dispatches human doctor with the confinement preflight reader', async () => {
+    const { doctor, runCli } = await loadCliWithLifecycleMocks();
+
+    await runCli(['doctor']);
+
+    expect(doctor.doctor).toHaveBeenCalledWith({
+      inspectConfinement: expect.any(Function),
+    });
   });
 
   test('the direct `service install` dispatch signposts setup local; other actions do not', async () => {
@@ -570,10 +587,10 @@ describe('runCli', () => {
     const { parseLifecycleArgs } = await import('../cli.js');
 
     expect(
-      parseLifecycleArgs([`--base=${home}`, '--features=a=1,b']),
+      parseLifecycleArgs([`--base=${home}`, '--log=/tmp/a=1,b.log']),
     ).toMatchObject({
       baseDir: home,
-      features: 'a=1,b',
+      logFile: '/tmp/a=1,b.log',
     });
   });
 
@@ -587,6 +604,73 @@ describe('runCli', () => {
         /cannot be used with local lifecycle commands/,
       );
     }
+  });
+
+  // #3909: `--features=strands-runtime` used to switch the process to
+  // Strands. Lifecycle commands ignore unknown options, so ignoring it would
+  // start such a caller on VoltAgent without saying so; it is refused before
+  // any lifecycle effect. Every other value never changed the runtime and
+  // stays an ignored unknown option.
+  test.each([
+    ['start', ['start']],
+    ['service install', ['service', 'install']],
+    ['service run', ['service', 'run']],
+  ])(
+    '%s refuses a --features list naming strands-runtime and ignores any other',
+    async (_label, command) => {
+      const { lifecycle, runCli, service } = await loadCliWithLifecycleMocks();
+      for (const option of [
+        '--features=strands-runtime',
+        '--features=voice,strands-runtime',
+      ]) {
+        await expect(
+          runCli([...command, `--base=${STATION_HOME}`, option]),
+        ).rejects.toThrow(
+          /no longer selects the Strands runtime \(#3909\)\. Run `station config set runtime strands`/,
+        );
+      }
+      // The spaced form must not slip through as two ignored arguments.
+      await expect(
+        runCli([
+          ...command,
+          `--base=${STATION_HOME}`,
+          '--features',
+          'strands-runtime',
+        ]),
+      ).rejects.toThrow(/--features requires the --features=<value> form/);
+      expect(lifecycle.start).not.toHaveBeenCalled();
+      expect(lifecycle.clean).not.toHaveBeenCalled();
+      expect(service.runServiceCommand).not.toHaveBeenCalled();
+
+      for (const option of [
+        '--features=managed-chat-orchestration',
+        '--features=strands-runtime-x',
+        '--features=voice, strands-runtime',
+      ]) {
+        await runCli([...command, `--base=${STATION_HOME}`, option]);
+      }
+      const runs =
+        command[0] === 'start'
+          ? lifecycle.start.mock.calls
+          : service.runServiceCommand.mock.calls;
+      expect(runs).toHaveLength(3);
+    },
+  );
+
+  test('start --clean refuses STATION_FEATURES=strands-runtime before cleaning the home', async () => {
+    const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+    vi.stubEnv('STATION_FEATURES', 'strands-runtime');
+    try {
+      await expect(
+        runCli(['start', `--base=${STATION_HOME}`, '--clean', '--force']),
+      ).rejects.toThrow(
+        /^STATION_FEATURES=strands-runtime no longer selects the Strands runtime/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(lifecycle.clean).not.toHaveBeenCalled();
+    expect(lifecycle.start).not.toHaveBeenCalled();
   });
 
   test('rejects ephemeral service commands before creating a temp home', async () => {
@@ -865,7 +949,6 @@ describe('runCli', () => {
       allowedOrigins: undefined,
       baseDir: STATION_HOME,
       build: false,
-      features: undefined,
       force: true,
       homeSource: '--base',
       host: '127.0.0.1',
@@ -1064,6 +1147,70 @@ describe('runCli', () => {
       expect.objectContaining({ instanceName: 'smoke-a', stateHome: flagHome }),
     );
   });
+
+  // `--home` and `--base` name one directory, so naming either narrows the
+  // match by home. Before this, `--home=/a --port=4000` matched by port alone
+  // and could stop an instance whose home was /b.
+  test.each(['--home', '--base'])(
+    'narrows stop by the named home when %s accompanies another selector',
+    async (flag) => {
+      process.env.STATION_HOME = ENV_HOME;
+      const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+      const flagHome = join(dirname(ENV_HOME), 'flag-home');
+
+      await runCli(['stop', `${flag}=${flagHome}`, '--port=4000']);
+
+      expect(lifecycle.stop).toHaveBeenCalledWith({
+        baseDir: flagHome,
+        instanceName: undefined,
+        serverPort: 4000,
+        stateHome: flagHome,
+        uiPort: undefined,
+      });
+    },
+  );
+
+  test('an unknown supervisor action fails without running status', async () => {
+    const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await runCli(['supervisor', 'stauts']);
+
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toHaveBeenCalledWith('Unknown command: supervisor stauts');
+    expect(lifecycle.supervisorStatus).not.toHaveBeenCalled();
+
+    process.exitCode = undefined;
+    await runCli(['supervisor', 'status', '--json']);
+
+    expect(process.exitCode).toBeUndefined();
+    expect(lifecycle.supervisorStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ json: true }),
+    );
+  });
+
+  test.each<[args: string[], label: string]>([
+    [['registry', '--station=work'], 'registry option --station=work'],
+    [['plugin', 'registry', '--offline'], 'plugin registry option --offline'],
+  ])(
+    'refuses a flag where %j takes a registry reference',
+    async (args, label) => {
+      const { install, runCli } = await loadCliWithLifecycleMocks();
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await runCli(args);
+
+      expect(process.exitCode).toBe(1);
+      expect(stderr).toHaveBeenCalledWith(`Unknown command: ${label}`);
+      expect(install.registry).not.toHaveBeenCalled();
+
+      process.exitCode = undefined;
+      await runCli([...args.slice(0, -1), 'acme/registry']);
+
+      expect(process.exitCode).toBeUndefined();
+      expect(install.registry).toHaveBeenCalledWith('acme/registry');
+    },
+  );
 
   test('dispatches core resource commands through the shared core command handler', async () => {
     const runCoreCommand = vi.fn().mockResolvedValue(undefined);

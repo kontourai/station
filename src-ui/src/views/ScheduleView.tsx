@@ -283,7 +283,7 @@ export function ScheduleView() {
               runPendingJob={runPendingJob}
               onDelete={(job) => {
                 setConfirmAction({
-                  title: 'Delete Job',
+                  title: 'Delete job',
                   message: `Delete job "${job.name}"? This cannot be undone.`,
                   variant: 'danger',
                   onConfirm: () => {

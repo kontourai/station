@@ -291,6 +291,9 @@ export function ScheduleJobsTable({
                       className="schedule__td schedule__td--actions"
                       onClick={(event) => event.stopPropagation()}
                       onKeyDown={(event) => {
+                        // Enter and Space on an action button belong to that
+                        // button; cancelling them here swallowed its click.
+                        if (event.target !== event.currentTarget) return;
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
                           event.currentTarget.click();

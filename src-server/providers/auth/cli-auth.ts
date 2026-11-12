@@ -276,6 +276,18 @@ export async function augmentedSpawnEnv(
   });
 }
 
+// #4774: `augmentedSpawnEnv` without its two derived keys, for a read that
+// needs only the inherited variables (the confinement preflight's credential
+// check) and must not act: the PATH augmentation may spawn a login shell, and
+// the Station TMPDIR is created on the spot. Scrubbed the same way, so every
+// key but PATH and TMPDIR (left as inherited) matches what that helper
+// returns.
+export function inheritedSpawnEnv(
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return scrubBootInternalSecrets({ ...baseEnv });
+}
+
 /**
  * Answers the absolute-path case only, so both twins can share one answer
  * without either of them paying for PATH resolution it does not need.

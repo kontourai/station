@@ -4147,7 +4147,7 @@ export class TaskGraphService {
                 );
               this.logger?.warn('Task brief could not be built for dispatch', {
                 taskId: reservation.task.id,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               });
             }
           }

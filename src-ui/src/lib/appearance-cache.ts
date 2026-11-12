@@ -1,5 +1,6 @@
 /**
- * The last appearance this device rendered: mode and color theme, and whether
+ * The last appearance this device rendered: mode, color theme, density and
+ * motion (#4692), and whether
  * it came from the signed-in person's account or from this device's own
  * settings (docs/decisions/user-color-themes.md).
  *
@@ -25,6 +26,7 @@ import {
   COLOR_THEME_ID_PATTERN,
   type DeviceSettings,
 } from '@kontourai/station-contracts/device-settings';
+import { resolveDensity, resolveMotion } from './display-preferences';
 
 export const APPEARANCE_CACHE_KEY = 'station-appearance-v1';
 
@@ -33,6 +35,8 @@ export const APPEARANCE_KEYS = [
   'colorTheme',
   'colorThemeFlavor',
   'colorThemeAccent',
+  'density',
+  'motion',
 ] as const satisfies readonly (keyof DeviceSettings)[];
 
 export type AppearanceSource = 'account' | 'device';
@@ -48,7 +52,11 @@ const ID = new RegExp(COLOR_THEME_ID_PATTERN);
 const id = (value: unknown) => typeof value === 'string' && ID.test(value);
 const optionalId = (value: unknown) => value === null || id(value);
 
-/** Parse a stored cache; anything malformed is no cache at all. */
+/**
+ * Parse a stored cache; anything malformed is no cache at all. Density and
+ * motion arrived later (#4692): a cache written before them, or naming a value
+ * this client does not know, reads them as their defaults.
+ */
 export function parseAppearanceCache(
   raw: string | null,
 ): AppearanceCache | null {
@@ -73,6 +81,8 @@ export function parseAppearanceCache(
       colorTheme: value.colorTheme as DeviceSettings['colorTheme'],
       colorThemeFlavor: value.colorThemeFlavor as string | null,
       colorThemeAccent: value.colorThemeAccent as string | null,
+      density: resolveDensity(value.density),
+      motion: resolveMotion(value.motion),
     };
   } catch {
     return null;
@@ -95,7 +105,8 @@ export function readAppearanceCache(): string | null {
 
 /** Record what was just rendered; skipped when nothing changed. */
 export function writeAppearanceCache(
-  appearance: Appearance,
+  appearance: Omit<Appearance, 'density' | 'motion'> &
+    Partial<Pick<Appearance, 'density' | 'motion'>>,
   source: AppearanceSource,
 ): void {
   const next = JSON.stringify({
@@ -105,6 +116,8 @@ export function writeAppearanceCache(
     colorTheme: appearance.colorTheme,
     colorThemeFlavor: appearance.colorThemeFlavor,
     colorThemeAccent: appearance.colorThemeAccent,
+    density: resolveDensity(appearance.density),
+    motion: resolveMotion(appearance.motion),
   });
   try {
     if (localStorage.getItem(APPEARANCE_CACHE_KEY) !== next)

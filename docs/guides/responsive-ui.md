@@ -211,6 +211,11 @@ every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
 terminal/editor caller instead of assuming a CSS declaration proves this.
 
+A browser tab keeps pinch zoom. The installed app (the native iOS or Android
+shell, or a home-screen web app) locks page zoom through
+`platform/installedAppZoom.ts`. Transient toasts dismiss with a sideways touch
+swipe; approval and pairing cards keep their explicit dismiss.
+
 The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
 desktop and phones. Keeping secondary actions there avoids wrapping the
 phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
@@ -220,7 +225,8 @@ reader; it does not add another modal. Closing returns focus to the opener.
 ### Coding tools on phones
 
 The Coding workbench uses the shared mobile predicate to replace the desktop
-rail with a header tool picker. Its Tools Dialog lists the current host's panes
+rail with a header tool picker; on the Chat page it leads the chat's own mobile
+header rather than adding a bar above it. Its Tools Dialog lists the current host's panes
 with labels and counts; the same navigation owner selects them. The tool gets
 the full workbench width. See [mobile tool navigation](../design/placement.md#mobile-tool-navigation-2026-10-27).
 
@@ -261,7 +267,9 @@ not a universal accessibility, keyboard or device certificate.
 At the shared mobile breakpoint, `responsive-surface-panel` raises the compact
 Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
-`--k-text-lg` (18px). Desktop density remains owned by each surface.
+`--k-text-lg` (18px). Desktop density remains owned by each surface; the
+person's Comfortable or Compact choice sets only the base text tokens and
+never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
 The embedded mobile Inbox uses two-line titles, project artwork and engine
 marks, short status labels, and a separate recency timestamp. Search opens
 from its icon without opening the keyboard on Inbox entry. The dock header
@@ -334,8 +342,9 @@ cannot add a scroll row below a dock that fills the viewport.
 ### Phone app toolbar
 
 On a phone the Station chip shows its dot and the connected Station's name in
-a fixed-width slot in every state, so a state change or a Station notice never
-moves the controls beside it. That name takes priority over the app wordmark:
+every state. Its width fits short names and caps long names with an ellipsis.
+State changes and overlaid Station notices preserve that width, keeping nearby
+controls still. That name takes priority over the app wordmark:
 the wordmark wraps away whole wherever the row cannot hold it, and the logo
 stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
 measures the row at every phone width it supports.

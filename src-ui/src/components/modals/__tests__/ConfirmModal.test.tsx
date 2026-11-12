@@ -67,7 +67,7 @@ describe('ConfirmModal focus contract (station#1110)', () => {
     trigger.focus();
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('alertdialog');
     expect(dialog.contains(document.activeElement)).toBe(true);
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Cancel' }),
@@ -105,7 +105,7 @@ describe('ConfirmModal focus contract (station#1110)', () => {
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     await settleFocus();
 
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -148,7 +148,7 @@ describe('ConfirmModal portal containment (station#1111)', () => {
     fireEvent.pointerDown(overlay!);
     fireEvent.click(overlay!);
 
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(onHostClick).not.toHaveBeenCalled();
   });
 
@@ -160,7 +160,7 @@ describe('ConfirmModal portal containment (station#1111)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(onHostClick).not.toHaveBeenCalled();
   });
 
@@ -184,7 +184,7 @@ describe('ConfirmModal portal containment (station#1111)', () => {
 
     // Still open — the point is that the tree is mounted while the event
     // travels, unlike the backdrop case.
-    expect(screen.queryByRole('dialog')).not.toBeNull();
+    expect(screen.queryByRole('alertdialog')).not.toBeNull();
     expect(onHostPointerDown).not.toHaveBeenCalled();
   });
 
@@ -223,5 +223,28 @@ describe('ConfirmModal portal containment (station#1111)', () => {
     expect(document.getElementById(secondId!)?.textContent).toBe(
       'Remove Connection',
     );
+  });
+});
+
+describe('ConfirmModal role', () => {
+  test('a danger confirmation is an alertdialog unless the caller names a role', () => {
+    const props = {
+      isOpen: true,
+      title: 'Remove connection',
+      message: 'Remove it?',
+      onConfirm: () => {},
+      onCancel: () => {},
+    };
+    const view = render(<ConfirmModal {...props} variant="danger" />);
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    view.rerender(<ConfirmModal {...props} variant="danger" role="dialog" />);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+
+    view.rerender(<ConfirmModal {...props} variant="warning" />);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 });

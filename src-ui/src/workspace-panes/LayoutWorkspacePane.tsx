@@ -222,7 +222,7 @@ export function LayoutWorkspacePane({
               } else record.refetch();
             }}
           >
-            Try again
+            Retry
           </Button>
         }
       />

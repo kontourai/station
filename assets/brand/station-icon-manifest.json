@@ -275,6 +275,7 @@
     "src-ui/public/favicon.png": "419380e12cbdd3fcbd51017c9c235059dffbab51aeaa1c937bf1412b0589b087",
     "src-ui/public/icons/station-512.png": "c551022c87c322ec0194970297d84102502697adfb7fb22961ddcbd6f4dedf44",
     "src-ui/public/icons/station-maskable-512.png": "9ab32eddeba3d34f4f2c15d7fb45dcee508bd14b8387e8cd7fa8af8939d89d04",
+    "src-ui/src/components/icons/station-mark.ts": "6e39c1e5ce91b5dac537e8b0af9b13ae15faae044fe0644d4edbf940019fb8ba",
     "src-ui/src/lib/startup-mark-geometry.ts": "499ac2a14ede59f2bd3f2339078635c600ecef15ad7c581e6e2aa5bd5778bce5"
   }
 }

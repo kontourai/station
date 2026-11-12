@@ -41,6 +41,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
+import { errorMessage } from '../../utils/error-message.js';
 
 export type ChromeForTestingPlatform =
   | 'mac-arm64'
@@ -541,7 +542,7 @@ export class ChromiumAcquisition {
             : {
                 state: 'failed',
                 reason: 'download-failed',
-                detail: error instanceof Error ? error.message : String(error),
+                detail: errorMessage(error),
                 retryable: true,
               };
       })

@@ -8,6 +8,7 @@ import type {
   OutboundStationIdentity,
   QueuedOutboundTurn,
 } from '../lib/outboundQueue';
+import { reportOutboundQueueUnavailable } from '../lib/outboundQueueReporting';
 
 function turn(
   clientTurnId: string,
@@ -289,6 +290,111 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
     expect(activeChatsStore.getSnapshot()['session-1']).toMatchObject({
       status: 'idle',
       outboundQueuedTurns: [],
+    });
+  });
+
+  it('does not call a chat queued when Station accepted every message left in its outbox', () => {
+    activeChatsStore.initChat('session-1', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+    projectOutboundQueueEntries([turn('turn-1', 'session-1', 'replayed')]);
+    expect(activeChatsStore.getSnapshot()['session-1']?.status).toBe('queued');
+
+    // Station accepted it: the row only waits for its turn to end.
+    const accepted = {
+      ...turn('turn-1', 'session-1', 'replayed'),
+      status: 'accepted' as const,
+      providerTurnId: 'provider-turn-1',
+    };
+    projectOutboundQueueEntries([accepted]);
+    expect(activeChatsStore.getSnapshot()['session-1']).toMatchObject({
+      status: 'idle',
+      outboundQueuedTurns: [{ clientTurnId: 'turn-1', status: 'accepted' }],
+    });
+
+    // The turn it started is running: a later projection leaves that alone.
+    activeChatsStore.updateChat('session-1', { status: 'sending' });
+    projectOutboundQueueEntries([accepted]);
+    expect(activeChatsStore.getSnapshot()['session-1']?.status).toBe('sending');
+
+    // A message still waiting behind it keeps the chat queued.
+    projectOutboundQueueEntries([
+      accepted,
+      turn('turn-2', 'session-1', 'waiting'),
+    ]);
+    expect(activeChatsStore.getSnapshot()['session-1']?.status).toBe('queued');
+  });
+
+  it('reports an outbox outage only on a chat that holds an outbox message and has no turn in flight', () => {
+    for (const id of ['holder', 'streaming', 'bystander', 'failed-elsewhere'])
+      activeChatsStore.initChat(id, {
+        agentSlug: 'assistant',
+        agentName: 'Assistant',
+        title: id,
+      });
+    projectOutboundQueueEntries([
+      turn('turn-1', 'holder', 'waiting'),
+      turn('turn-2', 'streaming', 'waiting'),
+    ]);
+    activeChatsStore.updateChat('streaming', {
+      status: 'sending',
+      orchestrationTurnOpen: true,
+    });
+    activeChatsStore.updateChat('failed-elsewhere', {
+      status: 'error',
+      error: 'The engine stopped.',
+    });
+
+    reportOutboundQueueUnavailable('IndexedDB is unavailable');
+
+    expect(activeChatsStore.getSnapshot().holder).toMatchObject({
+      status: 'error',
+      error: expect.stringContaining('delivery status is unavailable'),
+    });
+    expect(activeChatsStore.getSnapshot().streaming).toMatchObject({
+      status: 'sending',
+    });
+    expect(activeChatsStore.getSnapshot().streaming?.error ?? null).toBeNull();
+    expect(activeChatsStore.getSnapshot().bystander?.status).not.toBe('error');
+    expect(activeChatsStore.getSnapshot().bystander?.error ?? null).toBeNull();
+    expect(activeChatsStore.getSnapshot()['failed-elsewhere']).toMatchObject({
+      status: 'error',
+      error: 'The engine stopped.',
+    });
+  });
+
+  it("clears an outbox outage report at the next successful read, and never a chat's own error", () => {
+    for (const id of ['holder', 'drained', 'failed-elsewhere'])
+      activeChatsStore.initChat(id, {
+        agentSlug: 'assistant',
+        agentName: 'Assistant',
+        title: id,
+      });
+    const rows = [
+      turn('turn-1', 'holder', 'waiting'),
+      turn('turn-2', 'drained', 'waiting'),
+      turn('turn-3', 'failed-elsewhere', 'waiting'),
+    ];
+    projectOutboundQueueEntries(rows);
+    reportOutboundQueueUnavailable('IndexedDB is unavailable');
+    activeChatsStore.updateChat('failed-elsewhere', {
+      status: 'error',
+      error: 'The engine stopped.',
+    });
+
+    // The queue reads again: one chat still holds its message, the others'
+    // messages have gone.
+    projectOutboundQueueEntries([rows[0]!]);
+
+    expect(activeChatsStore.getSnapshot().holder?.status).toBe('queued');
+    expect(activeChatsStore.getSnapshot().holder?.error ?? null).toBeNull();
+    expect(activeChatsStore.getSnapshot().drained?.status).toBe('idle');
+    expect(activeChatsStore.getSnapshot().drained?.error ?? null).toBeNull();
+    expect(activeChatsStore.getSnapshot()['failed-elsewhere']).toMatchObject({
+      status: 'error',
+      error: 'The engine stopped.',
     });
   });
 

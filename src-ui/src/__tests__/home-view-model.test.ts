@@ -1028,6 +1028,45 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Stopped');
   });
 
+  test('marks a conversation whose open or latest turn the engine opened itself, as a work fact', () => {
+    const base: OrchestrationSessionSummary = {
+      ...attachedButIdle,
+      controlMode: 'station-owned',
+      answerability: { answerable: true },
+    };
+    const fact = (session: OrchestrationSessionSummary) => {
+      const items = buildHomeWorkItems({
+        chats: {},
+        agents: [],
+        sessions: [session],
+      });
+      // Not a projected item field: the Home role projection is unchanged.
+      expect(items[0]).not.toHaveProperty('engineOpenedTurn');
+      return buildWorkFacts({ items, sessions: [session] }).get(items[0]!.id)
+        ?.engineOpenedTurn;
+    };
+    expect(fact({ ...base, latestTurnTrigger: 'provider' })).toBe(true);
+    expect(fact(base)).toBeUndefined();
+    const open = (trigger?: 'provider'): OrchestrationSessionSummary => ({
+      ...base,
+      // A person's send now running after an engine-opened turn.
+      latestTurnTrigger: 'provider',
+      conversationActivity: {
+        conversationId: base.threadId,
+        currentThreadId: base.threadId,
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'turn-open',
+          threadId: base.threadId,
+          startedAt: '2026-11-10T10:00:00.000Z',
+          ...(trigger ? { trigger } : {}),
+        },
+      },
+    });
+    expect(fact(open())).toBeUndefined();
+    expect(fact(open('provider'))).toBe(true);
+  });
+
   test('a stopped turn with a running child is Running until that child settles', () => {
     const session: OrchestrationSessionSummary = {
       ...attachedButIdle,
@@ -2080,7 +2119,6 @@ test('Open chats labels use the exact current child model instead of a persisted
       attachments: [],
       queuedMessages: [],
       inputHistory: [],
-      hasUnread: false,
     },
   };
   // Fully typed through a base summary, not cast: archive#1778 keeps the

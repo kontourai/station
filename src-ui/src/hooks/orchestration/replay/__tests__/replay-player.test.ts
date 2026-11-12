@@ -257,7 +257,6 @@ describe('session tape player', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
         orchestrationSessionStarted: true,
         orchestrationTurnOpen: true,
         openTurnId: 'turn-1',
@@ -406,7 +405,6 @@ describe('engine-shaped tapes through the live fold', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
         orchestrationSessionStarted: true,
       },
       event('extension.notification', {
@@ -428,7 +426,6 @@ describe('engine-shaped tapes through the live fold', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
         orchestrationSessionStarted: true,
       },
       event('extension.notification', {
@@ -450,7 +447,6 @@ describe('engine-shaped tapes through the live fold', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
         orchestrationSessionStarted: true,
       },
       event('extension.notification', {
@@ -473,7 +469,6 @@ describe('engine-shaped tapes through the live fold', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
         orchestrationSessionStarted: true,
       },
       event('policy.hooks-attached', {

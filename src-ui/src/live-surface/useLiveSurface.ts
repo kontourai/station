@@ -490,7 +490,7 @@ export function useLiveSurface(
     const stream = async (url: string, h264: boolean, fold: boolean) => {
       let response: Response;
       try {
-        response = await transportRef.current(url, {
+        response = await transport(url, {
           signal: abort.signal,
           timeoutMs: null,
           readOnly: true,
@@ -658,6 +658,7 @@ export function useLiveSurface(
     declineFoldFor,
     adoptLease,
     observeEpoch,
+    transport,
   ]);
 
   const declineH264 = useCallback(
@@ -691,9 +692,34 @@ export function useLiveSurface(
     },
     [],
   );
+  const discardRefusedInput = useCallback(
+    (notice: LiveSurfaceInputNotice) => {
+      queueRef.current = [];
+      keepUndelivered([]);
+      for (const id of pressedRef.current) orphanedRef.current.add(id);
+      pressedRef.current.clear();
+      setInputNotice(notice);
+    },
+    [keepUndelivered],
+  );
+  const sourceRef = useRef<{
+    open: Promise<string | null> | null;
+    retired: boolean;
+    transport: typeof transport;
+    leaseUrl: string;
+    inputUrl: string;
+  } | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values define the target whose queued work must be retired.
   useLayoutEffect(() => {
     targetGenerationRef.current += 1;
+    const source = {
+      open: null as Promise<string | null> | null,
+      retired: false,
+      transport: transportRef.current,
+      leaseUrl: `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+      inputUrl: `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input${contextQuery(projectSlug)}`,
+    };
+    sourceRef.current = source;
     queueRef.current = [];
     inFlightRef.current = false;
     undeliveredRef.current = null;
@@ -705,10 +731,25 @@ export function useLiveSurface(
     setSelf(null);
     setActiveCodec(null);
     return () => {
+      source.retired = true;
       targetGenerationRef.current += 1;
       queueRef.current = [];
+      if (source.open)
+        void source.open.then((sourceId) => {
+          if (sourceId)
+            return source
+              .transport(source.leaseUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'close-input-source',
+                  sourceId,
+                }),
+              })
+              .catch(() => {});
+        });
     };
-  }, [apiBase, surfaceId, projectSlug]);
+  }, [apiBase, surfaceId, projectSlug, transport]);
   const flushScheduledRef = useRef(false);
   const busyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -732,9 +773,6 @@ export function useLiveSurface(
       });
     }, HOST_BUSY_NOTICE_MS);
   }, []);
-  const inputUrl = `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input${contextQuery(projectSlug)}`;
-  const inputUrlRef = useRef(inputUrl);
-  inputUrlRef.current = inputUrl;
 
   const flush = useCallback(async () => {
     flushScheduledRef.current = false;
@@ -747,6 +785,7 @@ export function useLiveSurface(
     ) {
       const candidate = JSON.stringify({
         epoch: epochRef.current,
+        sourceId: '00000000-0000-0000-0000-000000000000',
         events: [...batch, queueRef.current[0]],
       });
       if (
@@ -764,8 +803,38 @@ export function useLiveSurface(
     inFlightRef.current = true;
     const generation = targetGenerationRef.current;
     const batchEpoch = epochRef.current;
+    const source = sourceRef.current;
     try {
-      const response = await transportRef.current(inputUrlRef.current, {
+      if (!source || source.retired) return;
+      source.open ??= source
+        .transport(source.leaseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'open-input-source' }),
+        })
+        .then(async (response) => {
+          if (!response.ok) return null;
+          const envelope = await response.json();
+          const id = envelope?.data?.sourceId;
+          return typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id)
+            ? id
+            : null;
+        })
+        .catch(() => null);
+      const sourceId = await source.open;
+      if (
+        !sourceId ||
+        source.retired ||
+        generation !== targetGenerationRef.current
+      ) {
+        if (generation === targetGenerationRef.current) {
+          source.open = null;
+          discardRefusedInput('input-failed');
+        }
+        return;
+      }
+      body = JSON.stringify({ ...JSON.parse(body), sourceId });
+      const response = await source.transport(source.inputUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
@@ -794,16 +863,15 @@ export function useLiveSurface(
         setInputNotice((current) =>
           current === 'host-busy' && undeliveredRef.current ? current : null,
         );
+      } else if (result && !result.ok && result.code === 'invalid-source') {
+        source.open = null;
+        discardRefusedInput('input-failed');
       } else if (
         result &&
         !result.ok &&
         (result.code === 'stale-epoch' || result.code === 'stale-fence')
       ) {
-        queueRef.current = [];
-        keepUndelivered([]);
-        for (const id of pressedRef.current) orphanedRef.current.add(id);
-        pressedRef.current.clear();
-        setInputNotice('control-changed');
+        discardRefusedInput('control-changed');
       } else if (result && !result.ok && result.code === 'page-dialog-open') {
         queueRef.current = [];
         keepUndelivered([]);
@@ -828,7 +896,7 @@ export function useLiveSurface(
         inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
-  }, [adoptLease, showHostBusy, keepUndelivered]);
+  }, [adoptLease, showHostBusy, keepUndelivered, discardRefusedInput]);
 
   const sendInput = useCallback(
     (events: LiveSurfaceInput[]) => {

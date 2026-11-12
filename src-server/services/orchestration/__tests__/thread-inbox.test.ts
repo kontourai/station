@@ -2584,14 +2584,19 @@ describe('thread inbox (#3568)', () => {
     const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
     await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+    // The terminal's drive, then exactly three timer firings. Waits on the
+    // firings themselves (#4500): a fixed settle missed the last one on a
+    // loaded runner.
+    await vi.waitFor(() => expect(calls).toBe(4), { timeout: 5_000 });
     await settle(world);
-    // The terminal's drive, then exactly three timer firings.
+    // The budget is spent: nothing further fires.
     expect(calls).toBe(4);
     // A later event drives once; its refusal schedules no further re-check.
     await emit(world, 'session.state-changed', {
       sessionId: THREAD,
       state: 'ready',
     });
+    await vi.waitFor(() => expect(calls).toBe(5), { timeout: 5_000 });
     await settle(world);
     expect(calls).toBe(5);
   });
@@ -3036,6 +3041,7 @@ test('restart preserves delivery proof before applying coordinator policy', asyn
   });
   policy = new CoordinatorWakeDelivery({
     store: second.store.coordinatorStore(),
+    enabled: () => true,
     mayRead: (_userId, sessionId) => sessionId !== 'source-b',
     conversationOf: (id) => id,
     delegatedBy: () => undefined,

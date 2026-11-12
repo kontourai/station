@@ -89,7 +89,6 @@ function managedSession(overrides: Partial<ChatSession>): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: 1,
     updatedAt: 1,
@@ -141,7 +140,7 @@ describe('station#3300 — settled turn stays settled on resume', () => {
         },
       }),
     );
-    expect(screen.getByText('Background agent working')).toBeTruthy();
+    expect(screen.getByText('Background task running')).toBeTruthy();
     expect(screen.queryByTestId('streaming-message')).toBeNull();
   });
   test('the clickable background banner retains one status announcement as tasks change', () => {
@@ -231,10 +230,10 @@ describe('station#3300 — settled turn stays settled on resume', () => {
       true,
     );
     const banner = screen.getByText(
-      'Last known: background agent working (status unavailable)',
+      'Last known: background task running (status unavailable)',
     ).parentElement as HTMLElement;
     expect(banner.className).toBe('background-tasks-banner');
-    expect(screen.queryByText('Background agent working')).toBeNull();
+    expect(screen.queryByText('Background task running')).toBeNull();
     // No animated dots claiming the work is happening now.
     expect(banner.querySelector('.loading-dots-inline')).toBeNull();
   });
@@ -320,7 +319,7 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     // row — and it is still live, so the banner that means "the turn ended
     // while work continues" must not claim otherwise.
     expect(screen.queryByTestId('streaming-message')).toBeNull();
-    expect(screen.queryByText('Background agent working')).toBeNull();
+    expect(screen.queryByText('Background task running')).toBeNull();
   });
 
   test('#2654: local background tasks during a projected open turn also wait for the turn to end', () => {
@@ -355,6 +354,29 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     expect(
       screen.getByText('Background agent working — index repo'),
     ).toBeTruthy();
+  });
+
+  test('a background shell command is named as a command, not an agent', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'idle',
+        orchestrationTurnOpen: false,
+        status: 'idle',
+        backgroundTasks: [
+          {
+            taskId: 'bash-1',
+            backgrounded: true,
+            description: 'Watch until merged',
+            workKind: 'command',
+          },
+        ],
+      }),
+      true,
+    );
+    expect(
+      screen.getByText('Background command running — Watch until merged'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Background agent/)).toBeNull();
   });
 
   test("#2304: the streaming row counts from the open turn's server start", () => {

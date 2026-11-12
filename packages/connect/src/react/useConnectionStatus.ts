@@ -48,6 +48,8 @@ export interface ConnectionStatusResult {
   }>;
   /** Per-route outcome of the last completed check (Station routes). */
   routes: ReadonlyArray<ConnectionRouteResult>;
+  /** When the last check finished (epoch ms); null until one has. */
+  checkedAt: number | null;
   recheck: () => void;
 }
 

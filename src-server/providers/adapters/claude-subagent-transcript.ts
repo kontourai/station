@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import { redactInlineData } from '../model-image-attachments.js';
 import {
+  asRecord,
   createResolvedPathCache,
   directoryEntries as entriesOf,
   isRealDirectory,
@@ -72,12 +73,6 @@ function bounded(text: string): { text: string; truncated?: true } {
     redactInlineData(text),
     CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS,
   );
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 /** A tool result's text: a string, or the text blocks of its content. */

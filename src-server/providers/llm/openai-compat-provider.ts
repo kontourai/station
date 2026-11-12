@@ -18,6 +18,10 @@ import {
   readBoundedJson,
 } from '../registries/catalog-http.js';
 import { AiSdkLLMProvider } from './ai-sdk-llm-provider.js';
+import {
+  assertEmbeddingVectors,
+  postEmbeddingRequest,
+} from './embedding-http.js';
 import type {
   IEmbeddingProvider,
   LLMModel,
@@ -166,13 +170,20 @@ export class OpenAICompatEmbeddingProvider implements IEmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const res = await fetch(`${this.baseUrl}/embeddings`, {
-      method: 'POST',
+    const data = await postEmbeddingRequest({
+      providerName: this.displayName,
+      url: `${this.baseUrl}/embeddings`,
       headers: this.headers,
-      body: JSON.stringify({ model: this.model, input: texts }),
+      body: { model: this.model, input: texts },
     });
-    const data = (await res.json()) as { data: Array<{ embedding: number[] }> };
-    return data.data.map((d) => d.embedding);
+    const rows = (data as { data?: unknown } | null)?.data;
+    return assertEmbeddingVectors(
+      this.displayName,
+      Array.isArray(rows)
+        ? rows.map((row) => (row as { embedding?: unknown } | null)?.embedding)
+        : undefined,
+      texts.length,
+    );
   }
 
   dimensions(): number {

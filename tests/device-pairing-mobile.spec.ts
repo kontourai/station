@@ -381,7 +381,9 @@ async function expectPhoneDeclined(page: Page): Promise<void> {
  */
 async function expectPhoneCanRequestAgain(page: Page): Promise<void> {
   await expect(
-    page.getByRole('dialog').getByRole('button', { name: 'Try again' }),
+    page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Retry', exact: true }),
   ).toBeVisible();
 }
 
@@ -494,7 +496,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   const pairingRequestResponse = phone.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith('/pairing/access-request'),
   );
-  await phone.getByRole('button', { name: 'Try again' }).click();
+  await phone.getByRole('button', { name: 'Retry', exact: true }).click();
   const pairingRequest = (await (await pairingRequestResponse).json()) as {
     offerId: string;
     proof: string;

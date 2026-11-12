@@ -358,9 +358,10 @@ export function instructionGateErrors({
       errors.push(`${file} must be the exact @AGENTS.md import`);
   }
   const rootClaude = textByFile.get('CLAUDE.md');
-  if (rootClaude && rootClaude !== `@AGENTS.md\n\n${GOVERNANCE_BLOCK}`)
+  // Claude expands the import inline, so a block here would load twice.
+  if (rootClaude && rootClaude !== '@AGENTS.md\n')
     errors.push(
-      'CLAUDE.md must be the root AGENTS wrapper plus the canonical governance block',
+      'CLAUDE.md must only import the root AGENTS.md, which carries the governance block',
     );
   const rootAgents = textByFile.get('AGENTS.md');
   if (

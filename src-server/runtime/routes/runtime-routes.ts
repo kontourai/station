@@ -10,6 +10,10 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { resolveProjectCheckoutStaleThresholds } from '@kontourai/station-contracts/project-checkout-freshness';
+import {
+  READ_MARKER_MARK_PATH,
+  READ_MARKER_SUMMARY_PATH,
+} from '@kontourai/station-contracts/read-markers';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseTaskGateEvaluationReference,
@@ -88,6 +92,7 @@ import {
   mayRunCommandsOnHostCurrently,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import { sessionNetworkRestricted } from '../../security/confinement/confinement-provider.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -264,9 +269,11 @@ import {
 import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
 import { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
+import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
+import { registerConversationDeliveryShutdown } from '../bootstrap/runtime-shutdown.js';
 import {
   isSupervisedEnvironment,
   requestSupervisorHandoff,
@@ -352,6 +359,7 @@ import {
   parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import type { ConfinementPreflight } from '@kontourai/station-contracts/execution-confinement';
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import {
@@ -452,6 +460,7 @@ import {
 import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import { createConversationWorkStateRoutes } from '../../routes/chat/conversation-work-state.js';
 import {
+  createAgentConversationVersionSource,
   createConversationRoutes,
   createGlobalConversationRoutes,
 } from '../../routes/chat/conversations.js';
@@ -583,6 +592,7 @@ import {
 import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
+import { createWorktreeOutputSettlementRoutes } from '../../routes/orchestration/worktree-output-settlement.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { createPluginEventRelayGate } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
@@ -614,6 +624,7 @@ import {
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
+import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
@@ -910,11 +921,22 @@ import {
 } from '../../services/projects/task-room-work-module.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
+import type { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
+import {
+  ReadMarkerService,
+  readMarkerPersonKey,
+} from '../../services/read-markers/read-marker-service.js';
+import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
+import { upgradeReadMarkerStore } from '../../services/read-markers/read-marker-upgrade.js';
+import {
+  projectRoomVersionSource,
+  taskRoomVersionSource,
+} from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import {
   conversationAutomationsFrom,
@@ -1120,6 +1142,7 @@ import {
   delegationResultStartPort,
   inboxPlacementStartPort,
   type RecordedActorContinuation,
+  readQueuedAttachmentFrom,
   readSessionDispatchFacts,
   scheduledDedicatedStartPort,
 } from './conversation-start-ports.js';
@@ -1273,6 +1296,8 @@ export interface ConfigureRuntimeRoutesContext {
   getUsageTelemetry?: () => UsageTelemetryService | undefined;
   skillService: SkillService;
   configLoader: ConfigLoader;
+  /** #4774: this host's confinement facts before any start, for doctor. */
+  readConfinementPreflight?: () => Promise<ConfinementPreflight>;
   feedbackService: FeedbackService;
   fileTreeService: FileTreeService;
   storageAdapter: FileStorageAdapter;
@@ -1300,6 +1325,12 @@ export interface ConfigureRuntimeRoutesContext {
    * Task brief reads it. Absent: no follow-ups are polled or shown.
    */
   taskFollowUps?: TaskFollowUpStoreHolder;
+  /**
+   * #4771: the runtime's one worktree output settlement service, read per
+   * request (the runtime composes it after routes are configured in some
+   * boots). Absent or returning nothing: the routes answer unavailable.
+   */
+  worktreeOutputSettlements?: () => WorktreeOutputSettlementService | undefined;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -1391,6 +1422,8 @@ export interface ConfigureRuntimeRoutesContext {
   // Origin of the isolated plugin-frame document, if the shared listener runs.
   getPluginFrameOrigin?: () => string | undefined;
   featurePreviews: FeaturePreviewRegistry;
+  /** #3628: bound by the runtime, absent on a hosted Station. */
+  coordinatorSessionPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
   progressiveToolsEnabled?: () => boolean;
   projectWorkingConfiguration?: import('../project-working-configuration-runtime.js').ProjectWorkingRuntime;
   learningReview?: import('../learning-review-runtime.js').LearningReviewRuntime;
@@ -1649,14 +1682,24 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
-/** Only these leaves delegate membership actions to the Room service. */
+/**
+ * Only these leaves delegate membership actions to the Room service: the
+ * default room's, each channel's same per-room leaves (#4792), and channel
+ * create and update. The service checks each one's own member action.
+ */
 function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
-      )) ||
-    (method === 'PUT' && /^\/api\/projects\/[^/]+\/room\/note$/.test(path))
+      ) ||
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+          path,
+        ))) ||
+    (method === 'PUT' &&
+      /^\/api\/projects\/[^/]+\/(?:room|channels\/[^/]+)\/note$/.test(path)) ||
+    (method === 'PATCH' &&
+      /^\/api\/projects\/[^/]+\/channels\/[^/]+$/.test(path))
   );
 }
 
@@ -1970,6 +2013,11 @@ export function configureRuntimeRoutes(
   // This must run before every public, bespoke, and credential-protected
   // mount below. Personal mode has no configured registry and is unchanged.
   const hostedTenantRegistry = loadHostedTenantRegistryFromEnvironment();
+  const coordinatorSessionEnabled = () =>
+    context.coordinatorSessionPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   // #749: chat inventory/open routes receive a principal-derived authority
   // through this request-local binding.  Keeping it separate from legacy
   // read-only route fallbacks prevents a cached OS display alias from being
@@ -2363,6 +2411,36 @@ export function configureRuntimeRoutes(
         : undefined,
     );
   };
+  // #3075: whose read state a request reads and writes, for the read-marker
+  // service and the orchestration stream that announces its changes. A paired
+  // device shares the owner's read state only while it holds owner standing,
+  // the pairing service's own rule (`deviceHasOwnerStanding`): a read-only,
+  // delegated or person-bound device is its own person, and never receives
+  // the owner's read-marker changes (#3075 review).
+  const readMarkerOwnerDevice = (deviceId: string) =>
+    context.environmentSecurityService.deviceHasOwnerStanding(deviceId);
+  const readMarkerPersonKeyFor = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ) => {
+    // A device admitted with owner standing acts as the owner for the life
+    // of its request. Standing is revalidated here, on every resolution, so a
+    // stream opened before the operator narrowed, rebound or revoked the
+    // device stops carrying the owner's read state at once (#3075 review).
+    const admitted = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      admitted?.standing === 'owner-device' &&
+      'credential' in admitted &&
+      !context.environmentSecurityService.credentialHasOwnerStanding(
+        admitted.credential,
+      )
+    )
+      return undefined;
+    return readMarkerPersonKey({
+      authority: conversationReadAuthorityForContext(c),
+      principal: () => resolveOrchestrationRequestPrincipal(c),
+      isOwnerDevice: readMarkerOwnerDevice,
+    });
+  };
   const conversationReadAuthorityForRequest = (request: Request) => {
     const authority = conversationRequestAuthorities.get(request);
     if (!authority) {
@@ -2620,6 +2698,7 @@ export function configureRuntimeRoutes(
         },
         eventStore: context.orchestrationEventStore,
         getProject: (slug) => context.storageAdapter.getProject(slug),
+        coordinatorEnabled: coordinatorSessionEnabled,
       }),
     );
   const projectIdForSlug = (slug: string): string | undefined => {
@@ -2744,6 +2823,10 @@ export function configureRuntimeRoutes(
         });
         return verdict.allowed ? undefined : verdict.reason;
       },
+      // #4769: a session whose start ran with a restricted network is
+      // refused the tools that would have Station act outside its sandbox.
+      networkRestrictedSession: (sessionId) =>
+        sessionNetworkRestricted(context.orchestrationEventStore, sessionId),
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,
@@ -2809,6 +2892,7 @@ export function configureRuntimeRoutes(
   // resolved fails here rather than reading as the OS alias.
   for (const path of [
     '/api/orchestration/sessions/:threadId/goal',
+    '/api/orchestration/sessions/:threadId/worktree-settlement',
     '/integrations/:serverId/ui/:toolName/initial-result',
     '/tool-approval/:approvalId',
     '/api/shares',
@@ -4250,6 +4334,9 @@ export function configureRuntimeRoutes(
                 .environmentId ?? null,
           },
         ),
+        ...(context.readConfinementPreflight
+          ? { confinementPreflight: context.readConfinementPreflight }
+          : {}),
       },
     ),
   );
@@ -5189,6 +5276,11 @@ export function configureRuntimeRoutes(
             ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
             : {}),
           automation: agentDeviceAutomation,
+          networkRestrictedSession: (sessionId) =>
+            sessionNetworkRestricted(
+              context.orchestrationEventStore,
+              sessionId,
+            ),
           taskCapture: () =>
             projectTaskRoomRuntime && taskCaptureService
               ? {
@@ -6999,6 +7091,7 @@ export function configureRuntimeRoutes(
           sessionFacts: (sessionId) =>
             readSessionDispatchFacts(eventStore, sessionId),
           continueAsRecordedActor,
+          readQueuedAttachment: readQueuedAttachmentFrom(eventStore),
         }),
       ),
     });
@@ -7093,6 +7186,13 @@ export function configureRuntimeRoutes(
         context.orchestrationEventStore,
       );
       delivery.start();
+      // Stopped by the runtime's shutdown, before the service it starts
+      // turns on shuts down.
+      registerConversationDeliveryShutdown(context.orchestrationService, {
+        name: 'delegationResultDelivery',
+        stop: () => delivery.stop(),
+        idle: () => delivery.idle(),
+      });
       return delivery;
     } catch (error) {
       context.logger.warn('delegation result delivery is unavailable', {
@@ -7113,6 +7213,11 @@ export function configureRuntimeRoutes(
         context.orchestrationEventStore,
       );
       // Start after all durable placement owners have been bound below.
+      registerConversationDeliveryShutdown(context.orchestrationService, {
+        name: 'threadInboxDelivery',
+        stop: () => delivery.stop(),
+        idle: () => delivery.idle(),
+      });
       return delivery;
     } catch (error) {
       context.logger.warn('thread inbox delivery is unavailable', {
@@ -7334,6 +7439,16 @@ export function configureRuntimeRoutes(
     description:
       'Inspect engine Goals and save paused objectives. Automatic goal execution is unavailable.',
   });
+  // #4771: what became of a worktree Session's output, recorded once.
+  context.app.route(
+    '/api/orchestration',
+    createWorktreeOutputSettlementRoutes({
+      orchestration: context.orchestrationService,
+      settlements: () => context.worktreeOutputSettlements?.(),
+      authority: conversationReadAuthorityForRequest,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
   context.app.route(
     '/api/orchestration',
     createSessionGoalRoutes({
@@ -7349,7 +7464,8 @@ export function configureRuntimeRoutes(
   );
   // #3628: a person's coordinator Session, woken through the same inbox when
   // work they can read needs them, finished or failed. Not on a hosted
-  // Station (no inbox there).
+  // Station (no inbox there). Everything below waits on the
+  // `coordinator-session` preview, bound by the runtime.
   const coordinatorStore = servesCoordinatorSession({
     hosted: hostedTenantRegistry !== undefined,
   })
@@ -7360,7 +7476,7 @@ export function configureRuntimeRoutes(
         id: 'coordinator-picture',
         label: 'Coordinator working picture',
         description:
-          'Keep a bounded coordinator-maintained picture of readable work across sessions.',
+          'Keep a bounded coordinator-maintained picture of readable work across sessions. Needs Coordinator chat.',
       })
     : undefined;
   const coordinatorWakes =
@@ -7369,6 +7485,7 @@ export function configureRuntimeRoutes(
           eventBus: context.eventBus,
           eventStore: context.orchestrationEventStore,
           store: coordinatorStore,
+          enabled: coordinatorSessionEnabled,
           pictureEnabled: () =>
             picturePreview?.select({
               enabled: () => true,
@@ -7402,6 +7519,7 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createCoordinatorRoutes({
       store: coordinatorStore,
+      preview: context.coordinatorSessionPreview,
       revokeCoordinatorCredentials: (conversationId) => {
         const sessions =
           context.orchestrationEventStore?.conversationSessions(
@@ -7515,6 +7633,10 @@ export function configureRuntimeRoutes(
           }
         : {}),
       eventBus: context.eventBus,
+      readMarkerPersonKey: (c) =>
+        readMarkerPersonKeyFor(
+          c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+        ),
       generalEventProducer: (c, stream, write, authority) =>
         generalEventProducer(c, stream, write, authority),
       ...(delegationResults ? { delegationResults } : {}),
@@ -7706,6 +7828,13 @@ export function configureRuntimeRoutes(
       resolveRequestDelegation: createRequestDelegationResolver(
         requestDelegationSources,
       ),
+      // A queued follow-up's files wait in the attachment blob store.
+      ...(context.orchestrationEventStore
+        ? {
+            storeQueuedAttachment: (bytes: Buffer) =>
+              context.orchestrationEventStore!.storeQueuedAttachmentBlob(bytes),
+          }
+        : {}),
       hydrateStagedAttachments: (principal, references, binding, options) =>
         attachmentStaging.bindAndHydrate(
           {
@@ -9622,7 +9751,14 @@ export function configureRuntimeRoutes(
       module: roomAgentRuntime.module,
       observe: (authority, handle) =>
         roomPublication!.watch(authority, handle.requestId),
-      withAuthority: async (request, slug, action, guard, operation) => {
+      withAuthority: async (
+        request,
+        slug,
+        action,
+        guard,
+        operation,
+        channelId,
+      ) => {
         const result = await roomAccess.withAction(
           request,
           slug,
@@ -9633,7 +9769,7 @@ export function configureRuntimeRoutes(
               if (
                 guard &&
                 (scope.localProjectId !== guard.expectedProjectId ||
-                  roomStore.store.lookupRoom(scope)?.roomId !==
+                  roomStore.store.lookupRoom(scope, channelId)?.roomId !==
                     guard.expectedRoomId)
               )
                 throw new ProjectRoomRefusal('conflict');
@@ -9664,6 +9800,7 @@ export function configureRuntimeRoutes(
                 ok: true as const,
                 value: await operation({
                   scope,
+                  ...(channelId === undefined ? {} : { channelId }),
                   requester,
                   executionRoot,
                   assertCurrent: current,
@@ -10269,7 +10406,9 @@ export function configureRuntimeRoutes(
         },
         endProjectTerminals: async (projectId) =>
           scopedTerminals.sessions?.endProject(projectId),
-        visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
+        visualFileFrameOrigin: clientReachableFrameOrigin(
+          context.getMcpUiFrameOrigin,
+        ),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
@@ -10732,7 +10871,11 @@ export function configureRuntimeRoutes(
     if (readAuthorityForRequest(routeContext.req.raw).mode === 'hosted') {
       return routeContext.json({ success: true, data: [] });
     }
-    const limit = Number(routeContext.req.query('limit') || 50);
+    const limit =
+      boundedIntQuery(routeContext.req.query('limit'), {
+        min: 0,
+        max: 1000,
+      }) ?? 50;
     const adapter = context.memoryAdapters.values().next().value;
     if (!adapter) {
       return routeContext.json({ success: true, data: [] });
@@ -11672,7 +11815,7 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       context.applyAgentConfigurationMutation,
-      context.getMcpUiFrameOrigin,
+      clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
       // #2144 slice 2: one project record for `GET /config/app?project=`.
@@ -11714,14 +11857,15 @@ export function configureRuntimeRoutes(
     '/api/boot',
     createBootRoutes({
       auth: async () => (await createAuthRoutes().request('/status')).json(),
-      config: async () =>
+      // Reachability is decided by the boot request's client.
+      config: async (c) =>
         (
           await createConfigRoutes(
             context.configLoader,
             context.logger,
             context.eventBus,
             context.applyAgentConfigurationMutation,
-            context.getMcpUiFrameOrigin,
+            () => clientReachableFrameOrigin(context.getMcpUiFrameOrigin)(c),
             context.rebindBuiltinAgents,
             context.getPluginFrameOrigin,
           ).request('/app')
@@ -11923,7 +12067,7 @@ export function configureRuntimeRoutes(
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
-      frameOrigin: () => context.getMcpUiFrameOrigin?.(),
+      frameOrigin: clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>
         resolveStationControlCallerForRequest(
@@ -12012,6 +12156,88 @@ export function configureRuntimeRoutes(
       current: isRequestPrincipalCurrent,
     }),
   );
+  // #3075: one server-kept read marker per (person, conversation) for agent
+  // conversations, Project rooms and Task rooms, in the read-marker store.
+  // An agent conversation's marker is a content version from the event
+  // store's projection; the inventory's acknowledgement store keeps only the
+  // "last viewed" record Home's Just finished reads.
+  const conversationAcknowledgements = new FileConversationAcknowledgementStore(
+    context.configLoader.getProjectHomeDir(),
+    ownerDevicePredicate(() =>
+      context.environmentSecurityService.devicePairing.listDevices(),
+    ),
+  );
+  const requireOrchestrationEventStore = () => {
+    const store = context.orchestrationEventStore;
+    if (!store)
+      throw new Error('Conversation content versions are unavailable');
+    return store;
+  };
+  const readMarkerStore = new FileReadMarkerStore(
+    context.configLoader.getProjectHomeDir(),
+  );
+  // Read state begins once, before anything reads it: for a first-format
+  // store and for a home with none. Only a personal Station's owner gets a
+  // baseline; a hosted Station gives nobody one.
+  if (context.orchestrationEventStore)
+    try {
+      upgradeReadMarkerStore({
+        store: readMarkerStore,
+        events: context.orchestrationEventStore,
+        hosted:
+          hostedTenantRegistry !== undefined ||
+          isHostedTenantExecutionRequired(),
+        now: new Date(),
+      });
+    } catch (error) {
+      // Left unconverted, the store is refused (read state unavailable),
+      // never read as "read"; the next start tries again.
+      context.logger.warn('Read marker upgrade failed', {
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+    }
+  const readMarkers = new ReadMarkerService({
+    personKeyFor: (c) =>
+      readMarkerPersonKeyFor(
+        c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      ),
+    // Each of that person's open clients re-reads (orchestration `/events`).
+    onChanged: (personKey) =>
+      context.eventBus.emit(SERVER_EVENTS.READ_MARKERS_CHANGED, { personKey }),
+    conversations: conversationAcknowledgements,
+    store: readMarkerStore,
+    agentConversations: createAgentConversationVersionSource({
+      memoryAdapters: context.memoryAdapters,
+      sessionConversationReader: context.orchestrationService,
+      eventStore: context.orchestrationService,
+      authorityFor: conversationReadAuthorityForRequest,
+      // #3075: the content-version projection (never `updatedAt`, which a
+      // stop moves). Without the event store there is no content version
+      // to read: the inventory then reports the read state unavailable.
+      conversationContent: {
+        readConversationContentVersions: (ids) =>
+          requireOrchestrationEventStore().readConversationContentVersions(ids),
+      },
+    }),
+    projectRooms: projectRoomVersionSource(projectRoomService),
+    taskRooms: taskRoomVersionSource({
+      history: (input) =>
+        projectTaskRoomRuntime
+          ? projectTaskRoomRuntime.history(input)
+          : Promise.resolve({ kind: 'unavailable' as const }),
+    }),
+  });
+  // Each target is re-read under the caller's own authority: the conversation
+  // inventory needs the bound read authority, and the Task room runtime the
+  // cached request principal. Bound per classified POST leaf, as `/api/board`
+  // is, because an all-method `use` would register unclassified routes.
+  const readMarkerPaths = [READ_MARKER_SUMMARY_PATH, READ_MARKER_MARK_PATH];
+  context.app.on('POST', readMarkerPaths, bindConversationReadAuthority);
+  context.app.on('POST', readMarkerPaths, primeRoomRequestPrincipal);
+  context.app.route(
+    '/api/read-markers',
+    createReadMarkerRoutes({ service: readMarkers }),
+  );
   context.app.route(
     '/api/conversations',
     createGlobalConversationRoutes(
@@ -12021,12 +12247,7 @@ export function configureRuntimeRoutes(
       context.createMemoryAdapter,
       context.orchestrationService,
       undefined,
-      new FileConversationAcknowledgementStore(
-        context.configLoader.getProjectHomeDir(),
-        ownerDevicePredicate(() =>
-          context.environmentSecurityService.devicePairing.listDevices(),
-        ),
-      ),
+      conversationAcknowledgements,
       conversationReadAuthorityForRequest,
       context.orchestrationService,
       (query, signal) =>
@@ -12038,6 +12259,7 @@ export function configureRuntimeRoutes(
           peerCredentialStore,
         ),
       context.environmentSecurityService,
+      readMarkers,
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps
@@ -13245,6 +13467,17 @@ function isSameMachineBrowserCaller(c: {
     classifyRuntimePeer(attestedClient).peerClass === 'loopback' &&
     isLoopbackAuthority(attestedBrowserVisibleHost(request))
   );
+}
+
+/**
+ * The frame listener binds this host's loopback, so only a browser on this
+ * machine can reach its origin (#4821). Other clients get none and render in
+ * the opaque-origin sandbox.
+ */
+function clientReachableFrameOrigin(
+  origin: (() => string | undefined) | undefined,
+): (c: Context) => string | undefined {
+  return (c) => (isSameMachineBrowserCaller(c) ? origin?.() : undefined);
 }
 
 /** Timing-safe compare over digests, so a length mismatch never short-circuits. */

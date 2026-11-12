@@ -842,6 +842,8 @@ origin policy, Device grants and account-provider configuration must separately
 admit the browser. No CORS, membership or authentication permission is added by
 the connector. `maxPeers` and `maxPeerLifetimeMs` are independently optional with
 the defaults shown; heartbeat, renewal and offer polling use 5s, 10s and 1s.
+At `maxPeers` live browser peers the connector leaves further browser offers
+unanswered until a peer ends; reaching the limit does not fail the connector.
 
 An operator may additionally opt in one exact native v2 client surface by adding
 this field to the connector file:

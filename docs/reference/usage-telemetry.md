@@ -102,7 +102,7 @@ controls disable each choice the server would refuse and say that more sharing
 is chosen on the host computer. A device that cannot acknowledge is told that
 Detailed is confirmed on the host computer instead of being asked to save it.
 Settings offers no choice until the disclosure has loaded. If that read fails
-before any answer, only Don't share is offered, with Try again; the server
+before any answer, only Don't share is offered, with Retry loading; the server
 still decides whether the write is allowed. An earlier answer holds through a
 failed refetch, and a failed read of the Kontour destination's disclosure
 alone limits neither the choices nor the destination line. Hosts that do not report `capabilities` keep the

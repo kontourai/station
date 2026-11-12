@@ -10,6 +10,8 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
@@ -95,6 +97,26 @@ import { OverflowMenu } from '../OverflowMenu';
 
 const onClose = vi.fn();
 
+function InteractiveOverflowMenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        More actions
+      </button>
+      <OverflowMenu
+        isOpen={open}
+        connStatus="connected"
+        userInitials="ST"
+        onClose={() => setOpen(false)}
+        onOpenConnections={vi.fn()}
+        onOpenHelp={vi.fn()}
+        onOpenProfile={vi.fn()}
+      />
+    </>
+  );
+}
+
 function renderMenu() {
   return render(
     <OverflowMenu
@@ -146,6 +168,44 @@ describe('OverflowMenu region section (#917)', () => {
     harness.showLiveWork.mockReset();
     onClose.mockReset();
   });
+
+  test('Escape closes the offered menu and returns focus to its trigger', async () => {
+    const user = userEvent.setup();
+    render(<InteractiveOverflowMenu />);
+    const trigger = screen.getByRole('button', { name: 'More actions' });
+    await user.click(trigger);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Connections' }),
+    );
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('button', { name: 'Connections' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test.each(['backdrop', 'selection', 'Shift+Tab'] as const)(
+    '%s still dismisses the offered menu without trapping focus',
+    async (action) => {
+      const user = userEvent.setup();
+      render(<InteractiveOverflowMenu />);
+      const trigger = screen.getByRole('button', { name: 'More actions' });
+      await user.click(trigger);
+
+      if (action === 'backdrop') {
+        await user.click(
+          screen.getByRole('button', { name: 'Close more actions menu' }),
+        );
+      } else if (action === 'selection') {
+        await user.click(screen.getByRole('button', { name: 'Help' }));
+      } else {
+        await user.tab({ shift: true });
+      }
+
+      expect(screen.queryByRole('button', { name: 'Connections' })).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    },
+  );
 
   test('a coarse device gets one row per surface, checked to match what is visible', () => {
     renderMenu();

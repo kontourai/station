@@ -28,9 +28,10 @@
     {
       "product": "corpus",
       "via": [
-        "@kontourai/corpus-store"
+        "@kontourai/corpus-store",
+        "@kontourai/corpus"
       ],
-      "for": "Store private memory records and create proposals through Corpus contracts."
+      "for": "Store private memory records and create proposals through Corpus Store contracts; route external documentation impact through the public Corpus content contract."
     },
     {
       "product": "datum",
@@ -288,6 +289,8 @@
     "docs/patterns/**",
     "docs/plans/**",
     "docs/reviews/personal-boards-20261016/README.md",
+    "docs/reviews/sidebar-focus-20261107/README.md",
+    "docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md",
     "docs/reviews/workspace-map-20261015/README.md",
     "docs/ui/reviews/mobile-pickers-20261003/README.md",
     "docs/ui/reviews/station-connections-20261105/README.md",

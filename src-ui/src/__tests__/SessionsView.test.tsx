@@ -68,6 +68,9 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+// #4695: each Session's latest-turn window, as the plan line reads it.
+const useOrchestrationSessionActivityQuery = vi.hoisted(() => vi.fn());
+let activityWindows: Record<string, Record<string, unknown>> = {};
 const agentCatalog: never[] = [];
 vi.mock('../views/sessions/conversation-groups', { spy: true });
 // Every config this render passed to the sessions query, so the list's own
@@ -125,12 +128,20 @@ vi.mock('../contexts/ToastContext', () => ({
  * it — the base value is incidental here; these tests are about which
  * attention items render, not where the ack is sent.
  */
+const discardAuthority = vi.hoisted(() => ({ enabled: false }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   // ConversationPullRequestLinks consumes the host request authority when it
   // renders; without this export the full-corpus sweep reds on a missing
   // mock export rather than on behavior (issue#2234).
-  useHostRequestAuthorityScope: () => null,
+  useHostRequestAuthorityScope: () =>
+    discardAuthority.enabled
+      ? {
+          apiBase: 'http://station.test',
+          authorityKey: 'sessions-test-authority',
+          isCurrent: () => true,
+        }
+      : null,
 }));
 
 // The linked-pull-request panel is lazy; this stub echoes the conversation id
@@ -213,6 +224,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     },
     fetchOrchestrationSession: (threadId: string, apiBase: string) =>
       readRoutedSession(threadId, apiBase),
+    useOrchestrationSessionActivityQuery,
     usePairedDevicesQuery,
     usePullRequestContextQuery: () => ({ data: { available: false } }),
     usePullRequestsQuery: () => ({ data: undefined }),
@@ -507,6 +519,7 @@ function filterToProject(title: string) {
 describe('SessionsView', () => {
   afterEach(() => _resetOutboundQueueStorage());
   beforeEach(() => {
+    discardAuthority.enabled = false;
     let stored: unknown;
     _setOutboundQueueStorage({
       getItem: async () => stored,
@@ -607,6 +620,11 @@ describe('SessionsView', () => {
     feedEvents = [];
     workflowTasksByProject = {};
     sessionsQueryError = null;
+    activityWindows = {};
+    useOrchestrationSessionActivityQuery.mockReset();
+    useOrchestrationSessionActivityQuery.mockImplementation(
+      (threadId: string) => ({ data: activityWindows[threadId] }),
+    );
     pairedDevices = [];
     usePairedDevicesQuery.mockReset();
     usePairedDevicesQuery.mockImplementation(() => ({ data: pairedDevices }));
@@ -1158,6 +1176,114 @@ describe('SessionsView', () => {
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
       true,
     );
+  });
+
+  test("#4695: Activity rows read their Session's agent-reported plan; a plan-less Session and a Draft show none", () => {
+    const base = { ...sessions[0], delegation: undefined, projectSlug: 'demo' };
+    sessions = [
+      {
+        ...base,
+        threadId: 'thread-planned',
+        displayTitle: 'Planned session',
+        status: 'running',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+      },
+      {
+        ...base,
+        threadId: 'thread-unplanned',
+        displayTitle: 'Unplanned session',
+        status: 'running',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+      },
+      {
+        ...base,
+        threadId: 'thread-ended',
+        displayTitle: 'Ended session',
+        status: 'failed',
+        lifecycleState: 'failed',
+        hasActiveTurn: false,
+      },
+      {
+        ...base,
+        threadId: 'thread-draft',
+        displayTitle: 'Draft session',
+        status: 'idle',
+        lifecycleState: 'queued',
+        hasActiveTurn: false,
+        draft: true,
+      },
+    ];
+    const plan = (threadId: string, lifecycleState: string) => ({
+      session: { threadId, lifecycleState },
+      events: [
+        { sequence: 1, event: { method: 'turn.started', turnId: 'turn-1' } },
+        {
+          sequence: 2,
+          event: {
+            method: 'plan.updated',
+            turnId: 'turn-1',
+            entries: [
+              { content: 'Read', status: 'completed' },
+              { content: 'Edit', status: 'in_progress' },
+              { content: 'Test', status: 'pending' },
+            ],
+          },
+        },
+      ],
+    });
+    activityWindows = {
+      'thread-planned': plan('thread-planned', 'running'),
+      'thread-unplanned': {
+        session: { threadId: 'thread-unplanned', lifecycleState: 'running' },
+        events: [
+          { sequence: 1, event: { method: 'turn.started', turnId: 'turn-1' } },
+        ],
+      },
+      'thread-ended': plan('thread-ended', 'failed'),
+      // Even a cached plan never shows on a Draft: it never ran.
+      'thread-draft': plan('thread-draft', 'queued'),
+    };
+    renderView();
+
+    // The plan is part of the row's description, in words.
+    const planned = screen.getByRole('button', {
+      name: 'Planned session',
+      description: /, Agent-reported plan: 1 of 3 steps done$/,
+    });
+    expect(
+      planned.querySelector('.split-pane__item-subtitle')?.textContent,
+    ).toContain('Agent plan 1/3');
+    // The running row reads this Station's Session and keeps refreshing.
+    expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+      'thread-planned',
+      'http://test.local',
+      expect.objectContaining({ enabled: true, refetchInterval: 5_000 }),
+    );
+
+    expect(
+      rowButton('Unplanned session').querySelector('.task-plan-progress'),
+    ).toBeNull();
+    // An ended row still shows how far its plan got, read once.
+    expect(
+      screen.getByRole('button', {
+        name: 'Ended session',
+        description: /, Agent-reported plan: 1 of 3 steps done, stopped$/,
+      }).textContent,
+    ).toContain('Agent plan 1/3 · Stopped');
+    expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+      'thread-ended',
+      'http://test.local',
+      expect.objectContaining({ enabled: true, refetchInterval: undefined }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '1 older draft' }));
+    expect(rowButton('Draft session').textContent).not.toContain('Agent plan');
+    expect(
+      useOrchestrationSessionActivityQuery.mock.calls.some(
+        ([threadId]) => threadId === 'thread-draft',
+      ),
+    ).toBe(false);
   });
 
   // #765 residue (A2-adjacent): the runtime opens one engine session per
@@ -4668,6 +4794,7 @@ describe('SessionsView', () => {
     });
 
     test('discards a Draft through the server command; only Drafts offer it', async () => {
+      discardAuthority.enabled = true;
       discardDraftCommand.mockResolvedValue({
         receipt: { commandId: 'discard-1', status: 'accepted' },
         result: null,
@@ -4688,12 +4815,18 @@ describe('SessionsView', () => {
       expect(
         screen.queryByRole('button', { name: 'Discard draft Worked session' }),
       ).toBeNull();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       fireEvent.click(
         screen.getByRole('button', { name: 'Discard draft Fresh draft' }),
       );
+      await act(async () => {});
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8000);
+      });
+      vi.useRealTimers();
 
       await waitFor(() =>
-        expect(discardDraftCommand).toHaveBeenCalledWith({
+        expect(discardDraftCommand.mock.calls[0]?.[0]).toEqual({
           type: 'discardDraft',
           threadId: 'fresh-draft',
         }),

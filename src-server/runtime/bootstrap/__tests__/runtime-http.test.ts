@@ -200,7 +200,9 @@ describe('resolveRuntimeCorsOrigin', () => {
     [
       'GET',
       '/api/orchestration/events',
-      'last-event-id, x-station-client-session, x-station-background-refresh',
+      // x-station-stream-epoch: sent with the resume cursor once the client
+      // knows the store epoch, so a refusal blocks that reconnect.
+      'last-event-id, x-station-client-session, x-station-background-refresh, x-station-stream-epoch',
     ],
     ['PATCH', '/api/me/preferences', 'content-type, if-match'],
   ])(

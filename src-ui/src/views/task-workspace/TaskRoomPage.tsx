@@ -28,6 +28,7 @@ import { PageFrameActions, usePageHeader } from '../../components/page-frame';
 import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
+import { copyToClipboard } from '../../lib/clipboard';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { ProjectTaskRoomPresence } from '../../workspace-panes/ProjectTaskRoomPresence';
 import { ProjectTaskSharingControl } from '../project-page/ProjectTaskSharingControl';
@@ -231,10 +232,13 @@ export function TaskRoomHeader({
             key: 'copy',
             label: 'Copy link',
             onSelect: () => {
-              void navigator.clipboard
-                .writeText(window.location.href)
-                .then(() => setNotice('Task link copied.'))
-                .catch(() => setNotice('The Task link could not be copied.'));
+              void copyToClipboard(window.location.href).then((copied) =>
+                setNotice(
+                  copied
+                    ? 'Task link copied.'
+                    : 'The Task link could not be copied.',
+                ),
+              );
             },
           },
         ]}

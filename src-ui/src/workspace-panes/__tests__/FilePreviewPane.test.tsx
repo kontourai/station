@@ -1683,7 +1683,7 @@ index 3b18e51..a0423896 100644
         'was being changed while Station read it',
       );
       expect(screen.queryByText(/could not read|not read/)).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(refetch).toHaveBeenCalled();
     });
 

@@ -48,6 +48,7 @@ export * from './delegations';
 export * from './ensembles';
 export * from './execution';
 export * from './fleet-routing';
+export * from './followUpAttachments';
 export type {
   ApiRequestScope,
   AuthenticatedFetchInit,
@@ -126,11 +127,17 @@ export * from './skills';
 export * from './task-basis';
 export * from './task-outputs';
 export {
+  fetchSharedTaskRoomCapabilities,
+  fetchSharedTaskRoomRequests,
+  fetchSharedTaskRoomResult,
   fetchTaskRoomAgentRequests,
+  type SharedWorkRequestOptions,
+  submitSharedTaskRoomAgentRequest,
   submitTaskRoomAgentRequest,
   TaskRoomWorkNotSentError,
   TaskRoomWorkProtocolError,
   taskRoomModelOptionsDigest,
+  withdrawSharedTaskRoomRequest,
 } from './task-room-work';
 export * from './task-tool-results';
 export * from './task-user-input-references';

@@ -528,6 +528,168 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe(false);
   });
 
+  it.each([
+    [
+      'pending',
+      'the automatic lookup',
+      (_key: string) =>
+        outboundDispatch.reconcile(
+          async (turn) => ({
+            outcome: 'not-received' as const,
+            conversationId: turn.conversationId!,
+            clientTurnId: turn.clientTurnId,
+          }),
+          { station: hostStation },
+        ),
+    ],
+    [
+      'failed',
+      'Check',
+      (key: string) =>
+        outboundDispatch.check(
+          key,
+          async (turn) => ({
+            outcome: 'not-received' as const,
+            conversationId: turn.conversationId!,
+            clientTurnId: turn.clientTurnId,
+          }),
+          hostStation,
+        ),
+    ],
+  ] as const)(
+    "the notice's Discard still withdraws a %s row, after %s answered that Station never received it",
+    async (status, _asker, stationAnswersNotReceived) => {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new TypeError('Failed to fetch'),
+      );
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(chat, 'codex', undefined, 'never arrived');
+      });
+      const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+        clientTurnId: string;
+      };
+      // No longer awaiting the lookup: an ordinary unsent message that has
+      // not gone yet. Its chat notice, with its Discard, is still shown.
+      await stationAnswersNotReceived(body.clientTurnId);
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({ clientTurnId: body.clientTurnId, status }),
+      ]);
+      const notice = activeChatsStore
+        .getSnapshot()
+        [chat]?.ephemeralMessages?.find(
+          (message) => message.action?.label === 'Discard…',
+        );
+      await act(async () => {
+        await notice!.action!.handler();
+      });
+      expect(activeChatsStore.getSnapshot()[chat]).toMatchObject({
+        status: 'idle',
+      });
+      expect(activeChatsStore.getSnapshot()[chat]?.error).toBeUndefined();
+      expect(await outboundDispatch.snapshot()).toEqual([]);
+      expect(
+        activeChatsStore
+          .getSnapshot()
+          [chat]?.messages?.some(
+            (message) => message.clientId === body.clientTurnId,
+          ),
+      ).toBe(false);
+      // Withdrawn for good, as any discard: no window sends this key again.
+      expect((await outboundDispatch.retiredKeys()).discarded).toContain(
+        body.clientTurnId,
+      );
+    },
+  );
+
+  it('a send that fails on this device before its request is made leaves no outbox row: the composer has the text and nothing resends it', async () => {
+    // A follow-up to a busy chat that still carries an approval pick Station
+    // has not received: refused here, before any request.
+    activeChatsStore.updateChat(chat, {
+      status: 'sending',
+      conversationId: chat,
+      queuedApprovalMode: 'ask',
+    });
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useSendMessage('http://api.test', undefined, onError),
+    );
+    const onDurable = vi.fn();
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        chat,
+        'follow up',
+        undefined,
+        undefined,
+        undefined,
+        { onDurable },
+      );
+    });
+    // The row was written before the attempt, as for every text send.
+    expect(onDurable).toHaveBeenCalledOnce();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          'Apply the pending approval choice before queuing a follow-up.',
+      }),
+    );
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('follow up');
+    expect(state?.messages?.some((message) => message.role === 'user')).toBe(
+      false,
+    );
+    // Nothing reached Station, and the composer holds the only copy: no row
+    // is left for the lookup to release and the flush to send a second time.
+    expect(await outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it('a send whose answer could not be read stays with its outbox row: the composer is not handed a second copy', async () => {
+    // Not a transport failure and not Station's refusal: the request was
+    // made, so only Station's lookup can say what became of it.
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new SyntaxError('Unexpected token < in JSON at position 0'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(chat, 'codex', undefined, 'answer unreadable');
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: body.clientTurnId,
+        content: 'answer unreadable',
+        status: 'invoking',
+        awaitingLookup: true,
+      }),
+    ]);
+    const state = activeChatsStore.getSnapshot()[chat];
+    // One copy: the bubble and its row. The composer stays empty and the
+    // chat offers no Retry beside the automatic resend.
+    expect(state?.input).toBe('');
+    expect(state?.status).toBe('queued');
+    expect(
+      state?.messages?.filter(
+        (message) => message.clientId === body.clientTurnId,
+      ),
+    ).toHaveLength(1);
+    expect(
+      state?.ephemeralMessages?.some(
+        (message) => message.action?.label === 'Retry',
+      ),
+    ).toBe(false);
+    expect(
+      state?.ephemeralMessages?.find((message) => message.queuedRetry),
+    ).toMatchObject({
+      content: "Send wasn't confirmed — queued to retry automatically",
+      action: { label: 'Discard…', confirm: 'unconfirmed-discard' },
+    });
+  });
+
   it("no answer at all: the row is released for Station's lookup under the SAME key, never resent blind", async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new TypeError('Failed to fetch'),
@@ -1788,6 +1950,135 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
     });
     const state = activeChatsStore.getSnapshot()[chat];
     expect(state?.input).toBe('');
+    expect(state?.attachmentStages).toEqual([draftStage]);
+  });
+
+  // The same replay call for a message the person sent earlier (no Continue
+  // key): by now the composer holds whatever they have typed and staged since.
+  const replayOrdinary = (send: ReturnType<typeof useSendMessage>) =>
+    send(
+      chat,
+      'codex',
+      undefined,
+      'sent while offline',
+      undefined,
+      undefined,
+      'ordinary-outbox-key',
+      {
+        skipInMemoryQueueOnBusy: true,
+        dispatch: { indeterminate: async () => 'applied' as const },
+      },
+    );
+
+  it('an outbox replay of an earlier message leaves the newer draft and its staged files, and sends neither', async () => {
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await replayOrdinary(result.current);
+    });
+    expect(outcome).toMatchObject({ kind: 'accepted' });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1];
+    expect(body).toMatchObject({
+      message: 'sent while offline',
+      clientTurnId: 'ordinary-outbox-key',
+    });
+    // The composer's staged file belongs to the next message, not this one.
+    expect(body.attachments ?? []).toEqual([]);
+    expect(body).not.toHaveProperty('attachmentRefs');
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('my unsent draft');
+    expect(state?.attachments).toEqual([draftFile]);
+    expect(state?.attachmentStages).toEqual([draftStage]);
+  });
+
+  it.each([
+    ['Station refuses it', () => new ChatHttpError(400, 'Refused')],
+    ['no answer comes back', () => new TypeError('Failed to fetch')],
+  ])(
+    'an outbox replay of an earlier message leaves the newer draft and its staged files when %s',
+    async (_why, failure) => {
+      sendExecutionMessageMock.mockRejectedValueOnce(failure());
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      // A replay's failure goes back to the flush that owns the row.
+      await act(async () => {
+        await replayOrdinary(result.current).catch(() => undefined);
+      });
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+      expect(sendExecutionMessageMock.mock.calls[0]?.[1]).not.toHaveProperty(
+        'attachmentRefs',
+      );
+      const state = activeChatsStore.getSnapshot()[chat];
+      expect(state?.input).toBe('my unsent draft');
+      expect(state?.attachments).toEqual([draftFile]);
+      expect(state?.attachmentStages).toEqual([draftStage]);
+    },
+  );
+
+  it('a failed outbox replay of an earlier message puts its text in no empty composer: the outbox row still holds it', async () => {
+    activeChatsStore.updateChat(chat, {
+      input: '',
+      attachments: [],
+      attachmentStages: [],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(400, 'Refused'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await replayOrdinary(result.current).catch(() => undefined);
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+  });
+
+  it('through the outbox flush: a refused replay stays in the outbox and the composer keeps its newer draft and staged files', async () => {
+    await outboundDispatch.enqueue({
+      clientTurnId: 'flushed-key',
+      sessionId: chat,
+      agentSlug: 'codex',
+      content: 'sent while offline',
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(400, 'Refused'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      // The flush hook's transport (useOutboundQueueFlush), with the queue's
+      // own claim.
+      await outboundDispatch.flush(async (turn, claim) => {
+        const outcome = await result.current(
+          turn.sessionId,
+          turn.agentSlug,
+          turn.conversationId,
+          turn.content,
+          turn.attachments,
+          turn.ambientContext,
+          turn.clientTurnId,
+          { skipInMemoryQueueOnBusy: true, dispatch: claim },
+        );
+        return outcome && typeof outcome === 'object' && 'kind' in outcome
+          ? outcome
+          : { kind: 'not-invoked' as const };
+      });
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1];
+    expect(body).toMatchObject({
+      message: 'sent while offline',
+      clientTurnId: 'flushed-key',
+    });
+    expect(body).not.toHaveProperty('attachmentRefs');
+    // The row still holds the message; the composer was never part of it.
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'flushed-key',
+        content: 'sent while offline',
+      }),
+    ]);
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('my unsent draft');
+    expect(state?.attachments).toEqual([draftFile]);
     expect(state?.attachmentStages).toEqual([draftStage]);
   });
 

@@ -4,6 +4,7 @@ export {
 } from '@kontourai/station-contracts/provider-failure';
 
 import { readInputRequestResponse } from '@kontourai/station-shared/input-request';
+import { isRecord } from '../../utils/is-record.js';
 import type { JsonRpcId } from './codex-adapter-types.js';
 
 /**
@@ -46,10 +47,6 @@ const DECISION_VOCABULARY = new Set([
 const ELICITATION_ACTIONS = new Set(['accept', 'decline', 'cancel']);
 const PERMISSION_SCOPES = new Set(['turn', 'session']);
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * #2880: Codex acknowledges even a reply it could not parse — it logs the
  * deserialize failure, rejects the tool call, and still sends
@@ -64,7 +61,7 @@ export function refuseCodexApprovalReply(
   method: string,
   result: unknown,
 ): string | undefined {
-  if (!isPlainObject(result)) return 'the reply is not an object';
+  if (!isRecord(result)) return 'the reply is not an object';
   switch (method) {
     case 'item/commandExecution/requestApproval':
     case 'item/fileChange/requestApproval':
@@ -75,10 +72,10 @@ export function refuseCodexApprovalReply(
         : 'the reply does not carry a decision Codex accepts';
     case 'item/tool/requestUserInput':
       return Object.keys(result).length === 1 &&
-        isPlainObject(result.answers) &&
+        isRecord(result.answers) &&
         Object.values(result.answers).every(
           (answer) =>
-            isPlainObject(answer) &&
+            isRecord(answer) &&
             Object.keys(answer).length === 1 &&
             Array.isArray(answer.answers) &&
             answer.answers.every((value) => typeof value === 'string'),
@@ -86,7 +83,7 @@ export function refuseCodexApprovalReply(
         ? undefined
         : 'the reply does not carry question answers Codex accepts';
     case 'item/permissions/requestApproval':
-      return isPlainObject(result.permissions) &&
+      return isRecord(result.permissions) &&
         typeof result.scope === 'string' &&
         PERMISSION_SCOPES.has(result.scope) &&
         Object.keys(result).length === 2

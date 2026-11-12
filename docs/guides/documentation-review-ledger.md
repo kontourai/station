@@ -110,6 +110,11 @@ the module map can select many topics. Periodic audits still need to look for
 missing relationships. Run `docs:truth:gate` after reviewing and updating the
 ledger; the impact report does not change evidence or grant approval.
 
+`docs:impact` also uses Corpus's `corpus-content.json` relationships to report
+external product pages and public policies. Those websites own their separate
+Corpus input/output review manifests; this ledger does not approve their copy.
+See [external content maintenance](documentation.md#keep-external-product-content-current).
+
 Veritas selects this command as required `documentation-truth` evidence,
 including for source-only changes. A stale recorded review that the change
 touched blocks readiness (see [keep reviews fresh](#keep-reviews-fresh));

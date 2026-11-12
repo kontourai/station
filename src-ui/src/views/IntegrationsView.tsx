@@ -341,8 +341,7 @@ export function IntegrationsView({
         listEmptyTitle="No tool servers yet"
         listEmptyDescription="Add an MCP server connection or install one from the registry."
         emptyIcon={<SettingsGlyph />}
-        emptyTitle="No tool server selected"
-        emptyDescription="Select a tool server to edit, or add a new one"
+        emptyDescription="Select a tool server to edit, or add a new one."
       >
         {renderedEditForm && (
           <IntegrationEditorPanel

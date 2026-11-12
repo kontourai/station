@@ -328,6 +328,48 @@ describe('SqliteVecIndexProvider', () => {
     }
   });
 
+  test('rebuildRoot keeps the existing root partition when the embedder resolves with a malformed batch', async () => {
+    const store = new KnowledgeStoreProvider(new FakeRootPersistence());
+    const root = await store.createRoot({
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(dir, 'store'),
+      displayName: 'Personal knowledge',
+    });
+    const adapter = await store.adapterFor(root.id);
+    await adapter.create({
+      type: 'raw',
+      title: 'Note',
+      body: 'note body',
+      category: 'personal',
+      provenance: { agent: 'test' },
+    });
+    await provider.upsert([entry(root.id, 'seed', 0, [1, 0, 0, 0])]);
+
+    // What an HTTP embedder used to hand back for an error body it never
+    // checked (`data.embeddings` of `{"error": ...}`), then a short batch,
+    // then a batch holding an empty vector.
+    const malformedBatches: unknown[] = [undefined, [], [[]]];
+    for (const batch of malformedBatches) {
+      const embedder: IEmbeddingProvider = {
+        id: 'malformed-embedder',
+        displayName: 'Malformed stub embedder',
+        dimensions: () => 4,
+        embed: async () => batch as number[][],
+      };
+      await expect(
+        provider.rebuildRoot(root.id, { store, embedder }),
+      ).rejects.toThrow(/left unchanged/);
+
+      expect((await provider.stats(root.id)).chunks).toBe(1);
+      const hits = await provider.search([1, 0, 0, 0], {
+        topK: 5,
+        rootIds: [root.id],
+      });
+      expect(hits.map((hit) => hit.recordId)).toEqual(['seed']);
+    }
+  });
+
   // SEC-2 / code-review HIGH-1: concurrent rebuildRoot for the same root.
   test('two concurrent rebuildRoot calls for the SAME root: the second fails fast with RebuildInProgressError instead of racing the first', async () => {
     const storeRoot = mkdtempSync(join(tmpdir(), 'sqlite-vec-index-store-'));

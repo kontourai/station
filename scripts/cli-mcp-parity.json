@@ -271,7 +271,7 @@
     },
     "doctor": {
       "exempt": "local-host",
-      "reason": "Acts on this machine's install, not a Station API."
+      "reason": "Acts on this machine's install; its one Station read (GET /api/diagnostics/confinement-preflight) reports the confinement facts of the selected Station, local or remote, and changes nothing there."
     },
     "ensemble inspect": {
       "exempt": "local-host",

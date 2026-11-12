@@ -396,7 +396,7 @@ function NativeEngineSetup({
               </Button>
             ) : stage === 'error' ? (
               <Button variant="primary" onClick={add}>
-                Try again
+                Retry
               </Button>
             ) : stage === 'result' && ready && saved ? (
               <Button

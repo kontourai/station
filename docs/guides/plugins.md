@@ -1754,8 +1754,10 @@ The dev server:
   - `POST /api/plugins/fetch` — server-side fetch proxy
 
 The dev server reads installed dependencies from `<STATION_HOME>/plugins/` and
-starts the existing install command for a missing dependency with a resolved
-source. That is an installation attempt, not proof that consent, activation or
+runs the existing install command for a missing dependency with a resolved
+source, waiting for it to finish before it generates the preview page. A
+refused or failed install is printed as a warning and the preview still
+starts. That is an installation attempt, not proof that consent, activation or
 dependency readiness completed before the preview starts.
 
 Direct `--host` or non-loopback HTTP exposure is not supported. For remote development, run `station plugin dev 4300` on the development host, forward it with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host`, and open `http://127.0.0.1:4300` locally. The privileged file, MCP, fetch, and reload routes enforce the same exact loopback browser boundary.

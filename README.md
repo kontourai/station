@@ -6,12 +6,29 @@
 [![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="tests/screenshots.baseline/task-capabilities-dark-desktop.png">
+  <source media="(prefers-color-scheme: light)" srcset="tests/screenshots.baseline/task-capabilities-light-desktop.png">
+  <img src="tests/screenshots.baseline/task-capabilities-light-desktop.png" width="900" alt="A Station Task room for the Task Review the documentation change. Its overview lists three steps, Plan, Work chats, and Artifacts and receipts, above the Project tools available to the Task.">
+</picture>
+
 Agent work shouldn’t be trapped in one terminal or provider. Pick up where you
 left off, bring your team into the work, and make what your agents produce
 something you can build on together.
 
 Station is open source, runs on a computer you control, and has a public SDK
 for plugins.
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="tests/screenshots.baseline/home.png" height="300" alt="Station Home, where you describe what you want done, choose an agent and a model, and start the work."><br>Start work from Home</td>
+    <td align="center" valign="top"><img src="tests/screenshots.baseline/mobile-home.png" height="300" alt="Station Home on a phone, with the same request box and agent choice."><br>Continue on your phone</td>
+    <td align="center" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="tests/screenshots.baseline/task-capabilities-dark-mobile.png"><source media="(prefers-color-scheme: light)" srcset="tests/screenshots.baseline/task-capabilities-light-mobile.png"><img src="tests/screenshots.baseline/task-capabilities-light-mobile.png" height="300" alt="The same Task room on a phone, listing its plan, work chats, and artifacts and receipts."></picture><br>Check a Task from anywhere</td>
+  </tr>
+</table>
+
+<sub>Screens from Station’s automated UI gallery, using sample data. They are
+regenerated with the gallery baseline.</sub>
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·

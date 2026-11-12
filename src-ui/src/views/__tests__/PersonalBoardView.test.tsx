@@ -136,7 +136,7 @@ describe('PersonalBoardView (#2062, #2082)', () => {
     // Named, because it is the case a user reaches by promoting their own
     // Board into a project.
     expect(screen.getByText(/moved into a project/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('a failure that is not a 404 keeps its retry', () => {
@@ -151,6 +151,6 @@ describe('PersonalBoardView (#2062, #2082)', () => {
     render(<PersonalBoardView boardSlug="daily" />);
 
     expect(screen.getByText('Could not open this Board')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 });

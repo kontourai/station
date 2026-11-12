@@ -59,6 +59,8 @@ interface RuntimeInitializationContext {
   getReviewedTariffConfiguration?: InitializeRuntimeDeps['getReviewedTariffConfiguration'];
   validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
+  stationInstructionsEnabled?: InitializeRuntimeDeps['stationInstructionsEnabled'];
+  codexBoundToolsEnabled?: InitializeRuntimeDeps['codexBoundToolsEnabled'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -112,6 +114,7 @@ interface RuntimeInitializationContext {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
   hostImagesPreview?: FeaturePreviewSelector;
+  coordinatorSessionPreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -200,6 +203,8 @@ export function createRuntimeInitializationDeps(
     storageAdapter: context.storageAdapter,
     validateProjectTools: context.validateProjectTools,
     resolveProjectToolServers: context.resolveProjectToolServers,
+    stationInstructionsEnabled: context.stationInstructionsEnabled,
+    codexBoundToolsEnabled: context.codexBoundToolsEnabled,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,
@@ -208,6 +213,7 @@ export function createRuntimeInitializationDeps(
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
     hostImagesPreview: context.hostImagesPreview,
+    coordinatorSessionPreview: context.coordinatorSessionPreview,
     durableAgentPreview: context.durableAgentPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,

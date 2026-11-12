@@ -42,6 +42,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../bootstrap/hosted-tenant-mode.js';
+import { shutdownRuntimeServices } from '../../bootstrap/runtime-shutdown.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -67,6 +68,8 @@ const support = vi.hoisted(() => ({
     | undefined,
   /** Paired devices still allowed to send (#3568 A2). */
   devices: new Set<string>(),
+  /** What the orchestration service's own `shutdown()` does (it ends Sessions). */
+  orchestrationShutdown: undefined as (() => void) | undefined,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -295,6 +298,7 @@ async function composeOver(
       }),
       firstStartedEngineOfThread: () => 'claude',
       sessionRunsHost: () => false,
+      shutdown: async () => support.orchestrationShutdown?.(),
     }),
     storageAdapter: deepStub({
       getProject: () => {
@@ -353,6 +357,22 @@ async function composeOver(
     emit,
     delegationResultStore,
     policyService,
+    /**
+     * The runtime's own shutdown step, handed the orchestration service this
+     * composition was built over, as `StationRuntime.shutdown` hands its own.
+     */
+    shutdown: () =>
+      shutdownRuntimeServices({
+        logger: context.logger,
+        timers: [],
+        orchestrationService: context.orchestrationService,
+        mcpConfigs: new Map(),
+        activeAgents: new Map(),
+        acpBridge: { shutdown: async () => {} },
+        feedbackService: { stop: () => {} },
+        voiceService: { stop: async () => {} },
+        configLoader: { dispose: async () => {} },
+      }),
   };
 }
 
@@ -369,6 +389,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     support.inboxNativeSteer = false;
     support.inspect = undefined;
     support.devices.clear();
+    support.orchestrationShutdown = undefined;
     for (const close of closers.splice(0)) await close();
   });
 
@@ -396,7 +417,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
       store.close();
     });
     options.seed?.(store);
-    return { store, ...(await composeOver(homeDir, store, closers)) };
+    return { homeDir, store, ...(await composeOver(homeDir, store, closers)) };
   }
 
   const callerHeaders = (channel: 'sdk-in-process' | 'url-token') => ({
@@ -515,6 +536,32 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     );
   });
 
+  test('runtime shutdown stops result delivery before the orchestration service ends its Sessions; the next start delivers', async () => {
+    const { base, emit, store, homeDir, shutdown } = await setup();
+    await delegate(base, 'url-token');
+    emit(PARENT, 'turn.started', { turnId: 'parent-turn-a' });
+    settleChild(emit);
+    // The engine cannot steer: the result waits for the parent's turn end.
+    await vi.waitFor(() => expect(support.commands).toHaveLength(1));
+    // `OrchestrationService.shutdown()` ends its Sessions on the same bus.
+    support.orchestrationShutdown = () => {
+      emit(PARENT, 'turn.aborted', { turnId: 'parent-turn-a' });
+      emit(PARENT, 'session.exited');
+    };
+    await shutdown();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(support.continued).toHaveLength(0);
+    expect(
+      store.delegationResultStore().listForChild(CHILD)[0]?.state,
+    ).not.toBe('delivered');
+
+    await composeOver(homeDir, store, closers);
+    await vi.waitFor(() => expect(support.continued).toHaveLength(1));
+    expect(String(support.continued[0]!.message)).toContain(
+      '> notes are written',
+    );
+  });
+
   test('a hosted Station composes no delivery', async () => {
     const { delegationResultStore } = await setup({
       hosted: true,
@@ -616,6 +663,7 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     support.inboxNativeSteer = false;
     support.inspect = undefined;
     support.devices.clear();
+    support.orchestrationShutdown = undefined;
     for (const close of closers.splice(0)) await close();
   });
 
@@ -872,6 +920,48 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
       );
     },
   );
+
+  test('runtime shutdown stops the inbox before the orchestration service ends its Sessions; the held follow-up waits for the next start', async () => {
+    support.inspect = () => ({ outcome: 'not-received' });
+    // The conversation is running a turn, so its follow-up waits.
+    support.busy.add(PARENT);
+    const homeDir = makeTempDir('station-thread-inbox-shutdown-');
+    const store = new EventStore(join(homeDir, 'orchestration.sqlite'));
+    closers.push(() => {
+      store.close();
+    });
+    held(store, 'held-over-shutdown');
+    const { emit, shutdown } = await composeOver(homeDir, store, closers);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(store.threadInboxStore().list(PARENT)).toMatchObject([
+      { key: 'held-over-shutdown', state: 'queued' },
+    ]);
+    // `OrchestrationService.shutdown()` publishes `session.exited` for every
+    // tracked Session on the same bus, after which nothing reads as running.
+    support.orchestrationShutdown = () => {
+      support.busy.clear();
+      emit(PARENT, 'session.exited');
+    };
+    await shutdown();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(support.continued).toHaveLength(0);
+    expect(store.threadInboxStore().list(PARENT)).toMatchObject([
+      { key: 'held-over-shutdown', state: 'queued' },
+    ]);
+
+    // The next start places it, once.
+    await composeOver(homeDir, store, closers);
+    await vi.waitFor(() =>
+      expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+    );
+    expect(support.continued).toEqual([
+      expect.objectContaining({
+        conversationId: PARENT,
+        clientTurnId: 'held-over-shutdown',
+        message: 'held held-over-shutdown',
+      }),
+    ]);
+  });
 
   test('startup hands a steer to the production dispatch binding with its recorded actor', async () => {
     support.inboxNativeSteer = true;

@@ -73,6 +73,7 @@ class PostureAdapter extends GateTestAdapter {
     displayName: 'Claude Code',
     description: 'Approval posture lifecycle adapter',
     capabilities: ['agent-runtime'],
+    sessionGrantScopes: ['rule'],
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
@@ -1109,16 +1110,81 @@ describe('approval posture probe table under server order (#2436)', () => {
         );
       });
 
-      test('a scope other than the typed value is refused at the route', async () => {
+      test.each([['tool'], ['Rule'], ['prefix'], [''], [1]])(
+        'a scope other than the typed values (%j) is refused at the route',
+        async (sessionGrantScope) => {
+          const h = await harness();
+          await h.firstSend('ask');
+          const threadId = await h.openRequest('req-browser', browserCall);
+          const response = await post(h, threadId, {
+            decision: 'acceptForSession',
+            sessionGrantScope,
+          });
+          expect(response.status).toBe(400);
+          expect(h.adapter.answers).toEqual([]);
+        },
+      );
+
+      test("the command-prefix scope 'rule' reaches the adapter", async () => {
         const h = await harness();
         await h.firstSend('ask');
-        const threadId = await h.openRequest('req-browser', browserCall);
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+        });
         const response = await post(h, threadId, {
           decision: 'acceptForSession',
-          sessionGrantScope: 'tool',
+          sessionGrantScope: 'rule',
         });
-        expect(response.status).toBe(400);
-        expect(h.adapter.answers).toEqual([]);
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answerContexts.at(-1)).toMatchObject({
+          sessionGrantScope: 'rule',
+        });
+        expect(h.decisions()).toEqual(['ask']);
+      });
+
+      test("a 'rule' answer to an engine that does not declare it is a one-call accept", async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+        });
+        // Codex and ACP read any session answer as their per-tool grant,
+        // which is wider than the prefix the person chose.
+        Object.defineProperty(h.adapter, 'metadata', {
+          value: { ...h.adapter.metadata, sessionGrantScopes: undefined },
+        });
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'rule',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answers.at(-1)?.decision).toBe('accept');
+        expect(h.adapter.answerContexts.at(-1)?.sessionGrantScope).toBe(
+          undefined,
+        );
+      });
+
+      test('a scoped answer to an edit request records no Auto posture', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Edit',
+          toolInput: { file_path: '/work/a/x.ts' },
+          suggestions: [
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+        });
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'rule',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answerContexts.at(-1)).toMatchObject({
+          sessionGrantScope: 'rule',
+        });
+        expect(h.decisions()).toEqual(['ask']);
       });
 
       test('a scope on any other decision is not forwarded', async () => {

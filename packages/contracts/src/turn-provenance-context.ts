@@ -18,6 +18,8 @@
  * cycle to break later.
  */
 
+import { isObjectRecord } from './record-guard.js';
+
 /** Hard cap on named knowledge sources so one turn cannot bloat a transcript. */
 export const TURN_PROVENANCE_MAX_CONTEXT_SOURCES = 8;
 
@@ -127,10 +129,6 @@ export interface TurnProvenanceContextInjection {
   memoryBrief?: TurnProvenanceContextMemoryBrief;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
@@ -156,12 +154,12 @@ function isCountField(value: unknown): value is number {
 export function parseTurnProvenanceContextInjection(
   value: unknown,
 ): TurnProvenanceContextInjection | undefined {
-  if (!isRecord(value)) return undefined;
+  if (!isObjectRecord(value)) return undefined;
   const out: TurnProvenanceContextInjection = {};
 
   if (value.knowledge !== undefined) {
     const raw = value.knowledge;
-    if (!isRecord(raw)) return undefined;
+    if (!isObjectRecord(raw)) return undefined;
     if (
       !isCountField(raw.chunkCount) ||
       !isCountField(raw.omittedSources) ||
@@ -184,14 +182,15 @@ export function parseTurnProvenanceContextInjection(
 
   if (value.projectRules !== undefined) {
     const raw = value.projectRules;
-    if (!isRecord(raw) || !isCountField(raw.approxTokens)) return undefined;
+    if (!isObjectRecord(raw) || !isCountField(raw.approxTokens))
+      return undefined;
     out.projectRules = { approxTokens: raw.approxTokens };
   }
 
   if (value.guidelines !== undefined) {
     const raw = value.guidelines;
     if (
-      !isRecord(raw) ||
+      !isObjectRecord(raw) ||
       !isCountField(raw.reinforce) ||
       !isCountField(raw.avoid) ||
       !isCountField(raw.approxTokens)
@@ -207,14 +206,15 @@ export function parseTurnProvenanceContextInjection(
 
   if (value.workflowSteering !== undefined) {
     const raw = value.workflowSteering;
-    if (!isRecord(raw) || !isCountField(raw.approxTokens)) return undefined;
+    if (!isObjectRecord(raw) || !isCountField(raw.approxTokens))
+      return undefined;
     out.workflowSteering = { approxTokens: raw.approxTokens };
   }
 
   if (value.conversationFeedback !== undefined) {
     const raw = value.conversationFeedback;
     if (
-      !isRecord(raw) ||
+      !isObjectRecord(raw) ||
       !isCountField(raw.flaggedMessages) ||
       !isCountField(raw.approxTokens)
     ) {
@@ -228,14 +228,15 @@ export function parseTurnProvenanceContextInjection(
 
   if (value.ambient !== undefined) {
     const raw = value.ambient;
-    if (!isRecord(raw) || !isCountField(raw.approxTokens)) return undefined;
+    if (!isObjectRecord(raw) || !isCountField(raw.approxTokens))
+      return undefined;
     out.ambient = { approxTokens: raw.approxTokens };
   }
 
   if (value.memoryBrief !== undefined) {
     const raw = value.memoryBrief;
     if (
-      !isRecord(raw) ||
+      !isObjectRecord(raw) ||
       !isCountField(raw.entries) ||
       !isCountField(raw.approxTokens)
     )

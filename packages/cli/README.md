@@ -211,8 +211,7 @@ its server deadline and caller cancellation. Report create/cancel/finalize-cance
 report-sync, report-sync-input, report-continue, report-finalize-sync and report-narrow-input also disable the client request timeout and
 use caller cancellation, and group event streams with `--follow`
 have no overall deadline. Finite report list/get/event/result reads retain the
-configured SDK deadline alongside SIGINT cancellation. The current checkpoint-restore and
-Operate event-stream paths bypass the shared credential client and cannot
+configured SDK deadline alongside SIGINT cancellation. The current Operate event-stream path bypasses the shared credential client and cannot
 authenticate to a protected Station; see the reference.
 
 ## Session groups

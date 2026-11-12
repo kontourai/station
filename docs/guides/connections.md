@@ -369,11 +369,31 @@ without switching or opening the chooser. On a phone the chooser offers
 **Connect another device** where a computer offers **Pair phone**.
 
 Opening the chooser checks whether each other Station answers its public
-handshake, from this device, without credentials. A green dot means it
-answered; **Unreachable** means nothing did within a few seconds. Answering
-proves only that the address responds, not that this device still has access.
-Stations reached through a broker route are not checked, nor, from an HTTPS
-page, a plain-HTTP address other than loopback, which the browser would block.
+handshake, from this device, without credentials. Each row reads **Checking…**
+until its answer arrives, then **Online** or **Unreachable**, with why and
+when: "no answer in time" or "nothing answered", "checked just now", and when
+this device last connected to it. Answering proves only that the address
+responds, not that this device still has access. Stations reached through a
+broker route are not checked, nor, from an HTTPS page, a plain-HTTP address
+other than loopback, which the browser would block; those rows show the last
+failure this device saved and how old it is, or **Not checked**. A Station that
+refused this device reads **Needs access**, with when it refused where that is
+known, and keeps its needs-pairing mark even when its handshake answers. The
+current Station's row shows its live status, why its last check failed if it
+did, and when it was checked. Station checks the current Station every 10
+seconds while it is healthy; while it is failing it retries sooner, backing off
+to every 10 seconds, except after a refused credential, which waits for a
+manual retry, a credential change or the network returning. It also checks
+whenever the app returns to the foreground. The app's own supervised local
+Station is not probed, so its row has no check time.
+
+After you choose a Station, the app names it, its address and the step it is
+on while it verifies access. If that takes longer than six seconds, it says it
+has had no answer and offers **Try again**, **Back to** the Station most
+recently used before it, and **Manage Stations**, instead of waiting out the
+request deadline. In the desktop and phone apps, a Station that answered but is
+still loading its data says so after six seconds and offers **Back to** and
+**Manage Stations**.
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**
@@ -1156,7 +1176,23 @@ configuration do not apply to it. A selected credential profile gets a
 confined copy of its own that starts empty, so a login held only in that
 profile does not reach it: the session runs at Auto until it has an
 environment credential. The readiness entry checks only the default confined
-home.
+home. `station doctor` asks the selected Station the question a start asks:
+whether the Seatbelt profile applies on that Station's host, and whether a
+confined start that names no credential profile of its own (the connection's
+active credential profile applied) would find a credential. An Agent with its
+own credential profile is decided when it starts. See
+[`doctor`](../reference/cli.md#doctor).
+
+On Linux, the same session runs inside Station's bubblewrap sandbox, with the
+same credential rule, Station-owned configuration directory and environment
+allowlist. It needs the `bubblewrap` package, version 0.8.0 or later, and a
+kernel that lets `/usr/bin/bwrap` create user namespaces. Without them such a start is
+refused, naming why, rather than run unconfined. Inside the sandbox the
+workspace's git metadata is read-only, so the session can read status and
+history but cannot stage or commit. It can still create a `.claude` or
+`.codex` folder in the workspace, which your next unconfined session there
+would load: check for one before you start such a session yourself. The readiness entry is macOS-only;
+`station doctor` answers both questions on Linux too.
 
 A confined session also gets only an allowlisted environment. Variables you
 set in the connection's `env` pass, as do paths, locale, proxy and TLS
@@ -1164,18 +1200,61 @@ settings, `CLAUDE_*` and `ANTHROPIC_*`, the git author and committer
 identity, and `EDITOR`/`VISUAL`. Everything else in Station's environment is
 dropped: `GH_TOKEN`, `NPM_TOKEN`, cloud keys, and toolchain variables such as
 `NVM_DIR`, `JAVA_HOME`, `GOPATH` or `PYENV_ROOT` (set them in the
-connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
-push with your SSH agent. In a linked worktree it can commit to its own
-branch, but `git stash`, `fetch` and `pull` are refused: they write shared
-refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
-change. In a folder whose `.git` is inside it, `fetch`, `pull` and ref
-packing are refused too: its remote-tracking refs are what a later Codex
-session trusts the folder's `.codex` by. It also cannot create or change any `.claude` or `.codex`
-directory in the folder, at any depth, which other sessions there would
-load. On Linux and
-Windows such a session is
-refused, because no confinement exists for it there. See
+connection's `env` if its tools need them). It does not inherit
+`SSH_AUTH_SOCK`, but on macOS it can still connect to an SSH agent socket
+whose path it can find, so do not rely on confinement to keep your agent
+from it there. On Linux the sandbox has its own `/tmp` and hides the
+runtime directory and the 1Password and Bitwarden agent sockets, so an
+agent socket in any of those is not reachable. Any other agent socket it
+can find stays reachable, including one directly in your home folder or
+inside a folder in it (`~/.cache/...`) that is not on the hidden list, so
+do not rely on confinement to keep an agent from it on Linux either. The
+sandbox mounts back each entry of every folder it shadows (your home
+folder, `/run`, and the folders on the way to a hidden path such as
+`~/.config`, `~/.claude` and `~/.codex`); more than 1,000 entries across
+them refuses a confined start, naming the folder. Leftover files such as
+`~/.claude.json.tmp.*` count toward that limit. Under Seatbelt (macOS), in a linked worktree
+it can commit to its own branch, but `git stash`, `fetch` and `pull` are
+refused: they write shared refs (`refs/stash`, remote-tracking refs,
+`packed-refs`) that it may not change. In a folder whose `.git` is inside
+it, `fetch`, `pull` and ref packing are refused too: its remote-tracking
+refs are what a later Codex session trusts the folder's `.codex` by. It also
+cannot create or change any `.claude` or `.codex` directory in the folder,
+at any depth, which other sessions there would load. Under bubblewrap
+(Linux) git metadata is read-only and existing `.claude` and `.codex`
+folders at the folder's root cannot be changed, but new ones can be
+created, as above. On Windows such a session is refused, because no
+confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
+
+By default a confined session's network is open. Set the Station's
+[`confinedNetwork`](../reference/config.md#optional-fields) to `restricted`
+to limit it. This covers only confined sessions: sessions at Auto or Ask,
+and your own sessions, are not confined and their network is not restricted
+at all. On macOS a restricted session's own connections go only to a broker
+Station runs for it, which lets through its model endpoint and the hosts you
+list; a connection to anything else is blocked and shown as a warning with
+the host it tried (a toast while the session is open, and in its
+diagnostics log). The sandbox also stops it asking macOS services to make a
+request for it (a background download, opening a URL in another app) and
+connecting to an SSH agent socket, and Station does not give it its own
+browser. The Claude connection must use Anthropic's API or an `https:`
+`ANTHROPIC_BASE_URL`. Such a session is refused, naming why, rather than run
+open: on Linux and for Codex, where a restricted network is not available
+yet; with a connection that uses Bedrock, Vertex or Foundry; and where it
+would otherwise run at Auto (no confined credential, a folder too broad to
+confine, a resume recorded elsewhere, an adoption). Tools inside the session
+reach the listed hosts over HTTPS only, through the proxy variables Station
+sets; `ssh` and plain HTTP are blocked. Station also does not let such a
+session drive a device, render HTML previews, start or steer other
+sessions, or change Station's settings, since each would act outside its
+sandbox. Station's settings route refuses an agent that tries to change
+`confinedNetwork`; as for the terminal shell, an agent running on the host
+with a shell of its own could still edit Station's configuration files. A
+session that is
+started at Auto or Ask, by anyone or anything, runs with an open network:
+only confined sessions are restricted. See
+[restricted network](../design/approval-posture-server-ordered.md#restricted-network-4769).
 
 A Codex session that does not run as `host` (started by you in person, or
 from a device you granted full access) runs under a Codex permission profile

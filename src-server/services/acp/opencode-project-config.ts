@@ -36,6 +36,7 @@ import {
   sep,
 } from 'node:path';
 import { type ParseError, parse } from 'jsonc-parser';
+import { isRecord } from '../../utils/is-record.js';
 
 const CONFIG_FILE_NAMES = ['opencode.json', 'opencode.jsonc'] as const;
 const CODE_DIR_NAMES = ['plugin', 'plugins', 'tool', 'tools'] as const;
@@ -252,16 +253,12 @@ export function openCodeEditNeedsPerson(
   });
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 /** Entries of a config map (`mcp`, `formatter`, `lsp`) that run a command. */
 function commandEntries(value: unknown, key: string): string[] {
-  if (!isPlainObject(value)) return [];
+  if (!isRecord(value)) return [];
   return Object.entries(value)
     .filter(([, entry]) => {
-      if (!isPlainObject(entry)) return false;
+      if (!isRecord(entry)) return false;
       if (entry.enabled === false || entry.disabled === true) return false;
       return (
         entry.command !== undefined || (key === 'mcp' && entry.type === 'local')
@@ -288,7 +285,7 @@ async function configFileFindings(path: string): Promise<string[]> {
   }
   const errors: ParseError[] = [];
   const parsed: unknown = parse(text, errors, { allowTrailingComma: true });
-  if (errors.length > 0 || !isPlainObject(parsed)) {
+  if (errors.length > 0 || !isRecord(parsed)) {
     return [`${path} (Station could not parse it)`];
   }
   const found = [

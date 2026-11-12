@@ -189,6 +189,10 @@ import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrati
 import { migrateContextSummaryBoundaries } from '../../domain/migrations/026-context-summary-boundaries.js';
 import { TASK_WRITE_BACK_MIGRATION } from '../../domain/migrations/026-task-write-back.js';
 import {
+  ensureWorktreeOutputSettlementOwnerColumn,
+  WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION,
+} from '../../domain/migrations/029-worktree-output-settlements.js';
+import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
@@ -489,6 +493,10 @@ import {
   SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
   SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
 } from './work-item-result-projector.js';
+import {
+  createSqliteWorktreeOutputSettlementStore,
+  type WorktreeOutputSettlementStore,
+} from './worktree-output-settlement-store.js';
 
 const require = createRequire(import.meta.url);
 const logger = createLogger({ name: 'event-store' });
@@ -2454,6 +2462,43 @@ export class VoiceTurnStartupUnavailableError extends Error {
  */
 export type CommandRefusalPhase = 'authorization' | 'execution';
 
+/**
+ * #3075: the events that are readable transcript content, the ones that move
+ * a conversation's content version: a person's prompt, assistant text, a
+ * tool result, host images, and a turn finishing, ending unfinished or
+ * failing. Lifecycle bookkeeping (start, stop, exit, restore, state and
+ * metadata changes) never is.
+ */
+const READABLE_CONTENT_METHODS = new Set([
+  'content.text-delta',
+  'tool.completed',
+  'content.host-images',
+  'turn.completed',
+  'turn.aborted',
+  'runtime.error',
+]);
+function isReadableContentEvent(event: CanonicalRuntimeEvent): boolean {
+  if (READABLE_CONTENT_METHODS.has(event.method)) return true;
+  return (
+    event.method === 'turn.started' &&
+    typeof event.prompt === 'string' &&
+    event.prompt.length > 0 &&
+    !isProviderTriggeredTurn(event)
+  );
+}
+/** Events per committed batch of the content-projection backfill. */
+export const THREAD_CONTENT_BACKFILL_BATCH = 10_000;
+/** {@link isReadableContentEvent} over stored rows (alias `e`). */
+const READABLE_CONTENT_EVENT_SQL = `(e.method IN (${[
+  ...READABLE_CONTENT_METHODS,
+]
+  .map((method) => `'${method}'`)
+  .join(', ')}) OR (e.method = 'turn.started'
+  AND json_valid(e.payload)
+  AND json_type(e.payload, '$.prompt') = 'text'
+  AND length(json_extract(e.payload, '$.prompt')) > 0
+  AND COALESCE(json_extract(e.payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'))`;
+
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
 
@@ -2690,6 +2735,7 @@ export class EventStore {
   private taskMemory?: TaskMemoryStore;
   private taskReview?: TaskReviewStore;
   private taskWriteBack?: TaskWriteBackStore;
+  private worktreeOutputSettlements?: WorktreeOutputSettlementStore;
   private agentSchedule?: AgentScheduleStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
@@ -2726,6 +2772,10 @@ export class EventStore {
       sessionWorkItemSavepointOpen?: () => void;
       /** Unknown package-admission commit acknowledgement. */
       packageMcpCommit?: () => void;
+      /** Before the content migration writes or reads its cutoff. */
+      threadContentMigrationStart?: () => void;
+      /** After each committed content-projection backfill batch. */
+      threadContentBackfillBatch?: (cursor: number) => void;
     } = {},
   ) {
     this.databasePath = dbPath;
@@ -3078,6 +3128,9 @@ export class EventStore {
       ensureUsageExportInvalidations(this.db);
       this.db.exec(TASK_REVIEW_MIGRATION);
       this.db.exec(TASK_WRITE_BACK_MIGRATION);
+      // #4771: what became of each worktree Session's output.
+      this.db.exec(WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION);
+      ensureWorktreeOutputSettlementOwnerColumn(this.db);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
       this.db
@@ -3101,6 +3154,7 @@ export class EventStore {
       // exclusion set into SQLite.
       this.backfillConversationHistoryProjectSlugs();
       this.ensureConversationHistoryUpgrade();
+      this.ensureThreadContentProjection();
       this.conversationSessionLineage =
         this.composeConversationSessionLineage();
       this.conversationSessionLineage.backfillLegacySessions();
@@ -5166,6 +5220,7 @@ export class EventStore {
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
+        this.projectThreadContent(event, globalSequence);
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
@@ -5903,6 +5958,17 @@ export class EventStore {
    */
   readAttachmentBlob(ref: string): Buffer | undefined {
     return this.attachmentBlobs.readBytes(ref);
+  }
+
+  /**
+   * Store a queued follow-up's file and return
+   * its content address, or `undefined` when it could not be written. Only
+   * bytes the sender supplied reach here, so the reference proves possession;
+   * placement reads them back through {@link readAttachmentBlob}.
+   */
+  storeQueuedAttachmentBlob(bytes: Buffer): string | undefined {
+    const ref = this.attachmentBlobs.writeBytes(bytes);
+    return ref === attachmentBlobRefFor(bytes) ? ref : undefined;
   }
 
   /**
@@ -7431,6 +7497,7 @@ export class EventStore {
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
+        this.projectThreadContent(event, globalSequence);
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
@@ -11322,6 +11389,189 @@ export class EventStore {
       : undefined;
   }
 
+  /**
+   * #3075: each conversation's content version, the highest
+   * `global_sequence` of a readable transcript event (`isReadableContentEvent`)
+   * on any Session in its lineage, from the maintained
+   * `orchestration_thread_content` projection: one primary-key lookup per
+   * Session, never a history scan. Lifecycle bookkeeping never moves it. A
+   * conversation with no readable content yet is absent. Callers pass the
+   * ids of one bounded page.
+   */
+  readConversationContentVersions(
+    conversationIds: readonly string[],
+  ): Map<string, number> {
+    const result = new Map<string, number>();
+    if (conversationIds.length === 0) return result;
+    const rows = this.db
+      .prepare(
+        `SELECT cs.conversation_id AS conversation_id,
+                MAX(tc.content_sequence) AS content_sequence
+         FROM orchestration_conversation_sessions cs
+         JOIN orchestration_thread_content tc ON tc.thread_id = cs.session_id
+         WHERE cs.conversation_id IN (${conversationIds.map(() => '?').join(', ')})
+         GROUP BY cs.conversation_id`,
+      )
+      .all(...conversationIds) as {
+      conversation_id: string;
+      content_sequence: number | null;
+    }[];
+    for (const row of rows)
+      if (row.content_sequence !== null)
+        result.set(row.conversation_id, Number(row.content_sequence));
+    return result;
+  }
+
+  /** The store's current high-water `global_sequence`. */
+  currentGlobalSequence(): number {
+    const row = this.db
+      .prepare(
+        'SELECT high_water FROM orchestration_stream_identity WHERE singleton = 1',
+      )
+      .get() as { high_water: number | null } | undefined;
+    return Number(row?.high_water ?? 0);
+  }
+
+  /**
+   * #3075: bumps the Session's content version in the same write that
+   * appends readable transcript content, monotonically.
+   */
+  private projectThreadContent(
+    event: CanonicalRuntimeEvent,
+    globalSequence: number,
+  ): void {
+    if (!isReadableContentEvent(event)) return;
+    this.db
+      .prepare(
+        `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
+         VALUES (?, ?)
+         ON CONFLICT(thread_id) DO UPDATE SET
+           content_sequence = MAX(content_sequence, excluded.content_sequence)`,
+      )
+      .run(event.threadId, globalSequence);
+  }
+
+  /**
+   * #3075: the upgrade fence, the migration's immutable cutoff: the
+   * store-wide `global_sequence` recorded when the content projection's
+   * migration began, before its first batch. Every event at or below it
+   * existed before content versions were kept (a contiguous prefix by
+   * construction); content appended after it is projected but never inside
+   * it. `undefined` until the migration completes.
+   */
+  contentUpgradeFence(): number | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT cutoff_sequence FROM orchestration_thread_content_migration
+         WHERE singleton = 1 AND completed_at IS NOT NULL`,
+      )
+      .get() as { cutoff_sequence: number } | undefined;
+    return row === undefined ? undefined : Number(row.cutoff_sequence);
+  }
+
+  /**
+   * #3075: the content-version projection, and its migration from an
+   * existing history.
+   *
+   * The cutoff is written once, atomically, before the first batch; a
+   * resume or a second initializer reads that same cutoff and never
+   * recomputes it, and completion never changes it. Each bounded batch
+   * re-reads the cursor and completion under its own writer lock (doing
+   * nothing once another initializer has finished), projects only events up
+   * to the cutoff, and commits with its progress, so an interrupted start
+   * resumes where it stopped. Content appended after the cutoff is projected
+   * by its own append.
+   *
+   * It runs while the store opens. A failure (a writer holding the lock past
+   * `busy_timeout`, an interrupted batch) fails the open, which leaves no
+   * store; the next open reuses the durable cutoff and resumes at the
+   * committed cursor.
+   */
+  private ensureThreadContentProjection(): void {
+    this.db.exec(
+      `CREATE TABLE IF NOT EXISTS orchestration_thread_content (
+         thread_id TEXT NOT NULL PRIMARY KEY,
+         content_sequence INTEGER NOT NULL
+       );
+       CREATE TABLE IF NOT EXISTS orchestration_thread_content_migration (
+         singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+         cutoff_sequence INTEGER NOT NULL CHECK (cutoff_sequence >= 0),
+         cursor_sequence INTEGER NOT NULL
+           CHECK (cursor_sequence >= 0 AND cursor_sequence <= cutoff_sequence),
+         completed_at TEXT
+       );`,
+    );
+    this.faults.threadContentMigrationStart?.();
+    // The cutoff is written once: a resume or a second initializer reuses it.
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const begun = this.db
+        .prepare(
+          'SELECT 1 AS begun FROM orchestration_thread_content_migration WHERE singleton = 1',
+        )
+        .get();
+      if (!begun)
+        this.db
+          .prepare(
+            `INSERT INTO orchestration_thread_content_migration
+               (singleton, cutoff_sequence, cursor_sequence)
+             VALUES (1, ?, 0)`,
+          )
+          .run(this.currentGlobalSequence());
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    const readMigration = this.db.prepare(
+      `SELECT cutoff_sequence, cursor_sequence, completed_at
+       FROM orchestration_thread_content_migration WHERE singleton = 1`,
+    );
+    const project = this.db.prepare(
+      `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
+       SELECT e.thread_id, MAX(e.global_sequence)
+       FROM orchestration_events e
+       WHERE e.global_sequence > ? AND e.global_sequence <= ?
+         AND ${READABLE_CONTENT_EVENT_SQL}
+       GROUP BY e.thread_id
+       ON CONFLICT(thread_id) DO UPDATE SET
+         content_sequence = MAX(content_sequence, excluded.content_sequence)`,
+    );
+    const advance = this.db.prepare(
+      `UPDATE orchestration_thread_content_migration
+       SET cursor_sequence = ?, completed_at = ?
+       WHERE singleton = 1 AND completed_at IS NULL`,
+    );
+    while (true) {
+      let cursor: number;
+      let finished: boolean;
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        const migration = readMigration.get() as {
+          cutoff_sequence: number;
+          cursor_sequence: number;
+          completed_at: string | null;
+        };
+        if (migration.completed_at !== null) {
+          this.db.exec('COMMIT');
+          return;
+        }
+        const cutoff = Number(migration.cutoff_sequence);
+        const from = Number(migration.cursor_sequence);
+        cursor = Math.min(from + THREAD_CONTENT_BACKFILL_BATCH, cutoff);
+        finished = cursor >= cutoff;
+        project.run(from, cursor);
+        advance.run(cursor, finished ? new Date().toISOString() : null);
+        this.db.exec('COMMIT');
+      } catch (error) {
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
+      if (finished) return;
+      this.faults.threadContentBackfillBatch?.(cursor);
+    }
+  }
+
   listConversationHistoryPage(options: {
     ownerUserId: string;
     ownerUserIds?: readonly string[];
@@ -11371,20 +11621,8 @@ export class EventStore {
         );
       }
       values.push(options.limit + 1);
-      // Immutable lineage wins. Metadata is a legacy fallback only; public
-      // starts cannot author it because conversationId is reserved.
-      const conversationId = `COALESCE(cs.conversation_id, (
-        SELECT json_extract(e.payload, '$.metadata.conversationId')
-        FROM orchestration_events e
-        WHERE e.thread_id = h.thread_id
-          AND e.method IN ('session.started', 'session.configured')
-          AND json_valid(e.payload)
-          AND json_type(e.payload, '$.metadata.conversationId') = 'text'
-        ORDER BY e.sequence DESC
-        LIMIT 1
-      ), h.thread_id)`;
-      // Environment metadata is likewise server-owned. Empty is the legacy
-      // pre-environment namespace, never a caller-selected scope.
+      const conversationId = 'cs.conversation_id';
+      // Environment identity is server-owned, independent of the requesting client.
       const environmentId = `COALESCE((
         SELECT json_extract(e.payload, '$.metadata.environmentId')
         FROM orchestration_events e
@@ -11434,7 +11672,7 @@ export class EventStore {
                     FIRST_VALUE(h.title_source) OVER meaningful
                       AS meaningful_title_source
              FROM orchestration_conversation_history h
-             LEFT JOIN orchestration_conversation_sessions cs
+             JOIN orchestration_conversation_sessions cs
                ON cs.session_id = h.thread_id
              WHERE ${memberPredicates.join(' AND ')}
              WINDOW meaningful AS (
@@ -11579,7 +11817,6 @@ export class EventStore {
    * execution sessions, in lineage order (#4266). A handoff to another engine
    * is a lineage session too, so it appears once that session exists; a
    * reserved handoff whose session never started ran nothing and is absent.
-   * A legacy conversation with no lineage rows is its own single session.
    */
   readConversationExecutionProviders(
     conversationIds: readonly string[],
@@ -11595,18 +11832,9 @@ export class EventStore {
            FROM orchestration_conversation_sessions m
            JOIN provider_session_state s ON s.thread_id = m.session_id
            WHERE m.conversation_id IN (${placeholders})
-           UNION ALL
-           SELECT s.thread_id AS conversationId, s.provider AS provider,
-                  -1 AS ordinal
-           FROM provider_session_state s
-           WHERE s.thread_id IN (${placeholders})
-             AND NOT EXISTS (
-               SELECT 1 FROM orchestration_conversation_sessions x
-               WHERE x.conversation_id = s.thread_id
-             )
            ORDER BY conversationId, ordinal`,
         )
-        .all(...chunk, ...chunk) as Array<{
+        .all(...chunk) as Array<{
         conversationId: string;
         provider: string;
       }>;
@@ -11626,27 +11854,16 @@ export class EventStore {
   }): string | undefined {
     const row = this.db
       .prepare(
-        `SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
-         FROM orchestration_events e
-         LEFT JOIN orchestration_conversation_sessions cs
-           ON cs.session_id = e.thread_id
-         WHERE e.method IN ('session.started', 'session.configured', 'turn.started')
+        `WITH candidates(thread_id) AS (
+           SELECT session_id FROM orchestration_conversation_sessions
+           WHERE conversation_id = ?
+         )
+         SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
+         FROM orchestration_events e INDEXED BY idx_events_accepted_model
+         WHERE e.thread_id IN (SELECT thread_id FROM candidates)
+           AND e.method IN ('session.started', 'session.configured', 'turn.started')
            AND json_valid(e.payload)
            AND json_type(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') = 'text'
-           AND COALESCE(
-             cs.conversation_id,
-             (
-               SELECT json_extract(identity_event.payload, '$.metadata.conversationId')
-               FROM orchestration_events identity_event
-               WHERE identity_event.thread_id = e.thread_id
-                 AND identity_event.method IN ('session.started', 'session.configured')
-                 AND json_valid(identity_event.payload)
-                 AND json_type(identity_event.payload, '$.metadata.conversationId') = 'text'
-               ORDER BY identity_event.sequence DESC
-               LIMIT 1
-             ),
-             e.thread_id
-           ) = ?
            AND COALESCE((
              SELECT json_extract(environment_event.payload, '$.metadata.environmentId')
              FROM orchestration_events environment_event
@@ -16481,6 +16698,13 @@ export class EventStore {
   taskWriteBackStore(): TaskWriteBackStore {
     this.taskWriteBack ??= createSqliteTaskWriteBackStore(this.db);
     return this.taskWriteBack;
+  }
+
+  /** #4771: one outcome per worktree Session. Authority is the caller's. */
+  worktreeOutputSettlementStore(): WorktreeOutputSettlementStore {
+    this.worktreeOutputSettlements ??=
+      createSqliteWorktreeOutputSettlementStore(this.db);
+    return this.worktreeOutputSettlements;
   }
 
   taskReviewStore(): TaskReviewStore {

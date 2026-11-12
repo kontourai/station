@@ -183,6 +183,11 @@ const exclusions = {
       'delegation_lineage_unavailable',
       'Delegation lineage policy/admission, not provider turn execution.',
     ],
+  'src-server/runtime/agents/request-delegation.ts:DelegatedToolBlockedError.code':
+    [
+      'delegated_tool_blocked',
+      'Built-in delegated-child tool denial at delegation admission (403), not provider turn execution.',
+    ],
   'src-server/runtime/bootstrap/hosted-persistence-boundary.ts:HostedPersistenceBoundaryError.code':
     [
       'HOSTED_PERSISTENCE_BOUNDARY_REJECTED',

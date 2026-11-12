@@ -4120,10 +4120,12 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
       throw new Error('simulated persistent FileMemory outage');
     });
     const warn = vi.fn();
+    const recovery = (serviceFor(eventStore, adapter, warn) as any)
+      .interruptedTurns;
 
-    const unrecovered = await (
-      serviceFor(eventStore, adapter, warn) as any
-    ).interruptedTurns.consume();
+    const unrecovered = await recovery.consume();
+    // The slow retry it leaves armed is not this test's subject.
+    recovery.stop();
 
     // 4 attempts, 3 backoffs: not a give-up on the first failure, not a loop.
     expect(adapter.addMessage).toHaveBeenCalledTimes(4);
@@ -4138,9 +4140,138 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     expect(left).toHaveLength(1);
     expect(unrecovered).toEqual([left[0]!.boundaryId]);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('gave up for this boot'),
-      { boundaryIds: unrecovered, attempts: 4 },
+      expect.stringContaining('did not finish in its first attempts'),
+      { boundaryIds: unrecovered, attempts: 4, retryInMs: 60_000 },
     );
+  });
+
+  test('after the bounded attempts a slow retry keeps going: a write that fails five times recovers on the sixth, with no restart', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    for (let failure = 0; failure < 5; failure += 1)
+      adapter.addMessage.mockImplementationOnce(async () => {
+        throw new Error('simulated FileMemory outage');
+      });
+    const warn = vi.fn();
+    const recovery = (serviceFor(eventStore, adapter, warn) as any)
+      .interruptedTurns;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      // The bounded passes are unchanged: four attempts, then it returns.
+      const unrecovered = await recovery.consume();
+      expect(unrecovered).toHaveLength(1);
+      expect(adapter.addMessage).toHaveBeenCalledTimes(4);
+      expect(recovery.recoveredTurns()).toEqual([]);
+
+      // Not before its minute.
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(adapter.addMessage).toHaveBeenCalledTimes(4);
+      // The fifth attempt fails too: the row is still pending.
+      await vi.advanceTimersByTimeAsync(1);
+      expect(adapter.addMessage).toHaveBeenCalledTimes(5);
+      expect(rowsLeftForNextBoot(path)).toHaveLength(1);
+
+      // The sixth lands the banner and closes the row.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(adapter.addMessage).toHaveBeenCalledTimes(6);
+      expect(rowsLeftForNextBoot(path)).toEqual([]);
+      expect(recovery.recoveredTurns()).toEqual([
+        expect.objectContaining({ threadId, boundaryId: unrecovered[0] }),
+      ]);
+      expect(
+        (await adapter.getMessages('agent:demo-agent', threadId)).filter(
+          (message) => message.metadata?.interruptedTurnBoundaryId,
+        ),
+      ).toHaveLength(1);
+      // The event half stayed exactly-once across all six attempts.
+      expect(
+        methods(eventStore, threadId, 'session.state-changed'),
+      ).toHaveLength(1);
+      expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(1);
+
+      // Recovered: nothing is left armed.
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(adapter.addMessage).toHaveBeenCalledTimes(6);
+    } finally {
+      recovery.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test('stop() ends the slow retry: no pass runs after it, and the row stays for the next boot', async () => {
+    const { path, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const service = serviceFor(eventStore, adapter);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await (service as any).interruptedTurns.consume();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(adapter.addMessage).toHaveBeenCalledTimes(5);
+      expect(vi.getTimerCount()).toBe(1);
+
+      // The production path: `OrchestrationService.shutdown()` stops it.
+      (service as any).interruptedTurns.stop();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(adapter.addMessage).toHaveBeenCalledTimes(5);
+      expect(rowsLeftForNextBoot(path)).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the slow retry never holds the process open', async () => {
+    const { eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const recovery = (serviceFor(eventStore, adapter) as any).interruptedTurns;
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      await recovery.consume();
+      const slow = setTimeoutSpy.mock.results.filter(
+        (_result, index) => setTimeoutSpy.mock.calls[index]![1] === 60_000,
+      );
+      expect(slow).toHaveLength(1);
+      expect((slow[0]!.value as NodeJS.Timeout).hasRef()).toBe(false);
+    } finally {
+      recovery.stop();
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
+  test('a swapped event store ends the slow retry: the drained rows are not replayed against another store', async () => {
+    const { path, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+    const service = serviceFor(eventStore, adapter, warn);
+    const other = new EventStore(databasePath());
+    stores.push(other);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const unrecovered = await (service as any).interruptedTurns.consume();
+      (service as any).options.eventStore = other;
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(adapter.addMessage).toHaveBeenCalledTimes(4);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('stopped before it finished'),
+        { boundaryIds: unrecovered, reason: 'event-store-changed' },
+      );
+      expect(vi.getTimerCount()).toBe(0);
+      expect(rowsLeftForNextBoot(path)).toHaveLength(1);
+    } finally {
+      (service as any).interruptedTurns.stop();
+      vi.useRealTimers();
+    }
   });
 
   test('only the failing record is retried; a record that already recovered is not reprocessed', async () => {
@@ -4184,7 +4315,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     expect(rowsLeftForNextBoot(path)).toEqual([]);
   });
 
-  test('shutdown during the first backoff stops recovery: no further pass, nothing published after it, rows kept, and the log says stopped, not gave up', async () => {
+  test('shutdown during the first backoff stops recovery: no further pass, nothing published after it, rows kept, no slow retry armed, and the log says stopped, not that it will retry', async () => {
     const { path, threadId, eventStore } = crashedThread('accepted');
     const adapter = occupied();
     adapter.addMessage.mockImplementation(async () => {
@@ -4221,7 +4352,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
       { boundaryIds: unrecovered, reason: 'shutdown' },
     );
     expect(warn).not.toHaveBeenCalledWith(
-      expect.stringContaining('gave up'),
+      expect.stringContaining('did not finish in its first attempts'),
       expect.anything(),
     );
     expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
@@ -4345,7 +4476,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     service.initialize();
     await vi.waitFor(() =>
       expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('gave up for this boot'),
+        expect.stringContaining('did not finish in its first attempts'),
         expect.objectContaining({ attempts: 4 }),
       ),
     );

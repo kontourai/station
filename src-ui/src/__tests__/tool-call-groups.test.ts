@@ -1049,19 +1049,20 @@ describe('file verbs without a file stay tool calls (#3364 review)', () => {
     ['list_agents', {}, 'Used list agents'],
     ['list_integrations', {}, 'Used list integrations'],
     ['read_conversation', { conversationId: 'c1' }, 'Used read conversation'],
-    [
-      'mcp__station-control__list_agents',
-      {},
-      'Used mcp station-control list agents',
-    ],
-    [
-      'station-control/delete_agent',
-      { slug: 'x' },
-      'Used station-control/delete agent',
-    ],
   ])('%s with %j reads "%s"', (toolName, args, label) => {
     const group = settled(toolName, args);
     expect(group.calls[0]!.kind).toBe('other');
+    expect(group.summary).toBe(label);
+  });
+
+  // #3418: a name that says it is Station's own reads as its phrase, which
+  // is still never a file verb.
+  test.each([
+    ['mcp__station-control__list_agents', {}, 'Listed Agents'],
+    ['station-control/delete_agent', { slug: 'x' }, 'Deleted Agent “x”'],
+  ])('%s with %j reads "%s"', (toolName, args, label) => {
+    const group = settled(toolName, args);
+    expect(group.calls[0]!.kind).toBe('station');
     expect(group.summary).toBe(label);
   });
 
@@ -1633,7 +1634,90 @@ describe('terminal_run (#3994)', () => {
         args: { command: 'npm test' },
       }),
     ]);
-    expect(group.summary).toBe('Used mcp station-control terminal run');
-    expect(group.calls[0]?.kind).toBe('other');
+    // #3418: worded by its Station phrase, which asks rather than runs.
+    expect(group.summary).toBe('Asked to run npm test');
+    expect(group.calls[0]?.kind).toBe('station');
+    for (const phase of ['done', 'running', 'proposed'] as const)
+      expect(
+        callLabel(
+          'station',
+          'mcp__station-control__terminal_run',
+          { command: 'npm test' },
+          phase,
+        ),
+      ).not.toMatch(/^Ran/);
+  });
+});
+
+describe("Station's own tools (#3418)", () => {
+  test('a call reads as its plain-language phrase in the tense its phase has earned', () => {
+    const sessionTitle = (id: string) =>
+      id === 'thread-7' ? 'Fix login' : undefined;
+    const args = { sessionId: 'thread-7', until: 'turn-settled' };
+    const name = 'mcp__station-control__wait_session';
+    expect(callLabel('station', name, args, 'done', { sessionTitle })).toBe(
+      'Waited for “Fix login”',
+    );
+    expect(callLabel('station', name, args, 'running', { sessionTitle })).toBe(
+      'Waiting for “Fix login”',
+    );
+    // Proposed, failed and unresolved calls never claim the work happened.
+    for (const phase of ['proposed', 'failed', 'unresolved'] as const)
+      expect(callLabel('station', name, args, phase, { sessionTitle })).toBe(
+        'Wait for “Fix login”',
+      );
+    // No title known: the Session is not guessed.
+    expect(callLabel('station', name, args, 'done')).toBe(
+      'Waited for a Session',
+    );
+  });
+
+  test('a batch of Station calls counts them as Station tools, beside other kinds', () => {
+    const group = classifyFirstRun([
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'mcp__station-control__claim_work',
+        args: { workItemRef: '#3158' },
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'mcp__station-control__declare_pull_request',
+        args: { ref: '3271' },
+      }),
+      toolCall({
+        toolCallId: 'c',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+      }),
+    ]);
+    expect(group.calls.map((call) => call.label)).toEqual([
+      'Claimed #3158',
+      'Declared PR #3271',
+      'Ran npm test',
+    ]);
+    expect(group.summary).toBe('Ran 1 command, used 2 Station tools');
+  });
+
+  test('an engine that reports the server apart from a bare name is read the same', () => {
+    const group = classifyFirstRun([
+      toolCall({
+        toolName: 'list_project_activity',
+        server: 'station-control',
+        args: {},
+      }),
+    ]);
+    expect(group.calls[0]?.kind).toBe('station');
+    expect(group.summary).toBe('Checked Project activity');
+    // The same bare name from another server is that server's tool.
+    const other = classifyFirstRun([
+      toolCall({ toolName: 'list_project_activity', server: 'acme', args: {} }),
+    ]);
+    expect(other.calls[0]?.kind).not.toBe('station');
+  });
+
+  test('a Station tool the phrases do not word keeps its own name', () => {
+    expect(
+      callLabel('station', 'mcp__station-control__brand_new_tool', {}, 'done'),
+    ).toBe('Used mcp station-control brand new tool');
   });
 });

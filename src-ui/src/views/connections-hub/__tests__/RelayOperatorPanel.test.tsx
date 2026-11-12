@@ -349,7 +349,9 @@ test('a waiting device is approved from its own row, and removal of an approved 
   fireEvent.click(approved.getByRole('button', { name: 'Remove' }));
   expect(state.revoke).not.toHaveBeenCalled();
   fireEvent.click(
-    within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }),
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Remove',
+    }),
   );
   await waitFor(() => expect(state.revoke.mock.calls[0]?.[1]).toBe(approval));
 });

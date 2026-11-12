@@ -127,9 +127,9 @@ async function holdPeerWriteLock(databasePath: string, holdMs: number) {
   );
   let output = '';
   holder.stdout.setEncoding('utf8');
-  const exited = new Promise<void>((resolve, reject) => {
+  const closed = new Promise<void>((resolve, reject) => {
     holder.once('error', reject);
-    holder.once('exit', (code) =>
+    holder.once('close', (code) =>
       code === 0 ? resolve() : reject(new Error(`holder exited ${code}`)),
     );
   });
@@ -143,7 +143,7 @@ async function holdPeerWriteLock(databasePath: string, holdMs: number) {
   return {
     /** Wall-clock milliseconds read just before the peer's COMMIT. */
     releasedAt: async () => {
-      await exited;
+      await closed;
       const released = /released (\d+)/.exec(output);
       if (!released) throw new Error(`holder never released: ${output}`);
       return Number(released[1]);
@@ -1570,6 +1570,13 @@ describe('EventStore', () => {
     const base = { provider: 'claude' as const, threadId, createdAt: at };
     const trigger = { trigger: 'provider' };
     const seed = () => {
+      store.upsertSession({
+        provider: base.provider,
+        threadId,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
       const events: CanonicalRuntimeEvent[] = [
         {
           ...base,

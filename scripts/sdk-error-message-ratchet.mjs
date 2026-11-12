@@ -90,8 +90,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import ts from 'typescript-api';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 export const SCAN_PATHSPECS = ['packages/sdk/src'];
 
@@ -124,16 +124,7 @@ export const SCOPE_SENTINELS = [
 export const HAND_ROLLED_REFUSAL = /[\w$)\]]\??\.error\s*(\|\||\?\?)/g;
 
 export function listScannedFiles() {
-  const output = execFileSyncBounded(
-    'git',
-    ['ls-files', '--', ...SCAN_PATHSPECS],
-    {
-      encoding: 'utf8',
-      windowsHide: true,
-    },
-  );
-  return output
-    .split('\n')
+  return gitLsFiles(['--', ...SCAN_PATHSPECS])
     .filter((line) => line.endsWith('.ts') || line.endsWith('.tsx'))
     .filter((line) => !line.includes('__tests__'))
     .filter((line) => !EXEMPT_FILES.includes(line));
@@ -534,19 +525,14 @@ export function findEnvelopeReads(source, fileName = 'sample.ts') {
 }
 
 export function listEnvelopeScannedFiles() {
-  const output = execFileSyncBounded(
-    'git',
-    [
-      'ls-files',
-      '--cached',
-      '--others',
-      '--exclude-standard',
-      '--',
-      ...ENVELOPE_SCAN_PATHSPECS,
-    ],
-    { encoding: 'utf8', windowsHide: true },
-  );
-  return [...new Set(output.split('\n'))]
+  const listed = gitLsFiles([
+    '--cached',
+    '--others',
+    '--exclude-standard',
+    '--',
+    ...ENVELOPE_SCAN_PATHSPECS,
+  ]);
+  return [...new Set(listed)]
     .filter((line) => line.endsWith('.ts') || line.endsWith('.tsx'))
     .filter((line) => !line.includes('__tests__'))
     .filter((line) => !ENVELOPE_EXEMPT_FILES.includes(line))

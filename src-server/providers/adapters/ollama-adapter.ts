@@ -15,6 +15,7 @@ import type {
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { DEFAULT_OLLAMA_BASE_URL } from '../../constants.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
@@ -425,7 +426,14 @@ export class OllamaAdapter implements ProviderAdapterShape {
         // the backoff streak, erasing the evidence of the very failure it
         // represents. Mirrors `bedrock-adapter.ts`'s identical branch.
         if (chunk.type === 'error') {
-          throw new Error(chunk.error || 'Ollama stream failed');
+          // station#4738: carry the server's own words and HTTP status, the
+          // way `describeChatProbeFailure` reports a probe's failure.
+          const detail = chunk.error?.trim() || 'Ollama stream failed';
+          throw new Error(
+            chunk.errorStatus === undefined
+              ? detail
+              : `Ollama returned HTTP ${chunk.errorStatus}: ${detail}`,
+          );
         }
       }
     } catch (err) {
@@ -465,7 +473,9 @@ export class OllamaAdapter implements ProviderAdapterShape {
           input.threadId,
           turnId,
           origin,
-          errorMessage(err),
+          // station#4738: provider text is untrusted and is recorded and
+          // shown, so known credential shapes are redacted before publishing.
+          redactSecrets(errorMessage(err)),
         );
       }
       this.clearCurrentTurn(input.threadId, turnId);

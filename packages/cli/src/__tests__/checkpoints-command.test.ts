@@ -188,6 +188,10 @@ describe('station checkpoints (real git, default runner)', () => {
         '--turn=turn-1',
         '--phase=baseline',
         '--confirm',
+        // An explicit target, resolved by the shared resolver (trailing slash
+        // normalized), so the assertion does not depend on whatever Station
+        // this machine has saved or running.
+        '--api-base=http://127.0.0.1:43141/',
       ],
       {
         env: { ...process.env, STATION_HOME: home },
@@ -198,7 +202,7 @@ describe('station checkpoints (real git, default runner)', () => {
     );
     expect(request).toHaveBeenNthCalledWith(
       1,
-      'http://127.0.0.1:3141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore-preview',
+      'http://127.0.0.1:43141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore-preview',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ phase: 'baseline' }),
@@ -206,7 +210,7 @@ describe('station checkpoints (real git, default runner)', () => {
     );
     expect(request).toHaveBeenNthCalledWith(
       2,
-      'http://127.0.0.1:3141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore',
+      'http://127.0.0.1:43141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -216,6 +220,101 @@ describe('station checkpoints (real git, default runner)', () => {
         }),
       }),
     );
+  });
+
+  it('reports a restore reply that is not JSON with its status, and sends no confirmation', async () => {
+    const { home } = fixture();
+    const errors: string[] = [];
+    const request = vi.fn().mockResolvedValueOnce(
+      new Response('<html>Bad Gateway</html>', {
+        status: 502,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    await runCheckpointsCommand(
+      [
+        'restore',
+        '--thread=thread-1',
+        '--turn=turn-1',
+        '--confirm',
+        '--api-base=http://127.0.0.1:43141',
+      ],
+      {
+        env: { ...process.env, STATION_HOME: home },
+        fetch: request,
+        stderr: (line) => errors.push(line),
+        stdout: () => {},
+      },
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(errors.join('\n')).toBe(
+      'station checkpoints restore preview failed (502): the reply was not JSON',
+    );
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+  });
+
+  it('lists recorded restores for one thread, and fails closed when the restore audit is corrupt', async () => {
+    const { home } = fixture();
+    const lines: string[] = [];
+    await runCheckpointsCommand(['history', '--thread=thread-1'], {
+      env: { ...process.env, STATION_HOME: home },
+      stdout: (line) => lines.push(line),
+      stderr: (line) => lines.push(line),
+    });
+    // No audit file yet: nothing was recorded, which is not a failure.
+    expect(lines).toEqual(['thread thread-1: no checkpoint restores recorded']);
+
+    // The document `CheckpointRestoreService` writes: `{ version, events }`
+    // with one full restore event per confirmed restore.
+    const restoreEvent = (id: string, threadId: string) => {
+      const previewId = `00000000-0000-4000-8000-00000000000${id.slice(-1)}`;
+      return {
+        id,
+        threadId,
+        turnId: 'turn-1',
+        phase: 'settle',
+        checkpointId: 'cp-1',
+        commitSha: 'b'.repeat(40),
+        treeSha: 'c'.repeat(40),
+        repoRoot: join(home, '..', 'repo'),
+        restoredAt: '2026-08-16T00:00:00.000Z',
+        previewId,
+        previousTreeSha: 'a'.repeat(40),
+        recoveryRef: `refs/station/restore-recovery/${previewId}`,
+      };
+    };
+    const own = restoreEvent('restore-1', 'thread-1');
+    writeFileSync(
+      join(home, 'checkpoint-restores.json'),
+      JSON.stringify(
+        { version: 1, events: [own, restoreEvent('restore-2', 'thread-2')] },
+        null,
+        2,
+      ),
+    );
+    lines.length = 0;
+    await runCheckpointsCommand(['history', '--thread=thread-1'], {
+      env: { ...process.env, STATION_HOME: home },
+      stdout: (line) => lines.push(line),
+      stderr: () => {},
+    });
+    expect(lines).toEqual([JSON.stringify(own)]);
+
+    writeFileSync(join(home, 'checkpoint-restores.json'), '{corrupt');
+    const errors: string[] = [];
+    lines.length = 0;
+    await runCheckpointsCommand(['history', '--thread=thread-1'], {
+      env: { ...process.env, STATION_HOME: home },
+      stdout: (line) => lines.push(line),
+      stderr: (line) => errors.push(line),
+    });
+    expect(errors.join('\n')).toMatch(
+      /station checkpoints history: audit unavailable/,
+    );
+    expect(lines).toEqual([]);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
   });
 
   it('exposes durable retention outcomes for inspection', async () => {

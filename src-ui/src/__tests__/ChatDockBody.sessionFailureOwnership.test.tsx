@@ -214,7 +214,6 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'error',
     createdAt: Date.now(),
     updatedAt: Date.now(),

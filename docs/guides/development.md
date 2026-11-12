@@ -20,6 +20,17 @@ attachment path. Have the host administrator repair the narrow executable
 policy and verify a sandboxed launch. Do not disable the sandbox or global
 AppArmor restrictions to make a readiness check pass.
 
+Station's own confinement of Claude on Linux (#4770) uses the same
+mechanism: a workspace full-access Claude session runs inside a bubblewrap
+sandbox, and is refused, naming bubblewrap's reason, where `/usr/bin/bwrap`
+is missing, older than 0.8.0, or cannot create its user namespace. Install
+the distribution's `bubblewrap` package, 0.8.0 or later (Debian 12 ships
+0.8.0). Where Ubuntu restricts unprivileged user namespaces,
+give `/usr/bin/bwrap` an AppArmor profile that allows them, as for the
+browser (see [the browser workspace guide](browser-workspace.md)), rather
+than turning the restriction off. `station doctor` reports whether the
+sandbox applies on the Station's host.
+
 Station's generated Linux user service uses `PrivateTmp=false` and retains
 `NoNewPrivileges=true`. On Ubuntu, a user service's private temporary mount
 namespace can inherit AppArmor's `unprivileged_userns` confinement, preventing
@@ -42,6 +53,14 @@ commands and desktop control from the scheduled task's actual session: an
 engine login check does not verify either capability. A headless service can
 have different runner-pipe and desktop access.
 
+Every child process the server, CLI, packages and scripts launch passes
+`windowsHide: true`. Node defaults it to `false`, and on Windows each such
+launch opens a console window over the user's work.
+[`npm run windows-hide:ratchet`](../../scripts/windows-hide-ratchet.mjs) runs
+before push and in `verification:policy:gate`; it fails a new `child_process`
+call whose options visibly omit the key. It cannot see options passed through a
+parameter or spread, so a wrapper still sets the key itself.
+
 ### Unbound Codex workspaces
 
 A confined [Codex chat](../../src-server/providers/adapters/codex-adapter.ts)
@@ -55,6 +74,15 @@ that already runs in its own scratch folder, `<Station home>/scratch/<conversati
 both folders go through the same preparation, so the chat gets one private
 folder. With **Chats without a project** set to **Home folder**, the chat is
 still unbound and a confined Codex session uses the private folder here.
+
+On Windows, newly prepared scratch and managed engine folders use
+`~/.station-workspaces/<hash of Station home>/` in place of `<Station home>`.
+PowerShell reads ancestor attributes to establish its location; private Station
+data denies those reads, making relative commands start at `C:\` even when the
+process cwd is correct. Workspace placement preserves the data home's ACL and
+the engine's filesystem profile. Existing conversations keep their recorded
+folders. These Windows workspace files are external to Station home archives
+and resets; back them up and retire them separately, as with Project folders.
 
 The user home is too broad a writable sandbox root: Windows sandbox setup can
 recursively change ACLs throughout it, delaying commands and granting sandbox
@@ -241,6 +269,22 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   server runs under `scripts/dev-server-watch.mts` (`tsx watch` cannot poll).
   Polling costs some CPU; leave it off where native watching works.
 
+### Free scripted turns
+
+Do not pay for a model just to watch a turn render.
+`node scripts/dev-scripted-model.mjs --port=4417` starts a loopback-only,
+Ollama-compatible server whose models are scripted scenarios:
+`scripted-showcase` (Markdown with a list, table and code block),
+`scripted-echo`, `scripted-long`, `scripted-truncated` (finish reason
+`length`) and `scripted-error` (fails mid-stream). In the dev instance, add an
+Ollama connection under Connections with base URL `http://127.0.0.1:4417` and
+pick a scenario as the model. The turn then runs through the real Ollama
+adapter, orchestration, persistence and live stream; only the model is
+replaced. It offers no tools, so a scripted turn never asks Station to run
+anything. Add the connection only to an isolated dev home, never your own.
+`--delay-ms` sets the pause between streamed pieces (default 25). Use a real
+provider's cheapest model when the test needs real model behavior.
+
 ### Linux service workload budgets
 
 When the server runs inside a `station-*.service` user unit on Linux,
@@ -418,9 +462,16 @@ an `oom_kill` no listener was told about, or a scope systemd reports as
 and peak and `session.exited` reason `memory-exhausted`. A signal alone does
 not prove OOM; an unknown count (a scope systemd already collected) leaves
 the cause unknown, and the turn and interrupted tool/child rows still settle.
-Claude Code runs in the same scopes and is told its budget, but its adapter
-does not yet read these counts: a Claude command kill is reported only by
-Claude, and Claude's own memory death is not classified as such.
+Claude Code runs in the same scopes and is told its budget. A Claude command
+kill is reported only by Claude. Claude's own death is classified the same way
+as Codex's: `engine-memory-exhausted` and reason `memory-exhausted` for a
+memory kill, otherwise `claude-engine-exited` and reason `process-exit`. The
+adapter observes the `claude` process's exit itself, because the SDK's message
+stream (streaming input mode) neither ends nor throws after a SIGKILL. An exit
+without a stop closes a stream still open 2 seconds later, then settles open
+work as interrupted, publishes the failure on the turn its work belongs to
+(the newest dispatched turn when a background subagent outlived it), and
+publishes `session.exited`.
 
 #### What engines are told
 
@@ -485,6 +536,15 @@ accepts it only from Station's own origin, so nobody can pre-claim the key. An o
 Station without the route answers 404 and the client sends the short
 continuation as an ordinary message. Ordinary connection recovery still treats
 a memory kill as manual and never replays the prompt.
+
+Any other engine end with work still running (a stop, a Station shutdown, a
+crash) gets a lighter note on the next turn, whether that turn runs in a
+successor Session or in the same Session restarted in place. It lists the
+calls the ended engine settled as `unresolved` (a backgrounded subagent is named
+by its description) and tells the agent that they are not running, that no
+completion notice will arrive, and to check what they left behind. Without it,
+the resumed conversation still shows a backgrounded subagent as started, and
+the agent reports it as running and waits for it.
 
 `npm run lint:check` and `lint:fix` share one Biome slot per OS user across
 worktrees and use at most two Biome worker threads. This prevents overlapping
@@ -583,6 +643,33 @@ inspected, and owner exclusion is always **not proven**. A future recovery
 transaction must independently validate mappings, preserve original evidence,
 and obtain the existing lifecycle authorities. Preserving history must never
 implicitly reactivate sessions, scheduled jobs, grants, or account selection.
+
+### Seeding a dev home from real data
+
+An empty home is a poor test. `node scripts/seed-dev-home.mjs --target=<dir>`
+builds a dev home from a read-only snapshot of your real one
+(`$STATION_ROOT/instances/default`, or `--source=<home>`), then start a dev
+instance on it with `--home=<dir>`. Data flows one way: no source file is
+written, and SQLite stores are copied with `VACUUM INTO` from a read-only
+connection, so it is safe while your Station runs. (Like any SQLite reader, that
+connection can create or update a store's `-shm` index and an empty `-wal`,
+which hold no data.)
+
+It keeps Projects, Agents, layouts, Tasks, selected settings and the
+conversation history in `data/orchestration.sqlite`. It is fail-closed: only
+the roots, `config/` files and orchestration tables the script names are
+carried, and everything else, including roots or tables added later, is
+dropped or emptied. That leaves out credentials and sign-in state
+(`providers.json`, `security`, `authentication`, browser profiles, app homes),
+scheduled jobs and pending work (`scheduler`, `automation`, wake-ups, recovery
+intents, prepared turns, outboxes, native session bindings), links to other
+machines (`devices`, `environments`, `integrations`), plugin code and grants,
+and telemetry queues, so the dev instance cannot resume, schedule or report
+anything as you. Symbolic links are skipped. Add connections again in the dev
+instance. Projects still name their real working directories, so a turn you
+start there edits that checkout. `dev-home-seed.json` in the target records
+what was kept and dropped; `--force` replaces only an earlier seed with no
+instance record. Expect the copy to be roughly the size of your history.
 
 ## Packages
 

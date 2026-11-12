@@ -59,6 +59,9 @@ README.
 The `/child-work` contract's optional `latestTool` carries only a reported child
 tool name, independently of its progress summary. Reducers retain it across
 updates and settlement; no tool arguments or inferred activity are added.
+Its optional `workKind` (`agent`, `command`, `monitor`) is read through
+`childWorkKindOf`, which treats older Claude history labelled `local_bash` as a
+command.
 
 Child-work result text may carry `source`: `tool-return`, `provider-summary`,
 `child-message`, or `provider-error`. A structured Claude Agent/Task return is

@@ -182,6 +182,51 @@ describe('attachment staging routes', () => {
     expect(response.status).toBe(400);
   });
 
+  test('refuses a body that fails mid-stream and releases its reader', async () => {
+    const routes = app();
+    const prepared = await routes.request('/prepare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(descriptor),
+    });
+    const grant = (await prepared.json()) as StageGrant;
+    let sent = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!sent) {
+          sent = true;
+          controller.enqueue(new TextEncoder().encode(DATA.slice(0, 8)));
+        } else {
+          controller.error(new Error('client went away'));
+        }
+      },
+    });
+    const request = new Request(`http://localhost/${grant.stageId}`, {
+      method: 'PUT',
+      headers: uploadHeaders(grant),
+      body,
+      // Node's fetch implementation requires this for a streaming request.
+      duplex: 'half',
+    } as RequestInit);
+
+    const response = await routes.request(request);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Attachment staging rejected this upload.',
+    });
+    // The read loop used to leave the body locked when a read rejected.
+    expect(request.body?.locked).toBe(false);
+    const status = await routes.request('/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stageIds: [grant.stageId] }),
+    });
+    expect(await status.json()).toEqual([
+      expect.objectContaining({ stageId: grant.stageId, state: 'pending' }),
+    ]);
+  });
+
   test('rejects a data-url MIME or decoded-size mismatch before recording a reference', async () => {
     const routes = app();
     const prepared = await routes.request('/prepare', {

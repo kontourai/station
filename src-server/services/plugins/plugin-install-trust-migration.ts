@@ -7,6 +7,8 @@
  * the same enumeration `GET /api/plugins` uses (the inventory scan plus the
  * journal's selected installations), frozen at the first attempt.
  */
+
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
@@ -68,7 +70,7 @@ export async function migratePluginInstallTrustAtStartup(options: {
     options.logger.error(
       'Install trust migration failed; retrying next start',
       {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     );
   }

@@ -23,6 +23,7 @@ import type {
   UntrustedContentPermission,
 } from '@kontourai/station-contracts/tool';
 import type { InvocationContext } from '../../runtime/types.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { UntrustedConversationMarks } from './untrusted-conversation-marks.js';
 
 /** Conversations remembered per lineage set; the oldest is forgotten first. */
@@ -222,7 +223,7 @@ export class UntrustedContentLedger {
     } catch (error) {
       this.warn?.('Untrusted-content mark was not saved', {
         conversationId: invocation.conversationId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }

@@ -552,8 +552,8 @@ Unknown usage remains held; an overrun may retain partial accounting writes.
 The response exposes amounts and a receipt reference, never private ledger records.
 
 This is the shared SDK client contract, not a guarantee for every raw network
-call in the CLI. The current `checkpoints restore` and `operate` stream paths
-bypass that client; their limitations are described in those sections.
+call in the CLI. The current `operate` stream path bypasses that client; its
+limitations are described in that section.
 
 Transport failures name the Station that was targeted *and where that address
 came from*, so a wrong-target mistake is visible without re-deriving the
@@ -2722,12 +2722,12 @@ Install Station as a per-user background service, start or stop its installed
 registration, inspect its health layers, or remove the service registration:
 
 ```bash
-station service install [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]... [--clear-allowed-origins]
+station service install [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--allowed-origin=<origin>]... [--clear-allowed-origins]
 station service start [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service status [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service stop [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>]
-station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
+station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--allowed-origin=<origin>]...
 ```
 
 `run` is the foreground supervisor used by installed OS units and containers.
@@ -3035,6 +3035,12 @@ origins on an `origins` line.
 server/UI identity endpoints. `--json` emits the same data for automation. An
 installed but inactive or unreachable service exits non-zero.
 
+`--features` was removed (#3909); the [`runtime` setting](config.md) is the
+only runtime selector. `--features=strands-runtime` and
+`STATION_FEATURES=strands-runtime` are refused rather than ignored. To keep
+Strands, run `station config set runtime strands` and restart Station; see the
+[Strands migration note](../design/strands-migration.md).
+
 The unit's `PATH` is captured once, at install, from your login shell
 (`$SHELL -l`) plus the Node and system directories. A directory added to your
 profile later, or a Nix/home-manager generation that has since moved on, does
@@ -3062,7 +3068,8 @@ loaded job, and uses the environment of the shell that runs `status`.
 
 On macOS and Linux the reinstall command (here, for stale scheduling, and in
 `station upgrade` guidance) repeats the installed unit's own `service run`
-arguments: instance, home, ports, host, features and allowed origins. The
+arguments: instance, home, ports, host, any recorded `--features` value and
+allowed origins. The
 unit is named by instance alone, so a manifest in the home `status` read can
 describe an earlier install. On Windows the command comes from the manifest
 beside the task's wrapper. A service that runs an installer-owned archive is
@@ -3189,7 +3196,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -3206,7 +3213,6 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory under `<home>/tmp/session-tmp` removed when the session exits), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
-| `--features=<flags>` | — | Comma-separated feature flags (e.g. `strands-runtime`) |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
 
 Detached processes are tracked per instance in `.station/instances/<instance-id>.json` (see [Instance State Mechanism](#instance-state-mechanism)). During migration, the prior `.station.pids` state file is still recognized when present.
@@ -3338,7 +3344,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -3349,7 +3355,6 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean]
 | `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
-| `--features=<flags>` | — | Comma-separated feature flags |
 | `--dry-run` | — | Print the resolved ports/instance/home and exit without starting |
 
 **Ports.** The dev band is `server 39140 + offset` and `ui 40140 + offset`,
@@ -3649,6 +3654,8 @@ station stop [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--u
 ```
 
 If multiple instances are live from the same checkout, bare `station stop` refuses and tells you how to disambiguate.
+Selectors combine: an instance must match every one given, including the home
+when `--home` (or `--base`) is named alongside `--instance` or a port.
 
 ```bash
 station stop
@@ -3668,6 +3675,9 @@ supervisor that never answers is killed within that; its core then exits
 through its closed IPC channel. An instance started
 directly (by an earlier CLI, or with `STATION_DIRECT_LAUNCH=1`) is stopped as
 before.
+
+Stopping interrupts every agent turn that is running, as a restart does.
+`stop` does not list them first; [`restart`](#restart) does.
 
 A CLI from before the supervisor does not know the `stop` request: it sends
 SIGTERM to the supervisor's process group, which drains, and five seconds
@@ -3695,6 +3705,18 @@ back to the previous entry and `restart` exits non-zero with the reason; a
 refused handoff (one already running, for example) does too. An instance
 started without the supervisor is refused with the `station start --force`
 remedy.
+
+A restart interrupts every agent turn that is running: engines do not survive
+the swap, and each of those chats shows **Turn interrupted** afterwards.
+Before the handoff, `restart` prints how many turns are running and will be
+interrupted, with up to ten of the titles this device may read and a count of
+the rest. It reads them from the instance
+(`GET /api/system/core-update/running-turns`) with the credential of a Station
+saved on this device whose endpoint is the instance's server port over `http`
+on a loopback IP address (`127.x.x.x` or `[::1]`, not the name `localhost`;
+`station setup local` saves one). It never asks for confirmation. When it
+cannot read them (no such saved Station, a refused or unanswered read within
+three seconds, an older server) it prints nothing and restarts as before.
 
 ```bash
 station restart --instance=smoke-a
@@ -3963,29 +3985,36 @@ Station required, and they act on the machine the command runs on, not
 necessarily wherever `--api-base` points. `restore` is the one subcommand
 that calls a running Station instead.
 
+`restore` selects its Station the way every other client command does
+(`--api-base`, `--station`, `STATION_TARGET`, a saved or active local Station,
+then the loopback default; see [choosing a Station](#choosing-which-station-a-command-talks-to)), sends
+that Station's credential (`--credential`, `STATION_API_CREDENTIAL`, or the
+saved Station's), and runs under the shared request deadline. A reply that is
+not JSON is reported with its HTTP status.
+
 **Current restore limitation ([#2734](https://github.com/kontourai/station/issues/2734)).**
-The restore caller uses raw `fetch`, sends no authorization, and defaults to
-`http://127.0.0.1:3141` unless `--api-base` is supplied. It does not use saved
-Station selection, `STATION_API_CREDENTIAL`, or the shared request deadline.
-A protected Station therefore refuses its preview; supplying a credential flag
-does not repair this caller. Use the authenticated workspace checkpoint UI or
-API described in [workspace checkpoints](../user/workspace-checkpoints.md).
+The command confirms the returned preview immediately, without showing the
+paths it will change. To review a restore before confirming it, use the
+workspace checkpoint UI or API described in
+[workspace checkpoints](../user/workspace-checkpoints.md). This describes the
+caller's code; a CLI restore against a protected Station has not been verified
+end to end.
 
 ```
 station checkpoints [status] [--json]
 station checkpoints prune (--thread=<threadId> | --all) [--gc] [--json]
 station checkpoints history --thread=<threadId> [--json]
 station checkpoints retention --thread=<threadId> [--json]
-station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] --confirm [--api-base=<url>] [--json]
+station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] --confirm [--station=<name>|--api-base=<url>] [--json]
 ```
 
 | Action | Description |
 |--------|-------------|
 | `status` (default) | Reports per-thread disk usage across every project the Station home has checkpointed: indexed turns, checkpoint refs and reclaimable bytes per repository, and a total. Reads the discovery index only — a thread with no repos listed still exists in the index, and this is not a statement that its refs are gone. |
 | `prune` | Removes a thread's checkpoint refs and reflogs (and the index/archive records naming it). Requires `--thread=<id>` or `--all`. `--gc` additionally runs `git gc --prune=now --quiet` in each affected repo so the space is actually freed, not just eligible for the next `gc.reflogExpire` window. |
-| `history` | Lists recorded checkpoint-restore events for one thread from `checkpoint-restores.json`. |
+| `history` | Lists recorded checkpoint-restore events for one thread from `checkpoint-restores.json`. A missing file means nothing was recorded; a file that cannot be read as a restore audit is reported as `audit unavailable` and exits 1, as `retention` does. |
 | `retention` | Lists recorded checkpoint-retention sweep events for one thread from `checkpoint-retention.json`. |
-| `restore` | Currently cannot authenticate to a protected Station (see above). The caller requires `--confirm`, requests a preview, then immediately submits its `previewId` and `currentTreeSha`; it does not display the changed paths/tree before confirming. The server owns preview identity, expiry, current-tree, and active-turn checks. |
+| `restore` | Requires `--confirm`, requests a preview, then immediately submits its `previewId` and `currentTreeSha`; it does not display the changed paths/tree before confirming (see above). The server owns preview identity, expiry, current-tree, and active-turn checks. |
 
 `--json` on every action prints one JSON document instead of the
 human-readable form.
@@ -3994,7 +4023,8 @@ human-readable form.
 station checkpoints
 station checkpoints prune --thread=abc123 --gc
 station checkpoints prune --all --gc
-# Restore is currently unavailable through this CLI; use the authenticated UI/API.
+# Restore confirms without showing the changed paths; review it in the UI first.
+station checkpoints restore --thread=abc123 --turn=turn-7 --confirm --station=work
 ```
 
 Restore changes workspace files only. It does not rewind conversation history
@@ -4047,8 +4077,78 @@ host bundle (<instance>)` warns when `station-pty-host.js` is missing beside
 the server bundle. With no instance running, one `Terminal shell host` line
 says so.
 
+Doctor also asks the selected Station for its confinement preflight
+(`GET /api/diagnostics/confinement-preflight`, #4774). The Station is
+selected as for client commands (`--station`, `--api-base`, `STATION_TARGET`,
+the project or default Station, the active local Station, then loopback), and
+doctor sends only a credential this CLI already holds (`--credential`,
+`STATION_API_CREDENTIAL`, or the saved Station's keyring entry); it never
+pairs or self-authorizes. The running server answers from the provider check
+and the credential check a Claude start makes, with the server's own
+environment and home, so a shell variable in doctor's own environment does
+not change the answer. Reading it creates no app-home profile or spawn
+temporary directory on the Station; the server's ordinary config read, as
+any config read does, may still write a default `config/app.json` when none
+exists and may rewrite an existing one when it normalizes it (for example
+filling missing defaults or removing legacy, internal or retired keys). On
+macOS the first read may run the one-time Seatbelt
+probe a confined start would also run (on Linux, the bubblewrap probe), in a
+throwaway temporary directory it
+removes; that probe pauses the server for up to 10 seconds, and its result,
+a failure included, is kept for the server process and used by later
+starts.
+Rows name the Station that answered (`Station "<name>"`, or the Station
+selected by `<source>`), and `--json` carries it as `target`; that Station may
+be remote. Per engine:
+
+- `Confinement mechanism (<engine>: <mechanism>)`: `pass` when the provider
+  applies on that Station's host, `warn` with the provider's reason when it
+  does not (a start that requires that level is refused there), and `warn`
+  "Decided by the engine at start" for Codex, whose own sandbox is reported
+  only after a start.
+- `Confined credential (<engine>)`: `pass` when a credential a confined
+  start can use is in its environment or enrolled in Station's confined
+  configuration; `warn` naming `confined-credential-unavailable` and the
+  setup step when none is, because such a start runs at Auto with nothing
+  engaged; `warn` "Not verified" when the server could not resolve the
+  connection or credential profile the check needs, including a credential
+  profile whose home a start could not create (its path or an ancestor is
+  not a directory, or the directory it would go in is not writable), where
+  such a start is refused. Where the mechanism is
+  unavailable the row is a `warn` saying the question is moot there: a start
+  that requires confinement is refused before any credential is checked. The
+  answer covers starts that name no credential profile of their own (the
+  connection's active credential profile or app-home setting applies;
+  `appliesTo: starts-without-own-credential-profile` in `--json`); an Agent
+  with its own credential profile, or a credential-recovery restart, is
+  decided at start.
+- `Restricted network (<engine>: <mechanism>)` (#4769): `pass` when that
+  mechanism can limit a confined start to Station's egress broker on that
+  Station's host, `warn` with the reason when it cannot (Codex's own sandbox
+  and bubblewrap never can; an unavailable mechanism cannot either). Under a
+  restricted [`confinedNetwork`](config.md#optional-fields) policy, a start
+  that requires confinement is refused there. An older Station reports no
+  such row; `--json` carries it as `restrictedNetwork`.
+- `Confinement preflight`: one `warn` "Not checked: <reason>" row when no
+  answer was obtained: no server answered, no credential is held, the
+  Station refused it, an older Station answered HTTP 404, or the answer is
+  not a confinement preflight (for example an engine id other than lowercase
+  letters, digits, `.`, `_` and `-` up to 64 characters, or a
+  `decidedAtStart` with an unknown or repeated reason).
+
+The workspace and conversation checks (`workspace-too-broad`,
+`config-root-pinned`, `resume-bound-elsewhere`) are decided only when a
+Session starts. Confinement rows are never `fail` and do not change the exit
+status. The server's answer is states, kinds and fixed setup text, never an
+environment value or credential content. Doctor removes terminal escape
+sequences and control characters from every text it shows from the Station
+(a run of line, page or tab breaks between words becomes one space), then
+passes it through Station's free-text sanitizer, which redacts known
+credential shapes and replaces URLs and the absolute paths it recognizes; it
+does the same to `--json`.
+
 ```
-station doctor [--json]
+station doctor [--json] [--station=<name> | --api-base=<url>] [--credential=<value>]
 ```
 
 ```bash
@@ -4105,7 +4205,37 @@ The JSON document has this top-level schema:
         "command": "npm install",
         "reason": "tsx is provided by the project dependency set."
       }
-    ]
+    ],
+    "confinement": {
+      "checked": true,
+      "target": { "station": "laptop", "source": "default-station" },
+      "preflight": {
+        "engines": [
+          {
+            "engine": "claude",
+            "mechanism": "seatbelt",
+            "level": "os-profile",
+            "mechanismState": "available",
+            "mechanismReason": "the Seatbelt profile applies on this host",
+            "confinedAuthentication": {
+              "state": "unavailable",
+              "fallback": "confined-credential-unavailable",
+              "remedy": "Give confined Claude sessions a credential of their own: ...",
+              "appliesTo": "starts-without-own-credential-profile"
+            },
+            "restrictedNetwork": {
+              "state": "available",
+              "reason": "The Seatbelt profile allows outbound IPv4 TCP only to this host's addresses at the egress broker's port, and Mach lookups only to a reviewed list of local services; the broker admits the engine's model endpoint and the allowed hosts."
+            }
+          }
+        ],
+        "decidedAtStart": [
+          "workspace-too-broad",
+          "config-root-pinned",
+          "resume-bound-elsewhere"
+        ]
+      }
+    }
   },
   "exitReady": {
     "chatReady": true,
@@ -4155,6 +4285,51 @@ interface DoctorReport {
     mismatches: KontourDependencyVersion[];
   };
   fixCommands: DoctorFixCommand[];
+  /** #4774: absent only when the caller did not ask (server diagnostics). */
+  confinement?:
+    | {
+        checked: true;
+        target: { station: string | null; source: string };
+        /** `ConfinementPreflight` from @kontourai/station-contracts/execution-confinement. */
+        preflight: {
+          engines: Array<{
+            engine: string;
+            mechanism: 'codex-sandbox' | 'seatbelt' | 'bubblewrap';
+            level: 'os-profile' | 'container' | 'microvm';
+            mechanismState: 'available' | 'unavailable' | 'engine-reported';
+            mechanismReason: string;
+            confinedAuthentication:
+              | {
+                  state: 'available';
+                  source: 'environment' | 'config-dir';
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
+              | {
+                  state: 'unavailable';
+                  fallback: 'confined-credential-unavailable';
+                  remedy: string;
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
+              | {
+                  state: 'unverified';
+                  reason: string;
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
+              | { state: 'not-applicable'; reason: string };
+            /** #4769: absent from a Station that predates it. */
+            restrictedNetwork?: {
+              state: 'available' | 'unavailable';
+              reason: string;
+            };
+          }>;
+          decidedAtStart: string[];
+        };
+      }
+    | {
+        checked: false;
+        target?: { station: string | null; source: string };
+        reason: string;
+      };
 }
 
 interface DoctorJsonDocument {
@@ -4295,6 +4470,10 @@ either; a managed default is used only when neither is set. An installed
 policy that Station would refuse at startup refuses the read.
 
 With a URL argument, saves it to `<STATION_HOME>/config/app.json` and exits.
+The argument is a registry reference, never an option: a first argument that
+starts with `-` is refused as an unknown command. A `config/app.json` that is
+not a JSON object is reported and left unchanged rather than replaced, as it
+is by `station config set --offline`.
 
 ```bash
 # Set registry URL

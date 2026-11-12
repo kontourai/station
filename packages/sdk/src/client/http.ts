@@ -1704,6 +1704,8 @@ export interface FetchSseMessage {
 }
 
 export interface FetchSseOptions extends ClientRequestOptions {
+  /** Opening deadline until response headers arrive; defaults to 30s. Null/0 disables it. Body lifetime is governed by stallTimeoutMs. */
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   /** Resume cursor for this transport's first request. */
   initialLastEventId?: string;
@@ -1787,10 +1789,11 @@ export interface FetchSseConnection {
   readonly signal: AbortSignal;
   readonly completed: Promise<void>;
   /**
-   * Force-resume a stream that is currently waiting out a terminal (401/403)
-   * stop — station#1094. A no-op when the stream is not currently blocked
-   * (e.g. it is mid-backoff on a transient failure, which will retry on its
-   * own schedule already).
+   * Ends the wait a stream is currently in and starts its next attempt now:
+   * a terminal (401/403) stop (station#1094), which has no timer of its own,
+   * or a transient backoff (station#1848). After a transient wait the ladder
+   * keeps its place, so an attempt that fails again waits the next step. A
+   * no-op while an attempt is opening or a response is being read.
    */
   retry(): void;
   /** Restarts only the current request while preserving Last-Event-ID. */
@@ -2038,6 +2041,10 @@ async function consumeSseResponse(
   stallTimeoutMs?: number,
   maxFrameBytes?: number,
 ): Promise<void> {
+  if (signal.aborted) {
+    void response.body?.cancel().catch(() => {});
+    throw signal.reason;
+  }
   if (!response.ok) {
     // The body is left unread: a refused stream's body has no deadline. The
     // helper still keeps the status and `Retry-After`.
@@ -2157,6 +2164,35 @@ function watchForStall(
   };
 }
 
+/** A retired opening attempt must settle even when its transport ignores abort. */
+function waitForSseResponse(
+  work: Promise<Response>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      signal.removeEventListener('abort', abort);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    work.then(
+      (response) => {
+        signal.removeEventListener('abort', abort);
+        if (signal.aborted) {
+          // A late response belongs to the retired attempt, never its successor.
+          void response.body?.cancel().catch(() => {});
+          reject(signal.reason);
+        } else resolve(response);
+      },
+      (error) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      },
+    );
+    if (signal.aborted) abort();
+  });
+}
+
 /**
  * Connect to a protected Station SSE endpoint with origin-scoped Bearer auth.
  * The returned handle provides deterministic abort/cleanup and the transport
@@ -2186,6 +2222,10 @@ export function fetchSSE(
   if (opts.signal?.aborted) abort();
   const origin = requestOrigin(url);
   const initialRetryDelay = opts.retryDelayMs ?? 1000;
+  const openingTimeoutMs =
+    opts.timeoutMs === undefined
+      ? DEFAULT_CLIENT_REQUEST_TIMEOUT_MS
+      : normalizeTimeout(opts.timeoutMs);
   // Set while a stop is being waited out — a terminal (401/403) park, or a
   // transient backoff (station#1848) — so `retry()` cuts either one short.
   let wake: (() => void) | null = null;
@@ -2228,20 +2268,38 @@ export function fetchSSE(
         const headers = { ...(opts.headers ?? {}) };
         headers.Accept = 'text/event-stream';
         if (lastEventId) headers['Last-Event-ID'] = lastEventId;
-        const response = await getJson(url, {
-          ...opts,
-          headers,
-          signal: AbortSignal.any([
-            controller.signal,
-            attemptController.signal,
-          ]),
-          // An event stream's body is open-ended by construction: a deadline
-          // here would tear down a healthy connection on its first quiet
-          // minute. Cancellation is `controller`'s job, not a timer's.
-          timeoutMs: null,
-          progressTimeoutMs: undefined,
+        const attemptSignal = AbortSignal.any([
+          controller.signal,
+          attemptController.signal,
+        ]);
+        const openingWatchdog = watchForStall(openingTimeoutMs, () => {
+          if (openingTimeoutMs !== undefined)
+            attemptController.abort(
+              new StationRequestTimeoutError(url, openingTimeoutMs, {
+                method: 'GET',
+              }),
+            );
         });
-        if (controller.signal.aborted) break;
+        let response: Response;
+        try {
+          response = await waitForSseResponse(
+            getJson(url, {
+              ...opts,
+              headers,
+              signal: attemptSignal,
+              // The opening watchdog ends at headers; a healthy body's lifetime is open-ended.
+              timeoutMs: null,
+              progressTimeoutMs: undefined,
+            }),
+            attemptSignal,
+          );
+        } finally {
+          openingWatchdog.stop();
+        }
+        if (attemptSignal.aborted) {
+          void response.body?.cancel().catch(() => {});
+          throw attemptSignal.reason;
+        }
         attemptOpenedAt = Date.now();
         // station#3458: `onOpen` promises "this stream is now consuming a
         // response", not merely "a response arrived" — a rejected response
@@ -2259,7 +2317,7 @@ export function fetchSSE(
         }
         await consumeSseResponse(
           response,
-          controller.signal,
+          attemptSignal,
           (message) => {
             assertAuthority();
             const accepted = opts.onMessage(message) !== false;

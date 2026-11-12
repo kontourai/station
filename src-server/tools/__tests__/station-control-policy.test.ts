@@ -11,6 +11,9 @@ import {
   DISPATCH_ROUTES,
   evaluateStationControlPolicy,
   matchStationControlRoute,
+  RESTRICTED_NETWORK_STATION_CONTROL_TOOLS,
+  restrictedNetworkRouteWithheld,
+  restrictedNetworkStationControlTools,
   STATION_CONTROL_INFRASTRUCTURE_POLICY,
   STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
   STATION_CONTROL_TOOL_POLICY,
@@ -1113,5 +1116,96 @@ test('device_capture_to_task keeps the bound Project edit DEVICE_AGENT policy', 
     projectAction: 'edit',
     toolClass: 'mutating',
     enforcedBy: 'route',
+  });
+});
+
+describe('#4769: the tools a restricted session keeps', () => {
+  /**
+   * Every tool withheld from a session whose network Station restricts,
+   * pinned here so that a tool added to the table must be classified: kept
+   * (`RESTRICTED_NETWORK_STATION_CONTROL_TOOLS`) or listed below.
+   */
+  const WITHHELD = [
+    'device_list',
+    'device_open',
+    'device_screenshot',
+    'device_capture_to_task',
+    'device_logs',
+    'device_record_to_task',
+    'device_install_app',
+    'device_launch_app',
+    'device_terminate_app',
+    'device_open_url',
+    'device_snapshot',
+    'device_input',
+    'device_close',
+    'html_render',
+    'html_preview',
+    'create_agent',
+    'update_agent',
+    'delete_agent',
+    'fork_conversation',
+    'install_skill',
+    'uninstall_skill',
+    'update_skill',
+    'run_independent_review',
+    'add_job',
+    'update_job',
+    'run_job',
+    'enable_job',
+    'disable_job',
+    'delete_job',
+    'send_message',
+    'list_delegation_environments',
+    'list_delegation_targets',
+    'list_delegated_tasks',
+    'delegate_task',
+    'get_task',
+    'get_task_events',
+    'continue_task',
+    'respond_to_task_request',
+    'interrupt_task',
+    'send_to_session',
+    'interrupt_session',
+    'create_ssh_environment',
+    'get_ssh_environment',
+    'connect_ssh_environment',
+    'disconnect_ssh_environment',
+    'remove_ssh_environment',
+    'update_config',
+    'reindex_knowledge',
+    'migrate_knowledge',
+    'create_integration',
+    'delete_integration',
+    'install_registry_integration',
+    'create_provider',
+    'install_plugin',
+    'update_plugin',
+    'remove_plugin',
+    'write_pull_request_guides',
+  ];
+
+  test('every station-control tool is kept or withheld, never neither or both', () => {
+    for (const name of Object.keys(STATION_CONTROL_TOOL_POLICY)) {
+      const kept = RESTRICTED_NETWORK_STATION_CONTROL_TOOLS.has(name);
+      const withheld = WITHHELD.includes(name);
+      expect(kept !== withheld, name).toBe(true);
+    }
+    for (const name of WITHHELD)
+      expect(Object.hasOwn(STATION_CONTROL_TOOL_POLICY, name), name).toBe(true);
+  });
+
+  test('the served list follows an Agent selection, and a withheld route is the device, preview or settings route', () => {
+    expect(
+      restrictedNetworkStationControlTools(['task_record', 'device_open']),
+    ).toEqual(['task_record']);
+    expect(restrictedNetworkStationControlTools()).not.toContain('device_open');
+    expect(
+      restrictedNetworkRouteWithheld('POST', '/api/device-agent/open'),
+    ).toBe(true);
+    expect(restrictedNetworkRouteWithheld('PUT', '/config/app')).toBe(true);
+    expect(restrictedNetworkRouteWithheld('GET', '/agents')).toBe(false);
+    // A route no tool owns is left to the other rules.
+    expect(restrictedNetworkRouteWithheld('GET', '/no/such/route')).toBe(false);
   });
 });

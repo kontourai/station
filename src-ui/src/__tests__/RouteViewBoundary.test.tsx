@@ -198,7 +198,7 @@ describe('RouteViewBoundary', () => {
         screen.getByRole('button', { name: 'Reload Station' }),
       ).toBeTruthy();
       // A retry here cannot work: React caches the rejected lazy promise.
-      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     });
 
     test('a failed chunk download offers its reload only once back online', () => {
@@ -331,7 +331,7 @@ describe('RouteViewBoundary', () => {
       // Whatever made the view throw is now fixed; only a REMOUNT can
       // discover that — a re-render of the same failed tree cannot.
       state.shouldThrow = false;
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
       // The route mounted and committed for the first time on the retry —
       // the failed attempt never committed, so this is a genuine mount of the
