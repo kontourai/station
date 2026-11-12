@@ -359,9 +359,6 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     keywords: ['connections', 'providers', 'integrations'],
     icon: 'connections',
     // Entered at its Engines tab and named for what a reader is looking for.
-    // `/connections` itself is a resolver frame that immediately picks a
-    // section, so listing the hub root put a reader one redirect from the
-    // place the row is about.
     customizeNav: {
       group: 'set-up',
       order: 30,

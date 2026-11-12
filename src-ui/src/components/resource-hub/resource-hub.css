@@ -266,3 +266,38 @@
   outline: 2px solid var(--k-focus);
   outline-offset: 2px;
 }
+
+/* Attention list: name and badge, one sentence, at most one action. */
+.attention-list {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.attention-list__item {
+  display: grid;
+  gap: var(--k-space-1);
+  justify-items: start;
+  min-width: 0;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.attention-list__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.attention-list__heading strong {
+  overflow-wrap: anywhere;
+}
+.attention-list__item p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}

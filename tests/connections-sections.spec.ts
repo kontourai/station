@@ -284,10 +284,18 @@ test.describe('Connections IA', () => {
     await seedRoutes(page);
   });
 
-  test('the /connections resolver lands on a section, and legacy paths redirect into their owning section', async ({
+  test('/connections is the Overview, its tiles open sections, and legacy paths redirect into their owning section', async ({
     page,
   }) => {
     await page.goto('/connections');
+    await expect(page).toHaveURL(/\/connections$/);
+    await expect(
+      page.getByRole('heading', { name: 'Connections', level: 1, exact: true }),
+    ).toBeVisible();
+    await page
+      .locator('.connections-overview__tiles')
+      .getByRole('button', { name: /^Models/ })
+      .click();
     await expect(page).toHaveURL(/\/connections\/models$/);
     await expect(
       page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
@@ -321,10 +329,7 @@ test.describe('Connections IA', () => {
         }),
       ).toBeVisible();
       // archive#4463: 'Connections' only, unlinked — not
-      // the retired 'Connections / <Section>' breadcrumb-as-eyebrow. Static
-      // parent-context text, not a link: `/connections` is a redirect-only
-      // resolver, so a click here would be a no-op or a sibling jump dressed
-      // up as "go up".
+      // the retired 'Connections / <Section>' breadcrumb-as-eyebrow.
       await expect(page.locator('.page__label')).toHaveText('Connections');
       // Role-based, not class-based: both eyebrow-producing paths
       // (PageEyebrowTrail and SplitPaneLayout's trail) expose role=link iff

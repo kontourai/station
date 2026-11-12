@@ -25,18 +25,11 @@ import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSec
 // longer needs to carry this import for it (see `components/Tabs.tsx`).
 
 /**
- * The eyebrow every section publishes: 'Connections', unlinked.
- *
- * archive#4463: `/connections` is a
- * redirect-only resolver — `ConnectionsHub` immediately navigates to
- * whichever section most needs attention, or to Models. A click here would
- * therefore either be a no-op (it redirects right back to the section
- * already on screen) or a SIBLING jump dressed up as "go up" — worse than no
- * affordance at all. Static parent-context text, not a link, until
- * Connections has a real landing surface to go up TO (tracked as a
- * follow-up). Hoisted to module scope: with no `onClick` the node has no
- * per-render dependency, so a fresh element every render would only cost
- * `usePageHeader`'s identity check an extra settle for nothing.
+ * The eyebrow every section publishes: 'Connections', unlinked
+ * (archive#4463). Linking it to the Overview is not decided here. Hoisted to
+ * module scope: with no `onClick` the node has no per-render dependency, so
+ * a fresh element every render would only cost `usePageHeader`'s identity
+ * check an extra settle for nothing.
  */
 const CONNECTIONS_EYEBROW = (
   <PageEyebrowTrail segments={[{ label: 'Connections' }]} />
@@ -73,7 +66,7 @@ function ConnectionsSectionFrameInner({
   const [computerChooserOpen, setComputerChooserOpen] = useState(false);
   const mobileReturnFocus = useSplitPaneExternalReturnFocus();
   // One derivation for both facts this rail renders, shared with the
-  // `/connections` resolver.
+  // Connections Overview.
   const { count, needsAttention } = useConnectionSectionSignals();
   usePageHeader({
     eyebrow: CONNECTIONS_EYEBROW,

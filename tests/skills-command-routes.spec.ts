@@ -48,7 +48,7 @@ async function createCommandSkill(request: AuthenticatedE2ERequest) {
  */
 const ROUTES: Array<{ path: string; view: string }> = [
   { path: '/agents', view: '.split-pane' },
-  { path: '/connections', view: '.connections-section-frame' },
+  { path: '/connections', view: '.connections-overview' },
   { path: '/guidance?tab=commands', view: '.commands-view' },
 ];
 
