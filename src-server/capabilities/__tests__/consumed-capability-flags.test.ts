@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { AUTHORITY_OBSERVATION_SCHEMA_VERSION } from '@kontourai/station-contracts/authority-observation';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
@@ -28,6 +29,7 @@ import { createOrchestrationRoutes } from '../../routes/orchestration/orchestrat
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
+import { isDelegatedToolAllowed } from '../../runtime/agents/delegation.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import {
   resolveRuntimeConnectionRoutesEnabled,
@@ -86,6 +88,55 @@ const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
 > = {
+  delegationToolConstraintsV1: async (deployment) => {
+    const execute = vi.fn(
+      async (_input: { delegation?: AgentDelegationContext }) => ({
+        conversationId: 'probe',
+        sessionId: 'probe',
+        providerTurnId: 'probe-turn',
+        environment: { id: 'probe-host', name: 'Probe host', kind: 'current' },
+        target: { kind: 'agent', id: 'station' },
+      }),
+    );
+    const routes = orchestrationRoutes(
+      deployment,
+      {},
+      { executeForegroundMessage: execute },
+    );
+    const response = await routes.request('/chat/delegated', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientTurnId: 'tool-constraints-probe',
+        message: 'Read within scope',
+        target: { environment: { kind: 'current' }, agent: 'station' },
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent',
+          rootAgentSlug: 'root',
+          toolAllowlistConstraints: [['repo_read']],
+        },
+      }),
+    });
+    const delegation = execute.mock.calls[0]?.[0].delegation;
+    return (
+      response.status === 200 &&
+      JSON.stringify(delegation?.toolAllowlistConstraints) ===
+        JSON.stringify([['repo_read']]) &&
+      isDelegatedToolAllowed({
+        toolName: 'repo_read',
+        delegation,
+        toolNameMapping: new Map(),
+      }) &&
+      !isDelegatedToolAllowed({
+        toolName: 'repo_write',
+        delegation,
+        toolNameMapping: new Map(),
+      })
+    );
+  },
   peerChatTunnelV1: async ({ hosted }) => {
     const peer = {
       environmentId: 'receiver',
@@ -571,6 +622,7 @@ describe('consumed capability flags match what their routes serve', () => {
   // together (withdrawing a flag everywhere, or serving hosted reads without
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
+    delegationToolConstraintsV1: { personal: true, hosted: true },
     peerChatTunnelV1: { personal: true, hosted: false },
     delegationLocalConversationV1: { personal: true, hosted: false },
     childWorkSteering: { personal: true, hosted: true },
