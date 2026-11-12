@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/design/pane-or-shell.md","note":"Checked the Connections work-surface placement row and the router pointer against routing.ts diff: placement is unchanged; only an optional engine-detail tab segment was added. Doc says it is not a route inventory.","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/routing.ts"]}
+  ]
+}
