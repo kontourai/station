@@ -13,57 +13,28 @@ import {
   useProjectSearch,
 } from './project-room-navigation';
 
-/**
- * Leave a room level the reader pushed (a channel, a thread): Back when the
- * previous entry is the page they came from, otherwise that page's address
- * (a link or a reload has no such entry).
- */
-function back(
-  isParent: (search: URLSearchParams) => boolean,
-  parent: () => void,
-) {
-  const previous = navigationStore.adjacentLocation(-1);
-  if (
-    previous &&
-    previous.pathname === window.location.pathname &&
-    isParent(new URLSearchParams(previous.search))
-  ) {
-    window.history.back();
-    return;
-  }
-  parent();
-}
-
 export function useProjectDestination(slug: string) {
   const { navigate } = useNavigation();
   const search = useProjectSearch();
   const destination = projectDestination(search);
   const room = projectRoomAddress(search);
+  /**
+   * Open a thread, or leave it for its channel (#4795). Each is a pushed
+   * entry to the address it names, so the device's Back retraces it. The
+   * in-room back buttons name their parent rather than calling
+   * `history.back()`: a same-path query traversal is replayed through the
+   * room's navigation guards and is not a reliable way back.
+   */
   function openThread(rootId: string | undefined) {
-    const path = projectPath(slug);
-    if (rootId) {
-      navigate(path, { section: 'room', thread: rootId });
-      return;
-    }
-    back(
-      (previous) =>
-        previous.get('section') === 'room' &&
-        !previous.get('thread') &&
-        (previous.get('channel') ?? undefined) === room.channelId,
-      () => navigate(path, { thread: null }),
-    );
+    navigate(projectPath(slug), { section: 'room', thread: rootId ?? null });
   }
   /** A phone's room screen back to the Project's channel list. */
   function leaveRoom() {
-    back(
-      (previous) => projectDestination(`?${previous}`) === 'overview',
-      () =>
-        navigate(projectPath(slug), {
-          section: null,
-          channel: null,
-          thread: null,
-        }),
-    );
+    navigate(projectPath(slug), {
+      section: null,
+      channel: null,
+      thread: null,
+    });
   }
   function selectDestination(next: ProjectDestination) {
     if (next === destination) return;

@@ -366,22 +366,22 @@ export function ProjectRoomChannelHeader({
         panel.kind !== 'switch' &&
         panel.kind !== 'actions' &&
         guards && (
-        <ChannelForm
-          key={panel.kind}
-          panel={panel}
-          channels={channels}
-          guards={guards}
-          anchorRef={triggerRef}
-          atLimit={
-            (list?.length ?? 0) >= PROJECT_ROOM_LIMITS.channelsPerProject
-          }
-          onClose={close}
-          onCreated={(channel) => {
-            close();
-            onSelect(channel.channelId);
-          }}
-        />
-      )}
+          <ChannelForm
+            key={panel.kind}
+            panel={panel}
+            channels={channels}
+            guards={guards}
+            anchorRef={triggerRef}
+            atLimit={
+              (list?.length ?? 0) >= PROJECT_ROOM_LIMITS.channelsPerProject
+            }
+            onClose={close}
+            onCreated={(channel) => {
+              close();
+              onSelect(channel.channelId);
+            }}
+          />
+        )}
     </div>
   );
 }
