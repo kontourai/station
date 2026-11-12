@@ -935,7 +935,9 @@ gh api repos/kontourai/station/rules/branches/main
   opens a pull request is done only when that PR's state reads `MERGED`
   (`gh pr view <n> --repo kontourai/station --json state`). Watch it with the
   host's pull-request tooling, such as a PR subscription or notification,
-  rather than a polling loop over the PR or the queue. If it is dequeued,
+  rather than a polling loop over the PR or the queue. A host without PR
+  tooling reports the PR as armed, with its link, and stops there instead of
+  reporting done. If it is dequeued,
   conflicted, or otherwise cannot merge, report exactly what blocks it instead
   of reporting done.
 - **Branches need not be up to date** (`strict_required_status_checks_policy`
