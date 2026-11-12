@@ -1207,7 +1207,7 @@ describe('OrchestrationService', () => {
       input: { threadId: 'constrained-native', provider: 'claude' },
     });
     expect(claude.startSession).toHaveBeenCalledTimes(1);
-    await claude.startSession({ threadId: 'recorded-constrained-native' });
+    await claude.startSession({ provider: 'claude', threadId: 'recorded-constrained-native' });
     expect(claude.sessions.has('recorded-constrained-native')).toBe(true);
     eventStore.appendEvent({
       provider: 'claude', threadId: 'recorded-constrained-native',
