@@ -46,6 +46,16 @@ interface Row {
   open(): void;
 }
 
+/** What a screen reader hears after the row's visible name. */
+function suffix(row: Row) {
+  const unread = !row.unread?.unread
+    ? ''
+    : row.unread.count
+      ? `, ${countText(row.unread.count)} unread`
+      : ', unread';
+  return `${row.kind === 'task' ? ', Task room' : ''}${row.working ? ', agent working' : ''}${unread}`;
+}
+
 /** The server caps room counts at 99, meaning "99 or more". */
 function countText(count: number) {
   return count >= 99 ? '99+' : String(count);
@@ -157,18 +167,13 @@ export function ProjectConversationList({
         <span className="conversation-list__label" title={row.label}>
           {row.label}
         </span>
-        {row.kind === 'task' && <span className="sr-only">, Task room</span>}
-        {row.working && <span className="sr-only">, agent working</span>}
+        {/* One hidden phrase, not pieces: name computation trims each
+            inline child, which would run separate pieces together. */}
+        {suffix(row) && <span className="sr-only">{suffix(row)}</span>}
         {row.unread?.unread && row.unread.count ? (
-          <>
-            <span className="sr-only">, </span>
-            <span className="conversation-list__count">
-              {countText(row.unread.count)}
-            </span>
-            <span className="sr-only"> unread</span>
-          </>
-        ) : row.unread?.unread ? (
-          <span className="sr-only">, unread</span>
+          <span className="conversation-list__count" aria-hidden="true">
+            {countText(row.unread.count)}
+          </span>
         ) : null}
         {variant === 'page' && (
           <span className="conversation-list__chevron" aria-hidden="true">
