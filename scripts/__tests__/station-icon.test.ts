@@ -8,6 +8,7 @@ import {
   iconSourceDigests,
   manifestOutputPaths,
   startupMarkGeometryModule,
+  stationMarkModule,
 } from '../generate-app-icons.mjs';
 import {
   CHANNEL_PALETTES,
@@ -163,6 +164,26 @@ describe('the vector icon source', () => {
   it('refuses an unknown channel or target', () => {
     expect(() => stationIconSvg('canary', 'square')).toThrow(/channel/);
     expect(() => stationIconSvg('stable', 'round')).toThrow(/target/);
+  });
+});
+
+describe('in-app mark', () => {
+  it('is the committed generated module, the status-bar geometry as an SVG path', () => {
+    const module = readFileSync(
+      resolve(root, 'src-ui/src/components/icons/station-mark.ts'),
+      'utf8',
+    );
+    expect(module).toBe(stationMarkModule());
+    const xml = readFileSync(
+      resolve(
+        root,
+        'src-desktop/plugins/agent-activity/android/src/main/res/drawable/agent_activity_mark.xml',
+      ),
+      'utf8',
+    );
+    const androidPath = /android:pathData="([^"]+)"/.exec(xml)?.[1];
+    expect(androidPath).toBeTruthy();
+    expect(module).toContain(`'${androidPath}'`);
   });
 });
 

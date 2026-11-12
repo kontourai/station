@@ -1,5 +1,6 @@
 import {
   isProjectRoomUuid,
+  PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
   PROJECT_ROOM_LIMITS,
 } from '@kontourai/station-contracts/project-room';
 import {
@@ -14,6 +15,7 @@ import {
   parseProjectRoomMessageIntent,
   useProjectRoom,
   useProjectRoomAgent,
+  useProjectRoomChannels,
 } from '@kontourai/station-sdk/project-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -24,6 +26,7 @@ import {
   useId,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -53,6 +56,10 @@ import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
+import {
+  currentProjectRoomChannel,
+  ProjectRoomChannelHeader,
+} from './ProjectRoomChannels';
 
 export interface ProjectRoomProps {
   slug: string;
@@ -70,40 +77,112 @@ function scopeKey(props: ProjectRoomProps) {
     props.slug,
   ]);
 }
+const SELECTED_CHANNEL_PREFIX = 'station-project-room-channel:';
+function readSelectedChannel(key: string | undefined) {
+  if (!key) return undefined;
+  try {
+    const value = sessionStorage.getItem(SELECTED_CHANNEL_PREFIX + key);
+    return value && isProjectRoomUuid(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function writeSelectedChannel(key: string | undefined, value?: string) {
+  if (!key) return;
+  try {
+    if (value) sessionStorage.setItem(SELECTED_CHANNEL_PREFIX + key, value);
+    else sessionStorage.removeItem(SELECTED_CHANNEL_PREFIX + key);
+  } catch {
+    // Storage refused: the selection lasts for this view only.
+  }
+}
+/** Session keys that begin with `prefix`, read before any is removed. */
+function storageKeysWith(prefix: string) {
+  const keys: string[] = [];
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  return keys;
+}
 export function ProjectRoom(props: ProjectRoomProps) {
   const key = scopeKey(props);
+  const partition =
+    props.requestScope.draftRecoveryKey ?? props.requestScope.authorityKey;
   // Drafts follow the reload partition, not the activation epoch in `key`,
-  // which changes on every reload (#4810 review 1).
-  const draftKey = roomDraftKey(
-    props.requestScope.draftRecoveryKey ?? props.requestScope.authorityKey,
+  // which changes on every reload (#4810 review 1). `#general` keeps the
+  // room's original key; another channel adds its identity (#4792).
+  const roomKey = roomDraftKey(
+    partition,
     props.requestScope.apiBase,
     props.projectId,
     props.slug,
     'project-room',
   );
-  const previous = useRef({ key, draftKey });
+  // The channel on screen, remembered per reload partition so a reload
+  // returns to it; absent is the default channel.
+  const [selection, setSelection] = useState(() => ({
+    roomKey,
+    channelId: readSelectedChannel(roomKey),
+  }));
+  const channelId =
+    selection.roomKey === roomKey
+      ? selection.channelId
+      : readSelectedChannel(roomKey);
+  const selectChannel = useCallback(
+    (next: string | undefined) => {
+      writeSelectedChannel(roomKey, next);
+      setSelection({ roomKey, channelId: next });
+    },
+    [roomKey],
+  );
+  const draftKey = channelId
+    ? roomDraftKey(
+        partition,
+        props.requestScope.apiBase,
+        props.projectId,
+        props.slug,
+        'project-room',
+        'channel',
+        channelId,
+      )
+    : roomKey;
+  // Each channel is its own session: drafts and retained sends stay per room.
+  const storageKey = `station-project-room:${key}${channelId ? `:channel:${channelId}` : ''}`;
+  const previous = useRef({ key, roomKey });
   useLayoutEffect(() => {
     const prior = previous.current;
     if (prior.key !== key) {
-      // Authority switches retire the prior browser's retained proposal.
+      // Authority switches retire the prior browser's retained proposals,
+      // in every channel.
       try {
-        sessionStorage.removeItem(`station-project-room:${prior.key}`);
-        sessionStorage.removeItem(`station-project-room:${prior.key}:agent`);
-        // A different partition (another credential) retires its draft too.
-        if (prior.draftKey && prior.draftKey !== draftKey)
-          sessionStorage.removeItem(`station-room-draft:${prior.draftKey}`);
+        for (const stale of storageKeysWith(
+          `station-project-room:${prior.key}`,
+        ))
+          sessionStorage.removeItem(stale);
+        // A different partition (another credential) retires its drafts and
+        // channel selection too.
+        if (prior.roomKey && prior.roomKey !== roomKey) {
+          for (const stale of storageKeysWith(
+            `station-room-draft:${prior.roomKey.slice(0, -1)}`,
+          ))
+            sessionStorage.removeItem(stale);
+          sessionStorage.removeItem(SELECTED_CHANNEL_PREFIX + prior.roomKey);
+        }
       } catch {
         /* Sending requires successful storage separately. */
       }
     }
-    previous.current = { key, draftKey };
-  }, [key, draftKey]);
+    previous.current = { key, roomKey };
+  }, [key, roomKey]);
   return (
     <ProjectRoomSession
-      key={key}
+      key={storageKey}
       {...props}
-      storageKey={`station-project-room:${key}`}
+      storageKey={storageKey}
       draftKey={draftKey}
+      channelId={channelId}
+      onSelectChannel={selectChannel}
     />
   );
 }
@@ -227,13 +306,49 @@ function ProjectRoomSession({
   onOpenRoom,
   storageKey,
   draftKey,
-}: ProjectRoomProps & { storageKey: string; draftKey: string | undefined }) {
+  channelId,
+  onSelectChannel,
+}: ProjectRoomProps & {
+  storageKey: string;
+  draftKey: string | undefined;
+  /** The channel on screen; absent is the Project's default channel. */
+  channelId: string | undefined;
+  onSelectChannel(channelId: string | undefined): void;
+}) {
   const editorId = useId();
   const composer = useRef<HTMLTextAreaElement>(null);
   const section = useRef<HTMLElement>(null);
   const compact = useIsMobile();
-  const room = useProjectRoom(requestScope, slug, projectId);
-  const view = room.discovery.data;
+  const room = useProjectRoom(requestScope, slug, projectId, channelId);
+  const channels = useProjectRoomChannels(requestScope, slug, projectId);
+  const channel = currentProjectRoomChannel(channels.list.data, channelId);
+  const channelName = channel?.name ?? PROJECT_ROOM_DEFAULT_CHANNEL_NAME;
+  const archived = !!channel?.archivedAt;
+  const discovered = room.discovery.data;
+  // An archived channel serves history only: no composer, Agent asks or notes.
+  const view = useMemo(
+    () =>
+      discovered && archived
+        ? {
+            ...discovered,
+            capabilities: {
+              ...discovered.capabilities,
+              discuss: false,
+              edit: false,
+              execute: false,
+            },
+          }
+        : discovered,
+    [discovered, archived],
+  );
+  // A channel that no longer exists for this Project, or a host that has no
+  // channels at all, falls back to #general.
+  const channelMissing =
+    channelId !== undefined &&
+    (channels.unsupported || (!!channels.list.data && !channel));
+  useEffect(() => {
+    if (channelMissing) onSelectChannel(undefined);
+  }, [channelMissing, onSelectChannel]);
   const [tab, setTab] = useState<'conversation' | 'notes'>('conversation');
   // Text, reply target and Agent recipient are restored together; the
   // recipient is revalidated against the live catalog before it is used.
@@ -312,6 +427,26 @@ function ProjectRoomSession({
       setNoteDraft(undefined);
       return true;
     },
+  );
+  // Switching channels is a local state change, so it asks through the same
+  // guard when an unconfirmed send or a notes draft would be left behind.
+  const channelHeader = (
+    <div className="project-room__title">
+      <ProjectRoomChannelHeader
+        channels={channels}
+        current={channel}
+        canEdit={!!discovered?.capabilities.edit}
+        guards={
+          discovered
+            ? {
+                expectedProjectId: projectId,
+                expectedActorId: discovered.actor.id,
+              }
+            : undefined
+        }
+        onSelect={(next) => guard(() => onSelectChannel(next))}
+      />
+    </div>
   );
   useEffect(() => {
     if (!view || restored) return;
@@ -471,7 +606,7 @@ function ProjectRoomSession({
   if (room.unprovisioned)
     return (
       <section className="project-room" aria-label="Project room">
-        <h3 className="project-room__title"># Project room</h3>
+        {channelHeader}
         {room.initialize.isError && (
           <p role="alert">
             Opening was not confirmed. Check access, then try again.
@@ -593,7 +728,7 @@ function ProjectRoomSession({
       aria-label="Project room"
     >
       <header className="project-room__header">
-        <h3 className="project-room__title"># Project room</h3>
+        {channelHeader}
         <div
           className="project-room__presence"
           role="status"
@@ -666,7 +801,7 @@ function ProjectRoomSession({
         <>
           <RoomConversation
             label="Conversation"
-            regionLabel="Messages in # Project room"
+            regionLabel={`Messages in #${channelName}`}
             className="project-room__conversation"
             rows={rows}
             loading={room.history.isPending}
@@ -689,7 +824,11 @@ function ProjectRoomSession({
               room.history.isError ? undefined : (
                 <Empty
                   variant="compact"
-                  label="Start a chat with your project team."
+                  label={
+                    archived
+                      ? 'No messages were posted here.'
+                      : 'Start a chat with your project team.'
+                  }
                 />
               )
             }
@@ -706,6 +845,8 @@ function ProjectRoomSession({
               slug={slug}
               projectId={projectId}
               requestScope={requestScope}
+              channelId={channelId}
+              channelName={channelName}
               storageKey={storageKey}
               text={text}
               setText={setText}
@@ -740,7 +881,9 @@ Report observed freshness and coverage, including timestamps or checkpoints when
             />
           ) : (
             <p className="project-room__notice">
-              You can read this conversation.
+              {archived
+                ? 'This channel is read-only.'
+                : 'You can read this conversation.'}
             </p>
           )}
         </>
@@ -834,6 +977,8 @@ function ProjectRoomComposer({
   slug,
   projectId,
   requestScope,
+  channelId,
+  channelName,
   storageKey,
   text,
   setText,
@@ -858,6 +1003,9 @@ function ProjectRoomComposer({
   slug: string;
   projectId: string;
   requestScope: ApiRequestScope;
+  /** The channel this composer posts and asks in; absent is `#general`. */
+  channelId: string | undefined;
+  channelName: string;
   storageKey: string;
   text: string;
   setText(value: Update<string>): void;
@@ -887,6 +1035,7 @@ function ProjectRoomComposer({
       expectedActorId: view.actor.id,
     },
     agents,
+    channelId,
   ).catalog;
   const cancelReply = () => setReplyTo(undefined);
   const [recipientNotice, setRecipientNotice] = useState('');
@@ -978,6 +1127,7 @@ function ProjectRoomComposer({
           requestScope={requestScope}
           slug={slug}
           projectId={projectId}
+          channelId={channelId}
           roomId={view.roomId}
           actorId={view.actor.id}
           storageKey={`${storageKey}:agent`}
@@ -996,7 +1146,7 @@ function ProjectRoomComposer({
       <RoomComposer
         id={id}
         label="Message the project"
-        placeholder="Message # Project room"
+        placeholder={`Message #${channelName}`}
         value={text}
         onValueChange={(value, caret) => {
           setText(value);
@@ -1137,6 +1287,7 @@ function ProjectRoomAgentPanel({
   requestScope,
   slug,
   projectId,
+  channelId,
   roomId,
   actorId,
   storageKey,
@@ -1154,6 +1305,8 @@ function ProjectRoomAgentPanel({
   requestScope: ApiRequestScope;
   slug: string;
   projectId: string;
+  /** The channel the request lives in; absent is `#general`. */
+  channelId: string | undefined;
   roomId: string;
   actorId: string;
   storageKey: string;
@@ -1191,7 +1344,13 @@ function ProjectRoomAgentPanel({
   const mounted = useRef(true);
   const busy = useRef(false);
   const [settlementVersion, setSettlementVersion] = useState(0);
-  const agent = useProjectRoomAgent(requestScope, slug, guard, !stopped);
+  const agent = useProjectRoomAgent(
+    requestScope,
+    slug,
+    guard,
+    !stopped,
+    channelId,
+  );
   useEffect(() => {
     mounted.current = true;
     try {

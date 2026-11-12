@@ -1946,7 +1946,9 @@ position, the oldest returned turn's `turn.started` global sequence.
 computes: a fact that was not recorded is absent, and a turn whose engine
 reports no tool kinds says `filesReported: false` instead of implying no files;
 and a turn with no terminal event is `open`, not
-guessed. Each field is bounded and says when it was collapsed, so a page ends
+guessed. A Station tool's count also carries a bare-form `label` from
+[`station-tool-phrases`](../../packages/contracts/src/station-tool-phrases.ts)
+(#3418). Each field is bounded and says when it was collapsed, so a page ends
 for the byte cap, never by cutting a turn, and paging covers each turn once.
 Delegated children are the Sessions Station derived as launched from the
 conversation (`listSessionsNamingParents`, `stationDerived`) that started within
@@ -2345,7 +2347,17 @@ unrecognised value, including every event persisted before the field, as
 `unknown`. Steers and engine-opened turns carry none. The value is the
 admitting Station's claim: a `turn.started` mirrored from another Station
 carries that Station's, so restart recovery must act only on this Station's
-own Sessions. Its one consumer is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+own Sessions. The [approval guardian](../../src-server/services/approvals/guardian-conversation.ts)
+reads it only as a routing fact (#4827): an `interactive` newest turn is what
+lets an external engine's guardian escalation ask a person. It never reads the
+field as authorship, because a child's result delivered into a person's chat
+is `interactive` too. Authorship is a separate, positive mark: the same
+propagation stamps `authoredBy: 'person'` only for a send or steer that a
+composer route proved a person typed (`personTypedRequest`), or that such a
+route queued on the inbox, and drops any value an adapter supplies.
+[`isPersonAuthoredTurn` and `isCurrentTurnPersonAuthored`](../../src-server/services/orchestration/turn-authorship.ts)
+are the one shared reading of it. The dispatch origin's one consumer that
+acts on a Session is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 (preview `continue-unattended-after-restart`): after boot it continues each
 `task-dispatch` or `delegation` turn interrupted-turn recovery settled
 (`whenInterruptedTurnsRecovered`), once, through the conversation inbox under
@@ -3597,7 +3609,15 @@ owns Project discussion independently of Task rooms and private conversations.
 Its scope binds the Station, portable Project identity, local Project incarnation,
 and room. [ProjectRoomStore](../../src-server/services/projects/project-room-store.ts)
 retains sequenced messages, actor-scoped duplicate-send receipts, revisioned notes,
-and Agent-request records in private SQLite. Persisted records are validated
+and Agent-request records in private SQLite. A Project's room holds named channels
+(`project_room_channels`): each channel is one room, keyed by its room UUID, and
+the Project's original room is its default `#general`. Schema version 1
+(`PRAGMA user_version`) added channels. A newer schema is refused before any table
+is created; otherwise tables are created and every channel-less room is adopted as
+`#general` under the writer lock, after re-reading the version there, so a racing
+newer Station's upgrade is never overwritten. A room whose stored record does not
+match its row is not adopted, and it refuses its channels as it refuses its reads. Channel limits, unique names and
+archived read-only state are enforced in the store transaction. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 

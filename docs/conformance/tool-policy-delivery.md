@@ -35,7 +35,8 @@ opinion, and the engine asks `canUseTool` for anything it does not allow
 itself.
 
 An approval-guardian allow is handled the same way (#2947). The guardian is
-shown the Agent's name, the tool's name and the call's arguments. On ACP it
+shown what the person typed in the conversation (#4827; never a tool result
+or a reply), the Agent's name, the tool's name and the call's arguments. On ACP it
 is also shown the call's title as the tool description; the Claude hook
 passes no description. It is not shown the session's working directories, its permission
 mode, or why the engine would ask, so its allow speaks for the call as
@@ -56,7 +57,9 @@ is not applied the adapter logs that and why. An escalation, a plan exit or a qu
 call the engine allows itself never consults the allow. The guardian is asked
 once per call. At most 256 unanswered allows are kept per session; beyond
 that the oldest is dropped, and a call whose allow was dropped prompts. A
-guardian deny (enforce mode) is still a `PreToolUse` deny. What a hook allow
+guardian deny (enforce mode) is still a `PreToolUse` deny, except the
+escalation after repeated denials (#4827), which is a required ask: a
+`PreToolUse` `ask`, which reaches `canUseTool` and a person. What a hook allow
 skipped was read in the bundled 2.1.278 binary and not reproduced in a live
 session: after one the engine re-checks deny rules, ask rules, user-interaction
 tools, safety checks, the MCP organization ceiling and a sandbox override, and

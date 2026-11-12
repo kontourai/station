@@ -32,7 +32,8 @@
  *   markers existed, so the server keeps a baseline (when it began keeping
  *   them): an agent conversation's `seenVersion` is never below it, and
  *   history from before then reads as seen until it changes.
- * - `project-room` — the Project room's `checkpoint.lastSeq`.
+ * - `project-room` — the room's `checkpoint.lastSeq`. Each named channel is
+ *   its own room, so `roomId` names the channel (#4792).
  * - `task-room` — the Task room's `checkpoint.throughSeq` in its current
  *   epoch. A re-homed room (new epoch) starts a new marker.
  *

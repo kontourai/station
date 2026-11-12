@@ -1663,14 +1663,24 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
-/** Only these leaves delegate membership actions to the Room service. */
+/**
+ * Only these leaves delegate membership actions to the Room service: the
+ * default room's, each channel's same per-room leaves (#4792), and channel
+ * create and update. The service checks each one's own member action.
+ */
 function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
-      )) ||
-    (method === 'PUT' && /^\/api\/projects\/[^/]+\/room\/note$/.test(path))
+      ) ||
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+          path,
+        ))) ||
+    (method === 'PUT' &&
+      /^\/api\/projects\/[^/]+\/(?:room|channels\/[^/]+)\/note$/.test(path)) ||
+    (method === 'PATCH' &&
+      /^\/api\/projects\/[^/]+\/channels\/[^/]+$/.test(path))
   );
 }
 
@@ -7045,6 +7055,10 @@ export function configureRuntimeRoutes(
               ownerAttribution: payload.actor.ownerAttribution,
               clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
             },
+            // #4827: a steer a person typed and queued stays theirs.
+            payload.authoredBy === 'person'
+              ? { personAuthored: true }
+              : undefined,
           );
           const result = dispatched.result as
             | { outcome: string; turnId?: string }
@@ -9538,7 +9552,14 @@ export function configureRuntimeRoutes(
       module: roomAgentRuntime.module,
       observe: (authority, handle) =>
         roomPublication!.watch(authority, handle.requestId),
-      withAuthority: async (request, slug, action, guard, operation) => {
+      withAuthority: async (
+        request,
+        slug,
+        action,
+        guard,
+        operation,
+        channelId,
+      ) => {
         const result = await roomAccess.withAction(
           request,
           slug,
@@ -9549,7 +9570,7 @@ export function configureRuntimeRoutes(
               if (
                 guard &&
                 (scope.localProjectId !== guard.expectedProjectId ||
-                  roomStore.store.lookupRoom(scope)?.roomId !==
+                  roomStore.store.lookupRoom(scope, channelId)?.roomId !==
                     guard.expectedRoomId)
               )
                 throw new ProjectRoomRefusal('conflict');
@@ -9580,6 +9601,7 @@ export function configureRuntimeRoutes(
                 ok: true as const,
                 value: await operation({
                   scope,
+                  ...(channelId === undefined ? {} : { channelId }),
                   requester,
                   executionRoot,
                   assertCurrent: current,

@@ -944,6 +944,13 @@ reads it only from a station-control tool's whole result, and
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
 
+`@kontourai/station-contracts/station-tool-phrases` words Station's own tool
+calls (#3418). `stationToolOf` recognises a Station tool by name (or a bare name
+plus `server`); `stationToolPhrase` returns its past, progressive or bare phrase
+from the call's arguments. Transcript rows, the live progress line and the
+Session digest's `label` all read it. A server test fails when a registered
+tool has no phrase.
+
 `@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
 (the claude.ai page a Claude Code `Artifact` publish produced, and its
 title), `parseClaudeArtifactPublish`, which reads it only from a publish's
@@ -2285,6 +2292,19 @@ publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
 no such lock spans provider execution. Unsharing can withhold a pending answer,
 but does not retroactively redact text already published in the Room.
 
+A Project's room holds named channels (`ProjectRoomChannel`): each channel is
+one room, and its `channelId` is that room's `roomId`. The existing room is
+the default channel, named `PROJECT_ROOM_DEFAULT_CHANNEL_NAME` (`general`).
+`PROJECT_ROOM_LIMITS` bounds channels per Project (`channelsPerProject`, 50,
+archived included), name length (`channelNameLength`, 80) and topic size
+(`channelTopicBytes`, 250). `parseProjectRoomChannelName` accepts lowercase
+ASCII letters and digits in hyphen-separated runs and refuses anything else,
+including a name one character past the limit; it never trims, lowercases or
+truncates. `projectRoomChannelNameProblem` and `projectRoomChannelTopicProblem`
+name the reason (`empty`, `too_long`, `format`) so a client can explain it
+inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInput`
+(`topic: null` clears) and `parseProjectRoomChannelList` are the wire parsers.
+
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
 
@@ -2337,7 +2357,8 @@ An older client that sends only `updatedAt` records "last viewed" and moves
 no marker, so its conversations read unread until it sends `readVersion`. The
 inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
 Just finished reads; an acknowledgement writes it alongside, and unread never
-reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
+reads it. A Project room uses its `checkpoint.lastSeq`; each named channel is
+its own room, so its `roomId` keys its own marker (#4792). A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
 new marker.
 

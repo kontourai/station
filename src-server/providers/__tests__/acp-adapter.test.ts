@@ -73,6 +73,7 @@ const managedWorkspaceHome = mkdtempSync(
 );
 afterAll(() => rmSync(managedWorkspaceHome, { recursive: true, force: true }));
 
+import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
 
 function createConnections(
@@ -1353,6 +1354,7 @@ describe('AcpAdapter', () => {
           approvalGuardian: {
             isEnabled: () => true,
             getMode: () => 'enforce',
+            readConversation: () => NO_PERSON_INTENT,
             reviewToolCall,
           } as never,
           logger: { warn: vi.fn(), info: vi.fn() },
