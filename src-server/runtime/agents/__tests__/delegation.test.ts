@@ -21,12 +21,15 @@ describe('delegation helpers', () => {
           maxDepth: 3,
           allowedTools: ['github_*'],
           blockedTools: ['station-control_update_*'],
+          denyApprovals: false,
         },
       },
       current: {
         mode: 'isolated-child',
         depth: 1,
-        maxDepth: 3,
+        maxDepth: 2,
+        blockedTools: ['github_delete_*'],
+        denyApprovals: true,
         parentAgentSlug: agentId('root'),
         rootAgentSlug: agentId('root'),
         rootConversationId: 'conv-root',
@@ -36,7 +39,7 @@ describe('delegation helpers', () => {
     expect(context).toEqual({
       mode: 'isolated-child',
       depth: 2,
-      maxDepth: 3,
+      maxDepth: 2,
       parentAgentSlug: 'planner',
       parentConversationId: 'conv-parent',
       rootAgentSlug: 'root',
@@ -45,6 +48,7 @@ describe('delegation helpers', () => {
       blockedTools: [
         ...DEFAULT_CHILD_BLOCKED_TOOLS,
         'station-control_update_*',
+        'github_delete_*',
       ],
       denyApprovals: true,
     });
@@ -58,7 +62,7 @@ describe('delegation helpers', () => {
         spec: {
           name: 'Planner',
           prompt: 'Plan well',
-          delegation: { maxDepth: 2 },
+          delegation: { maxDepth: 4 },
         },
         current: {
           mode: 'isolated-child',
