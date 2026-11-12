@@ -1325,8 +1325,8 @@ Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;
 a completed run means the check ran, not that its findings passed a gate.
 
-After an interruption, **Resume exact check** continues the recorded check.
-Failed or uncertain runs offer **Inspect receipt**. They are not restarted
+After an interruption, **Resume check** continues the recorded check.
+Failed or uncertain runs offer **Open result**. They are not restarted
 automatically. See [Scheduler identity and recovery](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check).
 
 ## When Something Goes Wrong

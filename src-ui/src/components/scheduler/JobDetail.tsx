@@ -280,9 +280,7 @@ export function JobDetail({
       {monitorState?.usageKnown === false ? (
         <>
           <p className="schedule__monitor-resolution" role="status">
-            Task usage is indeterminate. Station will resolve only the stored
-            Task/session/turn receipt once its authoritative terminal usage is
-            available.
+            Usage isn't final yet. It appears when the run finishes.
           </p>
           {monitorState.triggerId ? (
             <Button

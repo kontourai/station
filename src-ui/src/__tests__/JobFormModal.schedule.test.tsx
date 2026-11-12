@@ -505,7 +505,7 @@ describe('JobFormModal schedule compatibility', () => {
     expect(addMutate).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.',
+        'Scheduled jobs need an agent that uses a model connection.',
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/No Agent named/)).toBeNull();

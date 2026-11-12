@@ -332,10 +332,7 @@ export function NotificationsPage() {
               unavailableSources={inbox.unavailableSources}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
-              <p role="status">
-                That approval request isn’t available, and Station won’t open a
-                different one in its place.
-              </p>
+              <p role="status">That approval request is no longer available.</p>
             )}
             {pairingTarget && !exactPairing && (
               <p role="status">That pairing request is no longer available.</p>

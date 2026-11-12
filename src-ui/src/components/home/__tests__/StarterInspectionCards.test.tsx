@@ -76,13 +76,13 @@ describe('StarterInspectionCards', () => {
       'Inspect an approval',
     );
     expect(approval.querySelector('.page-callout__body')?.textContent).toBe(
-      'Open one real approval request without deciding it.',
+      "Open a pending approval. You won't have to decide it.",
     );
     // The receipt candidate is `missing` in this fixture: an owner Station
     // cannot reach is a warning, not an ordinary offer.
     expect(receipt.className).toContain('page-callout--warning');
     expect(receipt.querySelector('.page-callout__body')?.textContent).toBe(
-      'An exact owner-backed item is not available yet.',
+      'Nothing to inspect yet.',
     );
   });
 
@@ -128,7 +128,7 @@ describe('StarterInspectionCards', () => {
       completion: { state: 'receipt-present' },
     });
     render(<StarterInspectionCards />);
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen receipt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen review' }));
     expect(navigate).toHaveBeenCalledWith('/projects/bravo/layouts/review', {
       receipt: 'same-id',
     });
@@ -142,7 +142,7 @@ describe('StarterInspectionCards', () => {
       screen.queryByRole('button', { name: 'Inspect approval' }),
     ).toBeNull();
     expect(
-      screen.getAllByText('An exact owner-backed item is not available yet.'),
+      screen.getAllByText('Nothing to inspect yet.'),
     ).toHaveLength(2);
   });
 });

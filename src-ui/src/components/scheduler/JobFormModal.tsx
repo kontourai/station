@@ -652,7 +652,7 @@ export function JobFormModal({
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {needsAgentSetup
-                  ? 'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.'
+                  ? 'Scheduled jobs need an agent that uses a model connection.'
                   : jobAgentRunnability.reason}
               </span>
             )}
@@ -789,8 +789,8 @@ export function JobFormModal({
               placeholder="project-id"
             />
             <span className="schedule__field-hint">
-              When set, an actionable revision adopts one deterministic project
-              Task instead of starting a scheduler turn.
+              If set, a pull request that needs changes opens or reuses one Task
+              in this Project instead of starting a new run.
             </span>
           </label>
         )}

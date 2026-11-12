@@ -110,14 +110,14 @@ export function StarterScheduledCheckCard() {
             pending={launch.isPending}
             onClick={() => void run(true)}
           >
-            Resume exact check
+            Resume check
           </Button>
         ) : href ? (
           <Button
             variant="primary"
             onClick={() => navigateStarterHref(navigate, href)}
           >
-            {terminalConcern ? 'Inspect receipt' : 'Open scheduled check'}
+            {terminalConcern ? 'Open result' : 'Open scheduled check'}
           </Button>
         ) : failed ? (
           <Button
@@ -144,20 +144,21 @@ export function StarterScheduledCheckCard() {
       }
     >
       {failed
-        ? 'The Scheduler receipt owner is unavailable.'
+        ? 'Scheduled check status is unavailable.'
         : terminalConcern
-          ? `The exact check is ${completion}. Inspect its receipt before taking another action.`
+          ? completion === 'failed'
+            ? 'The check failed. Open its result before taking another action.'
+            : 'The check may not have finished. Open its result before taking another action.'
           : completion === 'completed'
-            ? 'The exact check completed. Its findings remain evidence input, not a gate verdict.'
+            ? "The check completed. Its findings don't approve or block a gate."
             : completion === 'running'
-              ? 'The exact check is running.'
+              ? 'The check is running.'
               : blockedLaunch
                 ? blockedLaunch.reason
-                : 'Create a disabled daily check and run it once through the real Scheduler.'}
+                : 'Create a daily check, off until you turn it on, and run it once.'}
       {launch.isError && (
         <p className="page-callout__notice" role="alert">
-          The response was not confirmed. Retry uses the same operation and
-          cannot start another run.
+          Station didn't confirm the start. Retry won't start a second run.
         </p>
       )}
     </PageCallout>
