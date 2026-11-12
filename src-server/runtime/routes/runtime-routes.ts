@@ -11582,8 +11582,7 @@ export function configureRuntimeRoutes(
     '/api/boot',
     createBootRoutes({
       auth: async () => (await createAuthRoutes().request('/status')).json(),
-      // The inner request has no client of its own: whether the frame origin
-      // is reachable is a fact about the BOOT request's client.
+      // Reachability is decided by the boot request's client.
       config: async (c) =>
         (
           await createConfigRoutes(
@@ -13117,12 +13116,9 @@ function isSameMachineBrowserCaller(c: {
 }
 
 /**
- * The frame listener (`runtime/mcp/mcp-ui-frame-server.ts`) binds this host's
- * loopback only, so its origin names a server only a browser ON this machine
- * can reach. Any other client (a phone, a LAN or tailnet browser, a desktop
- * app connected to this Station from elsewhere) would dial its own loopback
- * and be refused, so it is told there is no distinct frame origin and renders
- * with the opaque-origin sandbox instead.
+ * The frame listener binds this host's loopback, so only a browser on this
+ * machine can reach its origin (#4821). Other clients get none and render in
+ * the opaque-origin sandbox.
  */
 function clientReachableFrameOrigin(
   origin: (() => string | undefined) | undefined,

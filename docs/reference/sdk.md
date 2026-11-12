@@ -6620,9 +6620,8 @@ browser fixtures do not establish native/installed/release qualification.
 `@kontourai/station-sdk/workspace-file-preview` exports
 `readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
 Pass the render-captured request scope and abort signal in `options`. The
-read-only POST returns a validated HTML page plus the isolated frame origin
-when this client can reach it (a browser on the Station host; others get none
-and render in the opaque-origin fallback), or a bounded raster preview. `thread` selects an authorized Session workspace;
+read-only POST returns a validated HTML page, plus the isolated frame origin
+for a browser on the Station host, or a bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL. A failed
 read throws `WorkspaceVisualFileError` with `status` and a `reason`

@@ -44,11 +44,8 @@ function readThemeTokens(): HtmlReplyTheme {
 }
 
 /**
- * The theme as a stylesheet, for the opaque-origin frame. That frame inherits
- * this document's Content Security Policy, which may refuse its inline
- * scripts (the desktop and mobile apps allow only `'self'`), so the theme
- * cannot depend on the page's message listener. A value that could close the
- * declaration or the element is dropped, never escaped.
+ * The theme as CSS for the opaque frame, whose inline scripts the app's own
+ * CSP may refuse. A value that could break out of the rule is dropped.
  */
 function themeStyle(tokens: HtmlReplyTheme, theme: 'light' | 'dark'): string {
   const declarations = Object.entries(tokens)
@@ -66,12 +63,8 @@ function themeStyle(tokens: HtmlReplyTheme, theme: 'light' | 'dark'): string {
 
 /**
  * Viewer primitive. Conversation publication/placement is a separate slice.
- *
- * Two isolation modes. With a distinct frame origin this client can reach,
- * the page loads through that origin's proxy. Without one (the frame listener
- * binds the host's loopback, so a phone or another computer is never offered
- * it), the page renders in an opaque-origin sandbox: scripts may run but
- * cannot reach Station's origin, cookies or storage.
+ * With a reachable frame origin the page loads through its proxy; without one
+ * (#4821) it renders in an opaque-origin sandbox.
  */
 export function HtmlReply({
   page,
@@ -226,8 +219,7 @@ export function HtmlReply({
           <iframe
             ref={frame}
             title="Visual reply"
-            // No allow-same-origin: the frame's origin is opaque, so its
-            // scripts can never reach Station's origin, cookies or storage.
+            // No allow-same-origin: an opaque origin cannot reach Station's.
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"
             srcDoc={opaqueDocument}

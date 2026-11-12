@@ -284,10 +284,8 @@ The web host follows the Apps sandbox-proxy lifecycle:
 
 1. Station starts a minimal proxy on a different origin. It uses an ephemeral
    loopback port by default; `MCP_UI_FRAME_PORT` may pin a nonzero port.
-   Because it listens on loopback, Station offers its origin
-   (`mcpUiFrameOrigin`, and a visual reply's frame origin) only to a browser
-   on the Station host (#4821). Every other client gets none and takes the
-   fallback below.
+   Station offers its origin only to a browser on the Station host (#4821);
+   other clients take the fallback below.
 2. The Station page embeds that proxy with
    `sandbox="allow-scripts allow-same-origin"`.
 3. The proxy sends `ui/notifications/sandbox-proxy-ready`.
