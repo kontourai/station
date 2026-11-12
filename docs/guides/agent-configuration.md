@@ -203,6 +203,25 @@ discovery flow first and falls back to the legacy `initialize` flow when a
 deployed stdio server is older. Existing integration files do not need a
 protocol-version field, and there is no era selector to maintain.
 
+### Delegated child restrictions
+
+When Station derives another child from an existing delegated Session, the depth
+ceiling is the smaller of the inherited ceiling and the current Agent's policy.
+Inherited blocked-tool patterns and approval denial remain in force. A different
+Agent configuration cannot remove those restrictions from the derived context.
+The Station pre-tool policy checks that context before granting a tool call.
+
+The delegation attestation binds the exact parent Session identity as well as
+the parent conversation. Both tool and HTTP schemas retain that identity; changing
+it invalidates the attestation. A valid stamp authenticates the context, not a
+caller credential or remote execution grant. Ownership and cancellation still
+require their server-derived provenance checks.
+
+These lineage checks do not establish finite token, cost or attempt enforcement,
+native-engine confinement, or authenticated portable authority across Stations.
+Inherited wildcard allowlist conjunctions remain an unfinished part of the
+child-work epic; do not interpret the retained denials as full policy inheritance.
+
 ### Guardrails
 
 For the Station engine, guardrails constrain model inference per Agent. External
