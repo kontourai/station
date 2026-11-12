@@ -437,7 +437,8 @@ export function ProviderSettingsView({
 
   function handleSave() {
     if (!form || !selectedProviderId) return;
-    // The detail's unsaved bar has no disabled state of its own.
+    // Both Save controls disable on this check (`saveBlocked` on the unsaved
+    // bar); this guard keeps a save from going out if one is ever missed.
     if (!form.name || !isConnectionConfigValid(form.type, form.config)) {
       setError('Fill in the required fields before saving.');
       return;
