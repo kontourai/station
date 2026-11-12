@@ -5,6 +5,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -619,6 +620,13 @@ describe('RegistryView', () => {
       expect(navigateMock).not.toHaveBeenCalled();
       fireEvent.change(browse, { target: { value: 'skills-only' } });
       expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
+      // The route remounts the view for the new tab; the choice survives it.
+      cleanup();
+      render(<RegistryView initialTab="skills" />);
+      expect(
+        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
+          .value,
+      ).toBe('skills-only');
     } finally {
       registrySources.length = 0;
     }

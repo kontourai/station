@@ -50,6 +50,13 @@ function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
   return `${tab}:${itemId}`;
 }
 
+/**
+ * A source chosen together with a switch to its catalog tab. The route
+ * boundary keys this view by route (`RouteViewBoundary`), so the tab switch
+ * remounts it; the choice is handed to that next mount, for that tab only.
+ */
+let sourceForNextTab: { tab: RegistryCatalogTab; source: string } | null = null;
+
 export function RegistryView({
   initialTab,
   toolPicker = false,
@@ -82,7 +89,13 @@ export function RegistryView({
   };
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(installTarget ?? '');
-  const [selectedSource, setSelectedSource] = useState('all');
+  const [selectedSource, setSelectedSource] = useState(() => {
+    const handed = sourceForNextTab;
+    sourceForNextTab = null;
+    return handed && handed.tab === (initialTab ?? 'agents')
+      ? handed.source
+      : 'all';
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
     tab: RegistryCatalogTab;
@@ -538,8 +551,10 @@ export function RegistryView({
             // Show the chosen source's catalog: keep the tab when the source
             // supplies it, otherwise open its primary kind's tab.
             const tabs: readonly RegistryCatalogTab[] = supplied ?? [];
-            if (tabs.length > 0 && !tabs.includes(activeTab))
+            if (tabs.length > 0 && !tabs.includes(activeTab)) {
+              sourceForNextTab = { tab: tabs[0]!, source: id };
               selectTab(tabs[0]!);
+            }
           }}
         />
       )}
