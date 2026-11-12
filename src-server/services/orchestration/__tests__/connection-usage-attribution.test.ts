@@ -437,7 +437,7 @@ describe('usage attribution to connections', () => {
       rows.find((row) => row.key === 'connection:null'),
     ).not.toHaveProperty('connectionId');
 
-    for (const query of [
+    for (const query of <Record<string, string>[]>[
       { provider: 'Not An Engine' },
       { provider: 'bedrock;drop' },
       // A typo, a connection id, or an engine that reports no usage.
@@ -470,7 +470,7 @@ describe('usage attribution to connections', () => {
       await app.request(rollupPath()),
     );
     expect(unfiltered.data.coverage[0].state).toBe('complete');
-    for (const filter of [
+    for (const filter of <Record<string, string>[]>[
       { provider: 'opencode' },
       { provider: 'acp' },
       { connectionId: 'never-used' },
