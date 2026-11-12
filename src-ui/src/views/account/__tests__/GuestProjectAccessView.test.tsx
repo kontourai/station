@@ -305,6 +305,37 @@ test('a stale revision refuses honestly, refreshes, and never retries the mutati
   expect(stub.posts).toHaveLength(1);
 });
 
+test('a 401 refusal whose re-read is refused never claims the list was refreshed', async () => {
+  let refused = false;
+  const stub: Stub = {
+    posts: [],
+    access: () =>
+      refused
+        ? new Response('forbidden', { status: 403 })
+        : envelope(adminView()),
+    observe: () => observation(['orchestration:read', 'orchestration:operate']),
+    mutate: () => {
+      refused = true;
+      return new Response('unauthorized', { status: 401 });
+    },
+  };
+  stubFetch(stub);
+  mount();
+
+  expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke access' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Confirm change' }),
+  );
+  const banner = await screen.findByText(
+    /refused this change for this browser/,
+  );
+  expect(banner.textContent).toBe(
+    "Station refused this change for this browser. If the list doesn't let you change people, request browser access again.",
+  );
+  expect(screen.queryByText(/List refreshed/)).toBeNull();
+});
+
 test('losing administration on a refetch names the cause without claiming a refresh', async () => {
   let lost = false;
   const stub: Stub = {

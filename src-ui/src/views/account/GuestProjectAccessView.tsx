@@ -179,6 +179,11 @@ export function GuestProjectAccessView({
     [apiBase, client, principalId, project.id, project.slug],
   );
 
+  /** `refreshReads` never throws, so the read's own state says if it worked. */
+  function accessReadSucceeded() {
+    return client.getQueryState(accessKey)?.status === 'success';
+  }
+
   async function refreshReads() {
     await client.invalidateQueries({ queryKey: accessKey });
     await client.invalidateQueries({ queryKey: authorityKeyPrefix });
@@ -241,10 +246,9 @@ export function GuestProjectAccessView({
       if (cause instanceof StationHttpError && cause.status === 401) {
         await refreshReads();
         setBanner({
-          // refreshReads() re-verifies the account before and after the
-          // read, so reaching here means sign-in still holds and the list was
-          // re-read; what Station refused is this browser's approval.
-          refreshed: true,
+          // Station refused the change for this browser. Claim a refresh only
+          // if the re-read access list actually came back.
+          refreshed: accessReadSucceeded(),
           cause:
             "Station refused this change for this browser. If the list doesn't let you change people, request browser access again.",
         });
@@ -255,7 +259,7 @@ export function GuestProjectAccessView({
       if (cause instanceof StationHttpError && cause.status === 403) {
         await refreshReads();
         setBanner({
-          refreshed: true,
+          refreshed: accessReadSucceeded(),
           cause:
             'Your Project role or this browser’s approval changed. Review the list before trying again.',
         });
@@ -411,8 +415,8 @@ export function GuestProjectAccessView({
 
 /**
  * `refreshed` is true only where the access list was actually re-read
- * successfully before the banner was set (a self-demotion, a 401 or 403
- * refusal of a change), so
+ * successfully before the banner was set (a self-demotion; a 401 or 403
+ * refusal of a change only when its re-read came back), so
  * "List refreshed." is never claimed after a read Station refused.
  */
 interface GuestAccessBanner {
