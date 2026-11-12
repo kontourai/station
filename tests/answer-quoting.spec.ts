@@ -209,7 +209,7 @@ test('selection produces removable context and a sent quote keeps its source lin
   await expect(sent).toContainText('selected words');
   await sent.getByRole('button', { name: 'Quoted answer' }).click();
   await expect(page.getByRole('dialog')).toContainText(
-    'Source revision is unchanged',
+    'Source unchanged since you quoted it.',
   );
   await expect(page.getByRole('dialog')).toHaveCSS('opacity', '1');
   await page.screenshot({ path: testInfo.outputPath('quote-source.png') });
@@ -270,7 +270,7 @@ for (const [device, viewport] of [
       .getByRole('button', { name: 'the reviewed answer', exact: true })
       .click();
     await expect(page.getByRole('dialog')).toContainText(
-      'Source revision is unchanged',
+      'Source unchanged since you quoted it.',
     );
     const chat = page.getByRole('region', { name: 'Chat', exact: true });
     await expect(chat).toHaveCount(0);
@@ -308,7 +308,7 @@ test('changed or denied source never replaces the saved quote or displays cached
   changed = true;
   await page.getByRole('button', { name: 'Inspect source' }).click();
   await expect(page.getByRole('dialog')).toContainText(
-    'The source has changed',
+    'The source has changed since you quoted it.',
   );
   await expect(page.getByRole('dialog')).toContainText('selected words');
   await page.getByRole('button', { name: 'Close quote source' }).click();

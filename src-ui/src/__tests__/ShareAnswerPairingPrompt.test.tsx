@@ -44,7 +44,7 @@ describe('ShareAnswerPairingPrompt', () => {
 
     expect(text).toContain('full access to this Station');
     expect(text).toContain('managing devices');
-    expect(text).toContain('not just sharing');
+    expect(text).toContain('opening terminals');
   });
 
   it('sends only the REQUEST, and never confirms it', async () => {
@@ -59,7 +59,9 @@ describe('ShareAnswerPairingPrompt', () => {
     });
     // The confirm/exchange half must not be reachable from here at all.
     expect(
-      await screen.findByText(/will not grant anything until you approve it/),
+      await screen.findByText(
+        'Request sent. Approve this browser in Connections, then share again.',
+      ),
     ).toBeTruthy();
   });
 
