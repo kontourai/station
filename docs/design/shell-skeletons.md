@@ -157,9 +157,8 @@ The rule now:
   canonical instance of the EYEBROW specifically: archive#4463 slice 1 retired its self-referential
   `SCHEDULE`-above-**Schedule** eyebrow (Schedule is top-level, so it now renders none). For a
   current eyebrow example, see a subpage instead — Connections → Models renders eyebrow
-  `Connections`, title `Models`. That eyebrow is **static text** (archive#4463). An eyebrow
-  ancestor is linked only when it has a real landing surface; `/connections` is now the
-  Connections Overview, and linking the eyebrow to it is not yet decided
+  `Connections`, title `Models`. An eyebrow ancestor is linked only when it has a real
+  landing surface; `/connections` is the Connections Overview, so that eyebrow links to it
   (`ConnectionsSectionFrame.tsx`). Note eyebrows are produced on two
   paths — `SplitPaneLayout`'s breadcrumb trail and `PageEyebrowTrail` — and the linked-only-when-
   navigable rule governs both.
