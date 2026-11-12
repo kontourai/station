@@ -177,6 +177,27 @@ test('Escape closes More actions from its trigger, and focus stays on the trigge
     await page.keyboard.press('Escape');
     expect(await last.getAttribute('aria-expanded')).toBe('false');
     expect(await active()).toBe(lastName);
+
+    // A long press on that message opens it too; with nothing enabled to
+    // focus, focus goes to its More button, where Escape closes it.
+    await page.locator('body').focus();
+    const box = (await page.getByText('Message 5').boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: box.x + 4, y: box.y + box.height / 2 }],
+    });
+    await expect.poll(() => last.getAttribute('aria-expanded')).toBe('true');
+    expect(await active()).toBe(lastName);
+    await page.keyboard.press('Escape');
+    expect(await last.getAttribute('aria-expanded')).toBe('false');
+    expect(await active()).toBe(lastName);
+    // CDP's synthetic release is a tap whatever its length, unlike a real
+    // long press, so the finger lifts only after the assertions.
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
