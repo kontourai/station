@@ -890,7 +890,7 @@ const skillDocument = (name: string, description = `${name} work`) =>
 async function outsideFolder() {
   return folder(
     {
-      'clarify/SKILL.md': skillDocument('outside', OUTSIDE_SECRET),
+      'clarify/SKILL.md': skillDocument('leaked', OUTSIDE_SECRET),
       'outside/SKILL.md': skillDocument('outside', OUTSIDE_SECRET),
       'marketplace.json': JSON.stringify({
         name: OUTSIDE_SECRET,
