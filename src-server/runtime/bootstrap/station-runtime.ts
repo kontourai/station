@@ -1458,8 +1458,9 @@ export class StationRuntime {
         ),
       // #3483: after the conversation read untrusted content (seen at a
       // Station seam), an engine that asks Station asks the person too.
-      // #4828: and its writes to agent instructions and repository hooks
-      // are refused (an engine-native web read marks it too).
+      // #4828: and its writes to known instruction-file and git-hook
+      // locations are denied by path, best effort (an engine-native web read
+      // marks it too).
       ...externalUntrustedContentStages({
         loadIntegration: (id) => this.configLoader.loadIntegration(id),
       }),

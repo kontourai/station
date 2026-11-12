@@ -1831,18 +1831,36 @@ browser tools. muse web reads are not seen, and no engine's shell downloads
 (`curl`, `wget`) are. `GET /api/integrations/untrusted-content/coverage`
 lists this per engine.
 
-After the mark, agents cannot persist instructions for later sessions: in that
-conversation and the conversations it delegates to, Station refuses writes,
-moves and copies into `AGENTS.md`, `CLAUDE.md` and their local or override
-forms at any depth, anything under `.agents/`, `.claude/` or `.codex/`,
-`.mcp.json`, and a repository's hooks and configuration (`.git/hooks`,
-`.git/config`, `.githooks`, `.husky` and the folder `core.hooksPath` names).
-A shell command that names one of these, changes git configuration, or gives git
-an option that configures it or points it at another repository asks you
-first. A delegated agent that
-reads the web marks the agent that delegated to it when its result comes
-back. To make such a change yourself, edit the file directly or clear the
-mark. Codex's own file edits and commands are not covered.
+After the mark, Station denies writes to known instruction-file and git-hook
+locations by path, as a best-effort early check. In that conversation and the
+conversations it delegates to, it refuses writes, moves and copies into:
+
+- `AGENTS.md`, `CLAUDE.md` and their local or override forms, at any depth;
+- anything under `.agents/`, `.claude/` or `.codex/`;
+- `.mcp.json`;
+- a repository's hooks and configuration (`.git/hooks`, `.git/config`,
+  `.githooks`, `.husky`, and the folder git reports as `core.hooksPath`).
+
+A shell command that names one of these, changes git configuration, or gives
+git an option that configures it or points it at another repository asks you
+first. A delegated agent that reads the web marks the agent that delegated to
+it when its result comes back. To make such a change yourself, edit the file
+directly or clear the mark.
+
+**This does not contain git hook execution.** Each of these ways around it has
+run a planted hook after a mark:
+
+- a `core.hooksPath` that points outside the repository;
+- a bare repository;
+- a repository nested inside a hooks folder;
+- a hooks folder reached through a symlink;
+- a writable `[include]` file that changes `core.hooksPath`;
+- git run inside a quoted `sh -c "…"` command or through a shell alias.
+
+Codex's own file edits and commands are not checked at all. Enforcement at the
+operating-system level is tracked in
+[#4860](https://github.com/kontourai/station/issues/4860); see the
+[coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
 
 ## Connect an OAuth MCP server to an Agent
 

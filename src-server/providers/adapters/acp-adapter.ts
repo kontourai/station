@@ -3007,8 +3007,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             params.toolCall?.rawInput,
             record.session.cwd ?? context.cwd,
           ));
-      // #4828: after an untrusted read, a change to agent instructions or
-      // repository hooks is declined, read from the call's kind, locations
+      // #4828: after an untrusted read, a change to a known agent-instruction
+      // or git-hook location is declined by path (best effort; it does not
+      // contain git hook execution, #4860), read from the call's kind, locations
       // and input whether or not the agent named the tool (the name is
       // optional, and the staged evaluator below needs one).
       const persistence = acpPersistenceTarget(params.toolCall ?? {});

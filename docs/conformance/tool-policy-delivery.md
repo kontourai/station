@@ -237,16 +237,22 @@ from a completed `webSearch` item, ACP from a tool call of kind `fetch`, the
 Station engine's HTTP request in `afterToolCall`, and Station's browser tools
 at the browser-agent route. Muse is not covered. In a marked conversation the
 staged evaluator then runs one more stage before the untrusted-content
-permission: a write, move, rename or copy that reaches an agent-instruction
-file or a repository's hooks or configuration (including the effective
-`core.hooksPath`) is refused with `untrusted_persistence_protection`, and a
-shell command naming one, or running git with program-running configuration,
-is a required Ask. A delegated child takes its ancestors' marks, and a child's
-read marks its parent when the result returns. The stage reads a loaded MCP
-tool's original name from loader provenance. It runs wherever the staged
-evaluator runs (Station engine, Claude `PreToolUse`, ACP permission requests).
-ACP edit, move and delete requests are also checked by kind when unnamed. It
-does not run for Codex's own file changes and commands.
+permission, a best-effort early check by path. A write, move, rename or copy
+that reaches a known agent-instruction file or git-hook or git configuration
+location (including the `core.hooksPath` git reports) is refused with
+`untrusted_persistence_protection`. A shell command naming one, or giving git
+a configuring global option, is a required Ask. This check does not contain
+git hook execution: an external absolute hooks path, a bare repository, a
+repository nested in a hooks folder, a symlinked hooks folder, a writable
+`[include]` that retargets the hooks path, and git inside a quoted `sh -c` or
+shell alias have each run a planted hook. OS-level enforcement is
+[#4860](https://github.com/kontourai/station/issues/4860). A delegated child
+takes its ancestors' marks, and a child's read marks its parent when the
+result returns. The stage reads a loaded MCP tool's original name from loader
+provenance. It runs wherever the staged evaluator runs (Station engine, Claude
+`PreToolUse`, ACP permission requests). ACP edit, move and delete requests are
+also checked by kind when unnamed. It does not run for Codex's own file
+changes and commands.
 
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.

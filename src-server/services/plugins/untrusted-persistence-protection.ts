@@ -1,39 +1,54 @@
 /**
- * #4828: after a conversation has read content written by others, the agent
- * may not write where an injected instruction would outlive the conversation:
- * agent-instruction files (`AGENTS.md`, `CLAUDE.md` and their local or
- * override forms, at any depth), engine instruction and configuration
- * directories (`.agents/`, `.claude/`, `.codex/`), a project's `.mcp.json`,
- * and a repository's hooks and configuration: `.git/hooks/**`, `.git/config`
- * (a worktree's or submodule's under `.git/` too), the conventional hook
- * folders `.githooks/` and `.husky/`, and the repository's effective
- * `core.hooksPath`.
+ * #4828: after a conversation has read content written by others, Station
+ * denies writes to known agent-instruction and git-hook locations by path, as
+ * a best-effort early check against an injection persisting itself. This
+ * does NOT contain git hook execution: a path check before a tool runs cannot
+ * see every place git will run a hook from. Containment belongs to OS
+ * confinement (#4860).
+ *
+ * The locations checked: agent-instruction files (`AGENTS.md`, `CLAUDE.md`
+ * and their local or override forms, at any depth), engine instruction and
+ * configuration directories (`.agents/`, `.claude/`, `.codex/`), a project's
+ * `.mcp.json`, `.git/hooks/**` and `.git/config` (a worktree's or
+ * submodule's under `.git/` too), the conventional hook folders `.githooks/`
+ * and `.husky/`, and the `core.hooksPath` git reports for the repository
+ * that contains an absolute write target.
  *
  * The staged pre-tool evaluator applies this. A file-write, move, rename or
- * copy tool with either endpoint at one of these is refused; a shell command
+ * copy tool with an endpoint at one of these is refused; a shell command
  * that names one, writes git configuration, gives git a global option that
  * configures it or points it elsewhere (`-c`, `--config-env`, `--git-dir`,
  * `--work-tree`, `--exec-path`, `--namespace`, or one Station does not
- * recognise), or assigns `GIT_DIR` or `GIT_CONFIG*`, is sent to the person,
- * because Station cannot tell what a shell command does. Paths are
- * compared by segment, case-insensitively (macOS and Windows checkouts are
- * case-insensitive), never by substring. Tool names are compared without
- * case or separators, so a loader's `writeFile` and an engine's `write_file`
- * are one operation.
+ * recognise), or assigns `GIT_DIR` or `GIT_CONFIG*`, is sent to the person.
+ * Paths are compared by segment, case-insensitively, never by substring.
+ * Tool names are compared without case or separators, so a loader's
+ * `writeFile` and an engine's `write_file` are one operation.
  *
- * The effective hooks folder is what git itself reports for the worktree
+ * The hooks folder is what git itself reports for the worktree
  * (`git config --get core.hooksPath`, which reads configuration and runs no
  * hook, monitor or other program the repository names). When git cannot be
- * asked, every directory a raw `hooksPath` line names is protected instead,
- * and every `git config` shell command asks. It is resolved for an absolute
- * target only; a relative one is protected by name.
+ * asked, every directory a raw `hooksPath` line names is checked instead,
+ * and every `git config` shell command asks.
  *
- * Not covered here: a write through a link whose name is not protected, a
- * path a shell command builds at run time, and an engine whose writes do not
- * reach Station's pre-tool evaluator (Codex's own file changes and commands).
- * A confined session's sandbox keeps `.git/hooks` and `.git/config` read-only
- * regardless of any mark (src-server/security/confinement/seatbelt.ts,
- * bubblewrap.ts, src-server/providers/adapters/codex-confinement.ts).
+ * Known gaps, each shown to run a planted hook (#4860):
+ * - a `core.hooksPath` that names an absolute directory outside the
+ *   repository, locally or globally;
+ * - a bare repository's hooks (a receive hook runs on push);
+ * - a repository nested inside another repository's hooks folder;
+ * - a hooks folder reached through a symlink (paths compare lexically);
+ * - a writable `[include]` file that retargets `core.hooksPath` (only the
+ *   value at check time is known; git's lookup does not cover the included
+ *   file, and the fallback does not read includes);
+ * - git invoked inside a quoted `sh -c "…"` payload or through a shell alias.
+ *
+ * Also not covered: a write through any other link whose name is not
+ * checked, a path a shell command builds at run time, a relative path's
+ * effective hooks folder (only its name is checked), and an engine whose
+ * writes do not reach Station's pre-tool evaluator (Codex's own file changes
+ * and commands). A confined session's sandbox keeps `.git/hooks` and
+ * `.git/config` read-only regardless of any mark
+ * (src-server/security/confinement/seatbelt.ts, bubblewrap.ts,
+ * src-server/providers/adapters/codex-confinement.ts).
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';

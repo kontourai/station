@@ -125,9 +125,11 @@ interface StagedPreToolPolicyDeps {
   /**
    * #4828: whether this conversation has read content written by others
    * (an untrusted integration's result or an engine-native web read). After
-   * that, writes to agent-instruction files and repository hooks or
-   * configuration are refused, and a shell command naming one asks the
-   * person (`untrusted-persistence-protection.ts`). Absent: no protection.
+   * that, writes to known agent-instruction and git-hook or git
+   * configuration locations are denied by path, and a shell command naming
+   * one asks the person (`untrusted-persistence-protection.ts`). This is a
+   * best-effort early check; it does not contain git hook execution
+   * (#4860). Absent: no check.
    */
   untrustedContentRead?(invocation: InvocationContext): Promise<boolean>;
   logger: {
@@ -507,7 +509,9 @@ export function createStagedPreToolPolicyEvaluator(
       return { behavior: 'ask', required: true };
     };
 
-    // #4828: an injection must not persist itself past this conversation.
+    // #4828: a best-effort early check, by path, against an injection
+    // persisting itself past this conversation. It does not contain git hook
+    // execution (#4860).
     // The operation is the tool's own name: on the Station engine the
     // loader's provenance (an MCP tool's original name), never the display
     // name the loader composed; on an external engine its own leaf name.

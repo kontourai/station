@@ -210,8 +210,9 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         provenance.originalToolName,
       );
     },
-    // #4828: after an untrusted read, instructions and repository hooks
-    // stay as they were for the rest of the conversation.
+    // #4828: after an untrusted read, writes to known instruction-file and
+    // git-hook locations are denied by path, as a best-effort early check.
+    // This does not contain git hook execution (#4860).
     untrustedContentRead: (invocation) => untrustedContent.hasRead(invocation),
     logger: deps.logger,
   });

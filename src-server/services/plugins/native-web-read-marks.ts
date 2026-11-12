@@ -3,7 +3,8 @@
  * content written by others, the same mark an `untrusted` integration's
  * result sets (untrusted-content-policy.ts). After it, the conversation's
  * later tool calls take the untrusted-content permission and its writes to
- * agent instructions and repository hooks are refused
+ * known agent-instruction and git-hook locations are denied by path, as a
+ * best-effort early check that does not contain git hook execution
  * (untrusted-persistence-protection.ts).
  *
  * Each engine is marked where Station sees its web reads complete:
