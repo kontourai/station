@@ -129,7 +129,7 @@ function QuoteSourceInspection({
               });
             }}
           >
-            Open source conversation
+            Open source chat
           </Button>
         )
       }

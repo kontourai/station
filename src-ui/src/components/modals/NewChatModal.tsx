@@ -1611,13 +1611,13 @@ export function NewChatModal({
             <SkeletonList
               count={1}
               label={
-                enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
+                enableInFlight ? 'Preparing the engine' : 'Opening your chat'
               }
             />
           ) : preparedStillStarting ? (
             <Empty
               variant="compact"
-              label="Your AI app is still starting"
+              label="The engine is still starting"
               description={startingNotice}
               action={
                 <Button onClick={() => beginSetup('/connections/engines')}>
@@ -1640,11 +1640,11 @@ export function NewChatModal({
           ) : (
             <Empty
               variant="compact"
-              label="Connect an AI account"
-              description="Station needs access to an AI account before it can help."
+              label="Connect an engine"
+              description="Station needs an engine or model connection before it can help."
               action={
                 <Button onClick={() => beginSetup('/connections/engines')}>
-                  Connect an AI app
+                  Connect an engine
                 </Button>
               }
             />

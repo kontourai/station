@@ -283,7 +283,7 @@ describe('ChatSettingsPanel accessibility', () => {
     );
     expect(
       screen.getByText(
-        'Synced to your account. Some options apply to this device only.',
+        'Synced to your account when signed in. Some options apply to this device only.',
       ),
     ).toBeTruthy();
     const group = screen

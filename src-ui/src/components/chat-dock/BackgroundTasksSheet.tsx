@@ -167,7 +167,7 @@ export function BackgroundTasksSheet({
         )}
       </div>
       <footer className="background-tasks-sheet__footer">
-        Recent tasks only. Older and remote tasks are in Activity.
+        Recent tasks only. Remote tasks are in Activity.
       </footer>
     </ResponsiveDialogSurface>
   );

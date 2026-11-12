@@ -138,9 +138,7 @@ describe('BackgroundTasksSheet', () => {
     renderSheet({ running: [], finished: [] });
     expect(screen.getByText('Nothing to show')).not.toBeNull();
     expect(
-      screen.getByText(
-        'Recent tasks only. Older and remote tasks are in Activity.',
-      ),
+      screen.getByText('Recent tasks only. Remote tasks are in Activity.'),
     ).not.toBeNull();
   });
 
@@ -150,9 +148,7 @@ describe('BackgroundTasksSheet', () => {
       finished: [],
     });
     expect(screen.getByText('Running (2)')).not.toBeNull();
-    expect(
-      screen.getByText(/Older and remote tasks are in Activity\./),
-    ).not.toBeNull();
+    expect(screen.getByText(/Remote tasks are in Activity\./)).not.toBeNull();
     expect(
       screen.queryByText('Remote delegations appear on the Sessions page.'),
     ).toBeNull();

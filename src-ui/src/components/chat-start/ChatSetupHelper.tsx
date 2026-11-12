@@ -112,13 +112,11 @@ export function ChatSetupHelper({
       })}
       {choosingStationEngine && (
         <Suspense
-          fallback={
-            <SkeletonBlock count={1} label="Opening assistant choices" />
-          }
+          fallback={<SkeletonBlock count={1} label="Opening engine choices" />}
         >
           <EnginePicker
-            title="Choose what powers the Station assistant"
-            description="Choose an AI connection for the Station assistant."
+            title="Choose what powers the Station agent"
+            description="Choose an engine or model connection for the Station agent."
             onDismiss={() => setChoosingStationEngine(false)}
             onChosen={() => {
               setChoosingStationEngine(false);

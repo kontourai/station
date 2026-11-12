@@ -216,7 +216,7 @@ test('selection produces removable context and a sent quote keeps its source lin
   const chat = page.getByRole('region', { name: 'Chat', exact: true });
   await expect(chat).toHaveCount(0);
   await page
-    .getByRole('button', { name: 'Open source conversation', exact: true })
+    .getByRole('button', { name: 'Open source chat', exact: true })
     .click();
   // Shown, not only named: Chat is on screen and an ordinary click reaches it.
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -240,7 +240,7 @@ test('a Chat already full screen stays full screen when a quote opens its source
   await selectAndQuote(page, false);
   await page.getByRole('button', { name: 'Inspect source' }).click();
   await page
-    .getByRole('button', { name: 'Open source conversation', exact: true })
+    .getByRole('button', { name: 'Open source chat', exact: true })
     .click();
   await expect(page).toHaveURL(/chat=session-a/);
   await expect(page).toHaveURL(/maximize=true/);
@@ -275,7 +275,7 @@ for (const [device, viewport] of [
     const chat = page.getByRole('region', { name: 'Chat', exact: true });
     await expect(chat).toHaveCount(0);
     await page
-      .getByRole('button', { name: 'Open source conversation', exact: true })
+      .getByRole('button', { name: 'Open source chat', exact: true })
       .click();
     await expect(closeDocument).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);

@@ -99,7 +99,7 @@ export function IndependentReviewRunModal({
       (!priorReceiptId.trim() || deltaFindingIds.length === 0)
     ) {
       setValidationError(
-        'Delta reviews require a prior receipt and finding IDs.',
+        'Delta reviews need a prior review ID and finding IDs.',
       );
       return;
     }
@@ -261,7 +261,10 @@ export function IndependentReviewRunModal({
         </p>
         {validationError ? <p role="alert">{validationError}</p> : null}
         {mutation.isError ? (
-          <p role="alert">The review couldn't finish. Try again.</p>
+          <p role="alert">
+            The review couldn't finish. Check Review for a result before running
+            it again.
+          </p>
         ) : null}
       </div>
       <ResponsiveSurfaceActions className="modal-footer">

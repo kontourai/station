@@ -104,7 +104,8 @@ export function ChatSettingsPanel({
         Chat settings
       </h3>
       <p className="chat-settings-modal__caption">
-        Synced to your account. Some options apply to this device only.
+        Synced to your account when signed in. Some options apply to this device
+        only.
       </p>
       {sessionId && <SessionGoalControl sessionId={sessionId} />}
 

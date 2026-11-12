@@ -162,7 +162,7 @@ async function inspectAndOpen() {
     await screen.findByRole('button', { name: 'the reviewed answer' }),
   );
   const open = await screen.findByRole('button', {
-    name: 'Open source conversation',
+    name: 'Open source chat',
   });
   await waitFor(() => expect(model).not.toBeNull());
   act(() => fireEvent.click(open));
@@ -372,7 +372,7 @@ describe('Open source conversation from a knowledge document', () => {
       answer = 'continue';
       act(() =>
         fireEvent.click(
-          screen.getByRole('button', { name: 'Open source conversation' }),
+          screen.getByRole('button', { name: 'Open source chat' }),
         ),
       );
       await waitFor(() => expect(model?.regions.bottom.occupant).toBe('chat'));
@@ -419,7 +419,7 @@ describe('Open source conversation from a knowledge document', () => {
     );
     expect(await screen.findByText(/Select the original Station/)).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Open source conversation' }),
+      screen.queryByRole('button', { name: 'Open source chat' }),
     ).toBeNull();
     cleanup();
 
@@ -428,7 +428,7 @@ describe('Open source conversation from a knowledge document', () => {
       await screen.findByRole('button', { name: 'the reviewed answer' }),
     );
     const open = await screen.findByRole('button', {
-      name: 'Open source conversation',
+      name: 'Open source chat',
     });
     scope.current = false;
     act(() => fireEvent.click(open));
