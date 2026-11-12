@@ -11,6 +11,7 @@ import {
 import { openConnectionsModal } from '../lib/connectionModalEvents';
 import { retainInitialStartup } from '../lib/startup-presentation';
 import { readRecentStations } from '../lib/stationSwitcher';
+import { Button } from './Button';
 import './StationConnectingScreen.css';
 
 /**
@@ -159,31 +160,18 @@ export function StationConnectingScreen({
         {slow && (
           <div className="station-connecting__actions">
             {onRetry && (
-              <button
-                type="button"
-                className="button button--primary"
-                onClick={retry}
-              >
+              <Button variant="primary" onClick={retry}>
                 Try again
-              </button>
+              </Button>
             )}
             {previous && (
-              <button
-                type="button"
-                className="button button--secondary"
-                disabled={leaving}
-                onClick={goBack}
-              >
+              <Button disabled={leaving} onClick={goBack}>
                 {leaving ? 'Switching…' : `Back to ${previousName}`}
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() => openConnectionsModal({ mode: 'list' })}
-            >
+            <Button onClick={() => openConnectionsModal({ mode: 'list' })}>
               Manage Stations
-            </button>
+            </Button>
           </div>
         )}
         {backError && (
