@@ -1,16 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
+import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
+import type {
+  ConnectionConfig,
+  EngineRouteObservation,
+} from '@kontourai/station-contracts/tool';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   isManagedEngineRefusal,
   managedEngineRefusalBody,
 } from '../../security/managed-engine-limits.js';
 import {
+  grantedPairingScope,
+  type PairingScopeContextStore,
+} from '../../security/pairing-route-scopes.js';
+import {
   ConnectionAlreadyExistsError,
   type ConnectionService,
   ModelSelectionRequiredError,
 } from '../../services/connections/connection-service.js';
+import { routeObservationForViewer } from '../../services/connections/engine-route-observation.js';
 import { boundFleetContributionManifest } from '../../services/inference/fleet-inference-service.js';
 import {
   connectionSchema,
@@ -98,7 +109,11 @@ export function createConnectionRoutes(
     try {
       const { connections, failures } =
         await connectionService.listRuntimeConnectionInventory();
-      return c.json({ success: true, data: connections, failures });
+      return c.json({
+        success: true,
+        data: withViewerRoutes(c, connections),
+        failures,
+      });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }
@@ -107,7 +122,7 @@ export function createConnectionRoutes(
   app.get('/agents/catalog', async (c) => {
     try {
       const data = await connectionService.listRuntimeConnectionCatalog();
-      return c.json({ success: true, data });
+      return c.json({ success: true, data: withViewerRoutes(c, data) });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }
@@ -291,4 +306,30 @@ export function createConnectionRoutes(
   });
 
   return app;
+}
+
+/**
+ * #4710: these lists are readable at `orchestration:read`, but an endpoint
+ * from Station's environment or the managed policy is host configuration.
+ * Only the operator in person or a viewer granted `access:manage` reads its
+ * origin.
+ */
+function withViewerRoutes<
+  T extends { routeObservation?: EngineRouteObservation },
+>(c: Context, connections: readonly T[]): T[] {
+  const scope = grantedPairingScope(c as unknown as PairingScopeContextStore);
+  const mayRead =
+    isOperatorInPersonNotAgent(c.req.raw) ||
+    (scope !== undefined && pairingScopeIncludes(scope, 'access:manage'));
+  return connections.map((connection) =>
+    connection.routeObservation
+      ? {
+          ...connection,
+          routeObservation: routeObservationForViewer(
+            connection.routeObservation,
+            mayRead,
+          ),
+        }
+      : connection,
+  );
 }

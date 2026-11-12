@@ -2717,6 +2717,27 @@ describe('AgentConnectionView', () => {
     ).toBe('true');
   });
 
+  test('a withheld endpoint reads as an override from its source, not as unknown', async () => {
+    connectionQueryData = readyEngine({
+      id: 'claude',
+      type: 'claude',
+      name: 'Claude Code',
+      // What the server sends a viewer without access:manage.
+      routeObservation: { kind: 'ambient', source: 'policy' },
+    });
+    await render(
+      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+    );
+    const route = within(screen.getByLabelText('Engine facts')).getByText(
+      'Route',
+    ).nextElementSibling?.textContent;
+    expect(route).toContain(
+      "Another endpoint, set by your organization's policy",
+    );
+    expect(route).toContain('Your access does not include where it points.');
+    expect(route).not.toContain('Route unknown');
+  });
+
   test('Overview never reads an unobserved route as the account', async () => {
     connectionQueryData = readyEngine({
       id: 'codex',

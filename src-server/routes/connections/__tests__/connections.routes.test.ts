@@ -1,5 +1,7 @@
+import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 import { createConnectionServiceForTest } from '../../../services/connections/__tests__/connection-service-test-helper.js';
 import { ModelSelectionRequiredError } from '../../../services/connections/connection-service.js';
 import { createConnectionRoutes } from '../connections.js';
@@ -119,6 +121,80 @@ describe('Connection Routes', () => {
     const body = await json(await app.request('/'));
     expect(body.success).toBe(true);
     expect(body.data).toHaveLength(2);
+  });
+
+  test('an endpoint Station or the policy set is withheld below access:manage', async () => {
+    const service = createMockConnectionService();
+    const engine = (routeObservation: object) => ({
+      id: 'claude',
+      kind: 'agent' as const,
+      type: 'claude',
+      name: 'Claude Code',
+      enabled: true,
+      config: {},
+      status: 'ready' as const,
+      prerequisites: [],
+      lastCheckedAt: null,
+      routeObservation,
+    });
+    const listed = [
+      engine({
+        kind: 'ambient',
+        origin: 'https://gw.example',
+        source: 'station',
+      }),
+      engine({
+        kind: 'ambient',
+        origin: 'https://pin.example',
+        source: 'policy',
+      }),
+      engine({
+        kind: 'ambient',
+        origin: 'https://own.example',
+        source: 'connection',
+      }),
+      engine({
+        kind: 'proxy',
+        origin: 'http://127.0.0.1:4000',
+        label: 'Local',
+      }),
+    ];
+    service.listRuntimeConnectionInventory.mockResolvedValue({
+      connections: listed,
+      failures: [],
+    });
+    service.listRuntimeConnectionCatalog.mockResolvedValue(listed);
+    const presenting = (scope: string) => {
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setGrantedPairingScope(c, scope);
+        await next();
+      });
+      outer.route('/', createConnectionRoutes(service as any));
+      return outer;
+    };
+    const origins = async (app: Hono, path: string) =>
+      (await json(await app.request(path))).data.map(
+        (row: { routeObservation: { origin?: string; source?: string } }) => [
+          row.routeObservation.source,
+          row.routeObservation.origin,
+        ],
+      );
+
+    for (const path of ['/agents', '/agents/catalog']) {
+      expect(await origins(presenting('orchestration:read'), path)).toEqual([
+        ['station', undefined],
+        ['policy', undefined],
+        ['connection', 'https://own.example'],
+        [undefined, 'http://127.0.0.1:4000'],
+      ]);
+      expect(await origins(presenting('access:manage'), path)).toEqual([
+        ['station', 'https://gw.example'],
+        ['policy', 'https://pin.example'],
+        ['connection', 'https://own.example'],
+        [undefined, 'http://127.0.0.1:4000'],
+      ]);
+    }
   });
 
   test('GET /models and /agents return filtered lists', async () => {

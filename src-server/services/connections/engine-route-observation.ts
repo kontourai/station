@@ -121,6 +121,26 @@ export function observeEngineRoute(
   };
 }
 
+/**
+ * The observation a viewer may read. An endpoint set by Station's own
+ * environment or the managed policy is host configuration: a viewer who may
+ * not manage access learns that an override exists and who set it, not where
+ * it points. A connection's saved endpoint is that connection's own setting.
+ */
+export function routeObservationForViewer(
+  observation: EngineRouteObservation,
+  mayReadHostEndpoints: boolean,
+): EngineRouteObservation {
+  if (
+    mayReadHostEndpoints ||
+    observation.kind !== 'ambient' ||
+    observation.source === 'connection'
+  )
+    return observation;
+  const { origin: _withheld, ...rest } = observation;
+  return rest;
+}
+
 /** A variable's value; Windows names are case-insensitive. */
 function envValue(
   env: Record<string, string | undefined> | undefined,

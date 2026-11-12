@@ -37,11 +37,15 @@ export function engineRouteFact(
           : (observation.origin ?? 'Saved proxy'),
       };
     case 'ambient':
+      // Without an origin, the server withheld it from this viewer.
       return observation.origin
         ? {
             value: `${observation.origin}, ${AMBIENT_SOURCE[observation.source ?? 'station']}`,
           }
-        : { value: 'Route unknown' };
+        : {
+            value: `Another endpoint, ${AMBIENT_SOURCE[observation.source ?? 'station']}`,
+            note: 'Your access does not include where it points.',
+          };
     case 'account':
       return {
         value: 'Route unknown',
@@ -69,11 +73,12 @@ const AMBIENT_SOURCE = {
 export function ambientRouteNote(
   observation: EngineRouteObservation | undefined,
 ): string | undefined {
-  if (observation?.kind !== 'ambient' || !observation.origin) return undefined;
+  if (observation?.kind !== 'ambient') return undefined;
   if (observation.source === 'connection') return undefined;
+  const where = observation.origin ?? 'another endpoint';
   return observation.source === 'policy'
-    ? `Your organization's policy sends this engine to ${observation.origin}.`
-    : `Station's environment sends this engine to ${observation.origin}.`;
+    ? `Your organization's policy sends this engine to ${where}.`
+    : `Station's environment sends this engine to ${where}.`;
 }
 
 /** Continuity as three short facts, one per dimension. */
