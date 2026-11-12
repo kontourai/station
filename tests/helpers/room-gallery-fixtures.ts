@@ -275,17 +275,25 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
       },
     ];
   if (scene === 'deleted')
+    // The deleted message and the reply to it end the history, so a phone
+    // that follows the newest message shows both.
     return [
       first,
-      { ...second, text: '', deletedAt: at(1, 14, 4) },
-      {
-        actor: PRIYA,
-        at: at(1, 14, 5),
-        text: 'Which FAQ do you mean, the billing one?',
-        replyTo: 2,
-      },
+      second,
       third,
       fourth,
+      {
+        actor: JONAS,
+        at: at(1, 14, 14),
+        text: '',
+        deletedAt: at(1, 14, 15),
+      },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 16),
+        text: 'Which FAQ do you mean, the billing one?',
+        replyTo: 5,
+      },
     ];
   if (scene === 'attachment')
     return [
