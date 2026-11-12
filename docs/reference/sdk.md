@@ -778,7 +778,9 @@ transport. They never select an ambient operator connection.
 
 Discovery reads an existing shared room, authenticated actor, capabilities,
 note, and presence. It does not create a room. `room.unprovisioned` identifies
-only the specific room-not-found response; `room.initialize.mutate()` explicitly
+only the specific room-not-found response, and `room.projectMissing` a Project
+this Station does not have (`project_room_project_not_found`, also read by
+`useProjectRoomChannels`, which keeps `unsupported` for a bare 404); `room.initialize.mutate()` explicitly
 opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
