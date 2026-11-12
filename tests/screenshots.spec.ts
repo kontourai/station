@@ -3463,7 +3463,10 @@ function roomConversationScreens(): Screen[] {
             created = true;
             const project = (await response.json()).data;
             if (room === 'project') {
-              if (scene === 'keyboard' && viewport.width === MOBILE.width)
+              if (
+                (scene === 'keyboard' || scene === 'channels') &&
+                viewport.width === MOBILE.width
+              )
                 await installKeyboardEmulation(page);
               fixture = await installProjectRoomFixture(page, {
                 slug,
@@ -3738,6 +3741,33 @@ function roomConversationScreens(): Screen[] {
                   document.documentElement.setAttribute('data-theme', selected),
                 theme,
               );
+              if (viewport.width === MOBILE.width) {
+                // #4810's keyboard keep-above, inside a non-default channel:
+                // the focused composer and Send stay above a 300px keyboard.
+                const field = reloaded.getByRole('textbox', {
+                  name: /^Message/,
+                });
+                await field.click();
+                await emulateKeyboard(page, 300);
+                const send = reloaded.getByRole('button', { name: /^Send/ });
+                await expect
+                  .poll(
+                    async () => {
+                      const box = await send.boundingBox();
+                      const visible = await page.evaluate(
+                        () =>
+                          window.visualViewport!.offsetTop +
+                          window.visualViewport!.height,
+                      );
+                      return box ? box.y + box.height - visible : Infinity;
+                    },
+                    { message: 'Send ends below the visible viewport (px)' },
+                  )
+                  .toBeLessThanOrEqual(0);
+                await expect(field).toBeFocused();
+                await expect(field).toHaveValue(draftText);
+                await emulateKeyboard(page, 0);
+              }
               const reopened = await openChannels();
               await expect(
                 reopened.getByRole('button', { name: 'design', exact: true }),

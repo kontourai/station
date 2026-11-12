@@ -1668,7 +1668,7 @@ export function isProjectMemberDraftLease(method: string, path: string) {
  * default room's, each channel's same per-room leaves (#4792), and channel
  * create and update. The service checks each one's own member action.
  */
-export function isProjectMemberRoomAction(method: string, path: string) {
+function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
       (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
