@@ -93,6 +93,8 @@ import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  type TurnDispatchOrigin,
+  turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   parseSessionWorkItemAssociation,
@@ -9119,6 +9121,73 @@ export class EventStore {
       }
     }
     return prompts;
+  }
+
+  /**
+   * #4827: what a person typed into `threadIds` (one conversation's Sessions),
+   * for the approval guardian. A prompt counts only when its own
+   * `turn.started` (never a steer) records the `interactive` dispatch origin,
+   * which Station stamps at admission and an adapter cannot supply (#4512).
+   * The prompt is Station's own dispatched input
+   * (`displayInput ?? input`), never an engine's report. Tool results,
+   * replies, and turns sent by an agent, an Automation, or a Task are other
+   * methods or other origins, so they are never selected.
+   *
+   * Returns at most `limit` prompts, newest first, each as stored. One
+   * indexed lookup per thread (`thread_id, method, sequence`).
+   */
+  interactiveTurnPrompts(
+    threadIds: readonly string[],
+    limit: number,
+  ): Array<{ prompt: string; globalSequence: number }> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('An interactive prompt limit must be between 1 and 1000');
+    }
+    const statement = this.db.prepare(
+      `SELECT ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} AS prompt,
+              global_sequence
+       FROM orchestration_events
+       WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+         AND json_extract(payload, '$.dispatchOrigin') = 'interactive'
+         AND ${PROMPTED_TURN_SQL}
+       ORDER BY sequence DESC
+       LIMIT ?`,
+    );
+    const prompts: Array<{ prompt: string; globalSequence: number }> = [];
+    for (const threadId of new Set(threadIds)) {
+      const rows = statement.all(threadId, limit) as Array<{
+        prompt: unknown;
+        global_sequence: number | null;
+      }>;
+      for (const row of rows) {
+        if (typeof row.prompt !== 'string') continue;
+        prompts.push({
+          prompt: row.prompt,
+          globalSequence: Number(row.global_sequence ?? 0),
+        });
+      }
+    }
+    return prompts
+      .sort((a, b) => b.globalSequence - a.globalSequence)
+      .slice(0, limit);
+  }
+
+  /**
+   * #4827: the dispatch origin of `threadId`'s newest own `turn.started`
+   * (never a steer), read through {@link turnDispatchOrigin} so an absent or
+   * unrecognised value is `unknown`. `undefined` when the thread has no turn.
+   */
+  latestTurnDispatchOrigin(threadId: string): TurnDispatchOrigin | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT json_extract(payload, '$.dispatchOrigin') AS origin
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+         ORDER BY sequence DESC
+         LIMIT 1`,
+      )
+      .get(threadId) as { origin: unknown } | undefined;
+    return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
   }
 
   /**
