@@ -128,9 +128,12 @@ copies. That rule applies only to the reviewed default Node export targets;
 an added Node-specific condition or changed target keeps every distribution
 until it is reviewed. Flow Agents ships its compiled `build/`, hooks, skills, kits,
 schemas and context; since 9.14 it no longer publishes per-harness `dist/`
-bundles, a TypeScript `src/` or its own `evals/` harness, so staging has no
-Flow Agents prune rule and a portability test fails if they return. Its
-esbuild edge (used only to rebuild those bundles) is still not followed.
+bundles, a TypeScript `src/` or its own `evals/` harness, and a portability
+test fails if they return. It ships those bundles instead as one ~7 MB pack,
+`bundles/flow-agents-bundles.pack`, which staging omits. Only Flow Agents' own
+CLI expands it (`init`, `kit activate`, `workflow doctor` and the Codex home
+installer), and the packaged server runs none of them. Its esbuild edge (used
+only to rebuild those bundles) is still not followed.
 npm alias dependencies, such as Flow Agents' `@kontourai/surface-knowledge`
 (`npm:@kontourai/surface@…`), are staged under the alias name and verified
 against the real package the declaring manifest names. The 512 MiB runtime

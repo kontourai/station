@@ -148,6 +148,11 @@
   overflow-wrap: anywhere;
 }
 
+/* #4695: the agent-reported plan, one fixed-height line under the meta. */
+.activity-row__plan {
+  margin-top: var(--k-space-1);
+}
+
 .activity-row__actions {
   display: flex;
   flex-wrap: nowrap;

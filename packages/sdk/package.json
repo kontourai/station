@@ -128,7 +128,7 @@
     "@kontourai/station-contracts": "^0.13.0",
     "@kontourai/station-shared": "^0.13.0",
     "@kontourai/surface": "^6.3.0",
-    "@kontourai/thread": "0.6.0",
+    "@kontourai/thread": "0.7.0",
     "@kontourai/ui": "^1.19.0",
     "zod": "^4.6.6"
   },
