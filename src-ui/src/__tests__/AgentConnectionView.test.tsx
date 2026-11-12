@@ -2297,34 +2297,43 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('a rolled-back outcome is announced as failure rather than success', async () => {
-    connectionQueryData = {
-      id: 'claude',
-      kind: 'agent',
-      type: 'claude',
-      name: 'Claude Code',
-      enabled: true,
-      status: 'ready',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: { useAppHome: true },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
-    credentialRecoveryQueryData = {
-      profiles: [],
-      group: { profileRefs: [], enrolledProfileRefs: [] },
-      policy: { automatic: false },
-      application: { capability: 'restart_resume', outcome: 'rolled_back' },
-    };
+  test.each([
+    ['rolled_back', 'Account not changed. The switch was undone.'],
+    [
+      'failed',
+      "Station couldn't confirm the switch. Check which account is active before trying again.",
+    ],
+    ['rejected', "Account not changed. The switch didn't finish."],
+    ['unsupported', "Account not changed. The switch didn't finish."],
+  ])(
+    'a %s outcome is announced as failure with what is known',
+    async (outcome, message) => {
+      connectionQueryData = {
+        id: 'claude',
+        kind: 'agent',
+        type: 'claude',
+        name: 'Claude Code',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { useAppHome: true },
+        setup: { state: 'ready', detected: true, configured: false },
+      };
+      credentialRecoveryQueryData = {
+        profiles: [],
+        group: { profileRefs: [], enrolledProfileRefs: [] },
+        policy: { automatic: false },
+        application: { capability: 'restart_resume', outcome },
+      };
 
-    await render(
-      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
-    );
+      await render(
+        <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+      );
 
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Account not changed. The switch was undone.',
-    );
-  });
+      expect(screen.getByRole('alert').textContent).toContain(message);
+    },
+  );
 
   test('deduplicates safe feedback from simultaneous credential-profile mutation failures', async () => {
     connectionQueryData = {

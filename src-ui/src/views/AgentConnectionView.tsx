@@ -1609,10 +1609,14 @@ function CredentialRecoveryFeedback({
           className={`credential-recovery__outcome${isFailure ? ' credential-recovery__outcome--failure' : ''}`}
           role={isFailure ? 'alert' : 'status'}
         >
+          {/* 'failed' also covers indeterminate and superseded applications
+              (connection-service), so it cannot promise the account held. */}
           {isFailure
             ? outcome === 'rolled_back'
               ? 'Account not changed. The switch was undone.'
-              : "Account not changed. The switch didn't finish."
+              : outcome === 'failed'
+                ? "Station couldn't confirm the switch. Check which account is active before trying again."
+                : "Account not changed. The switch didn't finish."
             : outcome === 'adopted'
               ? 'Switched accounts.'
               : 'Switching accounts. Station is checking the new account.'}

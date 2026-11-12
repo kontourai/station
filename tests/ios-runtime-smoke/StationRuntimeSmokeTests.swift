@@ -68,7 +68,8 @@ final class StationRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(manualTitle.frame.width, manualTitleFrame.width, accuracy: 1)
 
         // No code or request is submitted. Closing returns to the same welcome;
-        // address-based setup is a separate deliberate route through More ways to connect.
+        // address-based setup is a separate route: More ways to connect, then
+        // Manage Stations.
         let closeManager = app.buttons["Close Station manager"]
         XCTAssertTrue(closeManager.isHittable)
         XCTAssertTrue(

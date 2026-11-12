@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AgentsView } from '../views/AgentsView';
+import { buildAgentsViewEmptyContent } from '../views/agent-editor/agentsViewHelpers';
 
 const state = vi.hoisted(() => ({
   listItems: [] as Array<{ id: string; name: string }>,
@@ -38,7 +39,13 @@ vi.mock('../views/agent-editor/useAgentsViewModel', () => ({
     listItems: state.listItems,
     agentsCollectionEmpty: state.listItems.length === 0,
     editorId: null,
-    emptyContent: null,
+    // The exact card the real view model builds when no authored agent
+    // exists (useAgentsViewModel → buildAgentsViewEmptyContent), not a stub:
+    // the view must withhold it while the read has failed.
+    emptyContent: buildAgentsViewEmptyContent({
+      agentsCount: 0,
+      onCreateBlank: () => {},
+    }),
     search: '',
     setSearch: vi.fn(),
     handleNew: vi.fn(),
@@ -66,6 +73,7 @@ describe('AgentsView after a failed agents read', () => {
     expect(screen.getByText('Couldn’t load agents')).toBeTruthy();
     expect(screen.queryByText('Couldn’t refresh agents')).toBeNull();
     expect(screen.queryByText('No agents yet')).toBeNull();
+    expect(screen.queryByText('No agents of your own yet')).toBeNull();
     const retry = screen.getAllByRole('button', { name: 'Retry' });
     expect(retry).toHaveLength(1);
     fireEvent.click(retry[0]);
@@ -86,5 +94,21 @@ describe('AgentsView after a failed agents read', () => {
     expect(retry).toHaveLength(1);
     fireEvent.click(retry[0]);
     expect(state.query.refetch).toHaveBeenCalledOnce();
+  });
+
+  test('a successful empty read still offers the create card', () => {
+    state.query = { ...state.query, isError: false, error: null };
+    try {
+      render(
+        <AgentsView agents={[]} availableModels={[]} onNavigate={vi.fn()} />,
+      );
+      expect(screen.getByText('No agents of your own yet')).toBeTruthy();
+    } finally {
+      state.query = {
+        ...state.query,
+        isError: true,
+        error: new Error('agents read failed'),
+      };
+    }
   });
 });

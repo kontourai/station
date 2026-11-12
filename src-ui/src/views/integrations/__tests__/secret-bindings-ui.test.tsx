@@ -198,7 +198,7 @@ describe('secret binding operator UI', () => {
         requireSave={false}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Bind' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Link' })).toBeTruthy();
     rerender(
       <SecretBindingPicker
         integrationId="github"
@@ -208,7 +208,7 @@ describe('secret binding operator UI', () => {
     );
     expect(
       screen.getByText(
-        'Save or discard unsaved integration edits before changing a secret binding.',
+        'Save or discard unsaved integration edits before changing a linked secret.',
       ),
     ).toBeTruthy();
   });
@@ -225,10 +225,10 @@ describe('secret binding operator UI', () => {
         requireSave={false}
       />,
     );
-    expect(screen.getByText('Configured binding: GitHub token')).toBeTruthy();
+    expect(screen.getByText('Linked secret: GitHub token')).toBeTruthy();
     // The fixture grants GITHUB_TOKEN, not OTHER_TOKEN. Configuration remains
     // authoritative, so this must be an unbind rather than a guessed bind.
-    expect(screen.getByRole('button', { name: 'Unbind' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Unlink' })).toBeTruthy();
   });
 
   test('surfaces safe-partial state and keeps an explicit retry action', async () => {
@@ -250,17 +250,17 @@ describe('secret binding operator UI', () => {
         requireSave={false}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Binding'), {
+    fireEvent.change(screen.getByLabelText('Secret'), {
       target: { value: 'github-token' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Bind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() =>
       expect(screen.getByText('The config update needs a retry.')).toBeTruthy(),
     );
     expect(mocks.refreshBindingState).toHaveBeenCalledOnce();
     expect(mocks.bindingRefetch).toHaveBeenCalledOnce();
     expect(mocks.integrationRefetch).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry bind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry link' }));
     await waitFor(() => expect(mocks.bind).toHaveBeenCalledTimes(2));
     expect(mocks.bind).toHaveBeenLastCalledWith({
       id: 'github-token',
@@ -284,10 +284,10 @@ describe('secret binding operator UI', () => {
         requireSave={false}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Binding'), {
+    fireEvent.change(screen.getByLabelText('Secret'), {
       target: { value: 'github-token' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Bind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() =>
       expect(
         screen.getByText(
@@ -295,7 +295,36 @@ describe('secret binding operator UI', () => {
         ),
       ).toBeTruthy(),
     );
-    expect(screen.getByRole('button', { name: 'Retry bind' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry link' })).toBeTruthy();
+  });
+
+  test('says what happened on an unlink safe partial the server did not explain', async () => {
+    mocks.unbind.mockResolvedValue({
+      outcome: 'safe-partial',
+      binding: { id: 'github-token', name: 'GitHub token', revision: 5 },
+      integrationId: 'github',
+      envName: 'OTHER_TOKEN',
+    });
+    mocks.integrationBindingData = {
+      integrationId: 'github',
+      secretEnvBindingIds: { OTHER_TOKEN: 'github-token' },
+    };
+    render(
+      <SecretBindingPicker
+        integrationId="github"
+        envNames={['OTHER_TOKEN']}
+        requireSave={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "The secret was unlinked, but the tool server wasn't updated. Retry to finish.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByRole('button', { name: 'Retry unlink' })).toBeTruthy();
   });
 
   test('refreshes binding and authoritative integration projections after complete bind and unbind', async () => {
@@ -312,10 +341,10 @@ describe('secret binding operator UI', () => {
         requireSave={false}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Binding'), {
+    fireEvent.change(screen.getByLabelText('Secret'), {
       target: { value: 'github-token' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Bind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() => expect(mocks.bindingRefetch).toHaveBeenCalledOnce());
     expect(mocks.refreshBindingState).toHaveBeenCalledOnce();
     expect(mocks.integrationRefetch).toHaveBeenCalledOnce();
@@ -337,7 +366,7 @@ describe('secret binding operator UI', () => {
         requireSave={false}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Unbind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
     await waitFor(() => expect(mocks.unbind).toHaveBeenCalledOnce());
     expect(mocks.refreshBindingState).toHaveBeenCalledTimes(2);
     expect(mocks.bindingRefetch).toHaveBeenCalledTimes(2);
@@ -402,9 +431,9 @@ describe('secret binding operator UI', () => {
       />,
     );
     expect(
-      screen.getByText('Configured binding: Revoked GitHub token'),
+      screen.getByText('Linked secret: Revoked GitHub token'),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Unbind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
     await waitFor(() => expect(mocks.unbind).toHaveBeenCalledOnce());
 
     rerender(
@@ -414,10 +443,10 @@ describe('secret binding operator UI', () => {
         requireSave={false}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Binding'), {
+    fireEvent.change(screen.getByLabelText('Secret'), {
       target: { value: 'replacement-token' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Bind' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() => expect(mocks.bind).toHaveBeenCalledOnce());
   });
 
@@ -431,7 +460,7 @@ describe('secret binding operator UI', () => {
       />,
     );
     expect(
-      screen.getByRole('status', { name: 'Loading binding configuration' }),
+      screen.getByRole('status', { name: 'Loading linked secrets' }),
     ).toBeTruthy();
 
     mocks.integrationBindingsLoading = false;
@@ -446,9 +475,7 @@ describe('secret binding operator UI', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'Try again in a moment.',
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Retry binding configuration' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading' }));
     expect(mocks.bindingRefetch).toHaveBeenCalledOnce();
     expect(mocks.integrationRefetch).toHaveBeenCalledOnce();
   });

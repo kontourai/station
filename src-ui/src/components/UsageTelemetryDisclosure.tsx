@@ -776,6 +776,13 @@ export function usageTelemetryDisclosureSummary(
  * would be an action with nothing behind it and "Keep usage telemetry on"
  * would describe a state that is not the case.
  */
+/**
+ * A saved detailed choice the person has not acknowledged yet resolves to
+ * the anonymous tier (`resolveTelemetryTier` → `{ tier: 'lite', reason:
+ * 'disclosure' }`), so anonymous counts are still sent while it waits.
+ */
+export const SAVED_DETAILED_AWAITING_ACKNOWLEDGEMENT = `Until you allow detailed usage, only ${SHARING_LABELS.lite.toLowerCase()} are sent. Turning it off saves ${SHARING_LABELS.off} instead.`;
+
 export function usageTelemetryDecisionLabels(enabled: boolean): {
   keep: string;
   change: string;
@@ -1217,8 +1224,7 @@ function useUsageTelemetryDecision(
           savedChoice === 'full' &&
           operator?.reason === 'disclosure' && (
             <p className="usage-telemetry-disclosure__lede">
-              Your saved choice is detailed usage. Nothing is sent until you
-              allow it. Turning it off saves Don’t share instead.
+              {SAVED_DETAILED_AWAITING_ACKNOWLEDGEMENT}
             </p>
           )}
         {acknowledgeErrorNotice(

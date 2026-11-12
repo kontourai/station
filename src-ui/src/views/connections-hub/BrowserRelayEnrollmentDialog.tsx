@@ -10,11 +10,11 @@ const STATUS: Record<BrowserRelayEnrollmentState, string> = {
   idle: 'Ready to verify this account.',
   starting: 'Verifying this account with the selected Station…',
   'awaiting-approval':
-    'Waiting for the Station operator to approve this Device…',
-  activating: 'Activating the approved Device and account session…',
+    'Waiting for the Station operator to approve this device…',
+  activating: 'Activating the approved device and account session…',
   enrolled: 'This device is approved and signed in to this Station.',
-  failed: 'Enrollment did not complete.',
-  cancelled: 'Enrollment cancelled.',
+  failed: 'Setup didn’t finish.',
+  cancelled: 'Setup cancelled.',
 };
 const INVITATION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 

@@ -124,7 +124,7 @@ function decideTrust(
   if (status === 'mismatch')
     return {
       status,
-      label: 'A different key is stored for this Station',
+      label: 'A different setup is stored for this Station',
       detail:
         "This browser already trusts a different setup for this Station ID, and this form can't replace it.",
       canApprove: false,

@@ -274,7 +274,7 @@ describe('browser Station signing-key approval', () => {
     enterReport(report());
 
     expect(
-      await screen.findByText('A different key is stored for this Station'),
+      await screen.findByText('A different setup is stored for this Station'),
     ).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Approve Station key' }),

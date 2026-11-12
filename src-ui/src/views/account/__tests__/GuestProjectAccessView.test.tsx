@@ -305,6 +305,53 @@ test('a stale revision refuses honestly, refreshes, and never retries the mutati
   expect(stub.posts).toHaveLength(1);
 });
 
+test('losing administration on a refetch names the cause without claiming a refresh', async () => {
+  let lost = false;
+  const stub: Stub = {
+    posts: [],
+    access: () =>
+      lost ? new Response('forbidden', { status: 403 }) : envelope(adminView()),
+    observe: () => observation(['orchestration:read', 'orchestration:operate']),
+    mutate: () => envelope({ changed: true }),
+  };
+  stubFetch(stub);
+  mount();
+
+  expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
+  lost = true;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Refresh people and access' }),
+  );
+  const banner = await screen.findByText(/administration access changed/);
+  expect(banner.textContent).toBe(
+    "Your administration access changed. You can still read the Project, but can't change people or invitations.",
+  );
+  expect(screen.queryByText(/List refreshed/)).toBeNull();
+});
+
+test('a refused sign-in says what to do and never claims the list was refreshed', async () => {
+  const stub: Stub = {
+    posts: [],
+    access: () => envelope(adminView()),
+    observe: () => observation(['orchestration:read', 'orchestration:operate']),
+    mutate: () => new Response('unauthorized', { status: 401 }),
+  };
+  stubFetch(stub);
+  mount();
+
+  expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke access' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Confirm change' }),
+  );
+  const banner = await screen.findByText(/no longer accepts this browser/);
+  expect(banner.textContent).toBe(
+    'Station no longer accepts this browser’s sign-in or approval. Sign in again, then choose Refresh people and access.',
+  );
+  expect(screen.queryByText(/List refreshed/)).toBeNull();
+  expect(stub.posts).toHaveLength(1);
+});
+
 test('a confirmation opened under one scope never submits as a newer cached scope', async () => {
   // The capture seam: a revoke confirmation holds scope A, then a refresh
   // replaces the cached administration with scope B (same local id/slug,

@@ -106,15 +106,15 @@ export function SecretBindingPicker({
       }
       setMessage(
         operation === 'bind'
-          ? `Bound ${result.envName} to ${result.binding.name}.`
-          : `Unbound ${result.envName} from ${result.binding.name}.`,
+          ? `Linked ${result.envName} to ${result.binding.name}.`
+          : `Unlinked ${result.envName} from ${result.binding.name}.`,
       );
       setSelectedBindingId('');
     } catch (error) {
       setMessage(
         error instanceof Error
           ? userFacingErrorMessage(error)
-          : `Could not ${operation} this secret environment.`,
+          : `Couldn’t ${linkVerb(operation)} this secret.`,
       );
       setRetry({
         operation,
@@ -129,12 +129,10 @@ export function SecretBindingPicker({
   return (
     <section
       className="agent-editor__section"
-      aria-label="Bind a secret environment"
+      aria-label="Link a secret to an environment variable"
     >
       <div className="agent-editor__section-header">
-        <h3 className="agent-editor__section-title">
-          Secret environment binding
-        </h3>
+        <h3 className="agent-editor__section-title">Linked secret</h3>
         <p className="agent-editor__section-desc">
           Choose an environment variable and the secret that supplies it. Secret
           values are never shown.
@@ -142,19 +140,18 @@ export function SecretBindingPicker({
       </div>
       {requireSave ? (
         <p role="status">
-          Save or discard unsaved integration edits before changing a secret
-          binding.
+          Save or discard unsaved integration edits before changing a linked
+          secret.
         </p>
       ) : loading ? (
-        <SkeletonBlock count={1} label="Loading binding configuration" />
+        <SkeletonBlock count={1} label="Loading linked secrets" />
       ) : error ? (
         <div role="alert">
           <p>
-            Binding configuration could not be loaded:{' '}
-            {userFacingErrorMessage(error)}
+            Linked secrets couldn’t be loaded: {userFacingErrorMessage(error)}
           </p>
           <Button size="sm" onClick={() => void retryQueries()}>
-            Retry binding configuration
+            Retry loading
           </Button>
         </div>
       ) : (
@@ -176,12 +173,12 @@ export function SecretBindingPicker({
             </select>
           </label>
           <label>
-            Binding{' '}
+            Secret{' '}
             <select
               value={bindingId}
               onChange={(event) => setSelectedBindingId(event.target.value)}
             >
-              <option value="">Choose binding</option>
+              <option value="">Choose a secret</option>
               {bindings
                 .filter((binding) => !binding.revokedAt)
                 .map((binding) => (
@@ -193,20 +190,20 @@ export function SecretBindingPicker({
           </label>
           {configuredBindingId ? (
             <p role="status">
-              Configured binding: {selected?.name ?? configuredBindingId}
+              Linked secret: {selected?.name ?? configuredBindingId}
             </p>
           ) : (
-            <p role="status">No binding is configured for {envName}.</p>
+            <p role="status">No secret is linked to {envName}.</p>
           )}
           {configuredBindingId && selected && !bound && (
             <p role="alert">
-              Unbind the configured binding before selecting a different one.
+              Unlink the current secret before choosing a different one.
             </p>
           )}
           <Button
             variant="primary"
             pending={pending}
-            pendingLabel="Applying…"
+            pendingLabel={bound ? 'Unlinking…' : 'Linking…'}
             disabled={
               !selected || pending || (Boolean(configuredBindingId) && !bound)
             }
@@ -220,7 +217,7 @@ export function SecretBindingPicker({
               });
             }}
           >
-            {bound ? 'Unbind' : 'Bind'}
+            {bound ? 'Unlink' : 'Link'}
           </Button>
           {message && <p role="status">{message}</p>}
           {retry && (
@@ -230,11 +227,16 @@ export function SecretBindingPicker({
               disabled={pending}
               onClick={() => void run(retry)}
             >
-              Retry {retry.operation}
+              Retry {linkVerb(retry.operation)}
             </button>
           )}
         </div>
       )}
     </section>
   );
+}
+
+/** The operation names stay the SDK's; the person reads link wording. */
+function linkVerb(operation: 'bind' | 'unbind'): 'link' | 'unlink' {
+  return operation === 'bind' ? 'link' : 'unlink';
 }

@@ -83,7 +83,7 @@ export function GuestProjectAccessView({
   onAccessLost: () => void;
 }) {
   const client = useQueryClient();
-  const [banner, setBanner] = useState<string>();
+  const [banner, setBanner] = useState<GuestAccessBanner>();
   const hadAdministration = useRef(false);
   const onAccountRequiredRef = useRef(onAccountRequired);
   onAccountRequiredRef.current = onAccountRequired;
@@ -148,8 +148,12 @@ export function GuestProjectAccessView({
       // acknowledgement rather than replacing it with the generic one.
       setBanner(
         (current) =>
-          current ??
-          "Your administration access changed. You can still read the Project, but can't change people or invitations.",
+          current ?? {
+            // The access read itself failed, so nothing was refreshed.
+            refreshed: false,
+            cause:
+              "Your administration access changed. You can still read the Project, but can't change people or invitations.",
+          },
       );
     }
   }, [access.error]);
@@ -221,9 +225,11 @@ export function GuestProjectAccessView({
         stamped.principalId === stamped.expectedActor &&
         (stamped.role !== 'admin' || stamped.status !== 'active')
       )
-        setBanner(
-          "You changed your own Project role. You can still read the Project, but can't change people or invitations.",
-        );
+        setBanner({
+          refreshed: true,
+          cause:
+            "You changed your own Project role. You can still read the Project, but can't change people or invitations.",
+        });
       return outcome;
     } catch (cause) {
       if (cause instanceof StationHttpError && cause.status === 409) {
@@ -234,18 +240,23 @@ export function GuestProjectAccessView({
       }
       if (cause instanceof StationHttpError && cause.status === 401) {
         await refreshReads();
-        setBanner(
-          'Station no longer accepts this browser’s sign-in or approval. You may need to sign in again or request browser access.',
-        );
+        setBanner({
+          // The refresh needs the sign-in Station just refused.
+          refreshed: false,
+          cause:
+            'Station no longer accepts this browser’s sign-in or approval. Sign in again, then choose Refresh people and access.',
+        });
         throw new Error(
           "Station refused this change because your sign-in or this browser's approval changed. It wasn't retried.",
         );
       }
       if (cause instanceof StationHttpError && cause.status === 403) {
         await refreshReads();
-        setBanner(
-          'Your Project role or this browser’s approval changed. Review the list before trying again.',
-        );
+        setBanner({
+          refreshed: true,
+          cause:
+            'Your Project role or this browser’s approval changed. Review the list before trying again.',
+        });
         throw new Error(
           "Station refused this change and it wasn't retried. The list shows what you can still do.",
         );
@@ -264,7 +275,7 @@ export function GuestProjectAccessView({
             className="account-entry__access-view-only"
             aria-label="People and access"
           >
-            {banner && <RefreshedStatus cause={banner} />}
+            {banner && <AccessBannerStatus banner={banner} />}
             <h4>People and access</h4>
             <p>
               People and invitation management is limited to Project admins.
@@ -360,7 +371,7 @@ export function GuestProjectAccessView({
       className="account-entry__access-admin"
       aria-label="People and access"
     >
-      {banner && <RefreshedStatus cause={banner} />}
+      {banner && <AccessBannerStatus banner={banner} />}
       <p role="status" className="account-entry__capability">
         Signed in as <strong>{actor?.principal.display}</strong> · Project role:{' '}
         <strong>{actor?.role}</strong> · People administration:{' '}
@@ -397,9 +408,19 @@ export function GuestProjectAccessView({
 }
 
 /**
- * Every banner follows a refresh of the access list, so the refresh is said
- * once here and each banner carries only its cause.
+ * `refreshed` is true only where the access list was actually re-read
+ * successfully before the banner was set (a self-demotion, a 403 refusal), so
+ * "List refreshed." is never claimed after a read Station refused.
  */
-function RefreshedStatus({ cause }: { cause: string }) {
-  return <p role="status">List refreshed. {cause}</p>;
+interface GuestAccessBanner {
+  refreshed: boolean;
+  cause: string;
+}
+
+function AccessBannerStatus({ banner }: { banner: GuestAccessBanner }) {
+  return (
+    <p role="status">
+      {banner.refreshed ? `List refreshed. ${banner.cause}` : banner.cause}
+    </p>
+  );
 }

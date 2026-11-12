@@ -140,7 +140,9 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
         }
         emptyIcon={<AgentGlyph />}
         emptyDescription="Select an agent to edit, or create a new one."
-        emptyContent={emptyContent}
+        // A failed read proves nothing about whether agents exist, so the
+        // "No agents of your own yet" create card waits for a real answer.
+        emptyContent={agentsLoadFailed ? undefined : emptyContent}
       >
         <AgentsViewEditorPane
           // The page no longer remounts per selection (#2992), so the pane's
