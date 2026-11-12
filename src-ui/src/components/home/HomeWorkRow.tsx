@@ -1,10 +1,13 @@
 import type { GitReadLocation } from '@kontourai/station-sdk';
+import type { ReactNode } from 'react';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { WorkItemFamily } from '../inbox-row/WorkItemFamily';
+import { SessionPlanProgress } from '../TaskPlanProgress';
+import './HomeWorkRow.css';
 
 interface HomeWorkRowProps {
   task: HomeLaneItem;
@@ -109,47 +112,81 @@ export function renderHomeWorkRow({
             context.setDetailsFor(null);
         }}
         renderRow={(task) => (
-          <InboxRow
-            item={task}
-            rowKey={task.stableId}
-            isCurrent={false}
-            isSnoozed={false}
-            isOpenChat={false}
-            now={context.now}
-            facts={context.workFacts?.get(task.id)}
-            detailsOpen={context.detailsFor === task.id}
-            onDetailsOpenChange={(open) =>
-              context.setDetailsFor(open ? task.id : null)
-            }
-            size={size}
-            chrome={context.chrome}
-            agents={agents}
-            isWoken={
-              context.isWoken?.(task.id) ?? (task.id === taskRootId && isWoken)
-            }
-            // Resolved exactly as `InboxGroupList` resolves the dock's rows.
-            gitLocation={context.gitLocationByThreadId?.get(
-              task.orchestrationThreadId ?? task.chatSessionId ?? '',
-            )}
-            {...rowProjectMarks(
-              task,
-              context.projectAccentBySlug,
-              context.projectIconBySlug,
-            )}
-            onActivate={() => onOpen(task)}
-            onSnoozeWake={
-              onSnooze
-                ? (_item, wakeAt) => {
-                    // Home's live lanes hold nothing snoozed, so `null` (unsnooze)
-                    // never arrives here; the shelf below wakes rows.
-                    if (wakeAt !== null) onSnooze(task, wakeAt);
-                  }
-                : undefined
-            }
-            onDraftDiscarded={discardDraft ? afterDraftDiscarded : undefined}
-          />
+          <HomeWorkRowWithPlan item={task} size={size}>
+            <InboxRow
+              item={task}
+              rowKey={task.stableId}
+              isCurrent={false}
+              isSnoozed={false}
+              isOpenChat={false}
+              now={context.now}
+              facts={context.workFacts?.get(task.id)}
+              detailsOpen={context.detailsFor === task.id}
+              onDetailsOpenChange={(open) =>
+                context.setDetailsFor(open ? task.id : null)
+              }
+              size={size}
+              chrome={context.chrome}
+              agents={agents}
+              isWoken={
+                context.isWoken?.(task.id) ??
+                (task.id === taskRootId && isWoken)
+              }
+              // Resolved exactly as `InboxGroupList` resolves the dock's rows.
+              gitLocation={context.gitLocationByThreadId?.get(
+                task.orchestrationThreadId ?? task.chatSessionId ?? '',
+              )}
+              {...rowProjectMarks(
+                task,
+                context.projectAccentBySlug,
+                context.projectIconBySlug,
+              )}
+              onActivate={() => onOpen(task)}
+              onSnoozeWake={
+                onSnooze
+                  ? (_item, wakeAt) => {
+                      // Home's live lanes hold nothing snoozed, so `null` (unsnooze)
+                      // never arrives here; the shelf below wakes rows.
+                      if (wakeAt !== null) onSnooze(task, wakeAt);
+                    }
+                  : undefined
+              }
+              onDraftDiscarded={discardDraft ? afterDraftDiscarded : undefined}
+            />
+          </HomeWorkRowWithPlan>
         )}
       />
     </li>
+  );
+}
+
+/**
+ * #4695: a full-size Home row for a local Session also shows the agent's
+ * reported plan under the shared row. The settled tail's one-line rows and
+ * rows from another Station do not read it.
+ */
+function HomeWorkRowWithPlan({
+  item,
+  size,
+  children,
+}: {
+  item: HomeLaneItem;
+  size: 'card' | 'slim';
+  children: ReactNode;
+}) {
+  const sessionId =
+    size === 'card' && item.kind !== 'remote-session'
+      ? item.orchestrationThreadId
+      : undefined;
+  if (!sessionId) return children;
+  return (
+    <div className="home-work-row">
+      {children}
+      <SessionPlanProgress
+        sessionId={sessionId}
+        lifecycleLabel={item.lifecycleLabel}
+        className="home-work-row__plan"
+      />
+    </div>
   );
 }

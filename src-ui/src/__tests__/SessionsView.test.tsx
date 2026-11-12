@@ -68,6 +68,9 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+// #4695: each Session's latest-turn window, as the plan line reads it.
+const useOrchestrationSessionActivityQuery = vi.hoisted(() => vi.fn());
+let activityWindows: Record<string, Record<string, unknown>> = {};
 const agentCatalog: never[] = [];
 vi.mock('../views/sessions/conversation-groups', { spy: true });
 // Every config this render passed to the sessions query, so the list's own
@@ -221,6 +224,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     },
     fetchOrchestrationSession: (threadId: string, apiBase: string) =>
       readRoutedSession(threadId, apiBase),
+    useOrchestrationSessionActivityQuery,
     usePairedDevicesQuery,
     usePullRequestContextQuery: () => ({ data: { available: false } }),
     usePullRequestsQuery: () => ({ data: undefined }),
@@ -616,6 +620,11 @@ describe('SessionsView', () => {
     feedEvents = [];
     workflowTasksByProject = {};
     sessionsQueryError = null;
+    activityWindows = {};
+    useOrchestrationSessionActivityQuery.mockReset();
+    useOrchestrationSessionActivityQuery.mockImplementation(
+      (threadId: string) => ({ data: activityWindows[threadId] }),
+    );
     pairedDevices = [];
     usePairedDevicesQuery.mockReset();
     usePairedDevicesQuery.mockImplementation(() => ({ data: pairedDevices }));
@@ -1167,6 +1176,91 @@ describe('SessionsView', () => {
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
       true,
     );
+  });
+
+  test("#4695: a live row reads its Session's agent-reported plan; ended rows and plan-less Sessions show none", () => {
+    const base = { ...sessions[0], delegation: undefined, projectSlug: 'demo' };
+    sessions = [
+      {
+        ...base,
+        threadId: 'thread-planned',
+        displayTitle: 'Planned session',
+        status: 'running',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+      },
+      {
+        ...base,
+        threadId: 'thread-unplanned',
+        displayTitle: 'Unplanned session',
+        status: 'running',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+      },
+      {
+        ...base,
+        threadId: 'thread-ended',
+        displayTitle: 'Ended session',
+        status: 'completed',
+        lifecycleState: 'completed',
+        hasActiveTurn: false,
+      },
+    ];
+    const plan = (threadId: string, lifecycleState: string) => ({
+      session: { threadId, lifecycleState },
+      events: [
+        { sequence: 1, event: { method: 'turn.started', turnId: 'turn-1' } },
+        {
+          sequence: 2,
+          event: {
+            method: 'plan.updated',
+            turnId: 'turn-1',
+            entries: [
+              { content: 'Read', status: 'completed' },
+              { content: 'Edit', status: 'in_progress' },
+              { content: 'Test', status: 'pending' },
+            ],
+          },
+        },
+      ],
+    });
+    activityWindows = {
+      'thread-planned': plan('thread-planned', 'running'),
+      'thread-unplanned': {
+        session: { threadId: 'thread-unplanned', lifecycleState: 'running' },
+        events: [
+          { sequence: 1, event: { method: 'turn.started', turnId: 'turn-1' } },
+        ],
+      },
+      // Even a cached plan never shows on a row whose Session ended.
+      'thread-ended': plan('thread-ended', 'completed'),
+    };
+    renderView();
+
+    // The plan is part of the row's description, in words.
+    const planned = screen.getByRole('button', {
+      name: 'Planned session',
+      description: /, Agent-reported plan: 1 of 3 steps done$/,
+    });
+    expect(
+      planned.querySelector('.split-pane__item-subtitle')?.textContent,
+    ).toContain('Agent plan 1/3');
+    // The running row reads this Station's Session and keeps refreshing.
+    expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+      'thread-planned',
+      'http://test.local',
+      expect.objectContaining({ enabled: true, refetchInterval: 5_000 }),
+    );
+
+    expect(
+      rowButton('Unplanned session').querySelector('.task-plan-progress'),
+    ).toBeNull();
+    expect(rowButton('Ended session').textContent).not.toContain('Agent plan');
+    expect(
+      useOrchestrationSessionActivityQuery.mock.calls.some(
+        ([threadId]) => threadId === 'thread-ended',
+      ),
+    ).toBe(false);
   });
 
   // #765 residue (A2-adjacent): the runtime opens one engine session per

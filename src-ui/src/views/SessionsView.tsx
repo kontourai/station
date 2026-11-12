@@ -45,6 +45,7 @@ import { SessionPullRequestConflictChip } from '../components/session/SessionPul
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
+import { SessionPlanProgress } from '../components/TaskPlanProgress';
 import { useActivityReview } from '../contexts/ActivityReviewContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -1108,13 +1109,24 @@ export function SessionsView({
           return {
             id: s.threadId,
             name: sessionTitle(s),
+            // #4695: the agent-reported plan sits under the meta line, inside
+            // the row's description, so its words are read with the row.
             subtitle: (
-              <ActivityRowMeta
-                session={s}
-                agents={agents}
-                now={now}
-                foldedTurnCount={turnCounts.get(s.threadId)}
-              />
+              <>
+                <ActivityRowMeta
+                  session={s}
+                  agents={agents}
+                  now={now}
+                  foldedTurnCount={turnCounts.get(s.threadId)}
+                />
+                <SessionPlanProgress
+                  sessionId={s.threadId}
+                  lifecycleLabel={orchestrationLifecycleLabel(s)}
+                  apiBase={apiBase}
+                  className="activity-row__plan"
+                  announce="text"
+                />
+              </>
             ),
             // EVERY row carries its section — the layout emits a heading only
             // when section CHANGES between neighbours.
