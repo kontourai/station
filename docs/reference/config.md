@@ -338,8 +338,9 @@ home (`CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES`,
 refused before it is dispatched.
 
 Task room uploads use a separate store under
-`<STATION_HOME>/task-room-attachments`, with the same retention variables and
-defaults applied to that store independently. Descriptors remain in room history
+`<STATION_HOME>/task-room-attachments`, and Project channel uploads another under
+`<STATION_HOME>/project-room-attachments`, with the same retention variables and
+defaults applied to each store independently. Descriptors remain in room history
 after byte eviction. Task downloads use the scoped room attachment route;
 conversation-deletion cleanup described above applies to chat attachments, not
 this separate Task store. See [Task images and files](../design/task-room-agent-requests.md#images-and-files)

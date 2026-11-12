@@ -547,7 +547,10 @@ the control is plain text.
 The Project page opens on **Overview**. **Room** is shared discussion with
 people in that Project, in named channels starting with `#general`; choose the
 channel name to switch, and people who can edit can add, rename or archive
-channels. Use **Bring an Agent** for an explicit request whose answer returns
+channels. React to a message with an emoji, and tap a reaction to add or take
+back yours. You can edit or delete your own messages (press ↑ in an empty
+composer to edit your last one); a deleted message leaves "Message deleted" so
+replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
 to the channel. Direct Agent conversations stay in the chat
 dock. **Tasks** separates current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
@@ -1071,8 +1074,8 @@ unavailable.
 
 In new chats and New Task conversations, drop an image onto the composer or paste
 a screenshot. Review its thumbnail and remove it before sending if needed.
-The existing Task room and agent-thread replies accept images the same way,
-including messages with only an image. You can attach up to five files, 5 MiB
+The existing Task room, Project channels and agent-thread replies accept images
+the same way, including messages with only an image. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
 does not restore them. An older image in history may become unavailable after
 the server's attachment retention expires.
