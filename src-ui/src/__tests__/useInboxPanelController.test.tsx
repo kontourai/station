@@ -355,7 +355,8 @@ for (const layout of ['desktop', 'mobile'] as const) {
       // The dock binds its new chat to the row before focusing it; the
       // row's chatSessionId changes under the selection.
       const open = vi.fn<Open>(async (...args) => {
-        await act(async () => {});
+        // Let the bind re-render the panel before the dock focuses.
+        await new Promise((settle) => setTimeout(settle, 20));
         return args[7]?.beforeFocus?.() === false ? 'unavailable' : true;
       });
       const { failures, acknowledge } = mount(

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { setClientCredentialResolver } from '../../../../../packages/sdk/src/client/http';
 import { ProjectConversationList } from '../ProjectConversationList';
 
 const API = 'https://station.example';
@@ -35,6 +36,15 @@ function task(id: string, title: string, minute: number, extra = {}) {
 
 beforeEach(() => {
   _setApiBase(API);
+  // Channel reads are scoped to the Station the list belongs to.
+  setClientCredentialResolver(() => ({
+    origin: API,
+    requestAuthority: {
+      apiBase: API,
+      authorityKey: 'one',
+      isCurrent: () => true,
+    },
+  }));
   summaries = [];
   markers = new Map([
     [`project-room:team:${general}`, { latest: 7, seen: 4 }],
@@ -117,6 +127,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
   _setApiBase('');
 });
