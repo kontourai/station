@@ -916,6 +916,9 @@ export interface AgentConnectionView extends ConnectionConfig {
  * - `unknown`: an override exists that Station cannot name.
  *
  * `origin` is scheme, host and port only: never userinfo, path or query.
+ * The engine lists omit it from an `ambient` route whose `source` is
+ * `station` or `policy` unless the viewer is the operator in person or holds
+ * `access:manage`; the kind and source still say an override exists.
  */
 export interface EngineRouteObservation {
   kind: 'account' | 'proxy' | 'ambient' | 'unknown';
