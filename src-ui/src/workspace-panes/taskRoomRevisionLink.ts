@@ -22,8 +22,7 @@ export function taskRoomRevisionLink(
   if (!revisionLinksAvailable)
     return {
       state: 'unavailable',
-      reason:
-        'Revision evidence will be available after durable resolution is installed.',
+      reason: 'Revision links aren’t available on this Station yet.',
     };
   if (revision?.kind !== 'revision')
     return {

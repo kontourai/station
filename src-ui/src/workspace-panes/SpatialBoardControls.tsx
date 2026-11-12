@@ -237,7 +237,7 @@ export function AddPinForm({
             <option value="project">Project</option>
             <option value="approval">Approval request</option>
             <option value="scheduler-receipt">Scheduled outcome</option>
-            <option value="review-receipt">Receipt</option>
+            <option value="review-receipt">Review result</option>
             <option value="flow-run">Gate or run</option>
             <option value="artifact">Artifact</option>
             <option value="agent">Agent</option>

@@ -51,7 +51,7 @@ export function referenceKindLabel(reference: WorkReference) {
     case 'run':
       return 'Flow run';
     case 'receipt':
-      return 'Receipt';
+      return 'Result';
     case 'artifact':
       return 'Artifact';
     default:
@@ -70,8 +70,8 @@ export function referenceLabel(reference: WorkReference) {
       return `task ${reference.projectId}/${reference.id}`;
     case 'receipt':
       return reference.owner === 'scheduler-run'
-        ? `scheduler receipt ${reference.id}`
-        : `review receipt ${reference.projectSlug}/${reference.id}`;
+        ? `scheduled outcome ${reference.id}`
+        : `review result ${reference.projectSlug}/${reference.id}`;
     case 'run':
       return `flow run ${reference.projectId}/${reference.id}${reference.gateId ? `/${reference.gateId}` : ''}`;
     case 'artifact':

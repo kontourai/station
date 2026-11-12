@@ -267,8 +267,8 @@ export function WorkspacePaneHostActions({
       </div>
       {!query.data.complete ? (
         <p role="status">
-          Some package declarations could not be read. Review Plugins before
-          using legacy workspace actions.
+          Some plugins couldn’t be read. Check Plugins before using these
+          workspace actions.
         </p>
       ) : null}
       {query.data.contributions.map(({ projection, reason, displayName }) => (
