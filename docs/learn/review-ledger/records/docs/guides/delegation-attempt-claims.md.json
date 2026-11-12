@@ -104,7 +104,9 @@
 
     "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
 
-    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"
+    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
+
+    "src-server/services/orchestration/delegation-tool-policy.ts"
   ],
 
   "checks": [

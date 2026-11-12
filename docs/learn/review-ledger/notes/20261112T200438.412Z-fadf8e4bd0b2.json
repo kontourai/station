@@ -1,0 +1,7 @@
+{
+  "revision": "a3c4cb4387651d4fe715e2435289e79874912c74",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the receiver-local portable attempt reserve before the later create-request owner. The old producer aliased both added and changed required inherited clauses to an existing attempt; at clean baseline 7aaea9dc0826 those two real-producer regressions fail with DelegationAttemptExistsError while 28 controls pass. Binding the captured policy via the common identity owner makes all 98 producer/store/HTTP-route cases pass at 86136776c38d, preserving same-policy duplicate lookup and legacy no-clause digests. The producer controls also pass after the main 463add8e merge; merged server-test types pass at a3c4cb438765. The guide now distinguishes request identity from authority. No native budget, envelope, provider or peer/SSH runtime qualification is claimed.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/capabilities/station-capability-flags.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/create-request-claims.ts","src-server/services/orchestration/delegation-attempt-claim-store.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/tools/station-control-delegation.ts","src-server/services/orchestration/delegation-tool-policy.ts"]}
+  ]
+}
