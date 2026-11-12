@@ -1350,9 +1350,9 @@ Returns what names each connection from `GET /api/connections/used-by`, under
 `['connections', 'used-by']`. A caller the server withholds it from gets
 `ConnectionUsedByWithheldError`; render that as an access state, not as
 "nothing uses it". Filter one connection with `dependentsOfConnection` from
-`@kontourai/station-contracts/connection-used-by`. The SDK's Agent update and
-remove, engine Agent creation, and Project update and remove mutations refetch
-it.
+`@kontourai/station-contracts/connection-used-by`. The SDK's Agent create, update
+and remove mutations (engine Agents included) and its Project update and remove
+mutations refetch it.
 
 <a id="useruntimeconnectionsquery"></a>
 
