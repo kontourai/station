@@ -1,8 +1,8 @@
 import type { VisualViewportMetrics } from '@kontourai/station-shared/visual-viewport';
 import { type RefObject, useCallback, useEffect, useRef } from 'react';
 
-/** A bottom inset at least this tall is a software keyboard, not jitter. */
-const KEYBOARD_OPEN_PX = 120;
+/** How long the visual viewport must be still before the check runs. */
+const SETTLE_MS = 150;
 /** Keys that scroll the page when focus is not in a text field. */
 const SCROLL_KEYS = new Set([
   'ArrowUp',
@@ -27,158 +27,140 @@ function scrollParent(element: HTMLElement): Element {
   return document.scrollingElement ?? document.documentElement;
 }
 
-interface Cycle {
-  /** The viewport changed: correct once the lift over the keyboard settles. */
-  schedule(): void;
-  dispose(): void;
-}
-
 /**
  * Keeps a focused phone composer above the software keyboard (#4810).
  *
  * The composer lifts itself over the keyboard; when the page cannot make room
- * for that, the page scrolls the composer back into view. That correction runs
- * at most once per cycle, which focus entering the composer or the keyboard
- * opening starts. It waits for the animated lift to land, and it is dropped
- * the moment the reader scrolls (wheel, touch, a scroll key, or any scroll it
- * did not make), so the reader's position is never taken back. Smaller
- * viewport changes, such as a browser bar settling, do not start a cycle.
+ * for that, the page scrolls the composer's bottom back to the visible
+ * viewport's bottom. One check does that, and it is idempotent: it runs once
+ * the visual viewport has been still for a moment, and when focus enters the
+ * composer. Once the reader scrolls (wheel, touch, a scroll key outside a
+ * text field, or any scroll the check did not make), nothing moves the page
+ * again until focus next enters the composer.
  */
 export function useKeepAboveKeyboard(
   root: RefObject<HTMLElement | null>,
   enabled: boolean,
   viewport: VisualViewportMetrics,
 ) {
-  const cycle = useRef<Cycle | undefined>(undefined);
   const metrics = useRef(viewport);
   metrics.current = viewport;
-  const lastInset = useRef(viewport.bottomInset);
+  const userScrolledSinceFocus = useRef(false);
+  /** The scroll the check just made, so its event is not the reader's. */
+  const programmatic = useRef<{ target: Element; top: number } | undefined>(
+    undefined,
+  );
+  const timer = useRef(0);
+  const generation = useRef(0);
 
-  const arm = useCallback(() => {
-    cycle.current?.dispose();
+  const ensureComposerVisible = useCallback(() => {
     const element = root.current;
-    if (!element) return;
-    let pending: (() => void) | undefined;
+    const { offsetTop, height } = metrics.current;
+    if (!element || userScrolledSinceFocus.current || height <= 0) return;
+    if (!element.contains(document.activeElement)) return;
+    const overhang =
+      element.getBoundingClientRect().bottom - (offsetTop + height);
+    if (overhang <= 0) return;
+    const scroller = scrollParent(element);
+    const before = scroller.scrollTop;
+    scroller.scrollBy({ top: overhang });
+    if (scroller.scrollTop !== before)
+      programmatic.current = { target: scroller, top: scroller.scrollTop };
+  }, [root]);
+
+  const schedule = useCallback(() => {
+    window.clearTimeout(timer.current);
+    const scheduled = ++generation.current;
+    timer.current = window.setTimeout(() => {
+      // The lift over the keyboard animates for longer than the settle delay;
+      // measured mid-lift, the composer sits lower than it lands and the page
+      // would scroll too far. With reduced motion nothing is running.
+      const lifting =
+        root.current
+          ?.getAnimations?.()
+          .filter(
+            (animation) =>
+              animation instanceof CSSTransition &&
+              animation.transitionProperty === 'margin-bottom',
+          ) ?? [];
+      void Promise.allSettled(
+        lifting.map((animation) => animation.finished),
+      ).then(() => {
+        if (scheduled === generation.current) ensureComposerVisible();
+      });
+    }, SETTLE_MS);
+  }, [root, ensureComposerVisible]);
+
+  useEffect(() => {
+    const element = root.current;
+    if (!enabled || !element) return;
+    // A focus can scroll the field into view; that scroll's event lands in
+    // the next frame and is the browser's, not the reader's.
+    let revealing = false;
+    let reveal = 0;
+    const onFocusIn = (event: FocusEvent) => {
+      if (element.contains(event.relatedTarget as Node | null)) return;
+      userScrolledSinceFocus.current = false;
+      revealing = true;
+      cancelAnimationFrame(reveal);
+      reveal = requestAnimationFrame(() => {
+        reveal = requestAnimationFrame(() => {
+          revealing = false;
+        });
+      });
+      schedule();
+    };
+    const readerScrolled = () => {
+      userScrolledSinceFocus.current = true;
+    };
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as Element | null;
       if (
         SCROLL_KEYS.has(event.key) &&
         !target?.closest?.('textarea, input, select, [contenteditable]')
       )
-        dispose();
+        readerScrolled();
     };
-    // Only a scroll of something holding the composer is the reader's; a
-    // list inside the room following its newest message is not.
+    // Only a scroll of something holding the composer counts; a list inside
+    // the room following its newest message does not.
     const onScroll = (event: Event) => {
-      const target = event.target;
+      const target =
+        event.target === document
+          ? document.scrollingElement
+          : (event.target as Element | null);
+      if (!target?.contains(element) || revealing) return;
+      const made = programmatic.current;
       if (
-        target === document ||
-        (target instanceof Node && target.contains(element))
-      )
-        dispose();
+        made?.target === target &&
+        Math.abs(target.scrollTop - made.top) <= 1
+      ) {
+        programmatic.current = undefined;
+        return;
+      }
+      readerScrolled();
     };
-    const dispose = () => {
-      pending?.();
-      pending = undefined;
-      window.removeEventListener('wheel', dispose, true);
-      window.removeEventListener('touchmove', dispose, true);
-      document.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('keydown', onKey, true);
-      if (cycle.current === current) cycle.current = undefined;
-    };
-    const correct = () => {
-      const focused = element.contains(document.activeElement);
-      const { offsetTop, height } = metrics.current;
-      const overhang =
-        element.getBoundingClientRect().bottom - (offsetTop + height);
-      // Ends the cycle first, so this scroll is not mistaken for the reader's.
-      dispose();
-      // Which ancestor scrolls is known only once the lift has grown the page.
-      if (focused && overhang > 0)
-        scrollParent(element).scrollBy({ top: overhang });
-    };
-    const current: Cycle = {
-      schedule() {
-        pending?.();
-        let live = true;
-        let frame = 0;
-        pending = () => {
-          live = false;
-          cancelAnimationFrame(frame);
-        };
-        // Measure where the composer lands, not the lift's first frame.
-        const lifting =
-          element
-            .getAnimations?.()
-            .filter(
-              (animation) =>
-                animation instanceof CSSTransition &&
-                animation.transitionProperty === 'margin-bottom',
-            ) ?? [];
-        void Promise.allSettled(
-          lifting.map((animation) => animation.finished),
-        ).then(() => {
-          if (live) frame = requestAnimationFrame(() => live && correct());
-        });
-      },
-      dispose,
-    };
-    window.addEventListener('wheel', dispose, { capture: true, passive: true });
-    window.addEventListener('touchmove', dispose, {
-      capture: true,
-      passive: true,
-    });
-    // Scroll events do not bubble; capture sees every element's.
-    document.addEventListener('scroll', onScroll, {
-      capture: true,
-      passive: true,
-    });
-    window.addEventListener('keydown', onKey, true);
-    cycle.current = current;
-  }, [root]);
-
-  // Focus arriving from outside the composer starts a cycle; leaving ends it.
-  useEffect(() => {
-    const element = root.current;
-    if (!enabled || !element) return;
-    const onFocusIn = (event: FocusEvent) => {
-      if (!element.contains(event.relatedTarget as Node | null)) arm();
-    };
-    const onFocusOut = (event: FocusEvent) => {
-      if (!element.contains(event.relatedTarget as Node | null))
-        cycle.current?.dispose();
-    };
+    const passive = { capture: true, passive: true };
     element.addEventListener('focusin', onFocusIn);
-    element.addEventListener('focusout', onFocusOut);
-    if (element.contains(document.activeElement)) arm();
+    window.addEventListener('wheel', readerScrolled, passive);
+    window.addEventListener('touchmove', readerScrolled, passive);
+    window.addEventListener('keydown', onKey, true);
+    // Scroll events do not bubble; capture sees every element's.
+    document.addEventListener('scroll', onScroll, passive);
     return () => {
       element.removeEventListener('focusin', onFocusIn);
-      element.removeEventListener('focusout', onFocusOut);
-      cycle.current?.dispose();
+      window.removeEventListener('wheel', readerScrolled, passive);
+      window.removeEventListener('touchmove', readerScrolled, passive);
+      window.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('scroll', onScroll, passive);
+      window.clearTimeout(timer.current);
+      cancelAnimationFrame(reveal);
+      generation.current += 1;
     };
-  }, [enabled, root, arm]);
+  }, [enabled, root, schedule]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a pan (offsetTop) moves the visible bottom, so it reschedules the pending correction too.
+  // Every visual viewport resize or pan restarts the settle delay.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the metrics are the trigger; the check reads them through a ref.
   useEffect(() => {
-    const previous = lastInset.current;
-    lastInset.current = viewport.bottomInset;
-    const element = root.current;
-    if (!enabled || viewport.height <= 0) return;
-    if (!element?.contains(document.activeElement)) return;
-    // A keyboard opening starts a cycle of its own; jitter never does.
-    if (
-      previous < KEYBOARD_OPEN_PX &&
-      viewport.bottomInset >= KEYBOARD_OPEN_PX &&
-      !cycle.current
-    )
-      arm();
-    cycle.current?.schedule();
-  }, [
-    enabled,
-    root,
-    arm,
-    viewport.height,
-    viewport.offsetTop,
-    viewport.bottomInset,
-  ]);
+    if (enabled && viewport.height > 0) schedule();
+  }, [enabled, schedule, viewport.height, viewport.offsetTop]);
 }

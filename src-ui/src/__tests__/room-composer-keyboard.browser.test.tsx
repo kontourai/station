@@ -112,6 +112,8 @@ async function open() {
   await page.evaluate(() => {
     document.querySelector('.content-view')!.scrollTop = 300;
   });
+  // That scroll's own event lands a frame later; let it, before any focus.
+  await frames(page);
   expect(await overhang(page)).toBeLessThanOrEqual(0);
   return fixtureRun;
 }
