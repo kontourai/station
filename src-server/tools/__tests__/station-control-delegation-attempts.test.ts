@@ -294,20 +294,59 @@ describe('receiver-local claim → single effect', () => {
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
   });
 
-  test('mismatched validated intent under the same key conflicts with NO effect', async () => {
-    const service = localService();
-    const { delegateTask } = await import('../station-control-delegation.js');
-    await delegateTask(claimInput(), service as never);
-    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
-    const error = await delegateTask(
-      claimInput({ prompt: 'A DIFFERENT validated prompt' }),
-      service as never,
-    ).catch((caught: unknown) => caught);
-    expect(error).toBeInstanceOf(DelegationAttemptConflictError);
-    // No second session, no second turn.
-    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
-    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
-  });
+  const inheritedReadPolicy = {
+    mode: 'isolated-child' as const,
+    depth: 1,
+    maxDepth: 3,
+    parentAgentSlug: agentId('parent'),
+    rootAgentSlug: agentId('root'),
+    toolAllowlistConstraints: [['repo_read']],
+  };
+
+  test.each([
+    {
+      name: 'prompt',
+      original: {},
+      changed: { prompt: 'A DIFFERENT validated prompt' },
+    },
+    {
+      name: 'added inherited policy',
+      original: {},
+      changed: {
+        delegation: inheritedReadPolicy,
+      },
+    },
+    {
+      name: 'changed inherited policy',
+      original: {
+        delegation: inheritedReadPolicy,
+      },
+      changed: {
+        delegation: {
+          ...inheritedReadPolicy,
+          toolAllowlistConstraints: [['repo_write']],
+        },
+      },
+    },
+  ])(
+    'changed $name under the same attempt conflicts before another effect',
+    async ({ original, changed }) => {
+      const service = localService();
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const first = await delegateTask(claimInput(original), service as never);
+      await expect(
+        delegateTask(claimInput(original), service as never),
+      ).rejects.toMatchObject({
+        code: 'delegation_attempt_exists',
+        taskId: first.taskId,
+      });
+      await expect(
+        delegateTask(claimInput(changed), service as never),
+      ).rejects.toBeInstanceOf(DelegationAttemptConflictError);
+      expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+      expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test('lost-ACK lookup settles from persisted evidence WITHOUT a re-POST', async () => {
     const service = localService();
