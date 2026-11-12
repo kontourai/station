@@ -1127,6 +1127,14 @@ test('message files: upload, send, read back; past the count or size limit is re
     attachments: Array.from({ length: 6 }, () => ({ ...file })),
   });
   expect(tooMany.status).toBe(400);
+  // The same file twice is refused, not a storage failure (503).
+  const repeated = await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '',
+    attachments: [file, file],
+  });
+  expect(repeated.status).toBe(400);
   const message = parseProjectRoomMessage(
     await data(
       await h.request('alice', '/messages', 'POST', {

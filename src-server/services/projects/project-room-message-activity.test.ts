@@ -359,6 +359,11 @@ describe('Project room message activity', () => {
     expect(() => post(bo, 'mine now', { attachments: [file] })).toThrow(
       'conflict',
     );
+    // One file named twice is refused before it reaches storage.
+    const twice = image();
+    expect(() => post(ada, 'twice', { attachments: [twice, twice] })).toThrow(
+      'Invalid Project room attachments',
+    );
     expect(() => post(ada, '')).toThrow();
     // Six files is past the shared Task-room count limit.
     expect(() =>

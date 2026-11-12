@@ -307,11 +307,15 @@ function text(value: unknown, max: number, allowEmpty = false): string {
     throw new Error('Invalid Project room text');
   return value;
 }
-/** Bounded by the Task room's count and size limits; never empty. */
+/** Bounded by the Task room's count and size limits; never empty or repeated. */
 export function parseProjectRoomAttachments(
   value: unknown,
 ): ProjectRoomAttachment[] {
-  if (!isTaskRoomAttachments(value) || value.length === 0)
+  if (
+    !isTaskRoomAttachments(value) ||
+    value.length === 0 ||
+    new Set(value.map((attachment) => attachment.id)).size !== value.length
+  )
     throw new Error('Invalid Project room attachments');
   return value.map((attachment) => ({ ...attachment }));
 }
