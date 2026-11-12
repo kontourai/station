@@ -1,6 +1,9 @@
 import type {
   ProjectRoomChannelCreateInput,
   ProjectRoomChannelUpdateInput,
+  ProjectRoomDeleteInput,
+  ProjectRoomEditInput,
+  ProjectRoomReactionInput,
 } from '@kontourai/station-contracts/project-room';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -14,15 +17,19 @@ import { StationHttpError } from '../client/api-error-message';
 import type { ApiRequestScope } from '../client/http';
 import {
   createProjectRoomChannel,
+  deleteProjectRoomMessage,
   discoverProjectRoom,
+  editProjectRoomMessage,
   fetchProjectRoomHistory,
   initializeProjectRoom,
   listProjectRoomChannels,
   type ProjectRoomBrowserView,
   type ProjectRoomChannelGuards,
   type ProjectRoomMessageIntent,
+  type ProjectRoomMessageTarget,
   type ProjectRoomNoteIntent,
   ProjectRoomProtocolError,
+  reactToProjectRoomMessage,
   saveProjectRoomNote,
   sendProjectRoomMessage,
   setProjectRoomPresence,
@@ -198,6 +205,36 @@ export function useProjectRoom(
       saveProjectRoomNote(scope, slug, input, channelId),
     onSuccess: () => client.invalidateQueries({ queryKey: root }),
   });
+  // Reactions, edits and deletes keep the room's sequence, so the history
+  // window is re-read rather than advanced. A refusal re-reads it too: the
+  // message may have changed under the caller.
+  const react = useMutation({
+    retry: false,
+    mutationFn: ({
+      target,
+      ...input
+    }: ProjectRoomReactionInput & { target: ProjectRoomMessageTarget }) =>
+      reactToProjectRoomMessage(scope, slug, target, input, channelId),
+    onSettled: () => client.invalidateQueries({ queryKey: root }),
+  });
+  const edit = useMutation({
+    retry: false,
+    mutationFn: ({
+      target,
+      ...input
+    }: ProjectRoomEditInput & { target: ProjectRoomMessageTarget }) =>
+      editProjectRoomMessage(scope, slug, target, input, channelId),
+    onSettled: () => client.invalidateQueries({ queryKey: root }),
+  });
+  const remove = useMutation({
+    retry: false,
+    mutationFn: ({
+      target,
+      ...input
+    }: ProjectRoomDeleteInput & { target: ProjectRoomMessageTarget }) =>
+      deleteProjectRoomMessage(scope, slug, target, input, channelId),
+    onSettled: () => client.invalidateQueries({ queryKey: root }),
+  });
   useEffect(() => {
     if (
       ![
@@ -206,6 +243,9 @@ export function useProjectRoom(
         initialize.error,
         send.error,
         note.error,
+        react.error,
+        edit.error,
+        remove.error,
       ].some(isProjectRoomAccessError)
     )
       return;
@@ -220,6 +260,9 @@ export function useProjectRoom(
     initialize.error,
     send.error,
     note.error,
+    react.error,
+    edit.error,
+    remove.error,
   ]);
   useEffect(() => {
     if (!roomId || !actorId || stopped) return;
@@ -316,12 +359,18 @@ export function useProjectRoom(
     history,
     send,
     note,
+    react,
+    edit,
+    remove,
     stopped,
     streamError,
     recover: () => {
       initialize.reset();
       send.reset();
       note.reset();
+      react.reset();
+      edit.reset();
+      remove.reset();
       setStopped(false);
       setStreamError(false);
       void client.resetQueries({ queryKey: root });

@@ -1,4 +1,8 @@
 import type { ProjectMembershipScope } from './project-membership.js';
+import {
+  isTaskRoomAttachments,
+  type TaskRoomAttachment,
+} from './project-task-room.js';
 
 /** Inert declarations; current Project membership and action authority remain server-owned. */
 export const PROJECT_ROOM_LIMITS = {
@@ -15,6 +19,14 @@ export const PROJECT_ROOM_LIMITS = {
   /** Channel names are lowercase ASCII, so characters equal bytes. */
   channelNameLength: 80,
   channelTopicBytes: 250,
+  /** Distinct emoji on one message. */
+  reactionEmojiPerMessage: 20,
+  /** Stored reactions on one message: one per person and emoji. */
+  reactionsPerMessage: 100,
+  /** UTF-8 bytes of one reaction emoji (a family ZWJ sequence is 25). */
+  reactionEmojiBytes: 32,
+  /** Superseding edits of one message; a delete is one of them. */
+  revisionsPerMessage: 50,
 } as const;
 /** Name the migration gives a Project's existing room. */
 export const PROJECT_ROOM_DEFAULT_CHANNEL_NAME = 'general';
@@ -167,17 +179,55 @@ export interface ProjectRoomIdentity {
   scope: ProjectMembershipScope;
   roomId: string;
 }
+/**
+ * A file on a Project room message: the Task room's attachment shape and
+ * limits (`isTaskRoomAttachments`). Bytes are stored per room; an ID grants
+ * no read authority on its own.
+ */
+export type ProjectRoomAttachment = TaskRoomAttachment;
 export interface ProjectRoomAppendInput {
   intentId: string;
+  /** May be empty only when the message carries attachments. */
   text: string;
   replyTo?: string;
+  attachments?: ProjectRoomAttachment[];
 }
+/** Who reacted with one emoji, in the order they reacted. */
+export interface ProjectRoomReaction {
+  emoji: string;
+  actors: ProjectRoomActor[];
+}
+/**
+ * A message as history serves it. The stored record is never rewritten:
+ * `editedAt`, `deletedAt` and `reactions` are projected from separate
+ * attributed records, and none of them moves the room's sequence.
+ */
 export interface ProjectRoomMessage extends ProjectRoomAppendInput {
   roomId: string;
   messageId: string;
   seq: number;
   actor: ProjectRoomActor;
   createdAt: string;
+  /** When the latest edit was made; `text` is that edit's text. */
+  editedAt?: string;
+  /** A tombstone: `text` is empty, and attachments and reactions are withheld. */
+  deletedAt?: string;
+  /** In first-reacted order; absent when there are none. */
+  reactions?: ProjectRoomReaction[];
+}
+/** Sets the caller's own reaction. Repeating it changes nothing. */
+export interface ProjectRoomReactionInput {
+  emoji: string;
+  reacted: boolean;
+}
+/** Replaces the text of the caller's own message with a superseding edit. */
+export interface ProjectRoomEditInput {
+  intentId: string;
+  text: string;
+}
+/** Replaces the caller's own message with a tombstone. */
+export interface ProjectRoomDeleteInput {
+  intentId: string;
 }
 export interface ProjectRoomCheckpoint {
   roomId: string;
@@ -247,26 +297,112 @@ function object(value: unknown): Record<string, unknown> {
     throw new Error('Invalid Project room input');
   return value as Record<string, unknown>;
 }
-function text(value: unknown, max: number): string {
-  if (typeof value !== 'string' || !value.trim() || bytes(value) > max)
+/** `allowEmpty` admits exactly '' (a message carried by its attachments). */
+function text(value: unknown, max: number, allowEmpty = false): string {
+  if (
+    typeof value !== 'string' ||
+    (!value.trim() && !(allowEmpty && value === '')) ||
+    bytes(value) > max
+  )
     throw new Error('Invalid Project room text');
   return value;
+}
+/** Bounded by the Task room's count and size limits; never empty. */
+export function parseProjectRoomAttachments(
+  value: unknown,
+): ProjectRoomAttachment[] {
+  if (!isTaskRoomAttachments(value) || value.length === 0)
+    throw new Error('Invalid Project room attachments');
+  return value.map((attachment) => ({ ...attachment }));
 }
 export function parseProjectRoomAppendInput(
   value: unknown,
 ): ProjectRoomAppendInput {
   const v = object(value);
   if (
-    Object.keys(v).some((k) => !['intentId', 'text', 'replyTo'].includes(k)) ||
+    Object.keys(v).some(
+      (k) => !['intentId', 'text', 'replyTo', 'attachments'].includes(k),
+    ) ||
     !isProjectRoomUuid(v.intentId) ||
     (v.replyTo !== undefined && !isProjectRoomUuid(v.replyTo))
   )
     throw new Error('Invalid Project room input');
+  const attachments =
+    v.attachments === undefined
+      ? undefined
+      : parseProjectRoomAttachments(v.attachments);
   return {
     intentId: v.intentId,
-    text: text(v.text, PROJECT_ROOM_LIMITS.textBytes),
+    text: text(v.text, PROJECT_ROOM_LIMITS.textBytes, !!attachments),
     ...(v.replyTo === undefined ? {} : { replyTo: v.replyTo }),
+    ...(attachments ? { attachments } : {}),
   };
+}
+export type ProjectRoomReactionEmojiProblem = 'empty' | 'too_long' | 'format';
+/**
+ * One emoji: a flag pair, a keycap, or a pictograph with optional variation
+ * selector, skin tone and tag sequence, joined by ZWJ to more of the same.
+ */
+const singleEmoji = new RegExp(
+  [
+    '^(?:',
+    '\\p{Regional_Indicator}{2}',
+    '|[0-9#*]\\ufe0f?\\u20e3',
+    '|(?:\\p{Extended_Pictographic}(?:\\ufe0f|\\p{Emoji_Modifier})?(?:[\\u{e0020}-\\u{e007e}]+\\u{e007f})?)',
+    '(?:\\u200d\\p{Extended_Pictographic}(?:\\ufe0f|\\p{Emoji_Modifier})?)*',
+    ')$',
+  ].join(''),
+  'u',
+);
+/** Why `value` is not one reaction emoji, or null when it is. */
+export function projectRoomReactionEmojiProblem(
+  value: unknown,
+): ProjectRoomReactionEmojiProblem | null {
+  if (typeof value !== 'string' || value.length === 0) return 'empty';
+  if (bytes(value) > PROJECT_ROOM_LIMITS.reactionEmojiBytes) return 'too_long';
+  return singleEmoji.test(value) ? null : 'format';
+}
+export function parseProjectRoomReactionEmoji(value: unknown): string {
+  if (projectRoomReactionEmojiProblem(value) !== null)
+    throw new Error('Invalid Project room reaction');
+  return value as string;
+}
+export function parseProjectRoomReactionInput(
+  value: unknown,
+): ProjectRoomReactionInput {
+  const v = object(value);
+  if (
+    Object.keys(v).some((k) => !['emoji', 'reacted'].includes(k)) ||
+    typeof v.reacted !== 'boolean'
+  )
+    throw new Error('Invalid Project room reaction');
+  return { emoji: parseProjectRoomReactionEmoji(v.emoji), reacted: v.reacted };
+}
+/** Text may be empty here; the store allows that only on a message with files. */
+export function parseProjectRoomEditInput(
+  value: unknown,
+): ProjectRoomEditInput {
+  const v = object(value);
+  if (
+    Object.keys(v).some((k) => !['intentId', 'text'].includes(k)) ||
+    !isProjectRoomUuid(v.intentId)
+  )
+    throw new Error('Invalid Project room edit');
+  return {
+    intentId: v.intentId,
+    text: text(v.text, PROJECT_ROOM_LIMITS.textBytes, true),
+  };
+}
+export function parseProjectRoomDeleteInput(
+  value: unknown,
+): ProjectRoomDeleteInput {
+  const v = object(value);
+  if (
+    Object.keys(v).some((k) => k !== 'intentId') ||
+    !isProjectRoomUuid(v.intentId)
+  )
+    throw new Error('Invalid Project room delete');
+  return { intentId: v.intentId };
 }
 export function parseProjectRoomNoteInput(
   value: unknown,

@@ -159,6 +159,81 @@
   overflow-x: auto;
 }
 
+/* A message's files (RoomAttachmentList), the same in Task and Project rooms. */
+.room-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin: var(--k-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.room-attachments li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  max-width: 100%;
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+}
+
+.room-attachments img {
+  display: block;
+  max-width: min(100%, calc(var(--k-space-6) * 9));
+  max-height: calc(var(--k-space-6) * 8);
+  object-fit: contain;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+}
+
+.room-attachments a {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+/* Touch: a file link and an image are each a full target. */
+.room-conversation--more .room-attachments a {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* An edited body ends with its marker: beside a short last line, under a
+   long one (flex wraps it), aligned to the text's last baseline. */
+.room-row__body--edited {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: last baseline;
+  column-gap: var(--k-space-2);
+}
+
+.room-row__body--edited > :not(.room-row__edited) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.room-row__edited {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-xs);
+  white-space: nowrap;
+}
+
+/* A tombstone keeps the row's place in the conversation, quietly. */
+.room-row__deleted {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin: 0;
+  color: var(--k-text-muted);
+  font-style: italic;
+}
+
+.room-row__deleted > svg {
+  flex: 0 0 auto;
+  color: var(--k-text-faint);
+}
+
 /* A recorded @mention leads the first line instead of sitting above it. */
 .room-message-text > .task-room-mention {
   float: left;

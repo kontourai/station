@@ -11,7 +11,7 @@ import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
-import type { useTaskRoomAttachments } from '../../hooks/useTaskRoomAttachments';
+import type { useRoomAttachments } from '../../hooks/useRoomAttachments';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { Button } from '../Button';
 import { ComposerAttachmentStrip } from '../chat/ComposerAttachmentStrip';
@@ -23,7 +23,7 @@ import { useKeepAboveKeyboard } from './useKeepAboveKeyboard';
 
 /** The attachment port a room offers when its messages can carry files. */
 export type RoomComposerAttachments = Pick<
-  ReturnType<typeof useTaskRoomAttachments>,
+  ReturnType<typeof useRoomAttachments>,
   'files' | 'error' | 'setError' | 'selectFiles' | 'remove' | 'busy'
 >;
 

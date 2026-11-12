@@ -3393,8 +3393,8 @@ function projectRepositorySourceScreens(): Screen[] {
  * Room conversation scenes (#4791): the Project room and the Task room
  * rendered by their real components over browser-projection fixtures
  * (tests/helpers/room-gallery-fixtures.ts), at 390 and 1440 in both themes.
- * Reactions have no scene: no room contract carries them yet, and a scene
- * must not draw state nothing computes. The reactions child adds both.
+ * Reactions, edits, deletes and channel files draw the history's projected
+ * fields (#4796, #4797, #4812).
  */
 const ROOM_SCENES = [
   { scene: 'empty', room: 'project' },
@@ -3407,6 +3407,11 @@ const ROOM_SCENES = [
   { scene: 'agent-abandon', room: 'project' },
   { scene: 'keyboard', room: 'project' },
   { scene: 'channels', room: 'project' },
+  { scene: 'reactions', room: 'project' },
+  { scene: 'reaction-picker', room: 'project' },
+  { scene: 'edited', room: 'project' },
+  { scene: 'deleted', room: 'project' },
+  { scene: 'attachment', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3756,6 +3761,145 @@ function roomConversationScreens(): Screen[] {
                   document.documentElement.setAttribute('data-theme', selected),
                 theme,
               );
+            }
+            const messageRow = (text: string) =>
+              conversation
+                .locator('.room-row')
+                .filter({ has: page.getByText(text, { exact: true }) });
+            if (scene === 'reactions') {
+              const pill = conversation.getByRole('button', {
+                name: '🙏 3: You, Priya Natarajan and Jonas Berg',
+              });
+              await expect(pill).toHaveAttribute('aria-pressed', 'true');
+              await expect(
+                conversation.getByRole('button', {
+                  name: '👀 1: Jonas Berg',
+                }),
+              ).toHaveAttribute('aria-pressed', 'false');
+              if (viewport.width === DESKTOP.width) {
+                // Who reacted: the pill's tooltip under a hovering pointer.
+                await pill.hover();
+                await expect(
+                  conversation.getByRole('tooltip', {
+                    name: 'You, Priya Natarajan and Jonas Berg',
+                  }),
+                ).toBeVisible();
+              } else {
+                await expectTouchTarget(pill, 'Reaction pill');
+                // The phone's actions: React, Reply, Edit, Delete, Who reacted.
+                const own = messageRow(
+                  'Good catch. Jonas, can you update both before we ship?',
+                );
+                await own
+                  .getByRole('button', { name: /^More actions/ })
+                  .click();
+                for (const name of [
+                  'React to Maya Chen',
+                  'Reply to Maya Chen',
+                  'Edit message',
+                  'Delete message',
+                  'Who reacted',
+                ])
+                  await expectTouchTarget(
+                    own.getByRole('button', { name }),
+                    name,
+                  );
+              }
+            }
+            if (scene === 'reaction-picker') {
+              const target = messageRow(
+                'Morning! The pricing page copy is ready for review.',
+              );
+              if (viewport.width === DESKTOP.width) await target.hover();
+              else
+                await target
+                  .getByRole('button', { name: /^More actions/ })
+                  .click();
+              await target
+                .getByRole('button', { name: 'React to Jonas Berg' })
+                .click();
+              const picker = page.getByRole('dialog', { name: 'Add reaction' });
+              await expect(picker).toBeVisible();
+              await expect(
+                picker.getByRole('heading', { name: 'Recent' }),
+              ).toBeVisible();
+              if (viewport.width === MOBILE.width)
+                await expectTouchTarget(
+                  picker.getByRole('button', { name: '👍' }).first(),
+                  'Picker emoji',
+                );
+              else {
+                // Search narrows the catalogue as the person types.
+                await picker.getByRole('searchbox').fill('par');
+                await expect(
+                  picker.getByRole('button', { name: '🎉' }),
+                ).toBeVisible();
+                await picker.getByRole('searchbox').fill('');
+              }
+            }
+            if (scene === 'edited') {
+              await expect(
+                messageRow(
+                  'I kept the three tiers and moved the FAQ under the comparison table.',
+                ).getByText('edited', { exact: true }),
+              ).toBeVisible();
+              // Up in an empty composer edits your last message (#4793).
+              await composer.click();
+              await composer.press('ArrowUp');
+              await expect(
+                roomRegion.getByText('Editing message'),
+              ).toBeVisible();
+              await expect(composer).toHaveValue(
+                'Good catch. Jonas, can you update both numbers before we ship?',
+              );
+              await expect(
+                roomRegion.getByRole('button', { name: 'Save edit' }),
+              ).toBeDisabled();
+            }
+            if (scene === 'deleted') {
+              const tombstone = conversation.getByText('Message deleted');
+              await expect(tombstone).toBeVisible();
+              // The reply under it still names whom it answered.
+              await expect(
+                messageRow('Which FAQ do you mean, the billing one?').getByText(
+                  'Jonas Berg',
+                ),
+              ).toBeVisible();
+            }
+            if (scene === 'attachment') {
+              await expect(
+                conversation.getByRole('img', { name: 'pricing-table.png' }),
+              ).toBeVisible();
+              const file = conversation.getByRole('link', {
+                name: 'plan-limits.pdf',
+              });
+              await expect(file).toBeVisible();
+              if (viewport.width === MOBILE.width) {
+                await expectTouchTarget(file, 'Attached file');
+                await expectTouchTarget(
+                  conversation.getByRole('link', {
+                    name: 'Open pricing-table.png',
+                  }),
+                  'Attached image',
+                );
+              }
+              // A file staged in the shared composer, about to be sent.
+              await roomRegion.locator('input[type="file"]').setInputFiles({
+                name: 'checkout-flow.png',
+                mimeType: 'image/png',
+                buffer: readFileSync(
+                  new URL(
+                    '../docs/design/media/browser-device-ux-browser-390.png',
+                    import.meta.url,
+                  ),
+                ),
+              });
+              await expect(
+                roomRegion.getByRole('img', { name: 'checkout-flow.png' }),
+              ).toBeVisible();
+              await expect(
+                roomRegion.getByRole('button', { name: 'Send message' }),
+              ).toBeEnabled();
             }
             if (scene === 'new-messages' && fixture) {
               const box = await roomRegion

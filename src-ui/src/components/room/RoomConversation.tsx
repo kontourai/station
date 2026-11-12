@@ -18,7 +18,7 @@ import {
 } from '../chat/chatScrollAnchor';
 import { TranscriptVirtualizer } from '../chat/TranscriptVirtualizer';
 import { IconButton } from '../IconButton';
-import { MoreGlyph } from '../icons/Glyph';
+import { glyph, MoreGlyph } from '../icons/Glyph';
 import { useTouchKeyboard } from './composerKeys';
 import {
   groupRows,
@@ -51,6 +51,15 @@ export interface RoomConversationRow {
   /** Custom body (an agent answer with its own Show more). */
   readonly body?: ReactNode;
   readonly attachments?: ReactNode;
+  /** Reaction pills under the body (`RoomReactionBar`). */
+  readonly reactions?: ReactNode;
+  /** ISO time of the latest edit: the body ends with an "edited" marker. */
+  readonly editedAt?: string;
+  /**
+   * A deleted message: a "Message deleted" line replaces the body, and its
+   * author and time stay so replies to it still read.
+   */
+  readonly deleted?: boolean;
   /** Under the body: a thread summary or a delivery state. */
   readonly footer?: ReactNode;
   /** The row's action bar: shown on hover, focus or long press. */
@@ -59,6 +68,11 @@ export interface RoomConversationRow {
   /** Written by the reader: the list follows it instead of counting it as new. */
   readonly own?: boolean;
 }
+
+/** A struck-through circle: content that was removed. */
+const DeletedGlyph = /* @__PURE__ */ glyph(
+  'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM4.2 4.2l7.6 7.6',
+);
 
 /** How close to the end still counts as reading the latest message. */
 const FOLLOW_SLACK_PX = 48;
@@ -280,13 +294,35 @@ function Row({
           {row.context && (
             <div className="room-row__context">{row.context}</div>
           )}
-          <div className="room-row__body">
-            {row.body ??
-              (row.text !== undefined ? (
-                <RoomMessageText text={row.text} />
-              ) : null)}
-          </div>
-          {row.attachments}
+          {row.deleted ? (
+            <p className="room-row__body room-row__deleted">
+              <DeletedGlyph />
+              Message deleted
+            </p>
+          ) : (
+            <div
+              className={`room-row__body${row.editedAt ? ' room-row__body--edited' : ''}`}
+            >
+              {row.body ??
+                (row.text !== undefined ? (
+                  <RoomMessageText text={row.text} />
+                ) : null)}
+              {row.editedAt && (
+                <span
+                  className="room-row__edited"
+                  title={
+                    Number.isFinite(Date.parse(row.editedAt))
+                      ? `Edited ${roomFullTime(row.editedAt)}`
+                      : undefined
+                  }
+                >
+                  edited
+                </span>
+              )}
+            </div>
+          )}
+          {!row.deleted && row.attachments}
+          {!row.deleted && row.reactions}
           {row.footer && <div className="room-row__footer">{row.footer}</div>}
         </div>
         {row.actions && showMore && (

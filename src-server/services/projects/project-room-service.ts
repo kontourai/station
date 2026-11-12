@@ -1,3 +1,4 @@
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type {
   ProjectMemberAction,
   ProjectMembershipScope,
@@ -5,9 +6,13 @@ import type {
 import type {
   ProjectRoomActor,
   ProjectRoomAppendInput,
+  ProjectRoomAttachment,
   ProjectRoomChannelCreateInput,
   ProjectRoomChannelUpdateInput,
+  ProjectRoomDeleteInput,
+  ProjectRoomEditInput,
   ProjectRoomNoteInput,
+  ProjectRoomReactionInput,
   ProjectRoomView,
 } from '@kontourai/station-contracts/project-room';
 import type {
@@ -50,6 +55,28 @@ export interface ProjectRoomAdmission {
   scope: ProjectMembershipScope;
   actorId: string;
 }
+/** Byte storage for room files (`RoomAttachments`), keyed by a binding tuple. */
+export interface ProjectRoomAttachmentPort {
+  store(
+    binding: readonly string[],
+    inputs: ChatAttachmentInput[],
+  ): ProjectRoomAttachment[];
+  read(
+    binding: readonly string[],
+    id: string,
+  ): { attachment: ProjectRoomAttachment; bytes: Buffer } | undefined;
+  resolve(
+    binding: readonly string[],
+    attachments: ProjectRoomAttachment[],
+  ): unknown;
+}
+/** A room's files belong to that room of that Project incarnation. */
+const attachmentBinding = (scope: ProjectMembershipScope, roomId: string) => [
+  scope.stationId,
+  scope.localProjectId,
+  scope.portableProjectId,
+  roomId,
+];
 export class ProjectRoomService {
   private closed = false;
   private participants = new Map<
@@ -64,7 +91,17 @@ export class ProjectRoomService {
   constructor(
     private readonly store: ProjectRoomStore,
     readonly access: ProjectRoomAccessPort,
+    private readonly attachments?: ProjectRoomAttachmentPort,
   ) {}
+  /** Byte-store failures (a validation, the per-room cap) refuse as invalid. */
+  private files<T>(run: (port: ProjectRoomAttachmentPort) => T): T {
+    if (!this.attachments) throw new ProjectRoomRefusal('not_found');
+    try {
+      return run(this.attachments);
+    } catch {
+      throw new ProjectRoomRefusal('invalid');
+    }
+  }
   // One consistency read per active Room, independent of subscriber count.
   // Other SQLite connections/processes do not share the in-process commit owner.
   private rooms = new Map<
@@ -274,8 +311,146 @@ export class ProjectRoomService {
       slug,
       'discuss',
       guard,
+      (scope, actor, _caps, assertCurrent) => {
+        // Every file must already be stored for this room, unchanged.
+        if (input.attachments?.length) {
+          const roomId = this.store.lookupRoom(scope, channelId)?.roomId;
+          if (!roomId) throw new ProjectRoomRefusal('not_found');
+          this.files((port) =>
+            port.resolve(attachmentBinding(scope, roomId), input.attachments!),
+          );
+        }
+        return this.store.append(scope, actor, input, assertCurrent, channelId);
+      },
+      channelId,
+    );
+  }
+  react(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    messageId: string,
+    input: ProjectRoomReactionInput,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      guard,
       (scope, actor, _caps, assertCurrent) =>
-        this.store.append(scope, actor, input, assertCurrent, channelId),
+        this.store.react(
+          scope,
+          actor,
+          messageId,
+          input,
+          assertCurrent,
+          channelId,
+        ),
+      channelId,
+    );
+  }
+  edit(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    messageId: string,
+    input: ProjectRoomEditInput,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      guard,
+      (scope, actor, _caps, assertCurrent) =>
+        this.store.edit(
+          scope,
+          actor,
+          messageId,
+          input,
+          assertCurrent,
+          channelId,
+        ),
+      channelId,
+    );
+  }
+  deleteMessage(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    messageId: string,
+    input: ProjectRoomDeleteInput,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      guard,
+      (scope, actor, _caps, assertCurrent) =>
+        this.store.deleteMessage(
+          scope,
+          actor,
+          messageId,
+          input,
+          assertCurrent,
+          channelId,
+        ),
+      channelId,
+    );
+  }
+  /** Stores files for a message the caller is about to send in this room. */
+  storeAttachments(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    inputs: ChatAttachmentInput[],
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      guard,
+      (scope, _actor, _caps, assertCurrent) => {
+        const roomId = this.store.writableRoomId(scope, channelId);
+        assertCurrent();
+        return this.files((port) =>
+          port.store(attachmentBinding(scope, roomId), inputs),
+        );
+      },
+      channelId,
+    );
+  }
+  /** A file of a readable message in this room; anything else is not found. */
+  readAttachment(
+    request: Request,
+    slug: string,
+    attachmentId: string,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'view',
+      undefined,
+      (scope, _actor, _caps, assertCurrent) => {
+        const roomId = this.store.attachmentRoom(
+          scope,
+          attachmentId,
+          channelId,
+        );
+        const file = roomId
+          ? this.attachments?.read(
+              attachmentBinding(scope, roomId),
+              attachmentId,
+            )
+          : undefined;
+        if (!file) throw new ProjectRoomRefusal('not_found');
+        assertCurrent();
+        return file;
+      },
       channelId,
     );
   }

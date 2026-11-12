@@ -3605,7 +3605,16 @@ is created; otherwise tables are created and every channel-less room is adopted 
 `#general` under the writer lock, after re-reading the version there, so a racing
 newer Station's upgrade is never overwritten. A room whose stored record does not
 match its row is not adopted, and it refuses its channels as it refuses its reads. Channel limits, unique names and
-archived read-only state are enforced in the store transaction. Persisted records are validated
+archived read-only state are enforced in the store transaction. Schema version 2
+adds message activity in separate tables: reactions (one per person and emoji),
+superseding edit and delete revisions, the files each message links, and a
+per-room activity counter. History projects the latest revision and the
+reactions onto each stored message, which is never rewritten. The live
+checkpoint counts activity so reactions and edits wake readers, while
+`lastSeq`, the read-state version, moves only with new messages. Only a
+message's person author may edit or delete it, and Agent messages are never
+edited. Message files are stored by `RoomAttachments`, which also stores Task room files, under a
+binding of Station, Project incarnation and room. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 

@@ -221,7 +221,10 @@ import { TaskBrowserRecording } from '../../services/projects/task-browser-recor
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
 import { TaskDeviceCapture } from '../../services/projects/task-device-capture.js';
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
-import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
+import {
+  RoomAttachments,
+  TaskRoomAttachments,
+} from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
@@ -1671,10 +1674,10 @@ export function isProjectMemberDraftLease(method: string, path: string) {
 export function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
       ) ||
-        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
           path,
         ))) ||
     (method === 'PUT' &&
@@ -9443,6 +9446,7 @@ export function configureRuntimeRoutes(
   const projectRoomService = new ProjectRoomService(
     roomStore.store,
     roomAccess,
+    new RoomAttachments(join(roomHome, 'project-room-attachments'), 'room'),
   );
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>

@@ -28,6 +28,7 @@ import { createInboxHarness } from '../../routes/orchestration/__tests__/helpers
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
@@ -43,6 +44,8 @@ import {
   FileConversationAcknowledgementStore,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { ProjectRoomService } from '../../services/projects/project-room-service.js';
+import { createProjectRoomRuntime } from '../../services/projects/project-room-store.js';
 import { ReadMarkerService } from '../../services/read-markers/read-marker-service.js';
 import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
@@ -364,6 +367,49 @@ const CONSUMED_FLAGS: Record<
     });
     return response.status === 200;
   },
+  // POST /:slug/room/messages/:messageId/reactions sets the caller's reaction.
+  projectRoomMessageActions: async () => {
+    const runtime = createProjectRoomRuntime(makeTempDir('room-actions-flag-'));
+    try {
+      const scope = {
+        stationId: 'station',
+        localProjectId: 'project-id',
+        portableProjectId: 'portable',
+        localProjectSlug: 'project',
+      };
+      const actor = { id: 'ada', displayName: 'Ada', kind: 'person' as const };
+      const caps = { view: true, discuss: true, edit: true, execute: false };
+      const service = new ProjectRoomService(runtime.store, {
+        withAction: async (_request, _slug, _action, _actorId, operation) =>
+          operation(scope, actor, caps, () => {}),
+        current: async () => true,
+      });
+      const { roomId } = runtime.store.ensureRoom(scope, () => {});
+      const message = runtime.store.append(
+        scope,
+        actor,
+        { intentId: randomUUID(), text: 'hello' },
+        () => {},
+      );
+      const response = await createProjectRoomRoutes(service).request(
+        `/project/room/messages/${message.messageId}/reactions`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expectedRoomId: roomId,
+            expectedProjectId: scope.localProjectId,
+            expectedActorId: actor.id,
+            emoji: '👍',
+            reacted: true,
+          }),
+        },
+      );
+      return response.status === 200;
+    } finally {
+      runtime.close();
+    }
+  },
   // GET /sessions/:threadId/event-window answers a bounded window.
   sessionEventWindow: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
@@ -649,6 +695,7 @@ describe('consumed capability flags match what their routes serve', () => {
     childWorkSteering: { personal: true, hosted: true },
     privateMemoryReview: { personal: true, hosted: false },
     privateOperationalOutcomes: { personal: true, hosted: true },
+    projectRoomMessageActions: { personal: true, hosted: true },
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },

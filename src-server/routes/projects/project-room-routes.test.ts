@@ -35,6 +35,7 @@ import {
   ProjectRoomStore,
 } from '../../services/projects/project-room-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
+import { RoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
@@ -163,7 +164,11 @@ async function harness(
   };
   const runtime = createProjectRoomRuntime(home);
   cleanup.push(() => runtime.close());
-  const service = new ProjectRoomService(runtime.store, port);
+  const service = new ProjectRoomService(
+    runtime.store,
+    port,
+    new RoomAttachments(join(home, 'project-room-attachments'), 'room'),
+  );
   cleanup.push(() => service.close());
   if (provision)
     await service.open(
@@ -952,4 +957,243 @@ test('channels: an archived channel refuses posts and note edits but still serve
     archived: false,
   });
   expect((await message('back')).status).toBe(200);
+});
+
+/** A real 1x1 PNG, so the shared attachment checks see matching bytes. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
+const png = (name = 'shot.png') => ({
+  kind: 'image',
+  name,
+  mimeType: 'image/png',
+  size: PNG.length,
+  dataUrl: `data:image/png;base64,${PNG.toString('base64')}`,
+});
+async function history(
+  h: Awaited<ReturnType<typeof harness>>,
+  who: 'alice' | 'bob',
+) {
+  const response = await h.request(who, '/messages');
+  expect(response.status).toBe(200);
+  return parseProjectRoomHistory(await data(response));
+}
+
+test('message activity: another client sees a reaction, its removal and an edit after a refetch, and the read version stays', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'Ship it?',
+      }),
+    ),
+  );
+  const target = `/messages/${message.messageId}`;
+  const react = (who: 'alice' | 'bob', reacted: boolean) =>
+    h.request(who, `${target}/reactions`, 'POST', {
+      ...guard(who === 'alice' ? a : b),
+      emoji: '👍',
+      reacted,
+    });
+  expect((await react('bob', true)).status).toBe(200);
+  expect((await react('alice', true)).status).toBe(200);
+  expect((await history(h, 'alice')).messages[0]!.reactions).toEqual([
+    { emoji: '👍', actors: [b.actor, a.actor] },
+  ]);
+  expect((await react('bob', false)).status).toBe(200);
+  expect((await history(h, 'alice')).messages[0]!.reactions).toEqual([
+    { emoji: '👍', actors: [a.actor] },
+  ]);
+  const edited = await h.request('alice', `${target}/edit`, 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: 'Ship it Friday?',
+  });
+  expect(edited.status).toBe(200);
+  const seen = (await history(h, 'bob')).messages[0]!;
+  expect(seen.text).toBe('Ship it Friday?');
+  expect(seen.editedAt).toEqual(expect.any(String));
+  // Neither moved the room's content version, which read state counts.
+  expect((await h.discover('bob')).checkpoint.lastSeq).toBe(1);
+});
+
+test("message activity: the server refuses an edit or delete of another person's message", async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'Mine',
+      }),
+    ),
+  );
+  for (const action of ['edit', 'delete'] as const) {
+    const response = await h.request(
+      'bob',
+      `/messages/${message.messageId}/${action}`,
+      'POST',
+      {
+        ...guard(b),
+        intentId: randomUUID(),
+        ...(action === 'edit' ? { text: 'Yours now' } : {}),
+      },
+    );
+    // Not a 403: clients read a 403 as lost access and stop the room.
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: { code: 'project_room_forbidden' },
+    });
+  }
+  expect((await history(h, 'alice')).messages).toEqual([message]);
+});
+
+test('message activity: a deleted root keeps its replies reachable', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const root = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'Root',
+      }),
+    ),
+  );
+  const reply = parseProjectRoomMessage(
+    await data(
+      await h.request('bob', '/messages', 'POST', {
+        ...guard(b),
+        intentId: randomUUID(),
+        text: 'Reply',
+        replyTo: root.messageId,
+      }),
+    ),
+  );
+  const deleted = await h.request(
+    'alice',
+    `/messages/${root.messageId}/delete`,
+    'POST',
+    { ...guard(a), intentId: randomUUID() },
+  );
+  expect(deleted.status).toBe(200);
+  const { messages } = await history(h, 'bob');
+  expect(messages.map((m) => [m.messageId, m.text, !!m.deletedAt])).toEqual([
+    [root.messageId, '', true],
+    [reply.messageId, 'Reply', false],
+  ]);
+  expect(messages[1]!.replyTo).toBe(root.messageId);
+});
+
+test('message files: upload, send, read back; past the count or size limit is refused; a deleted message withholds them', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const upload = (attachments: unknown[]) =>
+    h.request('alice', '/attachments', 'POST', { ...guard(a), attachments });
+  expect((await upload(Array.from({ length: 6 }, () => png()))).status).toBe(
+    400,
+  );
+  const big = Buffer.alloc(5 * 1024 * 1024 + 1);
+  PNG.copy(big);
+  expect(
+    (
+      await upload([
+        {
+          ...png('big.png'),
+          size: big.length,
+          dataUrl: `data:image/png;base64,${big.toString('base64')}`,
+        },
+      ])
+    ).status,
+  ).toBe(400);
+  const stored = await upload([png()]);
+  expect(stored.status).toBe(200);
+  const [file] = (await data(stored)) as { id: string }[];
+  // Unsent, the file is nobody's to read.
+  expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(404);
+  // Six descriptors are refused at the message too, not only at upload.
+  const tooMany = await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '',
+    attachments: Array.from({ length: 6 }, () => ({ ...file })),
+  });
+  expect(tooMany.status).toBe(400);
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: '',
+        attachments: [file],
+      }),
+    ),
+  );
+  const read = await h.request('bob', `/attachments/${file!.id}`);
+  expect(read.status).toBe(200);
+  expect(read.headers.get('content-type')).toBe('application/octet-stream');
+  expect(Buffer.from(await read.arrayBuffer())).toEqual(PNG);
+  expect((await history(h, 'bob')).messages[0]!.attachments).toEqual([file]);
+  await h.request('alice', `/messages/${message.messageId}/delete`, 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+  });
+  expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(404);
+});
+
+test('message activity: SSE announces a reaction, an edit and a delete without advancing lastSeq', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const message = h.runtime.store.append(
+    h.scope,
+    a.actor,
+    { intentId: randomUUID(), text: 'watch me' },
+    () => {},
+  );
+  const response = await h.request('alice', '/events');
+  const reader = response.body!.getReader();
+  expect(await frame(reader)).toContain('event: changed');
+  expect(await frame(reader)).toContain('event: presence');
+  const changes = [
+    () =>
+      h.runtime.store.react(
+        h.scope,
+        a.actor,
+        message.messageId,
+        { emoji: '🎉', reacted: true },
+        () => {},
+      ),
+    () =>
+      h.runtime.store.edit(
+        h.scope,
+        a.actor,
+        message.messageId,
+        { intentId: randomUUID(), text: 'watch this' },
+        () => {},
+      ),
+    () =>
+      h.runtime.store.deleteMessage(
+        h.scope,
+        a.actor,
+        message.messageId,
+        { intentId: randomUUID() },
+        () => {},
+      ),
+  ];
+  for (const change of changes) {
+    const next = frame(reader);
+    change();
+    const value = await next;
+    expect(value).toContain('event: changed');
+    expect(value).toContain('"lastSeq":1');
+  }
+  await reader.cancel();
 });

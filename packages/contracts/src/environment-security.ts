@@ -1279,6 +1279,13 @@ export interface StationCapabilityFlags {
    */
   readMarkers?: boolean;
   /**
+   * #4796, #4797, #4812: Project room messages take reactions, edits,
+   * deletes and attachments (`/messages/:messageId/{reactions,edit,delete}`
+   * and `/attachments` under a room or channel). A host without them answers
+   * 404, so a client offers those actions only with this flag.
+   */
+  projectRoomMessageActions?: boolean;
+  /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).

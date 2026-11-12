@@ -98,30 +98,6 @@
 .task-room-inline-status[role="alert"] {
   color: var(--k-negative);
 }
-.task-room-attachment-images {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--k-space-2);
-  margin: var(--k-space-1) 0 0;
-  padding: 0;
-  list-style: none;
-}
-.task-room-attachment-images li {
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-1);
-  max-width: 100%;
-  color: var(--k-text-faint);
-  font-size: var(--k-text-sm);
-}
-.task-room-attachment-images img {
-  display: block;
-  max-width: min(100%, calc(var(--k-space-6) * 9));
-  max-height: calc(var(--k-space-6) * 8);
-  object-fit: contain;
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-sm);
-}
 /* Phone layout: `useIsMobile` (MOBILE_MEDIA_QUERY) sets the class. */
 .task-room-composer--compact > section,
 .task-room-composer--compact > p,

@@ -51,6 +51,20 @@ interface ProjectLine {
   text: string;
   /** The 1-based sequence of the message this replies to. */
   replyTo?: number;
+  /** Projected reactions, in first-reacted order (#4796). */
+  reactions?: { emoji: string; actors: RoomActor[] }[];
+  /** The latest edit's time; `text` is the edited text (#4797). */
+  editedAt?: string;
+  /** A tombstone: the history withholds its text (#4797). */
+  deletedAt?: string;
+  /** Files on the message (#4812). */
+  attachments?: {
+    id: string;
+    kind: 'image' | 'file';
+    name: string;
+    mimeType: string;
+    size: number;
+  }[];
 }
 
 const SHORT: ProjectLine[] = [
@@ -201,11 +215,111 @@ export type ProjectRoomScene =
   | 'agent-abandon'
   /** The short room with the composer focused and, on a phone, a keyboard. */
   | 'keyboard'
-  | 'channels';
+  | 'channels'
+  /** Reaction pills; the phone opens a message's actions (#4796). */
+  | 'reactions'
+  /** The quick picker, open on a message (#4796). */
+  | 'reaction-picker'
+  /** Edited messages and the composer editing your last one (#4797). */
+  | 'edited'
+  /** A deleted message whose reply still reads (#4797). */
+  | 'deleted'
+  /** An image and a file in a channel, and one staged to send (#4812). */
+  | 'attachment';
+
+/** A real phone screenshot from the repo stands in for a shared image. */
+const SHARED_IMAGE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332211';
+const SHARED_FILE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332212';
 
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
   if (scene === 'long' || scene === 'new-messages') return longHistory();
+  const [first, second, third, fourth] = SHORT as [
+    ProjectLine,
+    ProjectLine,
+    ProjectLine,
+    ProjectLine,
+  ];
+  if (scene === 'reactions' || scene === 'reaction-picker')
+    return [
+      {
+        ...first,
+        reactions: [
+          { emoji: '👍', actors: [PRIYA, VIEWER] },
+          { emoji: '🎉', actors: [PRIYA] },
+        ],
+      },
+      second,
+      {
+        ...third,
+        reactions: [
+          { emoji: '👀', actors: [JONAS] },
+          { emoji: '🙏', actors: [VIEWER, PRIYA, JONAS] },
+        ],
+      },
+      { ...fourth, reactions: [{ emoji: '✅', actors: [JONAS] }] },
+    ];
+  if (scene === 'edited')
+    return [
+      first,
+      {
+        ...second,
+        text: 'I kept the three tiers and moved the FAQ under the comparison table.',
+        editedAt: at(1, 14, 5),
+      },
+      third,
+      {
+        ...fourth,
+        text: 'Good catch. Jonas, can you update both numbers before we ship?',
+        editedAt: at(1, 14, 12),
+      },
+    ];
+  if (scene === 'deleted')
+    return [
+      first,
+      { ...second, text: '', deletedAt: at(1, 14, 4) },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 5),
+        text: 'Which FAQ do you mean, the billing one?',
+        replyTo: 2,
+      },
+      third,
+      fourth,
+    ];
+  if (scene === 'attachment')
+    return [
+      first,
+      {
+        actor: JONAS,
+        at: at(1, 14, 3),
+        text: 'Here is the new pricing table on a phone.',
+        attachments: [
+          {
+            id: SHARED_IMAGE_ID,
+            kind: 'image',
+            name: 'pricing-table.png',
+            mimeType: 'image/png',
+            size: IMAGE_PNG.length,
+          },
+        ],
+      },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 8),
+        text: '',
+        attachments: [
+          {
+            id: SHARED_FILE_ID,
+            kind: 'file',
+            name: 'plan-limits.pdf',
+            mimeType: 'application/pdf',
+            size: 48213,
+          },
+        ],
+      },
+      fourth,
+    ];
   return SHORT;
 }
 
@@ -260,11 +374,15 @@ function projectMessage(line: ProjectLine, seq: number, roomId = ROOM_ID) {
     intentId: uuid(seq, roomId === ROOM_ID ? 'b1' : 'b2'),
     text: line.text,
     ...(line.replyTo ? { replyTo: uuid(line.replyTo, 'c1') } : {}),
+    ...(line.attachments ? { attachments: line.attachments } : {}),
     roomId,
     messageId: uuid(seq, roomId === ROOM_ID ? 'c1' : 'c2'),
     seq,
     actor: line.actor,
     createdAt: line.at,
+    ...(line.editedAt ? { editedAt: line.editedAt } : {}),
+    ...(line.deletedAt ? { deletedAt: line.deletedAt } : {}),
+    ...(line.reactions ? { reactions: line.reactions } : {}),
   };
 }
 
@@ -389,6 +507,25 @@ export async function installProjectRoomFixture(
                 last < Math.min(all.length, after + limit) ? last : null,
             },
           },
+        });
+      },
+    ],
+    [
+      `${address}/attachments/*`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        const id = new URL(route.request().url()).pathname.split('/').at(-1);
+        const file = read()
+          .flatMap((message) =>
+            'attachments' in message ? (message.attachments ?? []) : [],
+          )
+          .find((attachment) => attachment.id === id);
+        if (!file) return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file.kind === 'image' ? IMAGE_PNG : Buffer.from('%PDF-1.7\n'),
         });
       },
     ],

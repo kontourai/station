@@ -2,9 +2,12 @@ import {
   isProjectRoomUuid,
   PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
   PROJECT_ROOM_LIMITS,
+  type ProjectRoomAttachment,
 } from '@kontourai/station-contracts/project-room';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   type ApiRequestScope,
+  fetchProjectRoomAttachment,
   isProjectRoomAccessError,
   type ProjectRoomAgentHandle,
   type ProjectRoomAgentIntent,
@@ -13,6 +16,7 @@ import {
   ProjectRoomProtocolError,
   parseProjectRoomAgentIntent,
   parseProjectRoomMessageIntent,
+  uploadProjectRoomAttachments,
   useProjectRoom,
   useProjectRoomAgent,
   useProjectRoomChannels,
@@ -35,8 +39,13 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { IconButton } from '../../components/IconButton';
-import { ReturnGlyph } from '../../components/icons/Glyph';
+import { EditGlyph, ReturnGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { useTouchKeyboard } from '../../components/room/composerKeys';
+import {
+  RoomAttachmentList,
+  type RoomAttachmentSource,
+} from '../../components/room/RoomAttachmentList';
 import { RoomAvatar } from '../../components/room/RoomAvatar';
 import { RoomComposer } from '../../components/room/RoomComposer';
 import {
@@ -49,11 +58,21 @@ import {
   useRoomMention,
 } from '../../components/room/RoomMentionPicker';
 import {
+  ReactGlyph,
+  RoomEmojiPicker,
+  RoomReactionBar,
+  RoomReactionsSheet,
+  type RoomReactionView,
+  TrashGlyph,
+} from '../../components/room/RoomReactions';
+import {
   roomDraftKey,
   useRoomDraftValue,
 } from '../../components/room/useRoomDraft';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useProjectRoomMessageActions } from '../../hooks/useProjectRoomMessageActions';
+import { useRoomAttachments } from '../../hooks/useRoomAttachments';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
 import {
@@ -291,6 +310,32 @@ const PROJECT_DRAFT_CODEC = {
   isEmpty: (draft: ProjectRoomDraft) =>
     !draft.text && !draft.replyTo && !draft.recipient,
 };
+/** A person's own message being edited in the composer (#4797). */
+interface ProjectRoomEdit {
+  messageId: string;
+  /** The text the edit started from; saving it unchanged is a no-op. */
+  original: string;
+  text: string;
+  /** Files stay on the message, so its text may be emptied. */
+  hasFiles: boolean;
+}
+/** What a refused reaction, edit or delete tells the person. */
+function messageActionFailure(error: unknown, action: string) {
+  const code = error instanceof StationHttpError ? error.code : undefined;
+  if (code === 'project_room_capacity')
+    return action === 'react'
+      ? 'This message has all the reactions it can hold.'
+      : 'This message cannot be edited again.';
+  if (code === 'project_room_forbidden')
+    return 'You can change only your own messages.';
+  if (code === 'project_room_conflict')
+    return 'That message changed. The conversation has been refreshed.';
+  return action === 'react'
+    ? 'The reaction was not saved. Try again.'
+    : action === 'edit'
+      ? 'The edit was not saved. Your text is still in the composer.'
+      : 'The message was not deleted. Try again.';
+}
 type Update<T> = T | ((current: T) => T);
 function apply<T>(update: Update<T>, current: T): T {
   return typeof update === 'function'
@@ -405,6 +450,91 @@ function ProjectRoomSession({
       mounted.current = false;
     };
   }, []);
+  // Reactions, edits, deletes and files (#4796, #4797, #4812) need a host
+  // that serves them; an older one keeps the room as it was.
+  const messageActions = useProjectRoomMessageActions(requestScope.apiBase);
+  const touch = useTouchKeyboard();
+  const [editing, setEditing] = useState<ProjectRoomEdit>();
+  const [picker, setPicker] = useState<string>();
+  const [reactionsFor, setReactionsFor] = useState<string>();
+  const [deleting, setDeleting] = useState<string>();
+  const popoverAnchor = useRef<HTMLElement | null>(null);
+  const roomIdForFiles = view?.roomId;
+  const actorForFiles = view?.actor.id;
+  const roomStopped = useRef(room.stopped);
+  roomStopped.current = room.stopped;
+  const fileTarget = useMemo(
+    () =>
+      messageActions && roomIdForFiles && actorForFiles
+        ? {
+            owner: [
+              requestScope.apiBase,
+              requestScope.authorityKey,
+              projectId,
+              roomIdForFiles,
+              actorForFiles,
+            ],
+            label: 'Room',
+            isCurrent: () => !roomStopped.current,
+            upload: (
+              attachments: Parameters<
+                typeof uploadProjectRoomAttachments
+              >[2]['attachments'],
+            ) =>
+              uploadProjectRoomAttachments(
+                requestScope,
+                slug,
+                {
+                  expectedRoomId: roomIdForFiles,
+                  expectedProjectId: projectId,
+                  expectedActorId: actorForFiles,
+                  attachments,
+                },
+                channelId,
+              ),
+          }
+        : undefined,
+    [
+      messageActions,
+      roomIdForFiles,
+      actorForFiles,
+      requestScope,
+      projectId,
+      slug,
+      channelId,
+    ],
+  );
+  const files = useRoomAttachments(fileTarget, () => setNotice(''));
+  const fileSource = useMemo<RoomAttachmentSource>(
+    () => ({
+      key: [
+        'project',
+        requestScope.apiBase,
+        requestScope.authorityKey,
+        projectId,
+        roomIdForFiles,
+      ],
+      enabled: !!roomIdForFiles,
+      isCurrent: () => !roomStopped.current,
+      load: (attachment, signal) =>
+        fetchProjectRoomAttachment(
+          requestScope,
+          slug,
+          attachment.id,
+          channelId,
+          signal,
+        ),
+    }),
+    [requestScope, projectId, roomIdForFiles, slug, channelId],
+  );
+  // Starting an edit puts the caret at the end of the message's text.
+  const editingId = editing?.messageId;
+  useEffect(() => {
+    const field = composer.current;
+    if (!editingId || !field) return;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }, [editingId]);
   useFillPageHeight(section, variant === 'full' && !!view);
   const clearProposal = () => {
     sessionStorage.removeItem(storageKey);
@@ -471,6 +601,7 @@ function ProjectRoomSession({
     setDraft(EMPTY_PROJECT_DRAFT);
     setProposal(undefined);
     setNoteDraft(undefined);
+    setEditing(undefined);
     try {
       sessionStorage.removeItem(storageKey);
       sessionStorage.removeItem(`${storageKey}:agent`);
@@ -495,6 +626,7 @@ function ProjectRoomSession({
       setDraft(EMPTY_PROJECT_DRAFT);
       setProposal(undefined);
       setNoteDraft(undefined);
+      setEditing(undefined);
       try {
         sessionStorage.removeItem(storageKey);
         sessionStorage.removeItem(`${storageKey}:agent`);
@@ -529,6 +661,17 @@ function ProjectRoomSession({
   async function send(retry?: ProjectRoomMessageIntent) {
     if (!view || room.stopped || !restored || room.send.isPending) return;
     if (proposal && !retry) return;
+    // Files upload first; the message then names them by their stored ids.
+    let attachments: ProjectRoomAttachment[] = [];
+    if (!retry && files.files.length) {
+      try {
+        attachments = await files.prepare();
+      } catch {
+        files.setError('The files were not uploaded. Try sending again.');
+        return;
+      }
+      if (!mounted.current) return;
+    }
     const input = retry ?? {
       expectedRoomId: view.roomId,
       expectedProjectId: projectId,
@@ -536,6 +679,7 @@ function ProjectRoomSession({
       intentId: randomCorrelationId(),
       text,
       ...(replyTo ? { replyTo } : {}),
+      ...(attachments.length ? { attachments } : {}),
     };
     try {
       // Persist the exact immutable payload before the network can commit it.
@@ -551,6 +695,7 @@ function ProjectRoomSession({
       // The message now lives in the conversation as a pending row.
       setText('');
       setReplyTo(undefined);
+      files.clear();
     }
     setNotice('');
     try {
@@ -658,34 +803,201 @@ function ProjectRoomSession({
       <ReturnGlyph /> Replying to <strong>{authorOf(messageId)}</strong>
     </span>
   );
-  const rows: RoomConversationRow[] = visibleMessages.map((message) => ({
-    id: message.messageId,
-    kind: 'message',
-    author: {
-      id: message.actor.id,
-      label: message.actor.displayName,
-      agent: message.actor.kind === 'agent',
-    },
-    at: message.createdAt,
-    reply: !!message.replyTo,
-    context: message.replyTo ? replyContext(message.replyTo) : undefined,
-    text: message.text,
-    own: message.actor.id === view.actor.id,
-    actions: view.capabilities.discuss ? (
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={room.send.isPending}
-        aria-label={`Reply to ${message.actor.displayName}`}
-        onClick={() => {
-          setReplyTo(message.messageId);
-          composer.current?.focus();
-        }}
-      >
-        <ReturnGlyph /> Reply
-      </Button>
-    ) : undefined,
-  }));
+  const me = view.actor;
+  const guards = {
+    expectedRoomId: view.roomId,
+    expectedProjectId: projectId,
+    expectedActorId: me.id,
+  };
+  // Reacting, editing and deleting need the host's support and discuss.
+  const canAct = messageActions && view.capabilities.discuss;
+  /** A person's own message that still stands; Agent messages never are. */
+  const isOwn = (message: RoomMessage) =>
+    message.actor.kind === 'person' &&
+    message.actor.id === me.id &&
+    !message.deletedAt;
+  const reactionViews = (message: RoomMessage): RoomReactionView[] =>
+    (message.reactions ?? []).map((reaction) => ({
+      emoji: reaction.emoji,
+      mine: reaction.actors.some(
+        (actor) => actor.id === me.id && actor.kind === me.kind,
+      ),
+      names: reaction.actors.map((actor) =>
+        actor.id === me.id && actor.kind === me.kind
+          ? 'You'
+          : actor.displayName,
+      ),
+    }));
+  const react = (messageId: string, emoji: string, reacted: boolean) =>
+    room.react.mutate(
+      { target: { ...guards, messageId }, emoji, reacted },
+      {
+        onError: (error) => {
+          if (mounted.current) setNotice(messageActionFailure(error, 'react'));
+        },
+      },
+    );
+  const openPopover = (
+    open: (messageId: string) => void,
+    messageId: string,
+    anchor: HTMLElement,
+  ) => {
+    popoverAnchor.current = anchor;
+    open(messageId);
+  };
+  const startEdit = (message: RoomMessage) => {
+    setNotice('');
+    setEditing({
+      messageId: message.messageId,
+      original: message.text,
+      text: message.text,
+      hasFiles: !!message.attachments?.length,
+    });
+  };
+  const lastOwnMessage = [...messages].reverse().find(isOwn);
+  async function saveEdit() {
+    if (!editing || room.edit.isPending) return;
+    const current = editing;
+    if (current.text === current.original) {
+      setEditing(undefined);
+      return;
+    }
+    try {
+      await room.edit.mutateAsync({
+        target: { ...guards, messageId: current.messageId },
+        intentId: randomCorrelationId(),
+        text: current.text,
+      });
+      if (mounted.current)
+        setEditing((value) =>
+          value?.messageId === current.messageId ? undefined : value,
+        );
+    } catch (error) {
+      if (mounted.current) setNotice(messageActionFailure(error, 'edit'));
+    }
+  }
+  async function confirmDelete() {
+    const messageId = deleting;
+    if (!messageId || room.remove.isPending) return;
+    try {
+      await room.remove.mutateAsync({
+        target: { ...guards, messageId },
+        intentId: randomCorrelationId(),
+      });
+      if (!mounted.current) return;
+      setEditing((value) =>
+        value?.messageId === messageId ? undefined : value,
+      );
+    } catch (error) {
+      if (mounted.current) setNotice(messageActionFailure(error, 'delete'));
+    } finally {
+      if (mounted.current) setDeleting(undefined);
+    }
+  }
+  const rows: RoomConversationRow[] = visibleMessages.map((message) => {
+    const name = message.actor.displayName;
+    const reactions = reactionViews(message);
+    const showReactions = (anchor: HTMLElement) =>
+      openPopover(setReactionsFor, message.messageId, anchor);
+    return {
+      id: message.messageId,
+      kind: 'message',
+      author: {
+        id: message.actor.id,
+        label: name,
+        agent: message.actor.kind === 'agent',
+      },
+      at: message.createdAt,
+      reply: !!message.replyTo,
+      context: message.replyTo ? replyContext(message.replyTo) : undefined,
+      text: message.text,
+      editedAt: message.editedAt,
+      deleted: !!message.deletedAt,
+      own: message.actor.id === me.id,
+      attachments: (
+        <RoomAttachmentList
+          attachments={message.attachments}
+          source={fileSource}
+        />
+      ),
+      reactions: reactions.length ? (
+        <RoomReactionBar
+          reactions={reactions}
+          disabled={!canAct}
+          onToggle={(emoji, reacted) =>
+            react(message.messageId, emoji, reacted)
+          }
+          onAdd={
+            canAct
+              ? (anchor) => openPopover(setPicker, message.messageId, anchor)
+              : undefined
+          }
+          onShowWho={showReactions}
+        />
+      ) : undefined,
+      // A tombstone takes no actions: there is nothing left to answer.
+      actions:
+        view.capabilities.discuss && !message.deletedAt ? (
+          <>
+            {canAct && (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`React to ${name}`}
+                onClick={(event) =>
+                  openPopover(setPicker, message.messageId, event.currentTarget)
+                }
+              >
+                <ReactGlyph /> React
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={room.send.isPending}
+              aria-label={`Reply to ${name}`}
+              onClick={() => {
+                setReplyTo(message.messageId);
+                composer.current?.focus();
+              }}
+            >
+              <ReturnGlyph /> Reply
+            </Button>
+            {canAct && isOwn(message) && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Edit message"
+                  disabled={!!proposal}
+                  onClick={() => startEdit(message)}
+                >
+                  <EditGlyph /> Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Delete message"
+                  onClick={() => setDeleting(message.messageId)}
+                >
+                  <TrashGlyph /> Delete
+                </Button>
+              </>
+            )}
+            {(compact || touch) && reactions.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Who reacted"
+                onClick={(event) => showReactions(event.currentTarget)}
+              >
+                Who reacted
+              </Button>
+            )}
+          </>
+        ) : undefined,
+    };
+  });
   if (proposal && !committed)
     rows.push({
       id: `proposal:${proposal.intentId}`,
@@ -698,6 +1010,15 @@ function ProjectRoomSession({
       reply: !!proposal.replyTo,
       context: proposal.replyTo ? replyContext(proposal.replyTo) : undefined,
       text: proposal.text,
+      attachments: proposal.attachments?.length ? (
+        <ul className="room-attachments" aria-label="Attached files">
+          {proposal.attachments.map((file) => (
+            <li key={file.id}>
+              <span>{file.name}</span>
+            </li>
+          ))}
+        </ul>
+      ) : undefined,
       own: true,
       tone: room.send.isPending ? 'pending' : 'failed',
       footer: room.send.isPending ? (
@@ -861,6 +1182,21 @@ function ProjectRoomSession({
               sending={room.send.isPending}
               composer={composer}
               send={() => void send()}
+              files={canAct ? files : undefined}
+              editing={canAct ? editing : undefined}
+              editPending={room.edit.isPending}
+              setEditText={(value) =>
+                setEditing((current) =>
+                  current ? { ...current, text: value } : current,
+                )
+              }
+              cancelEdit={() => setEditing(undefined)}
+              saveEdit={() => void saveEdit()}
+              editLast={
+                canAct && lastOwnMessage
+                  ? () => startEdit(lastOwnMessage)
+                  : undefined
+              }
               prepareRecap={() => {
                 setText(`Recap Project ${slug} (Project ID: ${projectId}; Room ID: ${view.roomId}).
 
@@ -963,6 +1299,45 @@ Report observed freshness and coverage, including timestamps or checkpoints when
           </div>
         </div>
       )}
+      {picker && (
+        <RoomEmojiPicker
+          anchorRef={popoverAnchor}
+          onClose={() => setPicker(undefined)}
+          onPick={(emoji) => {
+            const messageId = picker;
+            setPicker(undefined);
+            const reacted = messages
+              .find((message) => message.messageId === messageId)
+              ?.reactions?.find((reaction) => reaction.emoji === emoji)
+              ?.actors.some((actor) => actor.id === me.id);
+            // Picking an emoji you already used takes it back, as a tap would.
+            react(messageId, emoji, !reacted);
+          }}
+        />
+      )}
+      {reactionsFor &&
+        (() => {
+          const message = messages.find(
+            (item) => item.messageId === reactionsFor,
+          );
+          return message?.reactions?.length ? (
+            <RoomReactionsSheet
+              reactions={reactionViews(message)}
+              anchorRef={popoverAnchor}
+              onClose={() => setReactionsFor(undefined)}
+            />
+          ) : null;
+        })()}
+      <ConfirmModal
+        isOpen={!!deleting}
+        title="Delete this message?"
+        message="Everyone in the channel sees “Message deleted” in its place."
+        confirmLabel="Delete"
+        variant="danger"
+        pending={room.remove.isPending}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleting(undefined)}
+      />
       <DiscardModal />
     </section>
   );
@@ -995,6 +1370,13 @@ function ProjectRoomComposer({
   send,
   prepareRecap,
   refresh,
+  files,
+  editing,
+  editPending,
+  setEditText,
+  cancelEdit,
+  saveEdit,
+  editLast,
 }: {
   id: string;
   view: ProjectRoomBrowserView;
@@ -1022,6 +1404,16 @@ function ProjectRoomComposer({
   send(): void;
   prepareRecap(): void;
   refresh(): void;
+  /** The composer's files, when the host stores them (#4812). */
+  files?: ReturnType<typeof useRoomAttachments>;
+  /** The reader's own message being edited in place of a new one (#4797). */
+  editing?: ProjectRoomEdit;
+  editPending: boolean;
+  setEditText(value: string): void;
+  cancelEdit(): void;
+  saveEdit(): void;
+  /** Up in an empty composer edits the reader's last message. */
+  editLast?(): void;
 }) {
   const agents = view.capabilities.execute;
   const catalog = useProjectRoomAgent(
@@ -1099,7 +1491,7 @@ function ProjectRoomComposer({
   ];
   const mention = useRoomMention({
     candidates,
-    enabled: !blocked && !recipient,
+    enabled: !blocked && !recipient && !editing,
     onPick(candidate, query) {
       if (candidate.agent) {
         setRecipient({ id: candidate.id, name: candidate.name });
@@ -1114,9 +1506,18 @@ function ProjectRoomComposer({
       composer.current?.focus();
     },
   });
+  const value = editing ? editing.text : text;
   const tooLong =
-    new TextEncoder().encode(text).length > PROJECT_ROOM_LIMITS.textBytes;
-  const canSend = restored && !blocked && !!text.trim() && !tooLong && !waiting;
+    new TextEncoder().encode(value).length > PROJECT_ROOM_LIMITS.textBytes;
+  const hasFiles = !!files?.files.length;
+  const canSend = editing
+    ? !editPending && (!!editing.text.trim() || editing.hasFiles) && !tooLong
+    : restored &&
+      !blocked &&
+      (!!text.trim() || (hasFiles && !recipient)) &&
+      !files?.busy &&
+      !tooLong &&
+      !waiting;
   return (
     <>
       {agents && view.capabilities.discuss && (
@@ -1132,7 +1533,7 @@ function ProjectRoomComposer({
           prompt={text}
           checkpointSeq={view.checkpoint.lastSeq}
           replyTo={replyTo}
-          blocked={!restored || blocked}
+          blocked={!restored || blocked || !!editing}
           toolsSlot={toolsSlot}
           askRef={agentPanel}
           onPendingChange={setPendingAgent}
@@ -1145,29 +1546,47 @@ function ProjectRoomComposer({
         id={id}
         label="Message the project"
         placeholder={`Message #${channelName}`}
-        value={text}
-        onValueChange={(value, caret) => {
-          setText(value);
+        value={value}
+        onValueChange={(next, caret) => {
+          if (editing) {
+            setEditText(next);
+            return;
+          }
+          setText(next);
           setRecipientNotice('');
-          mention.find(value, caret);
+          mention.find(next, caret);
         }}
         onSend={() => {
-          if (recipient) {
+          if (editing) saveEdit();
+          else if (recipient) {
             // The revision travels with the accepted request; nothing is
             // recorded for an attempt the panel refuses.
             if (!waiting) agentPanel.current?.ask(recipient.id, draft);
           } else send();
         }}
         canSend={canSend}
-        pending={sending}
+        pending={editing ? editPending : sending}
         sendLabel={
-          waiting
-            ? `Waiting for ${pendingName}…`
-            : recipient
-              ? `Ask ${recipient.name}`
-              : 'Send message'
+          editing
+            ? 'Save edit'
+            : waiting
+              ? `Waiting for ${pendingName}…`
+              : recipient
+                ? `Ask ${recipient.name}`
+                : 'Send message'
         }
         textareaRef={composer}
+        attachments={
+          files
+            ? {
+                port: files,
+                // Files go with a new message; an edit changes text only, and
+                // an Agent request carries none.
+                locked: blocked || !!editing || !!recipient,
+                owner: view.roomId,
+              }
+            : undefined
+        }
         inputProps={{
           'aria-controls': mention.open ? `${id}-mentions` : undefined,
           'aria-activedescendant':
@@ -1175,7 +1594,30 @@ function ProjectRoomComposer({
               ? `${id}-mentions-option-${mention.selected}`
               : undefined,
           'aria-describedby': `${id}-help`,
-          onKeyDown: mention.onKeyDown,
+          onKeyDown: (event) => {
+            mention.onKeyDown(event);
+            if (event.defaultPrevented) return;
+            const plain =
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.ctrlKey;
+            if (event.key === 'Escape' && editing) {
+              event.preventDefault();
+              cancelEdit();
+            } else if (
+              event.key === 'ArrowUp' &&
+              plain &&
+              !editing &&
+              !text &&
+              !hasFiles &&
+              editLast
+            ) {
+              // #4793 deferred this: Up in an empty composer edits your last message.
+              event.preventDefault();
+              editLast();
+            }
+          },
           onClick: (event) =>
             mention.find(
               event.currentTarget.value,
@@ -1183,7 +1625,14 @@ function ProjectRoomComposer({
             ),
         }}
         above={
-          replyTo || recipient ? (
+          editing ? (
+            <span className="room-composer__chip">
+              <EditGlyph /> Editing message
+              <Button variant="ghost" size="sm" onClick={cancelEdit}>
+                Cancel
+              </Button>
+            </span>
+          ) : replyTo || recipient ? (
             <>
               {replyTo && (
                 <span className="room-composer__chip">
@@ -1220,7 +1669,7 @@ function ProjectRoomComposer({
               aria-label="Mention a person or agent"
               title="Mention a person or agent"
               className="room-composer__tool"
-              disabled={blocked || !!recipient}
+              disabled={blocked || !!recipient || !!editing}
               onClick={() => {
                 const field = composer.current;
                 const caret = field?.selectionStart ?? text.length;
@@ -1256,8 +1705,9 @@ function ProjectRoomComposer({
               }}
             />
             <p className="sr-only" id={`${id}-help`}>
-              Enter to send, Shift+Enter for a new line. Type @ to mention a
-              person or agent.
+              {editing
+                ? 'Enter to save, Escape to cancel the edit.'
+                : 'Enter to send, Shift+Enter for a new line. Type @ to mention a person or agent.'}
             </p>
             {waiting && (
               <p className="room-composer__status" role="status">
