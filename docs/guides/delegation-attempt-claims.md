@@ -7,8 +7,12 @@ ledger, fence, cancel, UI or retention protocol yet.
 All delegation creates require `clientTurnId`. The separate
 [CreateRequestClaims owner](../../src-server/services/orchestration/create-request-claims.ts)
 binds authenticated user/tenant/principal and verified calling Session to the
-request kind, key and input. Each intended request needs a unique key. Completed
-receipts replay for seven days of elapsed host uptime, then expire. Wall-clock
+request kind, key and input. The receiver's earlier portable-attempt claim also
+binds a required inherited tool policy. Reusing an attempt with added or changed
+`toolAllowlistConstraints` conflicts before the existing attempt can be named;
+unchanged policy still identifies the original attempt. These digests establish
+request identity, not authority. Each intended request needs a unique key.
+Completed receipts replay for seven days of elapsed host uptime, then expire. Wall-clock
 jumps do not change that duration; uptime resets conservatively preserve the
 remaining window. Dead unmarked requests reclaim immediately, including changed
 input and resumed Sessions; live, unknown or marked owners still refuse changed input. A starting mark without confirmed

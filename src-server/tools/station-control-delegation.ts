@@ -5892,11 +5892,14 @@ export async function delegateTask(
       key: claimKey,
       attemptId: input.delegationAttemptId,
       callerDeviceId: attemptCaller.deviceId,
-      intentDigest: delegationAttemptIntentDigest({
-        prompt: input.prompt,
-        target: input.target,
-        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-      }),
+      intentDigest: delegationAttemptIntentDigest(
+        {
+          prompt: input.prompt,
+          target: input.target,
+          ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        },
+        input.delegation,
+      ),
       taskId: reservedTaskId,
     });
     // Same tuple + same validated intent: join the existing claim and name
