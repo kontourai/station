@@ -55,9 +55,14 @@ and refuses if an Agent it names has moved, changed or been removed. **Confirm**
 A confirmed source starts disabled and a confirmed rule starts observing: it
 records what it would do but starts nothing. Tick **Turn it on now** to
 enable the source, or set the rule live, in the same step. **Decline**
-creates nothing. Only a message you typed into Station's chat can lead to
-these proposals. Work that an automation, another agent's result, the CLI
-or another Station started cannot.
+creates nothing. Proposals are meant to come only from a message you typed
+into Station's chat. Work that an automation, another agent's result, the
+CLI or another Station started is refused. Station works out which message
+the agent is answering from the chat's state, and a known timing race
+(a steer sent while another agent's result is starting) can let an agent's
+continuation create a card. Nothing is created unless you confirm it, so
+read each card before confirming. The fix is tracked in
+[#4882](https://github.com/kontourai/station/issues/4882).
 
 ## Failures, missed runs and turning off
 

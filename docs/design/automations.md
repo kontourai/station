@@ -551,14 +551,22 @@ text. The agent fetches logs itself with `gh`.
   standing grant.
 - **Never.** Merge, arm auto-merge, push to main, edit protected paths (port
   the list from `qualification-repair.mjs`), or change automations or
-  grants. This includes proposing them. Only the turn making the call may
-  propose, and only if it carries the shared person-authorship mark (#4848):
-  one a person typed into Station's composer. The calling turn is the
-  Session's running turn by its persisted lifecycle fold; a start not yet
-  stored refuses, and the decision is made again in the transaction that
-  writes the proposal. Everything else refuses,
-  including a delegated child's result that continues in the person's chat
-  with `dispatchOrigin: interactive` (fail closed).
+  grants. This includes proposing them. Proposals are gated on the calling
+  turn being person-authored: it must carry the shared person-authorship
+  mark (#4848), meaning a person typed it into Station's composer. Station
+  infers the calling turn from Session state (the running turn by its
+  persisted lifecycle fold); a start not yet stored refuses, and the
+  decision is made again in the transaction that writes the proposal.
+  Everything else refuses, including a delegated child's result that
+  continues in the person's chat with `dispatchOrigin: interactive`.
+  - **Known race.** A concurrent steer, failed or accepted, clears an
+    in-flight delegated continuation's pending reservation, so an agent
+    continuation can create a proposal card. The operator's in-person
+    confirmation remains required and is the authority boundary.
+  - **Known false refusal.** An invocationless legacy start can leave the
+    Session stuck `pending`, refusing proposals until it exits.
+  - The fix for both is a turn-bound station-control credential
+    ([#4882](https://github.com/kontourai/station/issues/4882)).
 - **Honest limit.** Station cannot police an external engine's use of
   ambient host credentials. "Never merge" is real only if the Station OS
   user has no GitHub write credential. Publishing is therefore a

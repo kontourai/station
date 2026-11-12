@@ -1923,7 +1923,10 @@ turn by its persisted lifecycle fold
 (`OrchestrationService.stationControlCallingTurn`); it is `pending` while
 `ClientOriginTurnPropagation.holdsTurnStart` holds a start not yet stored.
 `proposingTurnId` decides, and the insert decides again inside its write
-transaction for the same turn. Everything else
+transaction for the same turn. The calling turn is inferred, not known: a
+concurrent steer can clear a delegated continuation's reservation (known
+race), and an invocationless legacy start can leave a Session stuck
+`pending`; a turn-bound credential replaces the inference ([#4882](https://github.com/kontourai/station/issues/4882)). Everything else
 refuses (fail closed), including a delegated result that continues in a
 person's chat with `dispatchOrigin: interactive`.
 [Validation](../../src-server/services/automation/automation-proposals.ts)

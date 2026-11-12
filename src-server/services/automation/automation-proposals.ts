@@ -624,29 +624,42 @@ export function describeRuleProposal(
 
 // ── who may propose ───────────────────────────────────────────────────────
 
-/** The turn a station-control call is made in (`stationControlCallingTurn`). */
+/**
+ * The turn a station-control call is inferred to be made in
+ * (`stationControlCallingTurn`). Inferred from Session state, not known:
+ * the call carries no turn identity until #4882.
+ */
 export type StationControlCallingTurn =
   | { readonly kind: 'turn'; readonly turnId: string }
   | { readonly kind: 'pending' | 'none' };
 
 export interface AutomationProposerReads {
-  /** The turn the call is made in: the Session's running turn, or why not. */
+  /** The inferred calling turn: the Session's running turn, or why not. */
   callingTurn(sessionId: string): StationControlCallingTurn;
   /** The store read #4827's predicate needs. */
   readonly store: CurrentTurnStartReader;
 }
 
 /**
- * The calling turn's id when that turn may propose automations, else
- * `undefined`. Only a turn a person typed into one of Station's own clients
- * qualifies, by the shared server-stamped mark (#4827), read from THAT
- * turn's own `turn.started`, never a steer, never an earlier turn (#4830
- * re-reviews):
+ * The inferred calling turn's id when that turn may propose automations,
+ * else `undefined`. Only a turn a person typed into one of Station's own
+ * clients qualifies, by the shared server-stamped mark (#4827), read from
+ * that turn's own `turn.started`, never a steer (#4830 re-reviews).
  *
- * - the calling turn is the one the Session is running; a call while a
- *   send's start is not yet stored (`pending`), or with no running turn
- *   (`none`), refuses, so a delegated continuation whose start is held for
- *   acceptance is never judged by the person turn before it;
+ * The calling turn is INFERRED from Session state, not known: a
+ * station-control call carries no turn identity. A turn-bound credential is
+ * the fix (#4882). Known gaps of the inference: a concurrent steer, failed or
+ * accepted, clears an in-flight delegated continuation's pending
+ * reservation, so that continuation's call can be judged by the person's
+ * earlier turn and create a proposal card; and an invocationless legacy
+ * start can leave the Session stuck `pending`, wrongly refusing until it
+ * exits. A person's in-person confirmation stays the authority boundary.
+ *
+ * - the calling turn is taken to be the one the Session is running; a call
+ *   while a send's start is not yet stored (`pending`), or with no running
+ *   turn (`none`), refuses, so a delegated continuation whose start is held
+ *   for acceptance is not judged by the person turn before it (except in the
+ *   steer race above);
  * - the stored newest own start must be that running turn and carry the
  *   mark; anything else, and anything Station cannot read, refuses.
  *

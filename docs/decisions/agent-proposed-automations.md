@@ -77,15 +77,26 @@ This is the `propose_job` pattern Station already uses for scheduled jobs.
   that mark only on a turn the web, desktop or mobile composer sent with a
   person credential, and the decision reads that turn's own start, never a
   steer.
-  - **Which turn is calling.** An engine's station-control call carries only
-    its Session's credential, never a turn. Station takes the calling turn
-    to be the one the Session is running, from its persisted lifecycle fold
-    (`stationControlCallingTurn`). This is the same lease
-    `declare_pull_request` uses. While a send's start is not yet stored (in
-    flight, accepted but not arrived, or held by origin propagation) the
-    answer is `pending`; with no running turn it is `none`. Both refuse, so a
-    continuation whose start is held is never judged by the person's turn
-    before it.
+  - **Which turn is calling: inferred, not known.** An engine's
+    station-control call carries only its Session's credential, never a
+    turn. Proposals are gated on the calling turn being person-authored,
+    and Station infers that turn from Session state: the turn the Session
+    is running, by its persisted lifecycle fold (`stationControlCallingTurn`,
+    the same lease `declare_pull_request` uses). While a send's start is not
+    yet stored (in flight, accepted but not arrived, or held by origin
+    propagation), the answer is `pending`; with no running turn it is
+    `none`. Both refuse.
+  - **Known race.** A concurrent steer, whether it fails or is accepted,
+    clears an in-flight delegated continuation's pending reservation. That
+    continuation's call is then judged by the person's earlier turn, so an
+    agent continuation can create a proposal card. Confirmation by the
+    operator in person remains required, and it is the authority boundary:
+    the card shows the untrusted-content warning, the full agent text and
+    the authority ceiling, all rechecked at Confirm. The fix is a
+    turn-bound station-control credential, [#4882](https://github.com/kontourai/station/issues/4882).
+  - **Known false refusal.** An invocationless legacy turn start can leave
+    the Session reading `pending` after its turn has ended, so proposals
+    from that Session wrongly refuse until it exits. This fails closed.
   - **Check to write.** The route decides again inside the SQLite
     transaction that stores the proposal and requires the same turn, so a
     turn that starts in between stores nothing.
@@ -132,6 +143,10 @@ source type's `plan()` can describe the source, it should write a proposal's
 
 ## Limits
 
+- The calling turn is inferred from Session state, so the person-mark gate
+  has the known steer race and stuck-`pending` case described above, until
+  a turn-bound credential lands ([#4882](https://github.com/kontourai/station/issues/4882)). An agent can at most
+  create a proposal card; nothing exists until the operator confirms it.
 - Only the agent leaves are reachable by an agent. Confirm and Decline are
   person leaves that no station-control tool maps, and Confirm also needs
   the operator gate the isolated-repair setup uses.

@@ -119,9 +119,10 @@ export interface AutomationProposalRoutesDeps {
     agentId: string,
   ): Promise<AutomationTargetBinding | undefined>;
   /**
-   * `proposingTurnId` over the Session's calling turn: its id when that
-   * turn may propose, else `undefined`. Asked before validation and again
-   * inside the transaction that stores the proposal.
+   * `proposingTurnId` over the Session's inferred calling turn (#4882 will
+   * make it known): its id when that turn may propose, else `undefined`.
+   * Asked before validation and again inside the transaction that stores
+   * the proposal.
    */
   proposingTurn(sessionId: string): string | undefined;
   /** The conversation (or a child it delegated to) read untrusted content. */

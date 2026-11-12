@@ -374,6 +374,10 @@ export class ClientOriginTurnPropagation {
    * holds: a send in flight (its acceptance not returned), an accepted send
    * whose `turn.started` has not arrived, or a start held for either. While
    * this is true the store's newest start is not the turn now running.
+   * False is not proof of the opposite: a concurrent steer's cancel or
+   * settle removes another send's reservation, and an invocationless legacy
+   * start can leave an accepted key that reads true until session exit
+   * (#4850 review; the fix is a turn-bound credential, #4882).
    */
   holdsTurnStart(threadId: string): boolean {
     if (this.#inFlight.has(threadId)) return true;

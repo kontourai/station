@@ -124,7 +124,7 @@ export interface AutomationProposalCompositionDeps {
    * is the Agent's own Project slug. Throws when there is no such Agent.
    */
   agentDefinition(agentSlug: string): Promise<{ readonly project?: string }>;
-  /** `proposingTurnId` over the Session's calling turn. */
+  /** `proposingTurnId` over the Session's inferred calling turn (#4882). */
   proposingTurn(sessionId: string): string | undefined;
   untrustedContent(conversationId: string): Promise<boolean>;
   operator(request: Request): Promise<AutomationProposalOperator | undefined>;

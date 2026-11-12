@@ -5381,12 +5381,15 @@ conditions, instructions and reason stay in the proposal's `source` or
 `rule` and `rationale`, and the card shows them apart, whole.
 It is refused with one of these codes:
 
-- 403 `automation_proposal_unattended`: the turn making the call (the
+- 403 `automation_proposal_unattended`: the inferred calling turn (the
   Session's running turn, `stationControlCallingTurn`) did not start with
   the server-stamped person mark (`authoredBy: 'person'`). This includes a
   call while that turn's start is not yet stored, and a turn that changed
   before the proposal was written: the check runs again in the insert's
-  transaction. Only the composer sets the mark. A delegated
+  transaction. The turn is inferred, not known: a concurrent steer can clear
+  a delegated continuation's pending reservation and let its call through,
+  and an invocationless legacy start can leave the Session refusing until
+  it exits ([#4882](https://github.com/kontourai/station/issues/4882)). Only the composer sets the mark. A delegated
   child's result, a `/chat/delegated` peer send, a background or CLI run,
   an MCP prompt, an automation, a Task dispatch, a check-back, a turn
   recorded before the mark, and no turn at all are refused. A Session that acts for no one is refused earlier by the
