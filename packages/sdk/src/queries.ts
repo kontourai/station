@@ -170,6 +170,7 @@ export {
   materializeKitProjectLayout,
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
+  useCheckAllIntegrationsMutation,
   useDecideIntegrationTrustReviewMutation,
   useDeleteIntegrationMutation,
   useDisconnectIntegrationAccountMutation,

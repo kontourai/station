@@ -18,6 +18,7 @@ let detail: any;
 let trustPreview = false;
 const navigateMock = vi.fn();
 let reconnectAsync = vi.fn();
+let checkAllAsync = vi.fn();
 let usedByQuery: {
   data?: unknown;
   error: unknown;
@@ -51,6 +52,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     mutate: vi.fn(),
     mutateAsync: reconnectAsync,
   }),
+  useCheckAllIntegrationsMutation: () => ({ mutateAsync: checkAllAsync }),
   useConnectionUsedByQuery: () => usedByQuery,
   useSetIntegrationRenderPermissionMutation: () => ({ mutate: vi.fn() }),
   useSetIntegrationEnabledMutation: () => ({ mutate: vi.fn() }),
@@ -347,6 +349,7 @@ describe('IntegrationsView: rows, Check all and the unsaved guard', () => {
     detail = undefined;
     navigateMock.mockReset();
     reconnectAsync = vi.fn();
+    checkAllAsync = vi.fn();
     usedByQuery = {
       data: undefined,
       error: null,
@@ -389,75 +392,65 @@ describe('IntegrationsView: rows, Check all and the unsaved guard', () => {
     expect(screen.getByText(/Used by 2$/)).toBeTruthy();
   });
 
-  test('Check all probes at most three at once and never a server that may ask to sign in', async () => {
+  test('Check all runs one server batch and names each outcome', async () => {
     integrations = [
       stdio('one'),
-      stdio('two'),
-      stdio('three'),
-      stdio('four'),
-      stdio('five'),
-      stdio('off', { enabled: false }),
-      stdio('remote-new', {
+      stdio('two', { displayName: 'Two' }),
+      stdio('remote', {
         transport: 'streamable-http',
         endpoint: 'https://example.test/mcp',
-        probe: undefined,
-      }),
-      stdio('remote-oauth', {
-        transport: 'sse',
-        endpoint: 'https://example.test/sse',
-        probe: {
-          ok: true,
-          toolCount: 1,
-          checkedAt: '2026-11-01T00:00:00Z',
-          authorization: { state: 'authorized' },
-        },
-      }),
-      stdio('remote-open', {
-        transport: 'streamable-http',
-        endpoint: 'https://open.example.test/mcp',
       }),
       stdio('mine', { credentialOwnership: { owner: 'principal' } }),
     ];
-    let inFlight = 0;
-    let peak = 0;
-    const releases: Array<() => void> = [];
-    reconnectAsync = vi.fn(
-      (id: string) =>
+    let answer!: (value: unknown) => void;
+    checkAllAsync = vi.fn(
+      () =>
         new Promise((resolve) => {
-          inFlight += 1;
-          peak = Math.max(peak, inFlight);
-          releases.push(() => {
-            inFlight -= 1;
-            resolve({
-              id,
-              probe: {
-                ok: id !== 'two',
-                toolCount: 1,
-                checkedAt: '2026-11-02T00:00:00Z',
-              },
-            });
-          });
+          answer = resolve;
         }),
     );
     renderView();
-    fireEvent.click(screen.getByRole('button', { name: 'Check all' }));
-    while (reconnectAsync.mock.calls.length < 6 || releases.length > 0) {
-      await waitFor(() => expect(releases.length).toBeGreaterThan(0));
-      releases.shift()!();
-      await Promise.resolve();
-    }
+    const button = screen.getByRole('button', { name: 'Check all' });
+    fireEvent.click(button);
+    fireEvent.click(button);
     await waitFor(() =>
-      expect(screen.getByText('Checked 6; 1 failed: two.')).toBeTruthy(),
+      expect(screen.getByRole('button', { name: 'Checking…' })).toBeTruthy(),
     );
-    expect(peak).toBe(3);
-    expect(reconnectAsync.mock.calls.map(([id]) => id).sort()).toEqual(
-      ['five', 'four', 'one', 'remote-open', 'three', 'two'].sort(),
+    fireEvent.click(screen.getByRole('button', { name: 'Checking…' }));
+    // One batch while one runs; the server bounds and orders the probes.
+    expect(checkAllAsync).toHaveBeenCalledTimes(1);
+    expect(reconnectAsync).not.toHaveBeenCalled();
+    answer({
+      reloaded: true,
+      results: [
+        { id: 'one', outcome: 'ready' },
+        { id: 'two', outcome: 'failed', error: 'down' },
+        { id: 'remote', outcome: 'sign-in-required' },
+        { id: 'mine', outcome: 'skipped' },
+      ],
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Checked 3; 1 failed: Two.')).toBeTruthy(),
     );
+    expect(screen.getByText('1 need you to sign in: remote.')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Skipped 3 that may ask you to sign in: remote-new, remote-oauth, mine.',
-      ),
+      screen.getByText('Skipped 1 signed in per person: mine.'),
     ).toBeTruthy();
+  });
+
+  test('leaving while Check all runs stops waiting for its answer', async () => {
+    integrations = [stdio('one')];
+    let signal: AbortSignal | undefined;
+    checkAllAsync = vi.fn((variables: { signal?: AbortSignal }) => {
+      signal = variables.signal;
+      return new Promise(() => {});
+    });
+    const view = renderView();
+    fireEvent.click(screen.getByRole('button', { name: 'Check all' }));
+    await waitFor(() => expect(checkAllAsync).toHaveBeenCalledTimes(1));
+    expect(signal?.aborted).toBe(false);
+    view.unmount();
+    expect(signal?.aborted).toBe(true);
   });
 
   test('leaving a server with unsaved edits asks first; Discard continues', async () => {

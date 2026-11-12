@@ -995,6 +995,7 @@ export {
   useBulkApproveProposedChangesMutation,
   useBulkRejectProposedChangesMutation,
   useCheckACPConnectionMutation,
+  useCheckAllIntegrationsMutation,
   useChildWorkInstructionsQuery,
   useChildWorkTranscriptQuery,
   useClearAppHomeProfileMutation,

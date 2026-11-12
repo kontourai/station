@@ -409,6 +409,14 @@ and category labels. The returned discovery is useful even when plugin-owned or
 personal-account state is not persisted in the ordinary integration listing.
 Metadata is for browsing; it grants no execution or credential authority.
 
+`useCheckAllIntegrationsMutation` runs Check all as one server batch: every
+configured tool server Station does not run itself is probed, three at a time,
+without beginning a sign-in. It resolves to `ToolServerCheckAll`, one
+`ToolServerCheckResult` per server (`ready`, `failed`, `sign-in-required`, or
+`skipped` for a server signed in per person), and `reloaded`. A call made while
+a batch runs joins it. Pass `{ signal }` to stop waiting; the batch still
+finishes on the server.
+
 Integration metadata also carries `origin` (`station`, `registry`, `plugin`,
 `manual`, or `unavailable`), with source/version/location where recorded. This
 identifies installation provenance, not a trust or approval verdict. Local

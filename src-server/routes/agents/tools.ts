@@ -3,7 +3,11 @@
  */
 
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
-import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type {
+  ToolDef,
+  ToolServerCheckAll,
+  ToolServerCheckResult,
+} from '@kontourai/station-contracts/tool';
 import { LegacyTrustReviewRequiredError } from '@kontourai/station-shared/integration-trust-overlay';
 import {
   canonicalDisabledMcpTools,
@@ -48,6 +52,7 @@ import {
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 import { stationDocsToolCatalog } from '../../tools/station-docs-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { normalizeToolName } from '../../utils/tool-name-normalizer.js';
 import {
@@ -232,6 +237,59 @@ function integrationReadProjection(
   };
 }
 
+/** At most this many tool servers are probed at once by Check all. */
+export const CHECK_ALL_CONCURRENCY = 3;
+
+/**
+ * Check all: probes each configured tool server Station does not run itself,
+ * without beginning a sign-in. A server signed in per person is skipped. The
+ * Agents reload once at the end, and only when a probe changed whether a
+ * server is reachable or which tools it offers.
+ */
+export async function checkAllToolServers(
+  mcpService: Pick<MCPService, 'listIntegrations' | 'probeIntegration'>,
+  reinitialize: () => Promise<void>,
+): Promise<ToolServerCheckAll> {
+  const servers = (await mcpService.listIntegrations()).filter(
+    (server) =>
+      !isRuntimeManagedIntegrationId(server.id) && server.enabled !== false,
+  );
+  let changed = false;
+  const results = await mapWithConcurrency(
+    servers,
+    CHECK_ALL_CONCURRENCY,
+    async (server): Promise<ToolServerCheckResult> => {
+      if (server.credentialOwnership)
+        return { id: server.id, outcome: 'skipped' };
+      try {
+        const { probe } = await mcpService.probeIntegration(
+          server.id,
+          undefined,
+          { startSignIn: false },
+        );
+        if (
+          probe?.ok !== server.probe?.ok ||
+          (probe?.toolNames ?? []).join('\n') !==
+            (server.probe?.toolNames ?? []).join('\n')
+        )
+          changed = true;
+        if (probe?.ok) return { id: server.id, outcome: 'ready' };
+        if (probe?.authorization && probe.authorization.state !== 'authorized')
+          return { id: server.id, outcome: 'sign-in-required' };
+        return {
+          id: server.id,
+          outcome: 'failed',
+          ...(probe?.error ? { error: probe.error } : {}),
+        };
+      } catch (error: unknown) {
+        return { id: server.id, outcome: 'failed', error: errorMessage(error) };
+      }
+    },
+  );
+  if (changed) await reinitialize();
+  return { results, reloaded: changed };
+}
+
 /** The fields whose values reach a launched tool server's environment. */
 const ENV_FIELDS = ['env', 'secretEnv'] as const;
 
@@ -264,7 +322,7 @@ export function createToolRoutes(
   app.use('*', async (c, next) => {
     const path = c.req.path.replace(/^\/integrations/, '') || '/';
     const management =
-      (c.req.method === 'POST' && path === '/') ||
+      (c.req.method === 'POST' && (path === '/' || path === '/check-all')) ||
       (['PUT', 'DELETE'].includes(c.req.method) && /^\/[^/]+$/.test(path)) ||
       (c.req.method === 'POST' &&
         /^\/[^/]+\/(?:enabled|tools\/apply|reconnect|trust-review)$/.test(
@@ -1033,6 +1091,24 @@ export function createToolRoutes(
       }
       await mcpService.deleteIntegration(id);
       return c.json({ success: true });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  // Check all (POST /integrations/check-all): one batch, joined by any
+  // request that arrives while it runs, and at most one reload.
+  let checkAllInFlight: Promise<ToolServerCheckAll> | undefined;
+  app.post('/check-all', async (c) => {
+    try {
+      toolDefinitionOps.add(1, { op: 'check-all' });
+      checkAllInFlight ??= checkAllToolServers(
+        mcpService,
+        reinitialize,
+      ).finally(() => {
+        checkAllInFlight = undefined;
+      });
+      return c.json({ success: true, data: await checkAllInFlight });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

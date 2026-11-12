@@ -24,11 +24,12 @@ import {
 } from '@kontourai/station-shared/mcp';
 import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
-import type {
-  FetchLike,
-  GetPromptResult,
-  Prompt,
-  Transport,
+import {
+  type FetchLike,
+  type GetPromptResult,
+  type Prompt,
+  type Transport,
+  UnauthorizedError,
 } from '@modelcontextprotocol/client';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ConfigLoader } from '../../domain/config-loader.js';
@@ -73,6 +74,7 @@ import {
   ToolServerCredentialStore,
 } from './tool-server-credential-store.js';
 import {
+  ConnectAccountRequiredError,
   captureToolServerOperationFailure,
   classifyOAuthFailure,
   classifyToolServerProbeFailure,
@@ -205,6 +207,19 @@ export class StoredEnvMigrationError extends StationOwnedToolServerError {
 export type MCPUIToolCatalogResult =
   | { available: true; tools: unknown[] }
   | { available: false };
+
+/**
+ * Whether a probe failed because the server wants a sign-in: it answered 401
+ * or 403, or the saved sign-in could not be refreshed.
+ */
+function isSignInRequired(error: unknown): boolean {
+  return (
+    error instanceof UnauthorizedError ||
+    error instanceof ConnectAccountRequiredError ||
+    classifyToolServerProbeFailure(error, 'streamable-http').code ===
+      'authentication_error'
+  );
+}
 
 export class MCPService {
   /**
@@ -1066,6 +1081,7 @@ export class MCPService {
     id: string,
     expectedResourceIdentity: string,
     state:
+      | 'never-authorized'
       | 'awaiting-operator-consent'
       | 'authorized'
       | 'authorization-failed'
@@ -1224,10 +1240,17 @@ export class MCPService {
     }
   }
 
+  /**
+   * `startSignIn: false` is a check only: a server that wants a sign-in is
+   * recorded as needing one, and no authorization URL or pending sign-in is
+   * made (Check all). A person's own check (the default) may begin one.
+   */
   async probeIntegration(
     id: string,
     actor?: ToolServerAccountActor,
+    options: { startSignIn?: boolean } = {},
   ): Promise<ToolDef> {
+    const checkOnly = options.startSignIn === false;
     const claim = this.mcpCustody.acquire(id, 'probe');
     let retained = false;
     let failed = false;
@@ -1235,9 +1258,15 @@ export class MCPService {
       const loaded = await this.loadIntegrationWithOwnership(id);
       const existing = loaded.definition;
       if (existing.credentialOwnership) {
-        return await this.probeAccount(existing, claim, actor, () => {
-          retained = true;
-        });
+        return await this.probeAccount(
+          existing,
+          claim,
+          actor,
+          () => {
+            retained = true;
+          },
+          checkOnly,
+        );
       }
       const liveContributed = loaded.contributed;
       const oauthProvider =
@@ -1248,7 +1277,9 @@ export class MCPService {
       try {
         const connection = await this.establishChild(existing, async (child) =>
           claim.connect(child, {
-            authProvider: await oauthProvider?.forTransport(),
+            authProvider: await (checkOnly
+              ? oauthProvider?.forCheck()
+              : oauthProvider?.forTransport()),
             ...(oauthProvider
               ? {
                   authorizationFetch: (fetch) =>
@@ -1303,6 +1334,31 @@ export class MCPService {
             ...existing,
             probe: { ok: false, error: message, toolCount: 0, checkedAt },
           };
+        }
+        if (checkOnly && oauthProvider && isSignInRequired(error)) {
+          // A check never begins a sign-in: it records that one is needed.
+          const resourceIdentity = toolServerOAuthResourceIdentity(existing);
+          if (!resourceIdentity)
+            throw new Error('OAuth tool server endpoint is missing or invalid');
+          const stored = await claim.run(() => oauthProvider.tokens());
+          toolServerProbes.add(1, { outcome: 'failure' });
+          const health = stored
+            ? await this.saveAuthorizationHealth(
+                id,
+                resourceIdentity,
+                'token-expired-refresh-failed',
+                'The saved sign-in no longer works. Sign in to this tool server again.',
+                claim,
+              )
+            : await this.saveAuthorizationHealth(
+                id,
+                resourceIdentity,
+                'never-authorized',
+                undefined,
+                claim,
+              );
+          if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+          return health;
         }
         const authorizationUrl = oauthProvider?.takeAuthorizationUrl();
         if (
@@ -1392,6 +1448,7 @@ export class MCPService {
     claim: MCPLocalClaim,
     actor: ToolServerAccountActor | undefined,
     retain: () => void,
+    checkOnly = false,
   ): Promise<ToolDef> {
     const owner = this.accountOwner(existing, actor);
     const resourceIdentity = toolServerOAuthResourceIdentity(existing);
@@ -1405,7 +1462,9 @@ export class MCPService {
     try {
       const connection = await this.establishChild(existing, async (child) =>
         claim.connect(child, {
-          authProvider: await provider.forTransport(),
+          authProvider: await (checkOnly
+            ? provider.forCheck()
+            : provider.forTransport()),
           authorizationFetch: (fetch) => provider.authorizationFetch(fetch),
           onTransport: (value) => {
             transport = value;
@@ -1441,6 +1500,18 @@ export class MCPService {
         this.logger,
       );
       await this.requireCurrentDefinition(claim, existing);
+      if (checkOnly && isSignInRequired(error)) {
+        toolServerProbes.add(1, { outcome: 'failure' });
+        return {
+          ...existing,
+          probe: {
+            ok: false,
+            toolCount: 0,
+            checkedAt,
+            authorization: { state: 'never-authorized' },
+          },
+        };
+      }
       const authorizationUrl = provider.takeAuthorizationUrl();
       if (authorizationUrl && transport && 'finishAuth' in transport) {
         requireHttpAuthorizationUrl(authorizationUrl);

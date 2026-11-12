@@ -2241,12 +2241,15 @@ Connections has one clear home for each relationship:
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability. Each row shows its status, the tool count and date of
   its last check, and how many Agents and Projects use it; a server's page
-  lists them under **Used by**. **Check all** checks the saved servers, three
-  at a time. It skips Station's own servers, turned-off servers, and any
-  server whose check could ask you to sign in (a remote server not yet checked
-  without sign-in, or one signed in per person), and names the skipped ones.
-  Leaving a server with unsaved edits asks first
-  ([plan](../../src-ui/src/views/integrations/tool-server-status.ts)).
+  lists them under **Used by**. **Check all** checks the saved servers on the
+  server, three at a time, and reloads Agents once afterwards only if a check
+  changed what a server offers. It never begins a sign-in: a server that wants
+  one is named as needing you to sign in. It leaves out Station's own servers,
+  turned-off servers, and servers signed in per person, and names the last.
+  One check runs at a time; pressing it again while it runs, here or from
+  another window, waits for the same check
+  ([batch](../../src-server/routes/agents/tools.ts)).
+  Leaving a server with unsaved edits asks first.
   For a saved integration configured to use personal accounts, **Your account**
   shows whether tools use your account, a Project-specific account, an explicitly
   allowed shared account, or no account. Choose **Connect your account**, then

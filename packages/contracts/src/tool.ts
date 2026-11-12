@@ -406,6 +406,29 @@ export interface ToolServerProbeResult {
     | { state: 'client-id-required'; reason: string };
 }
 
+/** One tool server's outcome in Check all (`POST /integrations/check-all`). */
+export interface ToolServerCheckResult {
+  id: string;
+  /**
+   * `ready` and `failed` are its probe's result; `sign-in-required` means the
+   * server wants a sign-in, which Check all never begins; `skipped` is a
+   * server signed in per person, whose check reads one person's account.
+   */
+  outcome: 'ready' | 'failed' | 'sign-in-required' | 'skipped';
+  error?: string;
+}
+
+/**
+ * Check all: every configured tool server Station does not run itself,
+ * probed at most three at a time without beginning a sign-in. `reloaded`
+ * says whether Agents were reloaded once afterwards, which happens only when
+ * a probe changed what a server offers.
+ */
+export interface ToolServerCheckAll {
+  results: ToolServerCheckResult[];
+  reloaded: boolean;
+}
+
 export interface ToolMetadata {
   credentialOwnership?: ToolCredentialOwnership;
   id: string;
