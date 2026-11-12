@@ -670,7 +670,8 @@ function ProjectRoomSession({
     isFetching: historyFetching,
     isError: historyFailed,
   } = room.history;
-  const oldestCursor = room.history.data?.pageParams.at(-1)?.after;
+  // The oldest loaded window's first message: moves with every older page.
+  const oldestCursor = room.history.data?.pages.at(-1)?.messages[0]?.seq;
   const [seekSettled, setSeekSettled] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the loaded windows, the oldest cursor and each settled fetch re-check for the root.
   useEffect(() => {
