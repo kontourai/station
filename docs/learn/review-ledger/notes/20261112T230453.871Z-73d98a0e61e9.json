@@ -1,0 +1,7 @@
+{
+  "revision": "3be73e0708879109b00e52220d56ff22edfa3b81",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Rechecked against runtime-event-log.ts: ownership rows route to the Monitoring guide; append serialization and parse-warning aggregation do not change them. Source reading only.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/conversation/runtime-event-log.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "3be73e0708879109b00e52220d56ff22edfa3b81",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Rechecked against runtime-event-log.ts: this context makes no claim about event-log append mechanics or parse warnings; nothing changed for its claims. Source reading only.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/conversation/runtime-event-log.ts"]}
+  ]
+}

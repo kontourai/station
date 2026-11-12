@@ -1,0 +1,7 @@
+{
+  "revision": "3be73e0708879109b00e52220d56ff22edfa3b81",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Rechecked monitoring historical-read and insights text against runtime-event-log.ts: budgets, truncation and ordering unchanged; only append mechanics and malformed-line warning aggregation changed, which the reference does not describe. Source reading and focused runtime-event-log tests.","inputs":["docs/reference/api.md","src-server/runtime/conversation/runtime-event-log.ts"]}
+  ]
+}

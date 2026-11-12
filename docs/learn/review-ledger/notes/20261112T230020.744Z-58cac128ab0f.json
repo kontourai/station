@@ -1,0 +1,7 @@
+{
+  "revision": "3be73e0708879109b00e52220d56ff22edfa3b81",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Rechecked the Monitoring Emitter section against runtime-event-log.ts: the runtime event log still owns daily NDJSON files separate from EventStore replay; serialized single-call appends, torn-tail newline and per-file malformed-line warning do not change that claim. Checked by source reading and runtime-event-log.test.ts (focused run).","inputs":["docs/architecture.md","src-server/runtime/conversation/runtime-event-log.ts"]}
+  ]
+}
