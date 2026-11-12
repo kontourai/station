@@ -186,7 +186,11 @@
 
     "src-ui/src/workspace-panes/WorkspacePaneHostTree.tsx",
 
-    "src-server/providers/registries/integration-registry-provider.ts"
+    "src-server/providers/registries/integration-registry-provider.ts",
+
+    "src-server/providers/registries/registry-source-detection.ts",
+
+    "src-server/providers/registries/agent-registry-provider.ts"
   ],
 
   "checks": [
