@@ -14,9 +14,9 @@ function documentVisible() {
 /**
  * Marks a room read through `version` while it is on screen (#3075, #4794).
  *
- * `version` is the room's own current version as the server reported it with
- * the content shown (a Project room's `checkpoint.lastSeq`, a Task room's
- * `throughSeq`), so the mark can never run ahead of what was displayed. A
+ * `version` is the version of the content actually shown (a Project room's
+ * newest displayed message `seq`, from a history read that succeeded; a Task
+ * room's `throughSeq`), so the mark can never run ahead of what was displayed. A
  * hidden tab marks nothing until it is visible again. Each version is sent
  * once per target; the server keeps the maximum, so a late or repeated mark
  * is harmless. The mutation invalidates every read-state query, which is

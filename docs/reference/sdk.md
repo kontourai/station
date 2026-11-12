@@ -800,9 +800,12 @@ channels, and the channel on screen is remembered the same way, so a reload
 returns to it. A host can own the channel through the route instead
 (`routeChannel` and `onRouteChannel`), and the open thread (`thread`): replies
 whose `replyTo` chain reaches a loaded message then sit in that message's
-thread, and the composer replies into the open thread. `screen` gives a phone's
-full-screen bar. The full room marks itself read through its discovery's
-`checkpoint.lastSeq` while it is on screen. Messages, `@agent` asks and
+thread, and every send or Agent ask from the open thread replies to its root. A
+thread whose root is older than the loaded history pages back to it, up to
+`PROJECT_ROOM_HISTORY_MAX_PAGES` windows of 25 messages. `screen` gives a
+phone's full-screen bar. The full channel marks itself read through the newest
+message of a history read that succeeded, while it is on screen; a held or
+failed read, or an open thread, marks nothing. Messages, `@agent` asks and
 retained Agent requests are addressed to the channel on screen; a restored recipient must still be an available
 Agent, shown under its current catalog name. While an Agent request is
 unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary

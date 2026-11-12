@@ -118,3 +118,10 @@ The selection key becomes `[authority, environment, Station, row.id]`. It drops
 - The in-room back buttons go to their parent's address rather than calling
   `history.back()`; the device's Back still retraces the pushed entries.
 - The working mark is a filled square in the active color, not an animation.
+- Review fixes (#4855): a channel is marked read only through the newest message
+  a successful history read showed, never from discovery alone, and not while a
+  thread is open. Every send from a thread replies to its root, read from the
+  route. A thread link to an older root pages back to it, up to 20 history
+  windows (500 messages), with loading, error and "not in this channel" states.
+  A failed unread summary keeps channel rows at normal weight beside its own
+  retry.

@@ -3658,12 +3658,14 @@ thread are route state (`?section=room&channel=<id>&thread=<messageId>`;
 so the sidebar, links and Back all address them; opening one is a pushed entry
 that asks the room's unsaved-send guard first. A thread is a channel message and
 the replies whose `replyTo` chain reaches it; with threads on, those replies leave
-the channel stream for the root's summary and the one composer replies into the
-open thread. [`ProjectConversationList`](../../src-ui/src/components/project-conversations/ProjectConversationList.tsx)
+the channel stream for the root's summary, and every send from the open thread
+replies to its root, read from the route. A thread link to a root older than
+the loaded history pages back to it, within `PROJECT_ROOM_HISTORY_MAX_PAGES`. [`ProjectConversationList`](../../src-ui/src/components/project-conversations/ProjectConversationList.tsx)
 lists a Project's live channels (the server's order) and the Task rooms the
 read-marker summary can read, newest updated first and capped, in one summary
 request per Project ([`useProjectConversationIndex`](../../src-ui/src/components/project-conversations/useProjectConversationIndex.ts)).
-Unread is the summary's own `unread`; a Task room's working mark is its Task's
+Unread is the summary's own `unread`; a failed summary keeps the rows at
+normal weight with its own retry. A Task room's working mark is its Task's
 Session in the Project's Running lane (`projectLiveLanes`). Channels have no
 working mark and no row has a mention mark until #4800 and #4799 supply them. The
 sidebar renders it under the expanded Project (lazily, off the shell bundle); a
@@ -3671,8 +3673,10 @@ phone renders it as the Project page, opens each channel as a full-screen
 conversation and restores the list's scroll position on return
 ([`useListScrollMemory`](../../src-ui/src/views/project-page/useListScrollMemory.ts)).
 [`useMarkRoomRead`](../../src-ui/src/components/room/useMarkRoomRead.ts) marks a
-full room read through its discovered `checkpoint.lastSeq` and a Task room through
-its history checkpoint's `throughSeq`, while the document is visible.
+channel read through the newest message its history read showed (seqs count
+messages, so that is the version on screen; a held or failed read marks
+nothing) and a Task room through its history checkpoint's `throughSeq`, while
+the document is visible.
 
 ## ProjectTaskRoom
 
