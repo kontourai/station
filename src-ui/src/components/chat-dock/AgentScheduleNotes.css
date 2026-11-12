@@ -171,7 +171,8 @@
 .agent-schedule-card__agent-label {
   margin: 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  /* 11px is reserved for metadata (#4403); a label a person reads is sm. */
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
