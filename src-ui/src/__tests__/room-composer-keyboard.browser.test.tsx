@@ -76,6 +76,18 @@ const settle = (page: Page) =>
     )
       await frame();
     for (let i = 0; i < 4; i += 1) await frame();
+    // Past any settle delay the composer waits after the viewport changes.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    for (let i = 0; i < 4; i += 1) await frame();
+  });
+
+/** A few frames, without waiting for anything to settle. */
+const frames = (page: Page) =>
+  page.evaluate(async () => {
+    for (let i = 0; i < 4; i += 1)
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
   });
 
 /** How far the composer's bottom sits below the visible viewport. */
@@ -155,5 +167,95 @@ test('a scroll during the keyboard lift cancels the pending correction (#4810 ke
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
+  }
+});
+
+test('with reduced motion, a keyboard that opens in steps (80, 150, 300px) still ends with Send above it (#4810 scroll-cancel delta 1)', async () => {
+  const { browser, page, errors } = await open();
+  try {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() =>
+      document
+        .querySelector<HTMLElement>('.content-view')!
+        .style.setProperty('--motion-base', '0.01ms'),
+    );
+    await page.getByRole('textbox', { name: 'Message' }).focus();
+    await keyboard(page, 80);
+    await frames(page);
+    await keyboard(page, 150);
+    await frames(page);
+    await keyboard(page, 300);
+    await settle(page);
+    expect(
+      await overhang(page),
+      'Send below the keyboard (px)',
+    ).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('once the reader scrolls, a later keyboard step does not pull the page back (#4810 scroll-cancel delta 2)', async () => {
+  const { browser, page, errors } = await open();
+  try {
+    await page.getByRole('textbox', { name: 'Message' }).focus();
+    await keyboard(page, 80);
+    await frames(page);
+    await wheelUp(page);
+    await expect.poll(() => scrollTop(page)).toBeLessThan(250);
+    await frames(page);
+    const reader = await scrollTop(page);
+    await keyboard(page, 300);
+    await settle(page);
+    expect(await scrollTop(page), 'the reader’s scroll position').toBe(reader);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('focusing the field while the keyboard is already open brings Send above it (#4810 scroll-cancel delta 3)', async () => {
+  const { browser, page, errors } = await open();
+  try {
+    await keyboard(page, 300);
+    await settle(page);
+    expect(await overhang(page)).toBeGreaterThan(0);
+    await page.getByRole('textbox', { name: 'Message' }).focus();
+    await settle(page);
+    expect(
+      await overhang(page),
+      'Send below the keyboard (px)',
+    ).toBeLessThanOrEqual(0);
+    // Checking again moves nothing.
+    const placed = await scrollTop(page);
+    await keyboard(page, 301);
+    await settle(page);
+    expect(await overhang(page)).toBeLessThanOrEqual(0);
+    expect(await scrollTop(page)).toBeLessThanOrEqual(placed + 1);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+// PageUp in a one-line field pages the document itself: that is the reader
+// scrolling, so only caret keys are checked here.
+test('arrow keys typed in the field are not the reader scrolling (#4810 scroll-cancel delta)', async () => {
+  for (const key of ['ArrowUp', 'ArrowDown']) {
+    const { browser, page, errors } = await open();
+    try {
+      await page.getByRole('textbox', { name: 'Message' }).focus();
+      await keyboard(page, 300);
+      await page.keyboard.press(key);
+      await settle(page);
+      expect(
+        await overhang(page),
+        `${key}: Send below the keyboard (px)`,
+      ).toBeLessThanOrEqual(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
   }
 });
