@@ -196,6 +196,7 @@ export {
   useStartIntegrationOAuthMutation,
 } from './query-domains/catalog';
 export {
+  type AcknowledgeConversationVariables,
   type AdoptOrchestrationSessionIntent,
   AdoptSessionError,
   type AdoptSessionFailureClass,
@@ -607,6 +608,13 @@ export {
   useProposedChangesQuery,
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
+export {
+  fetchReadMarkerSummary,
+  markRead,
+  readMarkerQueries,
+  useMarkReadMutation,
+  useReadMarkerSummaryQuery,
+} from './query-domains/readMarkers';
 export {
   fetchIndependentReviewReceipts,
   reviewEvidenceQueryKey,

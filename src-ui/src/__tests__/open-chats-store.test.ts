@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
-import {
-  countOpenChatAttention,
-  openChatsStore,
-} from '../contexts/open-chats-store';
+import { openChatsStore } from '../contexts/open-chats-store';
 import type { AgentSummary } from '../types';
 import { focusChatEventDetailForAction } from '../views/home/work-item-open-policy';
 
@@ -144,16 +141,6 @@ describe('openChatsStore', () => {
 
     expect(focus).toHaveBeenCalledWith({ sessionId: 'intended-session' });
     unregister();
-  });
-
-  test('derives the shared unread attention count once', () => {
-    expect(
-      countOpenChatAttention([
-        { hasUnread: true },
-        { hasUnread: false },
-        { hasUnread: true },
-      ]),
-    ).toBe(2);
   });
 
   test('delivers a focus transition requested before navigation mounts', () => {

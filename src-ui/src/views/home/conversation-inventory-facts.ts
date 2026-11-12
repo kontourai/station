@@ -10,8 +10,9 @@ import { type HomeWorkItem, isTerminalLifecycle } from './home-view-model';
 /**
  * Layers the conversation inventory's per-conversation facts onto work items:
  * the rendered version (`conversationUpdatedAt`), the person's last view
- * (`acknowledgedAt`), the recorded finish time (`terminalAt`) and the engines
- * the conversation ran on (`executionProviders`).
+ * (`acknowledgedAt`), the server's read state (`unread`, `readVersion`), the
+ * recorded finish time (`terminalAt`) and the engines the conversation ran on
+ * (`executionProviders`).
  *
  * The ONE mapping for every surface that reads the inventory — the chat dock
  * inbox and Home used to carry two copies of it. These facts are
@@ -44,10 +45,17 @@ export function withConversationInventory<T extends HomeWorkItem>(
     const executionProviders = (conversation.executionProviders ?? [])
       .map((provider) => parseEngineId(provider))
       .filter((provider): provider is EngineId => provider !== undefined);
+    // #3075: the server's read state, carried, never re-derived.
+    const readState = conversation.readState;
     return {
       ...item,
       conversationUpdatedAt: conversation.updatedAt,
       ...(acknowledgedAt !== undefined ? { acknowledgedAt } : {}),
+      ...(readState === undefined
+        ? {}
+        : 'unavailable' in readState
+          ? { readStateUnavailable: true as const }
+          : { unread: readState.unread, readVersion: readState.version }),
       ...(terminalAt !== undefined ? { terminalAt } : {}),
       ...(executionProviders.length > 0 ? { executionProviders } : {}),
     };

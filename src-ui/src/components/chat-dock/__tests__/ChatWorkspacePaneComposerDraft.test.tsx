@@ -568,7 +568,6 @@ test('the dock passes a background-only session into its mobile work badge', asy
       queuedMessages: [],
       inputHistory: [],
       messages: [],
-      hasUnread: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       conversationActivity: {
@@ -598,7 +597,6 @@ function chatSession(id: string): Record<string, any> {
     queuedMessages: [],
     inputHistory: [],
     messages: [],
-    hasUnread: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

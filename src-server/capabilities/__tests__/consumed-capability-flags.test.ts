@@ -6,6 +6,7 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
+  tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
@@ -27,6 +28,7 @@ import { createInboxHarness } from '../../routes/orchestration/__tests__/helpers
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
@@ -36,7 +38,13 @@ import {
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
 import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
+import {
+  conversationAcknowledgementKey,
+  FileConversationAcknowledgementStore,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { ReadMarkerService } from '../../services/read-markers/read-marker-service.js';
+import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
@@ -318,6 +326,42 @@ const CONSUMED_FLAGS: Record<
       }),
     });
     read.mockRestore();
+    return response.status === 200;
+  },
+  // POST /api/read-markers/summary answers the caller's read state, keyed by
+  // the same per-person (hosted: tenant) key as the inventory.
+  readMarkers: async ({ hosted }) => {
+    const home = makeTempDir('read-markers-flag-');
+    const authority = hosted
+      ? sessionReadAuthorityFromRequest(
+          'alpha-user',
+          { tenantId: tenantId('alpha') },
+          parseHostedTenantRegistry(REGISTRY),
+        )
+      : sessionReadAuthorityFromRequest('operator', undefined, undefined);
+    const service = new ReadMarkerService({
+      personKeyFor: () => conversationAcknowledgementKey(authority),
+      conversations: new FileConversationAcknowledgementStore(home),
+      store: new FileReadMarkerStore(home),
+      agentConversations: {
+        latestVersions: async () =>
+          new Map([
+            ['c1', { version: 10, space: 'content', acknowledgeableUntil: 10 }],
+          ]),
+        versionsOf: () => new Map(),
+      },
+    });
+    const routes = new Hono().route(
+      '/api/read-markers',
+      createReadMarkerRoutes({ service }),
+    );
+    const response = await routes.request('/api/read-markers/summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targets: [{ kind: 'agent-conversation', conversationId: 'c1' }],
+      }),
+    });
     return response.status === 200;
   },
   // GET /sessions/:threadId/event-window answers a bounded window.
@@ -605,6 +649,7 @@ describe('consumed capability flags match what their routes serve', () => {
     childWorkSteering: { personal: true, hosted: true },
     privateMemoryReview: { personal: true, hosted: false },
     privateOperationalOutcomes: { personal: true, hosted: true },
+    readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },

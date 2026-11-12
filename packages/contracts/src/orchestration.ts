@@ -1952,6 +1952,33 @@ export interface TerminalProcessDetail {
   history: string;
 }
 
+/** See {@link ConversationListItem.readState}. */
+export interface ConversationReadState {
+  /**
+   * This conversation's current content version (#3075): a monotonic
+   * number that moves only when readable transcript content is appended,
+   * never on lifecycle bookkeeping. Opaque: compare it only with versions
+   * of the same conversation, and acknowledge it as rendered
+   * (`readVersion`).
+   */
+  version: number;
+  /** The highest version the caller has been shown, never above `version`. */
+  seenVersion: number;
+  /** `version > seenVersion`. */
+  unread: boolean;
+}
+
+/**
+ * See {@link ConversationListItem.readState}: the caller is a person, but
+ * their read state could not be read (a store that does not decode). Unknown,
+ * never "read"; the conversation itself is still listed.
+ */
+export interface ConversationReadStateUnavailable {
+  /** The inventory's own version for the item (epoch ms of `updatedAt`). */
+  version: number;
+  unavailable: true;
+}
+
 /**
  * S2 of #1302 (conversation-surface consolidation): one item shape for the
  * global conversation-inventory endpoint (`GET /api/conversations`), folding
@@ -2011,8 +2038,20 @@ export interface ConversationListItem {
   acceptedModel?: string;
   /** Server-resolved Station/Environment namespace for this conversation. */
   environmentId?: string;
-  /** Version of this conversation that the current user has opened. */
+  /**
+   * The stored "last viewed" version this caller's person key holds. A raw
+   * fact: read {@link readState} for whether the conversation is unread.
+   */
   acknowledgedAt?: string;
+  /**
+   * #3075: the caller's read state, derived by the server
+   * (`@kontourai/station-contracts/read-markers`). `version` is this item's
+   * current content version, the value to send (as `readVersion`) when
+   * marking what was rendered read. Absent when the server keeps no read state for the
+   * caller; `{ version, unavailable: true }` when it keeps one but could not
+   * read it. Never guess it from `acknowledgedAt`.
+   */
+  readState?: ConversationReadState | ConversationReadStateUnavailable;
   /**
    * Whether the conversation has an open turn. When `activity` is present
    * this is exactly `activity.openTurn !== undefined`.
