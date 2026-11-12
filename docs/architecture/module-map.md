@@ -1946,7 +1946,9 @@ position, the oldest returned turn's `turn.started` global sequence.
 computes: a fact that was not recorded is absent, and a turn whose engine
 reports no tool kinds says `filesReported: false` instead of implying no files;
 and a turn with no terminal event is `open`, not
-guessed. Each field is bounded and says when it was collapsed, so a page ends
+guessed. A Station tool's count also carries a bare-form `label` from
+[`station-tool-phrases`](../../packages/contracts/src/station-tool-phrases.ts)
+(#3418). Each field is bounded and says when it was collapsed, so a page ends
 for the byte cap, never by cutting a turn, and paging covers each turn once.
 Delegated children are the Sessions Station derived as launched from the
 conversation (`listSessionsNamingParents`, `stationDerived`) that started within

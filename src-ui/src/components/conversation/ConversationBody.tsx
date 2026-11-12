@@ -120,6 +120,7 @@ import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
+import { StationSessionTitlesProvider } from '../chat/station-session-titles';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
 import { hasActiveToolCall } from '../chat/tool-call-labels';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
@@ -533,10 +534,13 @@ function noticeLine(content: string) {
 export function ConversationBody(
   props: ConversationBodyProps | RecordConversationBodyProps,
 ) {
+  // #3418: only the live body reads Session titles for Station tool rows.
   return 'density' in props && props.density === 'record' ? (
     <RecordConversationBody {...props} />
   ) : (
-    <LiveConversationBody {...(props as ConversationBodyProps)} />
+    <StationSessionTitlesProvider>
+      <LiveConversationBody {...(props as ConversationBodyProps)} />
+    </StationSessionTitlesProvider>
   );
 }
 

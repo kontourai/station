@@ -686,6 +686,14 @@ failed, the settled summary names them without a completed verb ("2 file
 edits"); one success keeps the completed phrase, and the failed and retried
 counts disclose the rest.
 
+Station's own tool calls carry Station's mark (named "Station" for screen
+readers) and read as actions, such as "Waited for “Fix login”" instead of "Used
+`wait_session`" (#3418). The words come from
+[`station-tool-phrases`](../../packages/contracts/src/station-tool-phrases.ts)
+and follow the same tense rule: past only after success, bare while pending or
+failed. Summaries say "used 2 Station tools"; the expanded row keeps the raw
+name.
+
 User-message action menus reserve padding before hover so their targets cannot
 cover the text. Individual tool failures remain on their transcript rows rather
 than creating global toasts. Turn attention and approval notifications keep their
