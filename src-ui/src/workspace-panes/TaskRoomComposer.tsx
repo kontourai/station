@@ -784,8 +784,8 @@ export function TaskRoomComposer({
               );
             setNotice(
               recorded
-                ? `The saved request is recorded as ${recorded.state}. Review its full run before retrying.`
-                : 'No matching receipt is available. This does not prove the request failed; its outcome remains unknown.',
+                ? `The saved request is ${recorded.state}. Check its run before retrying.`
+                : 'Couldn’t confirm whether this request ran. Check the run list before retrying.',
             );
           }}
         >
@@ -794,7 +794,7 @@ export function TaskRoomComposer({
       )}
       {unconfirmedMessage && (
         <p role="status">
-          This message has an unknown outcome. Retry uses the same proposal;
+          Couldn’t confirm this message was sent. Retry sends the same message;
           discarding only removes your local copy.
         </p>
       )}

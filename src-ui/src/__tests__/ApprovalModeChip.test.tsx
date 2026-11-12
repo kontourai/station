@@ -66,11 +66,9 @@ describe('ApprovalModeChip', () => {
         onChange={onChange}
       />,
     );
-    expect(trigger().getAttribute('title')).toContain(
-      'Codex reviewer not reported here; sandbox escalations may be approved automatically.',
-    );
+    expect(trigger().getAttribute('title')).toBe('Approval: Ask first');
     expect(trigger().getAttribute('aria-label')).toContain(
-      'Codex reviewer not reported here',
+      'Codex reviewer not reported here; sandbox escalations may be approved automatically.',
     );
     await openSheet();
     expect(
@@ -88,7 +86,9 @@ describe('ApprovalModeChip', () => {
         onChange={onChange}
       />,
     );
-    expect(trigger().getAttribute('title')).not.toContain('Codex reviewer');
+    expect(trigger().getAttribute('aria-label')).not.toContain(
+      'Codex reviewer',
+    );
     await openSheet();
     expect(option(/Ask first.*Claude asks/i)).toBeTruthy();
     expect(screen.queryByText(/configured reviewer may approve/i)).toBeNull();
@@ -135,7 +135,7 @@ describe('ApprovalModeChip', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  test('discloses pre-tool grant delivery alongside a supported engine approval mode', () => {
+  test('discloses pre-tool grant delivery in the sheet of a supported engine approval mode', async () => {
     const { rerender } = render(
       <ApprovalModeChip
         engineConnectionId="claude"
@@ -146,12 +146,13 @@ describe('ApprovalModeChip', () => {
     );
 
     const claudeChip = screen.getByRole('button', {
-      name: /approval mode: ask first\. engine approval control\. station approvals/i,
+      name: /^approval mode: ask first\./i,
     });
-    expect(claudeChip.getAttribute('title')).toContain(
-      'Station approvals partly apply',
-    );
-    expect(claudeChip.getAttribute('title')).toContain('own approval flow');
+    expect(claudeChip.getAttribute('title')).toBe('Approval: Ask first');
+    await openSheet();
+    expect(screen.getByText(/Station approvals partly apply/)).toBeTruthy();
+    expect(screen.getByText(/own approval flow/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close mode picker' }));
 
     rerender(
       <ApprovalModeChip
@@ -163,11 +164,13 @@ describe('ApprovalModeChip', () => {
     );
 
     const codexChip = screen.getByRole('button', {
-      name: /approval mode: ask first\. engine approval control\. station approvals/i,
+      name: /^approval mode: ask first\./i,
     });
-    expect(codexChip.getAttribute('title')).toContain(
-      'Station approvals do not apply',
+    expect(codexChip.getAttribute('aria-label')).not.toMatch(
+      /Station approvals/,
     );
+    await openSheet();
+    expect(screen.getByText(/Station approvals do not apply/)).toBeTruthy();
   });
   test('the trigger names the effective mode for a knob-supporting runtime', async () => {
     render(
@@ -712,7 +715,7 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Never ask (full access). Engine approval control.',
+      'Approval mode: Never ask (full access).',
     );
     const pill = chip.querySelector('.chat-input__approval-chip-label');
     expect(pill?.textContent).toBe('Full access');
@@ -730,7 +733,7 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Default. Engine approval control.',
+      'Approval mode: Default.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,

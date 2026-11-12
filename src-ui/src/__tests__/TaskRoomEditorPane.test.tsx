@@ -320,8 +320,7 @@ describe('TaskRoomEditorPane', () => {
         text: 'older query text',
       },
       isError: true,
-      status:
-        'The shared document could not be loaded. Editing is disabled until a successful resync.',
+      status: 'Couldn’t load the shared document. Resync to edit again.',
     },
   ])(
     'keeps stream text visible but revokes edit/save authority after $label query truth',
@@ -852,7 +851,7 @@ describe('TaskRoomEditorPane', () => {
             'task two document',
           ),
         );
-        expect(screen.queryByText(/may have taken effect/i)).toBeNull();
+        expect(screen.queryByText(/may already be saved/i)).toBeNull();
       }
     },
   );
@@ -877,7 +876,7 @@ describe('TaskRoomEditorPane', () => {
     const retry = await screen.findByRole('button', {
       name: 'Retry identical batch',
     });
-    expect(screen.getByText(/may have taken effect/i)).toBeTruthy();
+    expect(screen.getByText(/may already be saved/i)).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('possibly saved');
     fireEvent.click(retry);
     await waitFor(() =>
@@ -957,7 +956,7 @@ describe('TaskRoomEditorPane', () => {
     expect((editor() as HTMLTextAreaElement).value).toBe('terminal plan draft');
     expect(
       screen.getByText(
-        'Task room authorization ended. The last readable document remains read-only.',
+        'You no longer have access to this Task. The document is read-only.',
       ),
     ).toBeTruthy();
   });
@@ -1155,9 +1154,7 @@ describe('TaskRoomEditorPane', () => {
       capabilities: { documentRead: true, documentWrite: false },
     };
     const { rerender } = render(<TaskRoomEditorPane taskId="task-1" />);
-    expect(
-      screen.getByText('The shared document is readable and read-only.'),
-    ).toBeTruthy();
+    expect(screen.getByText('This document is read-only.')).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
 
     mocks.document.isError = true;
@@ -1165,7 +1162,7 @@ describe('TaskRoomEditorPane', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       'The latest shared document read failed.',
     );
-    expect(screen.getByText(/could not be loaded/i)).toBeTruthy();
+    expect(screen.getByText(/Couldn’t load the shared document/i)).toBeTruthy();
   });
 
   test('keeps the last readable document visible and blocks writes after stream revocation', () => {
@@ -1173,7 +1170,7 @@ describe('TaskRoomEditorPane', () => {
     render(<TaskRoomEditorPane taskId="task-1" />);
     expect(
       screen.getByText(
-        'Task room authorization ended. The last readable document remains read-only.',
+        'You no longer have access to this Task. The document is read-only.',
       ),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('shared base');

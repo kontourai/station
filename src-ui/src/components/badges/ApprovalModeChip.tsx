@@ -306,12 +306,14 @@ function ApprovalModeChipContent({
            by what they see. The pending state's short form ("Full access ·
            pending") is not a substring of the long form, so it is composed in
            explicitly rather than replaced. */
-        aria-label={`${
+        aria-label={`Approval mode: ${
           isPendingApply
-            ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
-            : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }${reviewerDisclosure} Approval ${chipText}`}
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure} Approval ${chipText}`}
+            ? `${chipText} — takes effect next turn`
+            : isPendingRestrict || isRefused
+              ? `${chipText} — ${pendingNote}`
+              : accessibleLabel
+        }.${reviewerDisclosure} Approval ${chipText}`}
+        title={`Approval: ${selectedLabel}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
         value={chipText}
@@ -327,6 +329,7 @@ function ApprovalModeChipContent({
             onClose: () => setIsSheetOpen(false),
             onSelect: onChange,
             sourceNote,
+            policyNote: policyDisclosure,
             pendingNote,
             activeMode: appliedMode
               ? approvalModeLabel(appliedMode)
