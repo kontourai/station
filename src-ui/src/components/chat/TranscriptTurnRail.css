@@ -263,9 +263,8 @@
 }
 
 .transcript-turn-rail-host[data-touch-controls] .transcript-turn-rail__step {
-  background: color-mix(in srgb, var(--k-panel) 88%, transparent);
-  box-shadow: var(--k-shadow);
-  backdrop-filter: blur(6px);
+  background: var(--k-panel-raised);
+  box-shadow: var(--k-elevation-overlay);
 }
 
 .transcript-turn-rail-host[data-touch-controls]
