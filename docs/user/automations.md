@@ -36,9 +36,21 @@ later:
 - automations that run in the chat,
 - check-backs the agent scheduled (`schedule_wake_up`): one follow-up at most
   a day ahead, at most 3 waiting and 20 per hour per chat,
-- automations the agent proposed (`propose_job`), waiting for your approval.
+- automations the agent proposed (`propose_job`), waiting for your approval,
+- GitHub Automation sources and rules the agent proposed
+  (`propose_automation_source`, `propose_automation_rule`), waiting for you
+  to confirm.
 
 An approved proposal runs in the chat that proposed it.
+
+A GitHub source or rule proposal is a card that says, in Station's words,
+what it watches, what it opens, which agent it wakes, and with what limits.
+If the chat had read content written by others, such as email, the card says
+so first. **Confirm** creates it, and only the Station operator can confirm.
+A confirmed source starts disabled and a confirmed rule starts observing: it
+records what it would do but starts nothing. Tick **Turn it on now** to
+enable the source, or set the rule live, in the same step. **Decline**
+creates nothing. Work that an automation started cannot propose these.
 
 ## Failures, missed runs and turning off
 

@@ -5244,7 +5244,9 @@ proposal (404).
 `ConversationAgentSchedule`: the conversation's waiting check-backs
 (`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
 by name), the automations whose runs land in it (`automations`, absent when
-the scheduler could not be read), and a usage-limit stop waiting for a known
+the scheduler could not be read), the agent's open Automation source and rule
+proposals (`automationProposals`; absent on a hosted Station or one that
+predates them), and a usage-limit stop waiting for a known
 reset (`usageLimitResume`). A person must be able to read every Session of
 the conversation; an agent may read only its own conversation.
 `POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
@@ -5256,6 +5258,52 @@ and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
 needs a person who may send to the conversation, and answers 404 to anyone
 else. An agent cannot take those person-only actions. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
+
+### Automation proposals
+
+An agent proposes an Automation source or rule, and a person confirms it
+(#4830; [decision](../decisions/agent-proposed-automations.md),
+[routes](../../src-server/routes/orchestration/automation-proposals.ts)).
+
+The agent's leaves are internal-only (404 otherwise). They act on the
+verified caller's own conversation:
+
+- `POST /api/orchestration/station-control/automation-proposals/sources`
+  (`propose_automation_source`);
+- `POST .../automation-proposals/rules` (`propose_automation_rule`);
+- `GET .../automation-proposals` (`list_automation_proposals`, newest 20 in
+  any state).
+
+A proposal answers `{id, state: 'open', description}` and creates nothing.
+It is refused with one of these codes:
+
+- 403 `automation_proposal_unattended`: the Session's current work was
+  started by an automation. A Session that acts for no one is refused
+  earlier by the station-control guard (`station_control_role_required`).
+- 403 `automation_proposal_exceeds_authority`: a Project or Agent outside
+  the chat's dispatch scope, an action other than `dispatch-task`,
+  `approvalMode: 'auto'`, or a `fullAccessGrant`, credential, secret,
+  `enabled` or `mode` field.
+- 400 `automation_proposal_invalid`: something the Automation store would not
+  create. `problems` lists why.
+- 409 `automation_proposal_limit_reached` (3 open) or
+  `automation_proposal_rate_limited` (10 an hour).
+- 503 `automation_proposal_unavailable`.
+
+A person answers a proposal with these leaves:
+
+- `POST /api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/confirm`,
+  with an optional body `{enable: boolean}`;
+- `POST .../automation-proposals/:proposalId/decline`.
+
+Both need a person who may send to the conversation; anyone else gets 404.
+A request that may be an agent's gets 403 `person-approval-required`.
+Confirm also needs the Station operator in person (403
+`automation_proposal_operator_required`). It creates the source disabled, or
+the rule in `observe`, unless `enable` is true. A rule whose source proposal
+is not yet confirmed answers 409 `automation_proposal_source_pending`. A
+settled proposal answers 409 `automation_proposal_settled`. Confirm answers
+`{proposal, createdId, enabled}`.
 
 ### A person's coordinator Session
 

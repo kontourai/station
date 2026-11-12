@@ -152,6 +152,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
   for an agent on any engine to check back in its own chat later, or to ask
   the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
+- `propose_automation_source`, `propose_automation_rule` and
+  `list_automation_proposals` to ask the person for a GitHub Automation source
+  or rule ([Propose an automation](#propose-an-automation))
 - `terminal_run` and `terminal_read` to run a shell command in a terminal in
   the chat's working directory and read its exit and output. The person sees
   the exact command and directory and approves or declines each run; no
@@ -928,6 +931,42 @@ has no scheduler to approve with, refuses proposals
 (`job_proposal_unavailable`).
 
 The refusal an agent gets from `add_job` names both tools.
+
+### Propose an automation
+
+An agent cannot create an Automation source or rule. It can ask for one
+([decision](../decisions/agent-proposed-automations.md)):
+
+- `propose_automation_source` proposes a `github-poll` source: a `name`, a
+  `repository` (`owner/repo`), an optional `pollIntervalMs`, and optional
+  `grants`. Each grant names a Project id, an Agent slug and
+  `["dispatch-task"]`.
+- `propose_automation_rule` proposes a rule on an existing `sourceId`, or on
+  the `sourceProposalId` of a source this chat proposed. It takes a `match`
+  on `github.workflow_run.completed` fields, an optional `episode`, a
+  `dispatch-task` `action` (Project id, Agent slug, instructions, budget) and
+  a `rateLimit`.
+
+Station answers with the proposal's id and the description the person will
+see. The person confirms or declines it on a card in this chat; nothing is
+created before they confirm. A confirmed source starts disabled and a
+confirmed rule starts observing, unless the person turns it on in the same
+step. A rule on a proposed source can be confirmed only after that source.
+`list_automation_proposals` shows what became of each proposal, including a
+confirmed source's id.
+
+A proposal is refused (`automation_proposal_exceeds_authority`) when it would
+grant more than this chat could do itself:
+
+- a Project or Agent outside the chat's dispatch scope;
+- an action other than `dispatch-task`;
+- `approvalMode: "auto"`;
+- `fullAccessGrant`, a credential, a secret, `enabled` or `mode`.
+
+Work an automation started cannot propose automations
+(`automation_proposal_unattended`). If this chat has read content written by
+others (#3483), the card tells the person so. A chat may have 3 proposals
+waiting and make 10 an hour.
 
 ### Scheduled jobs
 
