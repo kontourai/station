@@ -77,20 +77,24 @@ derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
 An engine reads **Usage limit reached** only from a refusal the provider
 reported for a real turn, never from an allowance percentage: a Claude Code or
 Codex usage-limit stop, or an ACP engine's provider plan quota
-(`provider-plan-quota-exhausted`). The refusal belongs to the credential
+(`provider-plan-quota-exhausted`). Codex's per-minute rate limit
+(`rateLimitExceeded`) is not the allowance running out and does not count. The refusal belongs to the credential
 account the refused run started under, and counts only while that is the
 account the engine uses now. A run routed through a saved proxy does not
 spend the account, so its refusal is ignored, and an engine now routed through
-a proxy is not marked. The reason gives the provider's reset when it reported
+a proxy is not marked; Overview lists such a refusal as an account not used
+while routed through a proxy. The reason gives the provider's reset when it reported
 one.
 
 The refusal stops counting at the provider's reset, five hours after it was
 recorded when no reset was reported (the shortest window these providers
 report), or when the provider accepts a later turn on the same account, for
-example on another model. A refusal on another account, such as one an agent
+example on another model or another connection of the same engine. An ACP
+engine's account is its connection. A refusal on another account, such as one an agent
 pins, does not change the badge; the engine's **Overview** lists it under
 **Usage limit**, naming the saved account only for viewers with
-`access:manage`; others see **Another account**. Claude Code's recorded refusal
+`access:manage`; others see **Another account**. When another status
+outranks **Usage limit reached**, the current account's line states its reset. Claude Code's recorded refusal
 does not say which model's window refused, so a refusal on one model marks the
 engine until the provider accepts a later turn on that account or the reset
 passes. Station reads these refusals from the events it already

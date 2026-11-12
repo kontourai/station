@@ -80,8 +80,9 @@ and Knowledge without an embedding model. Their own pages state them.
 
 Allowance is not read for status in the first slices. Status later reflects
 allowance through **recorded evidence**: a fresh, provider-reported quota refusal
-from a real turn (`provider-plan-quota-exhausted`, Codex usage-limit details,
-the usage-limit banner's recovery state), scoped to the account that served it.
+from a real turn (`provider-plan-quota-exhausted`, or the Claude Code and Codex
+usage-limit details a refused turn records, Codex's `usageLimitExceeded` only),
+scoped to the account that served it.
 That evidence becomes a server-side contract field next to `readinessEvidence`,
 so every viewer gets the same answer; only a viewer with `access:manage` (or the
 operator in person) learns which saved account a refusal ran on. Connections
