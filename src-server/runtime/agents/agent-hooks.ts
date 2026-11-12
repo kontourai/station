@@ -44,6 +44,7 @@ import {
   isAutoApproved,
   isIntrinsicStationEngineGrant,
 } from '../tools/tool-executor.js';
+import { isBuiltinHttpRequestDefinition } from '../tools/vended-tool-compat.js';
 import type {
   IAgentHooks,
   InvocationContext,
@@ -216,6 +217,9 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         provenance.originalToolName,
       );
     },
+    // #4828: after an untrusted read, instructions and repository hooks
+    // stay as they were for the rest of the conversation.
+    untrustedContentRead: (invocation) => untrustedContent.hasRead(invocation),
     logger: deps.logger,
   });
 
@@ -324,6 +328,18 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           untrustedContent.hasDescendantRead(invocation.conversationId)
         )
           untrustedContent.mark(invocation, Promise.resolve(true));
+      } else if (tool.builtin) {
+        // #4828: Station's HTTP request built-in is this engine's native web
+        // read; another built-in marks only when a person classed it
+        // untrusted. An unreadable definition counts as untrusted.
+        untrustedContent.mark(
+          invocation,
+          storedDefinition(tool.builtin.integrationId).then(
+            (def) =>
+              isBuiltinHttpRequestDefinition(def) ||
+              def.contentTrust === 'untrusted',
+          ),
+        );
       }
 
       deps.workItemCapture?.capture({

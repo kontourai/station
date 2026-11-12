@@ -1803,6 +1803,23 @@ An unconfirmed MCP prompt send is not automatically replayed; inspect the
 conversation before running it again. Prompt receipts expire after ten minutes
 or a Station restart, so an expired prompt must be run again.
 
+Reading the web counts too. A conversation is marked when Claude Code's
+`WebFetch` or `WebSearch` returns, when Codex completes a web search, when an
+ACP agent runs a tool it labels as a fetch, when the Station engine's HTTP
+request returns, and when an agent reads or drives a page with Station's
+browser tools. muse web reads are not seen, and no engine's shell downloads
+(`curl`, `wget`) are. `GET /api/integrations/untrusted-content/coverage`
+lists this per engine.
+
+After the mark, agents cannot persist instructions for later sessions: in that
+conversation, Station refuses writes to `AGENTS.md`, `CLAUDE.md` and their local
+or override forms at any depth, to anything under `.agents/`, `.claude/` or
+`.codex/`, to `.mcp.json`, and to a repository's `.git/hooks` and
+`.git/config`. A shell command that names one of these, or sets a value
+with `git config`, asks you first. To make such a change yourself, edit the
+file directly or clear the mark. Codex's own file edits and commands are not
+covered.
+
 ## Connect an OAuth MCP server to an Agent
 
 Obtain the outside-agent MCP endpoint from the remote workspace's connection

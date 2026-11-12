@@ -310,6 +310,47 @@ checks newer state and stale grants is follow-up work, not an available command.
 - **Built-in tools.** Station's bash, file editor and HTTP request use their
   integration's per-tool permission when their loader-owned identity is
   available. An unknown tool without verified identity asks by default.
+- **Engine-native web reads (#4828).** Reading the web with an engine's own
+  tools sets the same mark as an `untrusted` integration's result
+  ([native-web-read-marks.ts](../../src-server/services/plugins/native-web-read-marks.ts)).
+  `GET /api/integrations/untrusted-content/coverage` returns
+  `nativeWebReads` (`NativeWebReadCoverage` in the tool contract) per
+  engine. An engine Station cannot see is `uncovered`, never assumed safe:
+
+  | Engine | Coverage | Marked from | Not seen |
+  | --- | --- | --- | --- |
+  | Station | covered | `afterToolCall` of the HTTP request built-in; marks the turn and the conversation | |
+  | Claude Code | covered | an in-process `PostToolUse` hook Station registers, when `WebFetch` or `WebSearch` returns, in a subagent too | |
+  | Codex | covered | a completed `webSearch` item (search, page open, find in page) on the app-server stream, the session's or a subagent's | after the mark, Station's pre-tool policy still does not run for Codex's own file changes and commands |
+  | ACP | partial | a tool call the agent reports with kind `fetch` | a web tool the agent reports as another kind |
+  | muse | uncovered | nothing: Station does not know which muse tools read the web, and muse has no hook Station can install | every web read |
+
+  On every engine, a shell command that downloads (`curl`, `wget`) is not
+  recognised as a web read. Station's browser tools mark the caller's session
+  and conversation at the browser-agent route, for every engine they are
+  delivered to, on each authorized call except `browser_status` and
+  `browser_close` (the call is marked before it runs). The mark is recorded
+  before the hook or handler returns, so the engine's next pre-tool check
+  sees it; Claude Code may still run a call it batched alongside the read.
+- **Instructions and repository hooks after a mark (#4828).** For the rest of
+  a marked conversation the staged pre-tool evaluator refuses a file write
+  to an agent-instruction file (`AGENTS.md`, `AGENTS.override.md`,
+  `CLAUDE.md`, `CLAUDE.local.md`, at any depth), anything under `.agents/`,
+  `.claude/` or `.codex/`, a project's `.mcp.json`, a repository's
+  `.git/hooks/**` or `.git/config` (a worktree's or submodule's under
+  `.git/` too). A shell command that names one of these, or runs
+  `git config` to set a value, asks the person instead, because Station
+  cannot tell a shell read from a write
+  ([untrusted-persistence-protection.ts](../../src-server/services/plugins/untrusted-persistence-protection.ts)).
+  Paths are compared by segment, case-insensitively. It applies wherever the
+  staged evaluator runs: the Station engine, Claude Code's `PreToolUse` hook
+  and ACP's permission requests. It does not see a write through a link
+  whose name is not protected, a path a command builds at run time, or
+  Codex's own file changes and commands. Flow Agents config protection
+  (linter configuration in opted-in workspaces) is unchanged, and a confined
+  session's sandbox keeps `.git/hooks` and `.git/config` read-only whether
+  or not the conversation is marked. To make such a change after a mark,
+  make it yourself or clear the conversation's mark.
 - **Earlier turns.** Covered: a conversation stays marked until a person
   clears it (above).
 - **Settings UI.** The Content trust settings Feature Preview exposes the

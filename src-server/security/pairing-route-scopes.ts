@@ -4340,6 +4340,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/integrations/untrusted-content/conversations/:conversationId',
     },
+    // #4828: per-engine coverage of native web reads; Station's own
+    // derivation, read like the mark above.
+    { method: 'GET', path: '/integrations/untrusted-content/coverage' },
     {
       method: 'POST',
       path: '/integrations/untrusted-content/conversations/:conversationId/clear',

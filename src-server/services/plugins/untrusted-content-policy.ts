@@ -305,9 +305,14 @@ export class UntrustedContentLedger {
 
   /**
    * #3483: a Station seam saw an untrusted read for an external engine's
-   * conversation (no Station turn is involved).
+   * conversation (no Station turn is involved). #4828: a delegated child's
+   * read also marks its parent and root for the delegation tools' results.
    */
-  markConversation(conversationId: string, untrusted: Promise<boolean>): void {
+  markConversation(
+    conversationId: string,
+    untrusted: Promise<boolean>,
+    delegation?: InvocationContext['delegation'],
+  ): void {
     const recorded = untrusted
       .catch(() => true)
       .then((read) => {
@@ -315,6 +320,7 @@ export class UntrustedContentLedger {
           this.recordConversationRead({
             agentSlug: '',
             conversationId,
+            ...(delegation ? { delegation } : {}),
           } as InvocationContext);
       });
     this.trackPending(conversationId, recorded);

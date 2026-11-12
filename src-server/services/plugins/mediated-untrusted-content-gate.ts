@@ -207,6 +207,26 @@ export function externalUntrustedContentPermission(deps: {
 }
 
 /**
+ * #4828: the staged evaluator's untrusted-content stages for an external
+ * engine's tool requests: the permission above, and the read the
+ * persistence protection asks (an engine-native web read marks it too).
+ */
+export function externalUntrustedContentStages(deps: {
+  loadIntegration: (id: string) => Promise<ToolDef>;
+  ledger?: UntrustedContentLedger;
+}) {
+  const ledger = deps.ledger ?? sharedUntrustedContentLedger;
+  return {
+    untrustedContentPermission: externalUntrustedContentPermission({
+      loadIntegration: deps.loadIntegration,
+      ledger,
+    }),
+    untrustedContentRead: (invocation: { conversationId?: string }) =>
+      ledger.conversationHasRead(invocation.conversationId),
+  };
+}
+
+/**
  * Where each external engine's calls to this server go, from its transport
  * and how Station delivers it:
  * - `station-gated`: through a Station seam that applies the permission
