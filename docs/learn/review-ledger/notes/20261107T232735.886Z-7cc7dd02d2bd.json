@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). Checked sessionConnectionIds (thread to quota-routing connection identity) rows and the usage-rollup pricing snapshot mention (line 1090); document is explicitly a historical August-revision map with stale line anchors by its own disclaimer, and quota-routing identity is distinct from usage attribution.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/design/project-task-room-history.md","note":"event-store.ts changes are confined to the windowed usage-rollup receipt query (optional connection columns/filter) and do not touch what this document describes. Checked the EventStore room-history persistence note and envelope/checkpoint claims; no usage-query claims.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

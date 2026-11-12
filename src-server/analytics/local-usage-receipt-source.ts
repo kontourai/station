@@ -18,15 +18,33 @@ export class LocalUsageReceiptSource implements UsageReceiptSource {
     authority: UsageRollupReadAuthority,
     _signal: AbortSignal,
   ) {
+    // Both reads narrow inside the bounded selection: filtering after the
+    // 500-observation aggregate would let a busy engine or connection crowd
+    // a quiet one out of the window and still report it as covered.
+    const filter = {
+      ...(request.provider ? { provider: request.provider } : {}),
+      ...(request.connectionId !== undefined
+        ? { connectionId: request.connectionId }
+        : {}),
+      ...(request.modelConnectionId !== undefined
+        ? { modelConnectionId: request.modelConnectionId }
+        : {}),
+    };
     const page = this.usageAggregator.readUsageReceipts(
       this.stationId,
       authority,
-      request,
+      { ...request, filter },
     );
     const aggregate = this.usageAggregator.readUsageReceipts(
       this.stationId,
       authority,
-      { from: request.from, to: request.to, pageSize: 500, aggregate: true },
+      {
+        from: request.from,
+        to: request.to,
+        pageSize: 500,
+        aggregate: true,
+        filter,
+      },
     );
     const receipts = page?.receipts;
     const fallbackCoverage: UsageCoverage =
