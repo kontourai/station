@@ -110,7 +110,19 @@
 
     "src-desktop/plugins/station-discovery/android/src/main/java/io/kontourai/station/discovery/StationDiscoveryPlugin.kt",
 
-    "src-ui/src/platform/native/connectionDiscovery.ts"
+    "src-ui/src/platform/native/connectionDiscovery.ts",
+
+    "src-desktop/plugins/media-intake/src/lib.rs",
+
+    "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/MediaIntakePlugin.kt",
+
+    "src-ui/src/platform/native/share-image.ts",
+
+    "src-ui/src/components/chat/ShareIntakeController.tsx",
+
+    "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ImageIntake.kt",
+
+    "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ShareIntakeSession.kt"
   ],
 
   "checks": [
