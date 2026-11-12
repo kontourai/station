@@ -11180,13 +11180,17 @@ fn cover_palette(dark: bool) -> CoverPalette {
 /// Whether `view` draws in a dark appearance.
 #[cfg(target_os = "macos")]
 fn native_cover_is_dark(view: &objc2_app_kit::NSView) -> bool {
-    use objc2_app_kit::{NSAppearanceNameAqua, NSAppearanceNameDarkAqua};
+    use objc2_app_kit::{
+        NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
+    };
     let names = unsafe {
         objc2_foundation::NSArray::from_slice(&[NSAppearanceNameAqua, NSAppearanceNameDarkAqua])
     };
     view.effectiveAppearance()
         .bestMatchFromAppearancesWithNames(&names)
-        .is_some_and(|name| name.isEqualToString(unsafe { NSAppearanceNameDarkAqua }))
+        .is_some_and(|name: objc2::rc::Retained<objc2_foundation::NSString>| {
+            name.isEqualToString(unsafe { NSAppearanceNameDarkAqua })
+        })
 }
 
 /// The channel's river colour: the midpoint of the mark's water gradient,
@@ -11380,7 +11384,9 @@ fn cover_text_font(size: f64, weight: f64) -> objc2::rc::Retained<objc2_app_kit:
 mod startup_cover_art {
     use super::{cover_layout, CoverPalette, CoverRgba};
     use objc2::rc::Retained;
-    use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
+    use objc2::{
+        define_class, msg_send, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly,
+    };
     use objc2_app_kit::{
         NSAttributedStringNSStringDrawing, NSBezierPath, NSFont, NSFontAttributeName,
         NSForegroundColorAttributeName, NSGradient, NSImage, NSLineCapStyle, NSResponder, NSView,
@@ -11463,7 +11469,14 @@ mod startup_cover_art {
                         gradient.drawInRect_angle(bounds, 0.0);
                     }
                 }
-                Art::Wordmark { mark, font, word, palette, water, motion } => {
+                Art::Wordmark {
+                    mark,
+                    font,
+                    word,
+                    palette,
+                    water,
+                    motion,
+                } => {
                     let width = bounds.size.width;
                     let height = bounds.size.height;
                     let layout = cover_layout(width, height, word.size().width);
@@ -11813,8 +11826,7 @@ fn with_native_startup_cover(
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
         NSAccessibilityLayoutChangedNotification, NSAccessibilityPostNotification,
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSUserInterfaceItemIdentification,
-        NSView,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSUserInterfaceItemIdentification, NSView,
     };
     use objc2_foundation::{ns_string, NSObjectProtocol};
 
@@ -11975,6 +11987,7 @@ fn populate_native_startup_cover(
     app: &AppHandle,
     marker: objc2::MainThreadMarker,
 ) -> Option<objc2::rc::Retained<objc2_app_kit::NSButton>> {
+    use objc2::{AnyThread, MainThreadOnly};
     use objc2_app_kit::{
         NSAccessibilityImageRole, NSAttributedStringNSStringDrawing, NSAutoresizingMaskOptions,
         NSButton, NSControlSize, NSImage, NSTextAlignment, NSTextField, NSView, NSWorkspace,
@@ -12011,7 +12024,10 @@ fn populate_native_startup_cover(
 
     // The wordmark and track, drawn as one image the way the renderer's
     // canvas draws them; it scales with the window.
-    let mark = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(cover_mark_png(channel)));
+    let mark = NSImage::initWithData(
+        NSImage::alloc(),
+        &NSData::with_bytes(cover_mark_png(channel)),
+    );
     if let Some(mark) = mark {
         let art = startup_cover_art::StartupCoverArt::new(
             startup_cover_art::Art::Wordmark {
@@ -12045,7 +12061,10 @@ fn populate_native_startup_cover(
         let track = NSView::initWithFrame(
             NSView::alloc(marker),
             NSRect::new(
-                NSPoint::new(layout.track_x, from_top(layout.track_y, layout.track_height)),
+                NSPoint::new(
+                    layout.track_x,
+                    from_top(layout.track_y, layout.track_height),
+                ),
                 NSSize::new(layout.track_width, layout.track_height),
             ),
         );
@@ -12108,7 +12127,10 @@ fn populate_native_startup_cover(
         label.setTextColor(Some(&palette.muted.ns_color()));
         let label_width = (width - 48.0).max(0.0);
         label.setFrame(NSRect::new(
-            NSPoint::new((width - label_width) / 2.0, from_top(top, line_height).max(0.0)),
+            NSPoint::new(
+                (width - label_width) / 2.0,
+                from_top(top, line_height).max(0.0),
+            ),
             NSSize::new(label_width, line_height),
         ));
         (label, label_text)
@@ -12150,10 +12172,14 @@ fn populate_native_startup_cover(
 
     // The detail wraps to at most two lines under the status line.
     let detail_top = layout.status_y + STATUS_HEIGHT + DETAIL_TOP_BELOW_STATUS;
-    let (detail, detail_text) = text_label(NATIVE_STARTUP_COVER_OVERDUE_DETAIL, detail_top, 36.0, 13.0);
+    let (detail, detail_text) =
+        text_label(NATIVE_STARTUP_COVER_OVERDUE_DETAIL, detail_top, 36.0, 13.0);
     let detail_width = DETAIL_WIDTH.min((width - 48.0).max(0.0));
     detail.setFrame(NSRect::new(
-        NSPoint::new(mid_x - detail_width / 2.0, from_top(detail_top, 36.0).max(0.0)),
+        NSPoint::new(
+            mid_x - detail_width / 2.0,
+            from_top(detail_top, 36.0).max(0.0),
+        ),
         NSSize::new(detail_width, 36.0),
     ));
     detail.setMaximumNumberOfLines(2);
@@ -17168,8 +17194,14 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn native_cover_paints_the_startup_screen_palette_per_channel() {
         // --k-bg in @kontourai/ui's default dark and light themes.
-        assert_eq!(cover_palette(true).background, CoverRgba::hex(0x0a0e13, 1.0));
-        assert_eq!(cover_palette(false).background, CoverRgba::hex(0xf5f4ef, 1.0));
+        assert_eq!(
+            cover_palette(true).background,
+            CoverRgba::hex(0x0a0e13, 1.0)
+        );
+        assert_eq!(
+            cover_palette(false).background,
+            CoverRgba::hex(0xf5f4ef, 1.0)
+        );
         assert_ne!(cover_palette(true).muted, cover_palette(false).muted);
         // Each channel's river colour is its own; a development build is Dev.
         let waters = ["stable", "beta", "nightly"].map(|channel| cover_water(Some(channel)));
@@ -17191,7 +17223,13 @@ mod tests {
     fn native_cover_reads_the_embedded_brand_faces() {
         let wordmark = cover_font(FRAUNCES_LATIN_WOFF2, 52.0, &[(AXIS_WGHT, 500.0)])
             .expect("CoreText reads the embedded Fraunces WOFF2");
-        assert_eq!(wordmark.familyName().map(|name| name.to_string()).as_deref(), Some("Fraunces"));
+        assert_eq!(
+            wordmark
+                .familyName()
+                .map(|name| name.to_string())
+                .as_deref(),
+            Some("Fraunces")
+        );
         let text = cover_font(HANKEN_GROTESK_LATIN_WOFF2, 14.0, &[(AXIS_WGHT, 400.0)])
             .expect("CoreText reads the embedded Hanken Grotesk WOFF2");
         assert_eq!(
