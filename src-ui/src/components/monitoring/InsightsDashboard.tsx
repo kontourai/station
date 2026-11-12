@@ -328,7 +328,7 @@ function UsageTab() {
           )}
         </div>
         <div>
-          <div className="insights-section-label">Agent Usage</div>
+          <div className="insights-section-label">Agent usage</div>
           {agents.length === 0 ? (
             <Empty variant="compact" label="No agent usage yet" />
           ) : (
@@ -494,7 +494,7 @@ function FeedbackTab() {
       {/* Right: Behavior summary */}
       <div>
         <div className="feedback-behaviors-header">
-          <div className="insights-section-label">Learned Behaviors</div>
+          <div className="insights-section-label">Learned behaviors</div>
           <div className="feedback-actions">
             <button
               type="button"

@@ -323,7 +323,7 @@ export function JobDetail({
       <table className="schedule__logs">
         <thead>
           <tr>
-            <th>Started At</th>
+            <th>Started at</th>
             <th>Status</th>
             <th>Duration</th>
             <th>Missed</th>

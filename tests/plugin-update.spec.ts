@@ -481,7 +481,7 @@ test.describe('Plugin Update Flow', () => {
     await expect(page.getByText('Improve lifecycle hooks')).toBeVisible();
 
     await page.getByRole('button', { name: 'Remove' }).click();
-    await expect(page.getByText('Remove Plugin')).toBeVisible();
+    await expect(page.getByText('Remove plugin')).toBeVisible();
     await page.locator('.plugins__confirm-delete').click();
     await expect(page.getByText('Removed lifecycle-plugin.')).toBeVisible();
   });
@@ -559,7 +559,7 @@ test.describe('Plugin Update Flow', () => {
     await page.getByRole('button', { name: /Lifecycle Plugin/ }).click();
     const removeTrigger = page.getByRole('button', { name: 'Remove' });
     await removeTrigger.click();
-    const confirm = page.getByRole('dialog', { name: 'Remove Plugin' });
+    const confirm = page.getByRole('dialog', { name: 'Remove plugin' });
     await expect(confirm).toBeVisible();
     await expect(confirm).toBeFocused();
     for (const name of ['Cancel', 'Remove']) {

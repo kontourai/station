@@ -164,7 +164,7 @@ export function RegistryCatalogDetail({
                 ? 'Checking installed status…'
                 : pending
                   ? 'Working…'
-                  : 'Remove Plugin'}
+                  : 'Remove plugin'}
             </Button>
           </>
         ) : (

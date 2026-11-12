@@ -366,8 +366,8 @@ function SharingControls({
       {view.pending && !restarting && (
         <p className="settings__field-hint" role="status">
           {view.pending.ready
-            ? 'A previous change remains pending. Restart Station to reconcile it.'
-            : 'A previous change remains pending. Try applying again to reconcile it.'}
+            ? 'A previous change is still pending. Restart Station to finish applying it.'
+            : 'A previous change is still pending. Apply again to finish it.'}
         </p>
       )}
       {confirmation && (

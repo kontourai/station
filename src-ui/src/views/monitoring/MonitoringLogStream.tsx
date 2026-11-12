@@ -152,7 +152,7 @@ export function MonitoringLogStream({
           description={
             events.length > 0
               ? 'Change the filters or time range.'
-              : 'Waiting for agent activity...'
+              : 'Waiting for agent activity…'
           }
         />
       ) : (

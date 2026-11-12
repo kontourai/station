@@ -166,7 +166,7 @@ describe('Monitoring historical read failure (station#3658)', () => {
     expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     // The defect itself: the empty state is withheld, not merely joined.
     expect(screen.queryByText('No events yet')).toBeNull();
-    expect(screen.queryByText('Waiting for agent activity...')).toBeNull();
+    expect(screen.queryByText('Waiting for agent activity…')).toBeNull();
     // Announced, not just drawn — `ErrorState` carries `role="alert"`.
     expect(
       screen

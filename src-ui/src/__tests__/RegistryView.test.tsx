@@ -878,7 +878,7 @@ describe('RegistryView', () => {
         ).toBeTruthy();
         expect(
           within(installedDetail).getByRole('button', {
-            name: 'Remove Plugin',
+            name: 'Remove plugin',
           }),
         ).toBeTruthy();
       } else {
@@ -1221,7 +1221,7 @@ describe('RegistryView', () => {
     expectInstalledToast('Installed Demo Layout', 'demo-layout');
 
     fireEvent.click(
-      within(detail).getByRole('button', { name: 'Remove Plugin' }),
+      within(detail).getByRole('button', { name: 'Remove plugin' }),
     );
     expect(screen.getByText('Removed Demo Layout')).toBeTruthy();
     expect(

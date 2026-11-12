@@ -319,7 +319,7 @@ describe('SkillsView', () => {
 
     renderEditor();
 
-    expect(screen.getByText('New Skill')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'New skill' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     expect(screen.queryByText('No skill selected')).toBeNull();
   });

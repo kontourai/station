@@ -691,7 +691,7 @@ export function JobFormModal({
         {!targeted && form.monitorType === 'github-pull-request' && (
           <>
             <div className="schedule__field">
-              <span className="schedule__field-label">Monitor Agent</span>
+              <span className="schedule__field-label">Monitor agent</span>
               <AgentPicker
                 value={form.monitorAgentId}
                 catalogErrorId={

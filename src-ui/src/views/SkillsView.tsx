@@ -650,8 +650,8 @@ export function SkillsView({
             <DetailHeader
               title={
                 isCreating
-                  ? 'New Skill'
-                  : form.name || selected?.name || 'Edit Skill'
+                  ? 'New skill'
+                  : form.name || selected?.name || 'Edit skill'
               }
               badge={
                 dirty

@@ -144,7 +144,7 @@ test('shows an unresolved pending change from the server', async () => {
   );
   mount();
   expect(
-    await screen.findByText(/previous change remains pending/),
+    await screen.findByText(/previous change is still pending/),
   ).toBeTruthy();
 });
 
