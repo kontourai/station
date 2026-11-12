@@ -56,6 +56,7 @@ function harness(principal: Principal, kind?: 'device' | 'delegation') {
     hasReadableSession: async () => true,
     canUserReadSession: () => true,
     canUserMutateSession: () => true,
+    conversationInputAdmissionRefusal: () => undefined,
   };
   const app = new Hono();
   app.use('*', async (c, next) => {
