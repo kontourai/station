@@ -257,12 +257,11 @@ export function IndependentReviewRunModal({
           </>
         ) : null}
         <p className="review-run-modal__truth">
-          Findings are recorded as evidence input. They do not approve, reject,
-          or satisfy a gate.
+          Findings are advisory. They don't approve or block a gate.
         </p>
         {validationError ? <p role="alert">{validationError}</p> : null}
         {mutation.isError ? (
-          <p role="alert">The independent review could not be completed.</p>
+          <p role="alert">The review couldn't finish. Try again.</p>
         ) : null}
       </div>
       <ResponsiveSurfaceActions className="modal-footer">
