@@ -14,6 +14,7 @@ import {
   AGENT_PROFILE_CAPABILITIES,
   type AgentProfileCapability,
 } from '@kontourai/station-contracts/enriched-agent';
+import type { StationCapabilityFlags } from '@kontourai/station-contracts/environment-security';
 import {
   type ExecutionConfinementRecord,
   STATION_CONFINEMENT_RECORD_METADATA_KEY,
@@ -330,12 +331,7 @@ async function readExecutionProject(
 
 interface StationHandshake {
   environmentId: string;
-  capabilities?: {
-    portableExecutionOffers?: boolean;
-    delegationAttemptClaims?: boolean;
-    executionPreparation?: boolean;
-    delegatedInputAnswers?: boolean;
-  };
+  capabilities?: StationCapabilityFlags;
 }
 
 interface SshEnvironmentView {
