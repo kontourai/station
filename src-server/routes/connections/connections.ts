@@ -7,7 +7,10 @@ import type {
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
-import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
+import {
+  isOperatorInPersonNotAgent,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import {
   isManagedEngineRefusal,
   managedEngineRefusalBody,
@@ -315,9 +318,13 @@ function withViewerRoutes<
   T extends { routeObservation?: EngineRouteObservation },
 >(c: Context, connections: readonly T[]): T[] {
   const scope = grantedPairingScope(c);
+  // An agent's request never reads host endpoints, whatever scope its
+  // credential carries.
   const mayRead =
     isOperatorInPersonNotAgent(c.req.raw) ||
-    (scope !== undefined && pairingScopeIncludes(scope, 'access:manage'));
+    (!requestMayBeAnAgent(c.req.raw) &&
+      scope !== undefined &&
+      pairingScopeIncludes(scope, 'access:manage'));
   return connections.map((connection) =>
     connection.routeObservation
       ? {
