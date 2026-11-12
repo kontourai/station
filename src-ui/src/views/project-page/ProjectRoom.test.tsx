@@ -1805,12 +1805,21 @@ test('an immediate Enter on a legacy thread draft submits the migrated revision,
   const rootMessage = storedMessage(1, 'Immediate legacy root');
   messages = [rootMessage];
   const draftKey = `station-room-draft:${JSON.stringify([
-    requestScope.authorityKey, requestScope.apiBase, 'project', 'team',
-    'project-room', 'thread', rootMessage.messageId,
+    requestScope.authorityKey,
+    requestScope.apiBase,
+    'project',
+    'team',
+    'project-room',
+    'thread',
+    rootMessage.messageId,
   ])}`;
-  sessionStorage.setItem(draftKey, JSON.stringify({
-    text: 'Immediate legacy ask', recipient: { id: 'researcher', name: 'Researcher' },
-  }));
+  sessionStorage.setItem(
+    draftKey,
+    JSON.stringify({
+      text: 'Immediate legacy ask',
+      recipient: { id: 'researcher', name: 'Researcher' },
+    }),
+  );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -1819,29 +1828,50 @@ test('an immediate Enter on a legacy thread draft submits the migrated revision,
   const root = createRoot(container);
   const tree = (rootId?: string) => (
     <QueryClientProvider client={client}>
-      <ProjectRoom slug="team" projectId="project" requestScope={requestScope}
-        routeChannel={{ id: undefined }} thread={{ rootId, open: () => {} }} />
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId, open: () => {} }}
+      />
     </QueryClientProvider>
   );
   const release = holdAgentRequest();
   try {
     await act(async () => root.render(tree()));
     await screen.findByText('Immediate legacy root');
-    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>(
-      'button', { name: 'Recap Project' }).disabled).toBe(false));
+    await waitFor(() =>
+      expect(
+        screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+          .disabled,
+      ).toBe(false),
+    );
     // Commit the route without act's additional drain of passive updates.
     flushSync(() => root.render(tree(rootMessage.messageId)));
-    const field = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Reply in thread' });
+    const field = screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply in thread',
+    });
     expect(field.value).toBe('Immediate legacy ask');
-    const ask = screen.getByRole<HTMLButtonElement>('button', { name: 'Ask Researcher' });
+    const ask = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Ask Researcher',
+    });
     if (ask.disabled) await waitFor(() => expect(ask.disabled).toBe(false));
-    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
     await waitFor(() => expect(agentWrites).toHaveLength(1));
     await act(async () => root.render(tree()));
     await act(async () => release());
-    await screen.findByText('Agent is working. Its answer will appear in the Room.');
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
     await act(async () => root.render(tree(rootMessage.messageId)));
-    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Reply in thread' }).value).toBe('');
+    expect(
+      screen.getByRole<HTMLTextAreaElement>('textbox', {
+        name: 'Reply in thread',
+      }).value,
+    ).toBe('');
   } finally {
     release();
     await act(async () => root.unmount());
