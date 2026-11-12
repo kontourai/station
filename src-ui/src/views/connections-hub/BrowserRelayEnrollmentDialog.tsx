@@ -12,7 +12,7 @@ const STATUS: Record<BrowserRelayEnrollmentState, string> = {
   'awaiting-approval':
     'Waiting for the Station operator to approve this Device…',
   activating: 'Activating the approved Device and account session…',
-  enrolled: 'This Device is approved and signed in to this Station.',
+  enrolled: 'This device is approved and signed in to this Station.',
   failed: 'Enrollment did not complete.',
   cancelled: 'Enrollment cancelled.',
 };

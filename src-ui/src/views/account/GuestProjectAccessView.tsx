@@ -149,7 +149,7 @@ export function GuestProjectAccessView({
       setBanner(
         (current) =>
           current ??
-          'Your administration access changed. This list was refreshed — you can keep reading the Project, but people and invitation changes are unavailable.',
+          "Your administration access changed. You can still read the Project, but can't change people or invitations.",
       );
     }
   }, [access.error]);
@@ -222,32 +222,32 @@ export function GuestProjectAccessView({
         (stamped.role !== 'admin' || stamped.status !== 'active')
       )
         setBanner(
-          'You changed your own Project role. This list was refreshed — you can keep reading the Project, but people and invitation changes are unavailable.',
+          "You changed your own Project role. You can still read the Project, but can't change people or invitations.",
         );
       return outcome;
     } catch (cause) {
       if (cause instanceof StationHttpError && cause.status === 409) {
         await refreshReads();
         throw new Error(
-          'Someone else changed Project access first. The list was refreshed — review it before trying again.',
+          'Someone else changed Project access first. Review the refreshed list before trying again.',
         );
       }
       if (cause instanceof StationHttpError && cause.status === 401) {
         await refreshReads();
         setBanner(
-          'Station no longer accepts this browser’s sign-in or approval. Refresh the list: you may need to sign in again or request browser access.',
+          'Station no longer accepts this browser’s sign-in or approval. You may need to sign in again or request browser access.',
         );
         throw new Error(
-          'Station refused this change because the sign-in or browser approval changed. Nothing was retried.',
+          "Station refused this change because your sign-in or this browser's approval changed. It wasn't retried.",
         );
       }
       if (cause instanceof StationHttpError && cause.status === 403) {
         await refreshReads();
         setBanner(
-          'Your Project role or this browser’s approval changed. The list was refreshed — review it before trying again.',
+          'Your Project role or this browser’s approval changed. Review the list before trying again.',
         );
         throw new Error(
-          'Station refused this change. Nothing was retried — the refreshed list shows what you can still do.',
+          "Station refused this change and it wasn't retried. The list shows what you can still do.",
         );
       }
       throw cause;
@@ -264,7 +264,7 @@ export function GuestProjectAccessView({
             className="account-entry__access-view-only"
             aria-label="People and access"
           >
-            {banner && <p role="status">{banner}</p>}
+            {banner && <RefreshedStatus cause={banner} />}
             <h4>People and access</h4>
             <p>
               People and invitation management is limited to Project admins.
@@ -272,7 +272,7 @@ export function GuestProjectAccessView({
               !observation.data.grant.grantedScopes.includes(
                 'orchestration:operate',
               )
-                ? ' This browser also has read-only approval: even as an admin you could only inspect, until the operator approves collaborator management.'
+                ? ' This browser is also view only until the Station operator approves it for managing collaborators.'
                 : ''}
             </p>
             <div className="account-entry__actions">
@@ -337,9 +337,9 @@ export function GuestProjectAccessView({
   const writeDisabledReason = observationMismatch
     ? 'The signed-in account changed while this list was open. Refresh before changing anything.'
     : observation.data === undefined
-      ? 'This browser’s approval could not be verified. Ask this Station’s operator to approve collaborator management for this browser before changing people or invitations.'
+      ? 'This browser’s approval couldn’t be checked. Ask the Station operator to approve this browser for managing collaborators.'
       : !canOperate
-        ? 'This browser has read-only approval: you can inspect people and invitations, but changes need the Station operator to approve collaborator management for this browser. Your account and this browser’s approval stay separate.'
+        ? 'View only. To change people or invitations, ask the Station operator to approve this browser for managing collaborators.'
         : undefined;
   // The remount key clears one-time invitation links and pending
   // confirmations whenever the rendered authority or Project changes.
@@ -360,7 +360,7 @@ export function GuestProjectAccessView({
       className="account-entry__access-admin"
       aria-label="People and access"
     >
-      {banner && <p role="status">{banner}</p>}
+      {banner && <RefreshedStatus cause={banner} />}
       <p role="status" className="account-entry__capability">
         Signed in as <strong>{actor?.principal.display}</strong> · Project role:{' '}
         <strong>{actor?.role}</strong> · People administration:{' '}
@@ -394,4 +394,12 @@ export function GuestProjectAccessView({
       </div>
     </section>
   );
+}
+
+/**
+ * Every banner follows a refresh of the access list, so the refresh is said
+ * once here and each banner carries only its cause.
+ */
+function RefreshedStatus({ cause }: { cause: string }) {
+  return <p role="status">List refreshed. {cause}</p>;
 }

@@ -270,6 +270,34 @@ describe('secret binding operator UI', () => {
     });
   });
 
+  test('says what happened on a safe partial the server did not explain', async () => {
+    mocks.bind.mockResolvedValue({
+      outcome: 'safe-partial',
+      binding: { id: 'github-token', name: 'GitHub token', revision: 5 },
+      integrationId: 'github',
+      envName: 'OTHER_TOKEN',
+    });
+    render(
+      <SecretBindingPicker
+        integrationId="github"
+        envNames={['OTHER_TOKEN']}
+        requireSave={false}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Binding'), {
+      target: { value: 'github-token' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Bind' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "The secret was linked, but the tool server wasn't updated. Retry to finish.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByRole('button', { name: 'Retry bind' })).toBeTruthy();
+  });
+
   test('refreshes binding and authoritative integration projections after complete bind and unbind', async () => {
     mocks.bind.mockResolvedValue({
       outcome: 'complete',

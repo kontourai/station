@@ -377,7 +377,7 @@ function AccountPage({
         <small>
           {activityScope === 'engine'
             ? 'This Station · this engine · all accounts'
-            : 'This Station · selected profile · attributed runs'}
+            : 'This Station · selected account · attributed runs'}
         </small>
         {!canReadActivity ? (
           <p>Activity requires credential-management permission.</p>
@@ -841,42 +841,33 @@ function AccountMetadata({
                 : 'Anthropic OAuth usage',
             ],
             [
-              'Credential source',
+              'Stored in',
               capture.credentialStorage === 'secure-store'
-                ? 'Selected secure-store namespace'
+                ? 'Secure store'
                 : capture.credentialStorage === 'file'
-                  ? 'Selected credential file'
+                  ? 'Credential file'
                   : undefined,
             ],
+            ['History', 'Keeps allowance readings only'],
             [
-              'Storage',
-              'Live reading; history retains allowance observations only',
-            ],
-            [
-              'Unmapped fields',
+              "Fields Station didn't recognize",
               capture.unhandledFields.length
                 ? capture.unhandledFields.join(', ')
-                : 'None in this response',
+                : 'None',
             ],
             [
               'Excluded fields',
               capture.excludedFields.length
                 ? capture.excludedFields.join(', ')
-                : 'None in this response',
+                : 'None',
             ],
             [
-              'Shape audit',
-              capture.truncated
-                ? 'Incomplete: response exceeded audit bounds'
-                : 'Completed for this response',
+              'Complete',
+              capture.truncated ? 'No, the response was too large' : 'Yes',
             ],
           ]}
         />
-        <small>
-          Field names identify gaps; unrecognized values and credentials stay
-          private. Empty fields, value validation and other provider endpoints
-          are outside this audit.
-        </small>
+        <small>Values and credentials are never shown.</small>
       </details>
     </>
   );

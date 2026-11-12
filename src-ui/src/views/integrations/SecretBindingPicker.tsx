@@ -92,7 +92,9 @@ export function SecretBindingPicker({
       if (result.outcome === 'safe-partial') {
         setMessage(
           result.configurationError ??
-            'The binding authority changed, but the integration configuration did not. Retry to converge both sides.',
+            (operation === 'bind'
+              ? "The secret was linked, but the tool server wasn't updated. Retry to finish."
+              : "The secret was unlinked, but the tool server wasn't updated. Retry to finish."),
         );
         setRetry({
           operation,
@@ -134,8 +136,8 @@ export function SecretBindingPicker({
           Secret environment binding
         </h3>
         <p className="agent-editor__section-desc">
-          Choose an already-declared environment name and an operator binding.
-          This action records both sides; it never reveals material.
+          Choose an environment variable and the secret that supplies it. Secret
+          values are never shown.
         </p>
       </div>
       {requireSave ? (

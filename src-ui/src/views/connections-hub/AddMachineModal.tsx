@@ -21,30 +21,23 @@ interface AddMachineGoalOption {
   goal: AddMachineGoal;
   title: string;
   detail: string;
-  unlocks: string;
 }
 
 export const ADD_MACHINE_GOAL_OPTIONS: readonly AddMachineGoalOption[] = [
   {
     goal: 'control',
     title: 'Control this Station from another device',
-    detail:
-      'Pair a phone, browser, or command line. You can then use this Station from that device.',
-    unlocks: 'That device can control this Station.',
+    detail: 'Pair a phone, browser or terminal.',
   },
   {
     goal: 'station',
     title: 'Connect a Station',
-    detail:
-      'Choose a Station, then approve access for this device, remote work, or both.',
-    unlocks: 'Use another Station, or send work to it.',
+    detail: 'Use another Station or send work to it.',
   },
   {
     goal: 'delegate',
     title: 'Run work on another computer over SSH',
-    detail: 'Connect a computer over SSH so this Station can send work to it.',
-    unlocks:
-      'Tasks run there with that computer’s own agents and project files.',
+    detail: 'Run Tasks on another computer over SSH.',
   },
 ];
 
@@ -149,9 +142,6 @@ export function AddMachineModal({
                 <span className="add-machine-modal__option-detail">
                   {option.detail}
                 </span>
-                <span className="add-machine-modal__option-unlocks">
-                  {option.unlocks}
-                </span>
               </button>
             ),
           )}
@@ -165,12 +155,8 @@ export function AddMachineModal({
                 Save an encrypted broker route
               </span>
               <span className="add-machine-modal__option-detail">
-                Save where the Station is reached and which identity it must
-                use.
-              </span>
-              <span className="add-machine-modal__option-unlocks">
-                The route stays unconnected until its transport and account
-                setup are available.
+                Save how to reach a Station through a broker. It connects once
+                setup is complete.
               </span>
             </button>
           )}

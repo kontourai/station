@@ -434,7 +434,7 @@ export function NativeRelayEnrollmentWizard({
           'The request is waiting for Station operator approval. Check again after the operator reviews it.',
         );
       } else {
-        setError('Station did not accept this enrollment request.');
+        setError('Station didn’t accept this setup request.');
       }
     },
     onError: reportStepFailure,
@@ -485,7 +485,7 @@ export function NativeRelayEnrollmentWizard({
         );
       } else {
         setError(
-          'This enrollment is no longer pending. Start a new setup if needed.',
+          'This setup request is no longer pending. Start a new one if needed.',
         );
       }
     },
@@ -701,7 +701,7 @@ export function NativeRelayEnrollmentWizard({
       ) : null}
 
       {phase === 'challenge' ? (
-        <section aria-label="Station account enrollment">
+        <section aria-label="Station account setup">
           <p>Submit your account details within five minutes.</p>
           <label className="editor-field">
             <span className="editor-label">Station account username</span>

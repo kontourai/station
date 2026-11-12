@@ -222,7 +222,9 @@ test('a read-only admin device inspects but cannot submit, with the operator-app
   expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
   expect(screen.getByText('view-only')).toBeTruthy();
   expect(
-    screen.getByText(/approve collaborator management for this browser/),
+    screen.getByText(
+      'View only. To change people or invitations, ask the Station operator to approve this browser for managing collaborators.',
+    ),
   ).toBeTruthy();
   const create = screen.getByRole('button', {
     name: 'Create invitation',
@@ -277,8 +279,10 @@ test('self-demotion acknowledges without content and hands back a refreshed view
     expectedActor: admin.id,
   });
   expect(
-    await screen.findByText(/You changed your own Project role/),
-  ).toBeTruthy();
+    (await screen.findByText(/You changed your own Project role/)).textContent,
+  ).toBe(
+    "List refreshed. You changed your own Project role. You can still read the Project, but can't change people or invitations.",
+  );
   expect(await screen.findByText(/limited to Project admins/)).toBeTruthy();
 });
 

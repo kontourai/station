@@ -28,7 +28,7 @@ const TRUST_COPY: Record<
   invalid: {
     label: 'Station identifiers invalid',
     detail:
-      'Station ID and enrollment ID must be the UUIDs supplied for this Station enrollment.',
+      'Station ID and enrollment ID must be the UUIDs this Station supplied.',
   },
   unavailable: {
     label: 'Trust unavailable',
@@ -42,17 +42,15 @@ const TRUST_COPY: Record<
   },
   revoked: {
     label: 'Trust revoked',
-    detail:
-      'This device has revoked trust for the selected Station enrollment.',
+    detail: 'This device revoked trust for this Station.',
   },
   mismatch: {
     label: 'Station identity mismatch',
-    detail: 'The approved Station key belongs to a different enrollment.',
+    detail: 'The approved key belongs to a different setup of this Station.',
   },
   approved: {
     label: 'Station trust approved',
-    detail:
-      'This exact Station enrollment has an independently approved key on this device.',
+    detail: 'This device has approved this Station’s key.',
   },
 };
 

@@ -124,8 +124,7 @@ export function ProviderStackOverview({
             while the reader was standing in Connections — a sentence that
             resolves to itself. The Engines tab is where they are. */}
         <p className="provider-overview__desc">
-          Connections used by Station's engine. Engine connections are under the
-          Engines tab.
+          Used by Station's engine. Other engines are on the Engines tab.
         </p>
       </div>
 
@@ -194,7 +193,7 @@ export function ProviderStackOverview({
 
       {providers.length === 0 && (
         <div className="provider-overview__quickstart">
-          <h4 className="provider-overview__quickstart-title">Quick Setup</h4>
+          <h4 className="provider-overview__quickstart-title">Quick setup</h4>
           <p className="provider-overview__quickstart-desc">
             Add a model connection to get started
           </p>

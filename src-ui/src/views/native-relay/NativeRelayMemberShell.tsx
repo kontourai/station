@@ -111,7 +111,7 @@ function NativeMemberProjects({
         value.environmentId !== stationId ||
         value.grant.kind !== 'device'
       )
-        throw new Error('Station account authority could not be verified.');
+        throw new Error('Couldn’t verify your Station account.');
       return value;
     },
     enabled: scope.isCurrent(),

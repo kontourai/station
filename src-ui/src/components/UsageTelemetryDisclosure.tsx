@@ -41,7 +41,10 @@ import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
 import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
-import type { TelemetryChoiceAuthority } from './UsageSharingChoices';
+import {
+  SHARING_LABELS,
+  type TelemetryChoiceAuthority,
+} from './UsageSharingChoices';
 import { UsageSharingPrompt } from './UsageSharingPrompt';
 import './UsageTelemetryDisclosure.css';
 
@@ -305,7 +308,7 @@ async function responseData(response: Response): Promise<Disclosure> {
 async function acknowledgementData(response: Response): Promise<Disclosure> {
   if (response.status === 403)
     throw new UsageTelemetryAcknowledgementForbiddenError(
-      'This device cannot acknowledge Full usage telemetry. The operator can review it in Settings.',
+      "This device can't turn on detailed usage telemetry. The Station operator can review it in Settings.",
     );
   return responseData(response);
 }
@@ -619,7 +622,7 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
   return (
     <>
       <p className="usage-telemetry-disclosure__lede">
-        Full telemetry sends the following pseudonymous product-usage events
+        Detailed usage telemetry sends these pseudonymous product-usage events
         only when a telemetry endpoint is configured. Its installation hash
         rotates monthly and is never linked to an account by Station. It never
         sends conversation content, filesystem paths, repository names,
@@ -731,7 +734,7 @@ function DisclosureSummary({
     <>
       <p className={chrome.lede}>
         {data.publishers?.operator?.reason === 'DNT'
-          ? 'DO_NOT_TRACK is active: nothing is sent. Save an operator choice of Off, Lite, or Full. Full will still require confirmation after DO_NOT_TRACK is removed.'
+          ? 'Do Not Track is on, so nothing is sent. Save your choice for later. Detailed usage still asks first once Do Not Track is off.'
           : usageTelemetryDisclosureSummary(data.endpointConfigured)}
       </p>
       <details className={chrome.inventory}>
@@ -1155,20 +1158,20 @@ function useUsageTelemetryDecision(
     labels:
       operator?.reason === 'DNT'
         ? {
-            keep: `Save operator choice as ${dntChoice[0].toUpperCase()}${dntChoice.slice(1)}`,
-            change: 'Save operator choice as Full',
+            keep: `Save your choice: ${SHARING_LABELS[dntChoice]}`,
+            change: `Save your choice: ${SHARING_LABELS.full}`,
           }
         : tierAware &&
             savedChoice === 'full' &&
             operator?.reason === 'disclosure'
           ? {
-              keep: 'Allow Full usage telemetry',
+              keep: 'Allow detailed usage telemetry',
               change: 'Turn off usage telemetry',
             }
           : tierAware
             ? enabled
               ? {
-                  keep: 'Keep Full usage telemetry on',
+                  keep: 'Keep detailed usage telemetry on',
                   change: 'Turn off usage telemetry',
                 }
               : {
@@ -1176,7 +1179,7 @@ function useUsageTelemetryDecision(
                     savedChoice === 'off' || operator?.tier === 'off'
                       ? 'Keep usage telemetry off'
                       : 'Turn off usage telemetry',
-                  change: 'Allow Full usage telemetry',
+                  change: 'Allow detailed usage telemetry',
                 }
             : usageTelemetryDecisionLabels(enabled),
     busy,
@@ -1214,9 +1217,8 @@ function useUsageTelemetryDecision(
           savedChoice === 'full' &&
           operator?.reason === 'disclosure' && (
             <p className="usage-telemetry-disclosure__lede">
-              Your saved operator choice is Full, awaiting acknowledgement. Full
-              events are not sent until you allow them. Turning telemetry off
-              saves Off before acknowledging this inventory.
+              Your saved choice is detailed usage. Nothing is sent until you
+              allow it. Turning it off saves Don’t share instead.
             </p>
           )}
         {acknowledgeErrorNotice(
@@ -1243,7 +1245,7 @@ function DisclosureDntChoices({
       className="usage-telemetry-disclosure__choices"
       disabled={decision.busy}
     >
-      <legend>Operator choice</legend>
+      <legend>Your choice</legend>
       {(['off', 'lite', 'full'] as const).map((tier) => (
         <label key={tier}>
           <input
@@ -1252,7 +1254,7 @@ function DisclosureDntChoices({
             checked={choice.value === tier}
             onChange={() => choice.onChange(tier)}
           />
-          {tier[0].toUpperCase() + tier.slice(1)}
+          {SHARING_LABELS[tier]}
         </label>
       ))}
     </fieldset>

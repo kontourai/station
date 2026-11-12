@@ -60,7 +60,7 @@ export function CredentialProfileAccess({
     return (
       <LoginProfiles connectionId={connectionId} requestScope={requestScope} />
     );
-  return <p>Manage credential entries on the Station.</p>;
+  return <p>Manage accounts on the Station.</p>;
 }
 
 function LoginProfiles({

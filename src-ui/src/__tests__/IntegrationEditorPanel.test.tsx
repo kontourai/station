@@ -261,7 +261,7 @@ describe('IntegrationEditorPanel', () => {
       />,
     );
 
-    expect(screen.getByText('Editor Mode')).toBeTruthy();
+    expect(screen.getByText('Editor mode')).toBeTruthy();
     expect(screen.getByText('Basics')).toBeTruthy();
     expect(screen.getByText('Connection')).toBeTruthy();
     expect(screen.getByText('Environment Variables')).toBeTruthy();
@@ -305,7 +305,7 @@ describe('IntegrationEditorPanel', () => {
       />,
     );
 
-    expect(screen.getByText('Raw Configuration')).toBeTruthy();
+    expect(screen.getByText('Raw configuration')).toBeTruthy();
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
       '{"mcpServers":{}}',
     );
@@ -381,7 +381,7 @@ describe('IntegrationEditorPanel', () => {
       />,
     );
 
-    expect(screen.getByText('New Tool Server')).toBeTruthy();
+    expect(screen.getByText('New tool server')).toBeTruthy();
     expect(
       screen.getByText('Disabled until you explicitly enable it'),
     ).toBeTruthy();

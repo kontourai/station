@@ -3,7 +3,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'models',
     title: 'Models',
-    subtitle: "API and local model services for agents using Station's engine.",
+    subtitle: "Model APIs that Station's engine uses.",
     path: '/connections/models',
     legacyPaths: ['/connections/providers'],
     addLabel: 'Add model connection',
@@ -11,7 +11,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'engines',
     title: 'Engines',
-    subtitle: 'AI apps and other engines that run your agents.',
+    subtitle: 'Claude Code, Codex and other engines that run agents.',
     path: '/connections/engines',
     legacyPaths: [
       '/connections/acp',
