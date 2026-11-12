@@ -1620,10 +1620,12 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(posted.status, await posted.clone().text()).toBe(200);
-    const messageId = (
-      await readJson<{ data: { messageId: string } }>(posted)
-    ).data.messageId;
-    const file = await h.request(`${room}/attachments/${files[0]!.id}`, guest());
+    const messageId = (await readJson<{ data: { messageId: string } }>(posted))
+      .data.messageId;
+    const file = await h.request(
+      `${room}/attachments/${files[0]!.id}`,
+      guest(),
+    );
     expect(file.status, await file.clone().text()).toBe(200);
     expect(Buffer.from(await file.arrayBuffer())).toEqual(png);
     for (const [leaf, body] of [

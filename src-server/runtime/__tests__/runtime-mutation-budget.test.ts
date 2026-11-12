@@ -949,10 +949,7 @@ it('allows bounded Task image uploads above the standard body ceiling while keep
 });
 
 it.each([
-  [
-    '/api/projects/alpha/room/attachments',
-    '/api/projects/alpha/room/messages',
-  ],
+  ['/api/projects/alpha/room/attachments', '/api/projects/alpha/room/messages'],
   [
     '/api/projects/alpha/channels/7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a11/attachments',
     '/api/projects/alpha/channels/7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a11/messages',
