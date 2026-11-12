@@ -1,0 +1,7 @@
+{
+  "revision": "beb9a9e2d53e7c31b486856f4dda83bbe0a066d3",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Replaced the resolver description with a pointer to the overhaul record's reversal; checked against ConnectionsHub.tsx, which no longer navigates.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/EngineProxySettings.tsx","src-ui/src/views/engine-detail/EngineModelsTab.tsx"]}
+  ]
+}

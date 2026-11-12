@@ -1,0 +1,7 @@
+{
+  "revision": "beb9a9e2d53e7c31b486856f4dda83bbe0a066d3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added the Connections overview, AttentionList and section-signals links; checked each path exists and that the signals feed both the rail and the overview.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/connections.ts","src-server/services/connections/engine-route-observation.ts","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts"]}
+  ]
+}

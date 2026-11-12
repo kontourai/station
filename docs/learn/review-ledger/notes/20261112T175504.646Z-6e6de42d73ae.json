@@ -1,0 +1,7 @@
+{
+  "revision": "beb9a9e2d53e7c31b486856f4dda83bbe0a066d3",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the new Overview section against ConnectionsHub.tsx, connection-section-signals.ts, OverviewAllowance.tsx and OverviewUsage.tsx: attention entries, tile marks, access:manage gating, usageConnectionFilters gating, Not attributed rows; removed the resolver redirect text.","inputs":["docs/guides/connections.md","packages/contracts/src/tool.ts","src-server/services/connections/engine-route-observation.ts","src-ui/src/__tests__/EngineAccountOverview.test.tsx","src-ui/src/app-shell/routing.ts","src-ui/src/components/resource-hub/UsagePanel.tsx","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/connections-hub/connection-section-signals.ts","src-ui/src/views/engine-detail/EngineModelsTab.tsx","src-ui/src/views/engine-detail/EngineOverviewTab.tsx","src-ui/src/views/engine-detail/EngineSettingsTab.tsx","src-ui/src/views/engine-detail/EngineUsageTab.tsx","tests/connections-crud.spec.ts"]}
+  ]
+}
