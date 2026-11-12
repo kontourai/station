@@ -344,7 +344,6 @@ const CONSUMED_FLAGS: Record<
             ['c1', { version: 10, space: 'content', acknowledgeableUntil: 10 }],
           ]),
         versionsOf: () => new Map(),
-        contentVersionAsOfView: () => undefined,
       },
     });
     const routes = new Hono().route(

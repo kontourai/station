@@ -2478,6 +2478,8 @@ export function isReadableContentEvent(event: CanonicalRuntimeEvent): boolean {
     !isProviderTriggeredTurn(event)
   );
 }
+/** Events per committed batch of the content-projection backfill. */
+export const THREAD_CONTENT_BACKFILL_BATCH = 10_000;
 /** {@link isReadableContentEvent} over stored rows (alias `e`). */
 const READABLE_CONTENT_EVENT_SQL = `(e.method IN (${[
   ...READABLE_CONTENT_METHODS,
@@ -2761,6 +2763,8 @@ export class EventStore {
       sessionWorkItemSavepointOpen?: () => void;
       /** Unknown package-admission commit acknowledgement. */
       packageMcpCommit?: () => void;
+      /** After each committed content-projection backfill batch. */
+      threadContentBackfillBatch?: (cursor: number) => void;
     } = {},
   ) {
     this.databasePath = dbPath;
@@ -11390,75 +11394,6 @@ export class EventStore {
     return result;
   }
 
-  /**
-   * #3075: what an older client that acknowledges only the inventory
-   * `updatedAt` it showed could have seen, mapped conservatively: content
-   * appended no later than the FIRST event that gave the conversation that
-   * `updatedAt`. Content persisted afterwards, whatever its own timestamp,
-   * stays unread. `undefined` when no event carries that time (nothing is
-   * then marked). Reads the conversation's own history; only that legacy
-   * path calls it.
-   */
-  conversationContentVersionAsOfView(
-    conversationId: string,
-    updatedAt: string,
-  ): number | undefined {
-    const bound = this.db
-      .prepare(
-        `SELECT MIN(e.global_sequence) AS bound
-         FROM orchestration_conversation_sessions cs
-         JOIN orchestration_events e ON e.thread_id = cs.session_id
-         WHERE cs.conversation_id = ? AND e.created_at = ?`,
-      )
-      .get(conversationId, updatedAt) as { bound: number | null } | undefined;
-    if (bound?.bound === null || bound?.bound === undefined) return undefined;
-    return this.conversationContentVersionWhere(
-      conversationId,
-      'e.global_sequence <= ?',
-      Number(bound.bound),
-    );
-  }
-
-  /**
-   * #3075 upgrade only: the content version a conversation had at `time`,
-   * for converting a marker recorded as a time once.
-   */
-  conversationContentVersionAsOfTime(
-    conversationId: string,
-    time: string,
-  ): number | undefined {
-    return this.conversationContentVersionWhere(
-      conversationId,
-      'e.created_at <= ?',
-      time,
-    );
-  }
-
-  /**
-   * #3075 upgrade only: the store-wide sequence at `time` (the highest
-   * `global_sequence` of an event created by then), for converting the read
-   * state baseline once. One pass over the history.
-   */
-  globalSequenceAsOfTime(time: string): number {
-    const row = this.db
-      .prepare(
-        'SELECT MAX(global_sequence) AS sequence FROM orchestration_events WHERE created_at <= ?',
-      )
-      .get(time) as { sequence: number | null } | undefined;
-    return Number(row?.sequence ?? 0);
-  }
-
-  /** Whether a conversation lineage exists (a runtime conversation). */
-  hasConversation(conversationId: string): boolean {
-    return (
-      this.db
-        .prepare(
-          'SELECT 1 AS found FROM orchestration_conversation_sessions WHERE conversation_id = ? LIMIT 1',
-        )
-        .get(conversationId) !== undefined
-    );
-  }
-
   /** The store's current high-water `global_sequence`. */
   currentGlobalSequence(): number {
     const row = this.db
@@ -11467,26 +11402,6 @@ export class EventStore {
       )
       .get() as { high_water: number | null } | undefined;
     return Number(row?.high_water ?? 0);
-  }
-
-  private conversationContentVersionWhere(
-    conversationId: string,
-    predicate: string,
-    value: number | string,
-  ): number | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT MAX(e.global_sequence) AS sequence
-         FROM orchestration_conversation_sessions cs
-         JOIN orchestration_events e ON e.thread_id = cs.session_id
-         WHERE cs.conversation_id = ?
-           AND ${READABLE_CONTENT_EVENT_SQL}
-           AND ${predicate}`,
-      )
-      .get(conversationId, value) as { sequence: number | null } | undefined;
-    return row?.sequence === null || row?.sequence === undefined
-      ? undefined
-      : Number(row.sequence);
   }
 
   /**
@@ -11509,8 +11424,29 @@ export class EventStore {
   }
 
   /**
-   * #3075: the content-version projection and its one-time backfill from
-   * the existing history, so an upgraded home keeps its versions.
+   * #3075: the upgrade fence, the store-wide `global_sequence` the content
+   * projection's backfill covered when it completed: every event at or
+   * below it existed before content versions were kept (a contiguous prefix
+   * by construction). `undefined` until the backfill completes.
+   */
+  contentUpgradeFence(): number | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT fence_sequence FROM orchestration_thread_content_progress
+         WHERE singleton = 1 AND completed_at IS NOT NULL`,
+      )
+      .get() as { fence_sequence: number | null } | undefined;
+    return row?.fence_sequence === null || row?.fence_sequence === undefined
+      ? undefined
+      : Number(row.fence_sequence);
+  }
+
+  /**
+   * #3075: the content-version projection, and its backfill from an existing
+   * history in bounded batches. Each batch commits with its progress cursor,
+   * so an interrupted start resumes where it stopped. The last batch, under
+   * the write lock, also records completion and the upgrade fence (the
+   * high-water sequence it covered) in the same write.
    */
   private ensureThreadContentProjection(): void {
     this.db.exec(
@@ -11518,37 +11454,69 @@ export class EventStore {
          thread_id TEXT NOT NULL PRIMARY KEY,
          content_sequence INTEGER NOT NULL
        );
-       CREATE TABLE IF NOT EXISTS orchestration_thread_content_backfill (
+       CREATE TABLE IF NOT EXISTS orchestration_thread_content_progress (
          singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
-         completed_at TEXT NOT NULL
+         cursor_sequence INTEGER NOT NULL CHECK (cursor_sequence >= 0),
+         fence_sequence INTEGER,
+         completed_at TEXT,
+         CHECK ((completed_at IS NULL) = (fence_sequence IS NULL))
        );`,
     );
-    const done = this.db
+    this.db
       .prepare(
-        'SELECT 1 AS done FROM orchestration_thread_content_backfill WHERE singleton = 1',
+        `INSERT OR IGNORE INTO orchestration_thread_content_progress
+           (singleton, cursor_sequence) VALUES (1, 0)`,
       )
-      .get();
-    if (done) return;
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      this.db.exec(
-        `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
-         SELECT e.thread_id, MAX(e.global_sequence)
-         FROM orchestration_events e
-         WHERE ${READABLE_CONTENT_EVENT_SQL}
-         GROUP BY e.thread_id
-         ON CONFLICT(thread_id) DO UPDATE SET
-           content_sequence = MAX(content_sequence, excluded.content_sequence)`,
-      );
-      this.db
-        .prepare(
-          'INSERT INTO orchestration_thread_content_backfill (singleton, completed_at) VALUES (1, ?)',
-        )
-        .run(new Date().toISOString());
-      this.db.exec('COMMIT');
-    } catch (error) {
-      this.db.exec('ROLLBACK');
-      throw error;
+      .run();
+    const progress = this.db
+      .prepare(
+        `SELECT cursor_sequence, completed_at
+         FROM orchestration_thread_content_progress WHERE singleton = 1`,
+      )
+      .get() as { cursor_sequence: number; completed_at: string | null };
+    if (progress.completed_at !== null) return;
+    let cursor = Number(progress.cursor_sequence);
+    const project = this.db.prepare(
+      `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
+       SELECT e.thread_id, MAX(e.global_sequence)
+       FROM orchestration_events e
+       WHERE e.global_sequence > ? AND e.global_sequence <= ?
+         AND ${READABLE_CONTENT_EVENT_SQL}
+       GROUP BY e.thread_id
+       ON CONFLICT(thread_id) DO UPDATE SET
+         content_sequence = MAX(content_sequence, excluded.content_sequence)`,
+    );
+    while (true) {
+      const end = cursor + THREAD_CONTENT_BACKFILL_BATCH;
+      let finished = false;
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        project.run(cursor, end);
+        const highWater = this.currentGlobalSequence();
+        if (end >= highWater) {
+          this.db
+            .prepare(
+              `UPDATE orchestration_thread_content_progress
+               SET cursor_sequence = ?, fence_sequence = ?, completed_at = ?
+               WHERE singleton = 1`,
+            )
+            .run(highWater, highWater, new Date().toISOString());
+          finished = true;
+        } else {
+          this.db
+            .prepare(
+              'UPDATE orchestration_thread_content_progress SET cursor_sequence = ? WHERE singleton = 1',
+            )
+            .run(end);
+        }
+        this.db.exec('COMMIT');
+      } catch (error) {
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
+      if (finished) return;
+      cursor = end;
+      this.faults.threadContentBackfillBatch?.(cursor);
     }
   }
 

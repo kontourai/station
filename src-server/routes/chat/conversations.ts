@@ -2660,19 +2660,11 @@ export function createAgentConversationVersionSource(
       'readSessionConversation'
     >;
     authorityFor(request: Request): SessionReadAuthority;
-    /**
-     * The event store's content-version projection
-     * (`readConversationContentVersions`) and the conservative mapping for an
-     * older client's `updatedAt`-only acknowledgement.
-     */
+    /** The event store's content-version projection. */
     conversationContent: {
       readConversationContentVersions(
         conversationIds: readonly string[],
       ): ReadonlyMap<string, number>;
-      conversationContentVersionAsOfView(
-        conversationId: string,
-        updatedAt: string,
-      ): number | undefined;
     };
   },
 ): AgentConversationVersionSource {
@@ -2713,11 +2705,6 @@ export function createAgentConversationVersionSource(
   };
   return {
     versionsOf,
-    contentVersionAsOfView: (conversationId, updatedAt) =>
-      deps.conversationContent.conversationContentVersionAsOfView(
-        conversationId,
-        updatedAt,
-      ),
     async latestVersions(conversationIds, request) {
       const result = new Map<string, AgentConversationVersion>();
       if (conversationIds.length === 0) return result;

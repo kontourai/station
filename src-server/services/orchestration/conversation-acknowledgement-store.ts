@@ -230,21 +230,6 @@ export class FileConversationAcknowledgementStore
     return {};
   }
 
-  /**
-   * Every recorded view, for the one-time read-marker upgrade (#3075) that
-   * converts them into content versions.
-   */
-  entries(): Array<{ key: string; conversationId: string; updatedAt: string }> {
-    return Object.entries(this.readAcknowledgements()).flatMap(
-      ([key, forKey]) =>
-        Object.entries(forKey).map(([conversationId, updatedAt]) => ({
-          key,
-          conversationId,
-          updatedAt,
-        })),
-    );
-  }
-
   /** One fresh snapshot per inventory read; never cache across requests. */
   getMany(
     userId: string,

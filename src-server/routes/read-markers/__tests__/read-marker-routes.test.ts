@@ -264,8 +264,7 @@ function station(
       authorityFor,
       // These fixtures have no lifecycle bookkeeping, so each runtime
       // conversation's content version is the epoch ms of its `updatedAt`:
-      // monotonic per conversation, as the event store's sequence is. An
-      // older client's `updatedAt` maps to the same number.
+      // monotonic per conversation, as the event store's sequence is.
       conversationContent: {
         readConversationContentVersions: (ids) =>
           new Map(
@@ -274,8 +273,6 @@ function station(
               return at ? [[id, Date.parse(at)] as const] : [];
             }),
           ),
-        conversationContentVersionAsOfView: (_id, updatedAt) =>
-          Date.parse(updatedAt),
       },
     }),
     projectRooms: projectRoomVersionSource({
@@ -363,6 +360,11 @@ function station(
     ) => post('mark', person, { target, version }),
     summary: (person: string | undefined, targets: unknown[]) =>
       post('summary', person, { targets }),
+    /**
+     * What a current client sends for a row it rendered: the inventory
+     * `updatedAt` and the content version rendered (in these fixtures, the
+     * same instant).
+     */
     acknowledge: (person: string, conversationId: string, updatedAt: string) =>
       app.request(
         `/api/conversations/${encodeURIComponent(conversationId)}/acknowledgement`,
@@ -372,7 +374,10 @@ function station(
             'content-type': 'application/json',
             'x-test-person': person,
           },
-          body: JSON.stringify({ updatedAt }),
+          body: JSON.stringify({
+            updatedAt,
+            readVersion: Date.parse(updatedAt),
+          }),
         },
       ),
     async inventory(person: string) {

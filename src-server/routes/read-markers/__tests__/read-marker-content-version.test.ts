@@ -78,7 +78,6 @@ function boot(options: { upgrade?: boolean } = {}) {
   if (options.upgrade)
     upgradeReadMarkerStore({
       store,
-      acknowledgements,
       events: eventStore,
       now: new Date('2026-11-12T00:00:00.000Z'),
     });
@@ -234,9 +233,7 @@ test('a read conversation stays read across a stop and restart, and a new reply 
   const fresh = await station.inventory();
   expect(fresh.readState).toMatchObject({ unread: true });
   // Read the way the dock records the row on screen.
-  expect((await station.acknowledge(fresh.id, fresh.updatedAt)).status).toBe(
-    200,
-  );
+  expect((await station.acknowledgeRendered(fresh)).status).toBe(200);
   expect((await station.inventory()).readState).toMatchObject({
     unread: false,
   });
@@ -263,10 +260,7 @@ test('a read conversation stays read across a stop and restart, and a new reply 
     );
     expect(afterRestart.readState).toMatchObject({ unread: false });
     // Opening it again sends the bumped inventory version; that is accepted.
-    expect(
-      (await station.acknowledge(afterRestart.id, afterRestart.updatedAt))
-        .status,
-    ).toBe(200);
+    expect((await station.acknowledgeRendered(afterRestart)).status).toBe(200);
     expect((await station.inventory()).readState).toMatchObject({
       unread: false,
     });
@@ -297,7 +291,7 @@ test('a read conversation stays read across a stop and restart, and a new reply 
   }
 }, 60_000);
 
-test('an upgrade keeps read conversations read: the projection backfills, and each recorded view becomes the content version as of its time', async () => {
+test('an upgrade at the fence: nothing from before it reads unread, and content after it does until rendered', async () => {
   const seedThread = (
     station: ReturnType<typeof boot>,
     threadId: string,
@@ -357,11 +351,11 @@ test('an upgrade keeps read conversations read: the projection backfills, and ea
     [...ids.values()].sort(),
   );
   await station.stop();
-  // The older build had no projection, a time baseline, and its markers in
-  // the acknowledgement store as the `updatedAt` it showed.
+  // The older build had no projection (so no fence yet), a time baseline,
+  // and its views in the acknowledgement store as the `updatedAt` shown.
   const db = new DatabaseSync(join(dir, 'orchestration.sqlite'));
   db.exec(
-    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_backfill;',
+    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_progress;',
   );
   db.close();
   writeFileSync(
@@ -384,13 +378,36 @@ test('an upgrade keeps read conversations read: the projection backfills, and ea
     const after = new Map(
       (await station.inventoryAll()).map((item) => [item.id, item.readState]),
     );
-    expect(after.get(ids.get('read-before-stop')!)).toMatchObject({
+    // Before server-kept unread there was none: everything up to the fence
+    // reads as seen, whatever the timestamps say.
+    for (const thread of [
+      'read-before-stop',
+      'older-than-baseline',
+      'never-read',
+    ])
+      expect(after.get(ids.get(thread)!), thread).toMatchObject({
+        unread: false,
+      });
+    expect(station.eventStore.contentUpgradeFence()).toBeGreaterThan(0);
+    // Content appended after the fence reads unread until rendered, even
+    // with a timestamp older than the fence.
+    station.eventStore.appendEvent({
+      eventId: 'after-fence',
+      provider: 'claude',
+      threadId: 'never-read',
+      createdAt: '2026-11-11T09:00:00.000Z',
+      method: 'content.text-delta',
+      turnId: 'never-read-turn',
+      itemId: 'late',
+      delta: 'backdated but new',
+    } as never);
+    const later = new Map(
+      (await station.inventoryAll()).map((item) => [item.id, item.readState]),
+    );
+    expect(later.get(ids.get('never-read')!)).toMatchObject({ unread: true });
+    expect(later.get(ids.get('read-before-stop')!)).toMatchObject({
       unread: false,
     });
-    expect(after.get(ids.get('older-than-baseline')!)).toMatchObject({
-      unread: false,
-    });
-    expect(after.get(ids.get('never-read')!)).toMatchObject({ unread: true });
   } finally {
     await station.stop();
   }
@@ -590,6 +607,130 @@ test('reading content versions is an indexed lookup that never touches the event
       expect(sql).not.toMatch(/\borchestration_events\b/);
       expect(plan.join(' | '), sql).not.toMatch(/\bSCAN\b/);
     }
+  } finally {
+    await station.stop();
+  }
+}, 60_000);
+
+// #4813 delta review of `fe31ce9` (the reviewer's scenarios, verbatim in
+// substance): nothing inferred from timestamps may mark content read.
+
+test('a legacy acknowledgement of a provider snapshot never reads content ingested after it', async () => {
+  const station = boot();
+  try {
+    await readConversation(station);
+    // `upsertSession` publishes an `updatedAt` before its content arrives.
+    station.eventStore.upsertSession({
+      provider: 'claude',
+      threadId: THREAD,
+      status: 'running',
+      createdAt: '2026-11-11T10:00:00.000Z',
+      updatedAt: '2026-11-11T10:15:00.000Z',
+    });
+    const shown = await station.inventory();
+    expect(shown.updatedAt).toBe('2026-11-11T10:15:00.000Z');
+    station.eventStore.appendEvent({
+      eventId: 'late-snapshot-text',
+      provider: 'claude',
+      threadId: THREAD,
+      createdAt: shown.updatedAt,
+      method: 'content.text-delta',
+      turnId: 'first',
+      itemId: 'late',
+      delta: 'unseen content',
+    } as never);
+    expect((await station.inventory()).readState).toMatchObject({
+      unread: true,
+    });
+    // An older client acknowledges the stale view: last viewed only.
+    expect((await station.acknowledge(shown.id, shown.updatedAt)).status).toBe(
+      200,
+    );
+    expect((await station.inventory()).readState).toMatchObject({
+      unread: true,
+    });
+  } finally {
+    await station.stop();
+  }
+}, 60_000);
+
+test('an upgrade never pre-reads content persisted after the recorded view', async () => {
+  let station = boot();
+  await readConversation(station);
+  station.eventStore.appendEvent({
+    eventId: 'exit',
+    provider: 'claude',
+    threadId: THREAD,
+    createdAt: '2026-11-11T10:15:00.000Z',
+    method: 'session.exited',
+    sessionId: THREAD,
+  } as never);
+  const shown = await station.inventory();
+  expect((await station.acknowledge(shown.id, shown.updatedAt)).status).toBe(
+    200,
+  );
+  seedTurn(
+    station.eventStore,
+    'delayed',
+    '2026-11-11T10:09:00.000Z',
+    '2026-11-11T10:10:00.000Z',
+  );
+  expect((await station.inventory()).readState).toMatchObject({
+    unread: true,
+  });
+  await station.stop();
+  writeFileSync(
+    join(dir, READ_MARKER_STORE_FILE),
+    JSON.stringify({ version: 1, createdAt: 0, markers: {} }),
+  );
+  rmSync(join(dir, `${READ_MARKER_STORE_FILE}.previous`), { force: true });
+  station = boot({ upgrade: true });
+  try {
+    expect((await station.inventory()).readState).toMatchObject({
+      unread: true,
+    });
+  } finally {
+    await station.stop();
+  }
+}, 60_000);
+
+test('an upgrade baseline never covers backdated content persisted later', async () => {
+  let station = boot();
+  await readConversation(station);
+  seedTurn(
+    station.eventStore,
+    'new',
+    '2026-11-11T10:00:20.000Z',
+    '2026-11-11T10:00:30.000Z',
+  );
+  seedTurn(
+    station.eventStore,
+    'backdated',
+    '2026-11-11T10:00:06.000Z',
+    '2026-11-11T10:00:07.000Z',
+  );
+  expect((await station.inventory()).readState).toMatchObject({
+    unread: true,
+  });
+  await station.stop();
+  rmSync(join(dir, 'conversation-acknowledgements.json'), { force: true });
+  rmSync(join(dir, 'conversation-acknowledgements.json.previous'), {
+    force: true,
+  });
+  writeFileSync(
+    join(dir, READ_MARKER_STORE_FILE),
+    JSON.stringify({
+      version: 1,
+      createdAt: Date.parse('2026-11-11T10:00:10.000Z'),
+      markers: {},
+    }),
+  );
+  rmSync(join(dir, `${READ_MARKER_STORE_FILE}.previous`), { force: true });
+  station = boot({ upgrade: true });
+  try {
+    expect((await station.inventory()).readState).toMatchObject({
+      unread: true,
+    });
   } finally {
     await station.stop();
   }

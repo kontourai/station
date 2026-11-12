@@ -1,70 +1,29 @@
 import type { FileReadMarkerStore } from './read-marker-store.js';
 
 /**
- * #3075 owner design: converts first-format read state into content
- * versions, once, so nobody reads unread on upgrade.
+ * #3075 owner design: converts first-format read state once, at the upgrade
+ * fence. Before server-kept unread there was no unread, so everything up to
+ * the event store's fence (`contentUpgradeFence`, a contiguous sequence
+ * prefix recorded with the projection backfill) reads as seen for everyone,
+ * and everything appended after it reads unread until rendered. Nothing is
+ * inferred from provider timestamps: a false unread is acceptable, a false
+ * read is not.
  *
- * - The runtime baseline becomes the event store sequence as of the old
- *   time baseline.
- * - Each recorded view (the acknowledgement store, which held agent
- *   conversation markers as times) becomes the conversation's content
- *   version as of that time. A file-backed conversation keeps its time,
- *   which is still its version space.
- *
- * A hosted tenant key (`tenant:<id>`, no person) is a last-viewed record,
- * never a person's marker, and is not converted. Returns whether an upgrade
- * ran.
+ * Returns whether an upgrade ran. Without a fence (the backfill has not
+ * completed) nothing converts, and the first-format store stays refused:
+ * read state unavailable, never "read".
  */
 export function upgradeReadMarkerStore(input: {
   store: Pick<FileReadMarkerStore, 'pendingUpgrade' | 'completeUpgrade'>;
-  acknowledgements: {
-    entries(): ReadonlyArray<{
-      key: string;
-      conversationId: string;
-      updatedAt: string;
-    }>;
-  };
-  events: {
-    globalSequenceAsOfTime(time: string): number;
-    hasConversation(conversationId: string): boolean;
-    conversationContentVersionAsOfTime(
-      conversationId: string,
-      time: string,
-    ): number | undefined;
-  };
+  events: { contentUpgradeFence(): number | undefined };
   now: Date;
 }): boolean {
-  const pending = input.store.pendingUpgrade();
-  if (!pending) return false;
-  const markers: Array<{ principalId: string; key: string; version: number }> =
-    [];
-  for (const {
-    key,
-    conversationId,
-    updatedAt,
-  } of input.acknowledgements.entries()) {
-    if (/^tenant:[^#]+$/.test(key)) continue;
-    const viewedAt = Date.parse(updatedAt);
-    if (!Number.isSafeInteger(viewedAt) || viewedAt < 0) continue;
-    const version = input.events.hasConversation(conversationId)
-      ? input.events.conversationContentVersionAsOfTime(
-          conversationId,
-          new Date(viewedAt).toISOString(),
-        )
-      : viewedAt;
-    if (version === undefined) continue;
-    markers.push({
-      principalId: key,
-      key: `agent-conversation:${conversationId}`,
-      version,
-    });
-  }
+  if (!input.store.pendingUpgrade()) return false;
+  const fence = input.events.contentUpgradeFence();
+  if (fence === undefined) return false;
   input.store.completeUpgrade({
-    baselineSequence: input.events.globalSequenceAsOfTime(
-      new Date(pending.createdAt).toISOString(),
-    ),
-    markers,
-    now: input.now,
+    baselineSequence: fence,
+    baselineTime: input.now.getTime(),
   });
   return true;
 }

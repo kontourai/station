@@ -22,7 +22,10 @@ interface StoredMarker {
 
 interface ReadMarkerStoreData {
   version: typeof STORE_VERSION;
-  /** Epoch ms this store was first written: the file-conversation baseline. */
+  /**
+   * Epoch ms where read state began for file-backed conversations: when
+   * this store was first written, or the upgrade that converted it.
+   */
   createdAt: number;
   /**
    * The event store's `global_sequence` when read state began being kept:
@@ -214,39 +217,24 @@ export class FileReadMarkerStore implements ReadMarkerStore {
   }
 
   /**
-   * Converts a first-format store once (#3075 content versions): the
-   * runtime baseline becomes the sequence it maps to, and each converted
-   * agent conversation marker is added (never lowering a stored one). Room
-   * markers and the time baseline carry over unchanged.
+   * Converts a first-format store once (#3075 owner design): read state
+   * begins at the upgrade fence. Every runtime conversation's content up to
+   * `baselineSequence` (the event store's upgrade fence) and every
+   * file-backed conversation's up to `baselineTime` reads as seen, which is
+   * what everyone saw before server-kept unread existed; anything after
+   * reads unread until rendered. Nothing is inferred from timestamps. Room
+   * markers carry over unchanged.
    */
   completeUpgrade(input: {
     baselineSequence: number;
-    markers: ReadonlyArray<{
-      principalId: string;
-      key: string;
-      version: number;
-    }>;
-    now: Date;
+    baselineTime: number;
   }): void {
     const legacy = this.legacy.read(decodeLegacyReadMarkerStore);
-    const markers: Record<string, unknown> = { ...legacy.markers };
-    for (const marker of input.markers) {
-      const forPerson = decodePersonMarkers(
-        this.path,
-        markers[marker.principalId],
-      );
-      const stored = forPerson[marker.key]?.v;
-      if (stored !== undefined && stored >= marker.version) continue;
-      markers[marker.principalId] = evict({
-        ...forPerson,
-        [marker.key]: { v: marker.version, at: input.now.toISOString() },
-      });
-    }
     this.store.write({
       version: STORE_VERSION,
-      createdAt: legacy.createdAt ?? 0,
+      createdAt: Math.max(legacy.createdAt ?? 0, input.baselineTime),
       baselineSequence: input.baselineSequence,
-      markers,
+      markers: legacy.markers,
     });
   }
 

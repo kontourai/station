@@ -11906,7 +11906,6 @@ export function configureRuntimeRoutes(
     try {
       upgradeReadMarkerStore({
         store: readMarkerStore,
-        acknowledgements: conversationAcknowledgements,
         events: context.orchestrationEventStore,
         now: new Date(),
       });
@@ -11938,11 +11937,6 @@ export function configureRuntimeRoutes(
       conversationContent: {
         readConversationContentVersions: (ids) =>
           requireOrchestrationEventStore().readConversationContentVersions(ids),
-        conversationContentVersionAsOfView: (id, updatedAt) =>
-          requireOrchestrationEventStore().conversationContentVersionAsOfView(
-            id,
-            updatedAt,
-          ),
       },
     }),
     projectRooms: projectRoomVersionSource(projectRoomService),

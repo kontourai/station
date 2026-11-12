@@ -95,16 +95,6 @@ export interface AgentConversationVersionSource {
   versionsOf(
     items: readonly AgentConversationVersionItem[],
   ): ReadonlyMap<string, AgentConversationVersion>;
-  /**
-   * An older client's acknowledgement carries only the inventory
-   * `updatedAt` it showed: the content version it could have seen then,
-   * mapped conservatively (never content persisted after that view), or
-   * `undefined` when nothing can be claimed.
-   */
-  contentVersionAsOfView(
-    conversationId: string,
-    updatedAt: string,
-  ): number | undefined;
 }
 
 /** A room the caller may read: its marker key and current sequence. */
@@ -347,8 +337,9 @@ export class ReadMarkerService {
    *   showed, refused above the current `updatedAt`. Never read for unread.
    * - The person's read marker: the content version the client rendered
    *   (`readVersion`), refused above the current one. An older client that
-   *   sends only `updatedAt` gets the content version as of that view,
-   *   mapped conservatively, so content persisted after it stays unread.
+   *   sends only `updatedAt` moves no marker: what it saw cannot be known
+   *   from a timestamp, and a false unread is acceptable where a false read
+   *   is not. Its conversations read unread until it sends `readVersion`.
    *
    * `undefined` when the caller cannot read the conversation; `state` is
    * absent for a caller that names no person.
@@ -378,15 +369,7 @@ export class ReadMarkerService {
         resolved.latestVersion,
       );
     const person = this.deps.personKeyFor(c);
-    const rendered = person
-      ? (view.readVersion ??
-        (resolved.space === 'time'
-          ? viewedAt
-          : this.deps.agentConversations?.contentVersionAsOfView(
-              conversationId,
-              view.updatedAt,
-            )))
-      : undefined;
+    const rendered = person ? view.readVersion : undefined;
     // The read marker first: the last-viewed record is secondary, and a
     // failure writing it must not leave content unmarked.
     const state =
