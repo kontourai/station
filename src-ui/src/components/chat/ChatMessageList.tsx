@@ -46,6 +46,7 @@ import {
   animateScrollToBottom,
   type ScrollToBottomAnimation,
 } from './animateScrollToBottom';
+import { ChatRunningBackgroundTasks } from './BackgroundTaskActivity';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
   CHAT_READER_RESTORE_EVENT,
@@ -2226,6 +2227,19 @@ function ChatMessageListComponent({
                       </span>
                     </div>
                   ))}
+                {/* Each running task's latest activity and elapsed time, so
+                the transcript itself shows the work progressing. Outside the
+                live region: a ticking clock must not be re-announced. A
+                last-known banner shows no live lines. */}
+                {!turnLive &&
+                  !liveStatusUnavailable &&
+                  (localBackgroundTasks.length > 0 ||
+                    serverBackgroundCount > 0) && (
+                    <ChatRunningBackgroundTasks
+                      chatThreadId={activeSession.id}
+                      source={apiBase}
+                    />
+                  )}
               </>
             )}
             {/* Mounted while empty too: its live region must exist before the
