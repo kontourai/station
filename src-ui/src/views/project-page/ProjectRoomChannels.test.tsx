@@ -38,6 +38,8 @@ let edit: boolean;
 let execute: boolean;
 let selectedAuthority: string;
 let handles: Map<string, Record<string, unknown>>;
+/** Stored messages by room; a room with none reads as empty. */
+let history: Map<string, Array<Record<string, unknown>>>;
 let reads: string[];
 let writes: Array<{ method: string; path: string; body: unknown }>;
 function fixture() {
@@ -119,14 +121,16 @@ function fixture() {
       }
       const request = suffix.match(/^\/agents\/([0-9a-f-]{36})$/);
       if (request && method === 'GET') return ok(handles.get(request[1]!));
-      if (suffix === '/messages')
+      if (suffix === '/messages') {
+        const stored = history.get(roomId) ?? [];
         return ok({
           scope,
           roomId,
-          messages: [],
-          checkpoint: { roomId, lastSeq: 0 },
+          messages: stored,
+          checkpoint: { roomId, lastSeq: stored.length },
           nextAfter: null,
         });
+      }
       if (suffix === '')
         return ok({
           scope,
@@ -134,7 +138,7 @@ function fixture() {
           actor,
           presence: [],
           capabilities: { view: true, discuss: true, edit, execute },
-          checkpoint: { roomId, lastSeq: 0 },
+          checkpoint: { roomId, lastSeq: history.get(roomId)?.length ?? 0 },
           note: null,
         });
       throw new Error(`Unexpected ${method} ${path}`);
@@ -196,6 +200,7 @@ beforeEach(() => {
   execute = false;
   selectedAuthority = 'one';
   handles = new Map();
+  history = new Map();
   reads = [];
   writes = [];
   setClientCredentialResolver(() => ({
@@ -470,4 +475,71 @@ test('the message region is named for the channel on screen', async () => {
   expect(
     await screen.findByRole('region', { name: 'Messages in #design' }),
   ).toBeTruthy();
+});
+
+/** A touch phone: the shared conversation shows each message's More button. */
+function touchPhone() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+}
+const priya = {
+  intentId: '44444444-4444-4444-8444-444444444441',
+  text: 'New checkout screens are up for review.',
+  roomId: design,
+  messageId: '44444444-4444-4444-8444-444444444442',
+  seq: 1,
+  actor: { id: 'priya', displayName: 'Priya', kind: 'person' },
+  createdAt: '2026-11-11T11:00:00.000Z',
+};
+
+test('on a touch phone a message in another channel opens More actions, and Reply answers in that channel', async () => {
+  touchPhone();
+  history.set(design, [priya]);
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  const more = await screen.findByRole('button', {
+    name: /^More actions for Priya's message/,
+  });
+  fireEvent.click(more);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Reply to Priya' }),
+  );
+  const user = userEvent.setup();
+  await user.type(composerField(), 'Shorter CTA please');
+  // On a touch phone Return adds a line; the round button sends (#4810).
+  await user.click(screen.getByRole('button', { name: /^Send/ }));
+  await waitFor(() =>
+    expect(writes).toContainEqual(
+      expect.objectContaining({
+        method: 'POST',
+        path: `/api/projects/team/channels/${design}/messages`,
+        body: expect.objectContaining({
+          expectedRoomId: design,
+          replyTo: priya.messageId,
+          text: 'Shorter CTA please',
+        }),
+      }),
+    ),
+  );
+});
+
+test('on a touch phone an archived channel offers no message actions', async () => {
+  touchPhone();
+  channels[1].archivedAt = '2026-11-10T00:00:00.000Z';
+  history.set(design, [priya]);
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  expect(
+    await screen.findByText('New checkout screens are up for review.'),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: /^More actions for / }),
+  ).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Reply to / })).toBeNull();
 });
