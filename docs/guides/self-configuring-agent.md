@@ -963,9 +963,16 @@ grant more than this chat could do itself:
 - `approvalMode: "auto"`;
 - `fullAccessGrant`, a credential, a secret, `enabled` or `mode`.
 
-Work an automation started cannot propose automations
-(`automation_proposal_unattended`). If this chat has read content written by
-others (#3483), the card tells the person so. A chat may have 3 proposals
+Only a turn a person sent in their own chat can propose
+(`automation_proposal_unattended`). A turn an automation, a delegation, a
+check-back or a Task dispatch started cannot, and neither can a turn whose
+origin Station did not record. If this chat has read content written by
+others (#3483), when it proposes or at any time before the person answers,
+the card tells the person so. The card shows Station's own description, and
+apart from it, under "Written by the agent", the name, conditions, reason
+and complete instructions you gave. When the person confirms, Station checks
+again that this chat could still start work for each Agent named, and that
+each Agent is unchanged. A chat may have 3 proposals
 waiting and make 10 an hour.
 
 ### Scheduled jobs

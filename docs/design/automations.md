@@ -512,8 +512,11 @@ text. The agent fetches logs itself with `gh`.
   `propose_automation_rule`. Station validates the proposal and writes a plain
   description: what it watches, what it opens, which agent it wakes and with
   what authority. Nothing is created until a person confirms the card in that
-  chat. Confirming needs the Station operator in person and creates the
-  source or rule through the ordinary store
+  chat. Confirming needs the Station operator in person. It decides the
+  proposing chat's scope again, and requires each Agent named to be
+  unchanged (slug, Project, definition digest), inside the store's lock. It
+  creates the source or rule through the ordinary store, under an id derived
+  from the proposal so a retry never duplicates it
   ([routes](../../src-server/routes/orchestration/automation-proposals.ts),
   [validation](../../src-server/services/automation/automation-proposals.ts)).
   A proposal never grants more than the proposing chat holds:
@@ -548,10 +551,11 @@ text. The agent fetches logs itself with `gh`.
   standing grant.
 - **Never.** Merge, arm auto-merge, push to main, edit protected paths (port
   the list from `qualification-repair.mjs`), or change automations or
-  grants. This includes proposing them. A Session refuses the propose tools
-  in three cases: it acts for no one; it runs for a Task an automation rule
-  created; or its current turn was sent by an automation or delegated by
-  unattended work (#4512 `dispatchOrigin`).
+  grants. This includes proposing them. Only a turn Station recorded as a
+  person's own (#4512 `dispatchOrigin: interactive`) may propose. An
+  automation's turn, a delegation, a check-back, a Task dispatch, an
+  `unknown` or missing origin, a delegated child, and a Session running for
+  an `automation-rule` Task are refused (fail closed).
 - **Honest limit.** Station cannot police an external engine's use of
   ambient host credentials. "Never merge" is real only if the Station OS
   user has no GitHub write credential. Publishing is therefore a

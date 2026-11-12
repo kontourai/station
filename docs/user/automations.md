@@ -45,8 +45,13 @@ An approved proposal runs in the chat that proposed it.
 
 A GitHub source or rule proposal is a card that says, in Station's words,
 what it watches, what it opens, which agent it wakes, and with what limits.
-If the chat had read content written by others, such as email, the card says
-so first. **Confirm** creates it, and only the Station operator can confirm.
+What the agent wrote (its name for it, its conditions, its reason, and the
+complete instructions a rule gives) is shown apart, under **Written by the
+agent**. Open **Instructions the agent will be given** to read them in full.
+If the chat had read content written by others, such as email, before the
+agent proposed this or at any time since, the card says so first.
+Confirming checks again that the agent's chat could still start that work,
+and refuses if an Agent it names has moved, changed or been removed. **Confirm** creates it, and only the Station operator can confirm.
 A confirmed source starts disabled and a confirmed rule starts observing: it
 records what it would do but starts nothing. Tick **Turn it on now** to
 enable the source, or set the rule live, in the same step. **Decline**

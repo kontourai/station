@@ -61,20 +61,41 @@ This is the `propose_job` pattern Station already uses for scheduled jobs.
   `enabled` or `mode` is refused as an escalation. Only credential-free
   `github-poll` sources can be proposed. A webhook source needs a secret
   that only a person may hold.
-- **An automation run still cannot change automations** (§5 "Never"). A
-  proposal is refused in three cases:
-  - the calling Session acts for no one (it has no recorded owner, like a
-    Session an automation, a webhook or another agent started);
-  - the Session runs for a Task an automation rule created;
-  - its current turn was sent by an automation (a rule's action or a
-    scheduled run), or delegated by unattended work. This uses the #4512
-    `dispatchOrigin`.
+- **Confirm decides it again.** Confirm reruns the dispatch scope rule for
+  the proposing chat's recorded caller, now. It requires each Agent to be the
+  one named: the same slug, its own Project, and a digest of its whole
+  definition. Agents have no identity beyond their slug, so the digest is
+  what tells a moved, deleted or replaced Agent apart. Confirm checks before
+  claiming the proposal, then again inside the configuration store's lock
+  for creation and for enabling. A binding that changed or cannot be read
+  creates nothing.
+- **Only a person's own turn may propose (fail closed).** An automation run
+  still cannot change automations (§5 "Never"). A proposal is allowed only
+  when the calling Session acts for a recorded owner and its current turn's
+  #4512 `dispatchOrigin` is `interactive`. These are refused:
+  - `automation`, `delegation`, `task-dispatch` and `unknown` turns;
+  - a missing turn record;
+  - a delegated child Station derived (its start's provenance stamp);
+  - a Session running for an `automation-rule` Task, or one Station cannot
+    read.
 
-  Anything Station cannot read counts as started by an automation.
-- **Untrusted content is shown.** If the proposing conversation, or a child
-  it delegated to, had read content an integration classifies as untrusted
-  ([#3483](https://github.com/kontourai/station/issues/3483)), the
-  proposal records that, and the card says so before the description.
+  A delegated `send_message` that names a conversation no Session holds yet
+  now records `delegation`, not `unknown`.
+- **Station's words and the agent's stay apart.** The description Station
+  writes carries none of the agent's text. The card shows the name,
+  conditions, reason and complete instructions apart, under "Written by the
+  agent", with instructions in a scrollable disclosure. Nothing is truncated.
+- **Untrusted content is shown.** The proposal records whether the proposing
+  conversation, or a child it delegated to, had read content an integration
+  classifies as untrusted
+  ([#3483](https://github.com/kontourai/station/issues/3483)). The mark is
+  read again when the chat lists proposals, so a chat marked later still
+  warns. Confirm records the mark as it was then. The card warns if either
+  mark is set.
+- **One proposal, one object.** A confirmed source or rule is created under
+  an id derived from the proposal. A retried or interrupted Confirm adopts
+  what an earlier one created and never creates a second. Startup reconciles
+  interrupted claims against that id.
 - **Bounds.** A chat may have 3 proposals waiting and make 10 an hour.
   Beyond either, the proposal is refused.
 - **A rule on a proposed source** names it by `sourceProposalId`. It can be
@@ -94,10 +115,16 @@ source type's `plan()` can describe the source, it should write a proposal's
 - Only the agent leaves are reachable by an agent. Confirm and Decline are
   person leaves that no station-control tool maps, and Confirm also needs
   the operator gate the isolated-repair setup uses.
-- If a restart interrupts a Confirm after the record was created but before
-  the proposal was marked confirmed, the proposal reopens, and confirming
-  again creates a second copy. The configuration store has no idempotency key
-  to match on.
+- If a restart interrupts a Confirm after creation but before enabling, the
+  object is adopted in its default-deny state. The person enables it
+  separately.
+- An Agent recreated with an identical definition under the same slug
+  matches the recorded binding. It is indistinguishable, and it grants the
+  same authority.
+- A Station-engine Agent whose station-control connection carries no
+  verified caller (for example one on a model connection) cannot propose:
+  the guard refuses it (`station_control_caller_required`). Engines that
+  carry a verified caller can.
 - Station does not yet have a route that removes a source or rule (it is
   proposed in [#4646](https://github.com/kontourai/station/pull/4646)), so
   "removing a rule leaves things exactly as before" is not covered here.

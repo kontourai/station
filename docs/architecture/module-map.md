@@ -1916,18 +1916,26 @@ schedule with conversation read access; an agent may read its own.
 `propose_automation_rule` follow the same pattern for Automation sources and
 rules ([decision](../decisions/agent-proposed-automations.md)). The
 [routes](../../src-server/routes/orchestration/automation-proposals.ts) read
-the conversation from the verified caller. They refuse a Session in three
-cases: it acts for no one; it runs for an `automation-rule` Task; or its
-current turn's #4512 `dispatchOrigin` is `automation` or `delegation`.
+the conversation from the verified caller. Only a Session that acts for a
+recorded owner, whose current turn's #4512 `dispatchOrigin` is
+`interactive`, may propose. A delegated child, a Session running for an
+`automation-rule` Task, and an `unknown` or missing origin refuse (fail
+closed).
 [Validation](../../src-server/services/automation/automation-proposals.ts)
 refuses anything wider than the caller's dispatch scope: actions other than
 `dispatch-task`, `auto` approval, and authority-bearing keys. The proposal
 records the untrusted-content mark (#3483) of the conversation, or of a child
 it delegated to, with Station's plain description, as a row on `EventStore`'s
 connection. It creates nothing. The chat schedule read lists open proposals
-as `automationProposals`. A person's Confirm also needs the operator in
-person, and creates through `AutomationStore`: disabled or `observe` unless
-the confirmation sets `enable`. The
+as `automationProposals`, with the conversation's current untrusted mark
+(`untrustedContentNow`). A person's Confirm also needs the operator in
+person. It reruns the scope rule for the recorded proposer and requires each
+recorded Agent binding (slug, Project, definition digest) to be unchanged,
+before claiming and again inside the store's creation and enabling locks.
+It creates through `AutomationStore` under an id derived from the proposal
+(`automationIdForProposal`), so retries and startup reconciliation adopt
+rather than duplicate. It creates disabled or `observe` unless the
+confirmation sets `enable`, and records the mark at confirm. The
 [authority test](../../src-server/security/__tests__/automation-proposal-authority.routes.test.ts)
 drives the composition through the real boundary, guard, `EventStore`,
 `AutomationStore` and untrusted-content ledger.

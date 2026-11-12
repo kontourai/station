@@ -5343,11 +5343,17 @@ verified caller's own conversation:
   any state).
 
 A proposal answers `{id, state: 'open', description}` and creates nothing.
+The `description` holds only Station's own sentences. The agent's name,
+conditions, instructions and reason stay in the proposal's `source` or
+`rule` and `rationale`, and the card shows them apart, whole.
 It is refused with one of these codes:
 
-- 403 `automation_proposal_unattended`: the Session's current work was
-  started by an automation. A Session that acts for no one is refused
-  earlier by the station-control guard (`station_control_role_required`).
+- 403 `automation_proposal_unattended`: the Session's current turn is not
+  one Station recorded as a person's own (`interactive`). An automation's
+  run, a delegated child, a check-back, a Task dispatch, an `unknown` or
+  missing origin, and a Session running for an `automation-rule` Task are
+  all refused. A Session that acts for no one is refused earlier by the
+  station-control guard (`station_control_role_required`).
 - 403 `automation_proposal_exceeds_authority`: a Project or Agent outside
   the chat's dispatch scope, an action other than `dispatch-task`,
   `approvalMode: 'auto'`, or a `fullAccessGrant`, credential, secret,
@@ -5367,11 +5373,33 @@ A person answers a proposal with these leaves:
 Both need a person who may send to the conversation; anyone else gets 404.
 A request that may be an agent's gets 403 `person-approval-required`.
 Confirm also needs the Station operator in person (403
-`automation_proposal_operator_required`). It creates the source disabled, or
-the rule in `observe`, unless `enable` is true. A rule whose source proposal
-is not yet confirmed answers 409 `automation_proposal_source_pending`. A
-settled proposal answers 409 `automation_proposal_settled`. Confirm answers
-`{proposal, createdId, enabled}`.
+`automation_proposal_operator_required`).
+
+Confirm decides the proposing chat's scope again, for its recorded caller.
+Each Agent must still be the one it named: the same slug, its own Project,
+and a digest of its definition. Confirm checks this before claiming the
+proposal, then again inside the configuration store's lock for creation and
+for enabling. A moved, deleted, reused-slug or unreadable binding answers
+409 `automation_proposal_binding_changed` and creates nothing. If the check
+fails only inside the enabling lock, the object is created but not enabled
+(`enabled: false`).
+
+Confirm creates the source disabled, or the rule in `observe`, unless
+`enable` is true. The id is derived from the proposal, so a Confirm retried
+after an interrupted one adopts what it created instead of creating a
+second. Startup marks an interrupted Confirm `confirmed` if its object
+exists, and `open` otherwise.
+
+Other Confirm refusals:
+
+- 409 `automation_proposal_source_pending`: a rule whose source proposal is
+  not yet confirmed.
+- 409 `automation_proposal_settled`: the proposal was already answered.
+
+Confirm answers `{proposal, createdId, enabled, untrustedContentAtConfirm}`.
+The chat schedule read adds `untrustedContentNow` to each open proposal: the
+conversation's untrusted-content mark as it is now, beside the
+`untrustedContent` recorded when the agent proposed it.
 
 ### A person's coordinator Session
 
