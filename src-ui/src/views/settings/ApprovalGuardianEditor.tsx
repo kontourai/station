@@ -56,7 +56,7 @@ export function ApprovalGuardianEditor({
         <>
           <PageRow
             label="Guardian mode"
-            description="Calls the guardian clears run without asking. Review sends its denials to you; Enforce blocks them, and after three in a row asks you about the next."
+            description="Calls the guardian clears run without asking. Review sends its denials to you; Enforce blocks them."
             control={
               <select
                 className="editor-select"
