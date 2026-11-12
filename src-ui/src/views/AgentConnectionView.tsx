@@ -462,30 +462,18 @@ export function AgentConnectionView({
       ...foundEngines
         .filter((engine) => matches(engine.name))
         .map((engine) => ({
+          // Selecting the row connects it (see the list's onSelect), so it
+          // carries no button of its own that would crowd out the badge.
           ...resourceRow({
             id: `${FOUND_ROW_PREFIX}${engine.id}`,
             name: engine.name,
             icon: engine.icon,
             status: FOUND_STATUS,
+            facts: ['Select to connect'],
           }),
-          trailing: (
-            <Button
-              aria-label={`Connect ${engine.name}`}
-              onClick={() => connectFound(engine.id)}
-            >
-              Connect
-            </Button>
-          ),
         })),
     ];
-  }, [
-    addedEngines,
-    notConnected,
-    foundEngines,
-    search,
-    managedStateFor,
-    connectFound,
-  ]);
+  }, [addedEngines, notConnected, foundEngines, search, managedStateFor]);
   const selectedNotConnected =
     repair && repair.engine.connection.id === selectedRuntimeId
       ? repair.engine

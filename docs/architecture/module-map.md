@@ -2724,7 +2724,11 @@ readiness keeps the live read (#3355).
 After the readiness fingerprint, the projection adds Claude Code's and Codex's
 `routeObservation` from the env their child receives
 ([observation](../../src-server/services/connections/engine-route-observation.ts));
-it is disclosure, so it never invalidates a recorded check. The engine page reads
+it is disclosure, so it never invalidates a recorded check. The `/agents` and
+`/agents/catalog` routes in
+[`connections.ts`](../../src-server/routes/connections/connections.ts) withhold a
+`station` or `policy` origin from viewers who are neither the operator in person
+nor holders of `access:manage` (`routeObservationForViewer`). The engine page reads
 it with the [resource-hub kit](../../src-ui/src/components/resource-hub/ResourceDetail.tsx)
 and the [engine detail tabs](../../src-ui/src/views/engine-detail/EngineOverviewTab.tsx).
 The [Connections overview](../../src-ui/src/views/ConnectionsHub.tsx) lists what needs

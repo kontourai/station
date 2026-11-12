@@ -1,0 +1,21 @@
+{
+  "revision": "edd6c5af6650fdb9f909ebc60ed3a927eecccaaf",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"AgentConnectionView change: a Found, not connected row now connects when selected and shows 'Select to connect' as its fact; the trailing Connect button is gone (row selection already opened the engine's Add step). The finite readiness labels, including Found, not connected, are unchanged, and the explicit-Add rule still holds: selecting the row only opens Add.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"AgentConnectionView change: a Found, not connected row now connects when selected and shows 'Select to connect' as its fact; the trailing Connect button is gone (row selection already opened the engine's Add step). connections-crud.spec.ts change: the discovery-miss test also mocks /acp/registry as empty, so a command engine on the test machine's PATH no longer appears as a found row. The guide now says selecting a found row opens that engine's step in Add engine; the label list is unchanged.","inputs":["docs/guides/connections.md","src-ui/src/views/AgentConnectionView.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connections-crud.spec.ts change: the discovery-miss test also mocks /acp/registry as empty, so a command engine on the test machine's PATH no longer appears as a found row. The spec's covered journeys and bucket are unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md change is the found-row wording only (select instead of a Connect button); the machine-relationship claims citing it are unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"AgentConnectionView change: a Found, not connected row now connects when selected and shows 'Select to connect' as its fact; the trailing Connect button is gone (row selection already opened the engine's Add step). connections-crud.spec.ts change: the discovery-miss test also mocks /acp/registry as empty, so a command engine on the test machine's PATH no longer appears as a found row. The walkthrough's Connections steps do not depend on the removed button.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"AgentConnectionView change: a Found, not connected row now connects when selected and shows 'Select to connect' as its fact; the trailing Connect button is gone (row selection already opened the engine's Add step). connections-crud.spec.ts change: the discovery-miss test also mocks /acp/registry as empty, so a command engine on the test machine's PATH no longer appears as a found row. Smoke and readiness evidence claims are unaffected.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/AgentConnectionView.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Capture stays historical as media.json discloses; this change touches only found engine rows and a spec mock, neither shown in the capture.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Recording stays historical as media.json discloses; found engine rows and the spec mock change nothing it shows.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx","tests/connections-crud.spec.ts"]}
+  ]
+}

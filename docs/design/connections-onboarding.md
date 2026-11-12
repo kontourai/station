@@ -93,8 +93,10 @@ Consequences:
 
 In **Connections → Engines**, Claude Code and Codex offer **Connect through** on their
 **Settings** tab. Choose **Your account** or an enabled OpenAI-compatible connection already
-saved under **Models**. With **Your account** and no custom settings, an endpoint inherited
-from Station's own environment is named under the field.
+saved under **Models**. With **Your account** and no custom settings, an endpoint set by
+Station's own environment or the organization's policy is named under the field; a viewer
+who is neither the operator in person nor holds `access:manage` reads "another endpoint"
+instead of its origin.
 The saved model connection owns the address and key; the engine stores only its connection
 reference. Choosing a route explicitly replaces custom connection environment/config-home
 overrides. Station never edits the user's global CLI configuration. A managed policy that
