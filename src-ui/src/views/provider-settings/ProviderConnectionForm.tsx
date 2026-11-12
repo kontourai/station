@@ -419,7 +419,7 @@ export function ProviderConnectionForm({
       {part === 'models' && orderedModels.length === 0 && (
         <Empty
           variant="compact"
-          label="No models listed"
+          label="Model list not loaded"
           description="Load this service's model list to choose favorites and order."
           action={
             <Button
