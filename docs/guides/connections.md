@@ -63,7 +63,7 @@ at most one fix. A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
-failed; or Knowledge has no vector store. Engines the managed policy refuses,
+failed; or Knowledge has no vector store turned on. Engines the managed policy refuses,
 saved-but-untested model connections, Knowledge without an embedding model, and
 computers that are not connected carry no mark. Opening `/connections` shows a loading state until these lists load, or
 for up to 1.5 seconds, then opens the first section that needs
@@ -2250,7 +2250,8 @@ Connections has one clear home for each relationship:
   lists them under **Used by**. **Check all** checks the saved servers on the
   server, three at a time, and reloads Agents once afterwards only if a check
   changed what a server offers. It never begins a sign-in: a server that wants
-  one is named as needing you to sign in. It leaves out Station's own servers,
+  one is named as needing you to sign in, and a refused key is a failed check.
+  A server that does not answer within 20 seconds is named as failed. It leaves out Station's own servers,
   turned-off servers, and servers signed in per person, and names the last.
   One check runs at a time; pressing it again while it runs, here or from
   another window, waits for the same check

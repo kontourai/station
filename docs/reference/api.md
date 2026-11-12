@@ -1778,12 +1778,18 @@ enabled tool server Station does not run itself, three at a time, and returns
 `{success: true, data: {results, reloaded}}`
 ([`ToolServerCheckAll`](../../packages/contracts/src/tool.ts)). Each result is
 `ready`, `failed` (with `error`), `sign-in-required` or `skipped` (a server
-signed in per person). The probe never begins a sign-in: a server that wants
-one is recorded with `probe.authorization` `never-authorized`, or
-`token-expired-refresh-failed` when a saved sign-in could not be refreshed, and
-no authorization URL or pending sign-in is created. A request that arrives while
-a batch runs joins it. Agents reload once at the end, and only when a probe
-changed a server's reachability or tool names. No Station agent tool reaches it.
+signed in per person). The probe never begins a sign-in. A server answering
+401 with a saved sign-in is recorded with `probe.authorization`
+`token-expired-refresh-failed`; one with no saved sign-in whose 401 names its
+OAuth `resource_metadata` is recorded `never-authorized`. Any other 401 (such
+as a refused API key) or 403 is an ordinary `failed` probe. No authorization URL
+or pending sign-in is created. Each probe is waited on for at most 20 seconds,
+and the batch for at most 60: a probe past either reports `failed` as timed out
+and records nothing. A request that arrives while a batch runs joins it. Agents
+reload once at the end, and only when a probe changed a server's reachability,
+tool count or tools (`probe.toolsDigest` covers each tool's name, description
+and input schema); a package-owned server, whose probe is not persisted, is
+compared with the previous batch. No Station agent tool reaches it.
 
 ### Discover transcript App tools
 

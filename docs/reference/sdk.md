@@ -415,7 +415,8 @@ without beginning a sign-in. It resolves to `ToolServerCheckAll`, one
 `ToolServerCheckResult` per server (`ready`, `failed`, `sign-in-required`, or
 `skipped` for a server signed in per person), and `reloaded`. A call made while
 a batch runs joins it. Pass `{ signal }` to stop waiting; the batch still
-finishes on the server.
+finishes on the server. Station's Tools page passes none, so leaving it still
+refreshes the integration list when the batch answers.
 
 Integration metadata also carries `origin` (`station`, `registry`, `plugin`,
 `manual`, or `unavailable`), with source/version/location where recorded. This
