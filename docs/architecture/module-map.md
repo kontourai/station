@@ -2346,10 +2346,13 @@ unrecognised value, including every event persisted before the field, as
 admitting Station's claim: a `turn.started` mirrored from another Station
 carries that Station's, so restart recovery must act only on this Station's
 own Sessions. The [approval guardian](../../src-server/services/approvals/guardian-conversation.ts)
-reads it too (#4827): the prompts of a conversation's `interactive` turns
-(never steers) are what it is told the person typed, and an `interactive`
-newest turn is what lets an external engine's guardian escalation ask a
-person; it decides nothing else from the field. Its one consumer that acts on
+reads it only as a routing fact (#4827): an `interactive` newest turn is what
+lets an external engine's guardian escalation ask a person. It never reads the
+field as authorship, because a child's result delivered into a person's chat
+is `interactive` too. The person's own turns are those whose `clientOrigin`
+names a person actor and no `sender`, and whose prompt carries no
+`promptSource` (an admitted MCP prompt expansion, stamped by the same
+propagation). Its one consumer that acts on
 a Session is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 (preview `continue-unattended-after-restart`): after boot it continues each
 `task-dispatch` or `delegation` turn interrupted-turn recovery settled

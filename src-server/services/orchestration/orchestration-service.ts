@@ -9826,6 +9826,9 @@ export class OrchestrationService {
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
                           dispatchOrigin,
+                          // #4827: an MCP server wrote this prompt; the
+                          // approval guardian must not read it as typed.
+                          internal?.mcpPromptOrigin ? 'mcp-prompt' : undefined,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its

@@ -9124,31 +9124,39 @@ export class EventStore {
   }
 
   /**
-   * #4827: what a person typed into `threadIds` (one conversation's Sessions),
-   * for the approval guardian. A prompt counts only when its own
-   * `turn.started` (never a steer) records the `interactive` dispatch origin,
-   * which Station stamps at admission and an adapter cannot supply (#4512).
-   * The prompt is Station's own dispatched input
-   * (`displayInput ?? input`), never an engine's report. Tool results,
-   * replies, and turns sent by an agent, an Automation, or a Task are other
-   * methods or other origins, so they are never selected.
+   * #4827: what a person typed into `threadIds` (one conversation's
+   * Sessions), for the approval guardian. Selected by authorship, never by
+   * dispatch origin: `dispatchOrigin: 'interactive'` says whose chat a turn
+   * was placed in, and a child's result delivered into a person's chat
+   * inherits it (#4512). A prompt counts only when its `turn.started`
+   * (a steer included) carries the server-resolved `clientOrigin.actor` of a
+   * person (`operator` or `device`, #3419: the actor alone decides whether a
+   * turn was a person's), names no `sender` (an agent, a delegated result, a
+   * coordinator, an engine), and is not a server-verified MCP prompt
+   * expansion (`promptSource`). Station stamps all three; an adapter cannot.
+   * The prompt is Station's own dispatched input (`displayInput ?? input`),
+   * never an engine's report, and tool results and replies are other
+   * methods.
    *
    * Returns at most `limit` prompts, newest first, each as stored. One
    * indexed lookup per thread (`thread_id, method, sequence`).
    */
-  interactiveTurnPrompts(
+  personAuthoredTurnPrompts(
     threadIds: readonly string[],
     limit: number,
   ): Array<{ prompt: string; globalSequence: number }> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
-      throw new Error('An interactive prompt limit must be between 1 and 1000');
+      throw new Error('A person prompt limit must be between 1 and 1000');
     }
     const statement = this.db.prepare(
       `SELECT ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} AS prompt,
               global_sequence
        FROM orchestration_events
-       WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
-         AND json_extract(payload, '$.dispatchOrigin') = 'interactive'
+       WHERE thread_id = ? AND method = 'turn.started'
+         AND json_valid(payload)
+         AND json_extract(payload, '$.clientOrigin.actor.kind') IN ('operator', 'device')
+         AND json_type(payload, '$.clientOrigin.sender') IS NULL
+         AND json_type(payload, '$.promptSource') IS NULL
          AND ${PROMPTED_TURN_SQL}
        ORDER BY sequence DESC
        LIMIT ?`,

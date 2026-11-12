@@ -11,18 +11,31 @@ export const GUARDIAN_PERSON_TURN_LIMIT = 20;
 export const GUARDIAN_PERSON_TURN_CHARS = 1_500;
 /** Characters kept across every prompt shown. */
 export const GUARDIAN_PERSON_TOTAL_CHARS = 8_000;
-/** Sessions of one conversation read, newest first. */
-const GUARDIAN_SESSION_LIMIT = 16;
+/**
+ * Sessions of one conversation whose prompts are read, newest first. Older
+ * Sessions are only checked for whether they hold a person prompt, so the
+ * guardian is told earlier messages exist.
+ */
+export const GUARDIAN_SESSION_LIMIT = 16;
 
 export interface GuardianConversationIntent {
+  /**
+   * The conversation the Session belongs to (its lineage root), which the
+   * denial ledger counts by so a successor Session keeps the count. Absent
+   * when nothing was read; the caller then uses the Session id.
+   */
+  conversationKey?: string;
   /** What the person typed, oldest first, each bounded. Never tool output. */
   personTurns: string[];
   /** The bounds left out earlier person prompts (how many is not read). */
   earlierPersonTurnsOmitted: boolean;
   /**
-   * The thread's newest turn was sent by a person, so a request for this
-   * call reaches someone who sent the turn. Anything else (an Automation, a
-   * Task, a delegated agent, an unknown sender) is no person path.
+   * The thread's newest turn was dispatched into a person's chat
+   * (`dispatchOrigin: 'interactive'`), so a request for this call reaches
+   * that person. This is a routing fact, not authorship: a child's result
+   * delivered into the person's chat counts here, and never as a person
+   * turn. Anything else (an Automation, a Task, a delegated Session, an
+   * unknown sender) is no person path.
    */
   currentTurnInteractive: boolean;
 }
@@ -35,7 +48,7 @@ export const NO_PERSON_INTENT: GuardianConversationIntent = Object.freeze({
 
 /** The orchestration event store reads the reader is built from. */
 export interface GuardianPersonTurnStore {
-  interactiveTurnPrompts(
+  personAuthoredTurnPrompts(
     threadIds: readonly string[],
     limit: number,
   ): Array<{ prompt: string; globalSequence: number }>;
@@ -56,14 +69,18 @@ function truncate(text: string, max: number): string {
 /**
  * Reads the person's own turns from Station's event store, never from an
  * engine's transcript or Station's chat memory, which also hold tool results
- * and replies. `conversationId` is the orchestration thread every engine
+ * and replies. A turn is the person's by the authorship Station stamped on
+ * it (see `EventStore.personAuthoredTurnPrompts`), never by its dispatch
+ * origin. `conversationId` is the orchestration thread every engine
  * adapter passes as `InvocationContext.conversationId`; its whole
  * conversation (earlier Sessions included) is read.
  *
  * Bounds: the newest {@link GUARDIAN_PERSON_TURN_LIMIT} prompts, each cut to
  * {@link GUARDIAN_PERSON_TURN_CHARS}, and older prompts dropped once
  * {@link GUARDIAN_PERSON_TOTAL_CHARS} is spent. The newest are kept because
- * the latest request is what most often authorizes the call at hand.
+ * the latest request is what most often authorizes the call at hand. Only
+ * the newest {@link GUARDIAN_SESSION_LIMIT} Sessions are read; when an older
+ * one holds a person prompt, `earlierPersonTurnsOmitted` says so.
  */
 export function createGuardianConversationReader(
   store: GuardianPersonTurnStore,
@@ -72,15 +89,22 @@ export function createGuardianConversationReader(
     const lineage = store
       .conversationLineageForThreads([conversationId])
       .get(conversationId);
-    const sessions = lineage?.sessionIds.length
-      ? lineage.sessionIds.slice(-GUARDIAN_SESSION_LIMIT)
+    const allSessions = lineage?.sessionIds.length
+      ? lineage.sessionIds
       : [conversationId];
+    const sessions = allSessions.slice(-GUARDIAN_SESSION_LIMIT);
     if (!sessions.includes(conversationId)) sessions.push(conversationId);
-    const newestFirst = store.interactiveTurnPrompts(
+    const olderSessions = allSessions
+      .slice(0, -GUARDIAN_SESSION_LIMIT)
+      .filter((sessionId) => !sessions.includes(sessionId));
+    const newestFirst = store.personAuthoredTurnPrompts(
       sessions,
       GUARDIAN_PERSON_TURN_LIMIT + 1,
     );
-    let omitted = newestFirst.length > GUARDIAN_PERSON_TURN_LIMIT;
+    let omitted =
+      newestFirst.length > GUARDIAN_PERSON_TURN_LIMIT ||
+      (olderSessions.length > 0 &&
+        store.personAuthoredTurnPrompts(olderSessions, 1).length > 0);
     const kept: string[] = [];
     let budget = GUARDIAN_PERSON_TOTAL_CHARS;
     for (const entry of newestFirst.slice(0, GUARDIAN_PERSON_TURN_LIMIT)) {
@@ -94,6 +118,7 @@ export function createGuardianConversationReader(
       kept.push(text);
     }
     return {
+      conversationKey: lineage?.conversationId ?? conversationId,
       personTurns: kept.reverse(),
       earlierPersonTurnsOmitted: omitted,
       currentTurnInteractive:

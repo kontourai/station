@@ -498,6 +498,15 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * `unknown`.
    */
   dispatchOrigin?: TurnDispatchOrigin;
+  /**
+   * #4827: the turn's `prompt` is not text the sender typed. `mcp-prompt`:
+   * the server-verified expansion of an MCP prompt (a slash command the
+   * person chose), which an MCP server authored. Stamped by Station from the
+   * verified prompt origin it admitted the send with; an adapter-supplied
+   * value is dropped, like `dispatchOrigin`. Absent means the prompt is the
+   * sender's own input.
+   */
+  promptSource?: 'mcp-prompt';
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**

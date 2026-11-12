@@ -481,14 +481,23 @@ config-protection checks still bound execution.
 The guardian ([source](../../src-server/services/approvals/approval-guardian.ts))
 judges a call against what the person asked for (#4827). Its prompt holds:
 
-- **What the person typed in this conversation**, oldest first: the prompts of
-  turns Station recorded as sent by a person (the `interactive` dispatch
-  origin on `turn.started`, which Station stamps and an engine cannot), across
-  the conversation's Sessions. Tool results, replies, steers, and turns sent
-  by an agent, an Automation or a Task are never included. The newest 20
-  prompts are read, each cut to 1,500 characters, and older ones are dropped
-  past 8,000 characters in total. When nobody typed anything (a scheduled or
-  delegated run), the prompt says so, so no "only if asked" rule can be met.
+- **What the person typed in this conversation**, oldest first: the prompts
+  of turns, steers included, whose authorship Station stamped as a person's.
+  The turn's server-resolved `clientOrigin.actor` is the operator or a paired
+  device, it names no `sender`, and its prompt is not a server-expanded MCP
+  prompt (`promptSource`). An engine cannot set any of these. Where a turn was
+  placed does not count: a delegated child's result delivered into the
+  person's chat is the child's text, not the person's. Tool results, replies,
+  engine steers, and turns sent by an agent, an Automation, a Task or the
+  coordinator are never included. Neither is an MCP prompt's expanded text:
+  the person chose the command, but the MCP server wrote the text, and only
+  the expansion is recorded, so the turn is left out. The prompts are read
+  across the conversation's newest 16 Sessions. The newest 20 are kept, each
+  cut to 1,500 characters, and older ones are dropped past 8,000 characters in
+  total. When older messages are left out, including those in Sessions past
+  the 16th, the prompt says earlier messages are not shown. When nobody typed
+  anything (a scheduled or delegated run), the prompt says so, so no "only if
+  asked" rule can be met.
 - **The call**: the agent, and the tool's name, description and arguments,
   each inside a per-review random fence marking them as tool-authored data.
 
@@ -512,10 +521,14 @@ instead of another automatic deny. An allow, or an escalation, starts a new
 run of three. This happens only when a person can answer: on Station's engine,
 a chat with a live approval channel; on an external engine, a conversation
 whose current turn a person sent; never for a delegated child that cannot
-grant approvals. Otherwise the denial stands, as before. The counts live in
-server memory, so a restart starts them again. The request shows the call as
-any approval does; the guardian's reason is in the server log, not yet in
-the request.
+grant approvals. Otherwise the denial stands, as before. The counts are kept
+per conversation, so a successor Session continues them. They live in server
+memory, so a restart starts them again.
+
+An escalated request does not show the guardian's reason yet (#4849). It
+reads like any other approval for the call, with nothing saying the guardian
+refused it. The reason is only in the server log ("Approval guardian kept
+refusing; asking the person instead").
 
 Structured generation now reaches the configured model on both VoltAgent and
 Strands. Previously, their schema adapter errors made guardian reviews fall back

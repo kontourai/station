@@ -377,6 +377,11 @@ async function reviewWithGuardian(
   if (!guardian?.isEnabled()) return { kind: 'undecided' };
   const ledger = deps.guardianDenialLedger ?? sharedGuardianDenialLedger;
   const conversation = guardian.readConversation(invocation.conversationId);
+  // #4827: count by the conversation, not the Session, so a successor
+  // Session does not start the run again. Routing still uses the Session.
+  const ledgerKey = invocation.conversationId
+    ? (conversation.conversationKey ?? invocation.conversationId)
+    : undefined;
   const review = await guardian.reviewToolCall({
     agentName: deps.spec.name,
     agentSlug: invocation.agentSlug,
@@ -387,8 +392,7 @@ async function reviewWithGuardian(
     toolArgs: tool.toolArgs,
   });
   if (review.decision === 'allow') {
-    if (invocation.conversationId)
-      ledger.recordAllow(invocation.conversationId);
+    if (ledgerKey) ledger.recordAllow(ledgerKey);
     deps.logger.info('Approval guardian allowed tool execution', {
       toolName: tool.toolName,
       agentSlug: invocation.agentSlug,
@@ -399,11 +403,11 @@ async function reviewWithGuardian(
   if (guardian.getMode() !== 'enforce') return { kind: 'undecided' };
   if (review.decision === 'deny') {
     const escalate =
-      invocation.conversationId !== undefined &&
-      ledger.recordDenial(invocation.conversationId).escalate &&
+      ledgerKey !== undefined &&
+      ledger.recordDenial(ledgerKey).escalate &&
       personCanDecide(invocation, options, conversation.currentTurnInteractive);
     if (escalate) {
-      ledger.recordEscalation(invocation.conversationId!);
+      ledger.recordEscalation(ledgerKey!);
       approvalGuardianOps.add(1, { action: 'escalated' });
       deps.logger.warn(
         'Approval guardian kept refusing; asking the person instead',
