@@ -901,6 +901,9 @@ A background shell command an engine started (or a monitor watching one) is
 not a subagent: its card shows a terminal mark, the command line and, once it
 ends, its exit code, and a group counts it as a background command.
 
+Every background-task row expands to its full title, status, start and end
+times, and, for a tool, which tool ran and a one-line summary of its input.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
