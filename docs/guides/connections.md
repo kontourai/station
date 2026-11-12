@@ -2248,6 +2248,11 @@ Connections has one clear home for each relationship:
   These controls expose the existing remote manual OAuth flow; they do not add
   hosted, unattended or membership-revocation support to personal credentials.
 - **Knowledge** manages Knowledge sources; see the [Knowledge guide](knowledge.md).
+  Its page opens with one label, **Semantic search on** or **Semantic search
+  off**, the reason when it is off (no vector store, no embedding model, or
+  one turned off) and one fix, then the index's documents, chunks and Projects
+  as the knowledge status route counts them
+  ([readiness](../../src-ui/src/views/connections-hub/knowledge-readiness.ts)).
 - When an agent tool depends on a disconnected tool server, **Repair
   connection** opens that exact server. Station does not label the tool
   available or ask the user to add it first.
