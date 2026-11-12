@@ -474,7 +474,7 @@ describe('the repair action is an explicit operator act', () => {
   it('tells the operator that Station checks before it records', () => {
     renderResource(MISSING);
     expect(
-      screen.getByText(/checks the directory before it records anything/),
+      screen.getByText('Station checks the folder before saving it.'),
     ).toBeTruthy();
     // "never silently re-bind" — the copy must not promise Station will fix it.
     const form = screen

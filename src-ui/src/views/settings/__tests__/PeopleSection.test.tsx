@@ -289,7 +289,7 @@ describe('People section', () => {
     fireEvent.change(select, { target: { value: 'admin' } });
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('operator credential');
+    expect(alert.textContent).toContain('Only the Station operator');
     expect(alert.textContent).toContain('can only view');
     expect(select.value).toBe('member');
   });

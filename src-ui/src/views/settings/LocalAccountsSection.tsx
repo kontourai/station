@@ -94,7 +94,7 @@ function AccountControls({
           <p className="settings__field-hint" role="status">
             {observation?.grant.kind === 'operator'
               ? 'This operator connection could not be authorized. Reconnect to this Station and try again.'
-              : 'This connection does not have operator account-management access. A paired device can use Station without being allowed to manage sign-in. Open these controls from an operator session on the Station host.'}
+              : 'This device can’t manage accounts. Open Settings on the computer running Station.'}
           </p>
         ) : (
           <ErrorState

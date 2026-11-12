@@ -107,7 +107,7 @@ export function ConsoleBoardView({
     return (
       <ErrorState
         title="The Board is unavailable"
-        description="This build registers no renderer that the Board’s declaration admits."
+        description="This Board type isn’t supported in this version of Station. Update Station."
       />
     );
   }
