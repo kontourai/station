@@ -2340,14 +2340,21 @@ upgrading. Anyone else, including a person first seen later, starts without
 that baseline: uncertain reads unread. Anything appended after the cutoff
 reads unread until rendered.
 
-The cutoff is the store's high-water `global_sequence` (a contiguous prefix),
-written once, atomically, before the migration's first batch, together with
-the recipient snapshot: the established principals, read from the
-acknowledgement store and any first-format marker store in that same
-transaction. A resumed or second initializer reuses both and never
-re-samples, and completion changes neither, so a person whose first record
-comes after the cutoff is not established. A missing or unreadable snapshot
-establishes nobody.
+The cutoff is the store's high-water `global_sequence` (a contiguous prefix)
+when the event store opens. It is written once, before the migration's first
+batch, in one SQLite write with the recipient snapshot: the established
+principals. SQLite publishes the cutoff and the list atomically, but the
+acknowledgement store and any first-format marker store they come from are
+JSON files, read just before that commit, not locked by it. The runtime takes
+the snapshot after device pairing is loaded and before it serves a request,
+so a first-format owner-device acknowledgement names the person the runtime
+resolves that device to, not the device key. A resumed or second initializer
+reuses both and never re-samples, and completion changes neither, so a
+person whose first record comes after the cutoff is not established. A
+missing snapshot establishes nobody. A snapshot is frozen missing, with a
+logged diagnostic, when a source file is over 4 MiB or cannot be read, or
+the list has more than 1,000 people, a key over 512 characters, or more than
+256 KiB serialized. It is never truncated.
 The event store backfills the projection up to the cutoff in bounded batches,
 each committed with its progress cursor under the writer lock, so an
 interrupted start resumes where it stopped and a batch finding the migration
