@@ -150,7 +150,10 @@ async function start(
 
 /** A real repository with this configuration appended, so git answers. */
 function gitRepository(repo: string, config: string): string {
-  const init = spawnSync('git', ['init', '-q', repo], { encoding: 'utf8' });
+  const init = spawnSync('git', ['init', '-q', repo], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
   expect(init.status).toBe(0);
   appendFileSync(join(repo, '.git', 'config'), config);
   return repo;

@@ -274,7 +274,10 @@ describe('fix round 2: git reports the effective hooks folder (#4828)', () => {
   /** A real repository, so git answers rather than the fallback. */
   function repository(config: string): string {
     const repo = makeTempDir('wru-git-repo-');
-    const init = spawnSync('git', ['init', '-q', repo], { encoding: 'utf8' });
+    const init = spawnSync('git', ['init', '-q', repo], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
     expect(init.status).toBe(0);
     appendFileSync(join(repo, '.git', 'config'), config);
     return repo;
@@ -326,7 +329,10 @@ describe('fix round 2: git reports the effective hooks folder (#4828)', () => {
     expect(writes(hook)).toEqual({ kind: 'write', target: hook });
     expect(existsSync(marker)).toBe(false);
     // The monitor is real: a command that refreshes the index runs it.
-    spawnSync('git', ['-C', repo, 'status'], { stdio: 'ignore' });
+    spawnSync('git', ['-C', repo, 'status'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
     expect(existsSync(marker)).toBe(true);
   });
 
