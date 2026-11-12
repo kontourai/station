@@ -1,43 +1,139 @@
-import { useEffect, useRef, useState } from 'react';
-import { SkeletonBlock } from '../components/state';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
+import { Badge } from '@kontourai/ui/react';
+import { Button } from '../components/Button';
+import { PageSection } from '../components/PageSection';
+import { usePageHeader } from '../components/page-frame';
+import { AttentionList } from '../components/resource-hub/AttentionList';
+import { ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useConnectionSectionSignals } from './connections-hub/connection-section-signals';
+import { CONNECTION_SECTIONS } from './connections-hub/connection-sections';
+import { OverviewAllowance } from './connections-hub/OverviewAllowance';
+import { OverviewUsage } from './connections-hub/OverviewUsage';
+import { useEngineAccountAccess } from './engine-detail/useEngineAccountAccess';
+import './ConnectionsHub.css';
 
 /**
- * How long `/connections` waits for its first reads before resolving with
- * what it knows. A slow list must not leave the visitor on a blank route.
- */
-export const CONNECTIONS_RESOLVE_WAIT_MS = 1_500;
-
-/**
- * `/connections` is a resolver, not a sixth scrollable destination.
- *
- * Which section it resolves to is the SAME question the rail's warn dots
- * answer, so it asks the same derivation. Its own
- * copy read `/api/connections` raw for Models and Engines and did not look
- * at Knowledge at all, so the rail could show a dot on Knowledge while this
- * sent the visitor to Models.
+ * `/connections`: what needs fixing, each section's size and health, and —
+ * for a viewer with `access:manage` — allowance and last week's usage
+ * (docs/design/connections-overhaul.md, "Pages"). The attention list, the
+ * tiles and the section rail read one derivation, so they cannot disagree.
  */
 export function ConnectionsHub() {
   const { navigate } = useNavigation();
-  const { firstNeedingAttention, settled } = useConnectionSectionSignals();
-  const [waited, setWaited] = useState(false);
-  const resolved = useRef(false);
-  useEffect(() => {
-    const timer = setTimeout(
-      () => setWaited(true),
-      CONNECTIONS_RESOLVE_WAIT_MS,
-    );
-    return () => clearTimeout(timer);
-  }, []);
-  // Resolve once, when the reads have answered or the wait is over. On first
-  // render every read is still pending and nothing "needs attention" yet, so
-  // resolving then landed on Models before Engines or Knowledge could say
-  // otherwise. After the wait it resolves with whatever has answered.
-  useEffect(() => {
-    if (resolved.current || (!settled && !waited)) return;
-    resolved.current = true;
-    navigate(firstNeedingAttention?.path ?? '/connections/models');
-  }, [settled, waited, firstNeedingAttention?.path, navigate]);
-  return <SkeletonBlock count={3} label="Loading connections" />;
+  const signals = useConnectionSectionSignals();
+  const { data: engines = [] } = useEngineConnectionsQuery();
+  const access = useEngineAccountAccess();
+  usePageHeader({
+    title: 'Connections',
+    subtitle: 'What your agents run on, and what needs fixing.',
+  });
+  const manage = access.canManage && access.scope;
+  const listedEngines = engines.filter(
+    (engine) => engine.setup?.state !== 'available',
+  );
+  return (
+    <div className="connections-overview content-stack">
+      <PageSection title="Needs attention">
+        {signals.unread.length ? (
+          <ErrorState
+            variant="compact"
+            title="Some connections could not be loaded"
+            // Only a failed read can be fetched again; a read with no
+            // Station to ask or no network would only fail the same way.
+            {...(signals.failed.length
+              ? { action: <Button onClick={signals.retry}>Retry</Button> }
+              : {})}
+          />
+        ) : null}
+        {!signals.settled ? (
+          <SkeletonBlock count={3} label="Loading connections" />
+        ) : (
+          <AttentionList
+            label="Connections needing attention"
+            emptyLabel={
+              signals.unread.length
+                ? 'Nothing else needs attention'
+                : 'Nothing needs attention'
+            }
+            items={signals.attention.map((item) => ({
+              id: item.id,
+              title: item.title,
+              status: item.status,
+              sentence: item.sentence,
+              open: { href: item.path, onOpen: () => navigate(item.path) },
+              ...(item.actionLabel
+                ? {
+                    action: {
+                      label: item.actionLabel,
+                      onSelect: () => navigate(item.path),
+                    },
+                  }
+                : {}),
+            }))}
+          />
+        )}
+      </PageSection>
+      <PageSection title="Sections">
+        <ul className="connections-overview__tiles">
+          {CONNECTION_SECTIONS.map((section) => {
+            // Each tile waits for its own section's read: a count of 0
+            // before it answers would be a claim about an empty section.
+            const read = signals.state(section.id);
+            return (
+              <li key={section.id}>
+                <button
+                  type="button"
+                  className="connections-overview__tile"
+                  aria-busy={read === 'loading'}
+                  onClick={() => navigate(section.path)}
+                >
+                  <span className="connections-overview__tile-title">
+                    {section.title}
+                  </span>
+                  {read === 'loading' ? (
+                    <SkeletonBlock
+                      count={1}
+                      label={`Loading ${section.title}`}
+                      className="connections-overview__tile-skeleton"
+                    />
+                  ) : read === 'answered' ? (
+                    <>
+                      <strong>{signals.count(section.id)}</strong>
+                      {signals.needsAttention(section.id) ? (
+                        <Badge value="Needs attention" tone="caution" />
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <strong>—</strong>
+                      <Badge value="Not loaded" tone="neutral" />
+                    </>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </PageSection>
+      {manage ? (
+        <>
+          <PageSection title="Allowance">
+            <OverviewAllowance
+              scope={manage}
+              engines={listedEngines.filter(
+                (engine) => engine.type === 'claude' || engine.type === 'codex',
+              )}
+            />
+          </PageSection>
+          <PageSection title="Usage, last 7 days">
+            <OverviewUsage
+              scope={manage}
+              names={new Map(engines.map((engine) => [engine.id, engine.name]))}
+            />
+          </PageSection>
+        </>
+      ) : null}
+    </div>
+  );
 }

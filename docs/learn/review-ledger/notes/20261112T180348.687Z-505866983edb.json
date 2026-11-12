@@ -1,0 +1,49 @@
+{
+  "revision": "98d9d501d5ae7ada6397448fdb0d9a7d60c40aa8",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Module-map change adds one sentence naming the Connections overview, AttentionList and section signals; this document makes no claim about /connections, the resolver or that paragraph.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Corrected the two resolver claims: /connections now renders the Overview (ConnectionsHub.tsx), and the section eyebrow stays static text with linking to the Overview undecided, matching ConnectionsSectionFrame.tsx. The port table stays a historical measurement.","inputs":["docs/design/shell-skeletons.md","src-ui/src/views/ConnectionsHub.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connect-remote-auth-recovery and connections-crud changed only comments that described /connections as a resolver; the matrix row's spec names and covered behaviors are unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-remote-auth-recovery.spec.ts","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"connect-remote-auth-recovery changed only a comment about the /connections resolver; the smoke route it navigates (/connections/computers) is unchanged.","inputs":["docs/testing/browser-smoke.md","tests/connect-remote-auth-recovery.spec.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"destination-registry change removes a comment about the resolver only; the Connections nav entry, its route and preview gating are unchanged.","inputs":["docs/guides/feature-previews.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md gained the Overview section; the Add computer and SSH creator links and Computers claims here are unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/testing.md","note":"proof-repo-guardrails changed only the ConnectionsHub comment and error text; the check still requires useConnectionSectionSignals. armConnectionsHubBadgeSettle still exists in tests/screenshots.spec.ts.","inputs":["docs/guides/testing.md","scripts/proof-repo-guardrails.mjs"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Captures are historical. This change adds the /connections Overview and edits only comments in ConnectionsSectionFrame.tsx and connections-crud.spec.ts; the Models page and engine flow shown are not changed by it. Engine page changes from earlier slices are not re-captured here.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Historical capture of the Models section. This change edits only comments in ConnectionsSectionFrame.tsx and connections-crud.spec.ts; not re-captured.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Historical capture. This change adds the /connections Overview and edits comments in ConnectionsSectionFrame.tsx and connections-crud.spec.ts; the tour is not re-captured.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts"]}
+  ]
+}

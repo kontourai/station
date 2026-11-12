@@ -4,9 +4,9 @@ import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 /**
  * Coverage for the Connections IA (`src-ui/src/views/connections-hub/connection-sections.ts`
  * + `ConnectionsSectionFrame.tsx`): the five sections it defines, the
- * `/connections` resolver, legacy-path redirects, and the frame contract each
- * section shares (one H1, one `Connections` eyebrow — archive#4463:
- * unlinked parent-context text, not the retired `Connections / <Section>`
+ * `/connections` Overview, legacy-path redirects, and the frame contract each
+ * section shares (one H1, one `Connections` eyebrow linking to the Overview —
+ * archive#4463: not the retired `Connections / <Section>`
  * breadcrumb-as-eyebrow — exactly one add action). Also covers the Models
  * add+test journey (b) and the Tools built-in-vs-user-server distinction (d)
  * that live inside those sections.
@@ -284,10 +284,18 @@ test.describe('Connections IA', () => {
     await seedRoutes(page);
   });
 
-  test('the /connections resolver lands on a section, and legacy paths redirect into their owning section', async ({
+  test('/connections is the Overview, its tiles open sections, and legacy paths redirect into their owning section', async ({
     page,
   }) => {
     await page.goto('/connections');
+    await expect(page).toHaveURL(/\/connections$/);
+    await expect(
+      page.getByRole('heading', { name: 'Connections', level: 1, exact: true }),
+    ).toBeVisible();
+    await page
+      .locator('.connections-overview__tiles')
+      .getByRole('button', { name: /^Models/ })
+      .click();
     await expect(page).toHaveURL(/\/connections\/models$/);
     await expect(
       page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
@@ -320,20 +328,13 @@ test.describe('Connections IA', () => {
           exact: true,
         }),
       ).toBeVisible();
-      // archive#4463: 'Connections' only, unlinked — not
-      // the retired 'Connections / <Section>' breadcrumb-as-eyebrow. Static
-      // parent-context text, not a link: `/connections` is a redirect-only
-      // resolver, so a click here would be a no-op or a sibling jump dressed
-      // up as "go up".
+      // archive#4463: 'Connections' only — not the retired
+      // 'Connections / <Section>' breadcrumb-as-eyebrow — and it links back
+      // to the Overview, the one way out of a section above the rail.
       await expect(page.locator('.page__label')).toHaveText('Connections');
-      // Role-based, not class-based: both eyebrow-producing paths
-      // (PageEyebrowTrail and SplitPaneLayout's trail) expose role=link iff
-      // they carry a handler, so this holds even if the frame's suppression
-      // of the child trail is ever removed.
       await expect(page.locator('.page__label').getByRole('link')).toHaveCount(
-        0,
+        1,
       );
-      await expect(page.locator('.page__label-link')).toHaveCount(0);
 
       const tabs = page.getByRole('tab');
       await expect(tabs).toHaveCount(5);

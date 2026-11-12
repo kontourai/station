@@ -1522,16 +1522,13 @@ const connectionsHubView = readRequiredSource(
 if (connectionsHubView.includes('fetch(')) {
   errors.push('ConnectionsHub must not issue raw fetch() calls.');
 }
-// station#3879: `ConnectionsHub` is no longer a page. #3733 turned it into a
-// resolver that renders `null` and redirects to whichever section needs
-// attention, so it has no UI to delegate and no connection list to query. The
-// derivation it DOES own is asserted instead — it must ask the same signals
-// hook the rail's warn dots ask, which is the defect its own docblock
-// records (its private copy read `/api/connections` raw and ignored
-// Knowledge, so the rail and this resolver disagreed about where to go).
+// `ConnectionsHub` is the `/connections` Overview. Its attention list and
+// section tiles must ask the same signals hook the rail's marks ask: the old
+// resolver's private copy read `/api/connections` raw and ignored Knowledge,
+// so the rail and it disagreed.
 if (!connectionsHubView.includes('useConnectionSectionSignals')) {
   errors.push(
-    'ConnectionsHub must resolve its destination through the shared connection-section signals.',
+    'ConnectionsHub must read attention through the shared connection-section signals.',
   );
 }
 

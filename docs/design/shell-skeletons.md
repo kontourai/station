@@ -157,10 +157,9 @@ The rule now:
   canonical instance of the EYEBROW specifically: archive#4463 slice 1 retired its self-referential
   `SCHEDULE`-above-**Schedule** eyebrow (Schedule is top-level, so it now renders none). For a
   current eyebrow example, see a subpage instead — Connections → Models renders eyebrow
-  `Connections`, title `Models`. That eyebrow is deliberately **static text**: an eyebrow ancestor
-  is linked only when it has a real landing surface, and `/connections` is a redirect-only
-  resolver, so a link there would be a no-op or a sibling jump dressed as "up"
-  (`ConnectionsSectionFrame.tsx` carries the full rationale). Note eyebrows are produced on two
+  `Connections`, title `Models`. An eyebrow ancestor is linked only when it has a real
+  landing surface; `/connections` is the Connections Overview, so that eyebrow links to it
+  (`ConnectionsSectionFrame.tsx`). Note eyebrows are produced on two
   paths — `SplitPaneLayout`'s breadcrumb trail and `PageEyebrowTrail` — and the linked-only-when-
   navigable rule governs both.
 - **`src-ui/src/app-shell/page-frame-registry.ts` decides which routes get one.** It is a `Record`
@@ -240,8 +239,8 @@ one exception entry per `null` route.
 
 This table preserves the original port-time inspection (`wc -c` and source
 reads). Its wrappers, sizes, and delivery labels are historical measurements,
-not the current inventory. For example, Connections now resolves into a section
-instead of rendering the old hub, and Project Settings has a `page page--full`
+not the current inventory. For example, Connections now renders an Overview page
+instead of the old hub, and Project Settings has a `page page--full`
 root; current owners are [ConnectionsHub](../../src-ui/src/views/ConnectionsHub.tsx)
 and [ProjectSettingsView](../../src-ui/src/views/ProjectSettingsView.tsx).
 

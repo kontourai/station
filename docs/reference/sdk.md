@@ -6329,7 +6329,7 @@ The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,
 selected quota and live login queries, explicit login/account-create mutations,
 and engine activity queries. Every caller supplies a captured `ApiRequestScope`;
 keys partition API base, authority, engine connection and profile. Login retries
-are disabled and live status polls only while a login is pending. Quota refresh runs every minute while the account query is mounted and visible, and can also be requested explicitly. Strict contracts live in
+are disabled and live status polls only while a login is pending. Quota refresh runs every minute while the account query is mounted and visible, and can also be requested explicitly; `useEngineAccountUsageQuery`'s `{ poll: false }` option reads once per mount instead, for a summary of many engines. Strict contracts live in
 `@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
 optional account/credit/model, Claude spending/breakdown/limit metadata and
 response-shape audit fields and bounded hourly allowance history on both

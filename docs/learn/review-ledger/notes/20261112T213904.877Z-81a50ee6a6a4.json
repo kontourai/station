@@ -1,0 +1,81 @@
+{
+  "revision": "c8fdb05b3681df1973fcacc61b0278ffd697be13",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"First step now says to open Models or Engines inside Customize → Connections, since that entry opens the Overview, which has no add action.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Removed the Connections Overview paragraph that sat inside the ConnectionInspector entry (a UI view, not this server module; the Connections guide owns it). Registry/routing/ManagedPolicyContext edits add useManagedPolicyPending and change the Customize route; no module-map claim names those.","inputs":["docs/architecture/module-map.md","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts","src-ui/src/contexts/ManagedPolicyContext.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ManagedPolicyContext gained only useManagedPolicyPending; the approval-ceiling behaviour this record cites is unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/contexts/ManagedPolicyContext.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Header note already says /connections is the Overview listing what needs attention and policy-refused engines do not mark; still true after the fix round.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/ConnectionsHub.tsx"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Checked: routing.ts changed only a comment (no root resolver).","inputs":["docs/design/developer-surface.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/modality-ladder.md","note":"Checked: routing.ts changed only a comment (no root resolver).","inputs":["docs/design/modality-ladder.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Checked: the Connections Customize entry now opens /connections instead of /connections/engines; no claim here names that route; routing.ts changed only a comment (no root resolver).","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked: the Connections Customize entry now opens /connections instead of /connections/engines; no claim here names that route.","inputs":["docs/design/placement.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Updated the eyebrow paragraph: the Connections section eyebrow now links to the /connections Overview (ConnectionsSectionFrame.tsx); the loading tile uses SkeletonBlock, consistent with the skeleton rule.","inputs":["docs/design/shell-skeletons.md","src-ui/src/views/ConnectionsHub.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"ManagedPolicyContext gained useManagedPolicyPending (a first-read flag); the connection resolver and registry described here are unchanged.","inputs":["docs/design/station-connection.md","src-ui/src/contexts/ManagedPolicyContext.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Glossary nouns (Models/Engines tabs, Customize) unchanged; the Customize Connections entry now opens the Overview, which no term here defines.","inputs":["docs/glossary.md","docs/architecture/module-map.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked: routing.ts changed only a comment (no root resolver); ConnectionsHub changes are Overview presentation (per-section loading, title links); no claim here describes them.","inputs":["docs/guides/agent-configuration.md","src-ui/src/app-shell/routing.ts","src-ui/src/views/ConnectionsHub.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Rewrote the Overview section for this fix round: Customize Connections opens /connections, section eyebrow links back, titles open the connection page, tool items read Needs attention and skip disabled servers, tiles wait per section, allowance read once per visit only for on/ready/signed-in engines; Check failed and allowance-refresh claims elsewhere unchanged and still true.","inputs":["docs/guides/connections.md","packages/sdk/src/engine-accounts.ts","src-ui/src/app-shell/routing.ts","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/connections-hub/connection-health.ts","src-ui/src/views/connections-hub/connection-section-signals.ts","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked: the section frame eyebrow now links to the Overview and connections-crud only changed a comment; checked, no claim here says the eyebrow is unlinked.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked: the Connections Customize entry now opens /connections instead of /connections/engines; no claim here names that route.","inputs":["docs/guides/feature-previews.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked: the Connections guide edit is confined to its Overview section; links from here still resolve.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it; routing.ts changed only a comment (no root resolver); ConnectionsHub changes are Overview presentation (per-section loading, title links); no claim here describes them.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","src-ui/src/app-shell/routing.ts","src-ui/src/views/ConnectionsHub.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked: routing.ts changed only a comment (no root resolver).","inputs":["docs/guides/starter-work.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked: the section frame eyebrow now links to the Overview and connections-crud only changed a comment; checked, no claim here says the eyebrow is unlinked.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked: the Connections Customize entry now opens /connections instead of /connections/engines; no claim here names that route; routing.ts changed only a comment (no root resolver).","inputs":["docs/plans/whole-app-ux-campaign.md","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked: the section frame eyebrow now links to the Overview and connections-crud only changed a comment; checked, no claim here says the eyebrow is unlinked.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Documented useEngineAccountUsageQuery { poll: false } beside the every-minute refresh claim, which still holds by default.","inputs":["docs/reference/sdk.md","packages/sdk/src/engine-accounts.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts: only the ConnectionInspector body lost the Overview paragraph; this reference describes the tool and generation, no changed claim.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked: routing.ts changed only a comment (no root resolver); ConnectionsHub changes are Overview presentation (per-section loading, title links); no claim here describes them.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/app-shell/routing.ts","src-ui/src/views/ConnectionsHub.tsx"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked: module-map change only removed the misplaced Connections Overview paragraph from ConnectionInspector; nothing here cites it.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Historical capture per docs/learn/media/media.json; it shows the Models section, not the /connections Overview this round changed, and no re-capture is needed for the eyebrow link text (still \"Connections\").","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Historical capture per docs/learn/media/media.json; it shows the Models section, not the /connections Overview this round changed, and no re-capture is needed for the eyebrow link text (still \"Connections\").","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts"]}
+  ]
+}

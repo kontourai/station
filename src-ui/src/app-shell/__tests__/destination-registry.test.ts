@@ -114,8 +114,8 @@ describe('DestinationRegistry', () => {
     const formerManageRoutes = [
       ['agents', '/agents'],
       ['guidance', '/guidance'],
-      // Entered at the section the row names, not the hub root.
-      ['connections', '/connections/engines'],
+      // Entered at the Overview, which opens every section.
+      ['connections', '/connections'],
       ['plugins', '/plugins'],
       ['developer', '/developer'],
     ] as const;
@@ -159,9 +159,9 @@ describe('DestinationRegistry', () => {
         id: 'connections',
         group: 'set-up',
         order: 30,
-        // Open the engine list directly while keeping the destination's name.
+        // The Overview: what needs fixing across every section.
         label: 'Connections',
-        route: '/connections/engines',
+        route: '/connections',
       },
       {
         id: 'plugins',

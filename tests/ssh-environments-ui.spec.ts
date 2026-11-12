@@ -363,9 +363,9 @@ test.describe('SSH execution environments', () => {
     await seedRoutes(page);
     await installVisualViewportFixture(page);
     await page.setViewportSize({ width: 1280, height: 800 });
-    // `/connections` is a resolver, not a page (`views/ConnectionsHub.tsx:14-21`)
-    // and `?section=` means nothing to it; Computers is the section that owns
-    // the `Add computer` action (`connection-sections.ts:38-45`).
+    // `/connections` is the Overview and `?section=` means nothing to it;
+    // Computers is the section that owns the `Add computer` action
+    // (`connection-sections.ts`).
     await page.goto('/connections/computers');
 
     const addComputer = page

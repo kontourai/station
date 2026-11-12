@@ -65,11 +65,40 @@ is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
 failed; or Knowledge has no vector store. Engines the managed policy refuses,
 saved-but-untested model connections, Knowledge without an embedding model, and
-computers that are not connected carry no mark. Opening `/connections` shows a loading state until these lists load, or
-for up to 1.5 seconds, then opens the first section that needs
-attention, or Models when none does. The rows, the engine page, the marks and
-that redirect share one [readiness
+computers that are not connected carry no mark. The rows, the engine page and
+the marks share one [readiness
 derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
+
+## Read the Connections overview
+
+**Connections** (`/connections`, and the **Connections** entry under
+**Customize**) opens an [overview page](../../src-ui/src/views/ConnectionsHub.tsx)
+rather than a section. Each section's **Connections** eyebrow links back to it.
+
+- **Needs attention** lists each connection that puts a mark on a section,
+  with its badge, one sentence and at most one action. The connection's name
+  opens its page. The action is the fix its badge names and opens the page
+  that performs it; Claude Code and Codex sign in on their **Accounts** tab.
+  A tool server whose last check failed reads **Needs attention**, as on the
+  Tools page; a turned-off one is not listed. The list shows a loading state
+  until every section list that can carry a mark (and any managed engine
+  policy) loads, says so when any section list, Computers included, could not
+  be loaded (with **Retry** when the read failed), and reads **Nothing needs
+  attention** only when every list loaded clean.
+- **Sections** has a tile per section with its count and mark, a loading
+  state until that section's list loads, or **Not loaded** when it could not
+  be loaded. A tile opens its section.
+- **Allowance** and **Usage, last 7 days** appear only for a viewer with
+  `access:manage`, and the page asks for neither otherwise. Allowance shows
+  the provider-reported limits of the account Claude Code's and Codex's runs
+  use, read once per visit and only for an engine that is on, ready and
+  signed in; the engine's own page keeps it current. Usage lists this
+  Station's tokens by engine connection, on a Station that reports that
+  grouping; runs recorded without their engine are listed as
+  **Not attributed**.
+
+The list, the tiles and the section marks are read from one
+[derivation](../../src-ui/src/views/connections-hub/connection-section-signals.ts).
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.

@@ -32,6 +32,18 @@ export function useManagedPolicySummary(): ManagedPolicySummary | undefined {
   return useContext(ManagedPolicyContext);
 }
 
+/**
+ * Whether the policy's first read is still in flight. `undefined` from
+ * `useManagedPolicySummary` means "none, or not read yet"; a surface that
+ * states a conclusion from the policy (the Connections Overview's attention
+ * list) waits on this rather than showing the unmanaged answer first.
+ */
+const ManagedPolicyPendingContext = createContext(false);
+
+export function useManagedPolicyPending(): boolean {
+  return useContext(ManagedPolicyPendingContext);
+}
+
 /** Mounted inside the verified authority boundary, beside account preferences. */
 export function ManagedPolicyProvider({
   children,
@@ -52,11 +64,15 @@ function HostManagedPolicyProvider({ children }: { children: ReactNode }) {
   const { apiBase } = useApiBase();
   const status = useManagedPolicyStatusQuery(apiBase);
   return (
-    <ManagedPolicyContext.Provider
-      value={status.data?.state === 'loaded' ? status.data.summary : undefined}
-    >
-      {children}
-    </ManagedPolicyContext.Provider>
+    <ManagedPolicyPendingContext.Provider value={status.isLoading}>
+      <ManagedPolicyContext.Provider
+        value={
+          status.data?.state === 'loaded' ? status.data.summary : undefined
+        }
+      >
+        {children}
+      </ManagedPolicyContext.Provider>
+    </ManagedPolicyPendingContext.Provider>
   );
 }
 function TargetManagedPolicyProvider({
@@ -70,11 +86,15 @@ function TargetManagedPolicyProvider({
     readTarget: target,
   });
   return (
-    <ManagedPolicyContext.Provider
-      value={status.data?.state === 'loaded' ? status.data.summary : undefined}
-    >
-      {children}
-    </ManagedPolicyContext.Provider>
+    <ManagedPolicyPendingContext.Provider value={status.isLoading}>
+      <ManagedPolicyContext.Provider
+        value={
+          status.data?.state === 'loaded' ? status.data.summary : undefined
+        }
+      >
+        {children}
+      </ManagedPolicyContext.Provider>
+    </ManagedPolicyPendingContext.Provider>
   );
 }
 

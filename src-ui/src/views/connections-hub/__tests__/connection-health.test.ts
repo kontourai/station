@@ -188,6 +188,42 @@ describe('deriveConnectionHealth', () => {
     });
   });
 
+  test('"Details" is never a fix: a read-only connection that is off or unreachable names no action', () => {
+    // A read-only input is the one whose Disabled and Unreachable verdicts
+    // the resolver words with "Details" instead of "Enable" / "Reconnect".
+    const readOnly = (connection: ProviderConnection) => ({
+      ...modelHealthInput(connection),
+      readOnly: true,
+    });
+    const off = deriveConnectionHealth(
+      readOnly({
+        ...model({ status: 'passed', checkedAt: OBSERVED }),
+        enabled: false,
+      }),
+    );
+    const unreachable = deriveConnectionHealth(
+      readOnly({
+        ...model({ status: 'passed', checkedAt: OBSERVED }),
+        status: 'error',
+      }),
+    );
+    expect([off.label, unreachable.label]).toEqual(['Disabled', 'Unreachable']);
+    for (const health of [off, unreachable]) {
+      expect(health.needsAttention).toBe(true);
+      expect(health.reason).toBeTruthy();
+      expect(health.action).toBeUndefined();
+    }
+    // The same connections, not read-only, name their fix.
+    expect(
+      deriveConnectionHealth(
+        modelHealthInput({
+          ...model({ status: 'passed', checkedAt: OBSERVED }),
+          enabled: false,
+        }),
+      ).action,
+    ).toEqual({ label: 'Enable', id: 'enable' });
+  });
+
   test('the fix id is its label, so a "Set up" fix is never called something else', () => {
     const health = deriveConnectionHealth(
       engineHealthInput(

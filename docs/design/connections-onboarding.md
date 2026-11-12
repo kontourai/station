@@ -16,10 +16,11 @@
 > contract for follow-up slices; revise it — not just the code — when direction changes.
 >
 > The current Connections rail has **Models, Engines, Tools, Knowledge and Computers**,
-> owned by `connection-sections.ts`. `/connections` shows a loading state until the section
-> lists load, or for up to 1.5 seconds, then resolves to the first section needing
-> attention, or Models. Resting states (such as a saved, untested model connection or an
-> engine the managed policy refuses) do not mark a section. The earlier unified Providers overview and its delivery tables
+> owned by `connection-sections.ts`. `/connections` was recorded here as a resolver, not a
+> destination; the [Connections overhaul](connections-overhaul.md#pages) reverses that one
+> decision, and it is now an Overview page listing what needs attention. Resting states
+> (such as a saved, untested model connection or an engine the managed policy refuses) do
+> not mark a section. The earlier unified Providers overview and its delivery tables
 > below are historical interface direction. Model setup uses the Models detail pane;
 > engine setup has its own Add engine flow. Legacy URLs redirect to the corresponding
 > section. Provider presets and explicit configuration remain shared design rules.
@@ -494,7 +495,7 @@ Mode 2 is per-environment by nature (see §2) and that is fine.
 ## 4. Recorded unified-hub direction
 
 The following unified Providers/Developer services layout describes the earlier delivery
-slice. The current five-section rail and resolver are described at the top of this
+slice. The current five-section rail and Overview are described at the top of this
 document and in the [Connections guide](../guides/connections.md). Its readiness and
 explicit-Add principles remain useful; the category labels and single-dialog claim below
 must not be used as current navigation instructions.

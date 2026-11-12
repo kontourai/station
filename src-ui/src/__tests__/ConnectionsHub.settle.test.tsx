@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * The `/connections` resolver waits for its first reads, so what counts as
- * "still reading" has to be React Query's own answer, not a stub. A read
- * that is disabled (nothing to ask) or paused (offline) is not fetching, and
- * must not hold the redirect until the wait runs out.
+ * The `/connections` Overview shows a loading state until its first reads
+ * answer, so what counts as "still reading" has to be React Query's own
+ * answer, not a stub. A read that is disabled (nothing to ask) or paused
+ * (offline) is not fetching, and must not hold the loading state forever.
  */
 
 import {
@@ -13,7 +13,7 @@ import {
   QueryClientProvider,
   useQuery,
 } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 const navigate = vi.fn();
@@ -52,12 +52,17 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 vi.mock('../contexts/ManagedPolicyContext', () => ({
   useManagedPolicySummary: () => undefined,
+  useManagedPolicyPending: () => false,
 }));
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ connections: [] }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
+}));
+vi.mock('../components/page-frame', () => ({ usePageHeader: vi.fn() }));
+vi.mock('../views/engine-detail/useEngineAccountAccess', () => ({
+  useEngineAccountAccess: () => ({ scope: null, canManage: false }),
 }));
 
 import { ConnectionsHub } from '../views/ConnectionsHub';
@@ -68,7 +73,7 @@ afterEach(() => {
 });
 
 test.each(['disabled', 'paused'] as const)(
-  'a %s read does not block resolving on what has answered',
+  'a %s read does not hold the page on loading',
   async (engines) => {
     mode.engines = engines;
     // Paused: React Query holds an online-mode fetch while offline. The
@@ -83,12 +88,22 @@ test.each(['disabled', 'paused'] as const)(
         <ConnectionsHub />
       </QueryClientProvider>,
     );
-    // Well inside the 1.5s wait: settling came from the reads, not a timer.
+    // There is no timer: settling comes from the reads alone.
     await waitFor(
-      () => expect(navigate).toHaveBeenCalledWith('/connections/tools'),
+      () =>
+        expect(screen.getByRole('link', { name: 'audit-echo' })).toBeTruthy(),
       { timeout: 500 },
     );
-    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('status', { name: 'Loading connections' }),
+    ).toBeNull();
+    // Not loading, and not "nothing to fix" either: the Engines read has no
+    // answer, so the page says so.
+    expect(screen.queryByText('Nothing needs attention')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Engines/ }).textContent).toBe(
+      'Engines—Not loaded',
+    );
+    expect(navigate).not.toHaveBeenCalled();
     expect(client.getQueryState(['engines', engines])?.status).toBe('pending');
     client.clear();
   },

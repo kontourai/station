@@ -118,7 +118,10 @@
     "agents": ["src-ui/src/views/AgentsView.tsx"],
     "skills": ["src-ui/src/views/GuidanceView.tsx"],
     "registry": ["src-ui/src/views/RegistryView.tsx"],
-    "connections": ["src-ui/src/views/ConnectionsHub.tsx"],
+    "connections": [
+      "src-ui/src/views/ConnectionsHub.tsx",
+      "src-ui/src/components/resource-hub/AttentionList.tsx"
+    ],
     "connections-models": [
       "src-ui/src/views/ConnectionsSectionFrame.tsx",
       "src-ui/src/views/ProviderSettingsView.tsx"
@@ -214,7 +217,10 @@
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"
     ],
-    "mobile-connections": ["src-ui/src/views/ConnectionsHub.tsx"],
+    "mobile-connections": [
+      "src-ui/src/views/ConnectionsHub.tsx",
+      "src-ui/src/components/resource-hub/AttentionList.tsx"
+    ],
     "mobile-agent-editor": ["src-ui/src/views/AgentsView.tsx"],
     "mobile-onboarding-setup": ["src-ui/src/views/HomeView.tsx"],
     "inventory-drilldown-read-dark-desktop": [

@@ -1,0 +1,7 @@
+{
+  "revision": "5c8cb9e2cbf9f6a5fda54885a9d544643671622c",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Its two links to connections.md defer setup steps and qualification limits to that guide; this change only edited the Connections Overview's not-loaded and tile wording, which neither citing sentence states.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "c8fdb05b3681df1973fcacc61b0278ffd697be13",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Checked: the sdk.md edit only adds useEngineAccountUsageQuery's optional { poll: false }; this guide's 'allowance' mentions are hosted-cost allowances, not engine-account quota, and nothing here cites the engine-accounts entry.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked: sdk.md gained one sentence on the optional poll flag of useEngineAccountUsageQuery (default unchanged); this file's SDK authoring rules are unaffected and the change is additive, so no new export or contract rule applies.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Checked: this lane did not edit the deploy ledger; the .md and .json pair on this branch is the release automation's own output as merged from origin/main (main has newer entries that the next merge brings), and they agree with each other.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

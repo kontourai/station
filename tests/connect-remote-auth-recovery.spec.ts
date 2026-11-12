@@ -65,8 +65,6 @@ async function openConnections(page: Page) {
   const controlThisStation = page.getByRole('button', {
     name: /Control this Station from another device/,
   });
-  // `/connections` is a resolver, not a page: it redirects to whichever
-  // section needs attention, else Models (`views/ConnectionsHub.tsx:14-21`).
   // `Add computer` is the Computers section's own add action
   // (`views/connections-hub/connection-sections.ts:38-45`), so go there.
   await page.goto('/connections/computers');

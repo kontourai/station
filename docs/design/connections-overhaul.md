@@ -70,7 +70,7 @@ engine **Limited**, while dispatch refuses anything that is not `ready`
 
 One client selector, `deriveConnectionHealth` in
 `src-ui/src/views/connections-hub/connection-health.ts`, feeds rail dots, the
-resolver, list rows and detail headers. It returns one of the recorded labels
+Overview, list rows and detail headers. It returns one of the recorded labels
 from `resolveProviderPresentation`, plus whether the connection needs attention.
 Anything dispatch would refuse for a reason the reader can fix needs attention,
 including `degraded`. Managed-policy refusals read **Not allowed**, offer no fix

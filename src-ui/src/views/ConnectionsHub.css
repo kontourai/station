@@ -1,0 +1,91 @@
+/* Connections Overview (`/connections`). Tokens only; flows at any width.
+   The page frame owns the inset. */
+
+.connections-overview__tiles {
+  display: grid;
+  /* Two tiles to a row on a phone; one row of five on a wide pane. */
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.connections-overview__tile {
+  display: grid;
+  gap: var(--k-space-1);
+  justify-items: start;
+  align-content: start;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.connections-overview__tile:hover {
+  border-color: var(--k-line-strong);
+}
+.connections-overview__tile:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.connections-overview__tile-title {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.connections-overview__tile strong {
+  font-size: var(--k-text-xl);
+}
+.connections-overview__tile-skeleton {
+  width: 3ch;
+}
+
+.connections-overview__allowance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--k-space-3);
+}
+.connections-overview__engine {
+  display: grid;
+  gap: var(--k-space-2);
+  align-content: start;
+  min-width: 0;
+}
+.connections-overview__engine h3 {
+  margin: 0;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+.connections-overview__engine small,
+.connections-overview__usage small {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.connections-overview__usage {
+  display: grid;
+  gap: var(--k-space-2);
+  overflow-x: auto;
+}
+.connections-overview__usage table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--k-text-sm);
+}
+.connections-overview__usage th,
+.connections-overview__usage td {
+  text-align: start;
+  padding: var(--k-space-1) var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+  overflow-wrap: anywhere;
+}
+.connections-overview__usage td:last-child,
+.connections-overview__usage th:last-child {
+  text-align: end;
+  white-space: nowrap;
+}

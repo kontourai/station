@@ -42,6 +42,8 @@ interface UseComputerRowsResult {
   /** The folded identities behind the rows, for callers that need the source. */
   environments: KnownEnvironment[];
   sshEnvironments: SshEnvironmentView[];
+  /** The SSH read has an answer; without one the rows omit SSH computers. */
+  sshAnswered: boolean;
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
@@ -119,6 +121,7 @@ export function useComputerRows(
     rows,
     environments,
     sshEnvironments,
+    sshAnswered: sshEnvironmentsQuery.data !== undefined,
     isLoading: sshEnvironmentsQuery.isLoading,
     isError: sshEnvironmentsQuery.isError,
     refetch: () => void sshEnvironmentsQuery.refetch(),

@@ -1,7 +1,7 @@
 /**
  * One answer to "can I use this connection now?"
  * (docs/design/connections-overhaul.md, "One readiness derivation"). The
- * section rail, the `/connections` resolver, the Engines and Models list rows
+ * section rail, the `/connections` Overview, the Engines and Models list rows
  * and the engine detail read this function, so they cannot disagree about the
  * same connection.
  *
@@ -39,8 +39,8 @@ export type { ConnectionVerdict };
 export interface ConnectionHealth extends ResourceStatus {
   verdict: ConnectionVerdict;
   /**
-   * Whether the section rail marks this connection and `/connections` may
-   * open its section for it. An engine needs attention whenever it is not
+   * Whether the section rail marks this connection and the `/connections`
+   * Overview lists it. An engine needs attention whenever it is not
    * dispatchable. A model connection does only for something the reader
    * must fix — off, a blocking prerequisite, a refused check, an endpoint
    * Station has stopped retrying — and not for resting states: saved but
@@ -151,15 +151,22 @@ function health(
       input.kind === 'agent'
         ? verdict !== 'ready'
         : verdict === 'off' || verdict === 'failing' || blocked,
-    // Ready needs no reason and offers no fix; "Details" is not a fix.
+    // Ready needs no reason and offers no fix. "Details" is never a fix
+    // either: an engine whose status is not ready can still be described
+    // in the resolver's Ready words, and its "Details" only opens the page
+    // the connection's own row already opens.
     ...(verdict === 'ready'
       ? {}
       : {
           reason: presentation.detail,
-          action: {
-            label: presentation.actionLabel,
-            id: actionId(presentation.actionLabel),
-          },
+          ...(actionId(presentation.actionLabel) === 'details'
+            ? {}
+            : {
+                action: {
+                  label: presentation.actionLabel,
+                  id: actionId(presentation.actionLabel),
+                },
+              }),
         }),
   };
 }

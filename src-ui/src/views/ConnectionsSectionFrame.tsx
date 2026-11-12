@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PageCreateAction } from '../components/PageCreateAction';
 import {
   PageEyebrowTrail,
@@ -23,24 +23,6 @@ import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSec
 // archive#4463: the rail now renders the shared `Tabs` primitive,
 // which self-imports `.page__tabs`/`.page__tab`'s stylesheet — the frame no
 // longer needs to carry this import for it (see `components/Tabs.tsx`).
-
-/**
- * The eyebrow every section publishes: 'Connections', unlinked.
- *
- * archive#4463: `/connections` is a
- * redirect-only resolver — `ConnectionsHub` immediately navigates to
- * whichever section most needs attention, or to Models. A click here would
- * therefore either be a no-op (it redirects right back to the section
- * already on screen) or a SIBLING jump dressed up as "go up" — worse than no
- * affordance at all. Static parent-context text, not a link, until
- * Connections has a real landing surface to go up TO (tracked as a
- * follow-up). Hoisted to module scope: with no `onClick` the node has no
- * per-render dependency, so a fresh element every render would only cost
- * `usePageHeader`'s identity check an extra settle for nothing.
- */
-const CONNECTIONS_EYEBROW = (
-  <PageEyebrowTrail segments={[{ label: 'Connections' }]} />
-);
 
 /** Groups this rail's generated tab/panel ids — see `components/Tabs.tsx`. */
 const TABS_ID = 'connections-sections';
@@ -73,10 +55,24 @@ function ConnectionsSectionFrameInner({
   const [computerChooserOpen, setComputerChooserOpen] = useState(false);
   const mobileReturnFocus = useSplitPaneExternalReturnFocus();
   // One derivation for both facts this rail renders, shared with the
-  // `/connections` resolver.
+  // Connections Overview.
   const { count, needsAttention } = useConnectionSectionSignals();
+  // The eyebrow every section publishes: 'Connections', the one segment
+  // (archive#4463 retired 'Connections / <Section>'), linked to the
+  // `/connections` Overview so a section is never a dead end. Memoised on
+  // `navigate` for `usePageHeader`'s identity check.
+  const eyebrow = useMemo(
+    () => (
+      <PageEyebrowTrail
+        segments={[
+          { label: 'Connections', onClick: () => navigate('/connections') },
+        ]}
+      />
+    ),
+    [navigate],
+  );
   usePageHeader({
-    eyebrow: CONNECTIONS_EYEBROW,
+    eyebrow,
     title: section.title,
     subtitle: section.subtitle,
   });

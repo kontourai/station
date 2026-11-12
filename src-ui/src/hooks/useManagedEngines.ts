@@ -20,7 +20,10 @@ import {
 import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { useCallback } from 'react';
-import { useManagedPolicySummary } from '../contexts/ManagedPolicyContext';
+import {
+  useManagedPolicyPending,
+  useManagedPolicySummary,
+} from '../contexts/ManagedPolicyContext';
 import { connectionEngineId } from '../utils/execution';
 import {
   type ACPConnectionInfo,
@@ -134,4 +137,20 @@ export function useManagedEngineStateFor(): (
     },
     [managedEngines, acpBridgeConnections, acpRegistryEntries],
   );
+}
+
+/**
+ * Whether `useManagedEngineStateFor` gives its final answer yet: the policy
+ * has been read and, when it limits engines, so have the ACP reads that say
+ * which connections are ACP or registry agents. Before that a refused engine
+ * reads as unmanaged.
+ */
+export function useManagedEngineStateSettled(): boolean {
+  const pending = useManagedPolicyPending();
+  const managedEngines = useManagedEngines();
+  const acp = useACPConnections();
+  const registry = useACPConnectionRegistry();
+  if (pending) return false;
+  if (!managedEngines) return true;
+  return !acp.isLoading && !registry.isLoading;
 }

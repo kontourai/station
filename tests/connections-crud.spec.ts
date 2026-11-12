@@ -629,11 +629,11 @@ test.describe('Connections CRUD', () => {
 
   /**
    * `connections hub renders core sections` is deleted, not rewritten: the hub
-   * it described is gone. `/connections` is a resolver that redirects into one
-   * of five sections (`views/ConnectionsHub.tsx:14-21`,
-   * `views/connections-hub/connection-sections.ts`), and
-   * `tests/connections-sections.spec.ts` owns what replaced it — the resolver
-   * and legacy redirects (`:284`), each section's H1, eyebrow and single add
+   * it described is gone. `/connections` is the Overview
+   * (`views/ConnectionsHub.tsx`) over five sections
+   * (`views/connections-hub/connection-sections.ts`), and
+   * `tests/connections-sections.spec.ts` owns what replaced it — the Overview
+   * and legacy redirects, each section's H1, eyebrow and single add
    * action (`:308`), and the engine rows' names and states (`:491`).
    *
    * Its Developer-services half has no replacement anywhere, because it has no
@@ -1465,12 +1465,9 @@ test.describe('Connections CRUD', () => {
     await page.goto('/connections/knowledge');
     // The view renders inside `ConnectionsSectionFrame`'s own
     // `PageHeaderScope`, so the frame's header wins: eyebrow `Connections`
-    // (archive#4463: unlinked parent-context text, not a
-    // breadcrumb trail and not a link — `/connections` is a redirect-only
-    // resolver, so a click would be a no-op or a sibling jump), H1
-    // `Knowledge`. Nothing on the page says "Knowledge infrastructure" any
-    // more, and the eyebrow has no link affordance — so the exit affordance
-    // this test used is gone too.
+    // (archive#4463; it links to the Overview), H1 `Knowledge`. Nothing on
+    // the page says "Knowledge infrastructure" any more, so the exit
+    // affordance this test used is gone too.
     await expect(
       page.getByRole('heading', { name: 'Knowledge', level: 1, exact: true }),
     ).toBeVisible();
