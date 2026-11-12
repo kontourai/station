@@ -429,10 +429,18 @@ function ProjectRoomSession({
   // Clears the whole envelope only if it is still the revision that was
   // asked; any edit since (text, recipient or reply) keeps the newer draft
   // intact (#4810 delta 1). Every edit makes a new envelope object.
+  // A late acknowledgement may land after the reader left this draft's
+  // thread or channel: the setter still addresses the draft it was asked
+  // from (`useRoomDraftValue`), read back from storage, so the revision is
+  // compared by value there.
   const clearDraftIfCurrent = useCallback(
     (revision: ProjectRoomDraft) =>
       setDraft((current) =>
-        current === revision ? EMPTY_PROJECT_DRAFT : current,
+        current === revision ||
+        PROJECT_DRAFT_CODEC.encode(current) ===
+          PROJECT_DRAFT_CODEC.encode(revision)
+          ? EMPTY_PROJECT_DRAFT
+          : current,
       ),
     [setDraft],
   );
@@ -625,26 +633,33 @@ function ProjectRoomSession({
     !threadRootLoaded &&
     !!room.history.hasNextPage &&
     historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
-  // Each history read that settles without the root starts the next window.
-  // The trigger is the read itself (`dataUpdatedAt`, whether anything is
-  // fetching), not a render between pages: pages that settle quickly batch
-  // those renders away, and a live refetch can cancel a page in flight; both
-  // left a valid link loading forever (#4855). A failed read waits for Retry.
+  // While the root is missing, the query is idle and successful, a next
+  // cursor exists and the bound allows, fetch the next window. Progress is
+  // read from the history result itself (how many windows are loaded and the
+  // oldest cursor), plus a counter each fetch started here bumps when it
+  // settles, so a page cancelled by a live refetch is re-checked too. Never a
+  // clock: two reads can share a timestamp (#4855). `cancelRefetch: false`
+  // joins a fetch already in flight rather than starting a second one.
   const {
     fetchNextPage,
     isFetching: historyFetching,
     isError: historyFailed,
-    dataUpdatedAt: historyReadAt,
   } = room.history;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: each settled read (historyReadAt) re-checks for the root.
+  const oldestCursor = room.history.data?.pageParams.at(-1)?.after;
+  const [seekSettled, setSeekSettled] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the loaded windows, the oldest cursor and each settled fetch re-check for the root.
   useEffect(() => {
-    if (awaitingThreadRoot && !historyFetching && !historyFailed)
-      void fetchNextPage();
+    if (!awaitingThreadRoot || historyFetching || historyFailed) return;
+    void fetchNextPage({ cancelRefetch: false }).finally(() =>
+      setSeekSettled((count) => count + 1),
+    );
   }, [
     awaitingThreadRoot,
     historyFetching,
     historyFailed,
-    historyReadAt,
+    historyPages,
+    oldestCursor,
+    seekSettled,
     fetchNextPage,
   ]);
   // A send whose acknowledgement was lost is settled once the room shows it.

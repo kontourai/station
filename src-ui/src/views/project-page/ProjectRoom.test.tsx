@@ -1636,3 +1636,81 @@ test('a Project this Station does not have reads as missing, not as an unavailab
   expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Open room' })).toBeNull();
 });
+
+// #4855 round 3: a coarse clock, and a late Agent acknowledgement.
+test('a thread seek keeps paging when successive reads share a timestamp', async () => {
+  // A privacy-rounded clock gives quick reads the same `dataUpdatedAt`; the
+  // seek must still page from the history result itself.
+  messages = Array.from({ length: 501 }, (_, index) =>
+    storedMessage(index + 1, `Clock update ${index + 1}`),
+  );
+  const realNow = Date.now.bind(Date);
+  const clock = vi
+    .spyOn(Date, 'now')
+    .mockImplementation(() => Math.floor(realNow() / 100) * 100);
+  try {
+    const reads = watchHistoryReads();
+    mountThreadRoute(String(messages[25]!.messageId));
+    await screen.findByText('Clock update 26', {}, { timeout: 10_000 });
+    expect(reads).toHaveLength(20);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+test('an Agent acknowledgement after leaving the thread clears only the thread draft it was asked from', async () => {
+  const root = storedMessage(1, 'Agent draft root');
+  messages = [root];
+  mountThreadRoute();
+  const channel = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  fireEvent.change(channel, { target: { value: 'Private channel draft' } });
+  // Open the root's thread and ask an Agent from it.
+  fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+  const input = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  fireEvent.change(input, { target: { value: 'Thread agent request' } });
+  fireEvent.change(input, {
+    target: { value: 'Thread agent request @', selectionStart: 22 },
+  });
+  fireEvent.select(input, { target: { selectionStart: 22 } });
+  fireEvent.click(await screen.findByRole('option', { name: /Researcher/ }));
+  const release = holdAgentRequest();
+  try {
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ask Researcher' }),
+    );
+    await waitFor(() => expect(agentWrites).toHaveLength(1));
+    // Leave the thread before the acknowledgement arrives.
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Back to #general' })[0]!,
+    );
+    const back = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Message the project',
+    });
+    expect(back.value).toBe('Private channel draft');
+    await act(async () => {
+      release();
+    });
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
+    // The channel keeps its own draft.
+    expect(
+      screen.getByRole<HTMLTextAreaElement>('textbox', {
+        name: 'Message the project',
+      }).value,
+    ).toBe('Private channel draft');
+    // The thread's asked draft was cleared, and nothing else moved into it.
+    fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+    const reopened = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply in thread',
+    });
+    expect(reopened.value).toBe('');
+    expect(agentWrites[0]!.replyTo).toBe(root.messageId);
+  } finally {
+    release();
+  }
+});
