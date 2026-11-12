@@ -2,6 +2,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
 import { isAutoApprovedExternalTool } from '../../tools/tool-executor.js';
+import { createChildDelegationContext } from '../delegation.js';
 import { createStagedPreToolPolicyEvaluator } from '../pre-tool-policy.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -149,14 +150,22 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         tool,
         {
           ...invocation,
-          delegation: {
-            mode: 'isolated-child',
-            depth: 1,
-            maxDepth: 2,
-            parentAgentSlug: agentId('parent'),
-            rootAgentSlug: agentId('root'),
-            blockedTools: ['station-control_*'],
-          },
+          delegation: createChildDelegationContext({
+            agentSlug: 'parent',
+            spec: {
+              name: 'Child policy',
+              prompt: 'Remain restricted',
+              delegation: { denyApprovals: false },
+            },
+            current: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: agentId('ancestor'),
+              rootAgentSlug: agentId('root'),
+              blockedTools: ['station-control_*'],
+            },
+          }),
         },
         {
           interaction: 'external',
@@ -186,14 +195,22 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         tool,
         {
           ...invocation,
-          delegation: {
-            mode: 'isolated-child',
-            depth: 1,
-            maxDepth: 2,
-            parentAgentSlug: agentId('parent'),
-            rootAgentSlug: agentId('root'),
-            denyApprovals: true,
-          },
+          delegation: createChildDelegationContext({
+            agentSlug: 'parent',
+            spec: {
+              name: 'Child policy',
+              prompt: 'Remain restricted',
+              delegation: { denyApprovals: false },
+            },
+            current: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: agentId('ancestor'),
+              rootAgentSlug: agentId('root'),
+              denyApprovals: true,
+            },
+          }),
         },
         {
           interaction: 'external',
