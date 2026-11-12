@@ -38,12 +38,16 @@ function canSwitchTo(connection: SavedConnection): boolean {
   );
 }
 
-/** A saved name, unless it is the seeded placeholder that names no machine. */
+/**
+ * A saved name. The seeded placeholder names no machine, and the machine name
+ * the header shows for it comes from that Station's own status, which is not
+ * readable from here, so it is called what it is to the person.
+ */
 function savedName(connection: SavedConnection): string {
   const name = connection.name?.trim();
   return name && name !== SEEDED_STATION_CONNECTION_NAME
     ? name
-    : hostOf(connection.url);
+    : 'previous Station';
 }
 
 /**

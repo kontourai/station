@@ -1,10 +1,12 @@
 .station-connecting {
   display: flex;
-  align-items: center;
+  /* Anchored from the top, so the actions appearing below the message do not
+     move what the person is reading. */
+  align-items: flex-start;
   justify-content: center;
   box-sizing: border-box;
   min-height: 100dvh;
-  padding: max(var(--k-space-4), env(safe-area-inset-top))
+  padding: max(28vh, env(safe-area-inset-top))
     max(var(--k-space-4), env(safe-area-inset-right))
     max(var(--k-space-4), env(safe-area-inset-bottom))
     max(var(--k-space-4), env(safe-area-inset-left));
