@@ -252,6 +252,75 @@ describe('ConversationContextResetDialog', () => {
     ).toBe(true);
   });
 
+  test.each(['reserved', 'claimed', 'indeterminate', 'failed'] as const)(
+    'a held %s reservation locks the reset choice to the reserved policy',
+    (status) => {
+      writeConversationContextBoundaryUiState('k', {
+        boundaryId: 'b',
+        conversationId: 'c',
+        policy: 'continue-from-history',
+        status,
+        priorTranscriptInjected: true,
+      } as never);
+      renderDialog();
+      const history = screen.getByRole('radio', {
+        name: 'Continue with chat history',
+      }) as HTMLInputElement;
+      const fresh = screen.getByRole('radio', {
+        name: 'Start fresh (agent forgets this chat)',
+      }) as HTMLInputElement;
+      expect(history.checked).toBe(true);
+      expect(history.disabled).toBe(true);
+      expect(fresh.disabled).toBe(true);
+      if (status === 'reserved') {
+        expect(screen.getByRole('status').textContent).toBe(
+          'Ready. On your next message the agent continues from chat history.',
+        );
+      }
+      if (status === 'failed') {
+        // The retry resends the policy the held key was reserved with.
+        reserve.mockResolvedValueOnce({
+          boundaryId: 'b',
+          conversationId: 'c',
+          policy: 'continue-from-history',
+          status: 'reserved',
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Retry reset' }));
+        expect(reserve).toHaveBeenCalledWith(
+          'http://station.test',
+          'c',
+          expect.objectContaining({
+            policy: 'continue-from-history',
+            idempotencyKey: 'k',
+          }),
+        );
+      }
+    },
+  );
+
+  test('the status line reports the server-observed reserved policy', () => {
+    status.mockReturnValue({
+      data: {
+        boundaryId: 'b',
+        conversationId: 'c',
+        policy: 'continue-from-history',
+        status: 'reserved',
+        priorTranscriptInjected: true,
+      },
+    });
+    writeConversationContextBoundaryUiState('k', {
+      boundaryId: 'b',
+      conversationId: 'c',
+      policy: 'continue-from-history',
+      status: 'reserved',
+      priorTranscriptInjected: true,
+    } as never);
+    renderDialog();
+    expect(screen.getByRole('status').textContent).toBe(
+      'Ready. On your next message the agent continues from chat history.',
+    );
+  });
+
   test('keeps a keyboard-reachable close control for mobile dialog surfaces', () => {
     const onClose = vi.fn();
     renderDialog(reserveEligibility, { onClose });

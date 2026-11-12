@@ -128,6 +128,14 @@ export function ConversationContextResetDialog({
   const claimedOrIndeterminate =
     statusValue === 'claimed' || statusValue === 'indeterminate';
   const canCancel = statusValue === 'reserved' && Boolean(stored);
+  // A held reservation keeps its idempotency key, and the server refuses that
+  // key with a different policy; change the choice by cancelling first.
+  const choiceLocked =
+    pending ||
+    statusValue === 'reserved' ||
+    statusValue === 'claimed' ||
+    statusValue === 'indeterminate' ||
+    statusValue === 'failed';
   const reserve = async () => {
     if (pending || eligibility.kind !== 'reserve' || claimedOrIndeterminate)
       return;
@@ -260,7 +268,7 @@ export function ConversationContextResetDialog({
             type="radio"
             checked={policy === 'continue-from-history'}
             onChange={() => setPolicy('continue-from-history')}
-            disabled={pending}
+            disabled={choiceLocked}
           />{' '}
           Continue with chat history
         </label>
@@ -269,7 +277,7 @@ export function ConversationContextResetDialog({
             type="radio"
             checked={policy === 'empty-next-cold-start'}
             onChange={() => setPolicy('empty-next-cold-start')}
-            disabled={pending}
+            disabled={choiceLocked}
           />{' '}
           Start fresh (agent forgets this chat)
         </label>
