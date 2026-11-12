@@ -143,7 +143,7 @@ function repairActions(props: ACPConnectionSetupActionProps): SetupActionSlots {
         ? action('Retry check', props.onRetryCheck, true)
         : undefined
       : props.errorKind === 'mutation'
-        ? action('Try again', props.onRetryMutation, true)
+        ? action('Retry', props.onRetryMutation, true)
         : props.errorKind === 'refresh'
           ? action('Retry refresh', props.onRetryRefresh, true)
           : undefined;

@@ -74,7 +74,7 @@
     "veritas:coverage": "node scripts/run-veritas-readiness.mjs --check coverage --working-tree",
     "veritas:shadow": "node scripts/run-veritas-readiness.mjs --working-tree",
     "trust-reconcile-verify": "npm run full:regression",
-    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && node scripts/test-temp-dir-ratchet.mjs && node scripts/type-laundering-gate.mjs && node scripts/conversation-boundary-gate.mjs && node scripts/check-durability-provider-branches.mjs && npm run test:fixtures:guard",
+    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && node scripts/test-temp-dir-ratchet.mjs && node scripts/windows-hide-ratchet.mjs && node scripts/type-laundering-gate.mjs && node scripts/conversation-boundary-gate.mjs && node scripts/check-durability-provider-branches.mjs && npm run test:fixtures:guard",
     "durability:provider-branch:gate": "node scripts/check-durability-provider-branches.mjs",
     "coding-composition:gate": "node scripts/coding-composition-inventory-gate.mjs",
     "agent-identity:inventory": "node scripts/agent-identity-supported-surface-inventory.mjs",
@@ -97,6 +97,7 @@
     "ui-copy-length:ratchet": "node scripts/ui-copy-length.mjs",
     "random-uuid:guard": "node scripts/random-uuid-guard.mjs",
     "test-temp-dir:ratchet": "node scripts/test-temp-dir-ratchet.mjs",
+    "windows-hide:ratchet": "node scripts/windows-hide-ratchet.mjs",
     "dialog-surface-class:guard": "node scripts/dialog-surface-class-guard.mjs",
     "knowledge-kit-import:gate": "node scripts/knowledge-kit-import-gate.mjs",
     "builder-delivery-viewer-import:gate": "node scripts/builder-delivery-viewer-import-gate.mjs",
@@ -236,7 +237,7 @@
     "test:prepush": "node scripts/run-verification.mjs request prepush",
     "test:prepush:raw": "npm run prepare:verify-static && node scripts/run-prepush-tier.mjs",
     "test:prepush:repeat": "npm run prepare:verify-static && node scripts/run-prepush-tier.mjs --repeat=20",
-    "test:windows:portable": "npm run test:prepush && node scripts/windows-portable-floor.mjs run src-server/adapters/__tests__/node-pty-adapter.test.ts src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts src-server/services/__tests__/helpers/hermetic-openssh.test.ts src-server/adapters/file/__tests__/memory-adapter-message-durability.test.ts packages/cli/src/__tests__/windows-process-identity.process.test.ts src-server/services/infra/__tests__/owned-process-windows.test.ts src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts src-server/services/terminal/__tests__/terminal-command-sessions.process.test.ts src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts src-server/services/terminal/__tests__/terminal-sessions.process.test.ts src-server/services/terminal/__tests__/terminal-gateway.process.test.ts src-server/services/terminal/__tests__/terminal-retention.process.test.ts src-server/services/terminal/__tests__/terminal-runs.process.test.ts src-server/services/terminal/__tests__/terminal-command-programs.test.ts --maxWorkers=1 --no-file-parallelism",
+    "test:windows:portable": "npm run test:prepush && node scripts/windows-portable-floor.mjs run src-server/adapters/__tests__/node-pty-adapter.test.ts src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts src-server/services/__tests__/helpers/hermetic-openssh.test.ts src-server/adapters/file/__tests__/memory-adapter-message-durability.test.ts packages/cli/src/__tests__/windows-process-identity.process.test.ts src-server/services/infra/__tests__/owned-process-windows.test.ts src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts src-server/services/terminal/__tests__/terminal-command-sessions.process.test.ts src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts src-server/services/terminal/__tests__/terminal-sessions.process.test.ts src-server/services/terminal/__tests__/terminal-gateway.process.test.ts src-server/services/terminal/__tests__/terminal-retention.process.test.ts src-server/services/terminal/__tests__/terminal-runs.process.test.ts src-server/services/terminal/__tests__/terminal-command-programs.test.ts src-server/services/terminal/__tests__/command-process.process.test.ts src-server/services/terminal/__tests__/windows-command-guard.test.ts --maxWorkers=1 --no-file-parallelism",
     "test:windows:diagnostic": "node scripts/run-windows-vitest-diagnostic.mjs",
     "test:load-reliability": "node scripts/run-load-reliability.mjs",
     "test:full": "node scripts/run-verification.mjs request test-full",
@@ -504,7 +505,8 @@
     "vitest": "4.1.12",
     "yaml": "2.9.1",
     "yazl": "^3.3.1",
-    "oxlint": "1.90.0"
+    "oxlint": "1.90.0",
+    "@kontourai/corpus": "github:kontourai/corpus#dfadba4e64883e6187fb42e32911ca9f091e0fa7"
   },
   "license": "Apache-2.0"
 }

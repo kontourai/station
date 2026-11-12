@@ -17,6 +17,8 @@
  * string here is ever allowed to read as a plausible multi-year duration
  * derived from the absence of data.
  */
+import { parseEpochMs } from './parseEpochMs';
+
 const DAY_MS = 24 * 60 * 60_000;
 const SHORT_DATE_AFTER_MS = 7 * DAY_MS;
 
@@ -57,6 +59,20 @@ export function absoluteTime(at: number): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+/**
+ * The absolute date and time (`absoluteTime`'s format) for an ISO stamp or an
+ * epoch-ms value, for detail text that states when something happened.
+ * `fallback` (nothing, by default) stands in for a stamp that is absent or
+ * unparseable, so no surface prints "Invalid Date".
+ */
+export function formatDateTime(
+  value: string | number | null | undefined,
+  fallback = '',
+): string {
+  const at = typeof value === 'number' ? value : parseEpochMs(value);
+  return (at === undefined ? '' : absoluteTime(at)) || fallback;
 }
 
 /**
@@ -103,6 +119,30 @@ export function relativeTimeAgo(updatedAt: number, now: number): string {
   const compact = relativeTime(updatedAt, now);
   if (compact === 'now') return 'just now';
   return /^\d+[mhd]$/.test(compact) ? `${compact} ago` : `on ${compact}`;
+}
+
+/**
+ * `relativeTime` for an ISO stamp, so a surface holding a wire timestamp does
+ * not write its own parse-and-bucket copy. `fallback` (nothing, by default)
+ * stands in for a stamp that is absent or unparseable.
+ */
+export function relativeTimeFromIso(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+  fallback = '',
+): string {
+  const at = parseEpochMs(iso);
+  return at === undefined ? fallback : relativeTime(at, now);
+}
+
+/** `relativeTimeAgo` for an ISO stamp; see `relativeTimeFromIso`. */
+export function relativeTimeAgoFromIso(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+  fallback = '',
+): string {
+  const at = parseEpochMs(iso);
+  return at === undefined ? fallback : relativeTimeAgo(at, now);
 }
 
 /**

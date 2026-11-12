@@ -4,10 +4,21 @@ import {
 } from '@kontourai/station-sdk';
 import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
 import {
+  applyReturnFocus,
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { memo, useEffect, useMemo, useRef } from 'react';
+import {
+  Component,
+  memo,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { buildInfo } from '../../build-info';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -22,6 +33,7 @@ import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import {
   projectLiveCount,
   projectLiveLabel,
@@ -47,6 +59,34 @@ const loadProjectSidebarBoards = () =>
   import('./ProjectSidebarBoards').then((module) => ({
     default: module.ProjectSidebarBoards,
   }));
+
+// Capture before React removes breakpoint-keyed rows during the commit.
+class NavigationFocusSnapshot extends Component<{
+  isMobile: boolean;
+  mobileOpen: boolean;
+  navigationRef: RefObject<HTMLElement | null>;
+  focusedRef: RefObject<Element | null>;
+  children: ReactNode;
+}> {
+  getSnapshotBeforeUpdate(previous: Readonly<typeof this.props>) {
+    const active = document.activeElement;
+    this.props.focusedRef.current =
+      !previous.isMobile &&
+      this.props.isMobile &&
+      !this.props.mobileOpen &&
+      active &&
+      this.props.navigationRef.current?.contains(active)
+        ? active
+        : null;
+    return null;
+  }
+
+  componentDidUpdate() {}
+
+  render() {
+    return this.props.children;
+  }
+}
 
 function ProjectSidebarImpl() {
   const { projects, isLoading } = useProjects();
@@ -167,6 +207,37 @@ function ProjectSidebarImpl() {
   const navigationRef = useRef<HTMLElement>(null);
   const wasMobileOpen = useRef(false);
   const returnFocusRef = useRef<HTMLElement[]>([]);
+  const breakpointFocusRef = useRef<Element | null>(null);
+  const [navigationHidden, setNavigationHidden] = useState(false);
+
+  useLayoutEffect(() => {
+    const closed = isMobile && !mobileOpen;
+    const removedFocus = breakpointFocusRef.current;
+    breakpointFocusRef.current = null;
+    if (
+      closed &&
+      (navigationRef.current?.contains(document.activeElement) ||
+        (removedFocus && !removedFocus.isConnected))
+    ) {
+      const triggers = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'button[aria-controls="mobile-navigation"]',
+        ),
+      );
+      const main = document.querySelector<HTMLElement>('main');
+      const chain = wasMobileOpen.current
+        ? returnFocusRef.current
+        : [
+            ...triggers,
+            ...triggers.flatMap((trigger) =>
+              captureReturnFocus(trigger).slice(1),
+            ),
+            ...(main ? [main] : []),
+          ];
+      applyReturnFocus(chain, navigationRef.current);
+    }
+    setNavigationHidden(closed);
+  }, [isMobile, mobileOpen]);
 
   // The mobile drawer's return focus goes through the shared module
   // (archive#1245). Its own copy was `if (trigger?.isConnected) trigger.focus`
@@ -211,21 +282,14 @@ function ProjectSidebarImpl() {
     }
     if (event.key !== 'Tab') return;
 
-    const focusable = Array.from(
-      navigationRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    ).filter((element) => element.getClientRects().length > 0);
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) return;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    wrapTabFocus(
+      event,
+      Array.from(
+        navigationRef.current?.querySelectorAll<HTMLElement>(
+          FOCUSABLE_SELECTOR,
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0),
+    );
   };
 
   return (
@@ -237,165 +301,173 @@ function ProjectSidebarImpl() {
           onClick={() => setMobileOpen(false)}
         />
       )}
-      <nav
-        id="mobile-navigation"
-        data-escape-owner={isMobile && mobileOpen ? '' : undefined}
-        ref={navigationRef}
-        className={buildSidebarClassName({
-          isMobile,
-          mobileOpen,
-          collapsed: effectiveCollapsed,
-        })}
-        aria-label={isMobile ? 'Mobile navigation' : 'Primary navigation'}
-        aria-hidden={isMobile && !mobileOpen ? true : undefined}
-        onKeyDown={handleNavigationKeyDown}
+      <NavigationFocusSnapshot
+        isMobile={isMobile}
+        mobileOpen={mobileOpen}
+        navigationRef={navigationRef}
+        focusedRef={breakpointFocusRef}
       >
-        <ProjectSidebarHeader
-          appName={appName}
-          homeLabel={homeLabel}
-          channelBadge={releaseChannelBadge}
-          isMobile={isMobile}
-          onCloseMobile={() => setMobileOpen(false)}
-          onGoHome={goHome}
-        />
+        <nav
+          id="mobile-navigation"
+          data-escape-owner={isMobile && mobileOpen ? '' : undefined}
+          ref={navigationRef}
+          className={buildSidebarClassName({
+            isMobile,
+            mobileOpen,
+            collapsed: effectiveCollapsed,
+          })}
+          aria-label={isMobile ? 'Mobile navigation' : 'Primary navigation'}
+          aria-hidden={navigationHidden ? true : undefined}
+          inert={navigationHidden}
+          onKeyDown={handleNavigationKeyDown}
+        >
+          <ProjectSidebarHeader
+            appName={appName}
+            homeLabel={homeLabel}
+            channelBadge={releaseChannelBadge}
+            isMobile={isMobile}
+            onCloseMobile={() => setMobileOpen(false)}
+            onGoHome={goHome}
+          />
 
-        <div className="sidebar__body">
-          <button
-            type="button"
-            className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
-            aria-label="Home"
-            // #1582 D4: exactly one sidebar row may claim to be the current
-            // location. `isHomeActive` already derives that from `main`'s
-            // occupant rather than the route alone, so it is the honest place
-            // to say it. The Activity row reads the same fact for its own
-            // surface (`ProjectSidebarNav`), and `main` holds one surface, so
-            // at most one of the two is ever current.
-            aria-current={isHomeActive ? 'page' : undefined}
-            onClick={goHome}
-          >
-            <span className="sidebar__nav-icon" aria-hidden="true">
-              <HomeGlyph />
-            </span>
-            <span className="sidebar__project-name">Home</span>
-          </button>
-          {/* #2059 (D3): Activity sits directly under Home as the panel's
+          <div className="sidebar__body">
+            <button
+              type="button"
+              className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
+              aria-label="Home"
+              // #1582 D4: exactly one sidebar row may claim to be the current
+              // location. `isHomeActive` already derives that from `main`'s
+              // occupant rather than the route alone, so it is the honest place
+              // to say it. The Activity row reads the same fact for its own
+              // surface (`ProjectSidebarNav`), and `main` holds one surface, so
+              // at most one of the two is ever current.
+              aria-current={isHomeActive ? 'page' : undefined}
+              onClick={goHome}
+            >
+              <span className="sidebar__nav-icon" aria-hidden="true">
+                <HomeGlyph />
+              </span>
+              <span className="sidebar__project-name">Home</span>
+            </button>
+            {/* #2059 (D3): Activity sits directly under Home as the panel's
               other place. The destination rows used to be a band at the
               BOTTOM of the panel, below the projects, because that band was
               mostly configuration; with the configuration gone the one row
               left belongs beside the place it is a peer of. */}
-          <ProjectSidebarNav
-            collapsed={effectiveCollapsed}
-            isMobile={isMobile}
-            navigate={navigate}
-            activePath={pathname}
-            onAfterNavigate={() => setMobileOpen(false)}
-          />
-          <div className="sidebar__section-label sidebar__section-label--projects">
-            <span className="sidebar__section-label-text">Projects</span>
-            <button
-              type="button"
-              className="sidebar__section-add"
-              data-new-project-trigger
-              aria-label="New Project"
-              title="New Project"
-              onClick={() => {
-                navigate('/projects/new');
-                if (isMobile) setMobileOpen(false);
-              }}
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+            <ProjectSidebarNav
+              collapsed={effectiveCollapsed}
+              isMobile={isMobile}
+              navigate={navigate}
+              activePath={pathname}
+              onAfterNavigate={() => setMobileOpen(false)}
+            />
+            <div className="sidebar__section-label sidebar__section-label--projects">
+              <span className="sidebar__section-label-text">Projects</span>
+              <button
+                type="button"
+                className="sidebar__section-add"
+                data-new-project-trigger
+                aria-label="New Project"
+                title="New Project"
+                onClick={() => {
+                  navigate('/projects/new');
+                  if (isMobile) setMobileOpen(false);
+                }}
               >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </button>
-          </div>
-          {isLoading && projects.length === 0
-            ? // Cold start: hold the list shape with pulsing rows instead of a
-              // blank gap until projects resolve.
-              Array.from({ length: 3 }, (_, i) => (
-                <div className="sidebar__project-skeleton" key={i}>
-                  <Skeleton
-                    variant="circle"
-                    className="sidebar__project-skeleton-icon"
-                  />
-                  {!effectiveCollapsed && (
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+            </div>
+            {isLoading && projects.length === 0
+              ? // Cold start: hold the list shape with pulsing rows instead of a
+                // blank gap until projects resolve.
+                Array.from({ length: 3 }, (_, i) => (
+                  <div className="sidebar__project-skeleton" key={i}>
                     <Skeleton
-                      variant="line"
-                      className="sidebar__project-skeleton-label"
+                      variant="circle"
+                      className="sidebar__project-skeleton-icon"
                     />
-                  )}
-                </div>
-              ))
-            : null}
-          {projects.map((project, index) => {
-            const isActive = selectedProject === project.slug;
-            const liveLanes = liveLanesByProject.get(project.slug) ?? [];
-            return (
-              <ProjectSidebarRow
-                key={`${durableAuthorityNamespace ?? ''}:${isMobile}:${project.slug}`}
-                reorder={rowReorderProps(index)}
-                project={project}
-                isActive={isActive}
-                activeLayout={
-                  isActive
-                    ? ((selectedProjectLayout as string | null) ?? null)
-                    : null
-                }
-                collapsed={effectiveCollapsed}
-                onNavigate={isMobile ? () => setMobileOpen(false) : undefined}
-                accent={accentBySlug.get(project.slug)}
-                liveCount={projectLiveCount(liveLanes)}
-                liveLabel={projectLiveLabel(liveLanes)}
-              />
-            );
-          })}
-          {/* A keyboard reorder is otherwise silent: the rows swap with no
+                    {!effectiveCollapsed && (
+                      <Skeleton
+                        variant="line"
+                        className="sidebar__project-skeleton-label"
+                      />
+                    )}
+                  </div>
+                ))
+              : null}
+            {projects.map((project, index) => {
+              const isActive = selectedProject === project.slug;
+              const liveLanes = liveLanesByProject.get(project.slug) ?? [];
+              return (
+                <ProjectSidebarRow
+                  key={`${durableAuthorityNamespace ?? ''}:${isMobile}:${project.slug}`}
+                  reorder={rowReorderProps(index)}
+                  project={project}
+                  isActive={isActive}
+                  activeLayout={
+                    isActive
+                      ? ((selectedProjectLayout as string | null) ?? null)
+                      : null
+                  }
+                  collapsed={effectiveCollapsed}
+                  onNavigate={isMobile ? () => setMobileOpen(false) : undefined}
+                  accent={accentBySlug.get(project.slug)}
+                  liveCount={projectLiveCount(liveLanes)}
+                  liveLabel={projectLiveLabel(liveLanes)}
+                />
+              );
+            })}
+            {/* A keyboard reorder is otherwise silent: the rows swap with no
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
+            <LazyBoundary
+              key={durableAuthorityNamespace ?? ''}
+              load={loadProjectSidebarBoards}
+              pending={null}
+              componentProps={{
+                collapsed: effectiveCollapsed,
+                isMobile,
+                navigate,
+                activePath: pathname,
+                onAfterNavigate: () => setMobileOpen(false),
+              }}
+            />
+            <span
+              role="status"
+              aria-live="polite"
+              className="sidebar__reorder-status"
+            >
+              {reorderAnnouncement}
+            </span>
+          </div>
+
           <LazyBoundary
-            key={durableAuthorityNamespace ?? ''}
-            load={loadProjectSidebarBoards}
-            pending={null}
+            key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
+            load={loadProjectSidebarFooter}
             componentProps={{
-              collapsed: effectiveCollapsed,
-              isMobile,
-              navigate,
               activePath: pathname,
+              navigate,
+              isMobile,
+              collapsed: effectiveCollapsed,
               onAfterNavigate: () => setMobileOpen(false),
             }}
+            pending={null}
           />
-          <span
-            role="status"
-            aria-live="polite"
-            className="sidebar__reorder-status"
-          >
-            {reorderAnnouncement}
-          </span>
-        </div>
-
-        <LazyBoundary
-          key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
-          load={loadProjectSidebarFooter}
-          componentProps={{
-            activePath: pathname,
-            navigate,
-            isMobile,
-            collapsed: effectiveCollapsed,
-            onAfterNavigate: () => setMobileOpen(false),
-          }}
-          pending={null}
-        />
-      </nav>
+        </nav>
+      </NavigationFocusSnapshot>
     </>
   );
 }

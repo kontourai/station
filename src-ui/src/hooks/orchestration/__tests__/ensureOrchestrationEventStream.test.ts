@@ -43,6 +43,8 @@ import {
 } from '../ensureOrchestrationEventStream';
 import {
   readSequencedLiveEvents,
+  readSequencedLiveFloor,
+  readSequencedLiveTruncation,
   recordSequencedLiveEvent,
 } from '../sequencedLiveEvents';
 import { subscribeSharedOrchestrationStream } from '../sharedStreamListeners';
@@ -313,6 +315,28 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     expect(readSequencedLiveEvents(apiBase)).toEqual([]);
   });
 
+  // A snapshot delivers no events, so a transcript window served before its
+  // cursor may be missing what lies between (see `useActiveChatTranscript`).
+  test('a snapshot records its cursor as the live floor and leaves the truncation mark alone', () => {
+    const apiBase = 'http://api-snapshot-floor';
+    ensureOrchestrationEventStream(apiBase);
+    expect(readSequencedLiveFloor(apiBase)).toBe(0);
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [] }),
+      id: '5000',
+    });
+    expect(readSequencedLiveFloor(apiBase)).toBe(5000);
+    expect(readSequencedLiveTruncation(apiBase)).toBe(0);
+    // A caught-up marker ends a replay, whose events did arrive live.
+    capturedOnMessage()({
+      event: 'orchestration:caughtUp',
+      data: '{}',
+      id: '6000',
+    });
+    expect(readSequencedLiveFloor(apiBase)).toBe(5000);
+  });
+
   test('a replacement stream echoes the known store epoch', async () => {
     const apiBase = 'http://api-epoch-echo';
     ensureOrchestrationEventStream(apiBase);
@@ -328,6 +352,73 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       initialLastEventId: '7',
       headers: { 'X-Station-Stream-Epoch': 'known-epoch' },
     });
+  });
+
+  // An in-place retry carries the cursor but not the epoch, so a different
+  // store whose head is at or past that cursor answers with a replay. The
+  // caught-up marker is the first frame that says which store it was.
+  test('a replay that ends on a different store epoch is replaced by a cursorless stream', () => {
+    mocks.clearConversationActivity.mockClear();
+    applyOrchestrationSnapshot.mockClear();
+    const apiBase = 'http://api-epoch-replay';
+    ensureOrchestrationEventStream(apiBase);
+    const retired = mocks.fetchSSE.mock.results[0]?.value as {
+      close: ReturnType<typeof vi.fn>;
+    };
+    const first = capturedOnMessage();
+    first({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'old-epoch' }),
+      id: '100',
+    });
+    // Control: a marker for the same store replaces nothing.
+    first({
+      event: 'orchestration:caughtUp',
+      data: JSON.stringify({ epoch: 'old-epoch' }),
+      id: '100',
+    });
+    expect(mocks.fetchSSE).toHaveBeenCalledTimes(1);
+    recordSequencedLiveEvent(
+      apiBase,
+      {
+        eventId: 'foreign',
+        method: 'turn.started',
+        provider: 'claude',
+        threadId: 'conversation',
+        turnId: 'foreign',
+        createdAt: '2026-09-24T00:00:00.000Z',
+        prompt: 'foreign',
+      },
+      101,
+    );
+
+    first({
+      event: 'orchestration:caughtUp',
+      data: JSON.stringify({ epoch: 'new-epoch' }),
+      id: '150',
+    });
+
+    expect(mocks.clearConversationActivity).toHaveBeenCalledOnce();
+    expect(readSequencedLiveEvents(apiBase)).toEqual([]);
+    expect(retired.close).toHaveBeenCalledOnce();
+    expect(mocks.fetchSSE).toHaveBeenCalledTimes(2);
+    const replacement = mocks.fetchSSE.mock.calls[1]?.[1] as FetchSseOptions;
+    // No cursor: the old one names a position in the other store.
+    expect(replacement.initialLastEventId).toBeUndefined();
+    expect(replacement.headers).toMatchObject({
+      'X-Station-Stream-Epoch': 'new-epoch',
+    });
+    // Its snapshot repairs what the foreign replay applied.
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'new-epoch' }),
+      id: '150',
+    });
+    expect(applyOrchestrationSnapshot).toHaveBeenLastCalledWith(
+      { sessions: [], epoch: 'new-epoch' },
+      { apiBase, isReconnectFallback: true },
+    );
+    expect(mocks.clearConversationActivity).toHaveBeenCalledOnce();
   });
 
   test('a replay caught-up frame reconciles present-tense session state once', () => {

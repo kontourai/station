@@ -605,7 +605,7 @@ describe('JobFormModal schedule compatibility', () => {
       expect(screen.queryByText(/No Agent named/)).toBeNull();
       expect(screen.queryByLabelText('Loading agents')).toBeNull();
       expect(screen.queryByText('No runnable agents')).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledTimes(1);
     });
 
@@ -621,9 +621,9 @@ describe('JobFormModal schedule compatibility', () => {
 
       render(<JobFormModal onClose={vi.fn()} />);
 
-      const retrying = screen.getByRole('button', { name: 'Trying…' });
+      const retrying = screen.getByRole('button', { name: 'Retrying…' });
       expect((retrying as HTMLButtonElement).disabled).toBe(true);
-      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     });
 
     test('still refuses a new job once the catalog HAS answered and the agent cannot run', () => {

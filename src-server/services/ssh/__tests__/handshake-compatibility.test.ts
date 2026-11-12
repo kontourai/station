@@ -123,6 +123,7 @@ describe('public handshake capability flags (station#1095)', () => {
       coordinatorSession: true,
       sessionPersonReads: true,
       troubleshootPrepare: true,
+      followUpAttachments: true,
     });
   });
 
@@ -168,6 +169,7 @@ describe('public handshake capability flags (station#1095)', () => {
       coordinatorSession: true,
       sessionPersonReads: true,
       troubleshootPrepare: true,
+      followUpAttachments: true,
     });
     for (const buildIdentityField of [
       'build',

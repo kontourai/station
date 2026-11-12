@@ -1,12 +1,23 @@
 import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect } from '@playwright/test';
+import {
+  isProjectTaskRoomAppendReceipt,
+  type ProjectTaskRoomAppendReceipt,
+} from '@kontourai/station-contracts/project-task-room';
+import {
+  type ProjectTaskRoomBrowserRecord,
+  parseProjectTaskRoomBrowserHistory,
+} from '@kontourai/station-contracts/project-task-room-browser';
+import { expect, type Route } from '@playwright/test';
 import {
   seedE2EFirstRunDecision,
   seedE2EUsageTelemetryDisclosure,
 } from '../scripts/run-e2e-suite.mjs';
-import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
+import {
+  e2eOperatorAuthorizationHeaders,
+  readE2EOperatorCredential,
+} from './helpers/e2e-operator-credential';
 import { test } from './helpers/fixture-audit';
 import {
   allocateLiveStation,
@@ -34,6 +45,7 @@ test.describe
         mkdtempSync(join(tmpdir(), 'station-task-recovery-repos-')),
       );
       await startStation(live, true, {
+        deterministicReadiness: false,
         logFile: testInfo.outputPath('station.log'),
       });
       const credential = readE2EOperatorCredential(live.home);
@@ -172,7 +184,7 @@ test.describe
       const repository = join(repositoryRoot, 'uncertain');
       await createRepository(repository, 'reload-uncertain');
       await createProject(page, 'reload-uncertain', repository);
-      await createTaskFromProject(
+      const taskId = await createTaskFromProject(
         page,
         live,
         'reload-uncertain',
@@ -185,26 +197,131 @@ test.describe
         .click();
       const input = page.getByRole('textbox', { name: 'Message the Task' });
       await expect(input).toBeEditable();
-      const bodies: unknown[] = [];
-      const pattern = '**/room/messages';
-      await page.route(pattern, async (route) => {
-        bodies.push(route.request().postDataJSON());
-        const response = await route.fetch();
-        expect(
-          response.ok(),
-          `Room message returned ${response.status()}: ${await response.text()}`,
-        ).toBe(true);
-        if (bodies.length === 1) await route.abort('failed');
-        else await route.fulfill({ response });
-      });
-      try {
-        await input.fill(
-          'One committed message, even when its acknowledgement is lost.',
+      const messageText = `Lost-ack ${taskId}: one committed message.`;
+      const authorization = e2eOperatorAuthorizationHeaders(
+        readE2EOperatorCredential(live.home),
+      );
+      const readMessageIdentity = async () => {
+        const records: ProjectTaskRoomBrowserRecord[] = [];
+        const cursors = new Set<string>();
+        let cursor: string | undefined;
+        for (;;) {
+          const query = new URLSearchParams({ limit: '100' });
+          if (cursor) query.set('cursor', cursor);
+          const response = await page.request.get(
+            `${live.api}/api/tasks/${encodeURIComponent(taskId)}/room/history?${query}`,
+            { headers: authorization },
+          );
+          expect(response.ok()).toBe(true);
+          const envelope: unknown = await response.json();
+          if (
+            !envelope ||
+            typeof envelope !== 'object' ||
+            !('success' in envelope) ||
+            envelope.success !== true ||
+            !('data' in envelope)
+          )
+            throw new Error('Expected an authenticated room history envelope');
+          const history = parseProjectTaskRoomBrowserHistory(envelope.data);
+          if (history?.kind !== 'available')
+            throw new Error('Expected complete available room history');
+          records.push(...history.records);
+          if (!history.hasMore) break;
+          if (!history.nextCursor || cursors.has(history.nextCursor))
+            throw new Error('Room history pagination did not advance');
+          cursors.add(history.nextCursor);
+          cursor = history.nextCursor;
+        }
+        const matching = records.filter(
+          (record) =>
+            record.body.kind === 'human-message' &&
+            record.body.text === messageText,
         );
+        expect(matching).toHaveLength(1);
+        const record = matching[0];
+        if (!record)
+          throw new Error('Committed message is absent from history');
+        expect(record.actor.kind).toBe('human');
+        expect(record.actor.id).toEqual(expect.any(String));
+        return {
+          sequence: record.sequence,
+          actorId: record.actor.id,
+          proposalDigest: record.digests.proposal,
+          occurredAt: record.occurredAt,
+        };
+      };
+      const bodies: unknown[] = [];
+      const serializedBodies: (string | null)[] = [];
+      const receipts: ProjectTaskRoomAppendReceipt[] = [];
+      let beforeLoss:
+        | Awaited<ReturnType<typeof readMessageIdentity>>
+        | undefined;
+      const origins = new Set([
+        new URL(live.api).origin,
+        new URL(live.ui).origin,
+      ]);
+      const messagePath = `/api/tasks/${encodeURIComponent(taskId)}/room/messages`;
+      const pattern = (url: URL) =>
+        origins.has(url.origin) && url.pathname === messagePath;
+      const observeMessage = async (route: Route) => {
+        if (route.request().method() !== 'POST') {
+          await route.continue();
+          return;
+        }
+        try {
+          const body: unknown = route.request().postDataJSON();
+          if (
+            !body ||
+            typeof body !== 'object' ||
+            !('proposalId' in body) ||
+            typeof body.proposalId !== 'string'
+          )
+            throw new Error('Expected the real message proposal');
+          bodies.push(body);
+          serializedBodies.push(route.request().postData());
+          const response = await route.fetch();
+          expect(response.ok()).toBe(true);
+          const envelope: unknown = await response.json();
+          const expectedKind = bodies.length === 1 ? 'committed' : 'duplicate';
+          if (
+            !envelope ||
+            typeof envelope !== 'object' ||
+            !('success' in envelope) ||
+            envelope.success !== true ||
+            !('data' in envelope) ||
+            !envelope.data ||
+            typeof envelope.data !== 'object' ||
+            !('kind' in envelope.data) ||
+            envelope.data.kind !== expectedKind ||
+            !('receipt' in envelope.data) ||
+            !isProjectTaskRoomAppendReceipt(envelope.data.receipt)
+          )
+            throw new Error('Expected the real committed or duplicate receipt');
+          const receipt = envelope.data.receipt;
+          expect(receipt.proposalId).toBe(body.proposalId);
+          receipts.push(receipt);
+          if (bodies.length === 1) {
+            beforeLoss = await readMessageIdentity();
+            expect(beforeLoss.sequence).toBe(receipt.coordinate.seq);
+            await route.abort('failed');
+          } else {
+            expect(receipt).toEqual(receipts[0]);
+            await route.fulfill({ response });
+          }
+        } catch (error) {
+          await route.abort('failed');
+          throw error;
+        }
+      };
+      await page.route(pattern, observeMessage);
+      try {
+        await input.fill(messageText);
         await page.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
           page.getByText(/Message acknowledgement is unavailable/),
         ).toBeVisible();
+        expect(receipts).toHaveLength(1);
+        expect(beforeLoss).toBeDefined();
         page.once('dialog', (dialog) => dialog.accept());
         await page.reload();
         await expect(
@@ -219,16 +336,27 @@ test.describe
         await expect(input).toHaveValue('');
         expect(bodies).toHaveLength(2);
         expect(bodies[1]).toEqual(bodies[0]);
+        expect(serializedBodies[1]).toBe(serializedBodies[0]);
+        expect(receipts).toHaveLength(2);
+        expect(await readMessageIdentity()).toEqual(beforeLoss);
         await expect(
           page
             .getByRole('region', { name: 'Task room conversation' })
-            .getByText(
-              'One committed message, even when its acknowledgement is lost.',
-              { exact: true },
-            ),
+            .getByText(messageText, { exact: true }),
         ).toHaveCount(1);
+        await page.reload();
+        await expect(
+          page
+            .getByRole('region', { name: 'Task room conversation' })
+            .getByText(messageText, { exact: true }),
+        ).toHaveCount(1);
+        expect(await readMessageIdentity()).toEqual(beforeLoss);
+        expect(bodies).toHaveLength(2);
+        await expect(
+          page.getByRole('region', { name: 'Saved Task draft' }),
+        ).toHaveCount(0);
       } finally {
-        if (!page.isClosed()) await page.unroute(pattern);
+        if (!page.isClosed()) await page.unroute(pattern, observeMessage);
       }
     });
   });

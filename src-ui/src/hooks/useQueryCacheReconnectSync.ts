@@ -28,6 +28,14 @@ import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext
 import { invalidatePersistedQueries } from '../lib/queryPersistence';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 
+function wakeLiveStreams(): void {
+  void import('./orchestration/ensureOrchestrationEventStream')
+    .then(({ wakeOrchestrationEventStreams }) =>
+      wakeOrchestrationEventStreams(),
+    )
+    .catch(() => {});
+}
+
 export function useQueryCacheReconnectSync(): void {
   const { status } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -78,6 +86,13 @@ export function useQueryCacheReconnectSync(): void {
       void queryClient.invalidateQueries({
         queryKey: ['scheduler', 'conversation-target-capability'],
       });
+      // The server answers again (or is a new boot): a live stream still
+      // waiting out a backoff from the outage should not sit it out beside
+      // lists this transition is about to refresh. Not on the first
+      // observation, when no stream can be waiting yet. Imported on demand:
+      // the stream module carries the chat event projections, which stay out
+      // of the first-paint bundle (see `App.tsx`).
+      if (previousStatus !== null) wakeLiveStreams();
     }
     if (previousStatus !== 'connected' && status === 'connected') {
       void invalidatePersistedQueries(queryClient);

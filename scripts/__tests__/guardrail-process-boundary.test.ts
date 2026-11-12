@@ -583,6 +583,8 @@ describe('station-vocabulary:gate rejects a retired vocabulary match', () => {
 
 describe('knowledge-kit-import:gate rejects a Kit-internal import', () => {
   const SCRIPT = 'knowledge-kit-import-gate.mjs';
+  // The gate lists its scope through `gitLsFiles` in this sibling module.
+  const LIBS = ['ratchet-utils.mjs'];
   const clean = {
     'src-server/ok.ts': "import { thing } from '@kontourai/flow-agents';\n",
   };
@@ -591,7 +593,7 @@ describe('knowledge-kit-import:gate rejects a Kit-internal import', () => {
     timeout: CASE_TIMEOUT,
   }, () => {
     const result = runGuardrail(
-      scratchRepo({ script: SCRIPT, files: clean }),
+      scratchRepo({ script: SCRIPT, libs: LIBS, files: clean }),
       SCRIPT,
     );
     expect(result.status, result.output).toBe(0);
@@ -605,6 +607,7 @@ describe('knowledge-kit-import:gate rejects a Kit-internal import', () => {
   }, () => {
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: LIBS,
       files: {
         ...clean,
         'src-server/bad.ts':
@@ -624,6 +627,7 @@ describe('knowledge-kit-import:gate rejects a Kit-internal import', () => {
   }, () => {
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: LIBS,
       files: {
         ...clean,
         'src-server/bad.ts':
@@ -638,6 +642,8 @@ describe('knowledge-kit-import:gate rejects a Kit-internal import', () => {
 
 describe('unsaved-guard:gate rejects a native confirm and an un-triaged editor', () => {
   const SCRIPT = 'unsaved-guard-gate.mjs';
+  // The gate lists its scope through `gitLsFiles` in this sibling module.
+  const LIBS = ['ratchet-utils.mjs'];
 
   /**
    * The gate reads every `KNOWN_DIRTY_STATE_EDITORS` entry unconditionally,
@@ -666,7 +672,11 @@ describe('unsaved-guard:gate rejects a native confirm and an un-triaged editor',
   it('accepts the clean tree — the negative control', {
     timeout: CASE_TIMEOUT,
   }, async () => {
-    const dir = scratchRepo({ script: SCRIPT, files: await cleanFiles() });
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: LIBS,
+      files: await cleanFiles(),
+    });
     const result = runGuardrail(dir, SCRIPT);
     expect(result.status, result.output).toBe(0);
     expect(result.stdout).toContain('OK: all ');
@@ -677,6 +687,7 @@ describe('unsaved-guard:gate rejects a native confirm and an un-triaged editor',
   }, async () => {
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: LIBS,
       files: {
         ...(await cleanFiles()),
         'src-ui/src/views/Bad.tsx':
@@ -696,6 +707,7 @@ describe('unsaved-guard:gate rejects a native confirm and an un-triaged editor',
   }, async () => {
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: LIBS,
       files: {
         ...(await cleanFiles()),
         'src-ui/src/views/NewEditor.tsx':
@@ -717,6 +729,7 @@ describe('unsaved-guard:gate rejects a native confirm and an un-triaged editor',
     const victim = Object.keys(files)[0];
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: LIBS,
       files: { ...files, [victim]: 'export const stub = null;\n' },
     });
     const result = runGuardrail(dir, SCRIPT);
@@ -959,6 +972,8 @@ describe('check-mobile-permissions rejects an unreviewed Android permission', ()
 
 describe('font-origin:ratchet rejects an external font origin', () => {
   const SCRIPT = 'font-origin-ratchet.mjs';
+  // The gate lists its scope through `gitLsFiles` in this sibling module.
+  const LIBS = ['ratchet-utils.mjs'];
   // Every SCOPE_SENTINEL must be tracked, or the gate refuses rather than
   // going vacuously green — the scope assertion is part of what is proven.
   const clean = {
@@ -972,7 +987,7 @@ describe('font-origin:ratchet rejects an external font origin', () => {
     timeout: CASE_TIMEOUT,
   }, () => {
     const result = runGuardrail(
-      scratchRepo({ script: SCRIPT, files: clean }),
+      scratchRepo({ script: SCRIPT, libs: LIBS, files: clean }),
       SCRIPT,
     );
     expect(result.status, result.output).toBe(0);
@@ -986,6 +1001,7 @@ describe('font-origin:ratchet rejects an external font origin', () => {
   }, () => {
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: LIBS,
       files: {
         ...clean,
         'src-ui/index.html':
@@ -1007,7 +1023,11 @@ describe('font-origin:ratchet rejects an external font origin', () => {
   }, () => {
     const { 'src-desktop/tauri.conf.json': _dropped, ...withoutSentinel } =
       clean;
-    const dir = scratchRepo({ script: SCRIPT, files: withoutSentinel });
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: LIBS,
+      files: withoutSentinel,
+    });
     const result = runGuardrail(dir, SCRIPT);
     expect(result.status, result.output).toBe(1);
     expect(result.stderr).toContain(

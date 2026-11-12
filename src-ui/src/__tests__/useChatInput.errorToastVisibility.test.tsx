@@ -258,6 +258,31 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     );
   });
 
+  test('a saved draft never replaces what the composer already holds, so a draft longer than its saved copy survives a chat switch', () => {
+    vi.useFakeTimers();
+    const mount = () =>
+      renderHook(
+        () =>
+          useChatInput({
+            apiBase: 'http://station.test',
+            sessionId: SESSION_ID,
+            agentSlug: 'dev-agent',
+            availableModels: [],
+          }),
+        { wrapper },
+      );
+    const longDraft = 'x'.repeat(20_050);
+    const first = mount();
+    act(() => first.result.current.handleInputChange(longDraft));
+    act(() => vi.advanceTimersByTime(500));
+    // The saved copy is capped; the composer still holds every character.
+    expect(chatDraftsStore.get(SESSION_ID)).toHaveLength(20_000);
+    first.unmount();
+    mount();
+    expect(activeChatsStore.getSnapshot()[SESSION_ID]?.input).toBe(longDraft);
+    chatDraftsStore.clear(SESSION_ID);
+  });
+
   test('expands a durable compact file mention at the actual send boundary', async () => {
     const hook = renderHook(
       () =>

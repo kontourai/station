@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { type Context, Hono, type Next } from 'hono';
 import { z } from 'zod';
@@ -39,7 +39,9 @@ import {
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
 import { readWorkspaceDiff } from '../../services/projects/workspace-diff-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import { execGit } from '../../utils/git-exec.js';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   operatorOnly,
@@ -233,26 +235,6 @@ async function discoverRepos(
   return roots;
 }
 
-/** `fn` over `items`, at most `limit` calls in flight, results in order. */
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const index = next;
-        next += 1;
-        results[index] = await fn(items[index] as T);
-      }
-    }),
-  );
-  return results;
-}
-
 /** The `/repos` answer body for one workspace. */
 async function scanWorkspaceRepos(
   projectRoot: string,
@@ -427,7 +409,7 @@ function refusalResponse(c: Context, refusal: CodingGitRefusal): Response {
 }
 
 function isWithin(target: string, root: string): boolean {
-  return target === root || target.startsWith(root + sep);
+  return isCanonicalPathWithin(root, target);
 }
 
 const worktreesByRequest = new WeakMap<
@@ -969,7 +951,14 @@ export function createCodingRoutes(
       );
       if (location instanceof Response) return location;
 
-      const count = Math.min(parseInt(c.req.query('count') || '5', 10), 20);
+      // `git log -<n>` takes the number verbatim: a non-numeric or negative
+      // count falls back to the default instead of reaching git as `-NaN` or
+      // `--5`.
+      const requestedCount = parseInt(c.req.query('count') || '5', 10);
+      const count =
+        Number.isInteger(requestedCount) && requestedCount >= 0
+          ? Math.min(requestedCount, 20)
+          : 5;
       // Non-repo: no commits. git/status drives the "not a git repository"
       // empty state; keep this shape an array for a stable contract.
       return await gitRead(c, location, [], async (repository) => {

@@ -546,12 +546,13 @@ export const APP_SETTINGS_REGISTRY = [
     key: 'knowledgeStores',
     scope: 'station',
     descriptor: { kind: 'boolean' },
-    label: 'Knowledge stores (preview)',
-    help: 'Create the read-only conversation-history Knowledge root at personal Station startup.',
+    label: 'Past conversations in Knowledge',
+    help: 'After a restart, adds past conversations on this Station to Knowledge, searchable after a reindex; turning it off later does not remove them.',
+    // Read once at personal startup (ensureConversationKnowledgeRoot); hosted
+    // startup skips it. Indexing is a separate operator-run rebuild, and
+    // DELETE /api/knowledge/roots refuses this root, so off cannot remove it.
     description:
-      'When enabled, personal Station startup registers root:conversations if absent. Other Knowledge routes do not depend on this flag. Turning it off does not remove an existing root; hosted mode does not register this projection.',
-    // Kept out of the Settings UI; this does not disable the bootstrap consumer.
-    userFacing: false,
+      'Adds past conversations on this Station to Knowledge as a read-only source. They become searchable after a Knowledge reindex, which needs an embedding connection and the Station operator. Off by default because conversation history is personal. Applies after a restart. Turning it off does not remove the source. No effect on a hosted Station.',
     defaultValue: false,
   }),
   defineSetting({
@@ -756,6 +757,21 @@ export const APP_SETTINGS_REGISTRY = [
     // it keeps the generic enum row rendering the value that is in force
     // instead of an empty select that reads as the first option by accident.
     defaultValue: 'connection-default',
+  }),
+  defineSetting({
+    key: 'confinedNetwork',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    label: 'Confined session network',
+    help: 'Restricted, confined sessions reach their model endpoint and the hosts you allow through Station’s broker; their other connections are blocked and reported.',
+    // #4769: read at each start that requires confinement
+    // (orchestration-service `withConfinement`); the operator's own `host`
+    // sessions are never confined. Enforced by the egress broker and the
+    // Seatbelt profile; a mechanism that cannot restrict the network
+    // (bubblewrap, Codex's sandbox) refuses such a start by name.
+    description:
+      'Open by default. Restricted applies only to sessions Station confines (full-access sessions started by someone other than you, on macOS): they reach the engine’s own model endpoint and the listed hosts, through Station’s broker. Such a session that cannot be confined with a restricted network (on Linux, with Codex, or one that would otherwise fall back to Auto) is refused rather than run open. Sessions at Auto or Ask, and your own sessions, are not confined, and their network is not restricted at all.',
+    defaultValue: { mode: 'full' },
   }),
   defineSetting({
     key: 'runtime',

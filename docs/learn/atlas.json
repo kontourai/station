@@ -45,6 +45,7 @@
       ],
       "modules": [
         "Durable Station Agent",
+        "StationOrchestrationInstructions",
         "SessionQueryModule",
         "SessionGoalModule",
         "ConversationSessionLineage",

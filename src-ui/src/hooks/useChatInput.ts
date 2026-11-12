@@ -450,10 +450,9 @@ export function useChatInput({
   useEffect(() => {
     if (!sessionId) return;
     const restored = getDraft(sessionId);
-    if (
-      restored &&
-      activeChatsStore.getSnapshot()[sessionId]?.input !== restored
-    ) {
+    // Only into an empty composer. What the composer already holds is the
+    // newer text, and can be longer than its saved copy, which is capped.
+    if (restored && !activeChatsStore.getSnapshot()[sessionId]?.input) {
       updateChat(sessionId, { input: restored });
     }
   }, [sessionId, getDraft, updateChat]);
@@ -500,6 +499,8 @@ export function useChatInput({
         ambientContext?: string;
         /** Hold this as a follow-up even when the engine can steer. */
         queueOnBusy?: boolean;
+        /** The host holds a queued follow-up's files (`followUpAttachments`). */
+        queueFilesOnBusy?: boolean;
       },
     ) => {
       if (!sessionId || !agentSlug) return;
@@ -660,6 +661,9 @@ export function useChatInput({
               }
             : {}),
           ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          ...(options?.queueOnBusy && options.queueFilesOnBusy
+            ? { queueFilesOnBusy: true }
+            : {}),
           connection,
           onDurable: handOffDraft,
         },

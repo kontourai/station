@@ -6,6 +6,7 @@ import {
   useNotificationsQuery,
 } from '@kontourai/station-sdk';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { nextTabIndex } from '../../utils/tab-navigation';
 
 /** How long a dismissed row stays undoable before it commits. */
 const UNDO_WINDOW_MS = 4000;
@@ -494,7 +495,7 @@ function InboxTabs({
       role="tablist"
       aria-label="Notification lists"
     >
-      {INBOX_TABS.map(({ id, label }) => {
+      {INBOX_TABS.map(({ id, label }, index) => {
         const selected = id === tab;
         return (
           <button
@@ -508,12 +509,14 @@ function InboxTabs({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(id)}
             onKeyDown={(event) => {
-              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
-                return;
-              }
+              const nextIndex = nextTabIndex(
+                index,
+                INBOX_TABS.length,
+                event.key,
+              );
+              if (nextIndex === null) return;
               event.preventDefault();
-              const next = INBOX_TABS.find((candidate) => candidate.id !== id);
-              if (!next) return;
+              const next = INBOX_TABS[nextIndex];
               onChange(next.id);
               document
                 .getElementById(`notification-history-tab-${next.id}`)

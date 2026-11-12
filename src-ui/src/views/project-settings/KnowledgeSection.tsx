@@ -10,11 +10,13 @@ import {
 import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { CheckGlyph, FolderGlyph } from '../../components/icons/Glyph';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
 import { errorText } from '../../utils/errorText';
+import { plural } from '../../utils/plural';
 import type { DocMeta, KnowledgeStatus } from './types';
 import { getKnowledgeTimeAgo } from './utils';
 
@@ -114,6 +116,9 @@ export function KnowledgeSection({ slug }: { slug: string }) {
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<
+    { kind: 'document'; doc: DocMeta } | { kind: 'all'; ids: string[] } | null
+  >(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const docsQuery = useKnowledgeDocsQuery(slug);
@@ -168,6 +173,19 @@ export function KnowledgeSection({ slug }: { slug: string }) {
     setDragOver(false);
     if (!uploading && event.dataTransfer.files.length > 0) {
       void uploadFiles(event.dataTransfer.files);
+    }
+  }
+
+  // The dialog stays open, pending, until the request settles: a refused
+  // removal is reported by the section's own error state behind it.
+  function confirmRemoval() {
+    const removal = pendingRemoval;
+    if (!removal) return;
+    const close = () => setPendingRemoval(null);
+    if (removal.kind === 'document') {
+      deleteMutation.mutate(removal.doc.id, { onSettled: close });
+    } else {
+      clearMutation.mutate(removal.ids, { onSettled: close });
     }
   }
 
@@ -229,7 +247,7 @@ export function KnowledgeSection({ slug }: { slug: string }) {
       {clearMutation.isError && (
         <ErrorState
           variant="compact"
-          title="Could not clear documents"
+          title="Could not remove documents"
           description={errorText(clearMutation.error)}
         />
       )}
@@ -340,8 +358,8 @@ export function KnowledgeSection({ slug }: { slug: string }) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => deleteMutation.mutate(doc.id)}
-                    title="Remove"
+                    onClick={() => setPendingRemoval({ kind: 'document', doc })}
+                    title="Remove document"
                     aria-label={`Remove ${doc.filename}`}
                     disabled={
                       deleteMutation.isPending || clearMutation.isPending
@@ -361,13 +379,39 @@ export function KnowledgeSection({ slug }: { slug: string }) {
           <Button
             variant="danger-outline"
             size="sm"
-            onClick={() => clearMutation.mutate(docs.map((doc) => doc.id))}
-            disabled={clearMutation.isPending}
+            onClick={() =>
+              setPendingRemoval({
+                kind: 'all',
+                ids: docs.map((doc) => doc.id),
+              })
+            }
+            disabled={deleteMutation.isPending || clearMutation.isPending}
           >
-            {clearMutation.isPending ? 'Clearing…' : 'Clear all'}
+            Remove all
           </Button>
         )}
       </div>
+
+      {/* Removing an indexed document is destructive and was a bare click,
+          while Remove layout and Delete Project on this same page confirm. */}
+      <ConfirmModal
+        isOpen={pendingRemoval !== null}
+        variant="danger"
+        title={
+          pendingRemoval?.kind === 'all'
+            ? 'Remove all documents'
+            : 'Remove document'
+        }
+        message={
+          pendingRemoval?.kind === 'all'
+            ? `Remove ${plural(pendingRemoval.ids.length, 'document')} from this project's knowledge? Indexed chunks are deleted too.`
+            : `Remove "${pendingRemoval?.doc.filename ?? ''}" from this project's knowledge? Indexed chunks are deleted too.`
+        }
+        confirmLabel="Remove"
+        pending={deleteMutation.isPending || clearMutation.isPending}
+        onConfirm={confirmRemoval}
+        onCancel={() => setPendingRemoval(null)}
+      />
     </PageSection>
   );
 }

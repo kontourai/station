@@ -12,6 +12,7 @@ import {
   type RelayEnrollmentProofClaims,
   type RelayEnrollmentPublicKey,
 } from '@kontourai/station-contracts/relay-enrollment';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
 
@@ -53,17 +54,8 @@ function parsePublicKey(
   return Object.freeze({ kty: 'EC', crv: 'P-256', x: value.x, y: value.y });
 }
 
-function base64url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
 function encode(value: unknown): string {
-  return base64url(new TextEncoder().encode(JSON.stringify(value)));
+  return encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
 }
 
 async function thumbprint(
@@ -75,7 +67,7 @@ async function thumbprint(
     x: publicKey.x,
     y: publicKey.y,
   });
-  return base64url(
+  return encodeBase64Url(
     new Uint8Array(
       await crypto.subtle.digest(
         'SHA-256',
@@ -187,7 +179,7 @@ export async function createRelayEnrollmentLoginProof(
     purpose: 'login',
     htm: 'POST',
     htu: challenge.requestOrigin + target.pathname,
-    jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
+    jti: encodeBase64Url(crypto.getRandomValues(new Uint8Array(16))),
     iat,
     exp,
   };
@@ -198,7 +190,7 @@ export async function createRelayEnrollmentLoginProof(
     throw new Error(
       'Relay enrollment signer returned an incompatible signature.',
     );
-  return `${signingInput}.${base64url(signature)}`;
+  return `${signingInput}.${encodeBase64Url(signature)}`;
 }
 
 async function createPurposeProof(
@@ -256,7 +248,7 @@ async function createPurposeProof(
     purpose,
     htm: 'POST' as const,
     htu: challenge.requestOrigin + target.pathname,
-    jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
+    jti: encodeBase64Url(crypto.getRandomValues(new Uint8Array(16))),
     iat,
     exp,
     ...bindings,
@@ -267,7 +259,7 @@ async function createPurposeProof(
     throw new Error(
       'Relay enrollment signer returned an incompatible signature.',
     );
-  return `${signingInput}.${base64url(signature)}`;
+  return `${signingInput}.${encodeBase64Url(signature)}`;
 }
 
 /** Proof for approval polling/finalize. A pending response contains no credentials. */
@@ -304,7 +296,7 @@ export async function digestRelayEnrollmentBundle(
         ]),
     );
   };
-  return base64url(
+  return encodeBase64Url(
     new Uint8Array(
       await crypto.subtle.digest(
         'SHA-256',

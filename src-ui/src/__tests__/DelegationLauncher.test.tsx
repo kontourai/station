@@ -752,7 +752,7 @@ describe('DelegationLauncher', () => {
       (screen.getByRole('button', { name: 'Delegate' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(retryDiscovery).toHaveBeenCalledOnce();
   });
 

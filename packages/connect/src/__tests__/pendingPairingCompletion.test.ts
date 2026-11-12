@@ -12,7 +12,10 @@ import {
   type CompletePendingPairing,
   createPendingPairingCompletionLoader,
 } from '../core/pendingPairingCompletionLoader';
-import { claimPendingPairingExchange } from '../core/pendingPairingExchangeJournal';
+import {
+  claimPendingPairingExchange,
+  restoreHeldPairingExchanges,
+} from '../core/pendingPairingExchangeJournal';
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory());
@@ -240,6 +243,60 @@ describe('completePendingPairing interface', () => {
     });
     expect(completePaired).toHaveBeenCalledOnce();
     expect(clearPending).not.toHaveBeenCalled();
+  });
+
+  test('hands the completion owner its own save failure along with the held attempt', async () => {
+    const failure = { title: 'Station update required', message: 'too old' };
+    const { clearPending, complete } = harness();
+
+    await expect(
+      complete(pending(), {
+        completePaired: async () => ({ status: 'failed', failure }),
+      }),
+    ).resolves.toEqual({
+      status: 'indeterminate',
+      pending: expect.objectContaining({ exchangeAttempt: true }),
+      failure,
+    });
+    // Still held: the proof is spent and access did not reach local custody.
+    expect(clearPending).not.toHaveBeenCalled();
+    expect((await restoreHeldPairingExchanges()).held).toHaveLength(1);
+  });
+
+  test('hands over what a throwing completion owner threw, and holds the attempt', async () => {
+    const thrown = new Error('storage quota exceeded');
+    const { clearPending, complete } = harness();
+
+    await expect(
+      complete(pending(), {
+        completePaired: async () => {
+          throw thrown;
+        },
+      }),
+    ).resolves.toEqual({
+      status: 'indeterminate',
+      pending: expect.objectContaining({ exchangeAttempt: true }),
+      failure: thrown,
+    });
+    expect(clearPending).not.toHaveBeenCalled();
+    expect((await restoreHeldPairingExchanges()).held).toHaveLength(1);
+  });
+
+  test('reports no save failure for an attempt held by a lost response', async () => {
+    const exchange = vi
+      .fn<ExchangePendingPairing>()
+      .mockRejectedValue(
+        Object.assign(new Error('network'), { transport: true }),
+      );
+    const { complete } = harness(exchange);
+
+    const completion = await complete(pending(), completionOptions());
+
+    expect(completion).toMatchObject({ status: 'indeterminate' });
+    expect(completion).not.toHaveProperty('failure');
+    // A lost response is never replayed.
+    expect(exchange).toHaveBeenCalledOnce();
+    expect((await restoreHeldPairingExchanges()).held).toHaveLength(1);
   });
 
   test('holds the spent proof when completion observes the shared abort', async () => {
@@ -719,12 +776,71 @@ test('revalidates cancellation and caller authority after the real journal claim
       return result;
     },
   });
+  // Nothing was sent, so the request is intact and the claim is given back:
+  // a hold here would read as "access wasn't saved" and block the next request.
   expect(
     await complete(pending(), {
       signal: controller.signal,
       isCurrent: () => current,
       completePaired,
     }),
-  ).toMatchObject({ status: 'indeterminate' });
+  ).toEqual({ status: 'aborted' });
   expect(exchange).not.toHaveBeenCalled();
+  expect(await restoreHeldPairingExchanges()).toEqual({
+    status: 'available',
+    held: [],
+  });
+  expect(await claimPendingPairingExchange(pending())).toBe('claimed');
+});
+
+test('gives the claim back when the last subscriber leaves between the claim and the send', async () => {
+  const controller = new AbortController();
+  const exchange = vi.fn();
+  const complete = createPendingPairingCompletion({
+    waitUntil: async () => true,
+    now: () => 0,
+    exchange,
+    claimExchange: async (pending, signal) => {
+      const result = await claimPendingPairingExchange(pending, signal);
+      controller.abort();
+      return result;
+    },
+  });
+
+  await expect(
+    complete(pending(), { signal: controller.signal, completePaired }),
+  ).resolves.toEqual({ status: 'aborted' });
+
+  await vi.waitFor(async () =>
+    expect(await restoreHeldPairingExchanges()).toEqual({
+      status: 'available',
+      held: [],
+    }),
+  );
+  expect(exchange).not.toHaveBeenCalled();
+});
+
+test('keeps the attempt held when an unsent claim cannot be given back', async () => {
+  const exchange = vi.fn();
+  let current = true;
+  const complete = createPendingPairingCompletion({
+    waitUntil: async () => true,
+    now: () => 0,
+    exchange,
+    claimExchange: async (pending, signal) => {
+      const result = await claimPendingPairingExchange(pending, signal);
+      current = false;
+      return result;
+    },
+    settleExchange: async () => false,
+  });
+
+  expect(
+    await complete(pending(), { isCurrent: () => current, completePaired }),
+  ).toMatchObject({
+    status: 'indeterminate',
+    pending: { exchangeAttempt: true },
+  });
+  expect(exchange).not.toHaveBeenCalled();
+  expect((await restoreHeldPairingExchanges()).held).toHaveLength(1);
 });

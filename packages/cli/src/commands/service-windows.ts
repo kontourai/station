@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { win32 } from 'node:path';
+import { sleepSync } from './platform.js';
 import type {
   CommandRunner,
   ServiceFs,
@@ -60,10 +61,6 @@ export const WINDOWS_TASK_SETTINGS_EXPECTED = `Priority=${WINDOWS_INTERACTIVE_TA
  */
 export function windowsTaskSettingsObservation(settings: string): string {
   return `('Priority={0}, ExecutionTimeLimit={1}, RestartCount={2}, RestartInterval={3}, DisallowStartIfOnBatteries={4}, StopIfGoingOnBatteries={5}' -f [int]${settings}.Priority, [string]${settings}.ExecutionTimeLimit, [int]${settings}.RestartCount, [string]${settings}.RestartInterval, [bool]${settings}.DisallowStartIfOnBatteries, [bool]${settings}.StopIfGoingOnBatteries)`;
-}
-
-function sleepSynchronously(milliseconds: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
 function xml(value: string): string {
@@ -363,7 +360,7 @@ function waitForWindowsRunning(
       throw new Error('Station Task Scheduler task disappeared after start');
     }
     if (attempt < START_POLL_ATTEMPTS - 1) {
-      (dependencies.sleep ?? sleepSynchronously)(START_POLL_INTERVAL_MS);
+      (dependencies.sleep ?? sleepSync)(START_POLL_INTERVAL_MS);
     }
   }
   const payload = Buffer.from(
@@ -416,7 +413,7 @@ function waitForWindowsStopped(
     }
     if (status.active === false) return;
     if (attempt < START_POLL_ATTEMPTS - 1) {
-      (dependencies.sleep ?? sleepSynchronously)(START_POLL_INTERVAL_MS);
+      (dependencies.sleep ?? sleepSync)(START_POLL_INTERVAL_MS);
     }
   }
   throw new Error(

@@ -41,6 +41,36 @@ const fixture = `
   };
 `;
 
+const discardFixture = `
+  import React from 'react';
+  import {createRoot} from 'react-dom/client';
+  import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+  import {InboxRow} from './src-ui/src/components/chat-dock/ChatDockInboxRows';
+  import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
+  const draft = {
+    id:'draft', kind:'orchestration', kindLabel:'Conversation',
+    orchestrationThreadId:'draft-thread', conversationId:'draft-conversation',
+    title:'Review draft before sending', projectSlug:'station', projectLabel:'Station',
+    agentSlug:'codex', agentLabel:'Codex', provider:'codex',
+    updatedAt:Date.now(), lifecycleLabel:'Draft',
+  };
+  window.fixtureRequestScope = {apiBase:'', authorityKey:'discard-fixture', isCurrent:()=>true};
+  let root;
+  window.mountDiscard = (inDetails) => {
+    root?.unmount();
+    window.discarded = 0;
+    document.body.dataset.theme = document.documentElement.dataset.theme;
+    root = createRoot(document.getElementById('root'));
+    root.render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}>
+      <NavigationProvider><main style={{padding:12}}>
+        <InboxRow item={draft} now={Date.now()} chrome="touch" actionsInDetails={inDetails}
+          isCurrent={false} isSnoozed={false} isOpenChat={false} onActivate={()=>{}}
+          onDraftDiscarded={()=>window.discarded++}/>
+      </main></NavigationProvider>
+    </QueryClientProvider>);
+  };
+`;
+
 const scopeStub: Plugin = {
   name: 'inbox-no-remote-detail-reads',
   setup(build) {
@@ -54,16 +84,30 @@ const scopeStub: Plugin = {
       return { path: real.path, namespace: 'inbox-scope-stub' };
     });
     build.onLoad({ filter: /.*/, namespace: 'inbox-scope-stub' }, (args) => ({
-      contents: `export * from ${JSON.stringify(args.path)}; export const useHostRequestAuthorityScope = () => null;`,
+      contents: `export * from ${JSON.stringify(args.path)}; export const useHostRequestAuthorityScope = () => window.fixtureRequestScope ?? null;`,
       loader: 'tsx',
       resolveDir: dirname(args.path),
     }));
   },
 };
 
-async function swipe(cdp: CDPSession, page: Page, dx: number, dy = 0) {
+async function swipe(
+  cdp: CDPSession,
+  page: Page,
+  dx: number,
+  dy = 0,
+  {
+    name = 'Review the inbox, Station',
+    during,
+    cancel = false,
+  }: {
+    name?: string;
+    during?: () => Promise<void>;
+    cancel?: boolean;
+  } = {},
+) {
   const row = page.getByRole('button', {
-    name: 'Review the inbox, Station',
+    name,
     exact: true,
   });
   const box = await row.boundingBox();
@@ -80,8 +124,9 @@ async function swipe(cdp: CDPSession, page: Page, dx: number, dy = 0) {
       touchPoints: [{ x: x + (dx * step) / 5, y: y + (dy * step) / 5 }],
     });
   }
+  await during?.();
   await cdp.send('Input.dispatchTouchEvent', {
-    type: 'touchEnd',
+    type: cancel ? 'touchCancel' : 'touchEnd',
     touchPoints: [],
   });
 }
@@ -117,7 +162,39 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await mount(page, true);
-    await swipe(cdp, page, -90);
+    const row = page.getByRole('button', {
+      name: 'Review the inbox, Station',
+      exact: true,
+    });
+    const resting = await row.boundingBox();
+    if (!resting) throw new Error('Inbox row did not render');
+    await swipe(cdp, page, -90, 0, {
+      during: async () => {
+        await expect
+          .poll(async () => (await row.boundingBox())?.x)
+          .toBeCloseTo(resting.x - 90, 1);
+        expect(
+          await row.evaluate(
+            (element) => getComputedStyle(element).transitionDuration,
+          ),
+        ).toBe('0s');
+        expect(
+          await page
+            .locator('.inbox-row__swipe-actions')
+            .first()
+            .evaluate(
+              (element) => element instanceof HTMLElement && element.inert,
+            ),
+        ).toBe(true);
+        await mkdir(resolve('.surface/inbox-dismiss-swipe'), {
+          recursive: true,
+        });
+        await page.screenshot({
+          path: resolve('.surface/inbox-dismiss-swipe/dragging-390-dark.png'),
+          animations: 'disabled',
+        });
+      },
+    });
     const rail = page.locator('.inbox-row__swipe-actions').first();
     await rail.waitFor({ state: 'visible' });
     for (const button of await rail.getByRole('button').all()) {
@@ -127,6 +204,15 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     expect(
       await page.evaluate(() => (window as unknown as { opens: number }).opens),
     ).toBe(0);
+    await rail
+      .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
+      .focus();
+    await page.keyboard.press('Escape');
+    expect(
+      await row.evaluate((element) => document.activeElement === element),
+    ).toBe(true);
+    await rail.waitFor({ state: 'hidden' });
+    await swipe(cdp, page, -90);
     await rail
       .getByRole('button', { name: 'Dismiss Review the inbox from inbox' })
       .click();
@@ -147,6 +233,16 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
+    await page.getByRole('menuitem', { name: '1 hour', exact: true }).waitFor();
+    await page.keyboard.press('Escape');
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.activeElement?.getAttribute('aria-label')),
+      )
+      .toBe('Snooze Review the inbox');
+    await rail
+      .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
+      .click();
     await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
     await page.getByRole('button', { name: 'Snoozed · 1' }).click();
     expect(
@@ -157,10 +253,48 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     ).toBe(1);
 
     await mount(page, true);
+    await swipe(cdp, page, -90);
+    await swipe(cdp, page, -90, 0, {
+      name: 'Plan the next release, Station',
+    });
+    expect(await page.locator('.inbox-row--swiped').count()).toBe(1);
+    expect(
+      await page
+        .locator('.inbox-row--swiped')
+        .getByRole('button', {
+          name: 'Plan the next release, Station',
+          exact: true,
+        })
+        .count(),
+    ).toBe(1);
+    await page.getByRole('button', { name: 'Search inbox' }).focus();
+    await expect
+      .poll(() => page.locator('.inbox-row__swipe-actions:visible').count())
+      .toBe(0);
+
+    await swipe(cdp, page, -75, 0, { cancel: true });
+    expect(
+      await page.locator('.inbox-row__swipe-actions:visible').count(),
+    ).toBe(0);
+    expect(
+      await page.evaluate(() => (window as unknown as { opens: number }).opens),
+    ).toBe(0);
+
     await swipe(cdp, page, 0, -80);
     expect(
       await page.locator('.inbox-row__swipe-actions:visible').count(),
     ).toBe(0);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await swipe(cdp, page, -90);
+    expect(
+      await row.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).transitionDuration),
+      ),
+    ).toBeLessThan(0.001);
+    expect(
+      await row.evaluate((element) => getComputedStyle(element).opacity),
+    ).toBe('1');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await mount(page, false);
     await swipe(cdp, page, -90);
     expect(await page.locator('.inbox-row__swipe-actions').count()).toBe(0);
@@ -246,6 +380,97 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
             () => document.documentElement.scrollWidth > innerWidth,
           ),
         ).toBe(false);
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+}, 90_000);
+
+test('draft discard offers a reachable Undo without overflow in touch rows and details sheets', async () => {
+  const { page, browser, errors } = await scrollBrowserFixture(discardFixture, [
+    scopeStub,
+  ]);
+  let commands = 0;
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname === '/api/orchestration/commands'
+    )
+      commands += 1;
+  });
+  try {
+    await page.addStyleTag({
+      content: ['src-ui/src/index.css', 'src-ui/src/components/chat/chat.css']
+        .map((path) => resolveCssImports(resolve(path)))
+        .join('\n'),
+    });
+    const artifacts = resolve('.surface/inbox-dismiss-swipe');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate((theme) => {
+          document.documentElement.dataset.theme = theme;
+        }, theme);
+        for (const inDetails of [false, true]) {
+          await page.evaluate((inDetails) => {
+            const mountDiscard = Reflect.get(window, 'mountDiscard');
+            mountDiscard(inDetails);
+          }, inDetails);
+          if (inDetails) {
+            await page
+              .getByRole('button', {
+                name: 'Details for Review draft before sending',
+              })
+              .click();
+          }
+          const discard = page.getByRole('button', {
+            name: 'Discard draft Review draft before sending',
+            exact: true,
+          });
+          await discard.click();
+          await page
+            .getByText('Draft will be discarded', { exact: true })
+            .waitFor();
+          const undo = page.getByRole('button', {
+            name: 'Undo discard of Review draft before sending',
+            exact: true,
+          });
+          const target = await undo.boundingBox();
+          expect(target).not.toBeNull();
+          expect(target!.width).toBeGreaterThanOrEqual(44);
+          expect(target!.height).toBeGreaterThanOrEqual(44);
+          expect(target!.x).toBeGreaterThanOrEqual(0);
+          expect(target!.x + target!.width).toBeLessThanOrEqual(width);
+          expect(target!.y).toBeGreaterThanOrEqual(0);
+          expect(target!.y + target!.height).toBeLessThanOrEqual(844);
+          expect(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth > innerWidth,
+            ),
+          ).toBe(false);
+          await page.screenshot({
+            path: resolve(
+              artifacts,
+              `discard-${inDetails ? 'sheet-' : ''}${width}-${theme}.png`,
+            ),
+            fullPage: true,
+            animations: 'disabled',
+          });
+          await undo.click();
+          await undo.waitFor({ state: 'hidden' });
+          expect(
+            await page
+              .getByText('Draft will be discarded', { exact: true })
+              .count(),
+          ).toBe(0);
+          expect(
+            await page.evaluate(() => Reflect.get(window, 'discarded')),
+          ).toBe(0);
+          expect(commands).toBe(0);
+        }
       }
     }
     expect(errors).toEqual([]);

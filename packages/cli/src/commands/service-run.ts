@@ -470,7 +470,6 @@ export async function superviseService(
           allowSharedHome: true,
           baseDir: lifecycle.baseDir,
           build: buildIfStale,
-          features: lifecycle.features,
           force: true,
           homeSource: lifecycle.homeSource,
           host: lifecycle.host ?? '127.0.0.1',

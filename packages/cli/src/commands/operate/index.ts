@@ -7,7 +7,7 @@
  * in `shell.ts` — it needs the live `orchestration:snapshot` frame to pick
  * a row from, which isn't available yet at CLI-arg-parsing time here.
  */
-import type { ParsedCoreArgs } from '../core-api.js';
+import { optionalValueFlag, type ParsedCoreArgs } from '../core-api.js';
 import { runOperateShell } from './shell.js';
 
 export async function runOperateCommand(
@@ -20,8 +20,7 @@ export async function runOperateCommand(
     );
   }
 
-  const focusedThreadId =
-    typeof parsed.flags.session === 'string' ? parsed.flags.session : undefined;
+  const focusedThreadId = optionalValueFlag(parsed, 'session');
 
   await runOperateShell({ apiBase, focusedThreadId });
 }

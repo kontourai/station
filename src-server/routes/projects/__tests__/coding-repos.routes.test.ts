@@ -137,6 +137,21 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
     expect(res.json.data.diff).toBe('');
   });
 
+  test.each(['abc', '-5'])(
+    'git log with count=%s reads the default number of commits',
+    async (count) => {
+      // The count used to reach git verbatim, as `-NaN` or `--5`, which git
+      // refuses as an unrecognized argument.
+      const res = await get(
+        `/git/log?projectSlug=w&path=${encodeURIComponent(join(workspace, 'repo-a'))}&count=${encodeURIComponent(count)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.json.success).toBe(true);
+      expect(res.json.data).toHaveLength(1);
+      expect(res.json.data[0].message).toBe('init');
+    },
+  );
+
   test('git branches on a non-repo workspace returns [] (not an error)', async () => {
     const res = await get(
       `/git/branches?projectSlug=w&path=${encodeURIComponent(workspace)}`,

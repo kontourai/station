@@ -713,7 +713,10 @@ socket accepted bytes, not that the device applied the gesture.
 
 Human input follows the shared control lease and stale-epoch/fence checks.
 The station-control `device_*` tools admit a bound, verified agent Session with
-its recorded owner and Project. The operator may use local devices; active
+its recorded owner and Project, except a Session whose network Station
+restricts ([`confinedNetwork`](config.md#optional-fields)): it is not given
+the tools, and the device-agent route refuses it (`device-network-restricted`,
+#4769). The operator may use local devices; active
 Project admins/owners remain limited to devices shared with that Project. Every
 call rechecks this authority and requires the operator to enable agent device
 access in **Settings → Advanced → Browser & devices**. Disabling that opt-in also revokes existing surface grants. The in-process device grant targets one host/device

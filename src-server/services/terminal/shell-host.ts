@@ -66,6 +66,7 @@ export interface HostedShellProcess extends IPtyProcess {
     | 'discard'
     | 'seal'
     | 'append'
+    | 'resize'
     | 'backpressured'
     | 'drained'
   >;

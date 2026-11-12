@@ -25,7 +25,7 @@ export interface ApprovalAnswerReference {
 interface ApprovalAnswerState {
   phase: 'sending' | 'sent' | 'unconfirmed' | 'already-settled';
   decision: 'accept' | 'acceptForSession' | 'decline';
-  sessionGrantScope?: 'server';
+  sessionGrantScope?: 'server' | 'rule';
   error?: Error;
 }
 /**
@@ -217,7 +217,7 @@ export function answerOrchestrationRequest(
     requestId: string;
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
-    sessionGrantScope?: 'server';
+    sessionGrantScope?: 'server' | 'rule';
     requestScope?: ApiRequestScope;
   },
 ): Promise<OrchestrationAnswerOutcome> {
@@ -302,8 +302,11 @@ async function sendAnswer(
     requestId: string;
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
-    /** With `acceptForSession`: widen the grant to the Station browser server. */
-    sessionGrantScope?: 'server';
+    /**
+     * With `acceptForSession`: widen the grant to the Station browser server
+     * (`server`), or narrow it to the suggested Bash prefixes (`rule`).
+     */
+    sessionGrantScope?: 'server' | 'rule';
     requestScope?: ApiRequestScope;
   },
 ): Promise<OrchestrationAnswerOutcome> {

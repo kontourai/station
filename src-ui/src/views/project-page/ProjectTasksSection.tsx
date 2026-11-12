@@ -25,6 +25,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
+import { PageSection } from '../../components/PageSection';
 import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
 import { describeReadFailure, Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
@@ -453,13 +454,24 @@ export function ProjectTasksSection({
   const binding = selectedTask?.workspaceBinding;
 
   return (
-    <section className="project-page__tasks project-tasks-section">
-      <div className="project-page__section-header">
-        <span className="project-page__section-label">Tasks</span>
-        <Button size="sm" onClick={() => void refetchTasks()}>
-          Refresh Tasks
-        </Button>
-      </div>
+    <PageSection
+      className="project-tasks-section"
+      title="Tasks"
+      description="Goals you and your agents are working through in this Project."
+      actions={
+        <>
+          <Button onClick={() => void refetchTasks()}>Refresh Tasks</Button>
+          {starterId !== 'start-task' && (
+            <Button
+              variant="primary"
+              onClick={() => requestTaskShaping({ projectSlug: slug })}
+            >
+              New Task
+            </Button>
+          )}
+        </>
+      }
+    >
       {presentation === 'list' && (
         <nav
           className="project-tasks-section__collections"
@@ -482,14 +494,7 @@ export function ProjectTasksSection({
         </nav>
       )}
 
-      {starterId !== 'start-task' ? (
-        <Button
-          variant="primary"
-          onClick={() => requestTaskShaping({ projectSlug: slug })}
-        >
-          New Task
-        </Button>
-      ) : (
+      {starterId === 'start-task' && (
         <form className="project-page__task-form" onSubmit={createTask}>
           <p role="status">
             Create a focused starter task. Station will link the exact task
@@ -572,7 +577,14 @@ export function ProjectTasksSection({
       <div
         className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ' project-tasks-section__list-layout'}`}
       >
-        <div className="project-page__task-list">
+        <div
+          className={
+            tasksError ||
+            (sortedTasks.length === 0 && providerItems.length === 0)
+              ? 'project-page__task-list project-page__task-list--state'
+              : 'project-page__task-list'
+          }
+        >
           {tasksError ? (
             <ErrorState
               variant="compact"
@@ -585,7 +597,7 @@ export function ProjectTasksSection({
               }
             />
           ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
-            /* empty-state action: task creation form is adjacent */
+            /* empty-state action: New Task sits in the section header */
             <Empty
               variant="compact"
               label="Start a Task"
@@ -923,10 +935,10 @@ export function ProjectTasksSection({
             </>
           ) : (
             /* empty-state action: task selection list is adjacent */
-            <Empty variant="compact" label="Select a task." />
+            <Empty variant="compact" label="Nothing selected" />
           )}
         </div>
       </div>
-    </section>
+    </PageSection>
   );
 }

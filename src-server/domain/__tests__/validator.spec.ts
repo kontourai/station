@@ -265,6 +265,41 @@ describe('App schema validation', () => {
     expect(() => validator.validateAppConfig(config)).not.toThrow();
   });
 
+  it('#4769: refuses a confinedNetwork whose allowed host the broker cannot read, when it is written', () => {
+    const base = {
+      defaultModel: 'claude-sonnet',
+      invokeModel: 'invoke-model',
+      structureModel: 'structure-model',
+    };
+    for (const confinedNetwork of [
+      { mode: 'full' },
+      { mode: 'restricted', allowedHosts: [] },
+      {
+        mode: 'restricted',
+        allowedHosts: ['registry.npmjs.org', '*.github.com:443', '[::1]:8443'],
+      },
+    ])
+      expect(() =>
+        validator.validateAppConfig({ ...base, confinedNetwork }),
+      ).not.toThrow();
+    expect(() =>
+      validator.validateAppConfig({
+        ...base,
+        confinedNetwork: {
+          mode: 'restricted',
+          allowedHosts: ['https://x.com'],
+        },
+      }),
+    ).toThrow(/confinedNetwork: each allowedHosts entry must be/);
+    // The shape itself is the schema's to refuse.
+    expect(() =>
+      validator.validateAppConfig({
+        ...base,
+        confinedNetwork: { mode: 'restricted' },
+      }),
+    ).toThrow();
+  });
+
   // ── archive#1503 delta review, R4 ────────────────────────────────────────
 
   it('LOADS a contribution scope key this version cannot name', () => {

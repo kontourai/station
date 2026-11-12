@@ -1726,7 +1726,19 @@
 
     "src-ui/src/float-over-chat/shownSources.ts",
 
-    "tests/inline-browser-activity.spec.ts"
+    "tests/inline-browser-activity.spec.ts",
+
+    "packages/sdk/src/terminal-view/controller.ts",
+
+    "packages/sdk/src/__tests__/terminal-view/controller.test.ts",
+
+    "scripts/windows-owned-guard.cs",
+
+    "src-server/services/terminal/windows-command-guard.ts",
+
+    "src-server/services/terminal/command-process.ts",
+
+    "src-server/services/terminal/__tests__/command-process.process.test.ts"
   ],
 
   "checks": [

@@ -73,10 +73,6 @@ export function AutoSelectModal<T = any>({
     );
   });
 
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, []);
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -119,7 +115,12 @@ export function AutoSelectModal<T = any>({
             type="text"
             placeholder={placeholder}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              // A new query is a new list: the highlight returns to its
+              // first row instead of pointing past a shorter list.
+              setSelectedIndex(0);
+            }}
             onKeyDown={handleKeyDown}
             className="auto-select-modal__search"
           />

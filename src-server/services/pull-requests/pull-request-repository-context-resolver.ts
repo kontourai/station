@@ -7,6 +7,7 @@ import type {
   PullRequestUnavailableCause,
 } from '@kontourai/station-contracts/pull-request-provider';
 import type { WorkspaceIsolationMetadata } from '@kontourai/station-contracts/workspace-isolation';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -52,26 +53,6 @@ const UMBRELLA_CACHE_TTL_MS = 30_000;
 const UMBRELLA_CACHE_MAX_ENTRIES = 64;
 /** How many `git remote -v` an umbrella lookup runs at once. */
 const UMBRELLA_GIT_CONCURRENCY = 8;
-
-/** `items.map(fn)` with at most `limit` calls in flight, results in order. */
-async function mapBounded<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index] as T);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return results;
-}
 
 const PULL_REQUEST_RESOLVER_GIT_TIMEOUT_MS = 5_000;
 
@@ -341,7 +322,7 @@ export class PullRequestRepositoryContextResolver {
       repository.name.toLowerCase(),
     ]);
     const read = this.deps.readRemotes ?? readCheckoutRemotes;
-    const found = await mapBounded(
+    const found = await mapWithConcurrency(
       entries,
       UMBRELLA_GIT_CONCURRENCY,
       async (name) => {

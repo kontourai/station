@@ -81,9 +81,9 @@ export function InstallPluginModal({
             disabled={installPending || previewPending || !installSource.trim()}
           >
             {installPending
-              ? 'Installing...'
+              ? 'Installing…'
               : previewPending
-                ? 'Validating...'
+                ? 'Validating…'
                 : 'Install'}
           </button>
         </div>

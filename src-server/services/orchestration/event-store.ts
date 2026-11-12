@@ -189,6 +189,10 @@ import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrati
 import { migrateContextSummaryBoundaries } from '../../domain/migrations/026-context-summary-boundaries.js';
 import { TASK_WRITE_BACK_MIGRATION } from '../../domain/migrations/026-task-write-back.js';
 import {
+  ensureWorktreeOutputSettlementOwnerColumn,
+  WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION,
+} from '../../domain/migrations/029-worktree-output-settlements.js';
+import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
@@ -489,6 +493,10 @@ import {
   SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
   SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
 } from './work-item-result-projector.js';
+import {
+  createSqliteWorktreeOutputSettlementStore,
+  type WorktreeOutputSettlementStore,
+} from './worktree-output-settlement-store.js';
 
 const require = createRequire(import.meta.url);
 const logger = createLogger({ name: 'event-store' });
@@ -2690,6 +2698,7 @@ export class EventStore {
   private taskMemory?: TaskMemoryStore;
   private taskReview?: TaskReviewStore;
   private taskWriteBack?: TaskWriteBackStore;
+  private worktreeOutputSettlements?: WorktreeOutputSettlementStore;
   private agentSchedule?: AgentScheduleStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
@@ -3078,6 +3087,9 @@ export class EventStore {
       ensureUsageExportInvalidations(this.db);
       this.db.exec(TASK_REVIEW_MIGRATION);
       this.db.exec(TASK_WRITE_BACK_MIGRATION);
+      // #4771: what became of each worktree Session's output.
+      this.db.exec(WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION);
+      ensureWorktreeOutputSettlementOwnerColumn(this.db);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
       this.db
@@ -5903,6 +5915,17 @@ export class EventStore {
    */
   readAttachmentBlob(ref: string): Buffer | undefined {
     return this.attachmentBlobs.readBytes(ref);
+  }
+
+  /**
+   * Store a queued follow-up's file and return
+   * its content address, or `undefined` when it could not be written. Only
+   * bytes the sender supplied reach here, so the reference proves possession;
+   * placement reads them back through {@link readAttachmentBlob}.
+   */
+  storeQueuedAttachmentBlob(bytes: Buffer): string | undefined {
+    const ref = this.attachmentBlobs.writeBytes(bytes);
+    return ref === attachmentBlobRefFor(bytes) ? ref : undefined;
   }
 
   /**
@@ -11368,20 +11391,8 @@ export class EventStore {
         );
       }
       values.push(options.limit + 1);
-      // Immutable lineage wins. Metadata is a legacy fallback only; public
-      // starts cannot author it because conversationId is reserved.
-      const conversationId = `COALESCE(cs.conversation_id, (
-        SELECT json_extract(e.payload, '$.metadata.conversationId')
-        FROM orchestration_events e
-        WHERE e.thread_id = h.thread_id
-          AND e.method IN ('session.started', 'session.configured')
-          AND json_valid(e.payload)
-          AND json_type(e.payload, '$.metadata.conversationId') = 'text'
-        ORDER BY e.sequence DESC
-        LIMIT 1
-      ), h.thread_id)`;
-      // Environment metadata is likewise server-owned. Empty is the legacy
-      // pre-environment namespace, never a caller-selected scope.
+      const conversationId = 'cs.conversation_id';
+      // Environment identity is server-owned, independent of the requesting client.
       const environmentId = `COALESCE((
         SELECT json_extract(e.payload, '$.metadata.environmentId')
         FROM orchestration_events e
@@ -11431,7 +11442,7 @@ export class EventStore {
                     FIRST_VALUE(h.title_source) OVER meaningful
                       AS meaningful_title_source
              FROM orchestration_conversation_history h
-             LEFT JOIN orchestration_conversation_sessions cs
+             JOIN orchestration_conversation_sessions cs
                ON cs.session_id = h.thread_id
              WHERE ${memberPredicates.join(' AND ')}
              WINDOW meaningful AS (
@@ -11574,7 +11585,6 @@ export class EventStore {
    * execution sessions, in lineage order (#4266). A handoff to another engine
    * is a lineage session too, so it appears once that session exists; a
    * reserved handoff whose session never started ran nothing and is absent.
-   * A legacy conversation with no lineage rows is its own single session.
    */
   readConversationExecutionProviders(
     conversationIds: readonly string[],
@@ -11590,18 +11600,9 @@ export class EventStore {
            FROM orchestration_conversation_sessions m
            JOIN provider_session_state s ON s.thread_id = m.session_id
            WHERE m.conversation_id IN (${placeholders})
-           UNION ALL
-           SELECT s.thread_id AS conversationId, s.provider AS provider,
-                  -1 AS ordinal
-           FROM provider_session_state s
-           WHERE s.thread_id IN (${placeholders})
-             AND NOT EXISTS (
-               SELECT 1 FROM orchestration_conversation_sessions x
-               WHERE x.conversation_id = s.thread_id
-             )
            ORDER BY conversationId, ordinal`,
         )
-        .all(...chunk, ...chunk) as Array<{
+        .all(...chunk) as Array<{
         conversationId: string;
         provider: string;
       }>;
@@ -11621,27 +11622,16 @@ export class EventStore {
   }): string | undefined {
     const row = this.db
       .prepare(
-        `SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
-         FROM orchestration_events e
-         LEFT JOIN orchestration_conversation_sessions cs
-           ON cs.session_id = e.thread_id
-         WHERE e.method IN ('session.started', 'session.configured', 'turn.started')
+        `WITH candidates(thread_id) AS (
+           SELECT session_id FROM orchestration_conversation_sessions
+           WHERE conversation_id = ?
+         )
+         SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
+         FROM orchestration_events e INDEXED BY idx_events_accepted_model
+         WHERE e.thread_id IN (SELECT thread_id FROM candidates)
+           AND e.method IN ('session.started', 'session.configured', 'turn.started')
            AND json_valid(e.payload)
            AND json_type(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') = 'text'
-           AND COALESCE(
-             cs.conversation_id,
-             (
-               SELECT json_extract(identity_event.payload, '$.metadata.conversationId')
-               FROM orchestration_events identity_event
-               WHERE identity_event.thread_id = e.thread_id
-                 AND identity_event.method IN ('session.started', 'session.configured')
-                 AND json_valid(identity_event.payload)
-                 AND json_type(identity_event.payload, '$.metadata.conversationId') = 'text'
-               ORDER BY identity_event.sequence DESC
-               LIMIT 1
-             ),
-             e.thread_id
-           ) = ?
            AND COALESCE((
              SELECT json_extract(environment_event.payload, '$.metadata.environmentId')
              FROM orchestration_events environment_event
@@ -16400,6 +16390,13 @@ export class EventStore {
   taskWriteBackStore(): TaskWriteBackStore {
     this.taskWriteBack ??= createSqliteTaskWriteBackStore(this.db);
     return this.taskWriteBack;
+  }
+
+  /** #4771: one outcome per worktree Session. Authority is the caller's. */
+  worktreeOutputSettlementStore(): WorktreeOutputSettlementStore {
+    this.worktreeOutputSettlements ??=
+      createSqliteWorktreeOutputSettlementStore(this.db);
+    return this.worktreeOutputSettlements;
   }
 
   taskReviewStore(): TaskReviewStore {

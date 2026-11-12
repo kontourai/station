@@ -1249,6 +1249,11 @@ const STATION_CONTROL_REFUSAL_CODES = [
    * `reason` says which ({@link StationControlOutOfScopeReason}).
    */
   'station_control_out_of_scope',
+  /**
+   * #4769: a session whose network Station restricts calls a tool withheld
+   * from such sessions (`RESTRICTED_NETWORK_STATION_CONTROL_TOOLS`).
+   */
+  'station_control_network_restricted',
 ] as const;
 export type StationControlRefusalCode =
   (typeof STATION_CONTROL_REFUSAL_CODES)[number];
@@ -1323,6 +1328,8 @@ const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
     "An agent may not choose the approval mode of a Session it starts or continues. Send the request without one. Without an approval mode, the Session uses the conversation's recorded mode, else the Agent's saved default, else this Station's default. Ask the person to change the mode in Station if it needs to differ.",
   // The copy when the reason is not known (the spawn-side recheck, whose
   // refusal crosses the dispatch as a code only).
+  station_control_network_restricted:
+    "This Session's network is restricted, and this tool would have Station act outside its sandbox for it (a device, Station's browser or preview, another Session, or an operator setting). Ask the person to do it in Station.",
   station_control_out_of_scope:
     'That Session would run outside your own scope, or its folder is no longer the one Station admitted. An agent that Station does not host in-process may start or steer Sessions only in its own Project (or, from the global space, only in the global space), on this Station, and never one that runs unconfined. To start a new Session in your own Project, omit projectSlug and projectPath; otherwise ask the person to do it in Station.',
 };
@@ -1670,6 +1677,8 @@ const REFUSAL_STAGE: Record<StationControlRefusalCode, number> = {
   // table.
   station_control_posture_not_allowed: 5,
   station_control_out_of_scope: 5,
+  // #4769: decided by the guard after the table, never by it.
+  station_control_network_restricted: 6,
 };
 
 // ── route matching ─────────────────────────────────────────────────────────
@@ -1972,4 +1981,145 @@ export function stationControlToolPolicy(
   return Object.hasOwn(STATION_CONTROL_TOOL_POLICY, toolName)
     ? STATION_CONTROL_TOOL_POLICY[toolName as StationControlToolName]
     : undefined;
+}
+
+/**
+ * #4769: the station-control tools a session whose network Station restricts
+ * may use. An allow-list, so a tool added later is withheld until it is
+ * classified here. Each is a read, or a change to Station's own records
+ * (boards, claims, wake-ups, Task records, knowledge records), or an action a
+ * person completes or approves (`terminal_run`, `propose_job`,
+ * `propose_plugin_install`), or a notice to the person (`notify_user`).
+ *
+ * Withheld, because Station would act outside the session's sandbox for it:
+ * the device tools (a simulator, emulator or phone with its own network);
+ * `html_render` and `html_preview` (Station's Chromium); starting, steering
+ * or reading other sessions (`send_message`, `delegate_task`,
+ * `fork_conversation`, `run_independent_review` and the Task tools), whose
+ * own network the policy does not decide; and the operator-scope changes a
+ * session acting for the operator could otherwise make (`update_config`,
+ * Agents, skills, jobs, integrations, providers, plugins, SSH environments,
+ * knowledge reindexing and migration, pull-request guides).
+ */
+export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
+  new Set<StationControlToolName>([
+    'list_agents',
+    'get_agent',
+    'list_conversations',
+    'get_conversation_messages',
+    'read_conversation',
+    'delete_conversation',
+    'search_conversations',
+    'list_active_work',
+    'search_sessions',
+    'rename_session',
+    'board_pin',
+    'board_unpin',
+    'board_move',
+    'list_personal_boards',
+    'get_personal_board',
+    'propose_personal_board',
+    'board_read',
+    'list_skills',
+    'list_registry_skills',
+    'track_skill_run',
+    'record_skill_outcome',
+    'get_review_request',
+    'list_review_receipts',
+    'get_review_receipt',
+    'list_jobs',
+    'coordinator_picture_read',
+    'coordinator_picture_update',
+    'schedule_wake_up',
+    'list_wake_ups',
+    'cancel_wake_up',
+    'propose_job',
+    'terminal_run',
+    'terminal_read',
+    'list_scheduler_providers',
+    'get_scheduler_stats',
+    'get_scheduler_status',
+    'preview_schedule',
+    'get_job_logs',
+    'system_status',
+    'list_models',
+    'read_logs',
+    'read_monitoring_events',
+    'get_troubleshoot_playbook',
+    'draft_troubleshoot_report',
+    'navigate_to',
+    'list_projects',
+    'get_project',
+    'list_project_layouts',
+    'wait_session',
+    'list_walkthroughs',
+    'get_walkthrough',
+    'list_project_activity',
+    'get_session_digest',
+    'claim_work',
+    'renew_claim',
+    'release_claim',
+    'get_config',
+    'get_usage',
+    'get_achievements',
+    'search_knowledge',
+    'list_knowledge_roots',
+    'list_project_s3_sources',
+    'list_project_s3_objects',
+    'read_project_s3_object',
+    'list_knowledge_records',
+    'get_knowledge_record',
+    'add_knowledge_record',
+    'list_integrations',
+    'get_integration',
+    'list_registry_integrations',
+    'list_providers',
+    'list_plugins',
+    'propose_plugin_install',
+    'validate_plugin',
+    'check_plugin_updates',
+    'get_answer_assessment_target',
+    'publish_answer_assessment',
+    'remove_answer_assessment',
+    'get_basis',
+    'get_task_basis',
+    'get_session_inventory',
+    'read_pull_request_guide',
+    'declare_pull_request',
+    'get_task_brief',
+    'task_summary_update',
+    'task_record',
+    'task_thread_list',
+    'task_thread_reply',
+    'task_thread_resolve',
+    'notify_user',
+    'workload_status',
+  ]);
+
+/**
+ * #4769: the station-control tools to serve a restricted session: the
+ * allow-list, narrowed to `selected` when the Agent selected tools.
+ */
+export function restrictedNetworkStationControlTools(
+  selected?: readonly string[],
+): string[] {
+  return (selected ?? Object.keys(STATION_CONTROL_TOOL_POLICY)).filter((name) =>
+    RESTRICTED_NETWORK_STATION_CONTROL_TOOLS.has(name),
+  );
+}
+
+/**
+ * #4769: whether a restricted session may reach `method` `path`: refused
+ * when every tool that owns the route is withheld from such a session. A
+ * route no tool owns is left to the other rules.
+ */
+export function restrictedNetworkRouteWithheld(
+  method: string,
+  path: string,
+): boolean {
+  const match = matchStationControlRoute(method, path);
+  if (!match || match.owners.length === 0) return false;
+  return match.owners.every(
+    (owner) => !RESTRICTED_NETWORK_STATION_CONTROL_TOOLS.has(owner),
+  );
 }

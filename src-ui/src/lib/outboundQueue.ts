@@ -13,7 +13,9 @@ import { describeStationFailure } from '../utils/stationFailure';
  * Terminal reconciliation is exact `(sessionId, providerTurnId)` only. Its
  * one-shot terminal evidence is part of the same locked queue state as the
  * accepted row, so tabs cannot consume another session's evidence or race a
- * second terminal mutation.
+ * second terminal mutation. A browser that was away for the terminal settles
+ * the accepted row from the server's conversation record instead, which
+ * names the open turn exactly (`completeAcceptedTurnsNotOpen`).
  */
 
 import {
@@ -25,6 +27,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, promisifyRequest, set, update } from 'idb-keyval';
 import type { ChatStationBindingV1 } from '../connections/station-connection';
 import type { FileAttachment } from '../types';
+import { registerAcceptedTurnSettler } from './outboundAcceptedTurnObservations';
 import { requestPersistentStorage } from './persistentStorage';
 
 export type OutboundDispatchStatus =
@@ -282,6 +285,22 @@ export interface OutboundDispatchModule {
     providerTurnId: string,
     station?: OutboundStationIdentity,
   ): Promise<void>;
+  /**
+   * The other way an accepted row leaves, for a browser that never receives
+   * its terminal event (it was reloaded, closed or cut off while the turn
+   * ran). `records` are the server's own conversation records as this
+   * renderer read them at `observedAt`, each naming the conversation's open
+   * turn exactly. An accepted row recorded before then, whose conversation's
+   * record names another open turn or none, has ended and is settled as its
+   * terminal would settle it. A row whose turn is still the open one, whose
+   * conversation has no record here, or that was accepted after the read is
+   * left for its terminal.
+   */
+  completeAcceptedTurnsNotOpen(
+    records: readonly { conversationId: string; openTurnId?: string }[],
+    observedAt: number,
+    station?: OutboundStationIdentity,
+  ): Promise<void>;
   discard(
     clientTurnId: string,
     station?: OutboundStationIdentity,
@@ -328,7 +347,8 @@ export interface OutboundDispatchModule {
    * `not-received` → pending (sent again with the SAME key), `started` →
    * removed (delivered), `received`/`queued` → left to ask again later,
    * `indeterminate`/`expired` → may-have-started (never resent). A lookup
-   * that fails three times pauses in may-have-started. Returns how many rows Station still
+   * that fails three times pauses in may-have-started; one that throws
+   * `OutboundLookupPausedError` ends the pass uncounted. Returns how many rows Station still
    * reports as received or queued and failed lookups still unresolved, so the caller can
    * ask again with backoff.
    */
@@ -526,6 +546,19 @@ export type OutboundDeliveryLookup = (
     }
 >;
 
+/**
+ * Thrown by a delivery lookup its caller stopped before Station could answer
+ * (the window was hidden, the browser went offline, the connection was lost).
+ * Nothing was learned about the row, so `reconcile` ends its pass without
+ * counting a failed lookup.
+ */
+export class OutboundLookupPausedError extends Error {
+  constructor() {
+    super('Automatic delivery observation paused');
+    this.name = 'OutboundLookupPausedError';
+  }
+}
+
 /** The live send's hold on its own row; see `beginLive`. */
 export interface LiveOutboundDispatch {
   readonly clientTurnId: string;
@@ -604,7 +637,8 @@ export interface OutboundQueueStorage {
 /**
  * One readwrite transaction over the queue's object store: both keys are
  * read, the updater decides, and both are put before the transaction
- * commits. An updater that throws writes nothing.
+ * commits. An updater that throws writes nothing, and a value it hands back
+ * untouched is not put again.
  */
 export function updateRecordAndRetired(
   objectStore: Pick<IDBObjectStore, 'get' | 'put' | 'transaction'>,
@@ -622,7 +656,9 @@ export function updateRecordAndRetired(
       if (pending > 0) return;
       try {
         const next = updater(record.result, retired.result);
-        objectStore.put(next.record, STORAGE_KEY);
+        // A record handed back untouched (a read) is not written again.
+        if (next.record !== record.result)
+          objectStore.put(next.record, STORAGE_KEY);
         if (next.retired !== retired.result)
           objectStore.put(next.retired, RETIRED_STORAGE_KEY);
         resolve(promisifyRequest(objectStore.transaction));
@@ -1443,7 +1479,9 @@ async function mutateState<T>(
       changed = outcome.changed;
       const nextRetired = outcome.state.retired ?? retired;
       return {
-        record: persisted(outcome.state),
+        // Unchanged (every read of the queue is one): the stored record is
+        // handed back as it was, so the transaction puts nothing.
+        record: changed ? persisted(outcome.state) : stored,
         retired: nextRetired === retired ? storedRetired : nextRetired,
       };
     });
@@ -2388,6 +2426,67 @@ async function completeAcceptedTurn(
   });
 }
 
+async function completeAcceptedTurnsNotOpen(
+  records: readonly { conversationId: string; openTurnId?: string }[],
+  observedAt: number,
+  station = currentStation,
+): Promise<void> {
+  const openTurnOf = new Map(
+    records.map((record) => [record.conversationId, record.openTurnId]),
+  );
+  const ended = (entry: QueuedOutboundTurn) => {
+    const conversationId = entry.conversationId ?? entry.sessionId;
+    return (
+      entry.status === 'accepted' &&
+      sameOwner(entry, { station }) &&
+      // Accepted before the record was read: a record read first cannot
+      // know this turn.
+      (entry.lastAttemptAt ?? entry.createdAt) < observedAt &&
+      openTurnOf.has(conversationId) &&
+      openTurnOf.get(conversationId) !== entry.providerTurnId
+    );
+  };
+  // Every snapshot comes here, and nearly always finds nothing to settle.
+  if (!(await readStored()).some(ended)) return;
+  await mutateState((state) => {
+    const settled = state.turns.filter(ended);
+    if (settled.length === 0)
+      return { state, result: undefined, changed: false };
+    const same = (candidate: TerminalEvidence) =>
+      settled.some(
+        (entry) =>
+          sameOwner(candidate, entry) &&
+          candidate.sessionId === entry.sessionId &&
+          candidate.providerTurnId === entry.providerTurnId,
+      );
+    // The same bounded tombstone a terminal leaves, so that turn's own
+    // terminal, arriving late, is not kept as evidence for a later row.
+    const completedTerminals = [
+      ...state.completedTerminals.filter((candidate) => !same(candidate)),
+      ...settled.map((entry) => ({
+        station: entry.station,
+        sessionId: entry.sessionId,
+        providerTurnId: entry.providerTurnId!,
+        observedAt: Date.now(),
+      })),
+    ]
+      .sort((left, right) => right.observedAt - left.observedAt)
+      .slice(0, TERMINAL_EVIDENCE_MAX_ENTRIES);
+    return {
+      state: {
+        ...state,
+        turns: state.turns.filter((entry) => !settled.includes(entry)),
+        terminalEvidence: state.terminalEvidence.filter(
+          (candidate) => !same(candidate),
+        ),
+        completedTerminals,
+      },
+      result: undefined,
+      changed: true,
+    };
+  });
+}
+
 async function reconcileAcceptedTerminals(): Promise<void> {
   await mutateState((state) => {
     const matches = (evidence: TerminalEvidence, turn: QueuedOutboundTurn) =>
@@ -2842,6 +2941,9 @@ async function reconcile(
     try {
       outcome = await askStation(row, lookup);
     } catch (error) {
+      // The caller stopped observing, here and for every row after this one:
+      // Station was not asked, so no lookup of it failed.
+      if (error instanceof OutboundLookupPausedError) break;
       failure = error instanceof Error ? error.message : String(error);
     }
     if (!outcome) {
@@ -3153,6 +3255,7 @@ export const outboundDispatch: OutboundDispatchModule = {
   subscribeRemoteChange,
   flush,
   completeAcceptedTurn,
+  completeAcceptedTurnsNotOpen,
   discard,
   dismissUnconfirmed,
   rowStatus: async (clientTurnId, station = currentStation, conversationId) =>
@@ -3221,6 +3324,15 @@ export function _setOutboundQueueStorage(
   drainInFlight.clear();
   liveClaimOf.clear();
 }
+
+// The stream snapshot publishes what the server reports open; this module
+// settles from it, including what was published before it loaded.
+registerAcceptedTurnSettler(({ records, observedAt, station }) => {
+  void completeAcceptedTurnsNotOpen(records, observedAt, station).catch(() => {
+    // The row stays as it was, for its terminal event or the next snapshot;
+    // the outbox reports its own storage outage.
+  });
+});
 
 /** Test-only: drop the cross-tab channel so one test's stub cannot outlive it. */
 export function _resetOutboundQueueChangeChannel(): void {

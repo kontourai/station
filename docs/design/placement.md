@@ -46,8 +46,11 @@ This source contract does not renew browser or native geometry qualification.
 ## Mobile tool navigation (2026-10-27)
 
 On a phone, the Coding workbench replaces its trailing icon rail and breadcrumb
-with a compact header: Inbox on Chat, Chat when a tool is open, and the current
-tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
+with a compact header. On the Chat page the workbench bar takes no row: the
+tool picker (glyph and caret, named for a screen reader) leads the chat's own
+mobile header, whose Inbox button already returns to the inbox, and Open
+Browser stays in the picker's list. With a tool open, the bar returns with
+Chat and the tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
 It lists Chat and the host's pane instances in the layout's declared order,
 including added panes, changed-file counts, the Browser launcher when available,
 and Add tool when the host can open its catalog. Choosing a pane uses the same
@@ -898,6 +901,9 @@ remains for an engine whose control cell is not wired.
 **Amended 2026-10-14.** Subagents also appear as inline chat transcript
 cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
 sit after their spawning tool-call run, including every child of a workflow.
+A spawning call drawn as its card leaves that run. Claude's background shell
+commands are child work of kind `command` or `monitor` (`childWorkKindOf`),
+drawn as command cards and rows rather than as subagents.
 When an engine such as Codex reports a child without a tool-call row, the
 card uses the child's parent turn and the spawn event's text position.
 That position counts the narration a settled phone turn folds into its tool

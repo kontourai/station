@@ -120,8 +120,10 @@ indentation from the dash, a keyed one from the key. A JavaScript regular-expres
 literal that contains a quote can still hide the rest of its line. A Markdown file that discusses the markers must put its examples in
 code spans or fences.
 
-There is no declared flag registry: Station reads `STATION_FEATURES` and
-tests it for literal flag names. The markers check follows every read to its
+There is no declared flag registry. Station reads no `STATION_FEATURES` flag
+today ([#3909](https://github.com/kontourai/station/issues/3909) retired the
+last one); a flag would be read from that variable and tested for literal flag
+names. The markers check follows every read to its
 membership tests: on the read itself, through a `const` list, or through an
 unexported function that returns the list. A read in any other shape
 (destructuring `process.env` under any key spelling, aliasing the list,

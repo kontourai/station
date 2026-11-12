@@ -337,13 +337,13 @@ describe('local UI access readiness wait', () => {
     const { observation: port } = observation(['host-unavailable'], {
       reloadAfterHostRecovery: async () => {
         throw new Error(
-          'the access gate\'s host-recovery screen offered no "Try again" control',
+          'the access gate\'s host-recovery screen offered no "Retry" control',
         );
       },
     });
 
     await expect(waitForLocalUiAccessReadinessThrough(port)).rejects.toThrow(
-      'the access gate\'s host-recovery screen offered no "Try again" control',
+      'the access gate\'s host-recovery screen offered no "Retry" control',
     );
   });
 

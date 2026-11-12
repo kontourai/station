@@ -1109,7 +1109,7 @@ export function JoinDevicePairingPanel({
             {requestingAccess
               ? 'Sending request…'
               : error
-                ? 'Try again'
+                ? 'Retry'
                 : 'Request access'}
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>

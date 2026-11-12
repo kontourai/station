@@ -11,11 +11,22 @@ const box = vi.hoisted(() => ({
 const fetchHistorical = vi.hoisted(() => vi.fn());
 const sse = vi.hoisted(() => ({
   onMessage: undefined as ((event: { data: string }) => void) | undefined,
+  onOpen: undefined as (() => void) | undefined,
+  onError: undefined as ((error: unknown) => void) | undefined,
 }));
 const fetchSSE = vi.hoisted(() =>
   vi.fn(
-    (_url: string, options?: { onMessage?: (e: { data: string }) => void }) => {
+    (
+      _url: string,
+      options?: {
+        onMessage?: (e: { data: string }) => void;
+        onOpen?: () => void;
+        onError?: (error: unknown) => void;
+      },
+    ) => {
       sse.onMessage = options?.onMessage;
+      sse.onOpen = options?.onOpen;
+      sse.onError = options?.onError;
       return { close: vi.fn() };
     },
   ),
@@ -581,4 +592,116 @@ test('a bounded hydration discloses truncation and a live insertion does not re-
   expect(timeReads).toBeLessThan(20);
   mounted.unmount();
   box.truncated = false;
+});
+
+/*
+ * The stream's liveness is judged against the last heartbeat. That stamp was
+ * set once, when the store was built, so time spent away from the view counted
+ * as silence on a connection that had only just opened; and a heartbeat that
+ * did arrive never took the status back from "error".
+ *
+ * Fake timers, so no `waitFor` here (see the note above): every step is
+ * driven and asserted inside `act`.
+ */
+describe('MonitoringContext live stream status', () => {
+  const heartbeat = {
+    data: JSON.stringify({ 'station.system.type': 'heartbeat' }),
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  test('time away from the view is not counted as heartbeat silence', async () => {
+    vi.useFakeTimers();
+    fetchHistorical.mockResolvedValue([]);
+    box.apiBase = 'https://monitoring-status-remount.example.test';
+
+    const first = renderHook(() => useMonitoring(), { wrapper });
+    await act(async () => sse.onOpen?.());
+    expect(first.result.current.connectionStatus).toBe('connected');
+    first.unmount();
+
+    await act(async () => vi.advanceTimersByTime(61_000));
+
+    const returned = renderHook(() => useMonitoring(), { wrapper });
+    await act(async () => sse.onOpen?.());
+    expect(returned.result.current.connectionStatus).toBe('connected');
+    // The first liveness check after the return: the new connection is ten
+    // seconds old and owes no heartbeat yet.
+    await act(async () => vi.advanceTimersByTime(10_000));
+    expect(returned.result.current.connectionStatus).toBe('connected');
+    returned.unmount();
+  });
+
+  test('a heartbeat restores "connected" after a stale stretch', async () => {
+    vi.useFakeTimers();
+    fetchHistorical.mockResolvedValue([]);
+    box.apiBase = 'https://monitoring-status-heartbeat.example.test';
+
+    const mounted = renderHook(() => useMonitoring(), { wrapper });
+    await act(async () => sse.onOpen?.());
+    // Control: a stream that really is silent for over a minute is reported.
+    await act(async () => vi.advanceTimersByTime(70_000));
+    expect(mounted.result.current.connectionStatus).toBe('error');
+
+    await act(async () => sse.onMessage?.(heartbeat));
+    expect(mounted.result.current.connectionStatus).toBe('connected');
+    mounted.unmount();
+  });
+});
+
+/*
+ * The historical read ran once per stream object, so events recorded while
+ * the stream was reconnecting were in neither source: the list returned to
+ * "connected" with a hole in it.
+ */
+describe('MonitoringContext live stream reconnect', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('a re-open after an error re-reads the window the stream started from', async () => {
+    fetchHistorical.mockResolvedValueOnce(event('before the drop'));
+    box.apiBase = 'https://monitoring-reconnect-gap.example.test';
+
+    const mounted = renderHook(() => useMonitoring(), { wrapper });
+    await waitFor(() => expect(mounted.result.current.events).toHaveLength(1));
+    const firstStart = fetchHistorical.mock.calls[0][0] as Date;
+    const firstEnd = fetchHistorical.mock.calls[0][1] as Date;
+
+    // Control: the first open follows no error, so it re-reads nothing.
+    act(() => sse.onOpen?.());
+    expect(fetchHistorical).toHaveBeenCalledTimes(1);
+
+    act(() =>
+      sse.onMessage?.({ data: JSON.stringify(event('live arrival')[0]) }),
+    );
+    act(() => sse.onError?.(new Error('socket closed')));
+    expect(mounted.result.current.connectionStatus).toBe('error');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    fetchHistorical.mockResolvedValueOnce([
+      ...event('before the drop'),
+      ...event('during the drop'),
+    ]);
+    act(() => sse.onOpen?.());
+    expect(mounted.result.current.connectionStatus).toBe('connected');
+    expect(fetchHistorical).toHaveBeenCalledTimes(2);
+    // Same start (the snapshot replaces the list, so a later start would drop
+    // what the first read supplied); the end moves to now to cover the gap.
+    const [reopenStart, reopenEnd] = fetchHistorical.mock.calls[1] as [
+      Date,
+      Date,
+    ];
+    expect(reopenStart.getTime()).toBe(firstStart.getTime());
+    expect(reopenEnd.getTime()).toBeGreaterThan(firstEnd.getTime());
+
+    await waitFor(() => expect(mounted.result.current.events).toHaveLength(3));
+    expect(
+      mounted.result.current.events.map((entry) => entry.timestamp).sort(),
+    ).toEqual(['before the drop', 'during the drop', 'live arrival']);
+    mounted.unmount();
+  });
 });

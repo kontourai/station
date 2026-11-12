@@ -1,7 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
 import { cancelSharedDeviceCodeLogins } from '../../../services/connections/device-code-login.js';
 import { startRuntimeHealthChecks } from '../runtime-health.js';
-import { shutdownRuntimeServices } from '../runtime-shutdown.js';
+import {
+  registerConversationDeliveryShutdown,
+  shutdownRuntimeServices,
+} from '../runtime-shutdown.js';
 
 vi.mock('../../../services/connections/device-code-login.js', () => ({
   cancelSharedDeviceCodeLogins: vi.fn(),
@@ -378,6 +381,126 @@ describe('shutdownRuntimeServices', () => {
 
     expect(retiredMcp.disconnect).toHaveBeenCalledTimes(1);
     expect(retiredMcpConfigs.has(retiredMcp)).toBe(true);
+  });
+});
+
+describe('shutdownRuntimeServices and conversation delivery', () => {
+  const rest = () => ({
+    logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+    timers: [],
+    mcpConfigs: new Map(),
+    activeAgents: new Map(),
+    acpBridge: { shutdown: vi.fn(async () => {}) },
+    feedbackService: { stop: vi.fn() },
+    voiceService: { stop: vi.fn(async () => {}) },
+    configLoader: { dispose: vi.fn(async () => {}) },
+  });
+
+  test('stops a registered delivery before any await, and waits for its in-flight placement before the orchestration service shuts down', async () => {
+    const order: string[] = [];
+    let finishPlacement!: () => void;
+    const placement = new Promise<void>((resolve) => {
+      finishPlacement = resolve;
+    });
+    const orchestrationService = {
+      shutdown: vi.fn(async () => {
+        order.push('orchestration.shutdown');
+      }),
+    };
+    registerConversationDeliveryShutdown(orchestrationService, {
+      name: 'inbox',
+      stop: () => {
+        order.push('inbox.stop');
+      },
+      idle: async () => {
+        order.push('inbox.idle');
+        await placement;
+        order.push('inbox.idle settled');
+      },
+    });
+    const shutting = shutdownRuntimeServices({
+      ...rest(),
+      orchestrationService,
+      schedulerService: {
+        stop: async () => {
+          order.push('scheduler.stop');
+        },
+      },
+    });
+    // Synchronously, with the other admission fences.
+    expect(order).toEqual(['inbox.stop']);
+    await vi.waitFor(() => expect(order).toContain('inbox.idle'));
+    expect(orchestrationService.shutdown).not.toHaveBeenCalled();
+    finishPlacement();
+    await shutting;
+    expect(order).toEqual([
+      'inbox.stop',
+      'scheduler.stop',
+      'inbox.idle',
+      'inbox.idle settled',
+      'orchestration.shutdown',
+    ]);
+  });
+
+  test('a placement that never finishes delays the orchestration shutdown only for a bounded time', async () => {
+    vi.useFakeTimers();
+    try {
+      const params = rest();
+      const orchestrationService = { shutdown: vi.fn(async () => {}) };
+      registerConversationDeliveryShutdown(orchestrationService, {
+        name: 'inbox',
+        stop: () => {},
+        idle: () => new Promise<void>(() => {}),
+      });
+      const shutting = shutdownRuntimeServices({
+        ...params,
+        orchestrationService,
+      });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(orchestrationService.shutdown).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(shutting).resolves.toBeUndefined();
+      expect(orchestrationService.shutdown).toHaveBeenCalledOnce();
+      expect(params.logger.warn).toHaveBeenCalledWith(
+        'Conversation delivery was still placing at shutdown',
+        { delivery: 'inbox' },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a delivery whose stop throws is reported, and the rest of shutdown still runs', async () => {
+    const params = rest();
+    const orchestrationService = { shutdown: vi.fn(async () => {}) };
+    const idle = vi.fn(async () => {});
+    registerConversationDeliveryShutdown(orchestrationService, {
+      name: 'inbox',
+      stop: () => {
+        throw new Error('stop failed');
+      },
+      idle,
+    });
+    await expect(
+      shutdownRuntimeServices({ ...params, orchestrationService }),
+    ).rejects.toThrow('Station Runtime shutdown failed in 1 cleanup step');
+    expect(idle).toHaveBeenCalledOnce();
+    expect(orchestrationService.shutdown).toHaveBeenCalledOnce();
+  });
+
+  test('a delivery registered against another orchestration service is left alone', async () => {
+    const other = { shutdown: vi.fn(async () => {}) };
+    const stop = vi.fn();
+    registerConversationDeliveryShutdown(other, {
+      name: 'inbox',
+      stop,
+      idle: async () => {},
+    });
+    await shutdownRuntimeServices({
+      ...rest(),
+      orchestrationService: { shutdown: vi.fn(async () => {}) },
+    });
+    expect(stop).not.toHaveBeenCalled();
   });
 });
 

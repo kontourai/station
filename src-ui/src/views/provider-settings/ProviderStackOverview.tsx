@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react';
 import { BrandIcon } from '../../components/icons/BrandIcon';
 import { modelProviderDisplayLabel } from '../../utils/modelProviderDisplay';
-import { MODEL_PROVIDER_CHOICES } from './providerCatalog';
+import {
+  MODEL_PROVIDER_CHOICES,
+  modelConnectionPresentation,
+  ProviderStatusDot,
+} from './providerCatalog';
 import type { ProviderConnection } from './types';
 
 function ProviderOverviewSection({
@@ -56,7 +60,9 @@ function ProviderOverviewSection({
               className="provider-overview__card-item"
               onClick={() => onSelect(provider.id)}
             >
-              <span className="provider-overview__dot provider-overview__dot--active" />
+              <ProviderStatusDot
+                tone={modelConnectionPresentation(provider).tone}
+              />
               <span
                 style={{
                   fontSize: '13px',

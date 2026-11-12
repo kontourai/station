@@ -500,9 +500,11 @@ function CommandExecutor({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Follow the output: `lines` is the only thing that grows the scroll area.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `lines` is the trigger, not an input.
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-  }, []);
+  }, [lines]);
 
   const run = async () => {
     const cmd = input.trim();
@@ -548,7 +550,7 @@ function CommandExecutor({
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const next = histIdx - 1;
+      const next = Math.max(-1, histIdx - 1);
       setHistIdx(next);
       setInput(next < 0 ? '' : (history[next] ?? ''));
     }
@@ -573,6 +575,9 @@ function CommandExecutor({
       }}
       onClick={() => inputRef.current?.focus()}
       onKeyDown={(event) => {
+        // Keys bubbling from the command input are the input's own: without
+        // this guard every Space typed there was default-prevented.
+        if (event.target !== event.currentTarget) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           inputRef.current?.focus();

@@ -59,7 +59,9 @@ export async function scrollBrowserFixture(
     if (path === '/')
       return route.fulfill({
         contentType: 'text/html',
-        body: '<div id="root"></div><script type="module" src="/fixture.js"></script>',
+        // A device-width layout viewport: without it a mobile page lays out
+        // at Chromium's 980px fallback (#4810 gallery delta 2).
+        body: '<meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script type="module" src="/fixture.js"></script>',
       });
     if (path === '/fixture.js')
       return route.fulfill({

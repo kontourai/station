@@ -941,15 +941,29 @@ export function inputRequestAnswerTexts(
  * what a session answer would grant for this request
  * (`toolRequestGrantLabel`), or undefined where none is offered. The optional
  * server label is supplied only after the adapter authenticated a Station browser call.
+ * The optional rule label (`toolRequestRuleGrant`) offers the narrower
+ * command-prefix choice, placed before the whole-tool one.
  */
 export function approvalDecisionBody(
   sessionGrantLabel: string | undefined,
   serverGrantLabel?: string,
+  ruleGrantLabel?: string,
 ): InputRequestDecisionBody {
   return {
     kind: 'decision',
     options: [
       { id: 'allow-once', label: 'Allow Once', effect: 'allow', scope: 'once' },
+      ...(ruleGrantLabel
+        ? [
+            {
+              id: 'allow-rule-session',
+              label: ruleGrantLabel,
+              effect: 'allow' as const,
+              scope: 'session' as const,
+              sessionGrantScope: 'rule' as const,
+            },
+          ]
+        : []),
       ...(sessionGrantLabel
         ? [
             {
