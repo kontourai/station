@@ -1,0 +1,7 @@
+{
+  "revision": "70c222ba3f274fb583340739ebc3af8b740fb2e3",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the allowanceEvidence paragraph against EngineAllowanceEvidence in engine-accounts.ts, ConnectionService.withAllowanceEvidence on the /api/connections/agents listing, and EventStore.listAllowanceRefusals/listAllowanceAcceptedTurns; no provider call, failed read attaches nothing.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/connections/connections.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/connections/connection-service.ts"]}
+  ]
+}
