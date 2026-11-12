@@ -564,6 +564,9 @@ describe('project guest administration over the production composition', () => {
       orchestrationEventStore: new Proxy(
         {
           createPackageMcpAdmissionJournal: () => undefined,
+          // The real EventStore answers a sequence number; a callable here
+          // would start read state with a baseline that never decodes.
+          contentUpgradeFence: () => 0,
           sessionTurnBoundaryAuthority: () => ({
             reconcile: () => ({ kind: 'available', interrupted: [] }),
           }),
@@ -1488,6 +1491,169 @@ describe('project guest administration over the production composition', () => {
     expect(readFileSync(join(h.homeDir, 'task-graph.json'), 'utf8')).toBe(
       before,
     );
+  });
+
+  test('read markers: an account-bound member reads and marks their own Project room markers through the production gate (#3075)', async () => {
+    const h = await setup();
+    const { project, scope, guest } = await h.shareWithGuestAdmin(
+      'markers',
+      'Markers',
+    );
+    const other = await h.shareWithGuestAdmin('markers-b', 'Markers B');
+    const post = (
+      headers: (init?: RequestInit) => RequestInit,
+      path: string,
+      value: unknown,
+    ) =>
+      h.request(
+        path,
+        headers({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(value),
+        }),
+      );
+    const open = async (
+      headers: (init?: RequestInit) => RequestInit,
+      slug: string,
+      projectId: string,
+    ) => {
+      const opened = await post(headers, `/api/projects/${slug}/room/init`, {
+        expectedProjectId: projectId,
+      });
+      expect(opened.status, await opened.clone().text()).toBe(200);
+      return (await readJson<{ data: { roomId: string } }>(opened)).data.roomId;
+    };
+    const roomId = await open(guest, 'markers', project.id);
+    const otherRoomId = await open(other.guest, 'markers-b', other.project.id);
+    const actorId = (
+      await readJson<{ data: { actor: { id: string } } }>(
+        await h.request('/api/projects/markers/room', guest()),
+      )
+    ).data.actor.id;
+    const sent = await post(guest, '/api/projects/markers/room/messages', {
+      expectedRoomId: roomId,
+      expectedProjectId: project.id,
+      expectedActorId: actorId,
+      intentId: crypto.randomUUID(),
+      text: 'Unread for now',
+    });
+    expect(sent.status, await sent.clone().text()).toBe(200);
+    const target = (id: string, projectSlug = 'markers') => ({
+      kind: 'project-room',
+      projectSlug,
+      roomId: id,
+    });
+    const summary = async (
+      headers: (init?: RequestInit) => RequestInit,
+      targets: unknown[],
+    ) => {
+      const response = await post(headers, '/api/read-markers/summary', {
+        targets,
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      return (
+        await readJson<{ data: { items: Record<string, unknown>[] } }>(response)
+      ).data.items;
+    };
+
+    // A member reads and marks their own markers.
+    expect(await summary(guest, [target(roomId)])).toEqual([
+      expect.objectContaining({ latestVersion: 1, unread: true }),
+    ]);
+    const marked = await post(guest, '/api/read-markers/mark', {
+      target: target(roomId),
+      version: 1,
+    });
+    expect(marked.status, await marked.clone().text()).toBe(200);
+    expect(await summary(guest, [target(roomId)])).toEqual([
+      expect.objectContaining({ seenVersion: 1, unread: false }),
+    ]);
+    // The gate admits the leaf for every target kind; each target is still
+    // re-read under the member's own authority, so what they cannot read
+    // (an agent conversation, a Task) is unavailable, not a gate refusal.
+    expect(
+      await summary(guest, [
+        { kind: 'agent-conversation', conversationId: 'not-this-member' },
+        { kind: 'task-room', taskId: 'not-this-member' },
+      ]),
+    ).toEqual([
+      expect.objectContaining({ unavailable: true }),
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    // An unknown id, and another Project's room under this slug, read as
+    // unavailable and cannot be marked.
+    expect(
+      await summary(guest, [target(crypto.randomUUID()), target(otherRoomId)]),
+    ).toEqual([
+      expect.objectContaining({ unavailable: true }),
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    expect(
+      (
+        await post(guest, '/api/read-markers/mark', {
+          target: target(otherRoomId),
+          version: 1,
+        })
+      ).status,
+    ).toBe(404);
+
+    // A signed-in account that is not a member is refused.
+    const outsider = h.pairAccountBound(
+      'markers-outsider',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
+    const stranger = h.guestHeaders(
+      outsider.credential,
+      'fixture_account=peer',
+    );
+    expect(await summary(stranger, [target(roomId)])).toEqual([
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    expect(
+      (
+        await post(stranger, '/api/read-markers/mark', {
+          target: target(roomId),
+          version: 1,
+        })
+      ).status,
+    ).toBe(404);
+
+    // Revoked membership is refused on the next read and mark.
+    const guestId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    ).id;
+    const member = (
+      await readJson<{
+        data: { members: { principal: { id: string }; revision: number }[] };
+      }>(await h.request('/api/projects/markers/access', h.ownerHeaders()))
+    ).data.members.find((entry) => entry.principal.id === guestId)!;
+    const removed = await post(
+      h.ownerHeaders,
+      '/api/projects/markers/access/members',
+      {
+        scope,
+        principalId: guestId,
+        revision: member.revision,
+        role: 'viewer',
+        status: 'revoked',
+      },
+    );
+    expect(removed.status, await removed.clone().text()).toBe(200);
+    expect(await summary(guest, [target(roomId)])).toEqual([
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    expect(
+      (
+        await post(guest, '/api/read-markers/mark', {
+          target: target(roomId),
+          version: 1,
+        })
+      ).status,
+    ).toBe(404);
   });
 
   test('Project Room channels: a member creates, posts in and archives a channel through the production mount', async () => {

@@ -819,12 +819,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // body does not fit a query string; they read or advance the requesting
   // person's markers and nothing else, and each target is re-authorized
   // through its own conversation or room read. A read-only paired phone must
-  // reach them, or reading there could never clear unread anywhere.
+  // reach them, or reading there could never clear unread anywhere. They are
+  // person self-service leaves, so an account-bound member's Device reaches
+  // them too; the target's own read still decides what it can see.
   {
     id: '/api/read-markers/summary:read',
     method: 'POST',
     prefix: '/api/read-markers/summary',
     exact: true,
+    accountBoundPerson: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
@@ -833,6 +836,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'POST',
     prefix: '/api/read-markers/mark',
     exact: true,
+    accountBoundPerson: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },

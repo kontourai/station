@@ -383,9 +383,11 @@ function ProjectRoomSession({
         : discovered,
     [discovered, archived],
   );
-  // A channel that no longer exists for this Project falls back to #general.
+  // A channel that no longer exists for this Project, or a host that has no
+  // channels at all, falls back to #general.
   const channelMissing =
-    channelId !== undefined && !!channels.list.data && !channel;
+    channelId !== undefined &&
+    (channels.unsupported || (!!channels.list.data && !channel));
   useEffect(() => {
     if (channelMissing) onSelectChannel(undefined);
   }, [channelMissing, onSelectChannel]);
