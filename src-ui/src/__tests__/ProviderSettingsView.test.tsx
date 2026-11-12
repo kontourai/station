@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -116,6 +116,7 @@ function ModelSelectionFromNavigation() {
   return (
     <ProviderSettingsView
       selectedProviderId={pathname.split('/')[3]}
+      selectedTab="settings"
       onNavigate={navigateModelView}
     />
   );
@@ -364,6 +365,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     render(
       <ProviderSettingsView
         selectedProviderId="bedrock-prod"
+        selectedTab="models"
         onNavigate={onNavigate}
       />,
     );
@@ -459,6 +461,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     render(
       <ProviderSettingsView
         selectedProviderId="anthropic-1"
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -722,6 +725,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     render(
       <ProviderSettingsView
         selectedProviderId="first"
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -739,7 +743,13 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       id: 'second',
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    // The confirmation's Discard, not the unsaved bar's.
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Unsaved Changes' })).getByRole(
+        'button',
+        { name: 'Discard' },
+      ),
+    );
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'connections-model-edit',
       id: 'second',
@@ -800,6 +810,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     view.rerender(
       <ProviderSettingsView
         selectedProviderId={selectedId}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -865,9 +876,15 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     render(
       <ProviderSettingsView
         selectedProviderId={selectedId}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
+
+    // Save is on the unsaved bar, which an edit opens.
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'AWS Bedrock (work)' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -904,9 +921,15 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     render(
       <ProviderSettingsView
         selectedProviderId={selectedId}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
+
+    // Save is on the unsaved bar, which an edit opens.
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'AWS Bedrock (work)' },
+    });
 
     const saveButton = screen.getByRole('button', {
       name: 'Save',
@@ -940,9 +963,15 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     render(
       <ProviderSettingsView
         selectedProviderId={selectedId}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
+
+    // Save is on the unsaved bar, which an edit opens.
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'AWS Bedrock (work)' },
+    });
 
     const saveButton = screen.getByRole('button', {
       name: 'Save',
@@ -989,6 +1018,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     const view = render(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -1005,6 +1035,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     view.rerender(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -1028,6 +1059,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     const view = render(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -1042,6 +1074,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     view.rerender(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -1061,6 +1094,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     const view = render(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -1091,6 +1125,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     view.rerender(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -1112,6 +1147,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     const view = render(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );
@@ -1122,6 +1158,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     view.rerender(
       <ProviderSettingsView
         selectedProviderId="ollama-other"
+        selectedTab="settings"
         onNavigate={onNavigate}
       />,
     );

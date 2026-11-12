@@ -10,8 +10,13 @@ import {
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import {
+  ResourceDetail,
+  type ResourceDetailTab,
+} from '../components/resource-hub/ResourceDetail';
 import { resourceRow } from '../components/resource-hub/resource-row';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { CONNECTIONS_MODELS_PANE_ID } from '../components/split-pane-metrics';
@@ -28,6 +33,10 @@ import {
   deriveConnectionHealth,
   modelHealthInput,
 } from './connections-hub/connection-health';
+import type { ModelDetailTab } from './connections-hub/connection-sections';
+import { ModelOverviewTab } from './model-detail/ModelOverviewTab';
+import { ModelUsageTab } from './model-detail/ModelUsageTab';
+import './model-detail/model-detail.css';
 import { ProviderConnectionForm } from './provider-settings/ProviderConnectionForm';
 import { ProviderStackOverview } from './provider-settings/ProviderStackOverview';
 import { ProviderTypePicker } from './provider-settings/ProviderTypePicker';
@@ -47,11 +56,41 @@ import {
 
 interface Props {
   selectedProviderId?: string;
+  /** Route tab of a saved connection's detail; absent opens Overview. */
+  selectedTab?: ModelDetailTab;
   onNavigate: (view: NavigationView) => void;
+}
+
+const MODEL_TABS: ReadonlyArray<ResourceDetailTab<ModelDetailTab>> = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'usage', label: 'Usage' },
+  { key: 'models', label: 'Models' },
+  { key: 'settings', label: 'Settings' },
+];
+
+/** A saved connection as the editor's form, without its id. */
+function serverForm(conn: ProviderConnection): Omit<ProviderConnection, 'id'> {
+  return {
+    kind: 'model',
+    type: conn.type,
+    name: conn.name,
+    config: { ...conn.config },
+    enabled: conn.enabled,
+    capabilities: [...conn.capabilities],
+    status: conn.status,
+    prerequisites: [...conn.prerequisites],
+    lastCheckedAt: conn.lastCheckedAt ?? null,
+    // RT-06: never a form field — the server's derivation, carried so the
+    // summary rail can render what was observed instead of what was saved.
+    ...(conn.readinessEvidence
+      ? { readinessEvidence: conn.readinessEvidence }
+      : {}),
+  };
 }
 
 export function ProviderSettingsView({
   selectedProviderId,
+  selectedTab,
   onNavigate,
 }: Props) {
   const [form, setForm] = useState<Omit<ProviderConnection, 'id'> | null>(null);
@@ -206,22 +245,7 @@ export function ProviderSettingsView({
     if (isNewSelection) dirtyFields.current.clear();
     seededProviderId.current = selectedProviderId;
 
-    const fromServer: Omit<ProviderConnection, 'id'> = {
-      kind: 'model',
-      type: conn.type,
-      name: conn.name,
-      config: { ...conn.config },
-      enabled: conn.enabled,
-      capabilities: [...conn.capabilities],
-      status: conn.status,
-      prerequisites: [...conn.prerequisites],
-      lastCheckedAt: conn.lastCheckedAt ?? null,
-      // RT-06: never a form field — the server's derivation, carried so the
-      // summary rail can render what was observed instead of what was saved.
-      ...(conn.readinessEvidence
-        ? { readinessEvidence: conn.readinessEvidence }
-        : {}),
-    };
+    const fromServer = serverForm(conn);
 
     setForm((current) =>
       isNewSelection || !current
@@ -413,6 +437,11 @@ export function ProviderSettingsView({
 
   function handleSave() {
     if (!form || !selectedProviderId) return;
+    // The detail's unsaved bar has no disabled state of its own.
+    if (!form.name || !isConnectionConfigValid(form.type, form.config)) {
+      setError('Fill in the required fields before saving.');
+      return;
+    }
     const connectionId =
       isNew && draftConnectionId.current
         ? draftConnectionId.current
@@ -432,6 +461,89 @@ export function ProviderSettingsView({
       isNew,
     });
   }
+
+  const savedConnection =
+    !isCreatingSelection && !isNew && selectedProviderId
+      ? modelProviders.find((p) => p.id === selectedProviderId)
+      : undefined;
+  const activeTab: ModelDetailTab = selectedTab ?? 'overview';
+
+  /** Back to the server copy: the bar's Discard. */
+  function discardEdits() {
+    if (!savedConnection) return;
+    dirtyFields.current.clear();
+    submittedValues.current.clear();
+    setError(null);
+    setForm(serverForm(savedConnection));
+  }
+
+  function savedHealth(conn: ProviderConnection) {
+    return deriveConnectionHealth(modelHealthInput(conn));
+  }
+
+  /** The one fix for the saved connection's status, in its own words. */
+  function fixAction(conn: ProviderConnection) {
+    const health = savedHealth(conn);
+    const action = health.action;
+    if (health.verdict === 'ready' || !action) return undefined;
+    if (action.id === 'enable')
+      return (
+        <Button
+          variant="primary"
+          disabled={saveMutation.isPending || dirty}
+          onClick={() =>
+            saveMutation.mutate({
+              connection: { ...conn, enabled: true },
+              isNew: false,
+            })
+          }
+        >
+          {action.label}
+        </Button>
+      );
+    if (
+      action.id === 'test-connection' ||
+      action.id === 'check-connection' ||
+      action.id === 'reconnect'
+    )
+      return (
+        <Button
+          disabled={testMutation.isPending || dirty}
+          onClick={() => testMutation.mutate(conn.id)}
+        >
+          {testMutation.isPending ? 'Checking…' : action.label}
+        </Button>
+      );
+    if (action.id === 'details' || action.id === 'review') return undefined;
+    // Keys, sign-in and setup are fields: the fix is the Settings tab.
+    return (
+      <Button
+        variant="primary"
+        onClick={() =>
+          onNavigate({
+            type: 'connections-model-edit',
+            id: conn.id,
+            tab: 'settings',
+          })
+        }
+      >
+        {action.label}
+      </Button>
+    );
+  }
+
+  const fixNotice = (
+    <>
+      {testResult && (
+        <p>
+          {testResult.healthy
+            ? 'Connection healthy'
+            : `Connection failed${testResult.reason ? ` — ${testResult.reason}` : ''}`}
+        </p>
+      )}
+      {testError && <p>{testError}</p>}
+    </>
+  );
 
   const llmEmbeddingProviders = filterModelProviders(modelProviders, '');
   const filtered = filterModelProviders(modelProviders, search);
@@ -637,6 +749,88 @@ export function ProviderSettingsView({
               providerId: entry === 'custom' ? 'custom' : entry.id,
             })
           }
+        />
+      ) : form && savedConnection && selectedProviderId ? (
+        <ResourceDetail
+          id={`model-detail-${selectedProviderId}`}
+          title={savedConnection.name || savedConnection.type}
+          status={savedHealth(savedConnection)}
+          fix={fixAction(savedConnection)}
+          fixNotice={fixNotice}
+          unsaved={
+            dirty
+              ? {
+                  saving: saveMutation.isPending,
+                  onSave: handleSave,
+                  onDiscard: discardEdits,
+                  saveBlocked:
+                    !form.name ||
+                    !isConnectionConfigValid(form.type, form.config),
+                }
+              : undefined
+          }
+          tabs={MODEL_TABS}
+          activeTab={activeTab}
+          onSelectTab={(tab) =>
+            onNavigate({
+              type: 'connections-model-edit',
+              id: selectedProviderId,
+              tab,
+            })
+          }
+          tabsLabel="Model connection sections"
+          keepMounted={['settings']}
+          renderPanel={(tab) => {
+            if (tab === 'overview')
+              return (
+                <ModelOverviewTab
+                  connection={savedConnection}
+                  onNavigate={guardedNavigate}
+                />
+              );
+            if (tab === 'usage')
+              return (
+                <ModelUsageTab
+                  connectionId={savedConnection.id}
+                  name={savedConnection.name}
+                />
+              );
+            const formPart = (
+              <ProviderConnectionForm
+                form={form}
+                isNew={false}
+                selectedProviderId={selectedProviderId}
+                testResult={testResult}
+                testError={testError}
+                isTesting={testMutation.isPending}
+                onSetField={setField}
+                onSetConfigField={setConfigField}
+                onTypeChange={handleTypeChange}
+                onTestConnection={(id) => testMutation.mutate(id)}
+                isLoadingModels={isFetchingProviders}
+                onLoadModels={() => {
+                  void refetchProviders();
+                }}
+                part={tab}
+              />
+            );
+            if (tab === 'models') return formPart;
+            return (
+              <>
+                {error && <p className="model-detail__error">{error}</p>}
+                {formPart}
+                <div className="model-detail__danger">
+                  <Button
+                    variant="danger"
+                    onClick={() => setShowDeleteModal(true)}
+                    disabled={deleteMutation.isPending}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </>
+            );
+          }}
         />
       ) : form ? (
         <div

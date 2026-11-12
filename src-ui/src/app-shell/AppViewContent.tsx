@@ -311,6 +311,7 @@ function AppViewContentBody({
       <ConnectionsSectionFrame sectionId="models">
         <ProviderSettingsView
           selectedProviderId={currentView.id}
+          {...(currentView.tab ? { selectedTab: currentView.tab } : {})}
           onNavigate={onNavigate}
         />
       </ConnectionsSectionFrame>

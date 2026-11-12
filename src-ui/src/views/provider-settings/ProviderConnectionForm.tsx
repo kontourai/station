@@ -164,6 +164,7 @@ export function ProviderConnectionForm({
   onTypeChange,
   onTestConnection,
   onLoadModels,
+  part = 'all',
 }: {
   form: Omit<ProviderConnection, 'id'>;
   isNew: boolean;
@@ -181,7 +182,17 @@ export function ProviderConnectionForm({
   onTestConnection: (id: string) => void;
   /** RT-18: what "Check to load" only ever named. */
   onLoadModels?: () => void;
+  /**
+   * Which part a tabbed detail shows. `all` is the create form. On a saved
+   * connection the detail's header and Overview own status, the readiness
+   * notice and the check, so `settings` leaves them out and `models` is the
+   * catalog alone.
+   */
+  part?: 'all' | 'settings' | 'models';
 }) {
+  const showStatus = part === 'all';
+  const showFields = part !== 'models';
+  const showModels = part !== 'settings';
   const fieldId = useId();
   const nameId = `${fieldId}-name`;
   const serverUrlId = `${fieldId}-server-url`;
@@ -298,81 +309,90 @@ export function ProviderConnectionForm({
         gap: '16px',
       }}
     >
-      <nav
-        className="provider-detail__progress"
-        aria-label="Model connection setup"
-      >
-        {steps.map((step, index) => (
-          <Fragment key={step.label}>
-            {index > 0 && <span aria-hidden="true">→</span>}
-            <span
-              className={`provider-detail__progress-step${
-                step.complete ? ' provider-detail__progress-step--complete' : ''
-              }`}
-              // The step the connection is actually on, announced rather than
-              // left to a colour and a private class name (review test-gap
-              // note). Exactly one step carries it: the first incomplete one.
-              aria-current={
-                !step.complete && steps.slice(0, index).every((s) => s.complete)
-                  ? 'step'
-                  : undefined
-              }
-            >
-              {step.label}
-            </span>
-          </Fragment>
-        ))}
-      </nav>
+      {showStatus && (
+        <nav
+          className="provider-detail__progress"
+          aria-label="Model connection setup"
+        >
+          {steps.map((step, index) => (
+            <Fragment key={step.label}>
+              {index > 0 && <span aria-hidden="true">→</span>}
+              <span
+                className={`provider-detail__progress-step${
+                  step.complete
+                    ? ' provider-detail__progress-step--complete'
+                    : ''
+                }`}
+                // The step the connection is actually on, announced rather than
+                // left to a colour and a private class name (review test-gap
+                // note). Exactly one step carries it: the first incomplete one.
+                aria-current={
+                  !step.complete &&
+                  steps.slice(0, index).every((s) => s.complete)
+                    ? 'step'
+                    : undefined
+                }
+              >
+                {step.label}
+              </span>
+            </Fragment>
+          ))}
+        </nav>
+      )}
 
-      <div className="editor-field">
-        <label className="editor-label" htmlFor={nameId}>
-          Name
-        </label>
-        <input
-          id={nameId}
-          className="editor-input"
-          type="text"
-          value={form.name}
-          placeholder="Work, Personal, or Local"
-          onChange={(event) => onSetField('name', event.target.value)}
-        />
-      </div>
+      {showFields && (
+        <div className="editor-field">
+          <label className="editor-label" htmlFor={nameId}>
+            Name
+          </label>
+          <input
+            id={nameId}
+            className="editor-input"
+            type="text"
+            value={form.name}
+            placeholder="Work, Personal, or Local"
+            onChange={(event) => onSetField('name', event.target.value)}
+          />
+        </div>
+      )}
 
-      <div className="provider-detail__summary" aria-live="polite">
-        <div>
-          <span className="provider-detail__summary-label">Status</span>
-          <strong>{isNew ? 'Setup required' : presentation.readiness}</strong>
+      {showStatus && (
+        <div className="provider-detail__summary" aria-live="polite">
+          <div>
+            <span className="provider-detail__summary-label">Status</span>
+            <strong>{isNew ? 'Setup required' : presentation.readiness}</strong>
+          </div>
+          <div>
+            <span className="provider-detail__summary-label">Models</span>
+            {modelOptions.length > 0 ? (
+              <strong>{modelOptions.length}</strong>
+            ) : (
+              /*
+               * RT-18: "Check to load" was instruction-shaped copy with no
+               * control anywhere near it, and Test Connection neither populated
+               * this nor changed the label. The catalogue load is a real
+               * request; this is the button that makes it.
+               */
+              <button
+                type="button"
+                className="editor-btn"
+                onClick={onLoadModels}
+                disabled={!onLoadModels || isNew || isLoadingModels}
+              >
+                {isLoadingModels ? 'Loading…' : 'Load models'}
+              </button>
+            )}
+          </div>
+          <div>
+            <span className="provider-detail__summary-label">Last check</span>
+            <strong>
+              {form.lastCheckedAt
+                ? new Date(form.lastCheckedAt).toLocaleString()
+                : 'Not checked'}
+            </strong>
+          </div>
         </div>
-        <div>
-          <span className="provider-detail__summary-label">Models</span>
-          {modelOptions.length > 0 ? (
-            <strong>{modelOptions.length}</strong>
-          ) : (
-            /*
-             * RT-18: "Check to load" was instruction-shaped copy with no
-             * control anywhere near it, and Test Connection neither populated
-             * this nor changed the label. The catalogue load is a real
-             * request; this is the button that makes it.
-             */
-            <button
-              type="button"
-              className="editor-btn"
-              onClick={onLoadModels}
-              disabled={!onLoadModels || isNew || isLoadingModels}
-            >
-              {isLoadingModels ? 'Loading…' : 'Load models'}
-            </button>
-          )}
-        </div>
-        <div>
-          <span className="provider-detail__summary-label">Last check</span>
-          <strong>
-            {form.lastCheckedAt
-              ? new Date(form.lastCheckedAt).toLocaleString()
-              : 'Not checked'}
-          </strong>
-        </div>
-      </div>
+      )}
 
       {/* An unreachable endpoint carries a reason the
           operator needs just as much as a refusal does — "Station could not
@@ -385,7 +405,7 @@ export function ProviderConnectionForm({
           machine. One notice now, so how much help a user gets does not depend
           on which page they happen to be standing on.
       */}
-      {!isNew && presentation.readiness !== 'Ready' && (
+      {showStatus && !isNew && presentation.readiness !== 'Ready' && (
         <ConnectionReadinessNotice
           readiness={presentation.readiness}
           detail={presentation.detail}
@@ -396,7 +416,22 @@ export function ProviderConnectionForm({
         />
       )}
 
-      {selectedProviderId && orderedModels.length > 0 && (
+      {part === 'models' && orderedModels.length === 0 && (
+        <Empty
+          variant="compact"
+          label="No models listed"
+          description="Load this service's model list to choose favorites and order."
+          action={
+            <Button
+              onClick={onLoadModels}
+              disabled={!onLoadModels || isLoadingModels}
+            >
+              {isLoadingModels ? 'Loading…' : 'Load models'}
+            </Button>
+          }
+        />
+      )}
+      {showModels && selectedProviderId && orderedModels.length > 0 && (
         <section className="provider-detail__models">
           <div>
             <h3>Models</h3>
@@ -512,275 +547,156 @@ export function ProviderConnectionForm({
         </section>
       )}
 
-      {form.type === 'ollama' && (
+      {showFields && (
         <>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor="ollama-base-url">
-              Base URL
-            </label>
-            <input
-              id="ollama-base-url"
-              className="editor-input"
-              type="text"
-              value={(form.config.baseUrl as string) ?? ''}
-              placeholder="http://localhost:11434"
-              onChange={(event) =>
-                onSetConfigField('baseUrl', event.target.value)
-              }
-            />
-          </div>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor="ollama-default-model">
-              Default model
-            </label>
-            {modelOptions.length > 0 ? (
-              <select
-                id="ollama-default-model"
-                className="editor-select"
-                value={(form.config.defaultModel as string) ?? ''}
-                onChange={(event) =>
-                  onSetConfigField('defaultModel', event.target.value)
-                }
-              >
-                <option value="">Choose an installed model…</option>
-                {modelOptions.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                id="ollama-default-model"
-                className="editor-input"
-                type="text"
-                value={(form.config.defaultModel as string) ?? ''}
-                placeholder="Auto-select when one model is installed"
-                onChange={(event) =>
-                  onSetConfigField('defaultModel', event.target.value)
-                }
-              />
-            )}
-            <div
-              style={{
-                color: 'var(--text-muted)',
-                fontSize: '12px',
-                marginTop: '6px',
-              }}
-            >
-              Station selects it automatically when Ollama reports exactly one
-              installed model.
-            </div>
-          </div>
-        </>
-      )}
-
-      {form.type === 'openai-compat' && (
-        <>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor={serverUrlId}>
-              Server URL
-            </label>
-            <input
-              id={serverUrlId}
-              className="editor-input"
-              type="text"
-              value={(form.config.baseUrl as string) ?? ''}
-              placeholder="https://api.openai.com/v1"
-              onChange={(event) =>
-                onSetConfigField('baseUrl', event.target.value)
-              }
-            />
-          </div>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor={apiKeyId}>
-              API key
-            </label>
-            <input
-              id={apiKeyId}
-              className="editor-input"
-              type="password"
-              value={(form.config.apiKey as string) ?? ''}
-              placeholder={
-                apiKeyConfigured
-                  ? 'Saved secret — enter a new value to replace it'
-                  : 'Paste an API key if this server requires one'
-              }
-              onChange={(event) =>
-                onSetConfigField('apiKey', event.target.value)
-              }
-            />
-            <div className="editor-field-hint">
-              OpenAI requires an API key. For a custom server, follow its
-              authentication requirements; some servers need no key.
-            </div>
-            {apiKeyConfigured && (
-              <div className="editor-field-hint">
-                A secret is saved. Station never sends it back to this device.
-                <button type="button" onClick={clearSavedApiKey}>
-                  Remove saved key
-                </button>
-              </div>
-            )}
-          </div>
-          {/*
-           * archive#3652 — the check's own failure text asks for a default model
-           * ("Set a default model on this connection … so Station can verify
-           * chat directly"), and this form had nowhere to set one: the field
-           * was API-only. A server with no `/models` route is exactly the
-           * connection that needs it, because the one-token chat request is
-           * the ONLY evidence that can take it past "Reachable — no model
-           * catalog".
-           */}
-          <DefaultModelField
-            id={defaultModelId}
-            value={(form.config.defaultModel as string) ?? ''}
-            options={modelOptions}
-            placeholder="The model id this server accepts"
-            hint="Used when an agent does not choose its own model, and for testing a service that cannot list models."
-            onChange={(next) => onSetConfigField('defaultModel', next)}
-          />
-        </>
-      )}
-
-      {(form.type === 'anthropic' || form.type === 'google') && (
-        <div className="editor-field">
-          <label className="editor-label" htmlFor={apiKeyId}>
-            API key
-          </label>
-          <input
-            id={apiKeyId}
-            className="editor-input"
-            type="password"
-            value={(form.config.apiKey as string) ?? ''}
-            placeholder={
-              apiKeyConfigured
-                ? 'Saved secret — enter a new value to replace it'
-                : form.type === 'anthropic'
-                  ? 'sk-ant-…'
-                  : 'AIza…'
-            }
-            onChange={(event) => onSetConfigField('apiKey', event.target.value)}
-          />
-          {apiKeyConfigured && (
-            <div className="editor-field-hint">
-              A secret is saved. Station never sends it back to this device.
-              <button type="button" onClick={clearSavedApiKey}>
-                Remove saved key
-              </button>
-            </div>
-          )}
-          {/*
-           * the chat probe reads `config.defaultModel` for every
-           * model provider, so an Anthropic or Google connection whose
-           * catalogue comes back empty or unsupported is told to set a default
-           * model too — and this form could only set an API key, which made
-           * that instruction another API-only remediation.
-           */}
-          <DefaultModelField
-            id={defaultModelId}
-            value={(form.config.defaultModel as string) ?? ''}
-            options={modelOptions}
-            placeholder="The model id to use when an agent names none"
-            hint="Used when an agent names no model, and by Test Connection if no model list is returned."
-            onChange={(next) => onSetConfigField('defaultModel', next)}
-          />
-        </div>
-      )}
-
-      {form.type === 'bedrock' && (
-        <>
-          <ProviderRegionField
-            id={regionId}
-            value={(form.config.region as string) ?? ''}
-            onChange={(next) => onSetConfigField('region', next)}
-          />
-
-          <div className="editor-field">
-            <label className="editor-label" htmlFor="bedrock-auth-mode">
-              Authentication
-            </label>
-            <select
-              id="bedrock-auth-mode"
-              className="editor-select"
-              value={bedrockAuthMode}
-              onChange={(event) =>
-                handleBedrockAuthModeChange(event.target.value)
-              }
-            >
-              <option value="chain">
-                Default AWS credentials (recommended)
-              </option>
-              <option value="profile">Named AWS profile</option>
-              <option value="api-key">Bedrock API key</option>
-            </select>
-          </div>
-
-          {bedrockAuthMode === 'profile' && (
-            <div className="editor-field">
-              <label className="editor-label" htmlFor="bedrock-profile">
-                AWS profile
-              </label>
-              {awsProfilesQuery.isLoading ? (
-                <SkeletonBlock count={1} label="Loading AWS profiles" />
-              ) : awsProfilesQuery.isError ? (
-                <ErrorState
-                  variant="compact"
-                  title="Couldn't load AWS profiles"
-                  description={
-                    describeStationFailure(awsProfilesQuery.error).body
-                  }
-                />
-              ) : awsProfilesQuery.data?.profiles.length ? (
-                <select
-                  id="bedrock-profile"
-                  className="editor-select"
-                  value={(form.config.profile as string) ?? ''}
+          {form.type === 'ollama' && (
+            <>
+              <div className="editor-field">
+                <label className="editor-label" htmlFor="ollama-base-url">
+                  Base URL
+                </label>
+                <input
+                  id="ollama-base-url"
+                  className="editor-input"
+                  type="text"
+                  value={(form.config.baseUrl as string) ?? ''}
+                  placeholder="http://localhost:11434"
                   onChange={(event) =>
-                    onSetConfigField('profile', event.target.value)
-                  }
-                >
-                  <option value="">Choose a profile…</option>
-                  {awsProfilesQuery.data.profiles.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <Empty
-                  variant="compact"
-                  label="AWS profiles will appear here"
-                  description={
-                    awsProfilesQuery.data?.available === false
-                      ? "An AWS config file wasn't found on the computer Station runs on."
-                      : 'Add named profiles to ~/.aws/config on the computer Station runs on to choose one.'
+                    onSetConfigField('baseUrl', event.target.value)
                   }
                 />
-              )}
-              {!!awsProfilesQuery.data?.profiles.length &&
-                !(form.config.profile as string)?.trim() && (
-                  <div className="editor-error">
-                    A named AWS profile is required to save this connection.
+              </div>
+              <div className="editor-field">
+                <label className="editor-label" htmlFor="ollama-default-model">
+                  Default model
+                </label>
+                {modelOptions.length > 0 ? (
+                  <select
+                    id="ollama-default-model"
+                    className="editor-select"
+                    value={(form.config.defaultModel as string) ?? ''}
+                    onChange={(event) =>
+                      onSetConfigField('defaultModel', event.target.value)
+                    }
+                  >
+                    <option value="">Choose an installed model…</option>
+                    {modelOptions.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="ollama-default-model"
+                    className="editor-input"
+                    type="text"
+                    value={(form.config.defaultModel as string) ?? ''}
+                    placeholder="Auto-select when one model is installed"
+                    onChange={(event) =>
+                      onSetConfigField('defaultModel', event.target.value)
+                    }
+                  />
+                )}
+                <div
+                  style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '12px',
+                    marginTop: '6px',
+                  }}
+                >
+                  Station selects it automatically when Ollama reports exactly
+                  one installed model.
+                </div>
+              </div>
+            </>
+          )}
+
+          {form.type === 'openai-compat' && (
+            <>
+              <div className="editor-field">
+                <label className="editor-label" htmlFor={serverUrlId}>
+                  Server URL
+                </label>
+                <input
+                  id={serverUrlId}
+                  className="editor-input"
+                  type="text"
+                  value={(form.config.baseUrl as string) ?? ''}
+                  placeholder="https://api.openai.com/v1"
+                  onChange={(event) =>
+                    onSetConfigField('baseUrl', event.target.value)
+                  }
+                />
+              </div>
+              <div className="editor-field">
+                <label className="editor-label" htmlFor={apiKeyId}>
+                  API key
+                </label>
+                <input
+                  id={apiKeyId}
+                  className="editor-input"
+                  type="password"
+                  value={(form.config.apiKey as string) ?? ''}
+                  placeholder={
+                    apiKeyConfigured
+                      ? 'Saved secret — enter a new value to replace it'
+                      : 'Paste an API key if this server requires one'
+                  }
+                  onChange={(event) =>
+                    onSetConfigField('apiKey', event.target.value)
+                  }
+                />
+                <div className="editor-field-hint">
+                  OpenAI requires an API key. For a custom server, follow its
+                  authentication requirements; some servers need no key.
+                </div>
+                {apiKeyConfigured && (
+                  <div className="editor-field-hint">
+                    A secret is saved. Station never sends it back to this
+                    device.
+                    <button type="button" onClick={clearSavedApiKey}>
+                      Remove saved key
+                    </button>
                   </div>
                 )}
-            </div>
+              </div>
+              {/*
+               * archive#3652 — the check's own failure text asks for a default model
+               * ("Set a default model on this connection … so Station can verify
+               * chat directly"), and this form had nowhere to set one: the field
+               * was API-only. A server with no `/models` route is exactly the
+               * connection that needs it, because the one-token chat request is
+               * the ONLY evidence that can take it past "Reachable — no model
+               * catalog".
+               */}
+              <DefaultModelField
+                id={defaultModelId}
+                value={(form.config.defaultModel as string) ?? ''}
+                options={modelOptions}
+                placeholder="The model id this server accepts"
+                hint="Used when an agent does not choose its own model, and for testing a service that cannot list models."
+                onChange={(next) => onSetConfigField('defaultModel', next)}
+              />
+            </>
           )}
 
-          {bedrockAuthMode === 'api-key' && (
+          {(form.type === 'anthropic' || form.type === 'google') && (
             <div className="editor-field">
-              <label className="editor-label" htmlFor="bedrock-api-key">
-                Bedrock API key
+              <label className="editor-label" htmlFor={apiKeyId}>
+                API key
               </label>
               <input
-                id="bedrock-api-key"
+                id={apiKeyId}
                 className="editor-input"
                 type="password"
                 value={(form.config.apiKey as string) ?? ''}
                 placeholder={
                   apiKeyConfigured
                     ? 'Saved secret — enter a new value to replace it'
-                    : 'ABSK…'
+                    : form.type === 'anthropic'
+                      ? 'sk-ant-…'
+                      : 'AIza…'
                 }
                 onChange={(event) =>
                   onSetConfigField('apiKey', event.target.value)
@@ -794,165 +710,296 @@ export function ProviderConnectionForm({
                   </button>
                 </div>
               )}
-              {!apiKeyConfigured && !(form.config.apiKey as string)?.trim() && (
-                <div className="editor-error">
-                  A Bedrock API key is required to save this connection.
+              {/*
+               * the chat probe reads `config.defaultModel` for every
+               * model provider, so an Anthropic or Google connection whose
+               * catalogue comes back empty or unsupported is told to set a default
+               * model too — and this form could only set an API key, which made
+               * that instruction another API-only remediation.
+               */}
+              <DefaultModelField
+                id={defaultModelId}
+                value={(form.config.defaultModel as string) ?? ''}
+                options={modelOptions}
+                placeholder="The model id to use when an agent names none"
+                hint="Used when an agent names no model, and by Test Connection if no model list is returned."
+                onChange={(next) => onSetConfigField('defaultModel', next)}
+              />
+            </div>
+          )}
+
+          {form.type === 'bedrock' && (
+            <>
+              <ProviderRegionField
+                id={regionId}
+                value={(form.config.region as string) ?? ''}
+                onChange={(next) => onSetConfigField('region', next)}
+              />
+
+              <div className="editor-field">
+                <label className="editor-label" htmlFor="bedrock-auth-mode">
+                  Authentication
+                </label>
+                <select
+                  id="bedrock-auth-mode"
+                  className="editor-select"
+                  value={bedrockAuthMode}
+                  onChange={(event) =>
+                    handleBedrockAuthModeChange(event.target.value)
+                  }
+                >
+                  <option value="chain">
+                    Default AWS credentials (recommended)
+                  </option>
+                  <option value="profile">Named AWS profile</option>
+                  <option value="api-key">Bedrock API key</option>
+                </select>
+              </div>
+
+              {bedrockAuthMode === 'profile' && (
+                <div className="editor-field">
+                  <label className="editor-label" htmlFor="bedrock-profile">
+                    AWS profile
+                  </label>
+                  {awsProfilesQuery.isLoading ? (
+                    <SkeletonBlock count={1} label="Loading AWS profiles" />
+                  ) : awsProfilesQuery.isError ? (
+                    <ErrorState
+                      variant="compact"
+                      title="Couldn't load AWS profiles"
+                      description={
+                        describeStationFailure(awsProfilesQuery.error).body
+                      }
+                    />
+                  ) : awsProfilesQuery.data?.profiles.length ? (
+                    <select
+                      id="bedrock-profile"
+                      className="editor-select"
+                      value={(form.config.profile as string) ?? ''}
+                      onChange={(event) =>
+                        onSetConfigField('profile', event.target.value)
+                      }
+                    >
+                      <option value="">Choose a profile…</option>
+                      {awsProfilesQuery.data.profiles.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Empty
+                      variant="compact"
+                      label="AWS profiles will appear here"
+                      description={
+                        awsProfilesQuery.data?.available === false
+                          ? "An AWS config file wasn't found on the computer Station runs on."
+                          : 'Add named profiles to ~/.aws/config on the computer Station runs on to choose one.'
+                      }
+                    />
+                  )}
+                  {!!awsProfilesQuery.data?.profiles.length &&
+                    !(form.config.profile as string)?.trim() && (
+                      <div className="editor-error">
+                        A named AWS profile is required to save this connection.
+                      </div>
+                    )}
+                </div>
+              )}
+
+              {bedrockAuthMode === 'api-key' && (
+                <div className="editor-field">
+                  <label className="editor-label" htmlFor="bedrock-api-key">
+                    Bedrock API key
+                  </label>
+                  <input
+                    id="bedrock-api-key"
+                    className="editor-input"
+                    type="password"
+                    value={(form.config.apiKey as string) ?? ''}
+                    placeholder={
+                      apiKeyConfigured
+                        ? 'Saved secret — enter a new value to replace it'
+                        : 'ABSK…'
+                    }
+                    onChange={(event) =>
+                      onSetConfigField('apiKey', event.target.value)
+                    }
+                  />
+                  {apiKeyConfigured && (
+                    <div className="editor-field-hint">
+                      A secret is saved. Station never sends it back to this
+                      device.
+                      <button type="button" onClick={clearSavedApiKey}>
+                        Remove saved key
+                      </button>
+                    </div>
+                  )}
+                  {!apiKeyConfigured &&
+                    !(form.config.apiKey as string)?.trim() && (
+                      <div className="editor-error">
+                        A Bedrock API key is required to save this connection.
+                      </div>
+                    )}
+                </div>
+              )}
+
+              {/*
+               * archive#3654 — an IAM policy may grant bedrock:InvokeModel and withhold
+               * bedrock:ListFoundationModels, which is classified as "reachable,
+               * no catalog" so the explicit test can go on to the one minimal chat
+               * request that could still prove the connection works. That request
+               * needs a model, and it is the same field the runtime already
+               * resolves a model from when an agent names none.
+               */}
+              <DefaultModelField
+                id={defaultModelId}
+                value={(form.config.defaultModel as string) ?? ''}
+                options={modelOptions}
+                placeholder="A model or inference-profile id this account can invoke"
+                hint="Used when an agent names no model, and by Test Connection if Bedrock models can't be listed."
+                onChange={(next) => onSetConfigField('defaultModel', next)}
+              />
+            </>
+          )}
+
+          <div className="editor-field">
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(event) =>
+                  onSetField('enabled', event.target.checked)
+                }
+              />
+              Enabled
+            </label>
+          </div>
+
+          {isNew ? (
+            <p
+              id="provider-create-disclosure"
+              className="provider-detail__disclosure"
+            >
+              Create saves this connection and checks its model list. If the
+              service cannot list models, Station may send a small test prompt
+              using the default model. Your provider may charge for that
+              request. A saved connection is ready only after its check
+              succeeds.
+            </p>
+          ) : null}
+
+          {showStatus && !isNew && selectedProviderId && (
+            <div
+              style={{
+                paddingTop: '8px',
+                borderTop: '1px solid var(--border-primary)',
+              }}
+            >
+              <button
+                type="button"
+                className="editor-btn"
+                onClick={() => onTestConnection(selectedProviderId)}
+                disabled={isTesting}
+                aria-describedby="provider-test-disclosure"
+              >
+                {isTesting ? 'Testing…' : 'Test Connection'}
+              </button>
+              {/* The contract used to call this non-billable,
+              and the button said nothing at all. It asks the provider for its
+              model list, and when there is no list to ask for it sends one
+              minimal chat request — which some providers bill. Say so before
+              the press, not in a changelog. */}
+              <p
+                id="provider-test-disclosure"
+                className="provider-detail__disclosure"
+              >
+                Checks this service's model list. If it cannot list models,
+                Station sends a small test prompt using the default model. Your
+                provider may charge for that request.
+              </p>
+              {testResult && (
+                <div
+                  style={{
+                    fontSize: '13px',
+                    color: testResult.healthy
+                      ? 'var(--success-text, #22c55e)'
+                      : 'var(--error-text)',
+                    marginTop: '6px',
+                  }}
+                >
+                  {testResult.healthy ? (
+                    <>
+                      <CheckGlyph /> Connection healthy
+                    </>
+                  ) : (
+                    <>
+                      {/* RT-06: "✗ Connection failed" with no reason, no HTTP
+                      code and no remediation. The provider's own refusal
+                      comes back with the result. */}
+                      <CloseGlyph /> Connection failed
+                      {testResult.reason ? ` — ${testResult.reason}` : ''}
+                    </>
+                  )}
+                </div>
+              )}
+              {testError && (
+                <div
+                  style={{
+                    fontSize: '13px',
+                    color: 'var(--error-text)',
+                    marginTop: '6px',
+                  }}
+                >
+                  <CloseGlyph /> {testError}
                 </div>
               )}
             </div>
           )}
 
-          {/*
-           * archive#3654 — an IAM policy may grant bedrock:InvokeModel and withhold
-           * bedrock:ListFoundationModels, which is classified as "reachable,
-           * no catalog" so the explicit test can go on to the one minimal chat
-           * request that could still prove the connection works. That request
-           * needs a model, and it is the same field the runtime already
-           * resolves a model from when an agent names none.
-           */}
-          <DefaultModelField
-            id={defaultModelId}
-            value={(form.config.defaultModel as string) ?? ''}
-            options={modelOptions}
-            placeholder="A model or inference-profile id this account can invoke"
-            hint="Used when an agent names no model, and by Test Connection if Bedrock models can't be listed."
-            onChange={(next) => onSetConfigField('defaultModel', next)}
-          />
+          <details className="provider-detail__advanced">
+            <summary>Advanced</summary>
+            <div className="provider-detail__advanced-fields">
+              <div className="editor-field">
+                <label className="editor-label" htmlFor={providerTypeId}>
+                  Connection type
+                </label>
+                <select
+                  id={providerTypeId}
+                  className="editor-select"
+                  value={form.type}
+                  onChange={(event) => onTypeChange(event.target.value)}
+                >
+                  {PROVIDER_TYPES.map((option) => (
+                    <option key={option.type} value={option.type}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="editor-field">
+                <span className="editor-label">Capabilities</span>
+                <div className="provider-detail__capabilities">
+                  {form.capabilities
+                    .filter((capability) => capability !== 'vectordb')
+                    .map((capability) => (
+                      <span key={capability}>{capability}</span>
+                    ))}
+                </div>
+              </div>
+            </div>
+          </details>
         </>
       )}
-
-      <div className="editor-field">
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            color: 'var(--text-primary)',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={form.enabled}
-            onChange={(event) => onSetField('enabled', event.target.checked)}
-          />
-          Enabled
-        </label>
-      </div>
-
-      {isNew ? (
-        <p
-          id="provider-create-disclosure"
-          className="provider-detail__disclosure"
-        >
-          Create saves this connection and checks its model list. If the service
-          cannot list models, Station may send a small test prompt using the
-          default model. Your provider may charge for that request. A saved
-          connection is ready only after its check succeeds.
-        </p>
-      ) : null}
-
-      {!isNew && selectedProviderId && (
-        <div
-          style={{
-            paddingTop: '8px',
-            borderTop: '1px solid var(--border-primary)',
-          }}
-        >
-          <button
-            type="button"
-            className="editor-btn"
-            onClick={() => onTestConnection(selectedProviderId)}
-            disabled={isTesting}
-            aria-describedby="provider-test-disclosure"
-          >
-            {isTesting ? 'Testing…' : 'Test Connection'}
-          </button>
-          {/* The contract used to call this non-billable,
-              and the button said nothing at all. It asks the provider for its
-              model list, and when there is no list to ask for it sends one
-              minimal chat request — which some providers bill. Say so before
-              the press, not in a changelog. */}
-          <p
-            id="provider-test-disclosure"
-            className="provider-detail__disclosure"
-          >
-            Checks this service's model list. If it cannot list models, Station
-            sends a small test prompt using the default model. Your provider may
-            charge for that request.
-          </p>
-          {testResult && (
-            <div
-              style={{
-                fontSize: '13px',
-                color: testResult.healthy
-                  ? 'var(--success-text, #22c55e)'
-                  : 'var(--error-text)',
-                marginTop: '6px',
-              }}
-            >
-              {testResult.healthy ? (
-                <>
-                  <CheckGlyph /> Connection healthy
-                </>
-              ) : (
-                <>
-                  {/* RT-06: "✗ Connection failed" with no reason, no HTTP
-                      code and no remediation. The provider's own refusal
-                      comes back with the result. */}
-                  <CloseGlyph /> Connection failed
-                  {testResult.reason ? ` — ${testResult.reason}` : ''}
-                </>
-              )}
-            </div>
-          )}
-          {testError && (
-            <div
-              style={{
-                fontSize: '13px',
-                color: 'var(--error-text)',
-                marginTop: '6px',
-              }}
-            >
-              <CloseGlyph /> {testError}
-            </div>
-          )}
-        </div>
-      )}
-
-      <details className="provider-detail__advanced">
-        <summary>Advanced</summary>
-        <div className="provider-detail__advanced-fields">
-          <div className="editor-field">
-            <label className="editor-label" htmlFor={providerTypeId}>
-              Connection type
-            </label>
-            <select
-              id={providerTypeId}
-              className="editor-select"
-              value={form.type}
-              onChange={(event) => onTypeChange(event.target.value)}
-            >
-              {PROVIDER_TYPES.map((option) => (
-                <option key={option.type} value={option.type}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="editor-field">
-            <span className="editor-label">Capabilities</span>
-            <div className="provider-detail__capabilities">
-              {form.capabilities
-                .filter((capability) => capability !== 'vectordb')
-                .map((capability) => (
-                  <span key={capability}>{capability}</span>
-                ))}
-            </div>
-          </div>
-        </div>
-      </details>
     </div>
   );
 }

@@ -21,8 +21,9 @@ import type { NavigationView } from '../types';
  *
  * - EXCLUDED — everything incidental: `agent-edit.initialTab` (the seed for a
  *   tab the editor owns from then on; re-keying on it would remount an editor
- *   mid-edit), `connections-engine-edit.tab` (a route tab inside one engine's
- *   detail; the record and its unsaved settings stay mounted across it),
+ *   mid-edit), `connections-engine-edit.tab` and `connections-model-edit.tab`
+ *   (a route tab inside one engine's or model connection's detail; the record
+ *   and its unsaved settings stay mounted across it),
  *   `guidance.selectedId` (choosing a row in a split pane's list,
  *   not leaving the surface), `guidance.redirectFromAlias` (provenance of how
  *   the URL was reached). A same-route rerender must never replay the
