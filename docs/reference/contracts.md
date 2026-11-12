@@ -2300,7 +2300,8 @@ inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInpu
 
 Messages can carry files, react and be edited or deleted (#4796, #4797,
 #4812). `ProjectRoomAttachment` is the Task room's `TaskRoomAttachment`, with its
-count and size limits (`parseProjectRoomAttachments`); a message with files may
+count and size limits, and no file named twice (`parseProjectRoomAttachments`);
+a message with files may
 have empty text. `ProjectRoomMessage` adds three projected fields that are never
 stored on the message itself: `editedAt` (the text is the latest edit's),
 `deletedAt` (a tombstone: empty text, no files or reactions) and `reactions`
