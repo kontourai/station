@@ -295,68 +295,98 @@ export function createFleetInferenceModel(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const abortOuter = () => controller.abort();
-    callOptions.abortSignal?.addEventListener('abort', abortOuter);
+    // An `abort` listener never fires for a signal that was aborted before
+    // the listener was attached, so that case is carried across by hand.
+    if (callOptions.abortSignal?.aborted) controller.abort();
+    else callOptions.abortSignal?.addEventListener('abort', abortOuter);
 
-    let response: Response;
-    try {
-      response = await fetchImpl(
-        `${options.apiBase}${FLEET_INFERENCE_ROUTE_PREFIX}/completions`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${options.credential}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        },
-      );
-    } catch (error) {
-      throw new FleetInferenceRoutingError({
+    const unanswered = (error: unknown) =>
+      new FleetInferenceRoutingError({
         environmentId: options.environmentId,
         modelId: options.modelId,
         refusalCode: 'peer-unreachable',
         message: `${label} did not answer this fleet completion (${error instanceof Error ? error.name : 'transport failure'}).`,
       });
+
+    /**
+     * Reads a response body as JSON under the same timeout and caller abort
+     * as the request. A body cut short by either is the peer not answering;
+     * a body that arrived but is not JSON reads as `undefined`, which each
+     * caller already treats as "nothing usable was returned".
+     */
+    const readJsonBody = async (source: Response): Promise<unknown> => {
+      try {
+        return await source.json();
+      } catch (error) {
+        if (controller.signal.aborted) throw unanswered(error);
+        return undefined;
+      }
+    };
+
+    // The timer and the abort listener stay armed until the BODY has been
+    // read, not merely until the headers arrive: `fetch` resolves on headers,
+    // and a peer that then stalls its body would otherwise hold the turn open
+    // with no timeout and no way for the caller to cancel it.
+    try {
+      // Already cancelled: do not send the request at all.
+      if (controller.signal.aborted) throw unanswered(controller.signal.reason);
+
+      let response: Response;
+      try {
+        response = await fetchImpl(
+          `${options.apiBase}${FLEET_INFERENCE_ROUTE_PREFIX}/completions`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${options.credential}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          },
+        );
+      } catch (error) {
+        throw unanswered(error);
+      }
+
+      if (!response.ok) {
+        const refusal = (
+          (await readJsonBody(response)) as
+            | { refusal?: FleetInferenceRefusal }
+            | null
+            | undefined
+        )?.refusal;
+        throw new FleetInferenceRoutingError({
+          environmentId: options.environmentId,
+          modelId: options.modelId,
+          refusalCode: refusal?.code ?? 'execution-failed',
+          // The peer's own sentence is safe to relay: slice 2 guarantees a
+          // refusal `message` is one sentence, never an upstream error string.
+          message:
+            refusal?.message ?? `${label} refused this fleet completion.`,
+        });
+      }
+
+      const payload = (await readJsonBody(response)) as
+        | { completion?: FleetInferenceCompletionResponse }
+        | null
+        | undefined;
+      if (
+        !payload?.completion ||
+        typeof payload.completion.content !== 'string'
+      ) {
+        throw new FleetInferenceRoutingError({
+          environmentId: options.environmentId,
+          modelId: options.modelId,
+          refusalCode: 'execution-failed',
+          message: `${label} returned a fleet completion this Station could not read.`,
+        });
+      }
+      return payload.completion;
     } finally {
       clearTimeout(timer);
       callOptions.abortSignal?.removeEventListener('abort', abortOuter);
     }
-
-    if (!response.ok) {
-      let refusal: FleetInferenceRefusal | undefined;
-      try {
-        refusal = (
-          (await response.json()) as { refusal?: FleetInferenceRefusal }
-        ).refusal;
-      } catch {
-        refusal = undefined;
-      }
-      throw new FleetInferenceRoutingError({
-        environmentId: options.environmentId,
-        modelId: options.modelId,
-        refusalCode: refusal?.code ?? 'execution-failed',
-        // The peer's own sentence is safe to relay: slice 2 guarantees a
-        // refusal `message` is one sentence, never an upstream error string.
-        message: refusal?.message ?? `${label} refused this fleet completion.`,
-      });
-    }
-
-    const payload = (await response.json()) as {
-      completion?: FleetInferenceCompletionResponse;
-    };
-    if (
-      !payload?.completion ||
-      typeof payload.completion.content !== 'string'
-    ) {
-      throw new FleetInferenceRoutingError({
-        environmentId: options.environmentId,
-        modelId: options.modelId,
-        refusalCode: 'execution-failed',
-        message: `${label} returned a fleet completion this Station could not read.`,
-      });
-    }
-    return payload.completion;
   }
 
   return {

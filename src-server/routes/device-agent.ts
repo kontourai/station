@@ -35,6 +35,13 @@ export interface DeviceAgentRoutesDeps
   isInternalRequest(request: Request): boolean;
   resolveCaller(request: Request): StationControlCaller | null;
   automation: DeviceAutomation;
+  /**
+   * #4769: whether the calling session's start ran with a restricted
+   * network. A device drives a simulator, emulator or phone that has its own
+   * network, outside the session's sandbox, so such a caller is refused.
+   * Absent: no session is restricted. A throw refuses.
+   */
+  networkRestrictedSession?: (sessionId: string) => boolean;
   deviceLoopEnabled?: () => boolean;
   taskCapture?():
     | {
@@ -74,6 +81,19 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
     };
     const decided = await authorizeDeviceAgentCaller(access);
     if (!decided.ok) return c.json(decided);
+    if (deps.networkRestrictedSession) {
+      // Fail closed: a reader that throws refuses the call, also for a
+      // session that started unrestricted (the caller resolution above read
+      // the same store, so a broken store has normally failed already).
+      let restricted = true;
+      try {
+        restricted = deps.networkRestrictedSession(decided.authority.sessionId);
+      } catch {
+        // Unknown: refused.
+      }
+      if (restricted)
+        return c.json({ ok: false, code: 'device-network-restricted' });
+    }
     const read = await readBoundedRequestBody(c.req.raw, 16 * 1024);
     let body: Record<string, unknown>;
     try {

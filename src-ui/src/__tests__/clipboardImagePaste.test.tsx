@@ -16,6 +16,7 @@ import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
 import { StartComposer } from '../components/chat-start/StartComposer';
+import { RoomComposer } from '../components/room/RoomComposer';
 import {
   type ClipboardImageSources,
   NO_CLIPBOARD_IMAGE_MESSAGE,
@@ -26,7 +27,6 @@ import type {
   NativeCommandResult,
   NativeImageList,
 } from '../platform/native/types';
-import { TaskRoomAttachmentComposer } from '../workspace-panes/TaskRoomAttachmentComposer';
 
 vi.mock('../components/conversation-stats/ConversationStats', () => ({
   ContextPercentage: () => null,
@@ -271,15 +271,26 @@ function taskRoomAttachments() {
   };
 }
 
-function renderTaskRoom(attachments = taskRoomAttachments()) {
+/** The room composer (#4810) Task rooms and agent-thread replies use. */
+function renderTaskRoom(
+  attachments: ReturnType<
+    typeof taskRoomAttachments
+  > | null = taskRoomAttachments(),
+) {
   render(
-    <TaskRoomAttachmentComposer
-      attachments={attachments as never}
-      locked={false}
-      owner="task-1"
-    >
-      <textarea aria-label="Message" />
-    </TaskRoomAttachmentComposer>,
+    <RoomComposer
+      id="room-message"
+      label="Message the task room"
+      placeholder="Message"
+      value=""
+      onValueChange={() => {}}
+      onSend={() => {}}
+      canSend={false}
+      sendLabel="Send to task room"
+      {...(attachments
+        ? { attachments: { port: attachments, locked: false, owner: 'task-1' } }
+        : {})}
+    />,
   );
   return attachments;
 }
@@ -312,8 +323,8 @@ describe('Paste image in each composer', () => {
     expectOnePastedPng(onAdd.mock.calls[0][0]);
   });
 
-  test('the Task composer pastes into attachments.selectFiles', async () => {
-    const attachments = renderTaskRoom();
+  test('the room composer pastes into its attachment port', async () => {
+    const attachments = renderTaskRoom()!;
     fireEvent.click(await pasteButton());
     await waitFor(() => expect(attachments.selectFiles).toHaveBeenCalledOnce());
     expectOnePastedPng(attachments.selectFiles.mock.calls[0][0]);
@@ -340,7 +351,7 @@ describe('Paste image in each composer', () => {
     expect(onAdd).not.toHaveBeenCalled();
     cleanup();
 
-    const attachments = renderTaskRoom();
+    const attachments = renderTaskRoom()!;
     fireEvent.click(await pasteButton());
     await waitFor(() =>
       expect(attachments.setError).toHaveBeenCalledWith(
@@ -370,6 +381,15 @@ describe('Paste image in each composer', () => {
   test('the reply composer offers no Paste image to a model without images', async () => {
     renderChatInput({ modelSupportsAttachments: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
+  });
+
+  test('a room without an attachment port offers no Paste image', async () => {
+    renderTaskRoom(null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      screen.getByRole('textbox', { name: 'Message the task room' }),
+    ).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
   });
 });

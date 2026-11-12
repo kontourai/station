@@ -2,6 +2,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { formatToolName } from '../../utils/chat-progress';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { formatDuration } from '../../utils/relativeTime';
 
 const OUTCOME_WORDS: Record<
@@ -14,12 +15,6 @@ const OUTCOME_WORDS: Record<
   // The session ended with the call open: no outcome was observed at all.
   unresolved: 'no result',
 };
-
-function epochMs(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? undefined : ms;
-}
 
 /**
  * A tool line in three pieces so the tool's name — which can be a whole
@@ -57,7 +52,7 @@ function describeTurnActivity(
   const running = activity.runningTools ?? [];
   const current = running.at(-1);
   if (current) {
-    const startedAt = epochMs(current.startedAt);
+    const startedAt = parseEpochMs(current.startedAt);
     const others = running.length - 1;
     parts.running = {
       lead: 'Running ',
@@ -69,8 +64,8 @@ function describeTurnActivity(
   } else if (activity.lastTool) {
     // `lastTool` is the newest terminal on ANY child, in or out of a turn.
     // Only one that settled inside this turn says what this turn is between.
-    const completedAt = epochMs(activity.lastTool.completedAt);
-    const turnStartedAt = epochMs(openTurn.startedAt);
+    const completedAt = parseEpochMs(activity.lastTool.completedAt);
+    const turnStartedAt = parseEpochMs(openTurn.startedAt);
     if (
       completedAt !== undefined &&
       turnStartedAt !== undefined &&
@@ -83,7 +78,9 @@ function describeTurnActivity(
       };
     }
   }
-  const silentSince = epochMs(activity.progressSilence?.silentSinceEventAt);
+  const silentSince = parseEpochMs(
+    activity.progressSilence?.silentSinceEventAt,
+  );
   if (silentSince !== undefined) {
     // The status ladder's word ("No progress"), naming who went quiet.
     parts.silence = `No progress from ${engineDisplayLabel(activity.progressSilence?.provider ?? '') ?? 'the agent'} for ${formatDuration(now - silentSince)}`;

@@ -19,6 +19,7 @@ import {
   CHAT_ATTACHMENT_MAX_DATA_URL_LENGTH,
   CHAT_ATTACHMENT_MAX_NAME_LENGTH,
   type ChatAttachmentInput,
+  parseChatAttachmentDataUrl,
   validateChatAttachment,
   validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
@@ -204,6 +205,7 @@ import {
 import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
 import {
   ConversationTurnQueuedError,
+  type ThreadInboxAttachment,
   type ThreadInboxDelivery,
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
@@ -405,6 +407,7 @@ function errorCode(error: unknown): string | undefined {
 const DELEGATION_REFUSAL_CODES = new Set([
   'delegation_depth_exceeded',
   'delegation_lineage_unavailable',
+  'delegated_tool_blocked',
 ]);
 
 function delegationRefusal(c: Context, error: unknown): Response | undefined {
@@ -541,9 +544,11 @@ const respondToRequestCommandSchema = z.object({
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   // Typed, optional: an older client omits it and keeps the per-tool grant.
-  // Only an `acceptForSession` answer reads it, and only an authentic
-  // Station browser request honours it (the adapter's grant computation).
-  sessionGrantScope: z.literal('server').optional(),
+  // Only an `acceptForSession` answer reads it, and only a request that
+  // offered the scope honours it (the adapter's grant computation): `server`
+  // for an authentic Station browser call, `rule` for a Claude Bash ask with
+  // suggested command prefixes.
+  sessionGrantScope: z.enum(['server', 'rule']).optional(),
   // docs/design/event-content-spill.md: proof the client loaded a spilled
   // request's full content before allowing it. Checked by the service.
   viewedContentDigest: z
@@ -983,17 +988,19 @@ export const foregroundMessageObjectSchema = z.object({
  * #3568: the follow-up a `/chat` send hands to its conversation's inbox when
  * the conversation is busy, or undefined when this send cannot be held there.
  * Only a plain continuation can: the inbox replays it through the
- * conversation's persisted binding later, without this request. Attachments,
- * a visual skill start, an input reply, an approval pick, a delegated or
- * another Station's target all need this request's own
- * authority or bytes, so they are refused when busy, as before.
+ * conversation's persisted binding later, without this request. Files can
+ * wait with it when the host stores them (`filesQueueable`): their bytes go
+ * to the attachment blob store and placement reads them back. A visual skill
+ * start, an input reply, an approval pick, a delegated or another Station's
+ * target all need this request's own authority, so they are refused when
+ * busy, as before.
  */
 function inboxFollowUpOf(
   body: z.infer<typeof foregroundMessageObjectSchema> & {
     whenBusy?: 'queue';
     automaticBackground?: true;
   },
-  options: { delegated: boolean; remote: boolean },
+  options: { delegated: boolean; remote: boolean; filesQueueable: boolean },
 ):
   | {
       conversationId: string;
@@ -1010,8 +1017,8 @@ function inboxFollowUpOf(
     !body.clientTurnId ||
     options.delegated ||
     options.remote ||
-    body.attachments?.length ||
-    body.attachmentRefs?.length ||
+    ((body.attachments?.length || body.attachmentRefs?.length) &&
+      !options.filesQueueable) ||
     body.skillExperience ||
     body.mcpPromptOrigin ||
     body.expectedInputRequest ||
@@ -2110,6 +2117,12 @@ export function createOrchestrationRoutes(
      * Without it, no request's claimed context is stamped.
      */
     resolveRequestDelegation?: RequestDelegationResolver;
+    /**
+     * Stores one queued follow-up file's bytes in the attachment blob store
+     * and returns its content address, or undefined when it could not be
+     * written. Present on hosts that hold files with queued follow-ups.
+     */
+    storeQueuedAttachment?: (bytes: Buffer) => string | undefined;
     /** Current-host only; resolves byte-free stage references immediately before dispatch. */
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
@@ -2767,6 +2780,7 @@ export function createOrchestrationRoutes(
             409,
           )
         : undefined;
+    const receivedAt = performance.now();
     try {
       const {
         delegation: claimedDelegation,
@@ -2993,6 +3007,7 @@ export function createOrchestrationRoutes(
       const resolvedDelegation = await deps.resolveRequestDelegation?.(
         c.req.raw,
         {
+          tool: 'send_message',
           ...(claimedDelegation
             ? { delegation: claimedDelegation as AgentDelegationContext }
             : {}),
@@ -3088,6 +3103,14 @@ export function createOrchestrationRoutes(
         ? inboxFollowUpOf(body, {
             delegated: Boolean(claimedDelegation || delegation),
             remote: resolvedTarget.environment.kind !== 'current',
+            filesQueueable: Boolean(
+              deps.storeQueuedAttachment &&
+                (!stagedAttachments?.length ||
+                  (principal &&
+                    deps.hydrateStagedAttachments &&
+                    deps.acceptStagedAttachments &&
+                    deps.releaseStagedAttachments)),
+            ),
           })
         : undefined;
       if (
@@ -3113,32 +3136,82 @@ export function createOrchestrationRoutes(
           ) === null
         )
           throw new Error('The requested conversation is unavailable.');
-        queueOnBusyRefusal = () =>
-          queuedFollowUpResponse(
-            c,
-            inbox.submit({
-              conversationId: followUp.conversationId,
-              clientTurnId: followUp.clientTurnId,
-              payload: {
-                message: followUp.message,
-                ...(followUp.automaticBackground
-                  ? { automaticBackground: true as const }
-                  : {}),
-                inputDigest,
-                ...(followUp.ambientContext
-                  ? { ambientContext: followUp.ambientContext }
-                  : {}),
-                ...(followUp.model ? { model: followUp.model } : {}),
-                actor: {
-                  userId,
-                  ...(principal ? { principal } : {}),
-                  ...(ownerAttribution ? { ownerAttribution } : {}),
-                },
-                clientOrigin: foregroundRequest.clientOrigin,
+        queueOnBusyRefusal = () => {
+          // Files wait in the blob store, not in the entry. A stage the live
+          // attempt already bound keeps that binding; it is accepted only
+          // once the entry is queued and released otherwise, so a resend of
+          // the same chips is never refused as bound.
+          const filesBinding = stagedAttachments?.length
+            ? (stagedBinding ?? {
+                threadId: followUp.conversationId,
+                clientTurnId: followUp.clientTurnId,
+              })
+            : undefined;
+          const settleStage = (queued: boolean) => {
+            if (!filesBinding || !stagedAttachments?.length) return;
+            (queued
+              ? deps.acceptStagedAttachments
+              : deps.releaseStagedAttachments)?.(
+              principal!,
+              stagedAttachments,
+              filesBinding,
+            );
+          };
+          let attachments: ThreadInboxAttachment[] | undefined;
+          if (body.attachments?.length || stagedAttachments?.length) {
+            const inputs = filesBinding
+              ? deps.hydrateStagedAttachments!(
+                  principal!,
+                  stagedAttachments!,
+                  filesBinding,
+                )
+              : (body.attachments as ChatAttachmentInput[]);
+            attachments = [];
+            for (const input of inputs) {
+              const parsed = parseChatAttachmentDataUrl(input.dataUrl);
+              const blobRef = parsed
+                ? deps.storeQueuedAttachment!(
+                    Buffer.from(parsed.base64, 'base64'),
+                  )
+                : undefined;
+              if (!blobRef) {
+                settleStage(false);
+                return undefined;
+              }
+              attachments.push({
+                kind: input.kind,
+                name: input.name,
+                mimeType: input.mimeType,
+                size: input.size,
+                blobRef,
+              });
+            }
+          }
+          const submitted = inbox.submit({
+            conversationId: followUp.conversationId,
+            clientTurnId: followUp.clientTurnId,
+            payload: {
+              message: followUp.message,
+              ...(attachments ? { attachments } : {}),
+              ...(followUp.automaticBackground
+                ? { automaticBackground: true as const }
+                : {}),
+              inputDigest,
+              ...(followUp.ambientContext
+                ? { ambientContext: followUp.ambientContext }
+                : {}),
+              ...(followUp.model ? { model: followUp.model } : {}),
+              actor: {
+                userId,
+                ...(principal ? { principal } : {}),
+                ...(ownerAttribution ? { ownerAttribution } : {}),
               },
-            }),
-            followUp,
-          );
+              clientOrigin: foregroundRequest.clientOrigin,
+            },
+          });
+          settleStage(submitted.outcome === 'queued');
+          return queuedFollowUpResponse(c, submitted, followUp);
+        };
         if (inbox.mustQueue(followUp.conversationId)) {
           const held = queueOnBusyRefusal();
           if (held) return held;
@@ -3350,6 +3423,20 @@ export function createOrchestrationRoutes(
           stagedBindingForRelease,
         );
       }
+      // A refusal with no closed code reaches the client only as generic
+      // "try again" copy, and nothing else records it: name it here, or the
+      // failure cannot be diagnosed afterwards.
+      if (!errorCode(error))
+        (deps.logger.warn ?? deps.logger.debug)(
+          'Foreground chat message refused without a failure code',
+          {
+            conversationId: (getBody(c) as { conversationId?: unknown })
+              .conversationId,
+            errorName: error instanceof Error ? error.name : typeof error,
+            error: errorMessage(error).slice(0, 500),
+            elapsedMs: Math.round(performance.now() - receivedAt),
+          },
+        );
       return c.json(
         {
           success: false,
@@ -4344,6 +4431,7 @@ export function createOrchestrationRoutes(
       const resolvedDelegation = await deps.resolveRequestDelegation?.(
         c.req.raw,
         {
+          tool: 'delegate_task',
           ...(claimedDelegation
             ? { delegation: claimedDelegation as AgentDelegationContext }
             : {}),

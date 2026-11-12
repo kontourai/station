@@ -12,6 +12,7 @@ import {
   stationControlRefusal,
   stationControlRefusalBody,
 } from '../../tools/station-control-policy.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   ConversationLineageTooLongError,
   type ConversationMessageRead,
@@ -268,7 +269,7 @@ export function createConversationWorkSearchRoutes(deps: {
       });
     } catch (error) {
       deps.read.logger.warn('Failed to search conversations', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return c.json({ success: false, error: 'Search unavailable' }, 503);
     }

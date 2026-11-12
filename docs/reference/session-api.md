@@ -15,6 +15,11 @@ authority and `orchestration:operate`. The current Codex adapter supports save
 paused, pause and clear; resume and Station-managed execution are unavailable.
 See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
 
+A Session that started in a worktree of its own records what became of its
+output once: `GET` or `POST /api/orchestration/sessions/:threadId/worktree-settlement`
+(discarded, kept, released or cleaned up without a decision). No composer
+control calls it yet. See [Worktree output settlement](api.md#worktree-output-settlement).
+
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
@@ -395,14 +400,26 @@ affects new Sessions; continuing a qualified retained Session still requires
 current authorization for its recorded directory. The receipt itself grants no
 authority.
 
+A station-control call to `delegate_task` or `send_message` from a delegated
+child is refused before anything starts: `POST /api/orchestration/delegations`
+and `/chat`, `/chat/delegated` and `/chat/background` answer `403` with
+`delegated_tool_blocked`, ahead of the delegation depth limit and on every
+engine whose call carries a verified station-control caller. The decision uses
+the calling Session's own recorded delegation context, so a request body cannot
+re-allow it. See [tool-policy delivery](../conformance/tool-policy-delivery.md)
+for the callers this covers.
+
 A delegation's dispatch response (`POST /api/orchestration/delegations`) also
 carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own
 `session.started`: the level, whether it was required, the posture the engine
 reported applying at that start (`confined`, `no-mechanism` or
-`configured-but-failed`), the mechanism (`codex-sandbox` or `seatbelt`),
-workspace access and policy basis. A Seatbelt record also lists the kinds of
-writes its profile grants (`writeGrants`). A start that asked for confinement
+`configured-but-failed`), the mechanism (`codex-sandbox`, `seatbelt` or
+`bubblewrap`), workspace access and policy basis. A Seatbelt or bubblewrap
+record also lists the kinds of writes its profile grants (`writeGrants`), and
+says `network: 'restricted'` when the Station's
+[`confinedNetwork`](config.md#optional-fields) policy limited the started
+process to Station's egress broker (#4769); absent, its network was open. A start that asked for confinement
 but ran at Auto with none engaged names why in `fallback`
 (`confined-credential-unavailable`, `config-root-pinned`,
 `resume-bound-elsewhere` or `workspace-too-broad`). It
@@ -413,7 +430,8 @@ answers with the refusal's closed code (`confinement_mechanism_unavailable`,
 `confinement_workspace_incompatible`, `confinement_not_observed`) and leaves
 the conversation able to start again.
 A start whose required confinement has no mechanism on this host is refused
-before anything starts. See
+before anything starts, as is one whose restricted network no mechanism here
+can enforce (`confinement_mechanism_unavailable`, naming why). See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 ### Find out what became of a send
@@ -586,10 +604,17 @@ refusal; a request alone does not prove storage.
   path too. An inbox holds at most 50 unsettled
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
-- Only a plain continuation can be held: no attachments, approval pick, input
+- Only a plain continuation can be held: no approval pick, input
   reply, visual skill start, engine or Agent-definition precondition
   (`expectedEngine`, `expectedDefinitionFingerprint`), delegated send, and no
-  target on another Station. Plain automatic replay may queue; its background
+  target on another Station. Files (`attachments` or staged `attachmentRefs`)
+  can be held only on a host that advertises `followUpAttachments` (absent on
+  hosted Stations): their bytes go to the attachment blob store, a staged
+  reference is accepted for the held entry (released if it is not queued), the
+  entry lists them as `attachments` descriptors (kind, name, MIME type, size;
+  never bytes), and placement sends them with the message. The same key with
+  different files is a different message. Without the flag a busy send with
+  files is not held. Plain automatic replay may queue; its background
   resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
   binding is what the message is sent through later. The sender must be one
@@ -612,8 +637,8 @@ the scope to (for one tied to an account, that the account is enabled and
 was not signed out everywhere since the message was queued); otherwise the message is `refused` (`not_permitted` or
 `device_not_permitted`) and nothing is sent. Station's own coordinator wakes
 (#3628) are also checked against their sender's policy at that moment, and a
-refused one carries `coordinator_retired`, `coordinator_wake_expired` or
-`coordinator_source_unreadable`; a person's messages have no such policy. It never stores a full-access
+refused one carries `coordinator_retired`, `coordinator_wake_expired`,
+`coordinator_source_unreadable` or `coordinator_preview_disabled`; a person's messages have no such policy. It never stores a full-access
 grant: an engine restarted to take a held message starts confined. Each
 message keeps its `clientTurnId`, so the
 [delivery lookup](#find-out-what-became-of-a-send) follows it, and Station
@@ -656,8 +681,10 @@ own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
 `continuation_workspace_corrupt_worktree_binding`,
 `continuation_workspace_worktree_gone`,
 `continuation_workspace_different_project`,
-`continuation_workspace_worktree_moved`, or `start_refused` for any other
-refusal. Every client of the conversation sees the same list, except that
+`continuation_workspace_worktree_moved`, `attachment_unavailable` (a held
+file was no longer stored when it was due to be sent; nothing was sent),
+`attachment_input_unsupported` (the engine takes no files), or `start_refused`
+for any other refusal. Every client of the conversation sees the same list, except that
 someone else's message that may still be sent (`queued`, `sending`,
 `unconfirmed`) is shown without its `clientTurnId`. A
 conversation you may not read, or a Station without an inbox, answers `404`.
@@ -731,7 +758,8 @@ external effects are not claimed without an engine idempotency or receipt
 protocol.
 
 The browser hands eligible busy sends and IndexedDB replay to the server inbox
-with `whenBusy: 'queue'`; a definitive unqueued refusal restores the draft.
+with `whenBusy: 'queue'`; a definitive unqueued refusal of a composer send
+restores the draft. A replay neither clears nor restores the composer.
 Legacy sessionStorage records lack a Station/authority identity and remain
 review-only, without automatic drain or reassignment to the current account.
 Offline steering can retain an already observed, authority-scoped head; without
@@ -921,7 +949,7 @@ requests through simulated process streams; they are not a live Codex receipt.
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
   "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
-  "sessionGrantScope": "'server', optional, only with acceptForSession",
+  "sessionGrantScope": "'server' | 'rule', optional, only with acceptForSession",
   "expectedRequestEventId": "string, optional — the exact request.opened event answered",
   "viewedContentDigest": "'sha256-<hex>', required to allow a request with spilledContent"
 }
@@ -1079,6 +1107,18 @@ not read the field, and a Station that predates it, grant the one tool. The
 inbox offers it as the `acceptForSessionServer` action, which sends the same
 typed decision. The delegated-task respond route does not accept the field.
 
+`sessionGrantScope: 'rule'` narrows an `acceptForSession` answer to the Bash
+command prefixes the engine suggested. A Claude Session offers it on a plain
+Bash call whose suggestions carry one or two `addRules` allow rules for Bash
+in prefix form (`npm ls *` or `npm ls:*`); an exact-command rule offers
+nothing. The adapter forwards only those rules, with `destination:
+'session'`, so the engine allows later matching commands itself, and Station
+mints no tool grant. A `rule` answer to a request that offered none, or to
+an engine that does not declare the scope (every engine but Claude), is a
+one-call accept, never a wider grant. A prefix containing `*` or `"` is
+not offered. The inbox offers it as the
+`acceptForSessionRule` action.
+
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox
 network-host ask (`SandboxNetworkAccess`), which offers no session option and
@@ -1117,12 +1157,15 @@ to forward.
 - Every PowerShell ask. PowerShell wraps an ordinary command and one with a
   security warning in the same `subcommandResults` shape.
 - A chained Bash command (`subcommandResults`: `a && b`, `a; b`, a pipeline)
-  whose request carries `classifier_approvable`, any `decisionReason` text, a
-  `matchedAskRule`, a blocked path, a directory suggestion, a sandbox
-  override or an ask flag.
+  whose request carries `classifier_approvable`, a `matchedAskRule`, a
+  blocked path, a directory suggestion, a sandbox override or an ask flag.
 - An ask of type `other` whose reason is not exactly `This command requires
-  approval`, the text Claude Code 2.1.278 sends for an ordinary single Bash
-  command.
+  approval`, and a chained Bash command with any reason text. One exception:
+  a person's own Bash session grant answers the engine's Bash
+  command-analysis warnings ("A variable in this command can't be checked
+  before it runs", …), which say a command-prefix rule cannot be checked; a
+  whole-tool grant checks none. `autoApprove` and the guardian still prompt
+  for them.
 - An ask whose request Station could not read. This fails closed: a changed
   or missing request costs a prompt, never a grant.
 
@@ -2016,8 +2059,20 @@ is checked again before queued content is written.
 
 Station's SessionDetail subscribes to the tab's shared orchestration feed and
 filters canonical events by Session id. Closing a detail releases its local
-subscription. The shared transport retains the server cursor and epoch across
-retries; a snapshot fallback reloads each mounted detail's bounded history.
+subscription. The shared transport retains the server cursor across retries; a
+snapshot fallback reloads each mounted detail's bounded history. Its request
+headers are fixed when it is created, so it sends `X-Station-Stream-Epoch` only
+if the epoch was already known then; a transport created earlier, such as the
+document's first, retries in place with the cursor and no epoch.
+The browser also checks the epoch on `orchestration:caughtUp`: when a replay
+ends on a different epoch from the one it holds, it discards the replay and
+reconnects without a cursor, which takes the snapshot path.
+A snapshot delivers no events, so the chat transcript re-reads a history window
+that was served before the snapshot's cursor when the stream reports newer
+events for that conversation.
+The browser ends a reconnect wait early when its health status returns to
+connected or reports a new server boot, as it does on visibility, focus and
+`online`. A stream stopped by a 401/403 is not woken by health recovery.
 History starts after capability discovery and does not wait for SSE to open.
 The same-tab subscription needs no BroadcastChannel or SharedWorker. Tabs still
 own separate shared feeds; scheduler, monitoring and Task-room feeds remain
@@ -2036,7 +2091,10 @@ the boot advertisement is separate from the capabilities section. A capable
 host acknowledges the stream request with the response header
 `X-Station-General-Stream: 1`. Without that acknowledgement, the browser uses
 the legacy `/events` connection as well; general events remain ephemeral and can
-be missed while either connection is reconnecting. These frames use `event: station:general` and contain a
+be missed while either connection is reconnecting. When the connection that
+carries them re-opens after a failure, the UI invalidates the queries those
+events keep current (not its whole cache); missed toasts, navigation and
+plugin registry reloads are not replayed. These frames use `event: station:general` and contain a
 JSON envelope with the original `event` and `data` strings. They have no SSE
 `id`, so they do not advance the orchestration replay cursor. General and
 orchestration events retain their respective request-authority checks. The bare

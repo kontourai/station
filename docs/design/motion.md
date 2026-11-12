@@ -23,6 +23,13 @@ hard-coded durations/easings and `transition: all` are rejected by
 | Perpetual status | Motion may indicate live work but cannot be the only status signal. Stop after one iteration under reduced motion. | `--motion-status-spin`, `--motion-status-pulse`, or `--motion-status-breathe`; `--ease-linear` for rotation |
 | Status arrival | A status that appears or changes state lands with a small overshoot (the chat status pill, a lifecycle chip). One shot; transform and opacity only. | `--motion-base` or `--motion-slow`, `--ease-spring` |
 
+Inbox rows follow the finger without a transition while swiping. After release,
+the row snaps open or closed with the shared entrance/exit tokens. Newly mounted
+rows, including an inbox dismissal restored with Undo, have a short opacity and
+position entrance; revealed action icons have one bounded arrival. These effects
+communicate placement, not command success. No stagger delays or repeated motion
+are added, and reduced motion keeps the final row and action states visible.
+
 ## Property contract
 
 Prefer compositor-friendly `transform` and `opacity`. Color, border-color,
@@ -42,6 +49,14 @@ does NOT zero `animation-delay`. Anything animating with a delay (a staggered
 list entrance, for example) must also zero its own delays under reduced
 motion explicitly, or a still-mounted element sits invisible for its
 un-zeroed delay before its (now-instant) animation ever starts.
+
+A person can also choose **Reduced** under Appearance → Display → Motion
+(#4692). It sets `data-motion="reduce"` on the root, which applies the same
+global rule from [tokens.css](../../src-ui/src/tokens.css), and
+`prefersReducedMotion()` returns true for script-driven motion. A component's
+own `@media (prefers-reduced-motion: reduce)` block still follows only the
+device; its durations are collapsed by the global rule either way. See
+[theming](../guides/theming.md#density-and-motion).
 
 ## Migration and ratchet
 

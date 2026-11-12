@@ -387,10 +387,10 @@ describe('the review layout kind', () => {
 
     renderLayout('project-a');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve all' }));
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Approve All',
+        name: 'Approve all',
       }),
     );
 

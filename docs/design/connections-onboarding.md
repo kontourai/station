@@ -567,10 +567,11 @@ chapter on every upgrade. `resolveFirstRunOffer`
 fails closed for absent and for any status this build does not recognise.
 
 **Placement.** `FirstRunHomeChapter` is mounted by `HomeView`, so it cannot
-render on another route and cannot outlive the route the user left. It uses the
-shared `ResponsiveDialogSurface` (the New Project modal's chrome) at
-`--layer-dialog`, with that surface's scrim, focus trap and Escape handling —
-never the notice layer, and never its own placement CSS. Its controls are the
+render on another route and cannot outlive the route the user left. It renders
+through the shared `Dialog`, the same title, spacing and scrim as Station's
+other dialogs, at `--layer-dialog` with `ResponsiveDialogSurface`'s focus trap
+and Escape handling — never the notice layer, and never its own panel or
+placement CSS. Its controls are the
 shared `Checkbox` and `editor-btn`/`editor-btn--primary`; the amber primary and
 the raw OS checkboxes are gone. A row Station cannot act on renders as a state
 and a reason rather than as a disabled control, so the reason stays in the
@@ -601,7 +602,7 @@ anchors coachmarks over real surfaces, and it is only ever entered on request.
 
 **Completion is derived from the outcome, never from reaching the end.** A batch
 in which any selected engine FAILED to materialise is not offered a plain
-"Continue": the report's two exits are "Try again" — which re-plans only the
+"Continue": the report's two exits are "Retry" — which re-plans only the
 engines that failed — and "Continue without them", which writes `skipped` and
 leaves the Home card offering the run again. `completed` is written only when
 every selected engine was materialised (or none was selected); a warned

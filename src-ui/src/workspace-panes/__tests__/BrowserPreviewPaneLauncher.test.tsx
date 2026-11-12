@@ -257,7 +257,9 @@ describe('BrowserPreviewPaneLauncher', () => {
     renderLauncher({ open }, transport);
     fireEvent.click(screen.getByRole('button', { name: 'Open Browser' }));
     expect(
-      await screen.findByRole('button', { name: 'Download Chromium (152 MB)' }),
+      await screen.findByRole('button', {
+        name: 'Download Chromium (145.0 MB)',
+      }),
     ).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(open).not.toHaveBeenCalled();

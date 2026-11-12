@@ -969,7 +969,7 @@ for (const width of [390, 1440]) {
         await library
           .getByRole('button', { name: `Delete ${name}`, exact: true })
           .click();
-        const confirm = page.getByRole('dialog', {
+        const confirm = page.getByRole('alertdialog', {
           name: 'Delete Board?',
           exact: true,
         });

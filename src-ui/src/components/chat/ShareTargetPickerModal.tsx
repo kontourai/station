@@ -1,9 +1,4 @@
 import {
-  MS_PER_DAY,
-  MS_PER_HOUR,
-  MS_PER_MINUTE,
-} from '@kontourai/station-contracts/time';
-import {
   type ConversationSummary,
   fetchAgentConversations,
 } from '@kontourai/station-sdk';
@@ -16,6 +11,7 @@ import { dispatchNewChatIntent } from '../../lib/newChatIntent';
 import type { FileAttachment } from '../../types';
 import type { AttachmentInputCapabilities } from '../../utils/chatAttachments';
 import { readChatAttachmentFiles } from '../../utils/chatAttachments';
+import { relativeTimeFromIso } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { contextGlyph } from '../chat-start/ContextPickerOptions';
 import { ArrowLeftGlyph, NewChatGlyph } from '../icons/Glyph';
@@ -55,20 +51,6 @@ export interface ShareTargetPickerModalProps {
     target: ShareTarget,
     attachments: FileAttachment[],
   ) => void | Promise<void>;
-}
-
-function formatRelativeTime(dateStr: string): string {
-  const then = new Date(dateStr).getTime();
-  if (!Number.isFinite(then)) return '';
-  const diffMs = Date.now() - then;
-  const diffMins = Math.floor(diffMs / MS_PER_MINUTE);
-  const diffHours = Math.floor(diffMs / MS_PER_HOUR);
-  const diffDays = Math.floor(diffMs / MS_PER_DAY);
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return new Date(then).toLocaleDateString();
 }
 
 /**
@@ -387,7 +369,7 @@ export function ShareTargetPickerModal({
                         <span>{conversation.agentName}</span>
                         <span aria-hidden="true">·</span>
                         <span>
-                          {formatRelativeTime(conversation.updatedAt)}
+                          {relativeTimeFromIso(conversation.updatedAt)}
                         </span>
                       </span>
                     </button>

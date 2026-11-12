@@ -81,6 +81,36 @@ export function childWorkDisplayStatus(
  */
 export type ChildWorkProducer = 'engine-subagent' | 'station-delegate';
 
+/**
+ * What sort of work a child is. An `agent` is a conversation of its own (a
+ * subagent, a workflow, a delegate); a `command` is a background shell
+ * command; a `monitor` is a background command that watches for output.
+ * Only an agent has instructions, a model or a transcript.
+ */
+export type ChildWorkKind = 'agent' | 'command' | 'monitor';
+
+const CHILD_WORK_KINDS: readonly ChildWorkKind[] = [
+  'agent',
+  'command',
+  'monitor',
+];
+
+/** Claude's `task_type` for a background shell task (history fallback). */
+const CLAUDE_SHELL_TASK_TYPE = 'local_bash';
+
+/**
+ * The kind of `item`: what its producer reported, else `command` for Claude
+ * history recorded before `workKind` existed (its `kindLabel` is the raw
+ * `local_bash` task type), else `agent`.
+ */
+export function childWorkKindOf(
+  item: Pick<ChildWorkItem, 'workKind' | 'kindLabel'>,
+): ChildWorkKind {
+  if (item.workKind && CHILD_WORK_KINDS.includes(item.workKind))
+    return item.workKind;
+  return item.kindLabel === CLAUDE_SHELL_TASK_TYPE ? 'command' : 'agent';
+}
+
 /** Bound on a settled child's summary; a longer one is cut and flagged. */
 export const CHILD_WORK_SUMMARY_MAX_CHARS = 4_000;
 
@@ -400,6 +430,11 @@ export interface ChildWorkItem extends ChildWorkKey {
   title?: string;
   /** The producer's own name for the kind of child (e.g. a subagent type). */
   kindLabel?: string;
+  /**
+   * What sort of work the child is (see {@link ChildWorkKind}). Absent when
+   * the producer did not say; read through {@link childWorkKindOf}.
+   */
+  workKind?: ChildWorkKind;
   /** #3163: the child's OWN model, as its engine reported it. Absent when unreported. */
   model?: ChildWorkModel;
   /** #3163: where the child's own transcript can be read, when it has one. */
@@ -692,6 +727,8 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (depth !== undefined) next.depth = depth;
   if (item.title !== undefined) next.title = item.title;
   if (item.kindLabel !== undefined) next.kindLabel = item.kindLabel;
+  if (item.workKind !== undefined && CHILD_WORK_KINDS.includes(item.workKind))
+    next.workKind = item.workKind;
   const model = parseChildWorkModel(item.model);
   if (model) next.model = model;
   const transcript = parseChildWorkTranscriptRef(item.transcript);

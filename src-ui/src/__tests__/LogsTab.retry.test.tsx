@@ -41,7 +41,7 @@ describe('Logs tab error recovery (station#2645 follow-up)', () => {
       </QueryClientProvider>,
     );
     expect(screen.getByText('Unable to load server logs.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
   });
 });

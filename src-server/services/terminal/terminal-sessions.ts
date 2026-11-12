@@ -243,7 +243,14 @@ const outputCapSchema = z
   .max(1024 ** 3);
 type SessionJournal = Pick<
   TerminalJournal,
-  'read' | 'flush' | 'discard' | 'seal' | 'append' | 'backpressured' | 'drained'
+  | 'read'
+  | 'flush'
+  | 'discard'
+  | 'seal'
+  | 'append'
+  | 'resize'
+  | 'backpressured'
+  | 'drained'
 >;
 
 export class TerminalSessionRefusal extends Error {}
@@ -1071,6 +1078,10 @@ export class TerminalSessions<Principal> {
     });
     let writerFailed = false;
     let paused = false;
+    // A shell's output is written for its size (#4625); a hosted shell's
+    // host records it, and a command has none.
+    if (!hosted && record.kind !== 'command')
+      journal.resize(record.cols, record.rows).catch(() => undefined);
     const unsubscribeData = hosted
       ? hosted.onOutput(() => this.changed(record.terminalId))
       : proc.onData((data) => {
@@ -1272,7 +1283,15 @@ export class TerminalSessions<Principal> {
       recordSchema.pick({ cols: true, rows: true }).parse({ cols, rows });
       const session = this.live.get(terminalId);
       if (!session) throw new TerminalSessionRefusal('Terminal has ended');
+      const journal =
+        isHostedShellProcess(session.process) || record.kind === 'command'
+          ? undefined
+          : await this.journal(record);
       session.process.resize(cols, rows);
+      // In the same turn as the resize, so output the PTY writes for the
+      // new size follows the record (#4625). A failed journal is reported
+      // by the output path.
+      journal?.resize(cols, rows).catch(() => undefined);
       record.cols = cols;
       record.rows = rows;
       await this.persist();
@@ -1910,11 +1929,15 @@ export class TerminalSessions<Principal> {
     if (session.process.terminate) {
       let deadline: ReturnType<typeof setTimeout> | undefined;
       const expired = new Promise<never>((_resolve, reject) => {
-        deadline = setTimeout(
-          () =>
-            reject(new Error('Terminal process-group cleanup did not settle')),
-          6000,
-        );
+        deadline = setTimeout(() => {
+          // Name the step still pending, so a missed deadline is evidence.
+          const pending = session.process.describeTermination?.();
+          reject(
+            new Error(
+              `Terminal process-group cleanup did not settle${pending ? ` (${pending})` : ''}`,
+            ),
+          );
+        }, 6000);
       });
       try {
         await Promise.race([

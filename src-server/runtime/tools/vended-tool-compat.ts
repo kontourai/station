@@ -220,11 +220,46 @@ const capturedBashSessions = new WeakMap<
   Map<string, BashSession>
 >();
 
+/**
+ * The retained tail of one output stream of a bash command.
+ *
+ * A command's output used to accumulate in one string for as long as the
+ * command ran, so a chatty one (`yes`, a verbose build) grew memory without
+ * bound inside its timeout. What a caller needs from an oversized stream is
+ * its end, where the failure or the result is, so the head is dropped.
+ */
+class BashOutputTail {
+  private text = '';
+  private truncated = false;
+
+  append(chunk: string): void {
+    this.text += chunk;
+    // Trim only once the buffer is twice the limit: each trim copies the kept
+    // tail, so trimming on every chunk would copy the whole tail per chunk.
+    if (this.text.length > MAX_BASH_OUTPUT_CHARS * 2) {
+      this.text = this.text.slice(-MAX_BASH_OUTPUT_CHARS);
+      this.truncated = true;
+    }
+  }
+
+  /** The trimmed text, led by a marker line when its head was dropped. */
+  render(): string {
+    const trimmed = this.text.trim();
+    if (!this.truncated && trimmed.length <= MAX_BASH_OUTPUT_CHARS) {
+      return trimmed;
+    }
+    return `[earlier output truncated: showing the last ${MAX_BASH_OUTPUT_CHARS} characters]\n${trimmed.slice(-MAX_BASH_OUTPUT_CHARS)}`;
+  }
+}
+
 class BashSession {
   constructor(private readonly cwd = process.cwd()) {}
   private processRef: ReturnType<typeof spawn> | null = null;
   private sentinel =
     `__STATION_BASH_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}__`;
+  /** Settles when the last command queued on this session has finished. */
+  private lastCommand: Promise<unknown> = Promise.resolve();
+  private disposed = false;
 
   start() {
     if (this.processRef) {
@@ -272,7 +307,36 @@ class BashSession {
     activeBashSessions.delete(this);
   }
 
-  async run(command: string, timeoutSeconds = 120) {
+  /**
+   * Stops the shell for good. Unlike `stop()`, after which the next command
+   * spawns a fresh shell, a command still queued on a disposed session is
+   * refused: the session has been replaced or its workspace has closed, so a
+   * shell it spawned would have no owner left to stop it.
+   */
+  dispose() {
+    this.disposed = true;
+    this.stop();
+  }
+
+  /**
+   * Runs one command at a time. The shell reads its stdin in order, and every
+   * command in flight listened for the same sentinel, so two overlapping
+   * commands both resolved on the FIRST one's sentinel, the second with the
+   * first's output. A command now starts, and its timeout starts counting,
+   * only when the one queued before it has settled.
+   */
+  run(command: string, timeoutSeconds = 120) {
+    const result = this.lastCommand.then(() =>
+      this.runExclusive(command, timeoutSeconds),
+    );
+    this.lastCommand = result.catch(() => undefined);
+    return result;
+  }
+
+  private async runExclusive(command: string, timeoutSeconds: number) {
+    if (this.disposed) {
+      throw new Error('Bash session was closed before this command could run');
+    }
     this.start();
 
     const child = this.processRef;
@@ -283,8 +347,12 @@ class BashSession {
     const stdout = child.stdout;
     const stderr = child.stderr;
 
-    let stdoutData = '';
-    let stderrData = '';
+    const stdoutTail = new BashOutputTail();
+    const stderrTail = new BashOutputTail();
+    // Received stdout not yet handed to `stdoutTail`: always shorter than the
+    // sentinel, held back because it may be the start of one that the next
+    // chunk completes.
+    let unsearched = '';
 
     return new Promise<{ output: string; error: string }>((resolve, reject) => {
       const timeoutHandle = setTimeout(() => {
@@ -294,18 +362,30 @@ class BashSession {
       }, timeoutSeconds * 1000);
 
       const onStdout = (chunk: Buffer) => {
-        stdoutData += Buffer.from(chunk).toString('utf-8');
-        if (stdoutData.includes(this.sentinel)) {
-          cleanup();
-          resolve({
-            output: stdoutData.replace(this.sentinel, '').trim(),
-            error: stderrData.trim(),
-          });
+        // Only this chunk, plus the held-back characters before it, can
+        // complete the sentinel. Everything earlier has been searched
+        // already, so it is never scanned again.
+        const window = unsearched + Buffer.from(chunk).toString('utf-8');
+        const sentinelAt = window.indexOf(this.sentinel);
+        if (sentinelAt === -1) {
+          const heldBack = Math.min(window.length, this.sentinel.length - 1);
+          stdoutTail.append(window.slice(0, window.length - heldBack));
+          unsearched = window.slice(window.length - heldBack);
+          return;
         }
+        cleanup();
+        stdoutTail.append(
+          window.slice(0, sentinelAt) +
+            window.slice(sentinelAt + this.sentinel.length),
+        );
+        resolve({
+          output: stdoutTail.render(),
+          error: stderrTail.render(),
+        });
       };
 
       const onStderr = (chunk: Buffer) => {
-        stderrData += Buffer.from(chunk).toString('utf-8');
+        stderrTail.append(Buffer.from(chunk).toString('utf-8'));
       };
 
       const onClose = (code: number | null) => {
@@ -330,6 +410,7 @@ class BashSession {
         stdout.off('data', onStdout);
         stderr.off('data', onStderr);
         child.off('close', onClose);
+        child.off('exit', onClose);
         child.off('error', onError);
         stdin.off('error', onError);
       };
@@ -337,6 +418,11 @@ class BashSession {
       stdout.on('data', onStdout);
       stderr.on('data', onStderr);
       child.on('close', onClose);
+      // Also on 'exit': 'close' waits for the stdio streams, which a
+      // backgrounded grandchild can hold open long after bash has gone. An
+      // exited shell can no longer print the sentinel, and the next command
+      // queued on this session cannot start until this one settles.
+      child.on('exit', onClose);
       child.on('error', onError);
       // The session-lifetime guard in start() keeps a stdin error from
       // escaping; this rejects the command that hit it.
@@ -386,7 +472,7 @@ function createBashTool(
           capturedBashSessions.set(workspace, captured);
           const owned = captured;
           workspace.onClose(() => {
-            for (const session of owned.values()) session.stop();
+            for (const session of owned.values()) session.dispose();
             owned.clear();
             capturedBashSessions.delete(workspace);
           });
@@ -394,7 +480,7 @@ function createBashTool(
         sessions = captured;
       }
       if (input.mode === 'restart') {
-        sessions.get(agentSlug)?.stop();
+        sessions.get(agentSlug)?.dispose();
         sessions.set(agentSlug, new BashSession(workspace?.workspaceRoot));
         return 'Bash session restarted';
       }
@@ -419,6 +505,11 @@ function createBashTool(
 
 const FILE_SNIPPET_LINES = 4;
 const DEFAULT_MAX_FILE_SIZE = 1_048_576;
+/**
+ * Most characters of stdout, and separately of stderr, one bash command keeps:
+ * the same ceiling the file editor applies to a file it reads.
+ */
+const MAX_BASH_OUTPUT_CHARS = DEFAULT_MAX_FILE_SIZE;
 const MAX_DIRECTORY_DEPTH = 2;
 
 function createFileEditorTool(

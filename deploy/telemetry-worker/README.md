@@ -47,7 +47,8 @@ Public routes:
 | `POST /v1/lite/<source>` | 202 `{ "accepted": true }` for a new ping, a retained replay and any feedback; 400 `invalid_daily_ping`; 401 `source_unauthorized`; 409 `event_conflict` for a changed payload under a retained event UUID; 422 `day_closed` when the receiver's arrival day is already closed (a receiver clock fault, not a client error); 413 `body_too_large` over 16 KiB; 429 `receiver_rate_limit` (edge limit, `Retry-After: 60`) or `lite_rate_limit` (60 attempts per network per UTC day, `Retry-After: 86400`); 507 `storage_limit` |
 | `GET /v1/public/aggregates[?cursor=]` | Kontour's noisy weekly marginals, at most 200 cells per page. Unknown or repeated parameters and forged cursors return 400 `invalid_cursor` |
 | `GET /public/`, `/public/dashboard.js` | The public weekly aggregates page |
-| `GET /insights`, `/insights/insights.js` | The owner dashboard page. Static: it holds no data until the operator key is entered |
+| `GET /insights`, `/insights/insights.js` | The owner dashboard page and script |
+| `GET /insights/data` | Read-only exact insights, requiring a signed Cloudflare Access user session for the configured team and application |
 | `GET /health/live` | `{ "state": "alive", "scope": "worker" }`, without touching storage |
 
 Operator routes require `Authorization: Bearer <OPERATOR_KEY>`. A missing or
@@ -237,12 +238,29 @@ builds through `STATION_AUTHOR_TELEMETRY_ENDPOINT` (see
 [author telemetry in official builds](../../docs/guides/release-rings.md#author-telemetry-in-official-builds)).
 Setting that variable is a separate owner-gated activation.
 
+## Browser sign-in
+
+Protect `/insights` and all its child paths with a Cloudflare Access application
+and an explicit owner allow policy. Configure `ACCESS_TEAM_DOMAIN` with the
+team hostname (`example.cloudflareaccess.com`) and `ACCESS_AUDIENCE` with that
+application's audience tag. These are trusted deployment settings; neither is
+accepted from the request. Use the same settings for tests of the deployed
+application and the Worker deployment.
+
+The Worker verifies the Access JWT's RS256 signature against that team's JWKS,
+issuer, audience, expiry and subject. A user email must be present. Missing or
+invalid sessions return 401; missing configuration returns 503. Only
+`GET /insights/data` accepts this session, and it exposes only aggregate reads.
+The administrative `/v1/operator/*` routes still require the operator key;
+login grants no source-provisioning or revocation authority. The dashboard
+sends its same-origin session, never an operator key, and removes a previously
+stored dashboard key from local storage. Sign out uses Access's logout route.
+
 ## View the dashboards
 
-- `https://telemetry.kontourai.io/insights` asks once for the operator key and
-  keeps it in this browser's `localStorage` for that origin. **Forget key**
-  removes it, and a refused key is removed automatically. The page shows:
-  - daily active installs, with today's partial day dashed;
+- `https://telemetry.kontourai.io/insights` uses Cloudflare Access sign-in,
+  without asking for the administrative operator key. The page shows:
+  - received daily reports, with today's partial day dashed;
   - weekly and monthly actives, from the `first_active_this_week` and
     `first_active_this_month` flags;
   - new installs per day (`install_age_bucket` `0d`) and their cumulative count;
@@ -253,7 +271,12 @@ Setting that variable is a separate owner-gated activation.
 
   Counts are pings, about one per active installation per day. They are not
   unique people.
-- `https://telemetry.kontourai.io/public/` charts the last four published weeks:
+- `https://telemetry.kontourai.io/public/` charts the last four published weeks.
+  It states the publication window, that the current week is excluded until
+  Monday, and when collection coverage is unverified. If no displayed dimension
+  or week clears its noise threshold, it shows one explanation and a link to
+  private insights instead of empty charts. This means the estimates cannot be
+  interpreted, not that no pings were received. With usable signal, it shows:
   weekly active networks and per-dimension bars, each bar its own noisy
   estimate. It never adds cells together. Each card shows a cell only above a
   Bonferroni threshold for its m candidate cells, `ln(m / (0.05·(1+α))) / ε`

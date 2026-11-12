@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { type RefObject, useMemo, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { EventEntry } from '../../components/monitoring/EventEntry';
 import {
@@ -56,6 +56,33 @@ export function MonitoringLogStream({
   onCopyResult,
   onScrollToBottom,
 }: MonitoringLogStreamProps) {
+  // The view recreates these handlers on every render. Rows are memoised, so
+  // each gets one function for the life of the list that calls the handler
+  // current at click time.
+  const handlersRef = useRef({
+    onTraceClick,
+    onConversationClick,
+    onToolCallClick,
+    onCopyResult,
+  });
+  handlersRef.current = {
+    onTraceClick,
+    onConversationClick,
+    onToolCallClick,
+    onCopyResult,
+  };
+  const rowHandlers = useMemo(
+    () => ({
+      onTraceClick: (traceId: string) =>
+        handlersRef.current.onTraceClick(traceId),
+      onConversationClick: (conversationId: string, agentSlug: string) =>
+        handlersRef.current.onConversationClick(conversationId, agentSlug),
+      onToolCallClick: (toolCallId: string) =>
+        handlersRef.current.onToolCallClick(toolCallId),
+      onCopyResult: (text: string) => handlersRef.current.onCopyResult(text),
+    }),
+    [],
+  );
   const eventRows = filteredEvents.map((event) => (
     <EventEntry
       key={monitoringEventIdentity(event)}
@@ -64,10 +91,10 @@ export function MonitoringLogStream({
       selectedTraceId={selectedTraceId}
       selectedConversation={selectedConversation}
       selectedToolCallId={selectedToolCallId}
-      onTraceClick={onTraceClick}
-      onConversationClick={onConversationClick}
-      onToolCallClick={onToolCallClick}
-      onCopyResult={onCopyResult}
+      onTraceClick={rowHandlers.onTraceClick}
+      onConversationClick={rowHandlers.onConversationClick}
+      onToolCallClick={rowHandlers.onToolCallClick}
+      onCopyResult={rowHandlers.onCopyResult}
     />
   ));
 

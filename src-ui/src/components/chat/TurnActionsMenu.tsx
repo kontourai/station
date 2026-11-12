@@ -1,16 +1,14 @@
 import {
-  type CSSProperties,
   type ReactNode,
   type Ref,
   type RefObject,
-  useCallback,
   useContext,
-  useEffect,
   useImperativeHandle,
   useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useFixedMenuPlacement } from '../../hooks/useFixedMenuPlacement';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { countWords } from '../../utils/text-display';
@@ -58,73 +56,36 @@ function useMenuHandle(
   }));
 }
 
-const MENU_GAP_PX = 4;
 /**
  * `.turn-footer__overflow-menu`'s `min-width`. The placement math needs the
  * menu's widest guaranteed extent before the portalled box has been laid out,
  * so the two must move together (the CSS rule records the twin).
  */
 const MENU_MIN_WIDTH_PX = 180;
-const VIEWPORT_GUTTER_PX = 8;
 /**
- * Estimated row box (`[role="menuitem"]` padding 8px 10px over one text line)
- * plus the container's own 4px padding. Like the dock More menu's estimate,
- * this only has to pick the correct side of the trigger, not equal the
- * rendered height.
+ * Estimated row box (`[role="menuitem"]` padding 8px 10px over one text line).
+ * Like the dock More menu's estimate, this only has to pick the correct side
+ * of the trigger, not equal the rendered height.
  */
 const MENU_ROW_PX = 36;
-const MENU_PADDING_PX = 8;
 
 /**
- * Fixed placement for the portalled overflow menus of this file.
+ * Placement of this file's portalled overflow menus (`useFixedMenuPlacement`).
  *
  * These menus open from inside a message bubble. Absolutely positioned there,
  * they were clipped by the surfaces around them — the side-mode transcript
  * rules give `.message` itself `overflow-x: hidden`, so the menu was cut off
- * at the bubble's own edge. Portalling to the document is the same escape the
- * TaskPicker dialog and the dock's More menu take (leaving the DOM subtree is
- * what beats an ancestor's clipping and stacking context), and a fixed box
- * anchored to the trigger's own rect replaces the in-bubble anchoring.
+ * at the bubble's own edge.
  *
- * Opens ABOVE the trigger, where the in-bubble menu always sat; flips below
- * when the viewport top cannot hold the estimated rows, and pins the viewport
- * gutter when the trigger sits too near the left edge to right-align a
- * min-width menu (a short answer in a narrow left dock).
+ * Opens ABOVE the trigger, where the in-bubble menu always sat; a short
+ * answer in a narrow left dock pins the viewport gutter instead of
+ * right-aligning.
  */
-function useFixedMenuPlacement(
-  triggerRef: RefObject<HTMLButtonElement | null>,
-  open: boolean,
-  rowCount: number,
-) {
-  const [position, setPosition] = useState<CSSProperties>({});
-  const place = useCallback(() => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const roomNeeded = rowCount * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
-    const next: CSSProperties =
-      rect.top >= roomNeeded
-        ? { bottom: window.innerHeight - rect.top + MENU_GAP_PX }
-        : { top: rect.bottom + MENU_GAP_PX };
-    if (rect.right >= MENU_MIN_WIDTH_PX + VIEWPORT_GUTTER_PX) {
-      next.right = window.innerWidth - rect.right;
-    } else {
-      next.left = VIEWPORT_GUTTER_PX;
-    }
-    setPosition(next);
-  }, [triggerRef, rowCount]);
-  // A fixed menu does not ride the transcript's scroll the way the old
-  // absolutely-positioned one did: follow the trigger while open.
-  useEffect(() => {
-    if (!open) return;
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => {
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-    };
-  }, [open, place]);
-  return { position, place };
-}
+const TURN_MENU_PLACEMENT = {
+  preferredSide: 'above',
+  minWidthPx: MENU_MIN_WIDTH_PX,
+  rowPx: MENU_ROW_PX,
+} as const;
 
 export interface TurnActionsMenuProps {
   taskTarget?: {
@@ -196,7 +157,10 @@ export default function TurnActionsMenu({
     (taskTarget ? 1 : 0) +
     (onRegenerate ? 1 : 0) +
     (forkSource && onForkFromTurn ? 1 : 0);
-  const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
+  const { position, place } = useFixedMenuPlacement(triggerRef, open, {
+    ...TURN_MENU_PLACEMENT,
+    rowCount,
+  });
 
   /**
    * #2081. The trigger is NOT inside the menu container — portalled or not,
@@ -447,7 +411,10 @@ export function UserMessageActionsMenu({
     (canFork ? 1 : 0) +
     (newChatFromMessage ? 1 : 0) +
     (onDiscardUnsent ? 1 : 0);
-  const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
+  const { position, place } = useFixedMenuPlacement(triggerRef, open, {
+    ...TURN_MENU_PLACEMENT,
+    rowCount,
+  });
   const triggerProps = useMenuTriggerToggle(
     open,
     () => {

@@ -54,3 +54,14 @@ export function createStreamCursorTracker() {
     },
   };
 }
+
+/**
+ * General events carry no cursor, so there is nothing to resume them from and
+ * none are replayed. This is the envelope event a general-event connection
+ * delivers to its listeners instead, inside a `station:general` frame, when it
+ * re-opens after a failure: the only notice they get that some were missed.
+ * The transport makes it (`ensureOrchestrationEventStream.ts`); no server
+ * sends it. It lives here, apart from the transport, so a listener in the
+ * first-paint bundle can name it without importing the stream module.
+ */
+export const GENERAL_EVENTS_RESUMED_EVENT = 'station:general-resumed';

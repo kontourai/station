@@ -19,6 +19,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
+import { FOCUSABLE_SELECTOR } from '../utils/focusable';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
@@ -26,9 +27,6 @@ import {
   useResponsiveSheetGesture,
   useSheetGesturesPreview,
 } from './useResponsiveSheetGesture';
-
-const FOCUSABLE =
-  'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
 
 type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
 /**
@@ -411,7 +409,8 @@ export function ResponsiveDialogSurface({
       panelRef.current?.querySelectorAll<HTMLElement>('*') ?? [],
     ).filter(
       (element) =>
-        element.matches(FOCUSABLE) && !element.hasAttribute('disabled'),
+        element.matches(FOCUSABLE_SELECTOR) &&
+        !element.hasAttribute('disabled'),
     );
     if (controls.length === 0) {
       event.preventDefault();

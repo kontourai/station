@@ -85,6 +85,9 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'terminalHistoryMaxAgeDays',
   'terminalHistoryMaxTerminalMiB',
   'terminalHistoryMaxTotalMiB',
+  // Past conversations in Knowledge, in the My knowledge store card; it was
+  // a hidden setting until then.
+  'knowledgeStores',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {

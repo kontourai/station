@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import {
   removeLaunchedRoot,
@@ -158,7 +159,7 @@ export class HostImageTurnCapture {
       .catch((error: unknown) =>
         this.deps.logger.warn('Host image capture failed', {
           threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         }),
       );
     this.inflight.set(threadId, run);

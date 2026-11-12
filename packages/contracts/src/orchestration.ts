@@ -1,10 +1,14 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
+import type { QueuedChatAttachmentDescriptor } from './chat-attachment.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
-import type { InputRequestContent } from './input-request.js';
+import type {
+  InputRequestContent,
+  SessionGrantScope,
+} from './input-request.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -157,10 +161,15 @@ export type OrchestrationCommand =
        * Only with `acceptForSession`. `server` widens the session grant from
        * the one tool to the whole in-process Station browser server, and only
        * where the request offered it (an authentic `station-browser` call).
+       * `rule` narrows it to the Bash command prefixes the engine suggested,
+       * only where the request offered them (a Claude Bash ask); Station
+       * then mints no tool grant. A scope the request did not offer, and a
+       * `rule` answer to an engine other than Claude, is a one-call accept.
        * Absent keeps the per-tool grant, so an older client's answer is
-       * unchanged. An engine that cannot honour it takes the per-tool grant.
+       * unchanged. An engine without the server grant takes the per-tool
+       * grant for `server`.
        */
-      sessionGrantScope?: 'server';
+      sessionGrantScope?: SessionGrantScope;
       /**
        * docs/design/event-content-spill.md: required to allow a request whose
        * content EventStore stored out of line (`spilledContent` set). The
@@ -1211,6 +1220,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
     latest: ClientOrigin;
     hasOtherOrigins: boolean;
   };
+  /**
+   * `'provider'` when this session's most recent `turn.started` is a turn the
+   * engine opened on its own (`isProviderTriggeredTurn`): a reply to
+   * background work, not to a send. Absent for any other latest turn. An
+   * inbox reads it so an engine-opened turn does not bring back a
+   * conversation the person dismissed.
+   */
+  latestTurnTrigger?: 'provider';
   lastEventAt?: string;
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */
@@ -1741,6 +1758,11 @@ export interface ConversationInboxEntry {
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;
   message: string;
+  /**
+   * Files sent with the message, when it carries any (`followUpAttachments`
+   * hosts). Descriptors only; the bytes stay on the Station.
+   */
+  attachments?: QueuedChatAttachmentDescriptor[];
   createdAt: string;
   updatedAt: string;
   /** The turn it started, once `sent`. */
@@ -1758,7 +1780,9 @@ export interface ConversationInboxEntry {
    * `continuation_workspace_corrupt_worktree_binding`,
    * `continuation_workspace_worktree_gone`,
    * `continuation_workspace_different_project`,
-   * `continuation_workspace_worktree_moved`, or `start_refused` for any
+   * `continuation_workspace_worktree_moved`, `attachment_unavailable` (a file
+   * held with the message was no longer stored), `attachment_input_unsupported`
+   * (the engine takes no files), or `start_refused` for any
    * other refusal.
    */
   reasonCode?: string;

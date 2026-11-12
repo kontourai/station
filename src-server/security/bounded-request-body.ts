@@ -42,3 +42,58 @@ export async function readBoundedRequestBody(
   }
   return { status: 'ok', body };
 }
+
+export type BoundedBodyBytesResult =
+  | { status: 'ok'; bytes: Uint8Array }
+  | { status: 'too-large' }
+  /** The body stream failed part-way (for example the client went away). */
+  | { status: 'invalid' }
+  /** The request carries no body stream at all. */
+  | { status: 'no-body' };
+
+/**
+ * The byte-returning sibling of {@link readBoundedRequestBody}, for a caller
+ * that verifies a signature over the exact bytes or re-wraps them into a new
+ * Request.
+ *
+ * It owns only the streaming half, which three routes had each written out:
+ * count while reading, cancel at the first byte past `maxBytes`, cancel when
+ * a read fails, and always release the reader. It applies NO `Content-Length`
+ * policy and decodes nothing. Those callers disagree on a declared length
+ * (optional, ignored, or required and exact), so that rule stays with each of
+ * them, as does what an absent body means.
+ */
+export async function readBoundedRequestBodyBytes(
+  request: Pick<Request, 'body'>,
+  maxBytes: number,
+): Promise<BoundedBodyBytesResult> {
+  const stream = request.body;
+  if (!stream) return { status: 'no-body' };
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      total += result.value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return { status: 'too-large' };
+      }
+      chunks.push(result.value);
+    }
+  } catch {
+    await reader.cancel().catch(() => {});
+    return { status: 'invalid' };
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { status: 'ok', bytes };
+}

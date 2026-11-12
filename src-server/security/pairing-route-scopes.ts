@@ -1854,6 +1854,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  // #4771: settling a worktree Session's output records a decision once and,
+  // for a discard, removes the worktree and branch Station created. The
+  // person-only, Session-mutation-gated control a paired device needs the
+  // operate tier for.
+  {
+    id: '/api/orchestration/sessions/:threadId/worktree-settlement:operate',
+    method: 'POST',
+    prefix: '/api/orchestration/sessions/:threadId/worktree-settlement',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // Downloading the public agent registry makes this Station reach out to
   // the network on request, so it takes the same operate tier as the re-check.
   {
@@ -4235,6 +4247,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // refused there; the scope is the floor, not the gate.
     { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
+    // #4774: this Station's host-level confinement facts before any start:
+    // states and the providers' reasons with paths removed, no environment
+    // value, path or credential. Less than the bundle above discloses (its
+    // doctor report), so the same family read tier.
+    { method: 'GET', path: '/api/diagnostics/confinement-preflight' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession
     // (`locality: 'home-possession'` — local-grant secret, or UI-bootstrap
@@ -4532,6 +4549,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/goal' },
+    // #4771: the Session's one worktree output record, read with Session
+    // read authority; it names the Session's own repository, worktree path
+    // and branch, which the Session's own events already disclose.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/worktree-settlement',
+    },
     // Immutable experience history uses the same Session read authority;
     // the reader also authorizes every historical thread before publication.
     {

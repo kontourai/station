@@ -248,12 +248,12 @@ export function InstallPreviewModal({
           >
             {reinstall
               ? installPending
-                ? 'Reinstalling...'
+                ? 'Reinstalling…'
                 : resetData
                   ? 'Reinstall with New Data'
                   : 'Reinstall'
               : installPending
-                ? 'Installing...'
+                ? 'Installing…'
                 : resetData
                   ? 'Confirm Install with New Data'
                   : 'Confirm Install'}

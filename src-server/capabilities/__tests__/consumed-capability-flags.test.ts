@@ -23,6 +23,7 @@ import { createMemoryRoutes } from '../../routes/knowledge/memory-routes.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import { createInboxHarness } from '../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
@@ -42,6 +43,7 @@ import {
   resolveStationCapabilityFlags,
   STATION_CAPABILITY_FLAGS,
   servesCoordinatorSession,
+  servesFollowUpAttachments,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -82,6 +84,9 @@ function orchestrationRoutes(
  * client-capability-gates.scan.test.ts fails when a client gates on a flag
  * missing here; TABLED_CAPABILITY_FLAGS names these rows for it.
  */
+/** The conversation inbox world a busy follow-up is held in. */
+const inboxStation = createInboxHarness();
+
 const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
@@ -363,6 +368,7 @@ const CONSUMED_FLAGS: Record<
             mayMutate: () => true,
           }),
           dispatchActor: () => ({ userId: 'owner' }),
+          preview: { select: (branches) => branches.enabled() },
         }),
       );
       const response = await routes.request('/api/orchestration/coordinator');
@@ -370,6 +376,29 @@ const CONSUMED_FLAGS: Record<
     } finally {
       eventStore.close();
     }
+  },
+  // POST /api/orchestration/chat holds a busy follow-up with a file (202)
+  // only where the runtime builds the conversation inbox, from the same
+  // predicate as the flag; without it the send is refused, never held.
+  followUpAttachments: async (deployment) => {
+    const world = inboxStation({
+      queuedFiles: true,
+      ...(servesFollowUpAttachments(deployment) ? {} : { inbox: false }),
+    });
+    await world.busy();
+    const response = await world.send('probe-file', 'with a file', {
+      whenBusy: 'queue',
+      attachments: [
+        {
+          kind: 'file',
+          name: 'probe.txt',
+          mimeType: 'text/plain',
+          size: 2,
+          dataUrl: 'data:text/plain;base64,aGk=',
+        },
+      ],
+    });
+    return response.status === 202;
   },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
@@ -584,6 +613,7 @@ describe('consumed capability flags match what their routes serve', () => {
     webPushNotifications: { personal: true, hosted: false },
     connectionRoutes: { personal: true, hosted: false },
     coordinatorSession: { personal: true, hosted: false },
+    followUpAttachments: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
   };
 

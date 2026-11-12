@@ -17,8 +17,8 @@ import { describeStationFailure } from '../../utils/stationFailure';
  * 2. **WHERE.** The chapters rendered as fixed bottom-right cards at
  *    `--layer-notice`, on every route, above modal scrims and the command
  *    palette. This renders inside Home (`HomeView`) and nowhere else, as a
- *    `ResponsiveDialogSurface` — the same chrome the New Project modal uses,
- *    at `--layer-dialog`, with its scrim, focus trap and Escape handling.
+ *    shared `Dialog` — the same chrome as Station's other dialogs, at
+ *    `--layer-dialog`, with its scrim, focus trap and Escape handling.
  *    Leaving Home ends the render; there is nothing left to follow the user.
  *
  * 3. **HOW IT ENDS.** "Not now" is a decision and is written down, so the
@@ -43,12 +43,9 @@ import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClient
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { Button } from '../Button';
+import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { PageCallout } from '../PageCallout';
-import {
-  ResponsiveDialogHeader,
-  ResponsiveDialogSurface,
-} from '../ResponsiveDialogSurface';
 import { SkeletonBlock } from '../state';
 import {
   dismissUsageTelemetryDisclosure,
@@ -512,29 +509,23 @@ export function FirstRunHomeChapter({
         }}
       />
       {open ? (
-        <ResponsiveDialogSurface
-          layer="dialog"
+        <Dialog
+          title={
+            <span id="first-run-chapter-title">
+              {step === 'engine-role'
+                ? (roleTitle ?? STEP_TITLES['engine-role'])
+                : STEP_TITLES[step]}
+            </span>
+          }
+          subtitle={firstRunStepCounterLabel(steps, step)}
+          closeLabel="Close setup"
+          onClose={defer}
           initialFocusRef={
             step === 'disclosure' ? disclosureChoiceRef : undefined
           }
           initialFocusPolicy={step === 'disclosure' ? 'always' : 'panel'}
-          onClose={defer}
-          ariaLabelledBy="first-run-chapter-title"
-          overlayClassName="first-run-chapter__overlay"
           panelClassName="first-run-chapter"
         >
-          <ResponsiveDialogHeader
-            title={
-              <span id="first-run-chapter-title">
-                {step === 'engine-role'
-                  ? (roleTitle ?? STEP_TITLES['engine-role'])
-                  : STEP_TITLES[step]}
-              </span>
-            }
-            subtitle={firstRunStepCounterLabel(steps, step)}
-            closeLabel="Close setup"
-            onClose={defer}
-          />
           {/* #1582 L2: focus, when a step swaps.
               `ResponsiveDialogSurface` focuses its panel on MOUNT and only
               then; the panel stays mounted across steps, so activating the
@@ -636,7 +627,7 @@ export function FirstRunHomeChapter({
               />
             )}
           </div>
-        </ResponsiveDialogSurface>
+        </Dialog>
       ) : null}
     </>
   );

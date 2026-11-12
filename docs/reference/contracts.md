@@ -100,6 +100,26 @@ materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
 remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
 references describe cleanup and uncertain delivery outcomes.
 
+### Station orchestration instructions receipt
+
+`ResolvedAgentDefinition.stationInstructions` (`@kontourai/station-contracts/provider`)
+carries Station-owned orchestration guidance, composed for one Session from the
+Station Control tools it is actually offered. It is separate from the
+Agent-authored `systemPrompt`, and is set only for the Claude system-prompt
+append, after an authored prompt. `SessionCapabilityDeliveryMetadata.stationInstructions`
+(`StationInstructionsReceipt`) is the receipt: `version: 1`, the composed
+`sections` ids, the text `digest`, the `channel` (`system-prompt-append` or
+`first-turn`) and, for the first-turn channel, the `firstTurnText` that the
+first message carries. `delivered` is written only by the Claude adapter, after
+it checks that `station-control` is among the servers it gave the session; it
+reports whether the append reached the engine, not whether the model followed
+it. The first-turn channel never sets it, so absent means "not confirmed", not
+"not delivered". Both fields are additive and optional and are absent unless
+the `station-orchestration-instructions` Feature Preview was on when the
+Session was resolved. The
+[orchestration instructions section](../guides/self-configuring-agent.md#orchestration-instructions)
+describes delivery per engine.
+
 ## Modules
 
 `@kontourai/station-contracts/session-goal` owns provider-neutral Goal,
@@ -288,7 +308,8 @@ bytes, publication references, byte/height limits and theme variable names for
 conversation access. Filesystem preparation stays in the server.
 
 The `@kontourai/station-contracts/terminal-transport` subpath exports the
-terminal binary frame codec, limits, the socket's `restart` request
+terminal binary frame codec (with the version 2 resize frame and its size
+codec), limits, the socket's `restart` request
 (`TerminalRestartRequest`, with `TERMINAL_SUBDIRECTORY_MAX_LENGTH`) and the
 observe/operate scope predicate. The
 frame limit bounds unacknowledged output records independently of byte credit,
@@ -337,7 +358,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets. `RegistryItem.mcpServer` (`RegistryMcpServerListing`) describes an MCP subregistry entry: name, version, schema, usable remote, `authMode`, derived `qualification` (`qualified`, `setup-required`, `blocked`, `unqualified`), launch stage, `contentTrust`, `trustReadOnlyHints` and the `unavailable` reasons that refuse Add; `RegistryMcpSourceStatus` is one source's freshness and refusals ([design](../design/mcp-subregistry-curation.md)) |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from: a Claude subagent by session and agent id (`claude-subagent`), a Codex child by its thread id under the session's `CODEX_HOME` (`codex-thread`, its rollout file), never by a path. An `unresolved` child may carry `endedBy: 'engine-exit'`: the engine process it ran in died under it (a crash, a signal, memory exhaustion). A stop someone requested is not one: its children read "No result". Unlike a bare `unresolved` that is an observed end, so no later settle corrects it, and `childWorkDisplayStatus` reads it as `interrupted`. It is a field rather than a status so a client built before it, which drops unknown members, keeps showing "No result" instead of an unknown status; the wire statuses stay the six released clients know. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `workKind` says what it is (`agent`, `command` for a background shell command, `monitor` for one a Monitor launched); `childWorkKindOf` reads it, treating older Claude history whose `kindLabel` is the raw `local_bash` task type as a command and anything else as an agent, and only an agent has a model, instructions or transcript. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from: a Claude subagent by session and agent id (`claude-subagent`), a Codex child by its thread id under the session's `CODEX_HOME` (`codex-thread`, its rollout file), never by a path. An `unresolved` child may carry `endedBy: 'engine-exit'`: the engine process it ran in died under it (a crash, a signal, memory exhaustion). A stop someone requested is not one: its children read "No result". Unlike a bare `unresolved` that is an observed end, so no later settle corrects it, and `childWorkDisplayStatus` reads it as `interrupted`. It is a field rather than a status so a client built before it, which drops unknown members, keeps showing "No result" instead of an unknown status; the wire statuses stay the six released clients know. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
@@ -351,12 +372,12 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
-| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`, and the optional `owner` that marks a Task-owned worktree (`{ kind: 'task', taskId }`, [#4507](../design/task-dispatcher.md#workspace-isolation)); see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
-| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
+| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`, and the optional `owner` that marks a Task-owned worktree (`{ kind: 'task', taskId }`, [#4507](../design/task-dispatcher.md#workspace-isolation)); see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. It also names a worktree Session's one output settlement (`WorktreeOutputSettlement`, its outcome, actor, evidence, request and refusal codes); see [worktree output settlement](../design/isolated-agent-runs.md#worktree-output-settlement). Types only: the route validates the request. |
+| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494), and the content-free confinement preflight a Station reports before any start with its boundary parser `parseConfinementPreflight` (#4774); the restricted-network plan, the record's `network: 'restricted'`, the preflight's `restrictedNetwork` fact and the `confinedNetwork` setting's parser `parseConfinedNetworkSetting` (#4769); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). A validated continuation without an owned-worktree binding reports its server-read bound workspace; owned worktrees retain the existing repository-root receipt form; the optional `confinement` is the started session's recorded confinement, attached after the start |
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
-| `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
+| `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared. `SessionGrantScope` (`server` \| `rule`) scopes a session decision option |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
@@ -907,6 +928,14 @@ and its status and limits, and
 `isCoordinatorWakeClientTurnId`. The handshake advertises the routes as
 `StationCapabilityFlags.coordinatorSession`, withdrawn on a hosted Station.
 
+`@kontourai/station-contracts/chat-attachment` also owns
+`QueuedChatAttachmentDescriptor` (kind, name, MIME type, size), the form a
+queued follow-up's files take on `ConversationInboxEntry.attachments`, and
+`QUEUED_ATTACHMENT_UNAVAILABLE_CODE` (`attachment_unavailable`), an inbox
+entry's refusal when a held file is no longer stored. A host that holds files
+with busy follow-ups advertises `StationCapabilityFlags.followUpAttachments`,
+withdrawn on a hosted Station.
+
 `@kontourai/station-contracts/station-control-refusal` owns the refusal view
 a transcript shows for a station-control tool (`StationControlRefusalView`:
 code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
@@ -1002,6 +1031,7 @@ non-retryable.
 | `delegation_files_turn_refused` | `provider_error` | `false` |
 | `delegation_files_outcome_unknown` | `indeterminate` | `false` |
 | `delegation_files_cleanup_failed` | `provider_error` | `false` |
+| `attachment_unavailable` | `input_unsupported` | `false` |
 | `stage_not_found` | `input_unsupported` | `false` |
 | `stage_expired` | `input_unsupported` | `false` |
 | `stage_forbidden` | `permission_denied` | `false` |
@@ -2486,3 +2516,25 @@ qualification limits.
 defaulting to `true`. It controls the installed app’s first-launch changelog
 after an upgrade; it does not control update downloads, installation, or
 release availability.
+
+### Shared Task agent request contracts
+
+`task-room-work` also declares separately negotiated shared work, context, and
+result versions. Shared requests bind an expected actor, Task incarnation,
+operation, Agent, exact model, brief revision and digest, selected published
+results, prompt, and new or existing thread. The expected actor is an equality
+precondition; it is not authority. Result content digests cover the published
+UTF-8 Markdown, including any published truncation notice. A reference does not
+grant the private full answer. Unknown request fields are rejected. The closed
+`SharedWithdrawalCommand` carries the work version, expected actor, Project and
+Task identity including incarnation, operation ID, and original canonical input
+digest. These are equality preconditions, not credentials or authority. A closed
+`SharedWorkRefusalReply` adds `kind: not-sent` and a bounded refusal reason to
+that identity. A future receiver may issue it only before durable acceptance or
+mutation; it is an attestation, not a credential.
+
+`AgentExecutionConfig.sharedTurns` is an operator-owned, versioned model-only
+declaration with a nonempty unique allowlist. It is separate from Agent audience
+and Project execute permission. It neither provides compute consent by itself
+nor establishes runtime confinement. Shared routes and admission are not
+implemented by these declarations.

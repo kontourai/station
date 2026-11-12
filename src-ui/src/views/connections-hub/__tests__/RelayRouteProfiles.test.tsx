@@ -825,7 +825,7 @@ describe('RelayRouteProfiles', () => {
     );
     fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
     const confirm = within(
-      screen.getByRole('dialog', { name: 'Remove Home Station?' }),
+      screen.getByRole('alertdialog', { name: 'Remove Home Station?' }),
     );
     fireEvent.click(confirm.getByRole('button', { name: 'Remove' }));
     await waitFor(() =>

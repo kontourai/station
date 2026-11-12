@@ -10,9 +10,14 @@ import './InputRequestDecision.css';
  * #3390: the renderer for a `decision` body — an approval's choices. It reads
  * the options' effect and scope, never a source. Answering one is a grant,
  * so it hands the choice to the approval's own authority path
- * (`onApprove`'s `once` / `trust` / `trust-server` / `deny`).
+ * (`onApprove`'s `once` / `trust` / `trust-server` / `trust-rule` / `deny`).
  */
-export type ApprovalAction = 'once' | 'trust' | 'trust-server' | 'deny';
+export type ApprovalAction =
+  | 'once'
+  | 'trust'
+  | 'trust-server'
+  | 'trust-rule'
+  | 'deny';
 
 function approvalActionForOption(
   option: InputRequestDecisionOption,
@@ -21,7 +26,9 @@ function approvalActionForOption(
   return option.scope === 'session'
     ? option.sessionGrantScope === 'server'
       ? 'trust-server'
-      : 'trust'
+      : option.sessionGrantScope === 'rule'
+        ? 'trust-rule'
+        : 'trust'
     : 'once';
 }
 

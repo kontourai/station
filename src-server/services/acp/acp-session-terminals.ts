@@ -16,6 +16,7 @@ import { realpath } from 'node:fs/promises';
 import { isAbsolute, relative, sep } from 'node:path';
 import { RequestError } from '@agentclientprotocol/sdk/unstable';
 import type { StationConfinement } from '@kontourai/station-contracts/provider';
+import { errorMessage } from '../../utils/error-message.js';
 import { signalName } from '../terminal/command-process.js';
 import type { ShellLaunch } from '../terminal/shell-host.js';
 import {
@@ -167,7 +168,7 @@ export class AcpSessionTerminals {
           { command: input.command, refused: 'execution-authority' },
           error.message,
         );
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       if (!/spawn failed/.test(message)) throw error;
       // A command that never started is a failed terminal, reported through
       // the shell's failure channel: 127 not found, 126 not runnable.

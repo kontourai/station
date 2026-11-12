@@ -11,6 +11,7 @@ import {
   childWorkDisplayStatus,
   childWorkForReporter,
   childWorkKey,
+  childWorkKindOf,
   childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
@@ -1108,5 +1109,36 @@ describe('interrupted: the engine process ended under a running child', () => {
       status: 'unresolved',
       endedBy: 'engine-exit',
     });
+  });
+});
+
+describe('child work kind', () => {
+  const base = {
+    producer: 'engine-subagent' as const,
+    reporterThreadId: 'thread-1',
+    childId: 'bash-1',
+    status: 'running' as const,
+    title: 'Push',
+  };
+
+  test('a reported kind survives the reducer; an unknown one is dropped', () => {
+    const fold = (item: Record<string, unknown>) =>
+      Object.values(
+        applyChildWorkDelta(createEmptyChildWorkRegistry(), {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: 'thread-1',
+          running: [item as never],
+        }).items,
+      )[0];
+    expect(fold({ ...base, workKind: 'command' })?.workKind).toBe('command');
+    expect(fold({ ...base, workKind: 'daemon' })?.workKind).toBeUndefined();
+  });
+
+  test('history without a kind reads a raw local_bash label as a command, anything else as an agent', () => {
+    expect(childWorkKindOf({ workKind: 'monitor' })).toBe('monitor');
+    expect(childWorkKindOf({ kindLabel: 'local_bash' })).toBe('command');
+    expect(childWorkKindOf({ kindLabel: 'Explore' })).toBe('agent');
+    expect(childWorkKindOf({})).toBe('agent');
   });
 });

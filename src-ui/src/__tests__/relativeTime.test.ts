@@ -9,9 +9,12 @@ import { describe, expect, it } from 'vitest';
 import {
   absoluteTime,
   clockTime,
+  formatDateTime,
   messageTime,
   relativeTime,
   relativeTimeAgo,
+  relativeTimeAgoFromIso,
+  relativeTimeFromIso,
 } from '../utils/relativeTime';
 
 const NOW = Date.parse('2026-10-01T17:32:00.000Z');
@@ -53,6 +56,31 @@ describe('relativeTime', () => {
     expect(relativeTimeAgo(NOW - 10_000, NOW)).toBe('just now');
     expect(relativeTimeAgo(0, NOW)).toBe('just now');
     expect(relativeTimeAgo(NOW - 19 * DAY, NOW)).toBe('on Sep 12');
+  });
+});
+
+describe('the ISO-accepting forms', () => {
+  const iso = (at: number) => new Date(at).toISOString();
+
+  it('read a wire timestamp in the same formats as the epoch-ms forms', () => {
+    expect(relativeTimeFromIso(iso(NOW - 41 * 60_000), NOW)).toBe('41m');
+    expect(relativeTimeFromIso(iso(NOW - 2 * DAY), NOW)).toBe('2d');
+    expect(relativeTimeAgoFromIso(iso(NOW - 30_000), NOW)).toBe('just now');
+    expect(relativeTimeAgoFromIso(iso(NOW - 3 * 3_600_000), NOW)).toBe(
+      '3h ago',
+    );
+    expect(formatDateTime(iso(NOW))).toBe(absoluteTime(NOW));
+    expect(formatDateTime(NOW)).toBe(absoluteTime(NOW));
+  });
+
+  it('an absent or unparseable stamp is the fallback, never "now" or "Invalid Date"', () => {
+    for (const stamp of [undefined, null, '', 'not a date']) {
+      expect(relativeTimeFromIso(stamp, NOW)).toBe('');
+      expect(relativeTimeAgoFromIso(stamp, NOW, 'never')).toBe('never');
+      expect(formatDateTime(stamp)).toBe('');
+      expect(formatDateTime(stamp, 'Unavailable')).toBe('Unavailable');
+    }
+    expect(formatDateTime(Number.NaN, 'Unavailable')).toBe('Unavailable');
   });
 });
 

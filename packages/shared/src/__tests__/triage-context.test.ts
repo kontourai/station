@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { TroubleshootReportBoundsError } from '@kontourai/station-contracts/troubleshoot';
 import { describe, expect, test } from 'vitest';
@@ -408,6 +415,28 @@ describe('createTriageRunDirectory', () => {
     ).toThrow('real directory');
     expect(readdirSync(outside)).toEqual([]);
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'tightens an owned group-writable cache left by a permissive umask instead of refusing',
+    () => {
+      const root = tempRoot();
+      const cache = join(root, 'cache');
+      mkdirSync(cache);
+      chmodSync(cache, 0o775);
+      mkdirSync(join(cache, 'triage'));
+      chmodSync(join(cache, 'triage'), 0o777);
+
+      const runDir = createTriageRunDirectory(
+        '7d7d7d7d-7d7d-4d7d-8d7d-7d7d7d7d7d7d',
+        root,
+      );
+
+      expect(existsSync(runDir)).toBe(true);
+      expect(statSync(cache).mode & 0o777).toBe(0o755);
+      expect(statSync(join(cache, 'triage')).mode & 0o777).toBe(0o700);
+      expect(statSync(runDir).mode & 0o777).toBe(0o700);
+    },
+  );
 });
 
 describe('localTriageLogFacts', () => {

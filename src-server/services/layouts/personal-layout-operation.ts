@@ -1,6 +1,10 @@
 import type { LayoutOwner } from '@kontourai/station-contracts/layout';
+import {
+  createKeyedSerialQueue,
+  type KeyedSerialQueue,
+} from '../../utils/keyed-serial-queue.js';
 
-const operations = new WeakMap<object, Map<string, Promise<void>>>();
+const operations = new WeakMap<object, KeyedSerialQueue>();
 
 /** Coordinates moves with edits over one store, before either destination is written. */
 export async function withPersonalLayoutOperation<T>(
@@ -11,7 +15,7 @@ export async function withPersonalLayoutOperation<T>(
 ): Promise<T> {
   let queue = operations.get(store);
   if (!queue) {
-    queue = new Map();
+    queue = createKeyedSerialQueue();
     operations.set(store, queue);
   }
   const identity =
@@ -21,15 +25,5 @@ export async function withPersonalLayoutOperation<T>(
         ? `project:${owner.projectSlug}`
         : 'instance';
   const key = `${identity}\u0000${slug}`;
-  const run = (queue.get(key) ?? Promise.resolve()).then(operation);
-  const tail = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  queue.set(key, tail);
-  try {
-    return await run;
-  } finally {
-    if (queue.get(key) === tail) queue.delete(key);
-  }
+  return queue.run(key, operation);
 }

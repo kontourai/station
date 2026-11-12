@@ -390,6 +390,7 @@ async function boot(options: {
     '/api/orchestration',
     createCoordinatorRoutes({
       store: options.hosted ? undefined : pictureStore,
+      preview: { select: ({ enabled }) => enabled() },
       person: composition.person,
       dispatchActor: () => ({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),
       picturePreview: { select: ({ enabled }) => enabled() },

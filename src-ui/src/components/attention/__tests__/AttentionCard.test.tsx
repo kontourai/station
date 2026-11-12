@@ -6,13 +6,17 @@ import type {
   ApprovalAttentionItem,
   AttentionItem,
   DevicePairingAttentionItem,
+  GateBlockedAttentionItem,
+  GateExceptionAttentionItem,
+  GateRouteBackAttentionItem,
   PluginLifecycleProposalAttentionItem,
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 
 const action = vi.fn();
 const dismiss = vi.fn();
@@ -851,4 +855,105 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
       'Proposed by station in conversation c1 (self-reported by the agent)',
     );
   });
+});
+
+describe('AttentionCard — Flow gate cards and the device Flow preview', () => {
+  const FLOW_HREF = '/projects/station/flow-console?run=run-1';
+  const source = {
+    threadId: 'thread-alpha',
+    runId: 'run-1',
+    gateId: 'verify',
+    projectSlug: 'station',
+  };
+  const stamps = {
+    createdAt: '2026-06-28T00:00:02.000Z',
+    updatedAt: '2026-06-28T00:00:02.000Z',
+  };
+  const routeBack: GateRouteBackAttentionItem = {
+    id: 'gate-route-back:run-1:verify',
+    kind: 'gate-route-back',
+    title: 'Route back: verify',
+    ...stamps,
+    source,
+    openHref: FLOW_HREF,
+    routeBackTo: 'implement',
+    attempt: 2,
+    maxAttempts: 3,
+  };
+  const blocked: GateBlockedAttentionItem = {
+    id: 'gate-blocked:run-1:verify',
+    kind: 'gate-blocked',
+    title: 'Blocked: verify',
+    ...stamps,
+    source,
+    openHref: FLOW_HREF,
+  };
+  const exception: GateExceptionAttentionItem = {
+    id: 'gate-exception:run-1:verify',
+    kind: 'gate-exception',
+    title: 'Exception needed: verify',
+    ...stamps,
+    source,
+    openHref: FLOW_HREF,
+    limitExceeded: true,
+  };
+  const cases = [
+    { item: routeBack, action: 'Re-evaluate' },
+    { item: blocked, action: 'Re-evaluate' },
+    { item: exception, action: 'Accept exception…' },
+  ] as const;
+
+  afterEach(() =>
+    deviceSettingsStore.resetMany([
+      'developerToolsEnabled',
+      'experimentalFlowEnabled',
+    ]),
+  );
+
+  test.each(cases)(
+    '$item.kind: with the Flow preview off, offers no flow console link but keeps the card and its action',
+    ({ item, action }) => {
+      // Developer tools on but the Flow switch off: still off on this device.
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', false);
+      renderCard(item);
+
+      expect(
+        screen.queryByRole('link', { name: 'Open flow console' }),
+      ).toBeNull();
+      expect(screen.getByText(item.title)).toBeTruthy();
+      expect(screen.getByRole('button', { name: action })).toBeTruthy();
+      if (item.kind === 'gate-route-back')
+        expect(
+          screen.getByText('Routes back to implement. Attempt 2 of 3.'),
+        ).toBeTruthy();
+    },
+  );
+
+  test.each(cases)(
+    '$item.kind: with Developer tools off, offers no flow console link',
+    ({ item, action }) => {
+      deviceSettingsStore.set('developerToolsEnabled', false);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      renderCard(item);
+
+      expect(
+        screen.queryByRole('link', { name: 'Open flow console' }),
+      ).toBeNull();
+      expect(screen.getByRole('button', { name: action })).toBeTruthy();
+    },
+  );
+
+  test.each(cases)(
+    '$item.kind: with the Flow preview on, links to the run console',
+    ({ item, action }) => {
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      renderCard(item);
+
+      const link = screen.getByRole('link', { name: 'Open flow console' });
+      expect(link.getAttribute('href')).toBe(FLOW_HREF);
+      expect(screen.getByRole('button', { name: action })).toBeTruthy();
+    },
+  );
 });

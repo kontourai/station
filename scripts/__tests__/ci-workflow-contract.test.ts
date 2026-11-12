@@ -971,6 +971,8 @@ describe('CI verification workflow contracts', () => {
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
       '.github/workflows/ios-rust-cache-warm.yml':
         'writes the iOS Rust cache from trusted main only; build-ios.yml is the pull-request and merge-queue signal and only restores it',
+      '.github/workflows/seatbelt-kernel.yml':
+        'macOS-only Seatbelt kernel legs (#4772), path-filtered to confinement code; the Linux and Windows PR lanes skip them and the workflow gate refuses a new candidate-controlled pull_request trigger, so a regression shows after merge',
     };
 
     const pushOnly = readWorkflowDocuments()
@@ -1950,8 +1952,12 @@ describe('CI verification workflow contracts', () => {
       );
     expect(jobs['fast-checks-shard'].if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}",
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}",
     );
+    expect(jobs['fast-checks-shard'].needs).toEqual([
+      'fast-checks-plan',
+      'actionlint-artifact',
+    ]);
 
     // Downstream consumers still name the required check's id.
     expect(jobs['full-regression'].needs).toEqual(['classify', 'fast-checks']);
@@ -2104,12 +2110,25 @@ describe('CI verification workflow contracts', () => {
       )
       .map((step) => step.run);
     expect(shaping.length).toBeGreaterThanOrEqual(3);
+    // The pinned actionlint artifact download (#4748) is shared by statics and
+    // the shards only: the legacy plan lane keeps its inline install, so the
+    // download is compared on its own below instead of joining this list.
+    const isArtifactDownload = (step: Step) =>
+      step.uses?.startsWith('actions/download-artifact@') === true;
     const laneActions = statics
       .slice(0, laneIndex)
-      .filter((step) => step.uses)
+      .filter((step) => step.uses && !isArtifactDownload(step))
       .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
     // Checkout, pnpm, Node and the reviewed restore must all remain present.
     expect(laneActions).toHaveLength(4);
+    const artifactDownloads = (steps: Step[]) =>
+      steps
+        .filter(isArtifactDownload)
+        .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
+    expect(artifactDownloads(statics)).toHaveLength(1);
+    expect(artifactDownloads(jobs['fast-checks-shard'].steps ?? [])).toEqual(
+      expect.arrayContaining(artifactDownloads(statics)),
+    );
     for (const [jobId, entryName] of [
       ['fast-checks-shard', 'Run fast-checks shard'],
       ['fast-checks-plan', 'Plan the affected-test selection'],

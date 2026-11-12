@@ -44,7 +44,7 @@ surfaces whose sibling controls are native buttons or banner actions call
 
 | Surface | Action | Code sent |
 | --- | --- | --- |
-| Route error boundary ([`RouteViewBoundary`](../../src-ui/src/app-shell/RouteViewBoundary.tsx)): beside Try again for a view failure; in the **More actions** menu for an authority failure, whose row already has two actions | Troubleshoot | `HTTP <status>`, else the error name |
+| Route error boundary ([`RouteViewBoundary`](../../src-ui/src/app-shell/RouteViewBoundary.tsx)): beside Retry for a view failure; in the **More actions** menu for an authority failure, whose row already has two actions | Troubleshoot | `HTTP <status>`, else the error name |
 | Error-tone toasts with fewer than two actions, at the one renderer ([`NotificationContainer`](../../src-ui/src/components/notifications/NotificationContainer.tsx)); the flow's own `troubleshoot-*` toasts excluded | Troubleshoot | none; the message only |
 | A placed pane in `temporarily-unavailable` ([`ProjectLayoutRenderer`](../../src-ui/src/app-shell/ProjectLayoutRenderer.tsx)), and the same state's card explanation ([`WorkspacePaneAvailabilityList`](../../src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx)); not while the renderer is still loading or when extension access is the cause | Troubleshoot | `pane-<reason code>` |
 | Unsupported layout tab ([`layouts/index.tsx`](../../src-ui/src/layouts/index.tsx)) | Troubleshoot | `unsupported-layout-tab` |

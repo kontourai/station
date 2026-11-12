@@ -1693,7 +1693,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // handed to a host that folds the inbox (the Coding edge's tooltip).
   const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
   const inboxClock = useCoarseNow();
-  const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock);
+  const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock, workFacts);
   const inboxWorking = useInboxWorkingCount(taskItems, inboxClock, workFacts);
   useEffect(() => {
     onInboxNeedsYouChange?.(inboxNeedsYou);

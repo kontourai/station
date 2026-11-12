@@ -66,6 +66,7 @@ import {
   fleetInferenceManifestReadTotal,
   fleetServeReceiptFailures,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   RequestBodyTooLargeError,
@@ -149,7 +150,7 @@ export function createFleetInferenceRoutes(
       fleetServeReceiptFailures.add(1, { outcome: receipt.outcome });
       moduleLogger.error(
         `[fleet-inference] Serve-side receipt could not be written. This Station ${receipt.outcome} a fleet completion for model '${receipt.requestedModelId ?? 'unknown'}' and that is NOT recorded.`,
-        { error: error instanceof Error ? error.message : String(error) },
+        { error: errorMessage(error) },
       );
     }
   };

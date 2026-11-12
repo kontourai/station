@@ -13,6 +13,46 @@ import {
 } from './optional-network-shutdown.js';
 
 const RETIRED_MCP_DISCONNECT_TIMEOUT_MS = 2_000;
+/**
+ * How long shutdown waits for a placement already in flight. A placement
+ * awaiting an engine start answers only once the orchestration service comes
+ * down, so this wait must not hold that step back for long.
+ */
+const CONVERSATION_DELIVERY_IDLE_TIMEOUT_MS = 1_000;
+
+/**
+ * Background work that starts turns on the orchestration service outside any
+ * request: the conversation inbox and delegated-result delivery.
+ */
+export interface ConversationDeliveryShutdown {
+  name: string;
+  /** Synchronous: nothing new is placed, and nothing more is recorded. */
+  stop(): void;
+  /** Every placement already in flight has finished. */
+  idle(): Promise<void>;
+}
+
+const conversationDeliveries = new WeakMap<
+  object,
+  ConversationDeliveryShutdown[]
+>();
+
+/**
+ * `configureRuntimeRoutes` composes conversation delivery over the
+ * orchestration service and registers it here against that service, so
+ * {@link shutdownRuntimeServices} stops it before the service it places turns
+ * on shuts down. Until it is stopped, that shutdown's own `session.exited`
+ * events (and the deliveries' re-check timers) drive placement on a service
+ * that is coming down.
+ */
+export function registerConversationDeliveryShutdown(
+  orchestrationService: object,
+  delivery: ConversationDeliveryShutdown,
+): void {
+  const registered = conversationDeliveries.get(orchestrationService) ?? [];
+  registered.push(delivery);
+  conversationDeliveries.set(orchestrationService, registered);
+}
 
 export async function shutdownRuntimeServices({
   logger,
@@ -100,6 +140,22 @@ export async function shutdownRuntimeServices({
   orchestrationService?.stopCascadeDelivery?.();
 
   const failures: Error[] = [];
+  // The same fence for conversation delivery: stopped now, so no event or
+  // re-check timer during the awaits below places a turn. What it holds stays
+  // queued for the next start's reconcile.
+  const deliveries = orchestrationService
+    ? (conversationDeliveries.get(orchestrationService) ?? [])
+    : [];
+  if (orchestrationService) conversationDeliveries.delete(orchestrationService);
+  for (const delivery of deliveries) {
+    try {
+      delivery.stop();
+    } catch (error) {
+      const step = `${delivery.name}.stop`;
+      failures.push(new Error(`${step} failed`, { cause: error }));
+      logger.error('Shutdown step failed', { step, error });
+    }
+  }
   const attempt = async (
     step: string,
     cleanup: (() => void | Promise<void>) | undefined,
@@ -151,6 +207,21 @@ export async function shutdownRuntimeServices({
     'consoleBridgeService.stop',
     consoleBridgeService ? () => consoleBridgeService.stop() : undefined,
   );
+  // A placement that was already running finishes before the service it is
+  // calling shuts down. Bounded: one awaiting an engine start is released by
+  // that shutdown, and a stopped delivery records nothing for it either way.
+  for (const delivery of deliveries) {
+    await attempt(`${delivery.name}.idle`, async () => {
+      const idle = await awaitSettlementWithin(
+        delivery.idle(),
+        CONVERSATION_DELIVERY_IDLE_TIMEOUT_MS,
+      );
+      if (!idle)
+        logger.warn('Conversation delivery was still placing at shutdown', {
+          delivery: delivery.name,
+        });
+    });
+  }
   await attempt(
     'orchestrationService.shutdown',
     orchestrationService ? () => orchestrationService.shutdown() : undefined,

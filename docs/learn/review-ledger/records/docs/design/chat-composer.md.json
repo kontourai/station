@@ -324,7 +324,17 @@
 
     "src-ui/src/hooks/useCoarsePointer.ts",
 
-    "src-ui/src/hooks/useClipboardImagePaste.ts"
+    "src-ui/src/hooks/useClipboardImagePaste.ts",
+
+    "src-ui/src/components/inbox-row/inbox-row-actions.ts",
+
+    "src-ui/src/hooks/useInboxSwipe.ts",
+
+    "src-ui/src/utils/activity-snooze-store.ts",
+
+    "src-ui/src/components/drafts/DiscardDraftButton.tsx",
+
+    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"
   ],
 
   "checks": [

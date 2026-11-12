@@ -22,6 +22,7 @@ import {
   type ResolvedColorTheme,
   resolveColorThemeSelection,
 } from './color-theme-selection';
+import { applyDensity, applyMotion } from './display-preferences';
 import {
   applyThemeMode,
   resolveThemeMode,
@@ -331,7 +332,8 @@ export function renderWhenColorThemeSettled(
 }
 
 interface SettingsSource {
-  getSnapshot(): AppliedSettings;
+  getSnapshot(): AppliedSettings &
+    Partial<Pick<DeviceSettings, 'density' | 'motion'>>;
   subscribe(listener: () => void): () => void;
   /** Where the snapshot's appearance comes from (the settings store's answer). */
   getAppearanceSource?(): 'account' | 'device' | 'cache';
@@ -354,6 +356,9 @@ export function bindColorThemeToSettings(
     // The mode first: System resolves against the device now (#4407).
     applyThemeMode(root, settings.theme);
     applyColorTheme(root, settings);
+    // Density and motion follow the same settings (#4692).
+    applyDensity(root, settings.density);
+    applyMotion(root, settings.motion);
     const from = source.getAppearanceSource?.() ?? 'device';
     if (from !== 'cache') writeAppearanceCache(settings, from);
   };

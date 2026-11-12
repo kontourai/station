@@ -397,9 +397,22 @@ cards allow two title lines while status and metadata keep predictable positions
 Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
 clock and ×, while × hides any conversation without stopping work or deleting
 history. Undo restores it on this device; inbox search reveals dismissed work with Restore.
-With Sheet gestures preview enabled, mobile rows reveal the same clock and ×
-on a left swipe, with larger targets and short labels. Swiping only reveals;
-Snooze still opens its duration picker, and Details retains the same actions.
+Long press and the visible ⋯ open the same chat actions and details on touch
+rows. One action definition supplies the desktop shortcuts, Details sheet and
+swipe tray, including availability, labels and pending state.
+With Sheet gestures preview enabled, mobile rows follow the finger on a left
+swipe and snap to reveal labelled actions. Only one row's tray stays open.
+Swiping only reveals; Snooze still opens its duration picker. Eligible
+conversations also offer Settle or Reopen when Open and Settled inbox is
+enabled. Dismiss from inbox hides work on this device; settling records the
+person's resolution across devices, and neither stops a running engine.
+The Details sheet retains the complete available action set, including actions
+also offered as shortcuts. Destructive draft discard stays outside the swipe
+tray. A server Draft remains present for an eight-second Undo window before
+discard is sent. Unmounting the discard control or changing authority cancels
+that pending deletion; success is published only after the server confirms it.
+Snooze retains a session copy when browser storage cannot be written, and
+storage events refresh snoozes in other tabs of the same browser.
 The implementation is shared by both Inbox presentations; Home and
 sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and
@@ -643,6 +656,11 @@ and calls still waiting on a grant stay outside the fold, and so does the last n
 follows the last call. While the turn is live it keeps the shape it streamed
 with. Messages with anchored subagents keep their original tool runs at every
 width, preserving each child card's expansion and keyboard focus during resizing.
+A call that spawned child work is drawn as that child's card, not also as its
+own tool row or inside an activity summary. A Claude background shell command
+(`local_bash`, including one a Monitor launched) is child work of kind
+`command`/`monitor`, not a subagent: its card shows a terminal mark, the
+command line and its exit code, with no model, instructions or transcript.
 Adjacent tool calls and visible reasoning share an activity summary on every
 screen size, live and settled. A brain glyph marks reasoning and mixed groups;
 the summary counts reasoning steps separately from tools. Opening the group
@@ -711,8 +729,11 @@ message row starts a turn.
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
-  They appear on hover or keyboard focus on desktop and retain 44px targets on
-  narrow screens, with a reserved gutter so they do not cover message text.
+  They appear on hover or keyboard focus on desktop. On touch they keep 44px
+  targets but reserve no gutter: they float stacked in the transcript's
+  bottom-right corner only while the reader has scrolled away from the latest
+  message (when **Scroll to bottom** appears), and a step with no turn to go
+  to is not drawn.
   **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request
@@ -924,9 +945,10 @@ controls. On mobile, Stop therefore follows them, at the row's trailing edge;
 before them it sat beside an empty reserved gap. At 390px a running turn's full
 row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
-picker defaults to **Queue**, which starts a new turn after the entire current
-turn finishes. **Steer** uses native mid-turn input only where the selected
-engine can prove that capability. Claude Code and Codex have additive steering.
+picker defaults to **Steer** where the selected engine can prove native mid-turn
+input, and to **Queue** (a new turn after the entire current turn finishes)
+everywhere else, including safe-stop steering. A chosen mode holds until the
+conversation changes. Claude Code and Codex have additive steering.
 ACP's capability matrix also includes cancel-and-reprompt, which is not proof
 of native steering for the current session.
 After a device's full access is revoked, a turn that started unconfined is not
@@ -977,8 +999,10 @@ same rule ([pendingMessages](../../src-ui/src/components/chat/pendingMessages.ts
 list renders nothing. Reads are silent: polling (every 2s while the
 conversation is working or holds messages, every 15s otherwise), turn-fact
 invalidation and focus/reconnect change the list only when the answer changes.
-A failed read after held rows were shown replaces them with a
-**Couldn't load inbox entries** line and its **Retry**, never a zero count.
+A failed read is retried twice, 400ms apart, while the last rows stay shown;
+401, 403 and 404 are final and not retried. Only when every attempt fails do
+held rows give way to a **Couldn't load inbox entries** line and its **Retry**,
+never a zero count.
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action; an
@@ -1022,13 +1046,17 @@ reveals message content, mode, status and actions; it does not auto-expand durin
 a turn. Local queued rows retain their selected mode. Their **Send now** is an explicit
 stop override: Station waits for a settled interruption receipt before sending
 the selected row, keeps other rows in order, and retains the message if stopping
-cannot be confirmed. Queued follow-ups currently accept text and quoted context;
-attachments remain in the composer until the turn finishes. Steering carries
-text only (`steerTurn` takes an input string), and the mid-turn queue holds
-text only. The paperclip and mic stay usable during a turn, so the next
-message can be prepared: a file added then waits in the draft, and the line
-above the draft says that Steer and Queue carry text only, with **Remove
-attachments**. Send stays disabled until the turn ends or the files go.
+cannot be confirmed. Steering carries text only (`steerTurn` takes an input
+string), so a draft with files is queued, never steered. On a host that
+advertises `followUpAttachments` (the connected host, not a route to another
+Station), Queue carries the files: Station stores their bytes in its attachment
+blob store, the pending row names them, and they are sent with the message when
+the turn ends; a file no longer stored then refuses the row
+(`attachment_unavailable`) rather than sending it without the file. On any other
+host the paperclip and mic stay usable during a turn, so the next message can
+be prepared: a file added then waits in the draft, and the line above the draft
+says that Steer and Queue carry text only, with **Remove attachments**. Send
+stays disabled until the turn ends or the files go.
 
 Activity is engine-reported. Claude Code SDK API retries supply attempt and delay
 with a bounded reason category; Codex's `willRetry` reports retry intent without
@@ -1155,7 +1183,7 @@ orchestration command union is broader than the public `/commands` schema:
 | Start/send through an authored Agent, including an external-engine binding | `POST /api/orchestration/chat` with `target` and `message` |
 | Continue an existing conversation | `POST /api/orchestration/chat/:conversationId/continue` with `message`; the persisted binding owns execution identity |
 | Request model/options for a turn | `target.model.override` / `target.model.options` on `/chat`, or a `model` object on `/continue`; support is engine-specific |
-| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser; allowing a request whose content was stored out of line also needs `viewedContentDigest`, see [Session API](../reference/session-api.md)) |
+| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser or `'rule'` for suggested Bash command prefixes; allowing a request whose content was stored out of line also needs `viewedContentDigest`, see [Session API](../reference/session-api.md)) |
 
 The [Session API](../reference/session-api.md) owns request details and refusal
 behavior. `POST /api/agents/:id/chat` is the Station-engine route; an

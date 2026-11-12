@@ -95,18 +95,44 @@ import {
 } from '../lib/connectionModalEvents';
 import { readRecentStations } from '../lib/stationSwitcher';
 
+test('Manage hands the manager a surviving header opener', async () => {
+  const onOpenConnections = vi.fn(() => document.activeElement);
+  try {
+    renderHeader(vi.fn(), onOpenConnections);
+    const trigger = screen.getByRole('button', { name: /^Choose Station/ });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const manage = await screen.findByRole('menuitem', {
+      name: 'Manage Stations',
+    });
+    manage.focus();
+    fireEvent.click(manage);
+    expect(onOpenConnections).toHaveBeenCalledOnce();
+    expect(onOpenConnections.mock.results[0]?.value).toBe(trigger);
+    expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
+  } finally {
+    cleanup();
+  }
+});
+
 test('Pair phone opens the existing host invitation flow directly from the Station chooser', async () => {
-  const opened = vi.fn();
+  const opened = vi.fn((event: Event) => ({
+    focus: document.activeElement,
+    detail: event instanceof CustomEvent ? event.detail : undefined,
+  }));
   window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
   try {
     renderHeader();
-    fireEvent.click(screen.getByRole('button', { name: /^Choose Station/ }));
-    fireEvent.click(
-      await screen.findByRole('menuitem', { name: 'Pair phone' }),
-    );
+    const trigger = screen.getByRole('button', { name: /^Choose Station/ });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const pair = await screen.findByRole('menuitem', { name: 'Pair phone' });
+    pair.focus();
+    fireEvent.click(pair);
     expect(opened).toHaveBeenCalledTimes(1);
-    expect(opened.mock.calls[0]?.[0]?.detail).toEqual({
-      mode: 'pair-host',
+    expect(opened.mock.results[0]?.value).toEqual({
+      focus: trigger,
+      detail: { mode: 'pair-host' },
     });
     expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
   } finally {
