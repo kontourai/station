@@ -40,6 +40,7 @@ function mac(context: AgentDelegationContext): string {
         context.maxDepth,
         context.parentAgentSlug,
         context.parentConversationId ?? null,
+        context.parentSessionId ?? null,
         context.rootAgentSlug,
         context.rootConversationId ?? null,
         context.allowedTools ?? null,
