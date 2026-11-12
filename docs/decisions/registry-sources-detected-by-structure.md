@@ -59,10 +59,11 @@ runs detectors over the source's tree, or over its single document:
    `.claude-plugin/plugin.json` give plugins. `mcp.json` and `.mcp.json` with
    `mcpServers` give integrations.
 
-An index wins only for the kinds it declares, not for the whole source. Both
-reference sources, `anthropics/skills` and `Bil0000/Hill-Climb`, have a
-marketplace index that lists plugins beside `skills/*/SKILL.md`. If the index
-won for the whole source, neither would list a single installable skill.
+An index wins only for the kinds it declares, not for the whole source. A
+common repository layout puts a marketplace index that lists only plugins
+beside `skills/*/SKILL.md` packages. Station's existing default GitHub skill
+source (`anthropics/skills`) has that shape. If the index won for the whole
+source, such a repository would list no installable skill.
 
 The result is a list of kinds, each with a count, the detector that found it,
 and whether Station can install it. Every installable kind maps onto an

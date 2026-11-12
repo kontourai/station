@@ -64,92 +64,86 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// ── Fixtures in the exact shapes real sources publish ─────────────────────
+// ── Fixtures: synthetic, in the on-disk shapes these layouts use ──────────
 //
-// Bil0000/Hill-Climb at 551c997e9eb3ae81fed9edf1d8a66bd32cd0dbf8 (MIT): a root
-// `.claude-plugin/marketplace.json` whose one plugin is the repository itself,
-// a `.claude-plugin/plugin.json`, and `skills/hill-climb/SKILL.md`. The two
-// JSON files and the SKILL.md frontmatter are byte-for-byte; the SKILL.md body
-// is its first section only.
-const HILL_CLIMB: Record<string, string> = {
+// A repository with a plugin-only marketplace index beside SKILL.md skills: a
+// root `.claude-plugin/marketplace.json` whose one plugin is the repository
+// itself, a `.claude-plugin/plugin.json`, a `skills/<name>/SKILL.md` package
+// with a references file, and a README. Names and text are invented here.
+const PLUGIN_INDEX_WITH_SKILLS: Record<string, string> = {
   '.claude-plugin/marketplace.json': `{
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "hill-climb",
-  "description": "Goal-driven loops for coding agents, scored by a check the agent can't fool.",
-  "owner": { "name": "Bil0000", "url": "https://github.com/Bil0000" },
+  "name": "example-skills-and-plugin",
+  "description": "An example marketplace with one plugin.",
+  "owner": { "name": "Example Org", "url": "https://example.com" },
   "plugins": [
     {
-      "name": "hill-climb",
-      "description": "Reach any goal a command can score, in small checked steps, across one or many repos.",
+      "name": "example-skills-and-plugin",
+      "description": "Example plugin that bundles one skill.",
       "source": "./",
       "category": "development",
-      "tags": ["agents", "loop", "tests", "performance", "audit"]
+      "tags": ["example"]
     }
   ]
 }
 `,
   '.claude-plugin/plugin.json': `{
-  "name": "hill-climb",
+  "name": "example-skills-and-plugin",
   "version": "1.0.0",
-  "description": "Give your coding agent a goal and a number. It climbs in small steps, keeps what the check proves, undoes the rest, and can't edit the check to win.",
-  "author": { "name": "Bil0000", "url": "https://github.com/Bil0000" },
-  "homepage": "https://github.com/Bil0000/Hill-Climb",
-  "repository": "https://github.com/Bil0000/Hill-Climb",
+  "description": "Example plugin that bundles one skill.",
+  "author": { "name": "Example Org", "url": "https://example.com" },
   "license": "MIT",
-  "keywords": ["agents", "skills", "autonomous", "testing", "performance", "audit", "claude-code", "codex"]
+  "keywords": ["example"]
 }
 `,
-  'skills/hill-climb/SKILL.md': `---
-name: hill-climb
-description: Reach any goal that a command can score (faster, fewer bugs, an audit, "make X stable", a port, a UI, a text) in small steps, keeping wins and undoing losses, across one or many repos. Use for "hill climb", "/hill-climb", "climb this", "keep going until it passes", or to resume or report on a climb.
+  'skills/release-check/SKILL.md': `---
+name: release-check
+description: Check that a release branch is ready to tag. Use when asked to prepare or verify a release.
 ---
 
-# Hill climb
+# Release check
 
-You work toward a goal in many small steps. A check scores each step with no
-human in the loop. \`scripts/climb.py\` keeps the score: you edit code, it runs
-the check, commits a win or undoes a loss, and writes the log. Never write a
-score down yourself, and never decide a step "basically" passed.
+Run the project's checks, read the changelog, and report what blocks the tag.
 `,
-  'skills/hill-climb/references/checks.md': '# Checks\n',
-  'README.md': '# Hill Climb\n',
+  'skills/release-check/references/checklist.md': '# Checklist\n',
+  'README.md': '# Example skills and plugin\n',
 };
 
-// The anthropics/skills layout: a marketplace whose `strict: false` plugins
-// name skill folders, beside `skills/<name>/SKILL.md` packages.
-const ANTHROPIC_SKILLS: Record<string, string> = {
+// A marketplace whose `strict: false` plugins name skill folders, beside
+// `skills/<name>/SKILL.md` packages. Names and text are invented here.
+const SKILL_FOLDER_MARKETPLACE: Record<string, string> = {
   '.claude-plugin/marketplace.json': JSON.stringify(
     {
-      name: 'anthropic-agent-skills',
-      owner: { name: 'Example Owner' },
-      metadata: { description: 'Anthropic example skills', version: '1.0.0' },
+      name: 'example-skill-collection',
+      owner: { name: 'Example Org' },
+      metadata: { description: 'Example skill collection', version: '1.0.0' },
       plugins: [
         {
-          name: 'document-skills',
-          description: 'Document processing',
+          name: 'writing-skills',
+          description: 'Writing helpers',
           source: './',
           strict: false,
-          skills: ['./skills/pdf'],
+          skills: ['./skills/summarize'],
         },
         {
-          name: 'example-skills',
-          description: 'Examples',
+          name: 'review-skills',
+          description: 'Review helpers',
           source: './',
           strict: false,
-          skills: ['./skills/skill-creator', './skills/theme-factory'],
+          skills: ['./skills/proofread', './skills/triage'],
         },
       ],
     },
     null,
     2,
   ),
-  'skills/pdf/SKILL.md':
-    '---\nname: pdf\ndescription: Work with PDF files\n---\n\n# PDF\n',
-  'skills/pdf/LICENSE.txt': 'License\n',
-  'skills/skill-creator/SKILL.md':
-    '---\nname: skill-creator\ndescription: Create skills\n---\n\n# Skill creator\n',
-  'skills/theme-factory/SKILL.md':
-    '---\nname: theme-factory\ndescription: Style artifacts\n---\n\n# Themes\n',
+  'skills/summarize/SKILL.md':
+    '---\nname: summarize\ndescription: Summarize a document\n---\n\n# Summarize\n',
+  'skills/summarize/LICENSE.txt': 'License\n',
+  'skills/proofread/SKILL.md':
+    '---\nname: proofread\ndescription: Proofread text\n---\n\n# Proofread\n',
+  'skills/triage/SKILL.md':
+    '---\nname: triage\ndescription: Sort incoming issues\n---\n\n# Triage\n',
 };
 
 async function folder(files: Record<string, string>, prefix = 'source-') {
@@ -279,7 +273,10 @@ const gitBlob = (text: string) =>
  * commit the test can move. Every requested URL is recorded.
  */
 function fakeGitHub(owner: string, repo: string) {
-  const state = { commit: 'a'.repeat(40), files: { ...HILL_CLIMB } };
+  const state = {
+    commit: 'a'.repeat(40),
+    files: { ...PLUGIN_INDEX_WITH_SKILLS },
+  };
   const requested: string[] = [];
   const api = `https://api.github.com/repos/${owner}/${repo}`;
   const tree = () => `${state.commit.slice(0, 39)}f`;
@@ -383,9 +380,11 @@ describe('a source is a location; what it provides comes from its content', () =
     });
   });
 
-  test('the Hill-Climb layout: its marketplace index decides plugins, its SKILL.md is still an installable skill', async () => {
+  test('a plugin-only marketplace index decides plugins, and its SKILL.md is still an installable skill', async () => {
     const { add, list, request, home } = setup();
-    const source = await add({ location: await folder(HILL_CLIMB) });
+    const source = await add({
+      location: await folder(PLUGIN_INDEX_WITH_SKILLS),
+    });
     expect(source.detection?.index).toBe(
       'claude-marketplace:.claude-plugin/marketplace.json',
     );
@@ -406,16 +405,18 @@ describe('a source is a location; what it provides comes from its content', () =
     const [skill] = (await list('skills')).filter(
       (item) => item.catalog?.sourceId === source.id,
     );
-    expect(skill?.catalog?.itemId).toBe('hill-climb');
+    expect(skill?.catalog?.itemId).toBe('release-check');
     expect(
       (await request('/skills/install', 'POST', { id: skill!.id })).status,
     ).toBe(200);
-    await access(join(home, 'skills/hill-climb/references/checks.md'));
+    await access(join(home, 'skills/release-check/references/checklist.md'));
   });
 
-  test('the anthropics/skills layout lists every skill even though a marketplace index sits at its root', async () => {
+  test('a marketplace index naming skill folders still leaves every SKILL.md listed as a skill', async () => {
     const { add, list } = setup();
-    const source = await add({ location: await folder(ANTHROPIC_SKILLS) });
+    const source = await add({
+      location: await folder(SKILL_FOLDER_MARKETPLACE),
+    });
     expect(kinds(source)).toMatchObject({
       skills: { count: 3, installable: true },
       plugins: { count: 2, installable: false, via: 'claude-marketplace' },
@@ -425,7 +426,7 @@ describe('a source is a location; what it provides comes from its content', () =
         .filter((item) => item.catalog?.sourceId === source.id)
         .map((item) => item.catalog?.itemId)
         .sort(),
-    ).toEqual(['pdf', 'skill-creator', 'theme-factory']);
+    ).toEqual(['proofread', 'summarize', 'triage']);
   });
 
   test('a source with nothing Station recognizes is added and shows that, not an error', async () => {
@@ -741,7 +742,7 @@ describe('scans are bounded and refuse past a bound', () => {
 
   test('a GitHub tree the API reports as truncated is refused, not read in part', async () => {
     const { add } = setup();
-    const github = fakeGitHub('Bil0000', 'Hill-Climb');
+    const github = fakeGitHub('example-org', 'example-skills-and-plugin');
     const fetch = globalThis.fetch;
     vi.stubGlobal(
       'fetch',
@@ -753,7 +754,7 @@ describe('scans are bounded and refuse past a bound', () => {
       }),
     );
     const source = await add({
-      location: 'https://github.com/Bil0000/Hill-Climb',
+      location: 'https://github.com/example-org/example-skills-and-plugin',
     });
     expect(source.detection).toMatchObject({ state: 'refused', kinds: [] });
     expect(github.requested.some((url) => url.startsWith('https://raw.'))).toBe(
@@ -765,9 +766,9 @@ describe('scans are bounded and refuse past a bound', () => {
 describe('updates are detected against the source as it is now', () => {
   test('refreshing a GitHub source reads the commit its ref names now, reports the change, and refuses a selection from the old revision', async () => {
     const { add, list, request, home } = setup();
-    const github = fakeGitHub('Bil0000', 'Hill-Climb');
+    const github = fakeGitHub('example-org', 'example-skills-and-plugin');
     const source = await add({
-      location: 'https://github.com/Bil0000/Hill-Climb',
+      location: 'https://github.com/example-org/example-skills-and-plugin',
     });
     expect(source.adapter).toBe('github');
     expect(source.detection).toMatchObject({
@@ -785,8 +786,8 @@ describe('updates are detected against the source as it is now', () => {
     // Upstream moves: a new commit changes the skill.
     github.state.commit = 'b'.repeat(40);
     github.state.files = {
-      ...HILL_CLIMB,
-      'skills/hill-climb/SKILL.md': `${HILL_CLIMB['skills/hill-climb/SKILL.md']}\nNew step.\n`,
+      ...PLUGIN_INDEX_WITH_SKILLS,
+      'skills/release-check/SKILL.md': `${PLUGIN_INDEX_WITH_SKILLS['skills/release-check/SKILL.md']}\nNew step.\n`,
     };
     const refreshed = (await (
       await request(`/sources/${source.id}/refresh`, 'POST')
@@ -797,7 +798,7 @@ describe('updates are detected against the source as it is now', () => {
     });
     const stale = await request('/skills/install', 'POST', { id: old!.id });
     expect(stale.status).toBe(409);
-    await expect(access(join(home, 'skills/hill-climb'))).rejects.toThrow();
+    await expect(access(join(home, 'skills/release-check'))).rejects.toThrow();
     const [fresh] = (await list('skills')).filter(
       (item) => item.catalog?.sourceId === source.id,
     );
@@ -806,7 +807,7 @@ describe('updates are detected against the source as it is now', () => {
       (await request('/skills/install', 'POST', { id: fresh!.id })).status,
     ).toBe(200);
     expect(
-      await readFile(join(home, 'skills/hill-climb/SKILL.md'), 'utf8'),
+      await readFile(join(home, 'skills/release-check/SKILL.md'), 'utf8'),
     ).toContain('New step.');
   });
 });
@@ -822,16 +823,16 @@ describe('managed policy still applies', () => {
   test('an allow list refuses a source by location before anything is read from it', async () => {
     const { request, home } = setup();
     installPolicy({ allowedUrls: ['https://plugins.example.com/r.json'] });
-    const github = fakeGitHub('Bil0000', 'Hill-Climb');
+    const github = fakeGitHub('example-org', 'example-skills-and-plugin');
     await expectManaged(
       await request('/sources', 'POST', {
-        location: 'https://github.com/Bil0000/Hill-Climb',
+        location: 'https://github.com/example-org/example-skills-and-plugin',
       }),
       'this marketplace',
     );
     await expectManaged(
       await request('/sources', 'POST', {
-        location: await folder(HILL_CLIMB),
+        location: await folder(PLUGIN_INDEX_WITH_SKILLS),
       }),
       'this marketplace',
     );
@@ -908,7 +909,7 @@ describe.skipIf(process.platform === 'win32')(
       const outside = await outsideFolder();
       const root = await folder({
         '.claude-plugin/marketplace.json':
-          HILL_CLIMB['.claude-plugin/marketplace.json']!,
+          PLUGIN_INDEX_WITH_SKILLS['.claude-plugin/marketplace.json']!,
       });
       const tree = await readLocalSourceTree(root);
       await rename(join(root, '.claude-plugin'), join(root, 'moved'));
@@ -1153,7 +1154,7 @@ describe('an earlier Station can still read the configuration', () => {
 
   test('a configured ref is refused by the earlier reader as a whole, never dropped', async () => {
     const { add, home } = setup();
-    fakeGitHub('Bil0000', 'Hill-Climb');
+    fakeGitHub('example-org', 'example-skills-and-plugin');
     const fetch = globalThis.fetch;
     vi.stubGlobal(
       'fetch',
@@ -1162,7 +1163,7 @@ describe('an earlier Station can still read the configuration', () => {
       ),
     );
     await add({
-      location: 'https://github.com/Bil0000/Hill-Climb',
+      location: 'https://github.com/example-org/example-skills-and-plugin',
       ref: 'main',
     });
     const file = JSON.parse(
