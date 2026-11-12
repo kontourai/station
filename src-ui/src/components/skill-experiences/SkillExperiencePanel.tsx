@@ -10,6 +10,7 @@ import {
   skillExperiencesCanExecute,
 } from '@kontourai/station-shared/skill-experience-values';
 import { useId, useState } from 'react';
+import { chatBelongsToStation } from '../../connections/station-state';
 import {
   useActiveChatActions,
   useActiveChatSelector,
@@ -61,7 +62,11 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
   const presentationId = useId();
   const authority = useHostRequestAuthorityScope();
   const { namespace, status } = useAuthorityPersistence();
-  const threadId = session.currentSessionId ?? session.conversationId;
+  // Experiences are read from this Station; a chat another Station owns has
+  // no session record here (and remote chats offer no skills).
+  const threadId = chatBelongsToStation(session)
+    ? (session.currentSessionId ?? session.conversationId)
+    : undefined;
   const view = useSkillExperienceSessionQuery(threadId, {
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,

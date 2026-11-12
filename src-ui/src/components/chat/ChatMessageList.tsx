@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { conversationAccessFor } from '../../connections/station-connection';
+import { chatBelongsToStation } from '../../connections/station-state';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
@@ -2047,7 +2048,9 @@ function ChatMessageListComponent({
               onQuote={onQuote}
             />
           )}
-          {!target?.record && (
+          {/* Summaries are this Station's own derived records; a chat another
+              Station owns has none here, and its tunnel offers no summary read. */}
+          {!target?.record && chatBelongsToStation(activeSession) && (
             <SessionSummaryCard
               activeSession={activeSession}
               hasSettingsEntryPoint={hasSettingsEntryPoint}

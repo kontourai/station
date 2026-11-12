@@ -82,7 +82,14 @@ const rules: readonly Rule[] = [
   },
   {
     method: 'GET',
-    path: /^\/api\/orchestration\/sessions\/[^/]+\/(?:checkpoints|checkpoint-restores|usage-limit)$/,
+    path: /^\/api\/orchestration\/sessions\/[^/]+\/(?:checkpoint-restores|usage-limit)$/,
+  },
+  // The transcript's changed-files read names its history revision so each
+  // revision is a distinct read; the receiver ignores it.
+  {
+    method: 'GET',
+    path: /^\/api\/orchestration\/sessions\/[^/]+\/checkpoints$/,
+    query: ['revision'],
   },
   {
     method: 'GET',
