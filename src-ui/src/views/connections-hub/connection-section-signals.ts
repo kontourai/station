@@ -276,21 +276,24 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   const needsAttention = (id: ConnectionSectionId): boolean =>
     attention.some((item) => item.section === id);
 
-  const reads = {
+  const reads: Record<
+    ConnectionSectionId,
+    SectionRead & { refetch: () => unknown }
+  > = {
     models: modelsQuery,
     engines: enginesQuery,
     tools: toolsQuery,
     knowledge: knowledgeQuery,
-  } as const;
-  const state = (id: ConnectionSectionId): SectionReadState => {
     // Paired and manual computers are local; only the SSH read can be
-    // outstanding, and without it the count would be short.
-    if (id === 'computers')
-      return computersRead.isError
-        ? 'failed'
-        : computersRead.isLoading
-          ? 'loading'
-          : 'answered';
+    // outstanding, and without its answer the count would be short.
+    computers: {
+      data: computersRead.sshAnswered ? computers : undefined,
+      isLoading: computersRead.isLoading,
+      isError: computersRead.isError,
+      refetch: computersRead.refetch,
+    },
+  };
+  const state = (id: ConnectionSectionId): SectionReadState => {
     const read = readState(reads[id]);
     // An engine the managed policy refuses reads as unmanaged until the
     // policy (and the ACP reads that place it) answer: wait for them rather
@@ -299,7 +302,7 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
       return 'loading';
     return read;
   };
-  const ids = Object.keys(reads) as Array<keyof typeof reads>;
+  const ids = Object.keys(reads) as ConnectionSectionId[];
   const unread = ids.filter((id) => {
     const read = state(id);
     return read === 'failed' || read === 'unavailable';
@@ -313,7 +316,7 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     state,
     // Computers claims no attention, so the list does not wait on its read;
     // its tile does.
-    settled: ids.every((id) => state(id) !== 'loading'),
+    settled: ids.every((id) => id === 'computers' || state(id) !== 'loading'),
     unread,
     failed,
     retry: () => {

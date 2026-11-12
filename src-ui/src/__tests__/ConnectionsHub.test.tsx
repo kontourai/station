@@ -35,6 +35,8 @@ const state: {
   enginesDisabled: boolean;
   /** The SSH computers read's first fetch is still in flight. */
   sshLoading: boolean;
+  /** The SSH computers read has no Station to ask: disabled, never fetched. */
+  sshDisabled: boolean;
   /** The managed policy's first read is still in flight. */
   policyPending: boolean;
   /** The sign-in state of the account each engine's runs use. */
@@ -58,6 +60,7 @@ const state: {
   enginesLoading: false,
   enginesDisabled: false,
   sshLoading: false,
+  sshDisabled: false,
   policyPending: false,
   authState: 'authenticated',
   acpConnections: [],
@@ -128,8 +131,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useGlobalKnowledgeStatusQuery: () => read('knowledge', state.knowledge),
   useSshEnvironmentsQuery: () =>
     state.sshLoading
-      ? { data: undefined, isLoading: true, isError: false }
-      : { data: state.ssh, isLoading: false, isError: false },
+      ? { data: undefined, isLoading: true, isError: false, refetch }
+      : state.sshDisabled
+        ? { data: undefined, isLoading: false, isError: false, refetch }
+        : read('computers', state.ssh),
   sshEnvironmentsToKnownEnvironments: () => [],
   useACPConnectionsQuery: () => ({ data: state.acpConnections }),
   useACPConnectionRegistryQuery: () => ({ data: state.acpRegistry }),
@@ -353,6 +358,7 @@ describe('the /connections Overview', () => {
     state.enginesLoading = false;
     state.enginesDisabled = false;
     state.sshLoading = false;
+    state.sshDisabled = false;
     state.policyPending = false;
     state.authState = 'authenticated';
     state.acpConnections = [];
@@ -751,17 +757,21 @@ describe('the /connections Overview', () => {
     expect(navigate).toHaveBeenLastCalledWith('/connections/tools/audit-echo');
   });
 
-  test('"Details" is never offered as a fix, and every item says why in a sentence', () => {
-    // Status `available` with setup placing it ready: the resolver's words
-    // for it are "Ready", whose action is "Details".
+  // "Details" is never a fix: `connection-health.test.ts` proves it on the
+  // read-only inputs that reach the resolver's "Details" branches. No model
+  // or engine row in a `/connections` read carries `readOnly`, so no real
+  // data reaches those branches through this page.
+  test('every item says why in a sentence, with a fallback when the verdict has none', () => {
+    // The resolver gives every non-ready verdict a reason today, so only the
+    // `deriveConnectionHealth` wrapper above (keyed on the name 'Blank
+    // Reason') reaches the attention list's own fallback sentence.
     state.engines = [
-      engine('muse', 'Muse Code', { status: 'available' }),
+      engine('muse', 'Muse Code', { status: 'error' }),
       engine('blank', 'Blank Reason', { status: 'error' }),
     ];
     renderHub();
     expect(attentionItems()).toHaveLength(2);
     expect(screen.getByText('Blank Reason is not ready to use.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Details/ })).toBeNull();
     const list = screen.getByRole('list', {
       name: 'Connections needing attention',
     });
@@ -769,6 +779,33 @@ describe('the /connections Overview', () => {
       expect(sentence.textContent?.trim()).not.toBe('');
     fireEvent.click(within(list).getByRole('link', { name: 'Muse Code' }));
     expect(navigate).toHaveBeenLastCalledWith('/connections/engines/muse');
+  });
+
+  test('a failed Computers read is stated with a retry; one with no Station to ask is not loaded', () => {
+    state.failed = ['computers'];
+    const { unmount } = renderHub();
+    expect(
+      screen.getByText('Some connections could not be loaded'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing needs attention')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Computers/ }).textContent).toBe(
+      'Computers—Not loaded',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    unmount();
+
+    state.failed = [];
+    state.sshDisabled = true;
+    renderHub();
+    // Not a count of only the local computers, and not retried.
+    expect(screen.getByRole('button', { name: /^Computers/ }).textContent).toBe(
+      'Computers—Not loaded',
+    );
+    expect(
+      screen.getByText('Some connections could not be loaded'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('allowance is read once per visit, never polled, and only for engines that are on, ready and signed in', () => {
