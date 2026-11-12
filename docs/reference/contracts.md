@@ -2331,17 +2331,24 @@ reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
 new marker.
 
-Before server-kept unread there was no unread, so agent conversations read as
-seen up to where the store began: the event store's sequence for runtime
-conversations, its start time for file-backed ones. A home from before
-content versions upgrades once at start, at one fence. The event store
-backfills the projection from its history in bounded batches, each committed
-with its progress, so an interrupted start resumes where it stopped. The last
-batch records completion and the upgrade fence (the store's high-water
-sequence, a contiguous prefix) in the same write. The read-marker store's
-baseline then becomes that fence: everything up to it reads as seen for
-everyone, as it did before upgrading, and anything appended after it reads
-unread until rendered. Recorded views are not converted.
+Read state begins once per home, at the event store's migration cutoff.
+Before server-kept unread there was no unread, so a person who already had a
+record (an acknowledgement or a marker), an established principal, reads
+every runtime conversation's content up to the cutoff, and every file-backed
+conversation's up to the moment read state began, as seen, as before
+upgrading. Anyone else, including a person first seen later, starts without
+that baseline: uncertain reads unread. Anything appended after the cutoff
+reads unread until rendered.
+
+The cutoff is the store's high-water `global_sequence` (a contiguous prefix),
+written once, atomically, before the migration's first batch. A resumed or
+second initializer reads the same cutoff, and completion never changes it.
+The event store backfills the projection up to the cutoff in bounded batches,
+each committed with its progress cursor under the writer lock, so an
+interrupted start resumes where it stopped and a batch finding the migration
+already complete does nothing. Content appended during or after the
+migration is projected by its own append and never falls inside the cutoff.
+Recorded views are not converted, and nothing is inferred from timestamps.
 
 Each field the built-in Home's work rows carry is part of the Home role's
 projection ([`workspace-home-role`](../../packages/contracts/src/workspace-home-role.ts)),
