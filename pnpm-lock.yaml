@@ -144,8 +144,8 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@kontourai/corpus-store':
-        specifier: 0.1.0-next.3
-        version: 0.1.0-next.3
+        specifier: 0.1.0-next.4
+        version: 0.1.0-next.4
       '@kontourai/dispatch':
         specifier: 0.8.0
         version: 0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))
@@ -2392,8 +2392,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/corpus-store@0.1.0-next.3':
-    resolution: {integrity: sha512-JDpmZly0tFuw/yYVCQeoxO16Mz69z0InFuOyY592ipdRH78EvI6cWZo+gV5OnMRAFp+wIMWxQPAJE/O4iYXUAQ==}
+  '@kontourai/corpus-store@0.1.0-next.4':
+    resolution: {integrity: sha512-gQ8GBqS+G4fm6yKZjkPBzTfdKUSH2lLXixRhrWNPstdlrPMLx2U71Jnf5YzsRBGTrPqx7uyb4vJXWutBs4OlfQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -10663,7 +10663,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@kontourai/corpus-store@0.1.0-next.3':
+  '@kontourai/corpus-store@0.1.0-next.4':
     dependencies:
       js-yaml: 5.4.2
 
