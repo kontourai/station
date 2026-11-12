@@ -109,7 +109,7 @@ function OpenSourceLicenses() {
                   className="settings__secondary-btn"
                   onClick={() => void licenses.refetch()}
                 >
-                  Try again
+                  Retry
                 </button>
               }
             />

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  type RenderOptions,
+  render,
+  screen,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
@@ -27,20 +33,24 @@ function renderModal(
   isOpen: boolean,
   listFooterContent?: ReactNode,
   onConnectStation?: () => void,
+  renderOptions?: Pick<RenderOptions, 'reactStrictMode'>,
 ) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   store.add('Remote Station', 'https://station.example.test');
-  return render(
+  const close = vi.fn();
+  const view = render(
     <ConnectionsProvider store={store}>
       <ConnectionManagerModal
         isOpen={isOpen}
-        onClose={vi.fn()}
+        onClose={close}
         checkHealth={vi.fn(async () => false)}
         listFooterContent={listFooterContent}
         onConnectStation={onConnectStation}
       />
     </ConnectionsProvider>,
+    renderOptions,
   );
+  return { ...view, close };
 }
 
 afterEach(() => {
@@ -53,6 +63,129 @@ afterEach(() => {
 // closed, and the real body — not the loading placeholder — is what appears once
 // the modal opens.
 describe('ConnectionManagerModal lazy body', () => {
+  it.each(['Save', 'Cancel'])(
+    'keeps focus in the Station row through editing and %s',
+    async (action) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json({ requests: [] })),
+      );
+      await import('../react/ConnectionManagerModalContent');
+      renderModal(true);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'View details for Remote Station',
+        }),
+      );
+      const edit = screen.getByRole('button', { name: 'Edit Station' });
+      edit.focus();
+      fireEvent.click(edit);
+      const name = screen.getByRole('textbox', { name: 'Station name' });
+      expect(document.activeElement).toBe(name);
+      fireEvent.change(name, { target: { value: 'Renamed Station' } });
+      const finish = screen.getByRole('button', { name: action });
+      finish.focus();
+      fireEvent.click(finish);
+      const row = await screen.findByRole('button', {
+        name: `View details for ${action === 'Save' ? 'Renamed Station' : 'Remote Station'}`,
+      });
+      expect(document.activeElement).toBe(row);
+    },
+  );
+
+  it('Escape closes Station actions before requesting the manager close', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ requests: [] })),
+    );
+    await import('../react/ConnectionManagerModalContent');
+    const view = renderModal(true);
+    const more = await screen.findByRole('button', {
+      name: 'More actions for Remote Station',
+    });
+    fireEvent.click(more);
+    const action = screen.getByRole('menuitem', { name: 'Check reachability' });
+    expect(document.activeElement).toBe(action);
+    fireEvent.keyDown(action, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(view.close).not.toHaveBeenCalled();
+    await act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    expect(document.activeElement).toBe(more);
+    fireEvent.keyDown(more, { key: 'Escape' });
+    expect(view.close).toHaveBeenCalledOnce();
+  });
+
+  it('retains the opener across StrictMode replay without restoring focus while open', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ requests: [] })),
+    );
+    await import('../react/ConnectionManagerModalContent');
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    trigger.focus();
+    const nextFrame = () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const view = renderModal(true, undefined, undefined, {
+      reactStrictMode: true,
+    });
+    try {
+      await screen.findByRole('button', { name: 'Close Station manager' });
+      const dialog = screen.getByRole('dialog');
+      await act(nextFrame);
+      expect(dialog.contains(document.activeElement)).toBe(true);
+      view.unmount();
+      await act(nextFrame);
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      view.unmount();
+      trigger.remove();
+    }
+  });
+
+  it('moves focus into the dialog before inerting and hiding the focused background', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ requests: [] })),
+    );
+    await import('../react/ConnectionManagerModalContent');
+    const background = document.createElement('div');
+    const trigger = document.createElement('button');
+    background.append(trigger);
+    document.body.append(background);
+    trigger.focus();
+    const focusAtIsolation: Array<Element | null> = [];
+    let inert = false;
+    Object.defineProperty(background, 'inert', {
+      configurable: true,
+      get: () => inert,
+      set: (value: boolean) => {
+        if (value) focusAtIsolation.push(document.activeElement);
+        inert = value;
+      },
+    });
+    const setAttribute = background.setAttribute.bind(background);
+    vi.spyOn(background, 'setAttribute').mockImplementation((name, value) => {
+      if (name === 'aria-hidden' && value === 'true') {
+        focusAtIsolation.push(document.activeElement);
+      }
+      setAttribute(name, value);
+    });
+
+    const view = renderModal(true);
+    const dialog = await screen.findByRole('dialog');
+    expect(focusAtIsolation).toHaveLength(2);
+    for (const focused of focusAtIsolation) {
+      expect(focused).not.toBe(trigger);
+      expect(dialog.contains(focused)).toBe(true);
+    }
+    view.unmount();
+    background.remove();
+  });
+
   it('renders nothing at all while closed', () => {
     const { container } = renderModal(
       false,

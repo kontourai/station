@@ -704,7 +704,7 @@ export function HomeStartComposer({
                 // alert exists to hide.
                 onClick={() => void refreshSetup().catch(() => undefined)}
               >
-                Try again
+                Retry
               </Button>
             )}
           </p>

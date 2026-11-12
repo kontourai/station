@@ -139,7 +139,8 @@ read the module before using one in a browser bundle.
   import helpers).
 - Browser and identifiers: `/return-focus` (focus restoration for dismissible
   surfaces), `/native-shell-origin` (packaged shell origins), `/random-id`
-  (correlation ids outside a secure context), `/setup-import-bounds`,
+  (correlation ids outside a secure context), `/base64url` (the unpadded
+  base64url byte encoder), `/setup-import-bounds`,
   `/authored-input` (whether a turn start carries authored input, shared by the
   Session inventory listing, its exact read, and the SDK).
 

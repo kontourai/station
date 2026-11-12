@@ -49,8 +49,9 @@ vi.mock('../../contexts/useOpenDeviceInRegion', () => ({
 }));
 
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { inputSourceFixture } from '../../live-surface/__tests__/fixtures/inputSourceFixture';
 import FloatOverChat from '../FloatOverChat';
-import { deviceFloatSourceKey } from '../floatSource';
+import { browserShownSourceKey, deviceFloatSourceKey } from '../floatSource';
 import {
   getFloatingSource,
   requestFloat,
@@ -117,6 +118,7 @@ let browserOn = false;
 const BROWSER_SESSION = 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77';
 
 function transport() {
+  const sources = inputSourceFixture();
   return vi.fn(async (input: unknown, init?: RequestInit) => {
     const url = new URL(String(input));
     calls.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search}`);
@@ -162,16 +164,27 @@ function transport() {
           },
         ],
       });
-    if (url.pathname === INPUT)
+    if (url.pathname === INPUT) {
+      const body = JSON.parse(String(init?.body));
+      if (!sources.accepts(body.sourceId))
+        return Response.json({ success: false }, { status: 409 });
       return Response.json({
         success: true,
-        data: { ok: true, accepted: 1, lease: lease({ kind: 'human', ...ME }) },
+        data: {
+          ok: true,
+          accepted: body.events.length,
+          lease: lease({ kind: 'human', ...ME }),
+        },
       });
-    if (url.pathname === LEASE)
+    }
+    if (url.pathname === LEASE) {
+      const response = sources.leaseReply(JSON.parse(String(init?.body)));
+      if (response) return response;
       return Response.json({
         success: true,
         data: { ok: true, lease: lease({ kind: 'human', ...ME }) },
       });
+    }
     if (url.pathname === FRAMES) {
       let controller!: ReadableStreamDefaultController<Uint8Array>;
       const stream = new ReadableStream<Uint8Array>({
@@ -642,7 +655,9 @@ test('a person’s float is not replaced by an auto-float decided in the same co
   // auto-floats and this conversation has no floater yet.
   let releaseBrowser!: () => void;
   act(() => {
-    releaseBrowser = announceShownSource(`browser:${BROWSER_SESSION}`);
+    releaseBrowser = announceShownSource(
+      browserShownSourceKey(BROWSER_SESSION, SCOPE.apiBase, SCOPE.authorityKey),
+    );
   });
   renderChat();
   await waitFor(() =>

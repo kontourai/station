@@ -249,12 +249,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "packages/cli/src/commands/checkpoints.ts",
-      "rule": "as-any",
-      "fingerprint": "05555bf2bfae8952c3cf81b807094c71227c624ebf30d6961589f8cd3d3bb021",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "packages/cli/src/commands/config.ts",
       "rule": "as-unknown",
       "fingerprint": "f6355e9da83bafbd6be418bc8f9567a50b4e6dd17959126ba9342e6c8efd201f",

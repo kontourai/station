@@ -28,6 +28,7 @@ import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -270,6 +271,8 @@ export interface ChatMessage {
     approvalSessionGrant?: ToolRequestSessionGrant;
     /** See `MessagePart.approvalServerGrant`. */
     approvalServerGrant?: ToolRequestServerGrant;
+    /** See `MessagePart.approvalRuleGrant`. */
+    approvalRuleGrant?: ToolRequestRuleGrant;
     /**
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.
@@ -437,7 +440,6 @@ export interface ChatSession {
   error?: string | null;
   createdAt: number;
   updatedAt: number;
-  hasUnread: boolean;
   provider?: EngineId;
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */

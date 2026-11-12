@@ -44,7 +44,8 @@ on that marker instead of on the property being defined.
 measures the resolved roles and contrast-checks every channel value in a real
 browser against the rules a white-label theme must pass, including the brand
 as text. The sidebar channel badge and the package `.eyebrow` paint the brand
-as text; interactive text such as the Readiness and Trust panel links reads
+as text, and Station's mark on its own tool calls paints it as a glyph
+(`.tool-call__glyph--station` in `StationToolGlyph.css`); interactive text such as the Readiness and Trust panel links reads
 the action role. Where a channel's own hue fails as text in a mode, that mode
 uses a nearby shade for the brand and the roles.
 [channel-text-contrast.test.tsx](../../src-ui/src/__tests__/channel-text-contrast.test.tsx)
@@ -169,12 +170,45 @@ Choosing a family resets flavor and accent to that family's defaults, and
 choosing a named accent clears a custom `accentColor`, which would otherwise
 win. A different family's sheet loads first, so until the applier names it
 on the root the chosen card reads "Loading…" with no tick. A sheet that fails
-leaves the card reading "Not loaded" under a warning with Try again, which
+leaves the card reading "Not loaded" under a warning with Retry, which
 applies the selection once more; rapid choices end on the last one ([AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx),
 and with real delayed sheets in
 [appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)).
 Settings keeps its Theme and Accent color rows as links to the page, so
 their search terms and `highlight=` links still land.
+
+## Density and motion
+
+The Appearance page's Display section holds two more choices (#4692), saved
+like the mode: in the device envelope, or in the signed-in person's account
+preferences, which keep them in the same sibling file as the color theme so
+an older server never parses them.
+
+- **Density.** Comfortable, the default, sets a 13px base: `--text-base` and
+  the shared kit's `--k-text-sm`, which most body and control text reads.
+  Compact keeps Station's earlier sizes, a 12px `--text-base` and the kit's
+  12.5px `--k-text-sm`. [tokens.css](../../src-ui/src/tokens.css) keys both on
+  `data-density` on the root; Comfortable also applies when the attribute is
+  absent. Rows are sized by their text and padding, so their heights follow
+  the text. Density changes no touch target: the 44px coarse-pointer floors in
+  [responsive UI](responsive-ui.md) are set separately.
+- **Motion.** System, the default, follows the device's
+  `prefers-reduced-motion`. Reduced sets `data-motion="reduce"`, which applies
+  the same token and duration collapse as the device setting, and
+  [`prefersReducedMotion()`](../../src-ui/src/lib/reduced-motion.ts) reports it
+  to script-driven motion. Component stylesheets that key their own rules
+  directly on the media query still follow only the device. There is no
+  choice that overrides a device asking for reduced motion.
+
+[startup-theme.js](../../src-ui/public/startup-theme.js) stamps both before
+first paint, from the same envelope or account cache as the mode, and
+[display-preferences.ts](../../src-ui/src/lib/display-preferences.ts), bound
+with the color theme, keeps them following the settings store. Evidence:
+[density-tokens.browser.test.tsx](../../src-ui/src/__tests__/density-tokens.browser.test.tsx)
+measures the applied sizes and the startup stamp in Chromium;
+[AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx)
+and [appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)
+cover the controls, keyboard use, 44px hit areas and a reload.
 
 ## White-label branding theme
 

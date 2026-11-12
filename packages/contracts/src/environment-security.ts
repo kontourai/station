@@ -1,3 +1,5 @@
+import { isObjectRecord } from './record-guard.js';
+
 export const ENVIRONMENT_SECURITY_SCHEMA_VERSION = 1 as const;
 export const PUBLIC_HANDSHAKE_SCHEMA_VERSION = 1 as const;
 export const REMOTE_AUTH_PROTOCOL_VERSION = 1 as const;
@@ -1270,6 +1272,13 @@ export interface StationCapabilityFlags {
    */
   sessionInventoryInputRead?: boolean;
   /**
+   * #3075: `POST /api/read-markers/summary` and `POST /api/read-markers/mark`
+   * read and advance the caller's server-kept read state for agent
+   * conversations, Project rooms and Task rooms. A host without them
+   * answers 404, so a client gates on this flag.
+   */
+  readMarkers?: boolean;
+  /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).
@@ -1399,6 +1408,15 @@ export interface StationCapabilityFlags {
    * agent" only on this flag.
    */
   troubleshootPrepare?: boolean;
+  /**
+   * A `/chat` send with files to a busy conversation (`whenBusy: 'queue'`)
+   * is held in its inbox with them: the bytes wait in the attachment blob
+   * store and are sent when the entry is placed. Inbox entries list the
+   * files as `attachments` descriptors. A host without it refuses a busy
+   * send with files, so a client keeps such a draft until the turn ends.
+   * Absent on hosted deployments, which have no conversation inbox.
+   */
+  followUpAttachments?: boolean;
 }
 
 export interface PublicStationHandshake {
@@ -1426,10 +1444,6 @@ export interface PublicStationHandshake {
   capabilities?: StationCapabilityFlags;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * Validates the compatibility declaration shared by every public-handshake
  * consumer. This is deliberately separate from the enclosing handshake so
@@ -1439,7 +1453,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseStationCompatibility(
   value: unknown,
 ): StationCompatibility | undefined {
-  if (!isRecord(value)) return undefined;
+  if (!isObjectRecord(value)) return undefined;
   if (
     typeof value.serverVersion !== 'string' ||
     value.serverVersion.length === 0 ||
@@ -1450,7 +1464,7 @@ export function parseStationCompatibility(
   }
   if (
     value.capabilities !== undefined &&
-    (!isRecord(value.capabilities) ||
+    (!isObjectRecord(value.capabilities) ||
       Object.values(value.capabilities).some(
         (version) => !Number.isSafeInteger(version),
       ))
@@ -1468,14 +1482,14 @@ export function parseStationCompatibility(
 export function parsePublicStationHandshake(
   value: unknown,
 ): PublicStationHandshake | undefined {
-  if (!isRecord(value)) return undefined;
+  if (!isObjectRecord(value)) return undefined;
   if (
     value.schemaVersion !== PUBLIC_HANDSHAKE_SCHEMA_VERSION ||
     typeof value.environmentId !== 'string' ||
-    !isRecord(value.authentication) ||
+    !isObjectRecord(value.authentication) ||
     value.authentication.scheme !== 'bearer' ||
     value.authentication.protocolVersion !== REMOTE_AUTH_PROTOCOL_VERSION ||
-    !isRecord(value.transports) ||
+    !isObjectRecord(value.transports) ||
     value.transports.http !== REMOTE_AUTH_PROTOCOL_VERSION ||
     value.transports.sse !== REMOTE_AUTH_PROTOCOL_VERSION ||
     value.transports.websocket !== REMOTE_AUTH_PROTOCOL_VERSION ||
@@ -1485,7 +1499,7 @@ export function parsePublicStationHandshake(
   }
   if (
     value.capabilities !== undefined &&
-    (!isRecord(value.capabilities) ||
+    (!isObjectRecord(value.capabilities) ||
       Object.values(value.capabilities).some(
         (enabled) => typeof enabled !== 'boolean',
       ))

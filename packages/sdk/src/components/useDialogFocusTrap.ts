@@ -1,3 +1,4 @@
+import { captureReturnFocus } from '@kontourai/station-shared/return-focus';
 import { type RefObject, useEffect, useRef } from 'react';
 
 /**
@@ -11,15 +12,18 @@ import { type RefObject, useEffect, useRef } from 'react';
  * and focus returns to the trigger on close.
  *
  * This is `ConnectionManagerModalContent`'s trap (in `@kontourai/station-connect`)
- * reduced to what the SDK can carry. That component uses
- * `@kontourai/station-shared`'s `captureReturnFocus`/`restoreReturnFocus`; the
- * SDK deliberately does **not** depend on `station-shared` (its dependencies are
- * `@kontourai/console-core` and `@kontourai/station-contracts` only), and adding
- * that edge is a release-ordering change, not an accessibility fix. The
- * ancestor-chain capture below is the same policy in miniature: restore the
- * trigger, and when the trigger did not survive the dialog's own action, fall
- * back to the nearest surviving ancestor. `document.body` is excluded on
- * purpose — focusing it is the bug, not the focus-return target.
+ * kept as a hook. The trigger and its ancestors are captured with
+ * `@kontourai/station-shared`'s `captureReturnFocus`, the same capture that
+ * component uses: restore the trigger, and when the trigger did not survive
+ * the dialog's own action, fall back to the nearest surviving ancestor.
+ * `document.body` is excluded on purpose — focusing it is the bug, not the
+ * focus-return target.
+ *
+ * The restore walk below is still this hook's own, not shared's
+ * `restoreReturnFocus`. The shared walk also leaves focus alone when another
+ * actor has claimed it, skips hidden candidates, and makes a non-focusable
+ * ancestor focusable; adopting it changes what this hook does on close, so it
+ * is a behaviour change to make and test on its own.
  */
 
 const FOCUSABLE =
@@ -34,26 +38,6 @@ export interface DialogFocusTrapOptions {
    * path of its own — two handlers mean two `onClose` calls.
    */
   onEscape?: () => void;
-}
-
-/**
- * The trigger followed by its ancestors, captured while all of them are still
- * attached: a dialog action can detach the row the trigger lived on, and React
- * nulls `parentElement` on detach, leaving nothing to walk at restore time.
- */
-function captureFocusChain(): HTMLElement[] {
-  const chain: HTMLElement[] = [];
-  for (
-    let node =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    node && node !== document.body;
-    node = node.parentElement
-  ) {
-    chain.push(node);
-  }
-  return chain;
 }
 
 export function useDialogFocusTrap<T extends HTMLElement = HTMLDivElement>({
@@ -74,7 +58,9 @@ export function useDialogFocusTrap<T extends HTMLElement = HTMLDivElement>({
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    const returnFocusChain = captureFocusChain();
+    // Captured now, while the trigger's ancestors are all still attached: a
+    // dialog action can detach the row the trigger lived on.
+    const returnFocusChain = captureReturnFocus();
 
     // Hide every branch outside the dialog from AT and from the pointer, so
     // `aria-modal` describes what the DOM actually does. Prior values are kept

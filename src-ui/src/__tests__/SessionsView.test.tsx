@@ -125,12 +125,20 @@ vi.mock('../contexts/ToastContext', () => ({
  * it — the base value is incidental here; these tests are about which
  * attention items render, not where the ack is sent.
  */
+const discardAuthority = vi.hoisted(() => ({ enabled: false }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   // ConversationPullRequestLinks consumes the host request authority when it
   // renders; without this export the full-corpus sweep reds on a missing
   // mock export rather than on behavior (issue#2234).
-  useHostRequestAuthorityScope: () => null,
+  useHostRequestAuthorityScope: () =>
+    discardAuthority.enabled
+      ? {
+          apiBase: 'http://station.test',
+          authorityKey: 'sessions-test-authority',
+          isCurrent: () => true,
+        }
+      : null,
 }));
 
 // The linked-pull-request panel is lazy; this stub echoes the conversation id
@@ -507,6 +515,7 @@ function filterToProject(title: string) {
 describe('SessionsView', () => {
   afterEach(() => _resetOutboundQueueStorage());
   beforeEach(() => {
+    discardAuthority.enabled = false;
     let stored: unknown;
     _setOutboundQueueStorage({
       getItem: async () => stored,
@@ -4668,6 +4677,7 @@ describe('SessionsView', () => {
     });
 
     test('discards a Draft through the server command; only Drafts offer it', async () => {
+      discardAuthority.enabled = true;
       discardDraftCommand.mockResolvedValue({
         receipt: { commandId: 'discard-1', status: 'accepted' },
         result: null,
@@ -4688,12 +4698,18 @@ describe('SessionsView', () => {
       expect(
         screen.queryByRole('button', { name: 'Discard draft Worked session' }),
       ).toBeNull();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       fireEvent.click(
         screen.getByRole('button', { name: 'Discard draft Fresh draft' }),
       );
+      await act(async () => {});
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8000);
+      });
+      vi.useRealTimers();
 
       await waitFor(() =>
-        expect(discardDraftCommand).toHaveBeenCalledWith({
+        expect(discardDraftCommand.mock.calls[0]?.[0]).toEqual({
           type: 'discardDraft',
           threadId: 'fresh-draft',
         }),

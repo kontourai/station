@@ -5,7 +5,7 @@ export function buildEventTimestampTitle(event: MonitoringEvent): string {
   if (!event.timestamp) {
     return 'No timestamp';
   }
-  return new Date(event.timestamp).toLocaleString('en-US', {
+  return new Date(event.timestamp).toLocaleString(undefined, {
     dateStyle: 'full',
     timeStyle: 'long',
   });

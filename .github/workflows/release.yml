@@ -19,6 +19,7 @@ concurrency:
 jobs:
   preflight:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       sha: ${{ steps.source.outputs.sha }}
       tag: ${{ steps.source.outputs.tag }}
@@ -303,6 +304,7 @@ jobs:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: windows-latest
+    timeout-minutes: 120
     environment: native-release
     permissions:
       contents: read
@@ -409,6 +411,7 @@ jobs:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 120
     environment: native-release
     permissions:
       contents: read
@@ -520,6 +523,7 @@ jobs:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -539,6 +543,7 @@ jobs:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     environment: native-release
     permissions:
       contents: read
@@ -800,6 +805,7 @@ jobs:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.channel == 'stable' }}
     runs-on: macos-15
+    timeout-minutes: 120
     permissions:
       contents: read
       id-token: write
@@ -869,6 +875,7 @@ jobs:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
@@ -1079,6 +1086,7 @@ jobs:
          (needs.preflight.outputs.channel == 'stable' && needs.ios-simulator.result == 'success' && needs.ios-device.result == 'success'))
       }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: native-release
     permissions:
       contents: write

@@ -141,6 +141,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // #3075: one short-lived tsx child writes a person's first acknowledgement
+  // as another process would, while this suite holds the event store open.
+  'src-server/services/orchestration/__tests__/thread-content-backfill.test.ts',
   // Reads the real tracked/untracked Git inventory and scans the UI AST corpus.
   'scripts/__tests__/conversation-boundary-gate.test.ts',
   // Two owned loopback runtime listeners with real Device grants and live streams.
@@ -213,6 +216,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
+  'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   // A real detached engine-shaped process and the scope holder Station spawns.
@@ -246,7 +251,27 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
   // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
+  // A skip still passes, and no hosted corpus lane runs on macOS, so the
+  // corpus never runs the kernel legs. They run on a developer Mac, or in
+  // `.github/workflows/seatbelt-kernel.yml` on a hosted macOS runner (main
+  // pushes that touch confinement paths, or dispatch), where
+  // scripts/check-required-tests-ran.mjs fails the run unless the pinned legs
+  // passed. The live Claude handshake runs only on a Mac with `claude` on PATH.
+  // #4769 adds the restricted-network legs: real
+  // `sandbox-exec` children under the broker-only profile, local loopback
+  // listeners and an in-process egress broker, and one bounded live Claude
+  // turn through the broker to a local stand-in model endpoint.
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+  // #4770: real `bwrap` kernel probes (git, hidden paths, namespaces) and
+  // one bounded live Claude handshake (`claude` on PATH, else the Agent
+  // SDK's own binary); skips loudly where the production bubblewrap sandbox
+  // cannot apply (macOS, Windows, a Linux host without bwrap or without
+  // unprivileged user namespaces). A skip still passes. Where a hosted Linux
+  // corpus lane can apply it, the legs run there and must pass; nothing in
+  // the corpus fails if they skip. The dispatch-only
+  // `.github/workflows/bubblewrap-kernel.yml` installs bubblewrap and fails
+  // unless the legs pinned in scripts/required-test-profiles.json passed.
+  'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
   // The stale-session reaper case spawns one short-lived Node child to obtain
   // a pid that has exited.
   'src-server/security/confinement/__tests__/seatbelt.test.ts',
@@ -286,6 +311,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
   'scripts/__tests__/ci-event-environment.test.ts',
+  // Runs the required-tests check as short Node children over report
+  // fixtures (one with the hosted workflow's own arguments, one over a FIFO
+  // from a bounded mkfifo), and one nested Vitest collection (no test bodies
+  // run) of the Seatbelt process file to compare its ids with the pinned
+  // profile.
+  'scripts/__tests__/check-required-tests-ran.test.ts',
   // Builds disposable Git repositories to prove the real-ledger freshness
   // check keeps the job's event mode through the worker env scrub.
   'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
@@ -618,11 +649,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3101 slice F: runs the fixture policy's real main() as a child process
   // against a small real Git graph (merge base versus main's tip).
   'scripts/__tests__/test-fixture-policy.process.test.ts',
-  // Same shape one gate over: runs the pre-push typecheck scope guard as a
-  // real child process — once against a stub `npm` so its REFUSAL exit
-  // status is proven, once with an empty scope so the skip path's zero is
-  // proven. Two bounded single-shot children; the real 82s aggregate never
-  // starts.
+  // Runs the real pre-push hook through `git push` from a disposable linked
+  // worktree with stubbed gate commands, so each gate's Git reads are real
+  // subprocesses in the hook's own environment. Bounded single-shot children.
+  // (The file keeps its name from the retired pre-push typecheck scope guard.)
   'scripts/__tests__/prepush-typecheck.test.ts',
   // Host typecheck slots: spawns fleets of six short-lived fake compilers
   // against a PRIVATE slot directory (never the host's), SIGKILLs one holder
@@ -686,6 +716,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Same shape as the test temp-dir ratchet: the windowsHide ratchet runs as
+  // a real child process against throwaway git repositories so its `FAIL:`
+  // sentence and exit status are proven. Bounded single-shot children per case.
+  'scripts/__tests__/windows-hide-ratchet.test.ts',
   // Runs the type-laundering gate as a real child process from a checkout
   // path containing a space (known-bad and clean control) so the entry check
   // that made it a silent no-op is proven, not just the scanner. Two bounded
@@ -1399,6 +1433,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/task-worktree-finalization.test.ts',
   'src-server/services/projects/__tests__/task-worktree-ownership.test.ts',
   'src-server/services/projects/__tests__/task-worktree-removal-race.test.ts',
+  // #4771: settling a worktree Session's output over real repositories
+  // (discard, kept, released, crash convergence, cleanup), each spawning
+  // real git against a real orchestration SQLite store.
+  'src-server/services/projects/__tests__/worktree-output-settlement.test.ts',
+  // #4771: a real StationRuntime's Session-exit handler removing a real
+  // worktree and recording it, spawning real git.
+  'src-server/runtime/bootstrap/__tests__/station-runtime-worktree-exit-settlement.test.ts',
+  // #4771: the settlement route through the production runtime route
+  // composition, discarding a real worktree with real git.
+  'src-server/runtime/routes/__tests__/runtime-routes-worktree-settlement.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

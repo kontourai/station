@@ -329,201 +329,209 @@ function ProjectOperatorPage({
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
         />
 
-        <ProjectNavigation slug={slug} projectId={project.id} />
-        <section className="project-page__content">
-          <section
-            hidden={destination !== 'overview'}
-            aria-label="Project overview"
-          >
-            <div className="project-page__operator-actions">
-              <Button onClick={() => requestTaskShaping({ projectSlug: slug })}>
-                New Task
-              </Button>
-              <Button onClick={() => selectDestination('sources')}>
-                Add files
-              </Button>
-            </div>
-            <ProjectLiveWorkSection slug={slug} />
-          </section>
-
-          <div hidden={destination !== 'overview' && destination !== 'room'}>
-            <ProjectRoom
-              slug={slug}
-              projectId={project.id}
-              requestScope={requestScope}
-              variant={destination === 'room' ? 'full' : 'preview'}
-              onOpenRoom={() => selectDestination('room')}
-            />
-          </div>
-
-          <details
-            className="project-page__workspace"
-            hidden={destination !== 'overview'}
-          >
-            <summary>Open workspace</summary>
-            {/* Epic #2323 S2: renders only when the server says this Project's
-            folder is empty and could take a starter plugin. */}
-            {!navigator.webdriver && (
-              <LazyBoundary
-                load={loadProjectPluginStartGate}
-                componentProps={{
-                  project: { slug, name: project.name || slug },
-                }}
-                pending={null}
-              />
-            )}
-
-            {gitStatus?.isRepo && (
-              <div className="project-page__git-section">
-                <div className="project-page__section-header">
-                  <span className="project-page__section-label">
-                    <BranchGlyph className="project-page__section-label-icon" />{' '}
-                    {gitStatus.branch}
-                    {gitStatus.changes.length > 0 && (
-                      <span className="project-page__git-section-dirty">
-                        {' '}
-                        · {gitStatus.staged} staged, {gitStatus.unstaged}{' '}
-                        modified, {gitStatus.untracked} untracked
-                      </span>
-                    )}
-                    {(gitStatus.ahead > 0 || gitStatus.behind > 0) && (
-                      <span className="project-page__git-section-remote">
-                        {gitStatus.ahead > 0 && ` · ↑${gitStatus.ahead}`}
-                        {gitStatus.behind > 0 && ` · ↓${gitStatus.behind}`}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                {gitLog.length > 0 && (
-                  <div className="project-page__git-log">
-                    {gitLog.map((commit) => (
-                      <div
-                        key={commit.sha}
-                        className="project-page__git-commit"
-                      >
-                        <span className="project-page__git-sha">
-                          {commit.sha}
-                        </span>
-                        <span className="project-page__git-msg">
-                          {commit.message}
-                        </span>
-                        <span className="project-page__git-meta">
-                          {commit.author} · {commit.relativeTime}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <ProjectPluginPublishSection slug={slug} />
-
+        <div className="section-nav-rail project-page__layout">
+          <ProjectNavigation slug={slug} projectId={project.id} />
+          <section className="section-nav-rail__body project-page__content">
             <section
-              className="project-page__layouts"
-              aria-labelledby="project-open-title"
+              hidden={destination !== 'overview'}
+              aria-label="Project overview"
             >
-              <div className="project-page__section-header">
-                <span
-                  id="project-open-title"
-                  className="project-page__section-label"
+              <div className="project-page__operator-actions">
+                <Button
+                  variant="primary"
+                  onClick={() => requestTaskShaping({ projectSlug: slug })}
                 >
-                  Workspace views
-                </span>
-                <div className="project-page__section-actions">
-                  <button
-                    type="button"
-                    className="project-page__add-btn"
-                    onClick={() => setShowAddLayout(true)}
-                  >
-                    + Add layout
-                  </button>
-                  <button
-                    type="button"
-                    className="project-page__add-btn"
-                    onClick={() => setShowAddPane(true)}
-                  >
-                    + Add pane
-                  </button>
-                </div>
+                  New Task
+                </Button>
+                <Button onClick={() => selectDestination('sources')}>
+                  Add files
+                </Button>
               </div>
-              {/* #765 F4: plain copy — the layouts→panes migration is an internal
+              <ProjectLiveWorkSection slug={slug} />
+            </section>
+
+            <div hidden={destination !== 'overview' && destination !== 'room'}>
+              <ProjectRoom
+                slug={slug}
+                projectId={project.id}
+                requestScope={requestScope}
+                variant={destination === 'room' ? 'full' : 'preview'}
+                onOpenRoom={() => selectDestination('room')}
+              />
+            </div>
+
+            <details
+              className="project-page__workspace"
+              hidden={destination !== 'overview'}
+            >
+              <summary>Open workspace</summary>
+              {/* Epic #2323 S2: renders only when the server says this Project's
+            folder is empty and could take a starter plugin. */}
+              {!navigator.webdriver && (
+                <LazyBoundary
+                  load={loadProjectPluginStartGate}
+                  componentProps={{
+                    project: { slug, name: project.name || slug },
+                  }}
+                  pending={null}
+                />
+              )}
+
+              {gitStatus?.isRepo && (
+                <div className="project-page__git-section">
+                  <div className="project-page__section-header">
+                    <span className="project-page__section-label">
+                      <BranchGlyph className="project-page__section-label-icon" />{' '}
+                      {gitStatus.branch}
+                      {gitStatus.changes.length > 0 && (
+                        <span className="project-page__git-section-dirty">
+                          {' '}
+                          · {gitStatus.staged} staged, {gitStatus.unstaged}{' '}
+                          modified, {gitStatus.untracked} untracked
+                        </span>
+                      )}
+                      {(gitStatus.ahead > 0 || gitStatus.behind > 0) && (
+                        <span className="project-page__git-section-remote">
+                          {gitStatus.ahead > 0 && ` · ↑${gitStatus.ahead}`}
+                          {gitStatus.behind > 0 && ` · ↓${gitStatus.behind}`}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {gitLog.length > 0 && (
+                    <div className="project-page__git-log">
+                      {gitLog.map((commit) => (
+                        <div
+                          key={commit.sha}
+                          className="project-page__git-commit"
+                        >
+                          <span className="project-page__git-sha">
+                            {commit.sha}
+                          </span>
+                          <span className="project-page__git-msg">
+                            {commit.message}
+                          </span>
+                          <span className="project-page__git-meta">
+                            {commit.author} · {commit.relativeTime}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <ProjectPluginPublishSection slug={slug} />
+
+              <section
+                className="project-page__layouts"
+                aria-labelledby="project-open-title"
+              >
+                <div className="project-page__section-header">
+                  <span
+                    id="project-open-title"
+                    className="project-page__section-label"
+                  >
+                    Workspace views
+                  </span>
+                  <div className="project-page__section-actions">
+                    <button
+                      type="button"
+                      className="project-page__add-btn"
+                      onClick={() => setShowAddLayout(true)}
+                    >
+                      + Add layout
+                    </button>
+                    <button
+                      type="button"
+                      className="project-page__add-btn"
+                      onClick={() => setShowAddPane(true)}
+                    >
+                      + Add pane
+                    </button>
+                  </div>
+                </div>
+                {/* #765 F4: plain copy — the layouts→panes migration is an internal
               narrative and does not belong in product copy. */}
-              <p className="project-page__section-explainer">
-                Workspace views open in this project.
-              </p>
-              {/* #1536 E8: this section lists what the user ADDED to this
+                <p className="project-page__section-explainer">
+                  Workspace views open in this project.
+                </p>
+                {/* #1536 E8: this section lists what the user ADDED to this
               project. It used to carry a second grid of every pane in the
               distribution — a catalog rendered as project state, duplicating
               the "+ Add pane" picker above. The picker's entry list is a
               superset of what that grid could show (the grid filtered the same
               catalog down to placed occurrences), so nothing became
               unreachable. */}
-              <ProjectLayoutsSection
-                slug={slug}
-                layouts={layouts}
-                loading={layoutsLoading}
-                error={layoutsError}
-                onRetry={() => void refetchLayouts()}
-                setLayout={setLayout}
-              />
-            </section>
-          </details>
+                <ProjectLayoutsSection
+                  slug={slug}
+                  layouts={layouts}
+                  loading={layoutsLoading}
+                  error={layoutsError}
+                  onRetry={() => void refetchLayouts()}
+                  setLayout={setLayout}
+                />
+              </section>
+            </details>
 
-          <section hidden={destination !== 'tasks'} aria-label="Project tasks">
-            <ProjectTasksSection
-              slug={slug}
-              projectId={project.id}
-              projectWorkingDirectory={project.workingDirectory}
-              gitStatus={gitStatus}
-              agents={project.agents}
-            />
-          </section>
-
-          <section
-            hidden={destination !== 'sources'}
-            aria-label="Files and connections"
-          >
-            <ProjectSourcesSection slug={slug} projectId={project.id} />
-            {namespacesQuery.isError && (
-              <ErrorState
-                title="Could not load document categories"
-                description={errorText(namespacesQuery.error)}
-                action={
-                  <Button onClick={() => void namespacesQuery.refetch()}>
-                    Retry categories
-                  </Button>
-                }
-              />
-            )}
-            {knowledgeStatusQuery.isError && (
-              <ErrorState
-                title="Could not load indexing status"
-                description={errorText(knowledgeStatusQuery.error)}
-                action={
-                  <Button onClick={() => void knowledgeStatusQuery.refetch()}>
-                    Retry indexing status
-                  </Button>
-                }
-              />
-            )}
-            {docsPending ? (
-              <SkeletonBlock count={2} label="Loading project documents" />
-            ) : (
-              <ProjectKnowledgeSection
+            <section
+              hidden={destination !== 'tasks'}
+              aria-label="Project tasks"
+            >
+              <ProjectTasksSection
                 slug={slug}
                 projectId={project.id}
                 projectWorkingDirectory={project.workingDirectory}
-                docs={docs}
-                docsError={docsError}
-                docsFailure={docsFailure}
-                onRetryDocs={() => void refetchDocs()}
-                namespaces={namespaces}
-                knowledgeStatus={knowledgeStatus}
+                gitStatus={gitStatus}
+                agents={project.agents}
               />
-            )}
+            </section>
+
+            <section
+              hidden={destination !== 'sources'}
+              aria-label="Files and connections"
+            >
+              <ProjectSourcesSection slug={slug} projectId={project.id} />
+              {namespacesQuery.isError && (
+                <ErrorState
+                  title="Could not load document categories"
+                  description={errorText(namespacesQuery.error)}
+                  action={
+                    <Button onClick={() => void namespacesQuery.refetch()}>
+                      Retry categories
+                    </Button>
+                  }
+                />
+              )}
+              {knowledgeStatusQuery.isError && (
+                <ErrorState
+                  title="Could not load indexing status"
+                  description={errorText(knowledgeStatusQuery.error)}
+                  action={
+                    <Button onClick={() => void knowledgeStatusQuery.refetch()}>
+                      Retry indexing status
+                    </Button>
+                  }
+                />
+              )}
+              {docsPending ? (
+                <SkeletonBlock count={2} label="Loading project documents" />
+              ) : (
+                <ProjectKnowledgeSection
+                  slug={slug}
+                  projectId={project.id}
+                  projectWorkingDirectory={project.workingDirectory}
+                  docs={docs}
+                  docsError={docsError}
+                  docsFailure={docsFailure}
+                  onRetryDocs={() => void refetchDocs()}
+                  namespaces={namespaces}
+                  knowledgeStatus={knowledgeStatus}
+                />
+              )}
+            </section>
           </section>
-        </section>
+        </div>
         <ProjectAddLayoutModal
           show={showAddLayout}
           available={available}

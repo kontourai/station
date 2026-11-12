@@ -151,3 +151,41 @@ describe('ACPChatPanel workspace identity', () => {
     expect(panelState.updateChat).not.toHaveBeenCalled();
   });
 });
+
+describe('ACPChatPanel shared-body session', () => {
+  beforeEach(() => {
+    panelState.updateChat.mockReset();
+    panelState.body.mockReset();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+  });
+
+  test('the shared body receives the live queued follow-ups, last sent input and title', () => {
+    panelState.chat = {
+      status: 'sending',
+      conversationId: 'stored-conversation',
+      orchestrationSessionStarted: true,
+      title: 'Engine fixture',
+      queuedMessages: ['run the tests next'],
+      inputHistory: ['first message'],
+    };
+    render(
+      <ACPChatPanel projectSlug="station" agentSlug="codex" tabId="tab" />,
+    );
+    // The transcript projection fills these with placeholders; the body's
+    // queue list, missing-record notice and recovery notice read them.
+    expect(panelState.body).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        activeSession: expect.objectContaining({
+          id: 'acp-session',
+          title: 'Engine fixture',
+          queuedMessages: ['run the tests next'],
+          inputHistory: ['first message'],
+        }),
+      }),
+    );
+  });
+});

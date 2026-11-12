@@ -69,6 +69,50 @@ describe('the conversation approval sheet', () => {
     ).toBe(false);
   });
 
+  // A view whose stream missed a resolution still lists the settled request.
+  // Answering it got "no longer open" under live Deny / Allow Once buttons,
+  // and the sheet kept it as the request to answer while the one actually
+  // blocking the turn was not on it.
+  test('a request Station reports already settled leaves the sheet and its count, and the view catches up', async () => {
+    const stale = request('settled-elsewhere');
+    const open = request('still-open');
+    const approve = vi.fn(async (answered: PendingApprovalRequest) =>
+      answered === stale ? ('already-settled' as const) : ('answered' as const),
+    );
+    const settledElsewhere = vi.fn();
+    render(
+      <ApprovalSheetProvider
+        requests={[stale, open]}
+        onApprove={approve}
+        onSettledElsewhere={settledElsewhere}
+      >
+        <span>Conversation</span>
+      </ApprovalSheetProvider>,
+    );
+    const sheet = await screen.findByRole('dialog', {
+      name: 'Needs approval (2)',
+    });
+    fireEvent.click(
+      within(sheet).getAllByRole('button', { name: 'Allow Once' })[0],
+    );
+    await waitFor(() => expect(settledElsewhere).toHaveBeenCalledWith(stale));
+    const updated = await screen.findByRole('dialog', {
+      name: 'Needs approval',
+    });
+    expect(within(updated).queryByText(/echo settled-elsewhere/)).toBeNull();
+    expect(
+      within(updated).getByText(/^echo still-open\s+printf done$/),
+    ).toBeTruthy();
+    expect(
+      within(updated).queryByText('This request is no longer open.'),
+    ).toBeNull();
+    expect(
+      within(updated)
+        .getByRole('button', { name: 'Allow Once' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
+  });
+
   test('remembers dismissal across remounts, explicitly reopens, and opens a new prompt', async () => {
     const first = request('dismissed-first');
     const approve = vi.fn(async () => 'answered' as const);

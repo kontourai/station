@@ -112,6 +112,7 @@
     "./orchestration-store-quarantine": "./src/orchestration-store-quarantine.ts",
     "./setup-import-bounds": "./src/setup-import-bounds.ts",
     "./random-id": "./src/random-id.ts",
+    "./base64url": "./src/base64url.ts",
     "./terminal-capability": "./src/terminal-capability.ts",
     "./skill-experience-author": "./src/skill-experience-author.ts",
     "./skill-experience-values": "./src/skill-experience-values.ts",
@@ -140,7 +141,7 @@
   },
   "dependencies": {
     "@kontourai/station-contracts": "^0.13.0",
-    "@kontourai/thread": "0.5.0",
+    "@kontourai/thread": "0.6.0",
     "@modelcontextprotocol/client": "2.4.0",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",

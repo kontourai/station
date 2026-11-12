@@ -108,6 +108,16 @@ describe('Home names a model the same way its sibling card does (station#3391)',
     expect(continueCardLabel('gpt-6.1-sol', [])).toBe('GPT 6.1 Sol');
   });
 
+  test('hyphenated version digits read as one version, a date stamp does not', () => {
+    expect(prettifyModelId('claude-opus-5-5')).toBe('Opus 5.5');
+    expect(prettifyModelId('claude-opus-5-5[1m]')).toBe('Opus 5.5 (1M)');
+    expect(prettifyModelId('claude-3-5-sonnet')).toBe('3.5 Sonnet');
+    expect(prettifyModelId('claude-sonnet-4-5-20250929')).toBe(
+      'Sonnet 4.5 20250929',
+    );
+    expect(continueCardLabel('claude-opus-5-5', [])).toBe('Opus 5.5');
+  });
+
   test('a session with no model at all says so rather than inventing one', () => {
     expect(continueCardLabel('')).toBe('Model not reported');
   });

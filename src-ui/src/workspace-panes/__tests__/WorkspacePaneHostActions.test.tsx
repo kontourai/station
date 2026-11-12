@@ -262,7 +262,7 @@ test('a failed catalog stays a failure while it retries instead of flickering to
   expect(screen.getByRole('alert').textContent).toContain(
     'Workspace actions unavailable',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(mocks.refetch).toHaveBeenCalledTimes(1);
 
   // TanStack resets a no-data query to loading when the refetch starts.
@@ -285,6 +285,6 @@ test('a failed catalog stays a failure while it retries instead of flickering to
     'Could not reach Station',
   );
   expect(
-    screen.getByRole('button', { name: 'Try again' }).getAttribute('aria-busy'),
+    screen.getByRole('button', { name: 'Retry' }).getAttribute('aria-busy'),
   ).toBe('true');
 });

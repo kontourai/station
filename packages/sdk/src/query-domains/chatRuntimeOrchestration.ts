@@ -926,17 +926,25 @@ export async function dispatchOrchestrationCommandWithReceipt<T = unknown>(
   command: OrchestrationCommandInput,
   apiBase?: string,
   timeoutMs?: number,
+  opts?: Pick<ClientRequestOptions, 'requestScope'>,
 ): Promise<OrchestrationCommandDispatchResult<T>> {
+  const scope = snapshotInvocationScope(opts?.requestScope);
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/orchestration/commands`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(command),
-      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    },
-  );
+  const url = `${resolvedApiBase}/api/orchestration/commands`;
+  const deadline = timeoutMs !== undefined ? { timeoutMs } : {};
+  const response = scope
+    ? await mutateJson(
+        url,
+        'POST',
+        { requestScope: scope, ...deadline },
+        command,
+      )
+    : await authenticatedFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(command),
+        ...deadline,
+      });
   const result = (await response.json()) as {
     success: boolean;
     data?: T;
@@ -1224,8 +1232,12 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
-  /** With `acceptForSession`: grant the whole Station browser server. */
-  sessionGrantScope?: 'server';
+  /**
+   * With `acceptForSession`: `server` grants the whole Station browser
+   * server; `rule` only the Bash command prefixes the engine suggested.
+   * Honoured only where the request offered that scope.
+   */
+  sessionGrantScope?: 'server' | 'rule';
   /** @deprecated since 0.9.0; retained for compatibility. Use `content`. */
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */

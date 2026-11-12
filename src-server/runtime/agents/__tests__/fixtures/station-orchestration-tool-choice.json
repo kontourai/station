@@ -1,0 +1,139 @@
+[
+  {
+    "id": "second-model-review",
+    "kind": "bad",
+    "shape": "claude-full",
+    "scenario": "The user wants a second model to review the diff. Wrong choices: running a model CLI in a shell, or answering a task request.",
+    "expectNamed": ["list_delegation_targets", "delegate_task"],
+    "mustNotName": ["respond_to_task_request", "send_message"]
+  },
+  {
+    "id": "wait-for-delegated-task",
+    "kind": "bad",
+    "shape": "claude-full",
+    "scenario": "A delegated task is running and the result is needed. Wrong choice: a sleep loop.",
+    "expectNamed": ["wait_session", "get_task_events"],
+    "mustNotName": []
+  },
+  {
+    "id": "delegate-without-targets-tool",
+    "kind": "bad",
+    "shape": "codex-custody",
+    "scenario": "A Codex session must pick an Agent. list_delegation_targets is bound-only, so the text must fall back to list_agents.",
+    "expectNamed": ["delegate_task", "list_agents"],
+    "mustNotName": ["list_delegation_targets"]
+  },
+  {
+    "id": "simulator-run",
+    "kind": "bad",
+    "shape": "claude-full",
+    "scenario": "The user wants the app run in the iOS Simulator. Wrong choice: xcrun simctl or adb scripts.",
+    "expectNamed": [
+      "device_list",
+      "device_open",
+      "device_screenshot",
+      "device_input"
+    ],
+    "mustNotName": []
+  },
+  {
+    "id": "browser-check",
+    "kind": "bad",
+    "shape": "claude-full",
+    "scenario": "The user asks to look at a page in the Browser pane.",
+    "expectNamed": [
+      "browser_status",
+      "browser_open",
+      "browser_snapshot",
+      "browser_close"
+    ],
+    "mustNotName": []
+  },
+  {
+    "id": "device-tools-unavailable",
+    "kind": "guard",
+    "shape": "codex-custody",
+    "scenario": "A Codex session asked to use a simulator. Device tools are bound-only, so none may be named.",
+    "expectNamed": [],
+    "mustNotName": [
+      "device_list",
+      "device_open",
+      "device_screenshot",
+      "device_snapshot",
+      "device_input"
+    ]
+  },
+  {
+    "id": "child-handoff",
+    "kind": "guard",
+    "shape": "delegated-child",
+    "scenario": "A delegated Task is tempted to hand its work to another Agent. Outside the prohibition itself, the text must not offer delegation.",
+    "expectNamed": ["wait_session"],
+    "mustNotName": ["delegate_task", "send_message"]
+  },
+  {
+    "id": "selection-without-delegate",
+    "kind": "guard",
+    "shape": "no-delegate",
+    "scenario": "The Agent's tool selection removed delegate_task. No orchestration advice may remain.",
+    "expectNamed": ["wait_session"],
+    "mustNotName": [
+      "delegate_task",
+      "list_delegation_targets",
+      "list_agents",
+      "continue_task",
+      "interrupt_task"
+    ]
+  },
+  {
+    "id": "read-only-selection",
+    "kind": "guard",
+    "shape": "narrow-selection",
+    "scenario": "The Agent selected only four tools. Nothing else may be named.",
+    "expectNamed": ["notify_user", "wait_session"],
+    "mustNotName": [
+      "delegate_task",
+      "send_to_session",
+      "html_render",
+      "browser_open",
+      "device_open"
+    ]
+  },
+  {
+    "id": "acp-other-session",
+    "kind": "guard",
+    "shape": "acp-custody",
+    "scenario": "An ACP session messages another Session in the Project.",
+    "expectNamed": ["send_to_session", "wait_session"],
+    "mustNotName": ["list_delegation_targets", "device_open"]
+  },
+  {
+    "id": "ordinary-coding",
+    "kind": "control",
+    "shape": "no-station-tools",
+    "scenario": "Ordinary coding in a session with no Station tools. The instructions must be absent entirely.",
+    "expectNamed": [],
+    "mustNotName": [
+      "delegate_task",
+      "browser_open",
+      "device_open",
+      "wait_session"
+    ]
+  },
+  {
+    "id": "follow-up-task",
+    "kind": "control",
+    "shape": "claude-full",
+    "scenario": "Send a follow-up to a Task already delegated and read its state.",
+    "expectNamed": ["continue_task", "get_task"],
+    "mustNotName": []
+  },
+  {
+    "id": "message-other-session",
+    "kind": "control",
+    "shape": "claude-full",
+    "scenario": "Message another Session in the Project and wait for its turn.",
+    "expectNamed": ["send_to_session", "wait_session", "interrupt_session"],
+    "mustNotName": []
+  }
+]

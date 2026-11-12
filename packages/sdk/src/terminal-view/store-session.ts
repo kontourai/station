@@ -45,19 +45,29 @@ export function toTerminalViewSession(
       // from subscribe(): that output predates this view, so it is replay
       // and its queries must not be answered again.
       let catchingUp = true;
+      const kind = () =>
+        catchingUp || session.state === 'replaying' ? 'replay' : 'live';
+      // Whether the view has been told that earlier output is all delivered.
+      let live = false;
+      const replayed = () => {
+        if (live || session.state !== 'ready') return;
+        live = true;
+        listener.replayed?.();
+      };
       const unsubscribe = session.subscribe({
         // The store credits the host only once the view has parsed it.
-        output: (data) =>
-          listener.output(
-            data,
-            catchingUp || session.state === 'replaying' ? 'replay' : 'live',
-          ),
+        output: (data) => listener.output(data, kind()),
+        resize: (cols, rows) => listener.resize?.(cols, rows, kind()),
         reset: () => listener.reset?.(),
-        change: (current) =>
-          listener.state?.(viewState(current), current.error?.message),
+        change: (current) => {
+          if (current.state !== 'ready') live = false;
+          listener.state?.(viewState(current), current.error?.message);
+          replayed();
+        },
       });
       catchingUp = false;
       listener.state?.(viewState(session), session.error?.message);
+      replayed();
       return unsubscribe;
     },
     write(bytes) {

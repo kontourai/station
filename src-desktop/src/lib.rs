@@ -232,6 +232,47 @@ fn remote_push_capability(
     }
 }
 
+/// The image share target is the media-intake plugin's Android receiver
+/// (`ACTION_SEND`/`ACTION_SEND_MULTIPLE` with `image/*`). iOS needs a Share
+/// Extension that is not built yet, and desktop has no share target. Its own
+/// id keeps it apart from `share-intake`, which names text shares (the web
+/// adapter's PWA share URLs); no native host receives text shares.
+fn image_share_intake_capability(android: bool) -> NativeCapabilityStatus {
+    if android {
+        NativeCapabilityStatus {
+            id: "image-share-intake",
+            state: "enabled",
+            reason: "Images shared from another Android app open Station's conversation picker.",
+        }
+    } else {
+        NativeCapabilityStatus {
+            id: "image-share-intake",
+            state: "disabled",
+            reason: "Only the Android app receives shared images; iOS needs a Share Extension that is not built yet.",
+        }
+    }
+}
+
+/// Mobile WebViews cannot paste an image-only clipboard into a text field, so
+/// the media-intake plugin reads the system clipboard instead. Desktop
+/// WebViews paste images natively.
+fn clipboard_image_capability(mobile: bool) -> NativeCapabilityStatus {
+    if mobile {
+        NativeCapabilityStatus {
+            id: "clipboard-image",
+            state: "enabled",
+            reason:
+                "The mobile native host reads images from the system clipboard when asked to paste.",
+        }
+    } else {
+        NativeCapabilityStatus {
+            id: "clipboard-image",
+            state: "unsupported",
+            reason: "Desktop pastes images through the WebView; the native clipboard read is mobile-only.",
+        }
+    }
+}
+
 fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport {
     let mut capabilities = vec![
         NativeCapabilityStatus {
@@ -247,9 +288,10 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
         NativeCapabilityStatus {
             id: "share-intake",
             state: "disabled",
-            reason:
-                "Station has not selected and reviewed a native share-target or deep-link receiver.",
+            reason: "No native host receives shared text; shared images use image-share-intake.",
         },
+        image_share_intake_capability(cfg!(target_os = "android")),
+        clipboard_image_capability(cfg!(mobile)),
     ];
 
     #[cfg(mobile)]
@@ -3570,6 +3612,12 @@ fn native_header_allowlisted(name: &str) -> bool {
             | "content-type"
             | "last-event-id"
             | "x-request-id"
+            // Write preconditions: revisioned saves (account, app-config and
+            // notification preferences) send If-Match, and app-config writes
+            // also send Idempotency-Key. Neither carries authority; refusing
+            // them made those saves fail on native before reaching Station.
+            | "if-match"
+            | "idempotency-key"
             // `CLIENT_ORIGIN_HEADER` in `packages/contracts/src/client-origin.ts`.
             // This client-reported provenance is display-only on the server;
             // native still owns the bearer and refuses every authority-bearing
@@ -14374,6 +14422,8 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_discovery::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_station_media_intake::init());
     // iOS-only, with its own capability file (ios-fold.json) for the same
     // ACL reason as the plugins above.
     #[cfg(target_os = "ios")]
@@ -24125,6 +24175,8 @@ mod tests {
         assert_eq!(NATIVE_HTTP_BODY_LIMIT, 24 * 1024 * 1024);
         assert!(native_header_allowlisted("x-station-plugin"));
         assert!(native_header_allowlisted("x-abort-reason"));
+        assert!(native_header_allowlisted("If-Match"));
+        assert!(native_header_allowlisted("Idempotency-Key"));
         assert!(native_header_allowlisted("X-Station-Client-Origin"));
         assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
@@ -24417,6 +24469,14 @@ mod tests {
         assert!(states.contains(&("capability-report", "enabled")));
         assert!(states.contains(&("host-event-bridge", "enabled")));
         assert!(states.contains(&("share-intake", "disabled")));
+        #[cfg(target_os = "android")]
+        assert!(states.contains(&("image-share-intake", "enabled")));
+        #[cfg(not(target_os = "android"))]
+        assert!(states.contains(&("image-share-intake", "disabled")));
+        #[cfg(mobile)]
+        assert!(states.contains(&("clipboard-image", "enabled")));
+        #[cfg(not(mobile))]
+        assert!(states.contains(&("clipboard-image", "unsupported")));
         assert!(states.contains(&("pairing-deep-link", "enabled")));
         #[cfg(mobile)]
         assert!(states.contains(&("local-browser-preview", "unsupported")));
@@ -24436,6 +24496,22 @@ mod tests {
         assert!(states.contains(&("haptics", "unsupported")));
         #[cfg(not(target_os = "android"))]
         assert!(states.contains(&("remote-push", "unsupported")));
+    }
+
+    #[test]
+    fn image_share_intake_is_enabled_only_on_android_and_clipboard_images_only_on_mobile() {
+        assert_eq!(image_share_intake_capability(true).state, "enabled");
+        assert_eq!(image_share_intake_capability(false).state, "disabled");
+        assert_eq!(clipboard_image_capability(true).state, "enabled");
+        assert_eq!(clipboard_image_capability(false).state, "unsupported");
+        for status in [
+            image_share_intake_capability(true),
+            image_share_intake_capability(false),
+            clipboard_image_capability(true),
+            clipboard_image_capability(false),
+        ] {
+            assert!(!status.reason.is_empty());
+        }
     }
 
     #[test]

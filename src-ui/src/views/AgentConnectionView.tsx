@@ -518,7 +518,6 @@ export function AgentConnectionView({
          stop every view minting its own "No X" restatement of its noun. */
       listEmptyTitle="Add an engine to get started"
       listEmptyDescription="Detected and supported engines appear here once one is connected."
-      emptyTitle="Select an engine"
       emptyDescription="Select an engine to review its status and setup."
       emptyContent={
         isAddRoute ? (
@@ -702,7 +701,9 @@ export function AgentConnectionView({
                   </option>
                 ))}
               </select>
-              <p className="editor-help">Save changes before refreshing.</p>
+              {dirty && (
+                <p className="editor-help">Save changes before refreshing.</p>
+              )}
               <button
                 type="button"
                 className="editor-btn"

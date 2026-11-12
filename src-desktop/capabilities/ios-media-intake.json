@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "ios-media-intake",
+  "description": "Clipboard image paste. iOS has no share receiver yet; `take_shared_images` answers an empty list. iOS-only file for the same ACL reason as the Android one (station#575).",
+  "windows": ["main"],
+  "platforms": ["iOS"],
+  "permissions": ["station-media-intake:default"]
+}

@@ -131,7 +131,7 @@ function HomeRoleFallback({
         </p>
         <div className="home-role-fallback__actions">
           {extensionBlocked && <StationExtensionsAccess onlyWhenOff compact />}
-          {onRetry && <Button onClick={onRetry}>Try again</Button>}
+          {onRetry && <Button onClick={onRetry}>Retry</Button>}
           <Button onClick={onRevoke}>Keep the built-in Home</Button>
         </div>
       </div>

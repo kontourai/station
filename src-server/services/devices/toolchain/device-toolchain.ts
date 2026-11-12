@@ -37,6 +37,7 @@ import type {
   DeviceToolInstallPhase,
   DeviceToolState,
 } from '@kontourai/station-contracts/device-toolchain';
+import { errorMessage } from '../../../utils/error-message.js';
 import {
   assertPinnedLock,
   DEVICE_TOOL_PINS,
@@ -176,7 +177,7 @@ export function createNpmCiInstaller(
       } catch (error) {
         throw new DeviceToolInstallError(
           'package-manager-unavailable',
-          error instanceof Error ? error.message : String(error),
+          errorMessage(error),
           false,
         );
       }
@@ -448,7 +449,7 @@ export class DeviceToolchain {
               }
             : {
                 reason: 'install-failed' as const,
-                detail: error instanceof Error ? error.message : String(error),
+                detail: errorMessage(error),
                 retryable: true,
               }),
         });

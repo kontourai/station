@@ -45,7 +45,7 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import type { ParsedCoreArgs } from './core-api.js';
-import { optionalValueFlag } from './core-api.js';
+import { abortableSleep, optionalValueFlag } from './core-api.js';
 
 export const WAIT_DEFAULT_TIMEOUT_SECONDS = 3600;
 export const WAIT_MAX_TIMEOUT_SECONDS = 86400;
@@ -219,27 +219,7 @@ export async function waitOnDelegatedTask(input: {
         },
       );
     });
-  const sleep =
-    deps.sleep ??
-    ((ms: number) => {
-      if (aborted()) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const cleanup = () => {
-          if (timer) clearTimeout(timer);
-          signal?.removeEventListener('abort', onAbort);
-        };
-        const onAbort = () => {
-          cleanup();
-          resolve();
-        };
-        timer = setTimeout(() => {
-          cleanup();
-          resolve();
-        }, ms);
-        signal?.addEventListener('abort', onAbort);
-      });
-    });
+  const sleep = deps.sleep ?? ((ms: number) => abortableSleep(ms, signal));
 
   const start = now();
   const deadline = start + input.timeoutMs;

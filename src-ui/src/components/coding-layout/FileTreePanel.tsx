@@ -539,7 +539,9 @@ export function FileTreePanel({
 
       <ConfirmModal
         isOpen={deleteTarget !== null}
-        title="Delete"
+        title={
+          deleteTarget?.type === 'directory' ? 'Delete folder' : 'Delete file'
+        }
         message={`Delete “${deleteTarget?.name ?? ''}”? This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"

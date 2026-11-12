@@ -223,7 +223,7 @@ function PluginDraftPreviewBody({
         description={describeReadFailure(status.error)}
         action={
           <Button size="sm" onClick={() => void status.refetch()}>
-            Try again
+            Retry
           </Button>
         }
       />

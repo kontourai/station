@@ -16,6 +16,7 @@ import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestIsPlanReview,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -217,7 +218,9 @@ export class ApprovalInboxNotificationProvider
         // The typed choice, never the label.
         ...(actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
           ? { sessionGrantScope: 'server' as const }
-          : {}),
+          : actionId === ACCEPT_RULE_FOR_SESSION_ACTION
+            ? { sessionGrantScope: 'rule' as const }
+            : {}),
       };
       await (clientOrigin
         ? this.deps.orchestrationService.dispatch(command, { clientOrigin })
@@ -516,6 +519,8 @@ export function wireApprovalInboxNotifications(
     // may do. An answer from this card is sent as a one-call accept, so
     // the card does not offer "Auto-accept file edits for this session".
     const grant = toolRequestSessionGrantFromPayload(event.payload);
+    // The narrower command-prefix choice sits before the whole-tool one.
+    const ruleGrant = toolRequestRuleGrantFromPayload(event.payload);
     const grantLabel =
       grant === 'edit-mode'
         ? undefined
@@ -548,6 +553,15 @@ export function wireApprovalInboxNotifications(
             ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
             : [
                 { id: 'accept', label: 'Allow Once', variant: 'primary' },
+                ...(ruleGrant
+                  ? [
+                      {
+                        id: ACCEPT_RULE_FOR_SESSION_ACTION,
+                        label: ruleGrant.label,
+                        variant: 'secondary' as const,
+                      },
+                    ]
+                  : []),
                 ...(grantLabel
                   ? [
                       {
@@ -851,13 +865,16 @@ function parseInboxTarget(notification: Notification): InboxTarget | null {
 
 /** The inbox action of the server-wide Station browser session grant. */
 const ACCEPT_SERVER_FOR_SESSION_ACTION = 'acceptForSessionServer';
+/** The inbox action of the command-prefix session grant. */
+const ACCEPT_RULE_FOR_SESSION_ACTION = 'acceptForSessionRule';
 
 function mapOrchestrationDecision(
   actionId: string,
 ): 'accept' | 'acceptForSession' | 'decline' {
   if (
     actionId === 'acceptForSession' ||
-    actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
+    actionId === ACCEPT_SERVER_FOR_SESSION_ACTION ||
+    actionId === ACCEPT_RULE_FOR_SESSION_ACTION
   ) {
     return 'acceptForSession';
   }

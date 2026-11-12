@@ -302,7 +302,6 @@ function deriveSession(
     unsentMessages: chatState.unsentMessages,
     outboundQueuedTurns: chatState.outboundQueuedTurns || [],
     inputHistory: chatState.inputHistory || [],
-    hasUnread: chatState.hasUnread || false,
     error: chatState.error,
     status: sessionStatus,
     isThinking,

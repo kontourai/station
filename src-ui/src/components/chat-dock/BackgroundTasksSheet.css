@@ -167,12 +167,8 @@
   cursor: pointer;
 }
 
-.background-tasks-sheet__row-main:disabled {
-  cursor: default;
-}
-
-.background-tasks-sheet__row-main:not(:disabled):hover,
-.background-tasks-sheet__row-main:not(:disabled):focus-visible {
+.background-tasks-sheet__row-main:hover,
+.background-tasks-sheet__row-main:focus-visible {
   background: var(--bg-tertiary);
 }
 
@@ -229,6 +225,28 @@
   white-space: pre-wrap;
 }
 
+.background-tasks-sheet__facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px var(--k-space-3);
+  margin: 0;
+  white-space: normal;
+}
+
+.background-tasks-sheet__facts dt {
+  color: var(--k-text-muted);
+}
+
+.background-tasks-sheet__facts dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--k-text);
+}
+
+.background-tasks-sheet__detail-text {
+  margin: var(--k-space-2) 0 0;
+}
+
 .background-tasks-sheet__task-footer {
   display: flex;
   flex-wrap: wrap;
@@ -241,7 +259,9 @@
 }
 
 .background-tasks-sheet__usage {
-  color: var(--text-tertiary);
+  display: block;
+  margin-top: var(--k-space-2);
+  color: var(--k-text-muted);
   font-size: var(--k-text-xs);
 }
 
@@ -322,16 +342,33 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .background-tasks-sheet-overlay {
-    align-items: stretch;
-    padding: 0;
-    background: rgba(0, 0, 0, 0.32);
+  /* A docked phone sheet, the same geometry as the start menus'
+     (StartComposer.css `.start-menu__overlay[data-sheet]`): edge to edge at
+     the bottom, but inside the device's safe areas. This rule used to zero
+     the shared surface's safe-area padding (index.css
+     `.responsive-surface-overlay`) and stretch the panel to the full
+     viewport, so on an edge-to-edge Android window the header sat under the
+     status bar and the footer under the gesture bar. The top and side insets
+     stay on the overlay; the bottom inset moves into the panel so its
+     surface reaches the screen edge while the footer text clears the
+     gesture bar. The panel rests at its content height and the shared
+     `max-height: 100%` caps it to the safe box; the body scrolls.
+     Compound selectors so these beat the shared rules by specificity, not by
+     this lazy chunk happening to load after index.css. */
+  .background-tasks-sheet-overlay.responsive-surface-overlay {
+    align-items: flex-end;
+    padding: var(--safe-top, 0px) var(--safe-right, 0px) 0 var(--safe-left, 0px);
+    background: var(--overlay-modal);
   }
-  .background-tasks-sheet-panel,
+  .background-tasks-sheet-panel.responsive-surface-panel,
   .background-tasks-sheet-overlay[data-anchored] .background-tasks-sheet-panel {
     position: static;
-    width: 100%;
-    max-height: none;
+    /* The header and footer stay put; only the body scrolls. */
+    overflow: hidden;
+    /* The shared phone panel caps at 720px; docked means edge to edge. */
+    width: 100% !important;
+    border-width: 1px 0 0;
+    padding-bottom: var(--safe-bottom, 0px);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     /* station#3309: entrance follows the sheet, not the desktop popover. Here
        it is docked to the BOTTOM edge (see the border-radius above), so the
@@ -343,6 +380,13 @@
 
   .background-tasks-sheet__action {
     min-height: 44px;
+  }
+
+  /* A phone has no room for a one-line ellipsis to be the whole title:
+     wrap it, so the task reads in full without expanding the row. */
+  .background-tasks-sheet__title {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 }
 

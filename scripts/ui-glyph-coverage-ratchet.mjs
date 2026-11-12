@@ -42,8 +42,8 @@
 // `git ls-files`-scoped).
 
 import { readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 import {
   assertCoverageIntegrity,
   assertScanScope,
@@ -119,17 +119,7 @@ function main() {
   );
   assertCoverageIntegrity({ ranges, declarationCount });
 
-  const tracked = execFileSyncBounded(
-    'git',
-    ['ls-files', '--', ...SCAN_PATHSPECS],
-    {
-      encoding: 'utf8',
-      windowsHide: true,
-    },
-  )
-    .trim()
-    .split('\n')
-    .filter(Boolean);
+  const tracked = gitLsFiles(['--', ...SCAN_PATHSPECS]);
   const files = selectScanFiles(tracked);
   assertScanScope(files, SCOPE_SENTINELS);
 

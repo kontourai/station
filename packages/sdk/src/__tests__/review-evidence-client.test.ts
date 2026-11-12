@@ -229,6 +229,67 @@ describe('review evidence client', () => {
       'http://station/api/projects/station/reviews/requests/request-1',
     );
   });
+
+  it('keeps the wait between polls referenced and releases its abort listener', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              requestId: request.requestId,
+              projectSlug: 'station',
+              state: 'running',
+              startedAt: receipt.startedAt,
+              updatedAt: receipt.startedAt,
+            },
+          }),
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ success: true, data: completedStatus() }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const controller = new AbortController();
+    const added = vi.spyOn(controller.signal, 'addEventListener');
+    const removed = vi.spyOn(controller.signal, 'removeEventListener');
+
+    try {
+      await expect(
+        runIndependentReview('http://station', request, {
+          signal: controller.signal,
+        }),
+      ).resolves.toMatchObject({ receipt: { receiptId: receipt.receiptId } });
+
+      // An unreferenced wait lets a process whose only pending work is this
+      // poll exit before the review settles.
+      const pollTimers = setTimeoutSpy.mock.calls.flatMap((call, index) =>
+        call[1] === 500 ? [setTimeoutSpy.mock.results[index]?.value] : [],
+      );
+      expect(pollTimers).toHaveLength(1);
+      expect((pollTimers[0] as { hasRef(): boolean }).hasRef()).toBe(true);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      'http://station/api/projects/station/reviews/requests/request-1',
+    );
+    // Every abort listener the poll put on the caller's signal is gone once
+    // the wait elapsed normally.
+    const abortListeners = (calls: unknown[][]) =>
+      calls.filter((call) => call[0] === 'abort').map((call) => call[1]);
+    expect(abortListeners(added.mock.calls).length).toBeGreaterThan(0);
+    expect(abortListeners(removed.mock.calls)).toEqual(
+      expect.arrayContaining(abortListeners(added.mock.calls)),
+    );
+  });
 });
 
 function completedStatus() {

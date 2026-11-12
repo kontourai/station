@@ -31,11 +31,17 @@ the earlier ones. Reading time pauses while a card is hovered, focused, expanded
 queued, or the app is hidden. Visibility uses viewport intersection and document
 visibility; it does not detect an overlapping dialog or another occluding surface.
 Actions that transfer from Station details close that dialog before reporting their
-outcome in a toast. Failed actions stay available to retry.
+outcome in a toast. Failed actions stay available to retry; an action can name
+why it failed instead of the generic line. A toast's dismissal callback runs once
+when it leaves the screen, which
+[General Undo](../../src-ui/src/components/undo/undoable-actions.tsx) uses to
+commit a deferred write, or to drop it when Station changes.
 [NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx)
 adds **Troubleshoot** to an error-tone toast that has fewer than two actions
 and is not one of troubleshooting's own (`troubleshoot-*` deduplication keys);
 see [troubleshoot with an agent](troubleshoot-in-app.md).
+On touch, a sideways swipe dismisses a transient toast; approval and pairing
+cards keep their explicit dismiss.
 
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through
@@ -887,7 +893,8 @@ build time (public values, but bound to one project); without them
 until `pushToken` is called, so installing the app does not contact Google
 before the user asks for push; the `clear` command turns it off again and
 deletes the token. The plugin's Kotlin unit tests also have a hosted job in
-`desktop-rust.yml`, using `scripts/run-agent-activity-android-unit-tests.mjs`.
+`desktop-rust.yml`, using `scripts/run-agent-activity-android-unit-tests.mjs`
+(which also runs the media-intake plugin's tests).
 The runner builds a temporary Gradle root, uses the locked Tauri Android library,
 and refuses missing test classes or required cases. That workflow contract is
 not a receipt for a particular hosted run or physical FCM delivery. Debug builds include a broadcast receiver,

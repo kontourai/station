@@ -39,6 +39,7 @@ import {
 import type { SessionReadScope } from '../../services/orchestration/orchestration-service.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { stationControlScopeRefusal } from '../../tools/station-control-policy.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   StationControlDispatchScope,
   StationControlResolvedDispatchTarget,
@@ -308,7 +309,7 @@ export function composeAgentSchedule(
         });
     } catch (error) {
       deps.logger.warn('could not reopen interrupted job proposal approvals', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }

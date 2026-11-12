@@ -2,7 +2,11 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { createSessionClient } from '../commands/session-client.js';
+import {
+  buildApprovalsRespondCommand,
+  createSessionClient,
+  shellQuote,
+} from '../commands/session-client.js';
 
 /**
  * #3304: `sessions list` against the real `/agents/:slug/conversations` page
@@ -106,5 +110,40 @@ describe('managed sessions list pagination', () => {
   test('an unknown response shape is an error, not an empty list', async () => {
     pages = { '': { rows: [] } };
     await expect(list()).rejects.toThrow('Unexpected conversations response');
+  });
+});
+
+/**
+ * The copy-paste hints (`Respond:`, `Resume:`, and `respondCommand` under
+ * `--json`) must survive the shell they are pasted into. cmd.exe keeps single
+ * quotes as literal characters, so POSIX quoting there named ids that do not
+ * exist — the defect #2805 fixed for `--home`.
+ */
+describe('shellQuote', () => {
+  test.each(['thr_1', 'task:12', 'conversation:ordinary:child', 'a/b.c-d'])(
+    'prints the safe token %s bare on every platform',
+    (token) => {
+      expect(shellQuote(token, 'linux')).toBe(token);
+      expect(shellQuote(token, 'win32')).toBe(token);
+    },
+  );
+
+  test.each<[value: string, posix: string, windows: string]>([
+    ['has space', "'has space'", '"has space"'],
+    ["it's", "'it'\\''s'", '"it\'s"'],
+    ['say "hi"', '\'say "hi"\'', '"say \\"hi\\""'],
+    ['$HOME', "'$HOME'", '"$HOME"'],
+    ['dir\\', "'dir\\'", '"dir\\\\"'],
+    ['', "''", '""'],
+  ])('quotes %j for the shell of its platform', (value, posix, windows) => {
+    expect(shellQuote(value, 'linux')).toBe(posix);
+    expect(shellQuote(value, 'darwin')).toBe(posix);
+    expect(shellQuote(value, 'win32')).toBe(windows);
+  });
+
+  test('the respond command leaves ordinary ids bare', () => {
+    expect(buildApprovalsRespondCommand('thr_1', 'req_1')).toBe(
+      'station approvals respond thr_1 req_1 <accept|acceptForSession|decline|cancel>',
+    );
   });
 });

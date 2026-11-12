@@ -426,6 +426,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-provider-picker.spec.ts',
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
+    'tests/inline-browser-activity.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
     'tests/approval-spilled-content.spec.ts',
@@ -1617,6 +1618,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted orchestration chat flow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/inline-browser-activity.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Browser activity',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real conversation rendering with scoped browser-session fixtures: preview-off fallback, browser/tool grouping, Float and Bring back, settled history, and phone/desktop captures in both themes. The unavailable stream fixture does not qualify frame delivery.',
     exceptions: [],
   },
   {

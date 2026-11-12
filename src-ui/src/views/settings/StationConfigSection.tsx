@@ -102,6 +102,8 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
   ],
   // The Station default this device's chat-font-size slider falls back to.
   chat: ['defaultChatFontSize', 'titleModel'],
+  // Embedded in the My knowledge store card, after the personal store row.
+  knowledge: ['knowledgeStores'],
 } as const satisfies Partial<Record<SettingsSectionId, readonly string[]>>;
 
 export type StationSettingsSectionId =

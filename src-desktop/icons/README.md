@@ -25,7 +25,9 @@ Windows tiles and the web maskable icon; an Android master with that
 face filling the central 72 of 108dp of the adaptive layer. Launcher masks crop
 the tile corners and base while the river and compass stay central; the
 transparent in-app mark; the monochrome Android status-bar mark
-(`agent_activity_mark.xml`); and per-channel sets. Each channel has an
+(`agent_activity_mark.xml`) and the same geometry as an SVG path for the UI
+(`src-ui/src/components/icons/station-mark.ts`, the mark on Station's own tool
+calls); and per-channel sets. Each channel has an
 explicit water palette in `station-icon.mjs` while parchment and gold stay
 fixed: stable blue, green for Beta, rose for Nightly and amber for Dev.
 `scripts/__tests__/station-icon.test.ts` keeps the icon palettes and the
@@ -99,7 +101,8 @@ Generate icons only when deliberately changing the artwork:
    node scripts/generate-app-icons.mjs
    ```
    This also rewrites `src-ui/src/lib/startup-mark-geometry.ts`, where the
-   startup animation finds the river in the mark. Rasterization runs in
+   startup animation finds the river in the mark, and
+   `src-ui/src/components/icons/station-mark.ts`, the monochrome UI mark. Rasterization runs in
    Playwright's Chromium; regenerate the whole set in one run so every
    surface comes from the same renderer.
 2. Verify the Tauri app:

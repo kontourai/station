@@ -66,6 +66,7 @@ import {
   stationControlScopeRefusal,
 } from '../../tools/station-control-policy.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   clipSerialized,
@@ -832,7 +833,7 @@ export function createConversationReferenceReadRoutes(
           422,
         );
       deps.logger.warn('Failed to read conversation', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return c.json(
         { success: false, error: 'Failed to read conversation' },

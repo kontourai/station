@@ -19,7 +19,9 @@ import {
   useToast,
 } from '../../contexts/ToastContext';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { useSwipeToDismiss } from '../../hooks/useSwipeToDismiss';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import { relativeTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
@@ -34,21 +36,6 @@ import { selectToastStackItems } from './toast-stack-layout';
 
 type Notification = ReturnType<typeof useNotificationHistory>[number];
 
-function formatTimestamp(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-
-  if (seconds < 60) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
 function ToastCard({
   notification,
   dismissToast,
@@ -57,6 +44,7 @@ function ToastCard({
   handleAction,
   onActivate,
   clickable,
+  swipeToDismiss = false,
 }: {
   notification: Notification;
   dismissToast: (id: string) => void;
@@ -75,12 +63,17 @@ function ToastCard({
   handleAction?: (notificationId: string, actionId: string) => void;
   onActivate?: () => void;
   clickable: boolean;
+  /** Transient toasts only: a touch swipe sideways dismisses the card. */
+  swipeToDismiss?: boolean;
 }) {
   const isApproval = notification.type === 'tool-approval';
   const isActivity = notification.type === 'tool-activity';
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
   const cardRef = useRef<HTMLElement>(null);
+  const swipe = useSwipeToDismiss(swipeToDismiss, () =>
+    dismissToast(notification.id),
+  );
   useEffect(() => {
     if (isApproval || isPairing) return;
     const element = cardRef.current;
@@ -173,11 +166,21 @@ function ToastCard({
         isPairing ? 'toast-card--pairing' : '',
         isTurn ? 'toast-card--turn' : '',
         clickable ? 'toast-card--clickable' : '',
+        swipeToDismiss ? 'toast-card--swipe' : '',
+        swipe.dragging ? 'toast-card--dragging' : '',
+        swipe.leaving ? 'toast-card--leaving' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       data-testid="toast-card"
       ref={cardRef}
+      style={swipeToDismiss ? swipe.style : undefined}
+      onPointerDown={swipe.onPointerDown}
+      onPointerMove={swipe.onPointerMove}
+      onPointerUp={swipe.onPointerUp}
+      onPointerCancel={swipe.onPointerCancel}
+      onLostPointerCapture={swipe.onLostPointerCapture}
+      onClickCapture={swipe.onClickCapture}
       onMouseEnter={() => toastStore.pause(notification.id, 'hover', true)}
       onMouseLeave={() => toastStore.pause(notification.id, 'hover', false)}
       onFocusCapture={() => toastStore.pause(notification.id, 'focus', true)}
@@ -215,7 +218,7 @@ function ToastCard({
                 </span>
               )}
               <time className="toast-card__time">
-                {formatTimestamp(notification.timestamp)}
+                {relativeTime(notification.timestamp, Date.now())}
               </time>
             </div>
           )}
@@ -697,6 +700,7 @@ export function NotificationContainer() {
                   getSessionShortcut={getSessionShortcut}
                   handleNavigateTo={handleNavigateTo}
                   clickable={canNavigate}
+                  swipeToDismiss
                   onActivate={
                     canNavigate
                       ? () => activateNotification(notification)

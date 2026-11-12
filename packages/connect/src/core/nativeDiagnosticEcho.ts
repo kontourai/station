@@ -6,6 +6,7 @@ import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeScopeV2,
 } from '@kontourai/station-contracts/self-hosted-broker';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 import {
   connectionDescriptionDigest,
   copyStationConnectionTrust,
@@ -86,21 +87,12 @@ function fingerprint(sdp: string) {
   return distinct[0]!;
 }
 
-function base64url(value: Uint8Array) {
-  let binary = '';
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '');
-}
-
 function nonce() {
   if (!globalThis.crypto?.getRandomValues)
     throw new Error('native_diagnostic_secure_context_required');
   const bytes = new Uint8Array(ECHO_BYTES);
   globalThis.crypto.getRandomValues(bytes);
-  return base64url(bytes);
+  return encodeBase64Url(bytes);
 }
 
 function sameTrust(
@@ -378,7 +370,7 @@ export function createNativeDiagnosticEchoClient(
         await assertCurrent(authority);
         if (channel.bufferedAmount > 1024 || channel.readyState !== 'open')
           throw new Error('native_diagnostic_echo_unavailable');
-        const echo = base64url(
+        const echo = encodeBase64Url(
           globalThis.crypto.getRandomValues(new Uint8Array(ECHO_BYTES)),
         );
         const echoWaitController = new AbortController();

@@ -220,7 +220,20 @@ detail, transcript page and list phases each have CPU time and RSS samples.
 Idle and post-workload samples include descendant process counts. Idle has no
 HTTP polling: its CPU delta and observed inbound request count describe the
 idle cost; CPU time is not a hardware wakeup count. Instrumentation adds
-overhead. Empty delay histograms contain null percentiles, never a claimed zero.
+overhead. Before each HTTP or idle action, reset waits for a real post-reset
+histogram observation so the monitor is primed before the action starts. A
+sample waits for an observation newer than its request; an empty histogram or
+an expired probe never becomes a timing sample. Each probe has a 30-second
+parent monotonic deadline. The child uses the remaining budget to bound its
+local observation work; IPC transit does not extend the parent's deadline.
+For phases that reset the probe, CPU, elapsed time and histogram measurements
+span reset handling through the actual sample observation, including reset
+priming and sampler settlement. HTTP `latencyMs` measures the action through
+JSON parsing and excludes those settlement steps. Startup is sampled after the
+listening handshake without a reset; synchronous work before the histogram's
+first observation may be absent from its delay sample. Cancellation and
+deadline rejection do not establish child
+settlement; the scenario's owned-process cleanup remains separately required.
 Build and fixture seeding are outside the measured phases; boot uses the empty
 home and the read workload follows seeding in that same server.
 
@@ -345,8 +358,10 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | --- | --- | --- | --- |
 | [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
+| [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
+| [`bubblewrap-kernel.yml`](../../.github/workflows/bubblewrap-kernel.yml) | — | **Tool: bubblewrap kernel legs** | manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
@@ -392,6 +407,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
 | [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
+| [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
 | [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
 | [`source-availability.yml`](../../.github/workflows/source-availability.yml) | Source availability | **Main: Source availability** | main pushes. |
@@ -968,6 +984,21 @@ The gate's failure text names both variables. A transfer budget regression
 is a real finding: raise the fixture envelope only with a matching
 `policy-attribution.json` record, never by editing the bound.
 
+### Agent context budget
+
+`src-server/runtime/agents/agent-context-budget.json` records, in UTF-8 bytes,
+the context Station itself puts in front of every engine session: the
+`tools/list` of each built-in MCP server (name, description and input schema)
+and Station's injected text (orchestration instructions, workload budget,
+chat-image line). `agent-context-budget.test.ts` beside it recomputes each
+number from live source and fails when the file disagrees, so update the JSON
+to the measured values in the same change. When text shrinks, lower the
+number. `PR: Agent context budget` fails a pull request that raises any value
+above its merge base's, so only the pull request's own change counts; a branch
+that predates the file passes until it merges `main`. Cut the added text first; if the growth is worth it, a
+maintainer adds the `agent-context-increase` label. On a merge conflict in the
+JSON, rerun the test and take its measured values.
+
 ### Latest E2E screenshot evidence
 
 Every completed `verify:e2e:full` run atomically replaces the ignored latest E2E projection
@@ -1008,18 +1039,26 @@ suite with the launch builder's cases: package managers' batch shims run
 through cmd.exe, and an approved command reaches cmd with its quotes as shown
 (#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
 runs each terminal process suite in a Vitest invocation of its own after the
-other files, so a forked worker that dies (an open,
-intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
+other files, so a forked worker that dies (the fault tracked in #4626) hides no
 other suite's results; every invocation runs, and any failure fails the floor
 without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
 exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
 the Windows verification artifact retains those records even when the floor
 fails. The observer does not consume worker exceptions or change verdicts.
-The adapter suite also runs in the floor: its owned children cover concurrent
-native exits/resizes, paused silent-reader retirement, and vendor cancellation.
-Issue #4626 records the captured access violation, handle-table reproduction,
-and dependency repair; retained source/binary receipts establish each run's
-qualification. A ConPTY cannot change
+A failed invocation also leaves its crash evidence in
+`.kontourai/verification-output/windows-portable-floor/`, which the job uploads:
+how each Vitest worker ended and whether Vitest had asked it to stop, Node
+fatal-error reports, and the Application log's crash entries since it started
+(#4626). Only the Application log's exact `NoMatchingEventsFound` error becomes
+an empty event list. An unavailable or refused log read remains an error in
+the evidence; it does not establish that no crash events occurred. The focused
+collector cases execute the generated PowerShell with a substituted event
+provider, rather than reading the machine's Application log.
+The adapter suite also runs in the floor: its owned children cover
+concurrent native exits/resizes, paused silent-reader retirement, and vendor
+cancellation. Issue #4626 records the captured access violation, handle-table
+reproduction, and dependency repair; retained source/binary receipts establish
+each run's qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
@@ -1449,6 +1488,20 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
   cross the viewport edge without an on-screen scroller or a narrower clip;
 - blocking (serious/critical) axe violations, through
   `getBlockingAccessibilityViolations`.
+
+Overlap findings may include version 1 diagnostics copied from the same audit
+evaluation: painted boxes, control centres, intersection dimensions and centre,
+and hit-presence booleans. The first 16 admitted overlap occurrences can retain
+finite values with absolute magnitude at most 10 million CSS pixels, rounded
+to 0.01 pixels. Invalid values and occurrences beyond that limit have separate
+omission counts. Identical findings keep the first occurrence's geometry and
+record the total occurrence count; a later duplicate does not fill in missing
+diagnostics for the first. Diagnostics do not change finding identities,
+allowlist matching or verdicts, and older captures without them remain valid.
+
+Hit presence does not establish which control owns a press. These diagnostics
+do not measure scroll reachability or guarantee an atomic match with screenshot
+pixels.
 
 `node scripts/gallery-ui-findings.mjs` judges
 them against `tests/gallery-ui-findings.allowlist.json`, keyed by screen
@@ -2089,6 +2142,47 @@ falls back to the required Playwright installation, which still runs on a hit.
 Browser smoke and test failures remain required. Compare cache restore plus
 installation time with uncached setup before treating the cache as a speedup.
 
+The hosted `PR: CI` workflow shares the pinned actionlint 1.7.12 Linux archive
+through the `actionlint-artifact` job instead of fetching it separately in
+each shard. That job checks out nothing, reads no
+secret and runs no candidate code. It downloads the fixed release URL with up
+to four `curl` attempts (60 seconds each, inside a five-minute step bound),
+checks the SHA-256 and uploads that exact archive as
+`pinned-actionlint-<run_id>-<run_attempt>` with overwrite disabled. A later
+step exposes the upload's artifact ID as the job output only when it is a
+positive integer: the pinned `actions/download-artifact` downloads every
+artifact of the run when `artifact-ids` is empty. `fast-checks-shard`,
+`fast-checks-statics` and `fork-smoke` each require that job to have
+succeeded, download that exact ID into a fresh `$RUNNER_TEMP` path, require a
+regular file that is not a symbolic link, verify the SHA-256 again and only
+then extract it with `tar` into a new directory. If the producer fails, its
+consumers are skipped. On events admitted to `fast-checks`, the required
+aggregate fails when those required jobs skip; no consumer falls back to
+fetching the archive itself. `scripts/actionlint-gate.mjs` pins the producer
+job by digest and admits exactly one reviewed download step in the statics and
+fork jobs.
+
+The legacy plan lane (used only for a candidate that predates the sharded
+lane) and the completion workflow still install actionlint inline from the
+release URL; that residual is unchanged. Artifacts expire after seven days:
+re-running only the failed jobs after that cannot download the producer's
+artifact, so rerun the whole workflow. The pinned actions' behavior (ID mode,
+the current-run route, the one-file artifact layout) was checked against their
+source, not a hosted run, so the first hosted run, including the fork route,
+is the qualification.
+
+The shell controls for this handoff are in
+`scripts/__tests__/ci-fast-checks-job-graph.test.ts`. They run the workflow's
+own Bash step text under GNU `bash`, GNU `sha256sum` and GNU `tar`, with only
+`curl` and `sleep` replaced by recording stand-ins. Those are operating-system
+tools of the Linux CI images. The managed JavaScript dependency setup does not
+install them, and the tests fail instead of skipping when `sha256sum --version`
+and `tar --version` do not report GNU. A host profile that puts GNU coreutils
+and GNU tar ahead of the BSD tools on `PATH` can run the controls; the change
+was checked on one such macOS profile. Other developer, Windows and macOS
+profiles are unverified without those prerequisites. There is no automatic
+installer, profile-wide bootstrap change, silent skip or portability claim.
+
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
 images. A private native Windows host remains for the hardware-reference
 performance lane, the Windows Vitest
@@ -2354,6 +2448,16 @@ deliberately-provisioned hosts—not an edit-loop speed knob.
 at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
 navigation without a connection or credential setup step.
+
+### Model evals
+
+A change to what a model sees (Station Control tool descriptions and
+schemas, refusal copy, injected instructions) cannot be proven by a unit test.
+[`scripts/evals/`](../../scripts/evals/README.md) runs a paid model against
+the real text and grades its tool calls, for example
+`npx tsx scripts/evals/station-control-tool-use/run.ts --out <dir>`. It needs
+`ANTHROPIC_API_KEY` and is never run by CI or hooks; CI runs only the graders'
+tests. Compare a change with a baseline run of `main` on the same model.
 
 ### Task-first Home and root readiness
 
@@ -2706,6 +2810,97 @@ new review heuristics to blocking rules only after measured catch evidence.
 | New UI component/hook | Focused component/hook test; Playwright only for a browser-owned claim |
 | Bug fix | Regression test that fails without the fix |
 | Refactor | Existing tests still pass (no new tests needed) |
+
+### Tests that must run on a specific host
+
+A test that skips where its host is missing still passes, so a green run
+can hide that it proved nothing. Where a test's claim needs a particular
+host, pin its ids in `scripts/required-test-profiles.json` and check the run
+with `scripts/check-required-tests-ran.mjs` (#4772):
+
+```sh
+npx vitest run --root . <test-file> --reporter=default --reporter=json \
+  --outputFile.json=<report.json>
+node scripts/check-required-tests-ran.mjs --profile-name <name> --report <report.json>
+```
+
+It reads the Vitest JSON report and matches each id exactly: the file
+relative to the checkout plus the full describe and test title path. It
+exits 0 only when every `mustPass` id is present once and passed, and every
+`mayRuntimeSkip` id is present once and either passed or skipped after the
+test started (`ctx.skip()` in its body or a `beforeEach` hook; the reporter
+records a duration only for a test that started). Exit 1 names each id that
+was absent, skipped, failed or duplicated. Exit 2, with one line, means an
+input is unusable: the report or profile file is missing, unreadable, a
+directory or another non-regular file such as a FIFO, empty or malformed, a
+profile entry is invalid (a `mayRuntimeSkip` or `notRequired` entry needs a
+nonempty `reason`), or the arguments are wrong, including a flag given more
+than once. The check reads only the pinned ids, not the run's
+overall result, so it complements the test step's own exit status and does
+not replace it. `notRequired` entries only record a deliberate exclusion and
+are not checked. Renaming a pinned test therefore
+fails the check; `scripts/__tests__/check-required-tests-ran.test.ts` also
+collects the real file, without running a test body, wherever the corpus
+runs it, and fails unless the profile classifies exactly the tests the file
+registers, so a new leg or a deleted profile entry fails too.
+
+The `seatbelt-kernel` profile pins the kernel legs of
+`src-server/security/confinement/__tests__/seatbelt.process.test.ts`:
+
+- **Where they run:** a macOS host where `sandbox-exec` applies the production
+  profile, meaning a developer Mac, or the
+  [`Main: Seatbelt kernel legs`](../../.github/workflows/seatbelt-kernel.yml)
+  workflow on a hosted macOS runner, which then runs the check. That workflow
+  runs on pushes to `main` that touch the confinement code, the check, its
+  profiles or the workflow, and on manual dispatch.
+- **Where they do not:** every pull-request, merge-queue and corpus lane.
+  Those run on Linux or Windows, where the whole suite skips and the skip
+  passes. A regression in these legs therefore shows after merge, on the
+  `main` push that introduced it, not on its pull request.
+- **Restricted network (#4769):** the nested `with a restricted network
+  (#4769)` legs run real `sandbox-exec` children under the broker-only
+  profile with an in-process egress broker and local listeners only; no
+  leg reaches the internet.
+- **Allowed to skip at runtime:** the app-launch and `security`-tool Keychain
+  legs skip when the host cannot provide their positive control, and so do
+  three restricted-network legs: the host's own non-loopback address (a host
+  without one), IPv6 loopback (a host that cannot listen on `::1`) and the
+  background `URLSession` upload (no Swift toolchain, or no delivery even
+  unconfined). They must still be present and must not fail.
+- **Not required:** the live Claude Code handshake, and the live Claude turn
+  through the egress broker, run only where `claude` is on PATH, which a
+  hosted runner does not have.
+
+The `linux-bubblewrap-kernel` profile pins the kernel legs of
+`src-server/security/confinement/__tests__/bubblewrap.process.test.ts`
+(#4770):
+
+- **Where they run:** a Linux host where `/usr/bin/bwrap` applies the
+  production sandbox, which needs unprivileged user namespaces. That means a
+  developer's Linux machine, a container started with
+  `--security-opt seccomp=unconfined --security-opt apparmor=unconfined
+  --security-opt systempaths=unconfined` (Docker's defaults refuse the
+  namespaces and the new `/proc`), or the dispatch-only
+  [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
+  workflow. That workflow installs bubblewrap on a hosted Ubuntu runner,
+  gives `/usr/bin/bwrap` an AppArmor profile allowing user namespaces when
+  Ubuntu restricts them, and then runs the check. Run it in a container from
+  a copy of the checkout with a Linux `node_modules` installed there, never
+  the host's.
+- **Where they do not:** macOS and Windows lanes skip the whole suite. A
+  hosted Linux corpus lane runs the legs only if bubblewrap applies there;
+  no corpus lane checks that they did not skip.
+- **Allowed to skip at runtime:** the nested user namespace leg skips when
+  `unshare --user` cannot create one even outside the sandbox, and the
+  Docker socket leg skips when no Docker socket exists that the user can
+  connect to outside it. To run the Docker leg in a container, serve a
+  root-owned socket at `/run/docker.sock` for a `docker` group the test user
+  belongs to. The DNS leg skips when the host cannot resolve a name outside
+  the sandbox either. The suite's fixtures live under `/var/tmp`, outside the
+  sandbox's private `/tmp`.
+- **Required, unlike on macOS:** the live Claude Code handshake. It uses
+  `claude` on PATH, or else the Agent SDK's own binary for the platform,
+  which `npm run dependencies:ci` installs.
 
 ### Connected Agents Checklist
 

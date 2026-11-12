@@ -109,7 +109,6 @@ function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
     ...overrides,
@@ -379,7 +378,7 @@ describe('#2316 inline approval card', () => {
     ['Allow Once', 'accept'],
     // #2316 review: the same words as the toast for the same grant — every
     // later Bash call in this session, not "always".
-    ['Allow Bash for this session', 'acceptForSession'],
+    ['Allow all Bash commands for this session', 'acceptForSession'],
     ['Deny', 'decline'],
   ] as const)(
     '%s answers the Claude session’s request through orchestration respondToRequest (%s)',
@@ -463,7 +462,9 @@ describe('#2316 inline approval card', () => {
       await openGrantMenu();
       expect(
         screen
-          .getByRole('menuitem', { name: 'Allow Bash for this session' })
+          .getByRole('menuitem', {
+            name: 'Allow all Bash commands for this session',
+          })
           .hasAttribute('disabled'),
       ).toBe(false);
     }
@@ -528,7 +529,9 @@ describe('#2316 inline approval card', () => {
   test('the session grant is labelled with its tool and its session scope, never "Always Allow"', async () => {
     stubFetch(() => Response.json({ success: true, data: {} }));
     renderCard();
-    expect(await grantLabels()).toEqual(['Allow Bash for this session']);
+    expect(await grantLabels()).toEqual([
+      'Allow all Bash commands for this session',
+    ]);
     expect(screen.queryByRole('button', { name: /Always Allow/ })).toBeNull();
   });
 
@@ -593,6 +596,97 @@ describe('#2316 inline approval card', () => {
     },
   );
 
+  describe('the command-prefix grant (Claude Bash)', () => {
+    const WHOLE = 'Allow all Bash commands for this session';
+    const PREFIX = 'Allow "npm ls *" for this session';
+    /** A Claude Bash ask as the adapter publishes it, with its suggestions. */
+    function withClaudeBash(suggestions: unknown[]) {
+      windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method !== 'request.opened') return entry;
+        return {
+          ...entry,
+          event: {
+            ...event,
+            payload: {
+              ...(event.payload as Record<string, unknown>),
+              toolInput: { command: 'npm ls react' },
+              decisionReason: 'This command requires approval',
+              claudeAsk: { decisionReasonType: 'other' },
+              suggestions,
+            },
+          },
+        };
+      });
+    }
+    const rule = (ruleContent: string) => ({
+      type: 'addRules',
+      rules: [{ toolName: 'Bash', ruleContent }],
+      behavior: 'allow',
+      destination: 'localSettings',
+    });
+
+    test('a suggested prefix offers both choices, and the prefix one sends the rule scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([rule('npm ls *')]);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      expect(await grantLabels()).toEqual([PREFIX, WHOLE]);
+      await pickGrant(PREFIX);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({
+        type: 'respondToRequest',
+        requestId: 'req-claude-b',
+        decision: 'acceptForSession',
+        sessionGrantScope: 'rule',
+      });
+    });
+
+    test('the whole-tool choice sends no scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([rule('npm ls *')]);
+      renderCard();
+      await pickGrant(WHOLE);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({ decision: 'acceptForSession' });
+      expect(calls[0].body).not.toHaveProperty('sessionGrantScope');
+    });
+
+    test.each([
+      ['an exact-command suggestion', [rule('npm --version')]],
+      ['no suggestion', []],
+    ])('%s offers only the whole tool', async (_label, suggestions) => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash(suggestions);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      expect(await grantLabels()).toEqual([WHOLE]);
+    });
+
+    test('a Bash command-analysis warning offers the whole tool', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([]);
+      windowEvents.current = windowEvents.current.map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method !== 'request.opened') return entry;
+        return {
+          ...entry,
+          event: {
+            ...event,
+            payload: {
+              ...(event.payload as Record<string, unknown>),
+              decisionReason:
+                "A variable in this command can't be checked before it runs",
+            },
+          },
+        };
+      });
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      expect(await grantLabels()).toEqual([WHOLE]);
+    });
+  });
+
   describe('the Station browser server grant', () => {
     const LABEL = 'Allow the Station browser for this session';
     const TOOL = 'mcp__station-browser__browser_click';
@@ -636,7 +730,7 @@ describe('#2316 inline approval card', () => {
 
       const labels = (await openGrantMenu()).map((item) => item.textContent);
       expect(labels).toEqual([
-        'Allow station-browser.browser_click for this session',
+        'Allow all station-browser.browser_click calls for this session',
         LABEL,
       ]);
       fireEvent.click(await screen.findByRole('menuitem', { name: LABEL }));
@@ -658,7 +752,9 @@ describe('#2316 inline approval card', () => {
       useBrowserCall(true);
       renderCard();
 
-      await pickGrant('Allow station-browser.browser_click for this session');
+      await pickGrant(
+        'Allow all station-browser.browser_click calls for this session',
+      );
       await waitFor(() => expect(calls).toHaveLength(1));
       expect(calls[0].body).toMatchObject({ decision: 'acceptForSession' });
       expect(calls[0].body).not.toHaveProperty('sessionGrantScope');
@@ -670,7 +766,7 @@ describe('#2316 inline approval card', () => {
       renderCard();
       await screen.findByRole('button', { name: 'Allow Once' });
       expect(await grantLabels()).toEqual([
-        'Allow station-browser.browser_click for this session',
+        'Allow all station-browser.browser_click calls for this session',
       ]);
       expect(screen.queryByText(LABEL)).toBeNull();
     });
@@ -679,7 +775,9 @@ describe('#2316 inline approval card', () => {
       stubFetch(() => Response.json({ success: true, data: {} }));
       renderCard();
       await screen.findByRole('button', { name: 'Allow Once' });
-      expect(await grantLabels()).toEqual(['Allow Bash for this session']);
+      expect(await grantLabels()).toEqual([
+        'Allow all Bash commands for this session',
+      ]);
       expect(screen.queryByText(LABEL)).toBeNull();
     });
   });
@@ -848,7 +946,7 @@ describe('#2316 inline approval card', () => {
         );
         renderCard();
 
-        await pickGrant('Allow Bash for this session');
+        await pickGrant('Allow all Bash commands for this session');
 
         await screen.findByText('This request is no longer open.');
         // Which decision settled it is not ours to claim: no local grant.
@@ -1271,7 +1369,11 @@ describe('#2316 inline approval card', () => {
         within(strip),
         0,
       );
-      await pickGrant('Allow Bash for this session', within(strip), 1);
+      await pickGrant(
+        'Allow all Bash commands for this session',
+        within(strip),
+        1,
+      );
       await waitFor(() => expect(calls).toHaveLength(2));
       expect(calls.map((call) => call.body)).toEqual([
         expect.objectContaining({

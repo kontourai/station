@@ -82,11 +82,11 @@
 
     "src-ui/src/hooks/useTaskRoomAttachments.ts",
 
-    "src-ui/src/workspace-panes/TaskRoomAttachmentComposer.tsx",
-
     "src-ui/src/workspace-panes/TaskRoomAttachmentImages.tsx",
 
-    "src-server/routes/orchestration/__tests__/task-room-attachments.test.ts"
+    "src-server/routes/orchestration/__tests__/task-room-attachments.test.ts",
+
+    "src-ui/src/components/room/RoomComposer.tsx"
   ],
 
   "checks": [

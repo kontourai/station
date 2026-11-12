@@ -43,6 +43,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import {
@@ -1110,11 +1111,10 @@ function GateRouteBackDetail({ item }: { item: GateRouteBackAttentionItem }) {
 }
 
 /**
- * Shared affordance for `gate-route-back` and `gate-blocked`: a deep link
- * into the owning Flow run console plus an optional re-evaluate, which posts
- * to the same `POST .../runs/:runId/evaluate` route the console itself uses
- * — resolving the gate here produces the identical run-history trail as
- * resolving it in place.
+ * Shared affordance for `gate-route-back` and `gate-blocked`: Re-evaluate,
+ * which posts to the same `POST .../runs/:runId/evaluate` route the console
+ * uses (so the run history is identical), plus a link to the Flow run console
+ * while the Flow preview is on.
  */
 function GateReEvaluateAction({
   item,
@@ -1306,7 +1306,10 @@ function OpenSessionLink({
   );
 }
 
+/** No link while the Flow preview is off: the console would only say so. */
 function OpenFlowConsoleLink({ href }: { href: string }) {
+  const { flow } = useDeveloperFeatures();
+  if (!flow) return null;
   return (
     <a className="attention-open-link" href={href}>
       Open flow console

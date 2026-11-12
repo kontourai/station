@@ -68,7 +68,7 @@ describe.skipIf(!chromiumAvailable)('WorkspacePaneFailure geometry', () => {
           `<style>${css}</style><div style="height:700px;display:flex;flex-direction:column">${container.innerHTML}</div>`,
         );
         const measured: Record<string, string> = {};
-        for (const name of ['Try again', 'Close this chat', 'Minimize']) {
+        for (const name of ['Retry', 'Close this chat', 'Minimize']) {
           const box = await page
             .getByRole('button', { name, exact: true })
             .boundingBox();
@@ -83,7 +83,7 @@ describe.skipIf(!chromiumAvailable)('WorkspacePaneFailure geometry', () => {
           measured[name] = problems.join(', ') || 'ok';
         }
         expect(measured).toEqual({
-          'Try again': 'ok',
+          Retry: 'ok',
           'Close this chat': 'ok',
           Minimize: 'ok',
         });

@@ -1,5 +1,6 @@
 import { isProjectChatApprovalPosture } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectConfig } from '../../contexts/ProjectsContext';
+import { relativeTimeAgoFromIso } from '../../utils/relativeTime';
 import type { ProjectForm } from './types';
 
 /**
@@ -95,10 +96,7 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
   };
 }
 
+/** The shared sentence form, for "indexed 5m ago". */
 export function getKnowledgeTimeAgo(iso: string, now = Date.now()): string {
-  const diff = now - new Date(iso).getTime();
-  if (diff < 60_000) return 'just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
+  return relativeTimeAgoFromIso(iso, now);
 }

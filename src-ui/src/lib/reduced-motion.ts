@@ -1,6 +1,7 @@
 /**
- * True when this device asks for reduced motion, read at call time rather than
- * cached — the OS setting can change while the app is open, and a cached
+ * True when this device asks for reduced motion, or the person chose Reduced
+ * motion in Appearance (`data-motion="reduce"` on the root). Read at call time
+ * rather than cached — the OS setting can change while the app is open, and a cached
  * answer would keep animating (or keep refusing to) for the rest of the
  * session. `matchMedia` is absent in some non-browser hosts, which reads as
  * "no preference expressed", never as "reduce".
@@ -11,6 +12,13 @@
  * so those two keep their own `matchMedia` call.
  */
 export function prefersReducedMotion(): boolean {
+  // The person's own Reduced choice on this interface (#4692;
+  // lib/display-preferences.ts) wins over a device that asks for nothing.
+  if (
+    typeof document !== 'undefined' &&
+    document.documentElement?.getAttribute('data-motion') === 'reduce'
+  )
+    return true;
   return (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&

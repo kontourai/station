@@ -654,7 +654,9 @@
 
     "src-server/routes/orchestration/attachment-staging.ts",
 
-    "src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts"
+    "src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts",
+
+    "src-server/routes/orchestration/worktree-output-settlement.ts"
   ],
 
   "checks": [

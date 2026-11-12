@@ -8,8 +8,9 @@ import {
 import { attentionWord } from '../../views/home/work-status';
 import { BrainGlyph, PlugGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { useStationSessionTitle } from './station-session-titles';
 import type { ToolCallBatchSheetProps } from './ToolCallBatchSheet';
-import { KIND_GLYPH } from './ToolCallDisplay';
+import { ToolCallGlyph } from './ToolCallDisplay';
 import { ToolCallElapsed } from './ToolCallElapsed';
 import { classifyToolCallRun, type ToolCallGroup } from './tool-call-groups';
 import { runningCallLabelParts } from './tool-call-labels';
@@ -78,7 +79,11 @@ export function ToolCallBatch<P extends ToolCallLike>({
 }: ToolCallBatchProps<P>) {
   const [isOpen, setIsOpen] = useState(false);
   const titleId = useId();
-  const group = useMemo(() => classifyToolCallRun(run), [run]);
+  const sessionTitle = useStationSessionTitle();
+  const group = useMemo(
+    () => classifyToolCallRun(run, { sessionTitle }),
+    [run, sessionTitle],
+  );
 
   if (group.calls.length === 1 && group.interludes.length === 0) {
     const only = group.calls[0];
@@ -87,11 +92,10 @@ export function ToolCallBatch<P extends ToolCallLike>({
   // The same anatomy as a single row — kind glyph, label, chevron — so a
   // solo call that gains a sibling changes its words, not its shape.
   const kinds = new Set(group.calls.map((call) => call.kind));
-  const Glyph = group.interludes.some(({ part }) => part.type === 'reasoning')
-    ? BrainGlyph
-    : kinds.size === 1
-      ? KIND_GLYPH[group.calls[0]!.kind]
-      : PlugGlyph;
+  const reasoning = group.interludes.some(
+    ({ part }) => part.type === 'reasoning',
+  );
+  const Glyph = reasoning ? BrainGlyph : PlugGlyph;
 
   return (
     <div className="tool-call-batch">
@@ -102,9 +106,16 @@ export function ToolCallBatch<P extends ToolCallLike>({
         aria-expanded={isOpen}
         onClick={() => setIsOpen(true)}
       >
-        <span className="tool-call__glyph" aria-hidden="true">
-          <Glyph />
-        </span>
+        {!reasoning && kinds.size === 1 ? (
+          <ToolCallGlyph
+            kind={group.calls[0]!.kind}
+            className="tool-call__glyph"
+          />
+        ) : (
+          <span className="tool-call__glyph" aria-hidden="true">
+            <Glyph />
+          </span>
+        )}
         <span className="tool-call-batch__label">{group.summary}</span>
         {/* A collapsed batch must disclose failure without being opened
             (station#2652 redesign) — the summary alone would bury it. */}
@@ -286,7 +297,6 @@ function LiveCallRow({
   className?: string;
   onAnimationEnd?: () => void;
 }) {
-  const Glyph = KIND_GLYPH[call.kind];
   const active = live && call.inProgress;
   const leaving = onAnimationEnd !== undefined;
   const progress =
@@ -319,9 +329,7 @@ function LiveCallRow({
           : undefined
       }
     >
-      <span className="tool-call__glyph" aria-hidden="true">
-        <Glyph />
-      </span>
+      <ToolCallGlyph kind={call.kind} className="tool-call__glyph" />
       <span
         className={
           active

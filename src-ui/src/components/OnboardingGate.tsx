@@ -308,8 +308,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   // when the shell becomes available.
   const reportedBootstrapRecoveryError = useRef<string | undefined>(undefined);
   useEffect(() => {
+    // A mobile launch records one too, when the host would not authorize its
+    // saved Station; the shell mounts without it and this is the only notice.
     if (
-      !profile.isDesktop ||
+      !(profile.isDesktop || profile.isMobile) ||
       !bootstrapRecoveryError ||
       reportedBootstrapRecoveryError.current === bootstrapRecoveryError
     ) {
@@ -317,7 +319,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     }
     reportedBootstrapRecoveryError.current = bootstrapRecoveryError;
     showToast(bootstrapRecoveryError);
-  }, [bootstrapRecoveryError, profile.isDesktop, showToast]);
+  }, [bootstrapRecoveryError, profile.isDesktop, profile.isMobile, showToast]);
 
   const restartNoticeId = useRef<string | null>(null);
   const restartRequestSequence = useRef(0);
@@ -340,7 +342,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         duration: 0,
         recallText: 'The local Station could not restart.',
         actions: [
-          { label: 'Try again', onClick: () => handleRestartBundledServer() },
+          { label: 'Retry', onClick: () => handleRestartBundledServer() },
         ],
       });
       if (noticeId) restartNoticeId.current = noticeId;

@@ -1252,12 +1252,14 @@ export function SplitPaneLayout({
          * is an explicit request to show it regardless of the list.
          */
         null : (
-          <Empty
-            variant="prominent"
-            icon={<span className="split-pane__empty-icon">{emptyIcon}</span>}
-            label={emptyTitle}
-            description={emptyDescription}
-          />
+          <div className="split-pane__detail-empty">
+            <Empty
+              variant="prominent"
+              icon={<span className="split-pane__empty-icon">{emptyIcon}</span>}
+              label={emptyTitle}
+              description={emptyDescription}
+            />
+          </div>
         )}
       </DetailPaneContext.Provider>
     </>

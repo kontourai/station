@@ -147,7 +147,6 @@ function Harness({
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     stationBinding: connection.binding,
     orchestrationTurnOpen: running,
   };

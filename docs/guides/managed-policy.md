@@ -496,7 +496,7 @@ Every key is optional; `"updates": {}` changes nothing. Any other key inside
 
 | Surface | `mode: "off"` or nightly not allowed | `feedUrl` |
 | --- | --- | --- |
-| Desktop app updater | Never checks, downloads or installs. The update panel shows updates as unavailable, with the policy's sentence under the check error's technical details; clearer wording is a follow-up. | Checks the mirror's copy of the app's channel feed and refuses an update whose download is outside the mirror. On Windows, desktop updates are off while a policy is installed ([#4599](https://github.com/kontourai/station/issues/4599)). |
+| Desktop app updater | Never checks, downloads or installs. The update panel shows updates as unavailable, with the policy's sentence under the check error's technical details; clearer wording is a follow-up. | Checks the mirror's copy of the app's channel feed and refuses an update whose download is outside the mirror. |
 | Server update (`/api/system/core-update` and the server's own background check and download) | The check contacts nothing and reports the policy; download, apply and update when idle are refused (403). | A prebuilt archive checks the mirror's copy of its ring's signed manifest. A desktop bundle's or source checkout's server update is refused, because it compares against a git remote the mirror does not serve; the desktop app updates a desktop bundle from the mirror. |
 | `station upgrade` | Refused before anything changes, and exits `1`. | A packaged install runs its installer against the mirror. A source checkout is refused. |
 | The Station service's own update (the launcher's download and apply steps) | Every request is refused before anything downloads or restarts, including applying a version that was downloaded before the policy was installed. Under `allowNightly: false`, a nightly-numbered version counts as nightly whatever ring the install records, and an install whose recorded state names no ring, or a ring this build does not ship, is refused. | The installer reads the mirror's manifest and downloads every archive from the mirror. |
@@ -520,17 +520,13 @@ read it: it turns its own updates off and shows "Station's update policy comes
 from your organization's device management; desktop updates are managed
 there". It does this whatever the file says, because a file beside a profile
 or the registry key is already a startup error. So a mirror delivered through
-device management leaves desktop updates off rather than mirrored; on macOS
-and Linux, to route desktop updates to a mirror, install the policy as the
+device management leaves desktop updates off rather than mirrored; to route desktop updates to a mirror, install the policy as the
 file. The server, `station upgrade` and the Station service's update read
-every source. On Windows the desktop app cannot yet hold the policy file to
-the owner and ACL rule the server applies
-([#4599](https://github.com/kontourai/station/issues/4599)), so until it can,
-an installed policy file turns the desktop app's own updates off too, unread,
-with "Station's update policy comes from your organization's policy file;
-desktop updates are managed there". On Windows, then, any installed policy
-leaves desktop updates off; the server, `station upgrade` and the Station
-service's update still follow it as the table above says. If the desktop app
+every source. On Windows the desktop app checks the policy file and every ancestor
+through open handles. Owners must be Administrators, SYSTEM or TrustedInstaller;
+untrusted write grants and reparse points refuse updates, using the same file,
+policy-folder and ancestor-folder roles as the server. Unreadable security
+descriptors refuse updates too. If the desktop app
 cannot use the installed policy file (for example it is not valid JSON, it is
 not owned by root, or `limits.updates` contains a value it does not
 understand), it turns updates off rather than guess. If only another part of
@@ -545,9 +541,9 @@ each time they run. An installed policy Station cannot use refuses
 
 Not yet supported: on Windows, the installer cannot download from a mirror, so
 with a `feedUrl` set `station upgrade` and the service's update step are
-refused there. The desktop app's mirror support works on macOS and Linux; on
-Windows the desktop app's updates are off while a policy is installed
-([#4599](https://github.com/kontourai/station/issues/4599)).
+refused there. The desktop app can use a mirror from an administrator-owned policy file on
+macOS, Linux and Windows. Device-management sources still disable desktop
+updates rather than select a mirror.
 
 ### Mirror layout
 

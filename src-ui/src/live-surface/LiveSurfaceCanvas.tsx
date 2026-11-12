@@ -1535,7 +1535,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       {immersive
         ? null
         : props.renderHeader?.({ surface, inputReady, sendInput })}
-      {/* With host controls the toolbar is left only for "Try again"; the
+      {/* With host controls the toolbar is left only for "Retry"; the
           immersive bar replaces it. */}
       {(props.hostControls || immersive) &&
       surface.status !== 'unavailable' &&
@@ -1568,7 +1568,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
                 className="live-surface__claim"
                 onClick={surface.retry}
               >
-                Try again
+                Retry
               </Button>
             ) : null}
           </div>

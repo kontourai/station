@@ -348,16 +348,16 @@ function conflictingFiles(cwd, headSha) {
 
 async function failureChecks(groupSha, env) {
   const actions = { env: { ...env, GH_TOKEN: env.ACTIONS_TOKEN } };
-  const { check_runs: checkRuns } = await github(
-    `commits/${groupSha}/check-runs?per_page=100`,
+  // Paginated: a merge group can carry more than one page of check runs, and
+  // a failing one past the first hundred would otherwise go unreported.
+  const checkRuns = await listGithub(
+    `commits/${groupSha}/check-runs`,
+    'check_runs',
     actions,
   );
   const checks = [];
   const artifactsByRun = new Map();
-  for (const check of failingCheckRuns(checkRuns ?? []).slice(
-    0,
-    LIMITS.checks,
-  )) {
+  for (const check of failingCheckRuns(checkRuns).slice(0, LIMITS.checks)) {
     const annotations = usefulAnnotations(
       await github(`check-runs/${check.id}/annotations?per_page=50`, actions),
     );

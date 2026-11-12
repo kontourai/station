@@ -775,7 +775,28 @@ describe('OnboardingGate', () => {
     );
   });
 
-  test('does not report a bootstrap recovery error outside desktop', async () => {
+  test('reports a mobile launch recovery error once the shell is available', async () => {
+    platformProfile = {
+      ...platformProfile,
+      isTauri: true,
+      isMobile: true,
+      isDesktop: false,
+      target: 'ios',
+    };
+    bootstrapRecoveryError =
+      'Station couldn’t reconnect to your saved Station. Open Connections to pair this device again.';
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+    await waitFor(() =>
+      expect(toastMocks.showToast).toHaveBeenCalledWith(bootstrapRecoveryError),
+    );
+    expect(toastMocks.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not report a bootstrap recovery error outside a native shell', async () => {
     bootstrapRecoveryError = 'The local credential could not be stored.';
     render(
       <OnboardingGate>
@@ -1608,7 +1629,7 @@ describe('OnboardingGate', () => {
       recallText: 'The local Station could not restart.',
     });
     // archive#4512: sticky until dismissed — a 5s default would
-    // vanish this toast, "Try again" and all, while the reader was still
+    // vanish this toast, "Retry" and all, while the reader was still
     // reading the first sentence of a restart failure.
     // Re-tappable: nothing about the control (never disabled to begin with)
     // stops a second attempt from reaching the same request again.
@@ -1623,7 +1644,7 @@ describe('OnboardingGate', () => {
    * deleted the whole `actions` argument from the `showToast` call stayed
    * green against all 79 tests in this file, because nothing invoked it.
    * This drives the action's `onClick` directly, the way a reader clicking
-   * "Try again" IN THE TOAST (not back on the original control) would.
+   * "Retry" IN THE TOAST (not back on the original control) would.
    */
   test.each([
     'sequential retry',
@@ -1713,7 +1734,7 @@ describe('OnboardingGate', () => {
         ).toBeTruthy();
 
         expect(toastAfter?.actions).toHaveLength(1);
-        expect(toastAfter?.actions?.[0]?.label).toBe('Try again');
+        expect(toastAfter?.actions?.[0]?.label).toBe('Retry');
         if (scenario !== 'sequential retry') {
           const latestSucceeds = scenario === 'older overlapping failure';
           restartBundledServerMock.mockResolvedValue(latestSucceeds);
@@ -1750,7 +1771,7 @@ describe('OnboardingGate', () => {
                   expect.objectContaining({
                     id: toastBefore?.id,
                     occurrences: 2,
-                    actions: [expect.objectContaining({ label: 'Try again' })],
+                    actions: [expect.objectContaining({ label: 'Retry' })],
                   }),
                 ],
           );
@@ -2846,7 +2867,7 @@ describe('OnboardingGate', () => {
         expect(
           await screen.findByText(/couldn.t restart the local Station/i),
         ).toBeTruthy();
-        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         await waitFor(() =>
           expect(restartBundledServerMock).toHaveBeenCalledTimes(2),
         );

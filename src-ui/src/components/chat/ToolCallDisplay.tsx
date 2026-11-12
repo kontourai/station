@@ -12,6 +12,7 @@ import {
 import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
+  type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
@@ -33,6 +34,7 @@ import {
 } from '../../hooks/orchestration/answerRequest';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { formatBytes } from '../../utils/formatBytes';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
@@ -46,6 +48,7 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { StationMarkGlyph } from '../icons/StationMarkGlyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
 import { useApprovalSheet } from './ApprovalSheetContext';
@@ -53,7 +56,6 @@ import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
   boundedToolResultText,
-  formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
 import { ClaudeArtifactCard } from './ClaudeArtifactCard';
@@ -66,6 +68,7 @@ import {
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { useStationSessionTitle } from './station-session-titles';
 import { ToolCallElapsed } from './ToolCallElapsed';
 import { TranscriptAppTools } from './TranscriptAppTools';
 import {
@@ -85,6 +88,7 @@ import {
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
 
 import './ToolCallDetails.css';
+import './StationToolGlyph.css';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -132,6 +136,7 @@ export interface ToolCallData {
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
   approvalServerGrant?: ToolRequestServerGrant;
+  approvalRuleGrant?: ToolRequestRuleGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -149,7 +154,7 @@ export interface ToolCallData {
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
-  action: 'once' | 'trust' | 'trust-server' | 'deny',
+  action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
 ) => undefined | Promise<ToolApprovalOutcome | undefined>;
 
 interface ToolCallDisplayProps {
@@ -163,7 +168,7 @@ interface ToolCallDisplayProps {
   showDetails?: boolean;
 }
 
-export const KIND_GLYPH: Record<
+const KIND_GLYPH: Record<
   ToolCallKind,
   React.ComponentType<{ className?: string }>
 > = {
@@ -172,8 +177,34 @@ export const KIND_GLYPH: Record<
   delete: DiscardGlyph,
   exec: TerminalGlyph,
   search: SearchGlyph,
+  station: StationMarkGlyph,
   other: PlugGlyph,
 };
+
+/** The row's kind glyph: decorative, except Station's mark, named "Station". */
+export function ToolCallGlyph({
+  kind,
+  className,
+}: {
+  kind: ToolCallKind;
+  className?: string;
+}) {
+  const Glyph = KIND_GLYPH[kind];
+  return kind === 'station' ? (
+    <span
+      className={`${className} tool-call__glyph--station`}
+      role="img"
+      aria-label="Station"
+      title="Station"
+    >
+      <Glyph />
+    </span>
+  ) : (
+    <span className={className} aria-hidden="true">
+      <Glyph />
+    </span>
+  );
+}
 
 /**
  * One work activity as a quiet, single-line row (archive#2652 redesign):
@@ -282,7 +313,9 @@ function ToolCallRow({
     toolName,
     toolKind: toolCall.toolKind,
     args,
+    server,
   });
+  const sessionTitle = useStationSessionTitle();
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
@@ -296,8 +329,8 @@ function ToolCallRow({
   const unresolvedWithoutOutcome =
     phase === 'unresolved' && !failed && !cancelled && !denied && !unresolved;
   const label = useMemo(
-    () => callLabel(kind, toolName, args, phase),
-    [kind, toolName, args, phase],
+    () => callLabel(kind, toolName, args, phase, { server, sessionTitle }),
+    [kind, toolName, args, phase, server, sessionTitle],
   );
 
   const hasArgs =
@@ -323,12 +356,9 @@ function ToolCallRow({
     if (toggleKey) rememberToggle(toggleKey, !isExpanded);
   };
 
-  const Glyph = KIND_GLYPH[kind];
   const lineContent = (
     <>
-      <span className="tool-call__glyph" aria-hidden="true">
-        <Glyph />
-      </span>
+      <ToolCallGlyph kind={kind} className="tool-call__glyph" />
       {/* Right-to-left words isolated, as in the details, so the label and
           the details show the same word order. */}
       <span
@@ -509,13 +539,23 @@ function ToolCallRow({
             serverGrant={
               contentGate.serverGrant ?? toolCall.approvalServerGrant ?? 'none'
             }
+            ruleGrant={
+              contentGate.ruleGrant === undefined
+                ? toolCall.approvalRuleGrant
+                : (contentGate.ruleGrant ?? undefined)
+            }
             sessionGrant={
               // Grants derive from the resolved request once it is loaded.
-              // A part without the projected grant (a registry-route
-              // request) is judged by its tool name alone.
+              // A registry-route part (no request binding) is judged by its
+              // tool name alone. An orchestration request without the
+              // projected grant offers none: the adapter judges it from
+              // fields the name does not carry, so the name could offer a
+              // grant the adapter refuses.
               contentGate.sessionGrant ??
               toolCall.approvalSessionGrant ??
-              toolRequestSessionGrant({ toolName: grantToolName })
+              (toolCall.approvalThreadId
+                ? 'none'
+                : toolRequestSessionGrant({ toolName: grantToolName }))
             }
             summary={label}
             details={
@@ -566,10 +606,12 @@ function gatedDecisionBody(
   gate: ApprovalContentGate | undefined,
   grantLabel: string | undefined,
   serverGrant: ToolRequestServerGrant,
+  ruleGrant: ToolRequestRuleGrant | undefined,
 ) {
   const body = approvalDecisionBody(
     grantLabel,
     serverGrant === 'server' ? STATION_BROWSER_SERVER_GRANT_LABEL : undefined,
+    ruleGrant?.label,
   );
   return !gate || gate.allowable
     ? body
@@ -599,7 +641,7 @@ function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
       variant="compact"
       title="The full request could not be loaded"
       description="It cannot be allowed until it has loaded. You can still deny it."
-      action={<Button onClick={gate.retry}>Try again</Button>}
+      action={<Button onClick={gate.retry}>Retry</Button>}
     />
   );
 }
@@ -655,7 +697,7 @@ function useApprovalDecision(
     detail?: string;
   } | null>(null);
   const [localChosen, setChosen] = useState<
-    'once' | 'trust' | 'trust-server' | 'deny'
+    'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny'
   >();
   const chosen = shared
     ? shared.decision === 'decline'
@@ -663,7 +705,9 @@ function useApprovalDecision(
       : shared.decision === 'acceptForSession'
         ? shared.sessionGrantScope === 'server'
           ? 'trust-server'
-          : 'trust'
+          : shared.sessionGrantScope === 'rule'
+            ? 'trust-rule'
+            : 'trust'
         : 'once'
     : localChosen;
   const failure =
@@ -674,7 +718,9 @@ function useApprovalDecision(
             'Station has not confirmed this decision. Check its status before trying again.',
         }
       : null);
-  const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
+  const decide = (
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
+  ) => {
     if (denied || phase !== 'idle' || admission.current) return;
     admission.current = true;
     setChosen(action);
@@ -804,6 +850,8 @@ interface ToolApprovalControlProps {
   /** Allow is offered only once `contentGate.allowable` (see useApprovalContent). */
   contentGate?: ApprovalContentGate;
   serverGrant: ToolRequestServerGrant;
+  /** The command-prefix choice, where the request offers one. */
+  ruleGrant?: ToolRequestRuleGrant;
   reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
@@ -870,6 +918,7 @@ function ToolApprovalControls({
 
 function ToolApprovalSheet({
   serverGrant,
+  ruleGrant,
   contentGate,
   reference,
   onApprove,
@@ -903,7 +952,7 @@ function ToolApprovalSheet({
   );
   const actions = (
     <DecisionActionRow
-      body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
+      body={gatedDecisionBody(contentGate, grantLabel, serverGrant, ruleGrant)}
       busy={busy}
       inFlight={inFlight}
       chosen={chosen}
@@ -952,6 +1001,7 @@ function ToolApprovalButtons({
   contentGate,
   grantToolName,
   serverGrant,
+  ruleGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
   const { phase, failure, decide, check, checking, busy } = useApprovalDecision(
@@ -969,7 +1019,12 @@ function ToolApprovalButtons({
     <>
       <ApprovalContentStatus gate={contentGate} />
       <DecisionButtons
-        body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
+        body={gatedDecisionBody(
+          contentGate,
+          grantLabel,
+          serverGrant,
+          ruleGrant,
+        )}
         busy={busy}
         onChoose={decide}
       />
@@ -1126,7 +1181,7 @@ function ToolCallDetails({
                       "Output truncated" badge, which says the engine withheld
                       data before it ever arrived. This one says only that the
                       preview is showing part of what DID arrive. */}
-                  {'\n'}… {formatWithheldBytes(boundedResult.withheldBytes)}
+                  {'\n'}… {formatBytes(boundedResult.withheldBytes)}
                   {' not shown in this preview — '}
                   <button
                     type="button"

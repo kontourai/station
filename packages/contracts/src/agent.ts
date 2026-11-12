@@ -144,7 +144,16 @@ export interface AgentUIConfig {
   workflowShortcuts?: string[];
 }
 
+export const AGENT_SHARED_TURNS_VERSION =
+  'station.agent-shared-turns/v1' as const;
+
 export interface AgentExecutionConfig {
+  /** Operator declaration only; admission and confinement remain server responsibilities. */
+  sharedTurns?: {
+    version: typeof AGENT_SHARED_TURNS_VERSION;
+    mode: 'model-only';
+    allowedModelIds: readonly string[];
+  };
   /**
    * The engine connection this Agent runs on. ABSENT means Station's own
    * engine (`engineId 'station'`) — the target contract in

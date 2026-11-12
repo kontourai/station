@@ -517,7 +517,7 @@ test('All does not read an unanswered session list as "no agent work"', () => {
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('Could not load agent work')).toBeTruthy();
   expect(screen.queryByText('No agent work yet')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(refetch).toHaveBeenCalled();
   cleanup();
 
@@ -589,7 +589,7 @@ test('a failed refresh behind a cached list says the list may be stale', () => {
   expect(screen.getByText('Cached delegate')).toBeTruthy();
   expect(screen.getByText(/may be out of date/)).toBeTruthy();
   refetch.mockClear();
-  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(refetch).toHaveBeenCalled();
   cleanup();
 

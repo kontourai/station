@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { contentImpact, readContentManifest } from '@kontourai/corpus/content';
 import {
   compileStationDocs,
   STATION_DOCS_INPUT_PATHS,
@@ -226,7 +227,13 @@ export function readDocumentationImpact({
     modules,
     JSON.parse(atlas),
   );
-  return documentationImpact({ changedPaths, ledgers, topics });
+  const report = documentationImpact({ changedPaths, ledgers, topics });
+  return {
+    ...report,
+    externalSurfaces: existsSync(resolve(root, 'corpus-content.json'))
+      ? contentImpact(readContentManifest(root), changedPaths)
+      : [],
+  };
 }
 
 export function formatDocumentationImpact(report) {
@@ -260,6 +267,10 @@ export function formatDocumentationImpact(report) {
     ...report.documents.map(
       (doc) =>
         `  ${doc.path}\n    Affected by: ${doc.changedBy.join(', ')}\n    Recorded scope (${doc.reviewState}): ${doc.scope}`,
+    ),
+    ...(report.externalSurfaces ?? []).map(
+      (surface) =>
+        `  External content (${surface.id}): ${surface.targets.join(', ')}\n    Affected by: ${surface.changedBy.join(', ')}\n    Review the public claims and run the website's npm run station:sync:check; do not refresh hashes without reviewing the change.`,
     ),
     ...(report.documents.length
       ? []

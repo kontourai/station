@@ -1533,6 +1533,56 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(onAdmission.mock.calls).toEqual([['accepted']]);
   });
 
+  it('a busy follow-up queued with its files leaves them with the held message, not the composer', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'with a file',
+          [stagedAttachment],
+          undefined,
+          undefined,
+          { queueOnBusy: true, queueFilesOnBusy: true },
+        ),
+      ).toBe(true);
+    });
+    expect(queueExecutionMessageMock).toHaveBeenCalledOnce();
+    expect(queueExecutionMessageMock.mock.calls[0]?.[1]).toMatchObject({
+      attachmentRefs: [stagedSnapshot.reference],
+    });
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.attachments ?? []).toEqual([]);
+    expect(chat?.attachmentStages ?? []).toEqual([]);
+  });
+
+  it('without a host that holds files, a busy send with files stays in the composer', async () => {
+    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'with a file',
+          [stagedAttachment],
+          undefined,
+          undefined,
+          { queueOnBusy: true },
+        ),
+      ).toBe(false);
+    });
+    expect(queueExecutionMessageMock).not.toHaveBeenCalled();
+  });
+
   it('reuses the same client turn id from the Retry affordance', async () => {
     sendExecutionMessageMock
       .mockRejectedValueOnce(new Error('temporarily unavailable'))
