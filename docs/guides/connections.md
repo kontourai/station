@@ -1812,13 +1812,16 @@ browser tools. muse web reads are not seen, and no engine's shell downloads
 lists this per engine.
 
 After the mark, agents cannot persist instructions for later sessions: in that
-conversation, Station refuses writes to `AGENTS.md`, `CLAUDE.md` and their local
-or override forms at any depth, to anything under `.agents/`, `.claude/` or
-`.codex/`, to `.mcp.json`, and to a repository's `.git/hooks` and
-`.git/config`. A shell command that names one of these, or sets a value
-with `git config`, asks you first. To make such a change yourself, edit the
-file directly or clear the mark. Codex's own file edits and commands are not
-covered.
+conversation and the conversations it delegates to, Station refuses writes,
+moves and copies into `AGENTS.md`, `CLAUDE.md` and their local or override
+forms at any depth, anything under `.agents/`, `.claude/` or `.codex/`,
+`.mcp.json`, and a repository's hooks and configuration (`.git/hooks`,
+`.git/config`, `.githooks`, `.husky` and the folder `core.hooksPath` names).
+A shell command that names one of these, changes git configuration, or runs
+git with settings that run programs asks you first. A delegated agent that
+reads the web marks the agent that delegated to it when its result comes
+back. To make such a change yourself, edit the file directly or clear the
+mark. Codex's own file edits and commands are not covered.
 
 ## Connect an OAuth MCP server to an Agent
 

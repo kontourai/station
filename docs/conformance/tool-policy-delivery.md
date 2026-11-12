@@ -237,11 +237,16 @@ from a completed `webSearch` item, ACP from a tool call of kind `fetch`, the
 Station engine's HTTP request in `afterToolCall`, and Station's browser tools
 at the browser-agent route. Muse is not covered. In a marked conversation the
 staged evaluator then runs one more stage before the untrusted-content
-permission: a file write to an agent-instruction file or to `.git/hooks` or
-`.git/config` is refused with `untrusted_persistence_protection`, and a shell
-command naming one is a required Ask. It runs wherever the staged evaluator
-runs (Station engine, Claude `PreToolUse`, ACP permission requests), not for
-Codex's own file changes and commands.
+permission: a write, move, rename or copy that reaches an agent-instruction
+file or a repository's hooks or configuration (including the effective
+`core.hooksPath`) is refused with `untrusted_persistence_protection`, and a
+shell command naming one, or running git with program-running configuration,
+is a required Ask. A delegated child takes its ancestors' marks, and a child's
+read marks its parent when the result returns. The stage reads a loaded MCP
+tool's original name from loader provenance. It runs wherever the staged
+evaluator runs (Station engine, Claude `PreToolUse`, ACP permission requests).
+ACP edit, move and delete requests are also checked by kind when unnamed. It
+does not run for Codex's own file changes and commands.
 
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.

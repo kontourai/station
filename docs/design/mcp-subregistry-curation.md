@@ -333,24 +333,48 @@ checks newer state and stale grants is follow-up work, not an available command.
   before the hook or handler returns, so the engine's next pre-tool check
   sees it; Claude Code may still run a call it batched alongside the read.
 - **Instructions and repository hooks after a mark (#4828).** For the rest of
-  a marked conversation the staged pre-tool evaluator refuses a file write
-  to an agent-instruction file (`AGENTS.md`, `AGENTS.override.md`,
+  a marked conversation, and in every conversation it delegates to, the
+  staged pre-tool evaluator refuses a write, move, rename or copy with any
+  endpoint at an agent-instruction file (`AGENTS.md`, `AGENTS.override.md`,
   `CLAUDE.md`, `CLAUDE.local.md`, at any depth), anything under `.agents/`,
   `.claude/` or `.codex/`, a project's `.mcp.json`, a repository's
   `.git/hooks/**` or `.git/config` (a worktree's or submodule's under
-  `.git/` too). A shell command that names one of these, or runs
-  `git config` to set a value, asks the person instead, because Station
-  cannot tell a shell read from a write
+  `.git/` too), the conventional hook folders `.githooks/` and `.husky/`, or
+  the repository's effective `core.hooksPath`
   ([untrusted-persistence-protection.ts](../../src-server/services/plugins/untrusted-persistence-protection.ts)).
-  Paths are compared by segment, case-insensitively. It applies wherever the
-  staged evaluator runs: the Station engine, Claude Code's `PreToolUse` hook
-  and ACP's permission requests. It does not see a write through a link
-  whose name is not protected, a path a command builds at run time, or
-  Codex's own file changes and commands. Flow Agents config protection
-  (linter configuration in opted-in workspaces) is unchanged, and a confined
-  session's sandbox keeps `.git/hooks` and `.git/config` read-only whether
-  or not the conversation is marked. To make such a change after a mark,
-  make it yourself or clear the conversation's mark.
+  The hooks path is read by parsing the repository's and the user's global
+  git configuration files; no git command runs. A shell command that names
+  one of these, sets a value with `git config`, runs git with `-c` or
+  `--config-env` for `core.hooksPath`, `core.fsmonitor`, `core.sshCommand`
+  or an alias, or assigns `GIT_DIR` or `GIT_CONFIG*`, asks the person
+  instead, because Station cannot tell what a shell command does. A loaded
+  MCP tool is classified by its original name from the loader, and tool
+  names compare without case or separators. Paths are compared by segment,
+  case-insensitively.
+
+  A delegated child is protected when its parent or root is marked. A
+  child's untrusted read reaches its parent with the child's result: when
+  the parent reads it through a delegation tool (the Station engine's
+  `afterToolCall`, Claude Code's `PostToolUse`, and the station-control
+  guard for any engine), or when Station delivers the result into the
+  parent's conversation. Either marks the parent durably.
+
+  It applies wherever the staged evaluator runs (the Station engine, Claude
+  Code's `PreToolUse`, ACP's named permission requests), and ACP edit, move
+  and delete requests are also checked from their kind, locations and input
+  whether or not the agent named the tool. Remaining limits: a write
+  through a link whose name is not protected; a path a command builds at
+  run time; a relative path's effective hooks folder (only its name is
+  checked); a hooks path set through an `include` or the system
+  configuration; and Codex's own file changes and commands, which never
+  reach the evaluator. The child-to-parent record is kept in memory until
+  the parent reads the result, so a restart in between leaves only the
+  child marked, and the delivery path then marks the parent from the
+  child's durable mark. Flow Agents config protection (linter configuration
+  in opted-in workspaces) is unchanged, and a confined session's sandbox
+  keeps `.git/hooks` and `.git/config` read-only whether or not the
+  conversation is marked. To make such a change after a mark, make it
+  yourself or clear the conversation's mark.
 - **Earlier turns.** Covered: a conversation stays marked until a person
   clears it (above).
 - **Settings UI.** The Content trust settings Feature Preview exposes the
