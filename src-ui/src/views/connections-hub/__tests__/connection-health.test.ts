@@ -56,6 +56,7 @@ function model(
 const signIn = {
   id: 'muse-auth',
   name: 'Muse Code login',
+  description: 'Sign in to Muse Code.',
   status: 'missing',
   category: 'required',
 } as const;
