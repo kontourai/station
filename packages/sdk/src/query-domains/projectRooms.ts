@@ -1,3 +1,7 @@
+import type {
+  ProjectRoomChannelCreateInput,
+  ProjectRoomChannelUpdateInput,
+} from '@kontourai/station-contracts/project-room';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   useInfiniteQuery,
@@ -9,10 +13,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { StationHttpError } from '../client/api-error-message';
 import type { ApiRequestScope } from '../client/http';
 import {
+  createProjectRoomChannel,
   discoverProjectRoom,
   fetchProjectRoomHistory,
   initializeProjectRoom,
+  listProjectRoomChannels,
   type ProjectRoomBrowserView,
+  type ProjectRoomChannelGuards,
   type ProjectRoomMessageIntent,
   type ProjectRoomNoteIntent,
   ProjectRoomProtocolError,
@@ -20,6 +27,7 @@ import {
   sendProjectRoomMessage,
   setProjectRoomPresence,
   subscribeProjectRoom,
+  updateProjectRoomChannel,
 } from '../client/project-rooms';
 
 export type { ApiRequestScope } from '../client/http';
@@ -37,16 +45,51 @@ export function projectRoomKey(
     ...(roomId ? [roomId] : []),
   ] as const;
 }
+/**
+ * A named channel's cache root. It deliberately shares no prefix with
+ * {@link projectRoomKey}: each room hook removes its root when it unmounts,
+ * and switching channels must not clear the other room's cache.
+ */
+export function projectRoomChannelKey(
+  scope: ApiRequestScope,
+  projectId: string,
+  channelId: string,
+) {
+  return [
+    'project-room-channel',
+    scope.apiBase,
+    scope.authorityKey,
+    projectId,
+    channelId,
+  ] as const;
+}
+export function projectRoomChannelsKey(
+  scope: ApiRequestScope,
+  projectId: string,
+) {
+  return [
+    'project-room-channels',
+    scope.apiBase,
+    scope.authorityKey,
+    projectId,
+  ] as const;
+}
 export function isProjectRoomAccessError(error: unknown) {
   return (
     error instanceof StationHttpError &&
     (error.status === 401 || error.status === 403)
   );
 }
+/**
+ * One room's discovery, history, sends, note and live stream. Without
+ * `channelId` it is the Project's default room (`/room`); with it, that
+ * channel (`/channels/:channelId`).
+ */
 export function useProjectRoom(
   incomingScope: ApiRequestScope,
   slug: string,
   projectId: string,
+  channelId?: string,
 ) {
   const { apiBase, authorityKey } = incomingScope;
   const scope = useMemo(
@@ -55,8 +98,11 @@ export function useProjectRoom(
   );
   const client = useQueryClient();
   const root = useMemo(
-    () => projectRoomKey(scope, projectId),
-    [scope, projectId],
+    () =>
+      channelId === undefined
+        ? projectRoomKey(scope, projectId)
+        : projectRoomChannelKey(scope, projectId, channelId),
+    [scope, projectId, channelId],
   );
   const [stopped, setStopped] = useState(false);
   const [streamError, setStreamError] = useState(false);
@@ -65,7 +111,7 @@ export function useProjectRoom(
     enabled: !stopped,
     retry: false,
     queryFn: ({ signal }) =>
-      discoverProjectRoom(scope, slug, projectId, signal),
+      discoverProjectRoom(scope, slug, projectId, signal, channelId),
     staleTime: 0,
     gcTime: 0,
   });
@@ -100,6 +146,7 @@ export function useProjectRoom(
           after,
           Math.max(1, end - after),
           signal,
+          channelId,
         );
         signal.throwIfAborted();
         messages.push(...page.messages.filter((item) => item.seq <= end));
@@ -126,7 +173,14 @@ export function useProjectRoom(
   const initialize = useMutation({
     retry: false,
     mutationFn: () => initializeProjectRoom(scope, slug, projectId),
-    onSuccess: () => client.invalidateQueries({ queryKey: root }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: root }),
+        // Opening the room creates its first channel.
+        client.invalidateQueries({
+          queryKey: projectRoomChannelsKey(scope, projectId),
+        }),
+      ]),
   });
   const unprovisioned =
     discovery.error instanceof StationHttpError &&
@@ -135,13 +189,13 @@ export function useProjectRoom(
   const send = useMutation({
     retry: false,
     mutationFn: (input: ProjectRoomMessageIntent) =>
-      sendProjectRoomMessage(scope, slug, input),
+      sendProjectRoomMessage(scope, slug, input, channelId),
     onSuccess: () => client.invalidateQueries({ queryKey: root }),
   });
   const note = useMutation({
     retry: false,
     mutationFn: (input: ProjectRoomNoteIntent) =>
-      saveProjectRoomNote(scope, slug, input),
+      saveProjectRoomNote(scope, slug, input, channelId),
     onSuccess: () => client.invalidateQueries({ queryKey: root }),
   });
   useEffect(() => {
@@ -184,32 +238,41 @@ export function useProjectRoom(
       void client.cancelQueries({ queryKey: root });
       client.removeQueries({ queryKey: root });
     };
-    const connection = subscribeProjectRoom(scope, slug, roomId, {
-      onEvent(event) {
-        if (!active) return;
-        setStreamError(false);
-        if (event.kind === 'revoked') revoke();
-        else if (event.kind === 'changed')
-          void client.invalidateQueries({ queryKey: root });
-        else
-          client.setQueryData(
-            [...root, 'discovery', slug],
-            (current: ProjectRoomBrowserView | undefined) =>
-              current ? { ...current, presence: event.participants } : current,
-          );
+    const connection = subscribeProjectRoom(
+      scope,
+      slug,
+      roomId,
+      {
+        onEvent(event) {
+          if (!active) return;
+          setStreamError(false);
+          if (event.kind === 'revoked') revoke();
+          else if (event.kind === 'changed')
+            void client.invalidateQueries({ queryKey: root });
+          else
+            client.setQueryData(
+              [...root, 'discovery', slug],
+              (current: ProjectRoomBrowserView | undefined) =>
+                current
+                  ? { ...current, presence: event.participants }
+                  : current,
+            );
+        },
+        onError: () => {
+          if (active) setStreamError(true);
+        },
+        onTerminal: revoke,
       },
-      onError: () => {
-        if (active) setStreamError(true);
-      },
-      onTerminal: revoke,
-    });
+      channelId,
+    );
     const presence = () => {
       if (!active) return;
-      void setProjectRoomPresence(scope, slug, {
-        ...guards,
-        clientId,
-        state: 'join',
-      }).catch((error) => {
+      void setProjectRoomPresence(
+        scope,
+        slug,
+        { ...guards, clientId, state: 'join' },
+        channelId,
+      ).catch((error) => {
         if (isProjectRoomAccessError(error)) revoke();
       });
     };
@@ -221,13 +284,24 @@ export function useProjectRoom(
       clearInterval(timer);
       connection.close();
       if (wasActive)
-        void setProjectRoomPresence(scope, slug, {
-          ...guards,
-          clientId,
-          state: 'leave',
-        }).catch(() => {});
+        void setProjectRoomPresence(
+          scope,
+          slug,
+          { ...guards, clientId, state: 'leave' },
+          channelId,
+        ).catch(() => {});
     };
-  }, [client, root, roomId, actorId, stopped, scope, slug, projectId]);
+  }, [
+    client,
+    root,
+    roomId,
+    actorId,
+    stopped,
+    scope,
+    slug,
+    projectId,
+    channelId,
+  ]);
   useEffect(
     () => () => {
       void client.cancelQueries({ queryKey: root });
@@ -253,5 +327,55 @@ export function useProjectRoom(
       void client.resetQueries({ queryKey: root });
     },
   };
+}
+/**
+ * A Project's channels plus create and update. `unsupported` means the host
+ * predates channels (it answers 404 for the list); show only the default room.
+ * Mutations refresh the list; callers pass guards from the room they show.
+ */
+export function useProjectRoomChannels(
+  incomingScope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  enabled = true,
+) {
+  const { apiBase, authorityKey } = incomingScope;
+  const scope = useMemo(
+    () => ({ apiBase, authorityKey }),
+    [apiBase, authorityKey],
+  );
+  const client = useQueryClient();
+  const key = useMemo(
+    () => projectRoomChannelsKey(scope, projectId),
+    [scope, projectId],
+  );
+  const list = useQuery({
+    queryKey: [...key, slug],
+    enabled,
+    retry: false,
+    staleTime: 0,
+    queryFn: ({ signal }) => listProjectRoomChannels(scope, slug, signal),
+  });
+  const unsupported =
+    list.error instanceof StationHttpError && list.error.status === 404;
+  const refresh = () => client.invalidateQueries({ queryKey: key });
+  const create = useMutation({
+    retry: false,
+    mutationFn: (
+      input: ProjectRoomChannelCreateInput & ProjectRoomChannelGuards,
+    ) => createProjectRoomChannel(scope, slug, input),
+    onSuccess: refresh,
+  });
+  const update = useMutation({
+    retry: false,
+    mutationFn: ({
+      channelId,
+      ...input
+    }: ProjectRoomChannelUpdateInput &
+      ProjectRoomChannelGuards & { channelId: string }) =>
+      updateProjectRoomChannel(scope, slug, channelId, input),
+    onSuccess: refresh,
+  });
+  return { list, unsupported, create, update };
 }
 export * from './projectRoomAgents';
