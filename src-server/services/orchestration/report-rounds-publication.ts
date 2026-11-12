@@ -133,12 +133,14 @@ export async function withReportRoundsPublication<T>(
       lease = await owner.acquire(signal);
       assertCurrent();
       const held = lease;
-      const check = <Value>(body: () => Value): Value => {
-        assertCurrent();
-        const value = owner.runWithLease(held, body);
-        assertCurrent();
-        return value;
-      };
+      const check = <Value>(body: () => Value): Value =>
+        owner.runWithLease(held, () => {
+          assertCurrent();
+          const value = owner.runWithLease(held, body);
+          assertCurrent();
+          // The outer span must not inspect a caller-controlled then getter again.
+          return { __proto__: null, value };
+        }).value;
       return {
         scope: { owner, lease: held, current: assertCurrent, check },
         release,
