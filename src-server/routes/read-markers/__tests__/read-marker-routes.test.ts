@@ -45,7 +45,10 @@ import {
   FileReadMarkerStore,
   READ_MARKER_STORE_FILE,
 } from '../../../services/read-markers/read-marker-store.js';
-import { upgradeReadMarkerStore } from '../../../services/read-markers/read-marker-upgrade.js';
+import {
+  readMarkerMigrationRecipients,
+  upgradeReadMarkerStore,
+} from '../../../services/read-markers/read-marker-upgrade.js';
 import {
   projectRoomVersionSource,
   taskRoomVersionSource,
@@ -1064,8 +1067,11 @@ describe('the migration baseline belongs to established principals (#4813 fence 
     );
     upgradeReadMarkerStore({
       store: new FileReadMarkerStore(dir),
-      acknowledgements: new FileConversationAcknowledgementStore(dir),
-      events: { contentUpgradeFence: () => V1 },
+      // The recipient snapshot the event store froze with its cutoff.
+      events: {
+        contentUpgradeFence: () => V1,
+        contentMigrationRecipients: () => readMarkerMigrationRecipients(dir),
+      },
       now: new Date(T2),
     });
     const s = station({

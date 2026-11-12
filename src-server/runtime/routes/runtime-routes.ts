@@ -11905,7 +11905,6 @@ export function configureRuntimeRoutes(
     try {
       upgradeReadMarkerStore({
         store: readMarkerStore,
-        acknowledgements: conversationAcknowledgements,
         events: context.orchestrationEventStore,
         now: new Date(),
       });

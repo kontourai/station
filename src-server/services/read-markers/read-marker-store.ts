@@ -220,8 +220,8 @@ export class FileReadMarkerStore implements ReadMarkerStore {
 
   /**
    * Begins read state once (#3075 owner design), at the migration cutoff.
-   * Each established principal (`establishedPrincipals`, plus every person
-   * a first-format marker names) reads every runtime conversation's content
+   * Each established principal (`establishedPrincipals`: the recipient
+   * snapshot frozen with the cutoff) reads every runtime conversation's content
    * up to `baselineSequence` and every file-backed one's up to
    * `baselineTime` as seen, which is what they saw before server-kept unread
    * existed. Everyone else starts without a baseline. Nothing is inferred
@@ -237,14 +237,21 @@ export class FileReadMarkerStore implements ReadMarkerStore {
       version: STORE_VERSION,
       createdAt: Math.max(legacy.createdAt ?? 0, input.baselineTime),
       baselineSequence: input.baselineSequence,
-      establishedPrincipals: [
-        ...new Set([
-          ...input.establishedPrincipals,
-          ...Object.keys(legacy.markers),
-        ]),
-      ].sort(),
+      establishedPrincipals: [...new Set(input.establishedPrincipals)].sort(),
       markers: legacy.markers,
     });
+  }
+
+  /**
+   * The people a first-format store's markers name, for the recipient
+   * snapshot taken with the migration cutoff; none for a current store.
+   */
+  legacyRecipients(): string[] {
+    try {
+      return Object.keys(this.legacy.read(decodeLegacyReadMarkerStore).markers);
+    } catch {
+      return [];
+    }
   }
 
   baselineFor(principalId: string): ReadMarkerBaseline {

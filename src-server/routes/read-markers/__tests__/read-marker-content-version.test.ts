@@ -33,7 +33,10 @@ import {
   FileReadMarkerStore,
   READ_MARKER_STORE_FILE,
 } from '../../../services/read-markers/read-marker-store.js';
-import { upgradeReadMarkerStore } from '../../../services/read-markers/read-marker-upgrade.js';
+import {
+  readMarkerMigrationRecipients,
+  upgradeReadMarkerStore,
+} from '../../../services/read-markers/read-marker-upgrade.js';
 import {
   createAgentConversationVersionSource,
   createGlobalConversationRoutes,
@@ -62,7 +65,15 @@ afterEach(() => {
 
 /** One running Station over `dir`: event store, service and routes. */
 function boot() {
-  const eventStore = new EventStore(join(dir, 'orchestration.sqlite'));
+  // As the runtime opens it: the read-state recipients are frozen with the
+  // content migration's cutoff.
+  const eventStore = new EventStore(
+    join(dir, 'orchestration.sqlite'),
+    undefined,
+    undefined,
+    undefined,
+    { contentMigrationRecipients: () => readMarkerMigrationRecipients(dir) },
+  );
   const service = new OrchestrationService({
     adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
     eventBus: new EventBus(),
@@ -77,7 +88,6 @@ function boot() {
   // first-format store, or none).
   upgradeReadMarkerStore({
     store,
-    acknowledgements,
     events: eventStore,
     now: new Date('2026-11-12T00:00:00.000Z'),
   });

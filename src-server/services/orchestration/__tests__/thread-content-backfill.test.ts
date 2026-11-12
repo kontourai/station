@@ -9,6 +9,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, expect, test } from 'vitest';
+import { ReadMarkerService } from '../../read-markers/read-marker-service.js';
+import { FileReadMarkerStore } from '../../read-markers/read-marker-store.js';
+import {
+  readMarkerMigrationRecipients,
+  upgradeReadMarkerStore,
+} from '../../read-markers/read-marker-upgrade.js';
+import { FileConversationAcknowledgementStore } from '../conversation-acknowledgement-store.js';
 import { EventStore, THREAD_CONTENT_BACKFILL_BATCH } from '../event-store.js';
 
 let dir: string;
@@ -251,3 +258,110 @@ test('overlapping initializers: one completes, the other resumes and never moves
     store.close();
   }
 }, 60_000);
+
+test('a person first recorded after the cutoff, before an interrupted migration resumes, never inherits the baseline', async () => {
+  const path = join(dir, 'orchestration.sqlite');
+  const events = THREAD_CONTENT_BACKFILL_BATCH * 2 + 123;
+  oldHome(path, events);
+  const acknowledgements = new FileConversationAcknowledgementStore(dir);
+  acknowledgements.acknowledge({
+    userId: 'human:test:ada',
+    conversationId: 'viewed-before',
+    updatedAt: '2026-11-11T10:00:00.000Z',
+  });
+  // The runtime's recipients: everyone with a record, read with the cutoff.
+  const recipients = () => readMarkerMigrationRecipients(dir);
+  expect(
+    () =>
+      new EventStore(
+        path,
+        undefined,
+        undefined,
+        {
+          threadContentBackfillBatch: () => {
+            throw new Error('interrupted');
+          },
+        },
+        { contentMigrationRecipients: recipients },
+      ),
+  ).toThrow('interrupted');
+  expect(progress(path)).toMatchObject({
+    cutoff_sequence: events,
+    completed_at: null,
+  });
+  // Bob's first view, recorded while the migration was interrupted.
+  acknowledgements.acknowledge({
+    userId: 'human:test:bob',
+    conversationId: 'viewed-later',
+    updatedAt: '2026-11-11T10:01:00.000Z',
+  });
+  const resumed = new EventStore(path, undefined, undefined, undefined, {
+    contentMigrationRecipients: recipients,
+  });
+  try {
+    const store = new FileReadMarkerStore(dir);
+    expect(
+      upgradeReadMarkerStore({
+        store,
+        events: resumed,
+        now: new Date('2026-11-12T00:00:00.000Z'),
+      }),
+    ).toBe(true);
+    const odd = projected(path, 'odd');
+    const stateFor = (person: string) =>
+      new ReadMarkerService({
+        store,
+        conversations: acknowledgements,
+        personKeyFor: () => person,
+        agentConversations: {
+          latestVersions: async () => new Map(),
+          versionsOf: () =>
+            new Map([
+              [
+                'history',
+                { version: odd, space: 'content', acknowledgeableUntil: 0 },
+              ],
+            ]),
+        },
+      })
+        .conversationReadStates({} as never, [])
+        ?.get('history');
+    // Ada had a record when the cutoff was written: her baseline holds.
+    expect(stateFor('human:test:ada')).toMatchObject({ unread: false });
+    // Bob's first record came after it: his history reads unread.
+    expect(stateFor('human:test:bob')).toMatchObject({ unread: true });
+  } finally {
+    resumed.close();
+  }
+}, 60_000);
+
+test('a migration begun without a recipient snapshot gives the baseline to nobody', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  oldHome(path, 50);
+  new FileConversationAcknowledgementStore(dir).acknowledge({
+    userId: 'human:test:ada',
+    conversationId: 'viewed-before',
+    updatedAt: '2026-11-11T10:00:00.000Z',
+  });
+  // Opened with no recipients provider: the snapshot is missing.
+  const store = new EventStore(path);
+  try {
+    expect(store.contentUpgradeFence()).toBe(50);
+    expect(store.contentMigrationRecipients()).toBeUndefined();
+    const markers = new FileReadMarkerStore(dir);
+    expect(
+      upgradeReadMarkerStore({
+        store: markers,
+        events: store,
+        now: new Date('2026-11-12T00:00:00.000Z'),
+      }),
+    ).toBe(true);
+    // Even Ada, who had a record, starts without the baseline: unread.
+    expect(markers.baselineFor('human:test:ada')).toEqual({
+      sequence: 0,
+      time: 0,
+    });
+  } finally {
+    store.close();
+  }
+});

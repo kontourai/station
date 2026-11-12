@@ -252,6 +252,7 @@ import {
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
+import { readMarkerMigrationRecipients } from '../../services/read-markers/read-marker-upgrade.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
@@ -1681,6 +1682,15 @@ export class StationRuntime {
       this.orchestrationDatabasePath = orchestrationDatabasePath;
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
+        undefined,
+        undefined,
+        undefined,
+        // #3075: who receives the read-state baseline, frozen with the
+        // content migration's cutoff.
+        {
+          contentMigrationRecipients: () =>
+            readMarkerMigrationRecipients(projectHomeDir),
+        },
       );
       this.orchestrationEventStore.bindSessionActivity(
         (threadId) =>

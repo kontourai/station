@@ -2766,6 +2766,15 @@ export class EventStore {
       /** After each committed content-projection backfill batch. */
       threadContentBackfillBatch?: (cursor: number) => void;
     } = {},
+    private readonly options: {
+      /**
+       * #3075: the people who had a read record when the content migration
+       * begins (acknowledgement and first-format marker keys). Read once, in
+       * the transaction that writes the cutoff, and frozen with it. Without
+       * it the snapshot is missing and nobody receives the baseline.
+       */
+      contentMigrationRecipients?: () => readonly string[];
+    } = {},
   ) {
     this.databasePath = dbPath;
     this.turnDedupMaxEntries = turnDedupMaxEntries;
@@ -11442,6 +11451,41 @@ export class EventStore {
   }
 
   /**
+   * #3075: the people frozen with the cutoff, who receive the migration
+   * baseline. `undefined` when the snapshot is missing (the migration began
+   * without a recipients provider) or unreadable: then nobody receives it.
+   */
+  contentMigrationRecipients(): string[] | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT recipients FROM orchestration_thread_content_migration WHERE singleton = 1',
+      )
+      .get() as { recipients: string | null } | undefined;
+    if (typeof row?.recipients !== 'string') return undefined;
+    try {
+      const parsed: unknown = JSON.parse(row.recipients);
+      return Array.isArray(parsed) &&
+        parsed.every((key) => typeof key === 'string')
+        ? parsed
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The recipient snapshot to freeze with the cutoff, or NULL. */
+  private recipientSnapshot(): string | null {
+    const provider = this.options.contentMigrationRecipients;
+    if (!provider) return null;
+    try {
+      return JSON.stringify([...new Set(provider())].sort());
+    } catch {
+      // An unreadable source is a missing snapshot: nobody is established.
+      return null;
+    }
+  }
+
+  /**
    * #3075: the content-version projection, and its migration from an
    * existing history.
    *
@@ -11465,17 +11509,34 @@ export class EventStore {
          cutoff_sequence INTEGER NOT NULL CHECK (cutoff_sequence >= 0),
          cursor_sequence INTEGER NOT NULL
            CHECK (cursor_sequence >= 0 AND cursor_sequence <= cutoff_sequence),
-         completed_at TEXT
+         completed_at TEXT,
+         recipients TEXT
        );`,
     );
+    const columns = this.db
+      .prepare('PRAGMA table_info(orchestration_thread_content_migration)')
+      .all() as { name: string }[];
+    if (!columns.some((column) => column.name === 'recipients'))
+      this.db.exec(
+        'ALTER TABLE orchestration_thread_content_migration ADD COLUMN recipients TEXT',
+      );
+    // The cutoff and the recipient snapshot are written together, once, and
+    // never re-sampled: a resume or a second initializer reuses both.
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.db
+      const begun = this.db
         .prepare(
-          `INSERT OR IGNORE INTO orchestration_thread_content_migration
-             (singleton, cutoff_sequence, cursor_sequence) VALUES (1, ?, 0)`,
+          'SELECT 1 AS begun FROM orchestration_thread_content_migration WHERE singleton = 1',
         )
-        .run(this.currentGlobalSequence());
+        .get();
+      if (!begun)
+        this.db
+          .prepare(
+            `INSERT INTO orchestration_thread_content_migration
+               (singleton, cutoff_sequence, cursor_sequence, recipients)
+             VALUES (1, ?, 0, ?)`,
+          )
+          .run(this.currentGlobalSequence(), this.recipientSnapshot());
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
