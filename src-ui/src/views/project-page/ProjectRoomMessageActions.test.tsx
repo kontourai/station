@@ -16,6 +16,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { setClientCredentialResolver } from '../../../../packages/sdk/src/client/http';
 import { resetPublicStationCapabilities } from '../../../../packages/sdk/src/client/publicStationCapabilities';
 import { ProjectRoom } from './ProjectRoom';
 
@@ -211,12 +212,21 @@ beforeEach(() => {
     message(3, me, 'Good catch, updating now.'),
   ];
   messages[0]!.reactions = [{ emoji: '👍', actors: [jo, me] }];
+  setClientCredentialResolver(() => ({
+    origin: apiBase,
+    requestAuthority: {
+      apiBase,
+      authorityKey: 'one',
+      isCurrent: () => true,
+    },
+  }));
   fixture();
   URL.createObjectURL = vi.fn(() => 'blob:preview');
   URL.revokeObjectURL = vi.fn();
 });
 afterEach(() => {
   cleanup();
+  setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
 });
 

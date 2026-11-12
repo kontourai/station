@@ -391,7 +391,7 @@ test('a message and an @agent ask go to the selected channel', async () => {
   await waitFor(() => expect(composerField().value).toBe(''));
   fireEvent.change(composerField(), { target: { value: '@' } });
   fireEvent.click(
-    await screen.findByRole('option', { name: 'Researcher @researcher' }),
+    await screen.findByRole('option', { name: 'Researcher Agent @researcher' }),
   );
   await screen.findByText('@Researcher');
   fireEvent.change(composerField(), { target: { value: 'Check the copy' } });
@@ -504,7 +504,7 @@ test('a message and an @agent ask go to the selected channel', async () => {
   await waitFor(() => expect(composerField().value).toBe(''));
   fireEvent.change(composerField(), { target: { value: '@' } });
   fireEvent.click(
-    await screen.findByRole('option', { name: 'Researcher @researcher' }),
+    await screen.findByRole('option', { name: 'Researcher Agent @researcher' }),
   );
   await screen.findByText('@Researcher');
   fireEvent.change(composerField(), { target: { value: 'Check the copy' } });
