@@ -51,8 +51,3 @@
 .station-switcher__status {
   line-height: 1.3;
 }
-/* Reasons are text people read, so the detail keeps the status size (11px is
-   for bare metadata, #4403) and steps back by colour alone. */
-.station-switcher__detail {
-  color: var(--k-text-faint);
-}
