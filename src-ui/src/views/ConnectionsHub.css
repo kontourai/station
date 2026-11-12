@@ -3,7 +3,8 @@
 
 .connections-overview__tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  /* Two tiles to a row on a phone; one row of five on a wide pane. */
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: var(--k-space-2);
   margin: 0;
   padding: 0;
