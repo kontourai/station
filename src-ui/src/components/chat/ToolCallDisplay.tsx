@@ -48,6 +48,7 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { StationMarkGlyph } from '../icons/StationMarkGlyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
 import { useApprovalSheet } from './ApprovalSheetContext';
@@ -67,6 +68,7 @@ import {
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { useStationSessionTitle } from './station-session-titles';
 import { ToolCallElapsed } from './ToolCallElapsed';
 import { TranscriptAppTools } from './TranscriptAppTools';
 import {
@@ -86,6 +88,7 @@ import {
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
 
 import './ToolCallDetails.css';
+import './StationToolGlyph.css';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -165,7 +168,7 @@ interface ToolCallDisplayProps {
   showDetails?: boolean;
 }
 
-export const KIND_GLYPH: Record<
+const KIND_GLYPH: Record<
   ToolCallKind,
   React.ComponentType<{ className?: string }>
 > = {
@@ -174,8 +177,34 @@ export const KIND_GLYPH: Record<
   delete: DiscardGlyph,
   exec: TerminalGlyph,
   search: SearchGlyph,
+  station: StationMarkGlyph,
   other: PlugGlyph,
 };
+
+/** The row's kind glyph: decorative, except Station's mark, named "Station". */
+export function ToolCallGlyph({
+  kind,
+  className,
+}: {
+  kind: ToolCallKind;
+  className?: string;
+}) {
+  const Glyph = KIND_GLYPH[kind];
+  return kind === 'station' ? (
+    <span
+      className={`${className} tool-call__glyph--station`}
+      role="img"
+      aria-label="Station"
+      title="Station"
+    >
+      <Glyph />
+    </span>
+  ) : (
+    <span className={className} aria-hidden="true">
+      <Glyph />
+    </span>
+  );
+}
 
 /**
  * One work activity as a quiet, single-line row (archive#2652 redesign):
@@ -284,7 +313,9 @@ function ToolCallRow({
     toolName,
     toolKind: toolCall.toolKind,
     args,
+    server,
   });
+  const sessionTitle = useStationSessionTitle();
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
@@ -298,8 +329,8 @@ function ToolCallRow({
   const unresolvedWithoutOutcome =
     phase === 'unresolved' && !failed && !cancelled && !denied && !unresolved;
   const label = useMemo(
-    () => callLabel(kind, toolName, args, phase),
-    [kind, toolName, args, phase],
+    () => callLabel(kind, toolName, args, phase, { server, sessionTitle }),
+    [kind, toolName, args, phase, server, sessionTitle],
   );
 
   const hasArgs =
@@ -325,12 +356,9 @@ function ToolCallRow({
     if (toggleKey) rememberToggle(toggleKey, !isExpanded);
   };
 
-  const Glyph = KIND_GLYPH[kind];
   const lineContent = (
     <>
-      <span className="tool-call__glyph" aria-hidden="true">
-        <Glyph />
-      </span>
+      <ToolCallGlyph kind={kind} className="tool-call__glyph" />
       {/* Right-to-left words isolated, as in the details, so the label and
           the details show the same word order. */}
       <span

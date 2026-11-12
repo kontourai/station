@@ -66,7 +66,7 @@ export function ProjectNavigation({
   // beside the page on desktop, a picker on a phone.
   const items = [
     section('overview', 'Overview'),
-    section('room', '# Project room'),
+    section('room', 'Room'),
     section('tasks', 'Tasks'),
     ...(member
       ? []

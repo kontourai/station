@@ -1,0 +1,37 @@
+{
+  "revision": "7da0828c8b1f325954cbfc1b24cd22ec5eb391ad",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/connections.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/desktop-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/desktop-tray.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/local-collaboration-lab.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/mobile-release.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/native-releases.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/nightly.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/release-channel-ports.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/release-rings.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/self-hosted-broker.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/store-entry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/guides/store-listing.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/api.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/reference/api.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs"]}
+  ]
+}

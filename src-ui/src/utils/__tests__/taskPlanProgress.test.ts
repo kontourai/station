@@ -1,7 +1,9 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
+import { HOME_LIFECYCLE_LABELS } from '../lifecycle-priority';
 import {
   projectTaskPlanProgress,
+  sessionPlanProgressRead,
   taskPlanProgressLabel,
 } from '../taskPlanProgress';
 
@@ -184,5 +186,28 @@ describe('projectTaskPlanProgress', () => {
     expect(taskPlanProgressLabel(progress!)).toBe(
       'Agent-reported plan: 0 of 1 step done',
     );
+  });
+});
+
+describe('sessionPlanProgressRead', () => {
+  test('reads every Session row but a Draft, refreshing those that are running or need someone', () => {
+    const reads = Object.fromEntries(
+      HOME_LIFECYCLE_LABELS.map((label) => [
+        label,
+        sessionPlanProgressRead(label),
+      ]),
+    );
+    expect(reads).toEqual({
+      'Needs attention': 'live',
+      Failed: 'settled',
+      Stopped: 'settled',
+      Running: 'live',
+      Current: 'settled',
+      Ready: 'settled',
+      Recent: 'settled',
+      Draft: 'skip',
+      Unanswerable: 'settled',
+      Completed: 'settled',
+    });
   });
 });

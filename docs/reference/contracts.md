@@ -380,7 +380,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared. `SessionGrantScope` (`server` \| `rule`) scopes a session decision option |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
-| `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
+| `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, optional registered viewer `sourceId` on human batches and source open/close lease actions, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads, including bounded network metadata and picked-element provenance |
 | `@kontourai/station-contracts/knowledge-memory` | Wire shapes for private-memory review, recall, the session brief and the per-run measurement record (`station.memory-measurement/1`). Plain shapes only: the Knowledge Kit and Survey own what the words mean |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
@@ -945,6 +945,13 @@ reads it only from a station-control tool's whole result, and
 `stationControlToolName`. A history window carries it whole on
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
+
+`@kontourai/station-contracts/station-tool-phrases` words Station's own tool
+calls (#3418). `stationToolOf` recognises a Station tool by name (or a bare name
+plus `server`); `stationToolPhrase` returns its past, progressive or bare phrase
+from the call's arguments. Transcript rows, the live progress line and the
+Session digest's `label` all read it. A server test fails when a registered
+tool has no phrase.
 
 `@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
 (the claude.ai page a Claude Code `Artifact` publish produced, and its
@@ -2287,6 +2294,19 @@ publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
 no such lock spans provider execution. Unsharing can withhold a pending answer,
 but does not retroactively redact text already published in the Room.
 
+A Project's room holds named channels (`ProjectRoomChannel`): each channel is
+one room, and its `channelId` is that room's `roomId`. The existing room is
+the default channel, named `PROJECT_ROOM_DEFAULT_CHANNEL_NAME` (`general`).
+`PROJECT_ROOM_LIMITS` bounds channels per Project (`channelsPerProject`, 50,
+archived included), name length (`channelNameLength`, 80) and topic size
+(`channelTopicBytes`, 250). `parseProjectRoomChannelName` accepts lowercase
+ASCII letters and digits in hyphen-separated runs and refuses anything else,
+including a name one character past the limit; it never trims, lowercases or
+truncates. `projectRoomChannelNameProblem` and `projectRoomChannelTopicProblem`
+name the reason (`empty`, `too_long`, `format`) so a client can explain it
+inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInput`
+(`topic: null` clears) and `parseProjectRoomChannelList` are the wire parsers.
+
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
 
@@ -2339,7 +2359,8 @@ An older client that sends only `updatedAt` records "last viewed" and moves
 no marker, so its conversations read unread until it sends `readVersion`. The
 inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
 Just finished reads; an acknowledgement writes it alongside, and unread never
-reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
+reads it. A Project room uses its `checkpoint.lastSeq`; each named channel is
+its own room, so its `roomId` keys its own marker (#4792). A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
 new marker.
 

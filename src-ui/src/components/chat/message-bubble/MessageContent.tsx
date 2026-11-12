@@ -5,6 +5,12 @@ import {
   translateChatError,
   translateProjectedRuntimeError,
 } from '../../../utils/chatErrorTranslation';
+import { useBrowserActivityScope } from '../BrowserActivityContext';
+import {
+  BrowserActivityRun,
+  isBrowserActivityRun,
+} from '../BrowserActivityRun';
+import { splitBrowserActivityRuns } from '../browser-activity-calls';
 import { FilePartPreview } from '../FilePartPreview';
 import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
@@ -89,6 +95,7 @@ function MessageContentComponent({
   onToolApproval,
   appTools,
 }: MessageContentProps & { appTools: ReadonlySet<string> }) {
+  const browserScope = useBrowserActivityScope();
   const anchoredChildren = useTranscriptChildrenForCalls(
     contentParts?.flatMap((part) =>
       part.toolCallId ? [part.toolCallId] : [],
@@ -108,7 +115,7 @@ function MessageContentComponent({
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork && !keepChildAnchors
+    return foldWork && !keepChildAnchors && !browserScope
       ? foldTurnWork(parts, appTools, showReasoning)
       : splitToolCallRuns(parts, appTools, showReasoning);
   }, [
@@ -118,8 +125,11 @@ function MessageContentComponent({
     keepChildAnchors,
     appTools,
     showReasoning,
+    browserScope,
   ]);
-  const blocks = useTranscriptChildBlocks(baseBlocks);
+  const blocks = useTranscriptChildBlocks(
+    browserScope ? splitBrowserActivityRuns(baseBlocks) : baseBlocks,
+  );
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -192,6 +202,15 @@ function MessageContentComponent({
               <SubagentTranscriptCard key={block.key} child={block.child} />
             );
           if (block.type === 'tool-call-run') {
+            if (browserScope && isBrowserActivityRun(block))
+              return (
+                <BrowserActivityRun
+                  key={block.key}
+                  run={block}
+                  active={false}
+                  renderCall={renderToolCall}
+                />
+              );
             // A solo call stays inline. Calls with reasoning or sibling
             // calls share one summary line that opens the sheet —
             // live and settled share this threshold so a run does not

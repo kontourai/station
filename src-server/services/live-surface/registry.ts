@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type {
   LiveSurfaceAction,
   LiveSurfaceController,
@@ -181,8 +182,12 @@ class PressedInput {
   private pointer = { x: 0, y: 0 };
   private pointerType: LiveSurfacePointerType = 'mouse';
 
-  record(event: LiveSurfaceInput, controller: LiveSurfaceController): void {
-    const owner = controllerKey(controller);
+  record(
+    event: LiveSurfaceInput,
+    controller: LiveSurfaceController,
+    sourceId?: string,
+  ): void {
+    const owner = sourceId ?? controllerKey(controller);
     if (event.kind === 'pointer') {
       this.pointer = { x: event.x, y: event.y };
       if (event.type === 'down')
@@ -216,8 +221,79 @@ class PressedInput {
     return false;
   }
 
+  mayRelease(event: LiveSurfaceInput, sourceId: string): boolean {
+    if (event.kind === 'key' && event.type === 'up') {
+      const held = this.keys.get(event.code || event.key);
+      return !held || held.owner === sourceId;
+    }
+    if (event.kind === 'pointer' && event.type === 'up') {
+      const held = this.buttons.get(event.button ?? 'left');
+      return !held || held.owner === sourceId;
+    }
+    return true;
+  }
+
+  displacedButton(
+    event: LiveSurfaceInput,
+  ): LiveSurfacePointerButton | undefined {
+    if (event.kind !== 'pointer' || event.type !== 'down') return undefined;
+    const button = event.button ?? 'left';
+    const held = this.buttons.get(button);
+    return held && held.pointerType !== (event.pointerType ?? 'mouse')
+      ? button
+      : undefined;
+  }
+
+  snapshot() {
+    return {
+      buttons: new Map(this.buttons),
+      keys: new Map(this.keys),
+      pointer: { ...this.pointer },
+      pointerType: this.pointerType,
+    };
+  }
+
+  restore(snapshot: ReturnType<PressedInput['snapshot']>): void {
+    this.buttons.clear();
+    this.keys.clear();
+    for (const [key, value] of snapshot.buttons) this.buttons.set(key, value);
+    for (const [key, value] of snapshot.keys) this.keys.set(key, value);
+    this.pointer = snapshot.pointer;
+    this.pointerType = snapshot.pointerType;
+  }
+
+  hasOwner(owner: string): boolean {
+    return [...this.buttons.values(), ...this.keys.values()].some(
+      (value) => value.owner === owner,
+    );
+  }
+
   /** Everything held, then forget it; null when nothing is held. */
-  take(): LiveSurfaceHeldInput | null {
+  take(
+    sourceId?: string,
+    button?: LiveSurfacePointerButton,
+  ): LiveSurfaceHeldInput | null {
+    if (sourceId || button) {
+      const buttons = [...this.buttons].filter(
+        ([id, value]) =>
+          (!sourceId || value.owner === sourceId) && (!button || id === button),
+      );
+      const keys = [...this.keys].filter(
+        ([, value]) => !button && value.owner === sourceId,
+      );
+      if (!buttons.length && !keys.length) return null;
+      for (const [id] of buttons) this.buttons.delete(id);
+      for (const [id] of keys) this.keys.delete(id);
+      return {
+        buttons: buttons.map(([id]) => id),
+        keys: keys.map(([, value]) => ({ key: value.key, code: value.code })),
+        pointer: { ...this.pointer },
+        pointerType: this.pointerType,
+        buttonPointerTypes: Object.fromEntries(
+          buttons.map(([id, value]) => [id, value.pointerType]),
+        ),
+      };
+    }
     if (this.buttons.size === 0 && this.keys.size === 0) return null;
     const held: LiveSurfaceHeldInput = {
       buttons: [...this.buttons.keys()],
@@ -269,6 +345,7 @@ interface EntryInternals {
   dispose: () => Promise<void>;
   lease: LiveSurfaceControlLeaseState;
   pressed: PressedInput;
+  sources: Map<string, { owner: string; touchedAt: number }>;
   /** Tail of the per-surface input chain: one batch at a time, in order. */
   chain: Promise<unknown>;
   /**
@@ -277,6 +354,7 @@ interface EntryInternals {
    * so nothing ever runs concurrently with the orphaned dispatch.
    */
   orphan: Promise<unknown> | null;
+  cleanupFailed: boolean;
   /** When the current wedge began (ms), for the viewers' state record. */
   wedgedSince: number | null;
   dispatchTimeoutMs: number;
@@ -358,8 +436,10 @@ export class LiveSurfaceRegistry {
       dispose: async () => {},
       lease,
       pressed: new PressedInput(),
+      sources: new Map(),
       chain: Promise.resolve(),
       orphan: null,
+      cleanupFailed: false,
       wedgedSince: null,
       dispatchTimeoutMs:
         this.options.dispatchTimeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS,
@@ -383,7 +463,14 @@ export class LiveSurfaceRegistry {
     // lease's ceiling) — never on another controller's stuck press, and
     // never while the surface is wedged (a press that cannot be released).
     lease.setHoldProbe(
-      (holder) => own.orphan === null && own.pressed.hasAnyFrom(holder),
+      (holder) =>
+        own.orphan === null &&
+        !own.cleanupFailed &&
+        (own.pressed.hasAnyFrom(holder) ||
+          [...own.sources].some(
+            ([id, owner]) =>
+              owner.owner === controllerKey(holder) && own.pressed.hasOwner(id),
+          )),
     );
     // Control lapsing to NOBODY — release or expiry — cancels held input too.
     lease.onChange((next) => {
@@ -392,7 +479,7 @@ export class LiveSurfaceRegistry {
     // Viewers see the wedge in their state record, so a surface that stops
     // taking input (a page showing a dialog) says so instead of going quiet.
     hub.setInputHealth(() => ({
-      wedged: own.orphan !== null,
+      wedged: own.orphan !== null || own.cleanupFailed,
       wedgedSince: own.wedgedSince,
     }));
     this.entries.set(producer.surfaceId, entry);
@@ -471,7 +558,7 @@ async function dispatchWithTimeout(
       .then(() => {
         if (own.orphan !== orphan) return;
         own.orphan = null;
-        own.wedgedSince = null;
+        if (!own.cleanupFailed) own.wedgedSince = null;
         entry.hub.announce();
       });
     own.orphan = orphan;
@@ -508,7 +595,8 @@ function describeInput(event: LiveSurfaceInput): string {
 }
 
 function wedged(entry: LiveSurfaceEntry): LiveSurfaceInputResult | null {
-  if (!internalsOf(entry).orphan) return null;
+  if (!internalsOf(entry).orphan && !internalsOf(entry).cleanupFailed)
+    return null;
   return {
     ok: false,
     code: 'surface-wedged',
@@ -523,35 +611,64 @@ function wedged(entry: LiveSurfaceEntry): LiveSurfaceInputResult | null {
  * out a wedge first so the cancel cannot overlap an orphaned dispatch, and
  * reads the held state only when it runs, after everything sent before it.
  */
-function cancelHeld(entry: LiveSurfaceEntry): void {
+function cancelHeld(
+  entry: LiveSurfaceEntry,
+  sourceId?: string,
+): Promise<boolean> {
+  return enqueue(entry, () => cancelHeldNow(entry, sourceId));
+}
+
+/** Run only while owning the serialized input chain. */
+async function cancelHeldNow(
+  entry: LiveSurfaceEntry,
+  sourceId?: string,
+  button?: LiveSurfacePointerButton,
+): Promise<boolean> {
   const own = internalsOf(entry);
-  void enqueue(entry, async () => {
-    while (own.orphan) await own.orphan;
-    const held = own.pressed.take();
-    if (!held) return null;
-    const producer = entry.producer;
-    const outcomes = producer.cancelHeldInput
-      ? [
-          await dispatchWithTimeout(
-            entry,
-            () => producer.cancelHeldInput!(held),
-            'held-input cancel',
-          ),
-        ]
-      : [];
-    if (!producer.cancelHeldInput)
-      for (const event of neutralCancelEvents(held))
-        outcomes.push(
-          await dispatchWithTimeout(
-            entry,
-            () => producer.dispatch(event),
-            `held-input cancel ${describeInput(event)}`,
-          ),
-        );
-    if (outcomes.some((outcome) => outcome !== 'ok'))
-      own.onError('live surface held-input cancel failed', outcomes);
-    return null;
-  });
+  while (own.orphan) await own.orphan;
+  const snapshot = own.pressed.snapshot();
+  const held = own.pressed.take(sourceId, button);
+  if (!held) {
+    if (!sourceId && !button && own.cleanupFailed) {
+      own.cleanupFailed = false;
+      own.wedgedSince = null;
+      entry.hub.announce();
+    }
+    return true;
+  }
+  const producer = entry.producer;
+  const outcomes = producer.cancelHeldInput
+    ? [
+        await dispatchWithTimeout(
+          entry,
+          () => producer.cancelHeldInput!(held),
+          'held-input cancel',
+        ),
+      ]
+    : [];
+  if (!producer.cancelHeldInput)
+    for (const event of neutralCancelEvents(held))
+      outcomes.push(
+        await dispatchWithTimeout(
+          entry,
+          () => producer.dispatch(event),
+          `held-input cancel ${describeInput(event)}`,
+        ),
+      );
+  if (outcomes.some((outcome) => outcome !== 'ok')) {
+    own.pressed.restore(snapshot);
+    own.cleanupFailed = true;
+    own.wedgedSince ??= Date.now();
+    entry.hub.announce();
+    own.onError('live surface held-input cancel failed', outcomes);
+    return false;
+  }
+  if (!sourceId && !button && own.cleanupFailed) {
+    own.cleanupFailed = false;
+    own.wedgedSince = null;
+    entry.hub.announce();
+  }
+  return true;
 }
 
 function refuseUnsupported(
@@ -573,22 +690,62 @@ async function dispatchFenced(
   controller: LiveSurfaceController,
   fence: number,
   events: readonly LiveSurfaceInput[],
+  sourceId?: string,
 ): Promise<LiveSurfaceInputResult> {
   const own = internalsOf(entry);
   let accepted = 0;
   for (const event of events) {
+    if (
+      sourceId &&
+      own.sources.get(sourceId)?.owner !== controllerKey(controller)
+    )
+      return {
+        ok: false,
+        code: 'invalid-source',
+        accepted,
+        lease: entry.lease.snapshot(),
+      };
     const refused = wedged(entry);
     if (refused) return { ...refused, accepted };
     const check = entry.lease.isCurrent(fence, controller);
     if (!check.ok) return { ...check, accepted };
+    const displaced = own.pressed.displacedButton(event);
+    if (displaced) {
+      // A button name cannot hold two modalities; neutralize the old gesture
+      // before its ownership is replaced, retaining custody on failure.
+      if (!(await cancelHeldNow(entry, undefined, displaced)))
+        return {
+          ok: false,
+          code: 'surface-wedged',
+          accepted,
+          lease: entry.lease.snapshot(),
+        };
+      if (
+        sourceId &&
+        own.sources.get(sourceId)?.owner !== controllerKey(controller)
+      )
+        return {
+          ok: false,
+          code: 'invalid-source',
+          accepted,
+          lease: entry.lease.snapshot(),
+        };
+      const current = entry.lease.isCurrent(fence, controller);
+      if (!current.ok) return { ...current, accepted };
+    }
+    if (!own.pressed.mayRelease(event, sourceId ?? controllerKey(controller)))
+      continue;
     // Recorded as SENT: an event in flight at a takeover, or one that times
     // out and lands later, is still accounted for by the cancel.
-    own.pressed.record(event, controller);
+    own.pressed.record(event, controller, sourceId);
     const outcome = await dispatchWithTimeout(
       entry,
       () =>
         entry.producer.dispatch(event, {
-          isCurrent: () => entry.lease.isCurrent(fence, controller).ok,
+          isCurrent: () =>
+            entry.lease.isCurrent(fence, controller).ok &&
+            (!sourceId ||
+              own.sources.get(sourceId)?.owner === controllerKey(controller)),
         }),
       describeInput(event),
     );
@@ -625,7 +782,20 @@ export function dispatchHumanInput(
   human: HumanController,
   observedEpoch: number,
   events: readonly LiveSurfaceInput[],
+  sourceId?: string,
 ): Promise<LiveSurfaceInputResult> {
+  if (
+    sourceId &&
+    internalsOf(entry).sources.get(sourceId)?.owner !== controllerKey(human)
+  )
+    return Promise.resolve({
+      ok: false,
+      code: 'invalid-source',
+      accepted: 0,
+      lease: entry.lease.snapshot(),
+    });
+  if (sourceId)
+    internalsOf(entry).sources.get(sourceId)!.touchedAt = Date.now();
   const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
   if (unsupported) return Promise.resolve(unsupported);
   const claim = internalsOf(entry).lease.claimForHumanInput(
@@ -635,8 +805,50 @@ export function dispatchHumanInput(
   if (!claim.ok) return Promise.resolve({ ...claim, accepted: 0 });
   const fence = claim.lease.fence ?? 0;
   return enqueue(entry, () =>
-    dispatchFenced(entry, { ...human }, fence, events),
+    dispatchFenced(entry, { ...human }, fence, events, sourceId),
   );
+}
+
+/** Open and seal per-viewer input sources without claiming control. */
+export function openHumanInputSource(
+  entry: LiveSurfaceEntry,
+  human: HumanController,
+): string | null {
+  const sources = internalsOf(entry).sources;
+  for (const [id, source] of sources) {
+    if (
+      Date.now() - source.touchedAt > 300_000 &&
+      !internalsOf(entry).pressed.hasOwner(id)
+    ) {
+      sources.delete(id);
+      cancelHeld(entry, id);
+    }
+  }
+  if (sources.size >= 128) return null;
+  const id = randomUUID();
+  sources.set(id, { owner: controllerKey(human), touchedAt: Date.now() });
+  return id;
+}
+export async function closeHumanInputSource(
+  entry: LiveSurfaceEntry,
+  human: HumanController,
+  id: string,
+): Promise<boolean | null> {
+  const sources = internalsOf(entry).sources;
+  if (sources.get(id)?.owner !== controllerKey(human)) return null;
+  sources.delete(id);
+  const cancellation = cancelHeld(entry, id);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      cancellation,
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), 10_000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** A listener's fault never changes the outcome of a control action. */

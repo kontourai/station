@@ -659,7 +659,8 @@ inputs: nothing names a Project, an owner, or a host.
   turn's last terminal event (`completed`, `failed` for a `runtime.error`,
   `interrupted` for an abort or a `cancelled` finish, or `open` when none is
   recorded), tool calls by name (`otherTools` counts the names beyond the first
-  eight), `files` (only a successful call whose engine reported an edit, delete
+  eight; a Station tool also has a plain-language `label`, such as "Wait for a
+  Session"), `files` (only a successful call whose engine reported an edit, delete
   or move kind and a path argument, and a path is never guessed from a tool's
   name), `filesReported: false` on a turn that called tools none of which carried
   an engine-reported tool kind (a missing `files` there means unknown, not none;

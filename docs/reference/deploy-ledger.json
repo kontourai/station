@@ -1,5 +1,125 @@
 [
   {
+    "timestampUtc": "2026-11-12T18:10:50Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261112.43272588376",
+    "sha": "f53648ab2f41c3ad68c2a0b26e9aabcdf6bddd07",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43272588376",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261112.43272588376 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e6fdd745384f671e2ba978df3ae00e80c2877037",
+      "groups": {
+        "feat": [
+          "[#4864](https://github.com/kontourai/station/pull/4864) feat(ui): show agent-reported plan progress on Home and Activity Session rows",
+          "[#4824](https://github.com/kontourai/station/pull/4824) feat(chat): Station tool calls carry Station's mark and read as plain-language actions",
+          "[#4809](https://github.com/kontourai/station/pull/4809) feat(projects): named channels per Project, today's room becomes #general (#4792)",
+          "[#4835](https://github.com/kontourai/station/pull/4835) feat(connect): say why and when in the Station switcher, and name the Station while switching",
+          "[#4826](https://github.com/kontourai/station/pull/4826) feat(browser): show browser activity beside conversation calls"
+        ],
+        "fix": [
+          "[#4841](https://github.com/kontourai/station/pull/4841) fix(chat-dock): keep the Background tasks sheet inside phone safe areas and show each task's full details",
+          "[#4840](https://github.com/kontourai/station/pull/4840) fix(native): allow If-Match and Idempotency-Key through the native Station broker"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4847](https://github.com/kontourai/station/pull/4847) build(deps): catch Station up to current Kontour primitives"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-11-12T10:52:10Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261112",
+    "sha": "e6fdd745384f671e2ba978df3ae00e80c2877037",
+    "artifactBuiltAt": "2026-11-12T09:21:59.078Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43186262579",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43186262579)"
+    ],
+    "changelog": {
+      "previousSha": "e5b5bd24e1ae4e588e3466e979188e014ddd0354",
+      "groups": {
+        "feat": [
+          "[#4836](https://github.com/kontourai/station/pull/4836) feat(mobile): paste clipboard images and receive Android image shares",
+          "[#4813](https://github.com/kontourai/station/pull/4813) feat(inbox): keep unread state on the server (#3075)",
+          "[#4822](https://github.com/kontourai/station/pull/4822) feat(ui): show agent-reported plan progress on Task cards",
+          "[#4810](https://github.com/kontourai/station/pull/4810) feat(rooms): one conversation list and composer for Project and Task rooms, with room gallery scenes",
+          "[#4816](https://github.com/kontourai/station/pull/4816) feat(confinement): opt-in restricted network for confined sessions through a loopback broker (#4769)",
+          "[#4808](https://github.com/kontourai/station/pull/4808) feat(confinement): confine Claude on Linux with a bubblewrap sandbox (#4770)",
+          "[#4804](https://github.com/kontourai/station/pull/4804) feat(worktrees): record what became of a worktree Session's output, once (#4771)"
+        ],
+        "fix": [
+          "[#4823](https://github.com/kontourai/station/pull/4823) fix(chat): render visual replies on clients that cannot reach the loopback frame origin",
+          "[#4817](https://github.com/kontourai/station/pull/4817) fix(chat): show background commands as commands and tighten the phone chat",
+          "[#4767](https://github.com/kontourai/station/pull/4767) fix: troubleshooting storage, installed-app zoom, toast swipe, queued files and engine-opened dismissals",
+          "[#4632](https://github.com/kontourai/station/pull/4632) fix(terminal): end a Windows command's whole Job, replay at recorded sizes, record floor worker exits",
+          "[#4805](https://github.com/kontourai/station/pull/4805) fix(ui): draw one focus ring on the composer box and the palette search row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-11-12T10:52:08Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261112",
+    "sha": "e6fdd745384f671e2ba978df3ae00e80c2877037",
+    "artifactBuiltAt": "2026-11-12T09:15:36.055Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43186262579",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43186262579)"
+    ],
+    "changelog": {
+      "previousSha": "e5b5bd24e1ae4e588e3466e979188e014ddd0354",
+      "groups": {
+        "feat": [
+          "[#4836](https://github.com/kontourai/station/pull/4836) feat(mobile): paste clipboard images and receive Android image shares",
+          "[#4813](https://github.com/kontourai/station/pull/4813) feat(inbox): keep unread state on the server (#3075)",
+          "[#4822](https://github.com/kontourai/station/pull/4822) feat(ui): show agent-reported plan progress on Task cards",
+          "[#4810](https://github.com/kontourai/station/pull/4810) feat(rooms): one conversation list and composer for Project and Task rooms, with room gallery scenes",
+          "[#4816](https://github.com/kontourai/station/pull/4816) feat(confinement): opt-in restricted network for confined sessions through a loopback broker (#4769)",
+          "[#4808](https://github.com/kontourai/station/pull/4808) feat(confinement): confine Claude on Linux with a bubblewrap sandbox (#4770)",
+          "[#4804](https://github.com/kontourai/station/pull/4804) feat(worktrees): record what became of a worktree Session's output, once (#4771)"
+        ],
+        "fix": [
+          "[#4823](https://github.com/kontourai/station/pull/4823) fix(chat): render visual replies on clients that cannot reach the loopback frame origin",
+          "[#4817](https://github.com/kontourai/station/pull/4817) fix(chat): show background commands as commands and tighten the phone chat",
+          "[#4767](https://github.com/kontourai/station/pull/4767) fix: troubleshooting storage, installed-app zoom, toast swipe, queued files and engine-opened dismissals",
+          "[#4632](https://github.com/kontourai/station/pull/4632) fix(terminal): end a Windows command's whole Job, replay at recorded sizes, record floor worker exits",
+          "[#4805](https://github.com/kontourai/station/pull/4805) fix(ui): draw one focus ring on the composer box and the palette search row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-11-12T09:15:04Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261112.43186262579",

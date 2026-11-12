@@ -7469,6 +7469,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
+                : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
@@ -7501,6 +7504,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
                 : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }

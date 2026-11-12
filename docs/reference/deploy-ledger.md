@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-12T18:10:50Z | nightly-npm | 0.11.0-nightly.20261112.43272588376 | `f53648a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43272588376) |
+| 2026-11-12T10:52:10Z | nightly-desktop | 0.1.11-nightly.20261112 | `e6fdd74` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43186262579) |
+| 2026-11-12T10:52:08Z | nightly-android | 0.1.11-nightly.20261112 | `e6fdd74` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43186262579) |
 | 2026-11-12T09:15:04Z | nightly-npm | 0.11.0-nightly.20261112.43186262579 | `e6fdd74` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43186262579) |
 | 2026-11-11T19:51:34Z | nightly-desktop | 0.1.11-nightly.20261111.2 | `e5b5bd2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43074100998) |
 | 2026-11-11T19:51:31Z | nightly-android | 0.1.11-nightly.20261111.2 | `e5b5bd2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43074100998) |
@@ -465,6 +468,92 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-12T18:10:50Z · nightly-npm · 0.11.0-nightly.20261112.43272588376
+
+- Ship SHA: `f53648ab2f41c3ad68c2a0b26e9aabcdf6bddd07`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261112.43272588376 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e6fdd74` ([full sha](https://github.com/kontourai/station/commit/e6fdd745384f671e2ba978df3ae00e80c2877037)):
+
+**Features**
+
+- [#4864](https://github.com/kontourai/station/pull/4864) feat(ui): show agent-reported plan progress on Home and Activity Session rows
+- [#4824](https://github.com/kontourai/station/pull/4824) feat(chat): Station tool calls carry Station's mark and read as plain-language actions
+- [#4809](https://github.com/kontourai/station/pull/4809) feat(projects): named channels per Project, today's room becomes #general (#4792)
+- [#4835](https://github.com/kontourai/station/pull/4835) feat(connect): say why and when in the Station switcher, and name the Station while switching
+- [#4826](https://github.com/kontourai/station/pull/4826) feat(browser): show browser activity beside conversation calls
+
+**Fixes**
+
+- [#4841](https://github.com/kontourai/station/pull/4841) fix(chat-dock): keep the Background tasks sheet inside phone safe areas and show each task's full details
+- [#4840](https://github.com/kontourai/station/pull/4840) fix(native): allow If-Match and Idempotency-Key through the native Station broker
+
+**Other**
+
+- [#4847](https://github.com/kontourai/station/pull/4847) build(deps): catch Station up to current Kontour primitives
+
+## 2026-11-12T10:52:10Z · nightly-desktop · 0.1.11-nightly.20261112
+
+- Ship SHA: `e6fdd745384f671e2ba978df3ae00e80c2877037`
+- Artifact built at: `2026-11-12T09:21:59.078Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 43186262579)
+
+### Changelog
+
+Commits since `e5b5bd2` ([full sha](https://github.com/kontourai/station/commit/e5b5bd24e1ae4e588e3466e979188e014ddd0354)):
+
+**Features**
+
+- [#4836](https://github.com/kontourai/station/pull/4836) feat(mobile): paste clipboard images and receive Android image shares
+- [#4813](https://github.com/kontourai/station/pull/4813) feat(inbox): keep unread state on the server (#3075)
+- [#4822](https://github.com/kontourai/station/pull/4822) feat(ui): show agent-reported plan progress on Task cards
+- [#4810](https://github.com/kontourai/station/pull/4810) feat(rooms): one conversation list and composer for Project and Task rooms, with room gallery scenes
+- [#4816](https://github.com/kontourai/station/pull/4816) feat(confinement): opt-in restricted network for confined sessions through a loopback broker (#4769)
+- [#4808](https://github.com/kontourai/station/pull/4808) feat(confinement): confine Claude on Linux with a bubblewrap sandbox (#4770)
+- [#4804](https://github.com/kontourai/station/pull/4804) feat(worktrees): record what became of a worktree Session's output, once (#4771)
+
+**Fixes**
+
+- [#4823](https://github.com/kontourai/station/pull/4823) fix(chat): render visual replies on clients that cannot reach the loopback frame origin
+- [#4817](https://github.com/kontourai/station/pull/4817) fix(chat): show background commands as commands and tighten the phone chat
+- [#4767](https://github.com/kontourai/station/pull/4767) fix: troubleshooting storage, installed-app zoom, toast swipe, queued files and engine-opened dismissals
+- [#4632](https://github.com/kontourai/station/pull/4632) fix(terminal): end a Windows command's whole Job, replay at recorded sizes, record floor worker exits
+- [#4805](https://github.com/kontourai/station/pull/4805) fix(ui): draw one focus ring on the composer box and the palette search row
+
+## 2026-11-12T10:52:08Z · nightly-android · 0.1.11-nightly.20261112
+
+- Ship SHA: `e6fdd745384f671e2ba978df3ae00e80c2877037`
+- Artifact built at: `2026-11-12T09:15:36.055Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 43186262579)
+
+### Changelog
+
+Commits since `e5b5bd2` ([full sha](https://github.com/kontourai/station/commit/e5b5bd24e1ae4e588e3466e979188e014ddd0354)):
+
+**Features**
+
+- [#4836](https://github.com/kontourai/station/pull/4836) feat(mobile): paste clipboard images and receive Android image shares
+- [#4813](https://github.com/kontourai/station/pull/4813) feat(inbox): keep unread state on the server (#3075)
+- [#4822](https://github.com/kontourai/station/pull/4822) feat(ui): show agent-reported plan progress on Task cards
+- [#4810](https://github.com/kontourai/station/pull/4810) feat(rooms): one conversation list and composer for Project and Task rooms, with room gallery scenes
+- [#4816](https://github.com/kontourai/station/pull/4816) feat(confinement): opt-in restricted network for confined sessions through a loopback broker (#4769)
+- [#4808](https://github.com/kontourai/station/pull/4808) feat(confinement): confine Claude on Linux with a bubblewrap sandbox (#4770)
+- [#4804](https://github.com/kontourai/station/pull/4804) feat(worktrees): record what became of a worktree Session's output, once (#4771)
+
+**Fixes**
+
+- [#4823](https://github.com/kontourai/station/pull/4823) fix(chat): render visual replies on clients that cannot reach the loopback frame origin
+- [#4817](https://github.com/kontourai/station/pull/4817) fix(chat): show background commands as commands and tighten the phone chat
+- [#4767](https://github.com/kontourai/station/pull/4767) fix: troubleshooting storage, installed-app zoom, toast swipe, queued files and engine-opened dismissals
+- [#4632](https://github.com/kontourai/station/pull/4632) fix(terminal): end a Windows command's whole Job, replay at recorded sizes, record floor worker exits
+- [#4805](https://github.com/kontourai/station/pull/4805) fix(ui): draw one focus ring on the composer box and the palette search row
 
 ## 2026-11-12T09:15:04Z · nightly-npm · 0.11.0-nightly.20261112.43186262579
 

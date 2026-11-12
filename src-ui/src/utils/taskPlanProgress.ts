@@ -1,9 +1,11 @@
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import type { HomeLifecycleLabel } from './lifecycle-priority';
 
 /**
- * #4695: a Task card's agent-reported plan progress, projected from the
- * canonical `plan.updated` events in its Session's latest-turn window.
+ * #4695: agent-reported plan progress on a Task card or a Session row,
+ * projected from the canonical `plan.updated` events in the Session's
+ * latest-turn window.
  *
  * Plan progress is what the agent says about its own plan. It is never
  * evidence: nothing here satisfies a gate or changes a Task's status.
@@ -105,4 +107,25 @@ export function taskPlanProgressLabel(progress: TaskPlanProgress): string {
   return `Agent-reported plan: ${progress.done} of ${progress.total} ${steps} done${
     qualifiers.length ? `, ${qualifiers.join(', ')}` : ''
   }`;
+}
+
+/**
+ * How a Session row on Home or in Activity reads its plan, from the row's own
+ * lifecycle label. A Draft never ran, so it is not read. Running and
+ * needs-attention rows refresh. Every other row is read once: a Session at
+ * rest or ended still shows how far its plan got (and Stopped when its turn
+ * was stopped or it failed with steps open).
+ */
+export function sessionPlanProgressRead(
+  label: HomeLifecycleLabel,
+): 'skip' | 'live' | 'settled' {
+  switch (label) {
+    case 'Draft':
+      return 'skip';
+    case 'Running':
+    case 'Needs attention':
+      return 'live';
+    default:
+      return 'settled';
+  }
 }

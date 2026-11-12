@@ -195,6 +195,7 @@ import { makeUnattendedGrantResolver } from '../../services/agents/unattended-gr
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { createGuardianConversationReader } from '../../services/approvals/guardian-conversation.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
@@ -1444,6 +1445,9 @@ export class StationRuntime {
         logger: this.logger,
         modelCatalog: this.modelCatalog,
         projectHomeDir: this.configLoader.getProjectHomeDir(),
+        readConversation: createGuardianConversationReader(
+          this.orchestrationEventStore,
+        ),
       }),
       isCurrentRuntimeGeneration: () =>
         this.getStableAgentConfigurationRevision() === revision,
@@ -3924,6 +3928,9 @@ export class StationRuntime {
         logger: this.logger,
         modelCatalog: this.modelCatalog,
         projectHomeDir: this.configLoader.getProjectHomeDir(),
+        readConversation: createGuardianConversationReader(
+          this.orchestrationEventStore,
+        ),
       }),
       resolveUnattendedGrant: this.resolveUnattendedGrant,
     });
@@ -5754,6 +5761,9 @@ export class StationRuntime {
       workItemCapture: new WorkItemCapture(
         this.orchestrationEventStore,
         createEventStoreWorkItemPrincipalLiveness(this.orchestrationEventStore),
+      ),
+      readGuardianConversation: createGuardianConversationReader(
+        this.orchestrationEventStore,
       ),
       guardTools: (tools: any[]) =>
         this.guardAgentGenerationTools(agentSlug, tools),

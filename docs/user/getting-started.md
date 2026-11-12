@@ -544,9 +544,11 @@ Project admission still applies. A foreground chat stays on its owning Station;
 choosing another destination starts new work. With no other Station to choose,
 the control is plain text.
 
-The Project page opens on **Overview**. **Project room** is shared discussion
-with people in that Project; use **Bring an Agent** for an explicit request
-whose answer returns to the room. Direct Agent conversations stay in the chat
+The Project page opens on **Overview**. **Room** is shared discussion with
+people in that Project, in named channels starting with `#general`; choose the
+channel name to switch, and people who can edit can add, rename or archive
+channels. Use **Bring an Agent** for an explicit request whose answer returns
+to the channel. Direct Agent conversations stay in the chat
 dock. **Tasks** separates current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
@@ -901,6 +903,9 @@ A background shell command an engine started (or a monitor watching one) is
 not a subagent: its card shows a terminal mark, the command line and, once it
 ends, its exit code, and a group counts it as a background command.
 
+Every background-task row expands to its full title, status, start and end
+times, and, for a tool, which tool ran and a one-line summary of its input.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
@@ -1108,15 +1113,17 @@ Project. This separate guided starter keeps its focused title entry and dispatch
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 
-When a Task's Session reports a plan (ACP engines do), its Tasks board card
-and Project task row show **Agent plan 3/5** and a thin bar. It is the agent's
-newest plan in that Session's latest turn, refreshed every few seconds while
-the Task is in progress or blocked. **Stopped** follows the count when the
-turn was stopped or the Session failed or was canceled with steps open, and
-**Waiting** when the Session needs input or an approval. There is no bar
-without a plan, for a plan from an earlier turn, or on done and canceled
-Tasks. The count is agent-reported: it never marks a Task done or satisfies a
-gate.
+When a Session reports a plan (ACP engines do), its row in Activity and on
+Home, and the Tasks board card and Project task row of a Task it runs, show
+**Agent plan 3/5** and a thin bar. It is the agent's newest plan in that
+Session's latest turn, refreshed every few seconds while the Session is
+running or needs you, or while the Task is in progress or blocked.
+**Stopped** follows the count when the turn was stopped or the Session failed
+or was canceled with steps open, and **Waiting** when the Session needs input
+or an approval. There is no bar without a plan, for a plan from an earlier
+turn, on Drafts, on Home's one-line **Earlier** rows, on rows from another
+Station, or on done and canceled Tasks. The count is agent-reported: it never
+marks a Task done or satisfies a gate.
 
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
@@ -1124,7 +1131,9 @@ how Station preserves the same work identity through retries and response loss.
 
 ## Review Activity Without Changing Your Place
 
-Open **Activity** from the workspace sidebar. Use a row's **More actions →
+Open **Activity** from the workspace sidebar. A row can show its Session's
+agent-reported plan, as described in
+[Start Your First Task](#start-your-first-task). Use a row's **More actions →
 Quick review** to read it in Related while keeping the selected item, search,
 filters and list position. **Previous** and **Next** follow the rows currently
 visible in that list. When an item leaves the current results, review says so

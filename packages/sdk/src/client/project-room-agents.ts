@@ -72,6 +72,8 @@ export async function projectRoomAgentRequest(
     | ProjectRoomAgentIntent
     | { requestId: string; action: 'inspect' | 'reconcile' | 'cancel' },
   signal?: AbortSignal,
+  /** The channel the request lives in; absent means the default room. */
+  channelId?: string,
 ): Promise<ProjectRoomAgentHandle> {
   guards.parse(guard);
   if (
@@ -81,7 +83,13 @@ export async function projectRoomAgentRequest(
       operation.expectedActorId !== guard.expectedActorId)
   )
     throw new ProjectRoomProtocolError('Room Agent authority changed.');
-  const base = `${scope.apiBase}/api/projects/${encodeURIComponent(slug)}/room/agents`;
+  if (channelId !== undefined && channelId !== guard.expectedRoomId)
+    throw new ProjectRoomProtocolError('Room Agent authority changed.');
+  const base = `${scope.apiBase}/api/projects/${encodeURIComponent(slug)}${
+    channelId === undefined
+      ? '/room'
+      : `/channels/${encodeURIComponent(channelId)}`
+  }/agents`;
   const options = {
     requestScope: scope,
     signal,
