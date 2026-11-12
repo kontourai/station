@@ -95,12 +95,6 @@ export interface HomeWorkItem {
   /** Reason for a Running label; background work never grants turn controls. */
   activeReason?: 'turn' | 'background';
   /**
-   * The conversation's current or latest turn is one the engine opened on
-   * its own (a reply to background work), not a send. Read from the open
-   * turn's trigger while it runs and the summary's `latestTurnTrigger` after.
-   */
-  engineOpenedTurn?: true;
-  /**
    * archive#1783: the observation behind an `'Unanswerable'` lifecycle
    * label — which arm fired, which process observed it, and when. Set only
    * for an observed negative; a bare label with no basis is the
@@ -492,13 +486,6 @@ function buildSessionWorkItem(
     // of one decoration.
     ...(unanswerableNotice ? { unanswerableNotice } : {}),
     ...(failureNotice ? { failureNotice } : {}),
-    ...((
-      session.conversationActivity?.openTurn
-        ? session.conversationActivity.openTurn.trigger === 'provider'
-        : session.latestTurnTrigger === 'provider'
-    )
-      ? { engineOpenedTurn: true as const }
-      : {}),
     ...(lifecycleLabel === 'Running'
       ? {
           activeReason: session.conversationActivity?.openTurn

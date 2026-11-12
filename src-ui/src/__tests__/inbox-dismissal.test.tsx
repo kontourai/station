@@ -47,7 +47,7 @@ function Harness({
   items: HomeWorkItem[];
   facts?: WorkFactsById;
 }) {
-  const count = useInboxNeedsYouCount(items, NOW);
+  const count = useInboxNeedsYouCount(items, NOW, facts);
   return (
     <ToastProvider>
       <KeyboardShortcutsProvider>
@@ -214,6 +214,9 @@ describe('inbox dismissal through the rendered panel', () => {
     const ready: HomeWorkItem = { ...thread, lifecycleLabel: 'Ready' };
     const row = () =>
       screen.queryByRole('button', { name: 'Review the inbox, Station' });
+    const engineOpened = new Map([
+      [thread.id, { engineOpenedTurn: true as const }],
+    ]);
     const view = render(<Harness items={[ready]} />);
     dismiss();
     expect(row()).toBeNull();
@@ -224,10 +227,10 @@ describe('inbox dismissal through the rendered panel', () => {
           {
             ...ready,
             lifecycleLabel: 'Running',
-            engineOpenedTurn: true,
             updatedAt: NOW + 1000,
           },
         ]}
+        facts={engineOpened}
       />,
     );
     expect(row()).toBeNull();
@@ -237,10 +240,10 @@ describe('inbox dismissal through the rendered panel', () => {
           {
             ...ready,
             lifecycleLabel: 'Ready',
-            engineOpenedTurn: true,
             updatedAt: NOW + 2000,
           },
         ]}
+        facts={engineOpened}
       />,
     );
     expect(row()).toBeNull();
@@ -251,10 +254,10 @@ describe('inbox dismissal through the rendered panel', () => {
           {
             ...ready,
             lifecycleLabel: 'Failed',
-            engineOpenedTurn: true,
             updatedAt: NOW + 3000,
           },
         ]}
+        facts={engineOpened}
       />,
     );
     await waitFor(() => expect(row()).toBeTruthy(), { timeout: 3000 });

@@ -1028,18 +1028,25 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Stopped');
   });
 
-  test('marks a conversation whose open or latest turn the engine opened itself', () => {
+  test('marks a conversation whose open or latest turn the engine opened itself, as a work fact', () => {
     const base: OrchestrationSessionSummary = {
       ...attachedButIdle,
       controlMode: 'station-owned',
       answerability: { answerable: true },
     };
-    const item = (session: OrchestrationSessionSummary) =>
-      buildHomeWorkItems({ chats: {}, agents: [], sessions: [session] })[0]!;
-    expect(
-      item({ ...base, latestTurnTrigger: 'provider' }).engineOpenedTurn,
-    ).toBe(true);
-    expect(item(base).engineOpenedTurn).toBeUndefined();
+    const fact = (session: OrchestrationSessionSummary) => {
+      const items = buildHomeWorkItems({
+        chats: {},
+        agents: [],
+        sessions: [session],
+      });
+      // Not a projected item field: the Home role projection is unchanged.
+      expect(items[0]).not.toHaveProperty('engineOpenedTurn');
+      return buildWorkFacts({ items, sessions: [session] }).get(items[0]!.id)
+        ?.engineOpenedTurn;
+    };
+    expect(fact({ ...base, latestTurnTrigger: 'provider' })).toBe(true);
+    expect(fact(base)).toBeUndefined();
     const open = (trigger?: 'provider'): OrchestrationSessionSummary => ({
       ...base,
       // A person's send now running after an engine-opened turn.
@@ -1056,8 +1063,8 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
         },
       },
     });
-    expect(item(open()).engineOpenedTurn).toBeUndefined();
-    expect(item(open('provider')).engineOpenedTurn).toBe(true);
+    expect(fact(open())).toBeUndefined();
+    expect(fact(open('provider'))).toBe(true);
   });
 
   test('a stopped turn with a running child is Running until that child settles', () => {

@@ -174,7 +174,7 @@ export function isInboxDismissed(
   // notification) is nobody's new message: it does not undo a dismissal
   // unless it fails, stops or needs the person.
   if (
-    item.engineOpenedTurn &&
+    facts?.engineOpenedTurn &&
     QUIET_LIFECYCLES.has(item.lifecycleLabel) &&
     QUIET_LIFECYCLES.has(entry.lifecycle)
   )
