@@ -1,10 +1,7 @@
 import type { MobileDeviceSession } from '@kontourai/station-contracts/mobile-device';
-import type {
-  BrowserPaneAccessView,
-  BrowserSessionView,
-} from '@kontourai/station-contracts/workspace-browser-pane';
+import type { BrowserSessionView } from '@kontourai/station-contracts/workspace-browser-pane';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -54,15 +51,6 @@ import {
   useAutoHide,
 } from '../live-surface/LiveSurfaceViewerControls';
 import {
-  BrowserImmersiveNav,
-  type BrowserNavAction,
-} from '../workspace-panes/browser-pane/BrowserImmersiveNav';
-import { BrowserPageDialog } from '../workspace-panes/browser-pane/BrowserPageDialog';
-import {
-  browserPaneApi,
-  describeBrowserFailure,
-} from '../workspace-panes/browser-pane/browserPaneApi';
-import {
   DeviceFoldSettings,
   DevicePostureControl,
 } from '../workspace-panes/device/DeviceFoldControls';
@@ -74,6 +62,21 @@ import {
   deviceOsLabel,
 } from '../workspace-panes/device/deviceScreen';
 import { AgentDeviceReveal } from './AgentDeviceReveal';
+import { BrowserSessionSurface } from './BrowserSessionSurface';
+import {
+  type FloatFetch,
+  FloatReadError,
+  floatReadDelay,
+  readEnvelope,
+  useBrowserSessionReads,
+} from './useBrowserSessionReads';
+
+export {
+  type FloatFetch,
+  FloatReadError,
+  floatReadDelay,
+} from './useBrowserSessionReads';
+
 import { pickAutoFloatCandidate } from './autoFloatCandidate';
 import {
   clampFloatPosition,
@@ -90,6 +93,7 @@ import {
   resolveFloatFrame,
 } from './floatLayout';
 import {
+  browserShownSourceKey,
   type DeviceFloatSource,
   type FloatSource,
   floatSourceKey,
@@ -123,6 +127,7 @@ import {
 } from './recentDriver';
 import {
   isSourceShown,
+  useFloatSourceVisibility,
   useShownSourcesVersion,
   useSourceShown,
 } from './shownSources';
@@ -157,24 +162,6 @@ import './FloatOverChat.css';
 export const FLOAT_NARROW_WIDTH = 360;
 /** How often the Project's sessions are re-read for auto-float. */
 const FLOAT_POLL_MS = 5_000;
-/** The ceiling a run of transient failures backs the poll off to. */
-const FLOAT_POLL_MAX_MS = 60_000;
-
-/** The SDK's authenticated fetch, or a test's stand-in. */
-export type FloatFetch = typeof authenticatedFetch;
-
-/** A route answered with something other than a usable 200. */
-export class FloatReadError extends Error {
-  constructor(
-    readonly status: number,
-    /** The route's typed refusal (`code`), when it named one. */
-    readonly code?: string,
-  ) {
-    super(`Float read unavailable (HTTP ${status})`);
-    this.name = 'FloatReadError';
-  }
-}
-
 /**
  * Whether a failed read of a floated device's host is worth asking again.
  * Only a host that said it is briefly busy (503 `device-host-busy`) or a
@@ -198,70 +185,6 @@ function deviceFloatNotice(name: string, error: unknown): string {
       return `The device host for ${name} answered with sessions Station could not trust, so it is not floating.`;
   }
   return `${name} could not be shown here, so it is not floating.`;
-}
-
-/**
- * When to read again after a read. A 403 (not the operator or a Project
- * admin) or a 404 (no browser on this Station) is an answer: stop. Any other
- * failure is transient: back off (5 s, 10 s, 20 s … up to a minute) and keep
- * asking, so a restart or a dropped relay never ends auto-float for good.
- * `settled` is for a read that only needs one success (the access check).
- */
-export function floatReadDelay(
-  error: unknown,
-  failures: number,
-  settled: false | number,
-): number | false {
-  if (error === null) return settled;
-  if (
-    error instanceof FloatReadError &&
-    (error.status === 403 || error.status === 404)
-  )
-    return false;
-  return Math.min(
-    FLOAT_POLL_MS * 2 ** Math.max(0, failures - 1),
-    FLOAT_POLL_MAX_MS,
-  );
-}
-
-async function readEnvelope(
-  fetcher: FloatFetch,
-  url: string,
-  signal: AbortSignal,
-): Promise<unknown> {
-  const response = await fetcher(url, { signal });
-  const envelope = (await response.json().catch(() => null)) as {
-    success?: boolean;
-    data?: unknown;
-    code?: unknown;
-  } | null;
-  if (!response.ok || envelope?.success !== true)
-    throw new FloatReadError(
-      response.status,
-      typeof envelope?.code === 'string' ? envelope.code : undefined,
-    );
-  return envelope.data;
-}
-
-/**
- * Read here rather than through the Browser pane's `browserPaneApi`: that
- * module lives in the pane's chunks, and importing it from this one splits
- * it into a chunk of its own that the entry bundle then has to name as a
- * preload dependency — bytes on every cold load, for two GETs.
- */
-async function readProjectBrowserSessions(
-  fetcher: FloatFetch,
-  apiBase: string,
-  projectSlug: string,
-  signal: AbortSignal,
-): Promise<BrowserSessionView[]> {
-  const data = await readEnvelope(
-    fetcher,
-    `${apiBase}/api/browser/sessions?projectSlug=${encodeURIComponent(projectSlug)}`,
-    signal,
-  );
-  if (!Array.isArray(data)) throw new FloatReadError(200);
-  return data as BrowserSessionView[];
 }
 
 /**
@@ -321,20 +244,6 @@ function deviceSessionOf(
   );
 }
 
-/** Whether this viewer may use the browser here, and as which principal. */
-async function readBrowserAccess(
-  fetcher: FloatFetch,
-  apiBase: string,
-  projectSlug: string,
-  signal: AbortSignal,
-): Promise<BrowserPaneAccessView> {
-  return (await readEnvelope(
-    fetcher,
-    `${apiBase}/api/browser/projects/${encodeURIComponent(projectSlug)}/access`,
-    signal,
-  )) as BrowserPaneAccessView;
-}
-
 /**
  * The floater for one chat, mounted by `FloatOverChat` once its marker is in
  * the document. `anchor` is that marker.
@@ -389,63 +298,15 @@ export function FloatOverChatHost({
   // The browser reads run to auto-float, or to follow a floated browser;
   // a floated device needs neither.
   const browserReads = source === null ? autoFloat : source.kind === 'browser';
-  // Consecutive failures per read, for the back-off (reset by a success).
-  const accessFailures = useRef(0);
-  const sessionFailures = useRef(0);
-  const access = useQuery({
-    queryKey: ['float-over-chat', apiBase, 'access', projectSlug],
-    queryFn: async ({ signal }) => {
-      try {
-        const view = await readBrowserAccess(
-          transport,
-          apiBase,
-          projectSlug,
-          signal,
-        );
-        accessFailures.current = 0;
-        return view;
-      } catch (error) {
-        accessFailures.current += 1;
-        throw error;
-      }
-    },
-    enabled: browserReads,
-    retry: false,
-    staleTime: Number.POSITIVE_INFINITY,
-    // One success is the answer; a 403/404 is too; anything else is retried.
-    refetchInterval: (query) =>
-      floatReadDelay(query.state.error, accessFailures.current, false),
-  });
+  const hostScope = useHostRequestAuthorityScope();
+  const { access, sessions } = useBrowserSessionReads(
+    apiBase,
+    hostScope?.authorityKey ?? '',
+    projectSlug,
+    transport,
+    browserReads,
+  );
   const principalKey = access.data?.principalKey ?? null;
-  const sessions = useQuery({
-    queryKey: ['float-over-chat', apiBase, 'sessions', projectSlug],
-    queryFn: async ({ signal }) => {
-      try {
-        const list = await readProjectBrowserSessions(
-          transport,
-          apiBase,
-          projectSlug,
-          signal,
-        );
-        sessionFailures.current = 0;
-        // Stamped where the data ARRIVES (#2444): a remount that reads
-        // cached data sees how long ago it really came, on the monotonic
-        // clock the agent-driving window is measured in.
-        return { list, receivedAt: performance.now() };
-      } catch (error) {
-        sessionFailures.current += 1;
-        throw error;
-      }
-    },
-    // Only once the access check says this viewer may use the browser here
-    // (the list route answers a 200 with an empty list to anyone, so it
-    // cannot say that), and only while it can matter: to auto-float, or to
-    // notice that the floated session went away.
-    enabled: access.isSuccess && browserReads,
-    retry: false,
-    refetchInterval: (query) =>
-      floatReadDelay(query.state.error, sessionFailures.current, FLOAT_POLL_MS),
-  });
   // A floated device: its host's session list, as THIS viewer may see it
   // under the Project it was floated from.
   const deviceFailures = useRef(0);
@@ -565,7 +426,13 @@ export function FloatOverChatHost({
       list,
       { projectSlug, threadIds, principalKey },
       (key) => {
-        const shown = isSourceShown(key);
+        const shown = isSourceShown(
+          browserShownSourceKey(
+            key.slice('browser:'.length),
+            apiBase,
+            hostScope?.authorityKey,
+          ),
+        );
         return (
           isFloatHandedOff(conversationKey, key, shown) ||
           shown ||
@@ -592,7 +459,26 @@ export function FloatOverChatHost({
   ]);
 
   const sourceKey = source ? floatSourceKey(source) : null;
-  const shownInPane = useSourceShown(sourceKey);
+  const visibilityKey =
+    source?.kind === 'browser'
+      ? browserShownSourceKey(
+          source.browserSessionId,
+          apiBase,
+          hostScope?.authorityKey,
+        )
+      : sourceKey;
+  const shownInPane = useSourceShown(visibilityKey);
+  const browserCandidate =
+    source?.kind === 'browser' &&
+    list?.some(
+      (candidate) =>
+        candidate.browserSessionId === source.browserSessionId &&
+        candidate.state === 'live' &&
+        candidate.surfaceId === source.surfaceId,
+    );
+  const ownsBrowserView = useFloatSourceVisibility(
+    browserCandidate ? visibilityKey : null,
+  );
   const deviceHandedOff =
     source?.kind === 'device' && sourceKey !== null
       ? isFloatHandedOff(conversationKey, sourceKey, shownInPane)
@@ -612,7 +498,15 @@ export function FloatOverChatHost({
         float
       />
       {noticeCard}
-      {source && !shownInPane && !deviceHandedOff ? renderSource(source) : null}
+      {browserCandidate && !shownInPane && !ownsBrowserView ? (
+        <p role="status">Browser is shown in another view.</p>
+      ) : null}
+      {source &&
+      !shownInPane &&
+      !deviceHandedOff &&
+      (source.kind !== 'browser' || ownsBrowserView)
+        ? renderSource(source)
+        : null}
     </>
   );
 
@@ -652,6 +546,7 @@ export function FloatOverChatHost({
         session={session}
         receivedAt={receivedAt}
         apiBase={apiBase}
+        authorityKey={hostScope?.authorityKey ?? ''}
         transport={transport}
         agentActionsEnabled={access.data?.experiencePreviewEnabled === true}
       />
@@ -917,6 +812,7 @@ function BrowserFloat({
   session,
   receivedAt,
   apiBase,
+  authorityKey,
   transport,
   agentActionsEnabled,
 }: {
@@ -927,63 +823,12 @@ function BrowserFloat({
   /** When the list carrying `session` arrived (`performance.now()`). */
   receivedAt: number | undefined;
   apiBase: string;
+  authorityKey: string;
   transport: FloatFetch;
   agentActionsEnabled: boolean;
 }) {
   const host = hostOf(session.url);
   const openBrowser = useOpenBrowserSessionInRegion();
-  const queryClient = useQueryClient();
-  const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
-  const pendingDialog = session.pendingDialog;
-  // One stable reporter per upstream callback: the canvas re-reports its
-  // control state whenever this prop changes, so a fresh closure per render
-  // would loop (report → state → render → new closure → report).
-  const reporters = useRef(
-    new WeakMap<
-      (state: LiveSurfaceControlState) => void,
-      (state: LiveSurfaceControlState) => void
-    >(),
-  );
-  const reportControl = (
-    upstream: (state: LiveSurfaceControlState) => void,
-  ) => {
-    let reporter = reporters.current.get(upstream);
-    if (!reporter) {
-      reporter = (state) => {
-        upstream(state);
-        setControl(state);
-      };
-      reporters.current.set(upstream, reporter);
-    }
-    return reporter;
-  };
-  const answer = useMutation({
-    mutationFn: (reply: {
-      dialogId: string;
-      accept: boolean;
-      promptText?: string;
-    }) =>
-      browserPaneApi(apiBase, transport).answerDialog(
-        session.browserSessionId,
-        reply,
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: ['float-over-chat', apiBase, 'sessions', session.projectSlug],
-      }),
-  });
-  const navigate = useMutation({
-    mutationFn: (action: BrowserNavAction) =>
-      browserPaneApi(apiBase, transport).history(
-        session.browserSessionId,
-        action,
-        session.generation,
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: ['float-over-chat', apiBase, 'sessions', session.projectSlug],
-      }),
-  });
   const { projectId, browserSessionId } = session;
   const openInPanel = useMemo(() => {
     if (!openBrowser) return null;
@@ -1014,68 +859,15 @@ function BrowserFloat({
       agentInput={agentInputOf(session, receivedAt)}
       openInPanel={openInPanel}
       renderSurface={(onControlState) => (
-        <div className="float-over-chat__browser">
-          <LiveSurfaceCanvas
-            apiBase={apiBase}
-            surfaceId={source.surfaceId}
-            label={`Browser: ${host}`}
-            transport={transport}
-            hostControls
-            inputRequiresLease
-            agentActionsEnabled={agentActionsEnabled}
-            onControlState={reportControl(onControlState)}
-            renderImmersiveActions={() => (
-              <BrowserImmersiveNav
-                part="address"
-                host={host}
-                disabled={control?.tone !== 'you' || navigate.isPending}
-                onAction={(action) => navigate.mutate(action)}
-              />
-            )}
-            renderImmersiveMenu={() => (
-              <BrowserImmersiveNav
-                part="navigation"
-                host={host}
-                disabled={control?.tone !== 'you' || navigate.isPending}
-                onAction={(action) => navigate.mutate(action)}
-              />
-            )}
-            // A dialog the page holds for the person driving from here is
-            // answered here too: otherwise the float is a page that refuses
-            // every click for no visible reason (#90). Drawn by the live
-            // view, so it stays over the page in full screen as well.
-            overlay={
-              pendingDialog ? (
-                <div className="float-over-chat__dialog-layer float-over-chat__dialog-layer--compact">
-                  <BrowserPageDialog
-                    compact
-                    key={pendingDialog.dialogId}
-                    dialog={pendingDialog}
-                    pageHost={host}
-                    pending={answer.isPending}
-                    error={
-                      answer.isError
-                        ? describeBrowserFailure(answer.error)
-                        : null
-                    }
-                    onAnswer={(reply) =>
-                      answer.mutate({
-                        dialogId: pendingDialog.dialogId,
-                        ...reply,
-                      })
-                    }
-                    {...(openInPanel
-                      ? { onOpenInPane: () => void openInPanel() }
-                      : {})}
-                    {...(control?.tone === 'you'
-                      ? { onKeepAlive: () => void control.keepControlAlive() }
-                      : {})}
-                  />
-                </div>
-              ) : null
-            }
-          />
-        </div>
+        <BrowserSessionSurface
+          session={session}
+          apiBase={apiBase}
+          authorityKey={authorityKey}
+          transport={transport}
+          agentActionsEnabled={agentActionsEnabled}
+          onControlState={onControlState}
+          openInPanel={openInPanel}
+        />
       )}
     />
   );

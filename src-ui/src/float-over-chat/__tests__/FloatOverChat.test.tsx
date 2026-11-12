@@ -733,7 +733,7 @@ describe('who is driving, when no one holds the lease (owner decision, D9)', () 
     renderFloat(chatArea().area);
     await screen.findByTestId('float-canvas');
     expect(
-      screen.getByRole('button', {
+      await screen.findByRole('button', {
         name: 'Floating browser controls. No one is in control.',
       }),
     ).toBeTruthy();
@@ -1409,4 +1409,17 @@ describe('on a touch screen (pointerType touch)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Full screen' }));
     expect(h.enterImmersive).toHaveBeenCalledTimes(1);
   });
+});
+
+test('two float hosts share one browser viewer and transfer it on unmount', async () => {
+  const first = renderFloat(chatArea().area);
+  await screen.findByTestId('float-canvas');
+  renderFloat(chatArea().area);
+  await waitFor(() =>
+    expect(screen.getAllByTestId('float-canvas')).toHaveLength(1),
+  );
+  first.unmount();
+  await waitFor(() =>
+    expect(screen.getAllByTestId('float-canvas')).toHaveLength(1),
+  );
 });

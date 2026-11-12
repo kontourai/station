@@ -12,6 +12,9 @@ import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
+import { useBrowserActivityScope } from './BrowserActivityContext';
+import { BrowserActivityRun, isBrowserActivityRun } from './BrowserActivityRun';
+import { splitBrowserActivityRuns } from './browser-activity-calls';
 import { FilePartPreview } from './FilePartPreview';
 import { HostImagesContext, STREAMING_HOST_IMAGES } from './HostImagesContext';
 import { InputRequestRecordRow } from './InputRequestRecordRow';
@@ -148,6 +151,7 @@ function StreamingMessageWithApps({
   contentRevision: number;
   appTools: ReadonlySet<string>;
 }) {
+  const browserScope = useBrowserActivityScope();
   const isMobile = useIsMobile();
   // The status-labelled wait's clock: this row's mount, exactly as before
   // #2304. It is not the wait's own start — nothing resets it when the status
@@ -197,7 +201,9 @@ function StreamingMessageWithApps({
       ),
     [contentParts, streamingText, appTools, showReasoning, renderReasoning],
   );
-  const blocks = useTranscriptChildBlocks(baseBlocks);
+  const blocks = useTranscriptChildBlocks(
+    browserScope ? splitBrowserActivityRuns(baseBlocks) : baseBlocks,
+  );
   // As the settled row: a call that spawned child work is drawn as its card.
   const cardCallIds = new Set(
     useTranscriptChildrenForCalls(
@@ -267,6 +273,15 @@ function StreamingMessageWithApps({
               <SubagentTranscriptCard key={block.key} child={block.child} />
             );
           if (block.type === 'tool-call-run') {
+            if (browserScope && renderToolCall && isBrowserActivityRun(block))
+              return (
+                <BrowserActivityRun
+                  key={block.key}
+                  run={block}
+                  active
+                  renderCall={renderToolCall}
+                />
+              );
             const renderInterlude = (part: ChatContentPart, index: number) =>
               renderReasoning?.(
                 part.content ?? '',
