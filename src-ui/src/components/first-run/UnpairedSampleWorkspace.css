@@ -5,8 +5,7 @@
   flex-direction: column;
   background: var(--bg-primary);
   color: var(--text-primary);
-  /* Covers the app; dialogs and the offline launcher stay above it. */
-  z-index: var(--k-z-overlay);
+  z-index: 40;
 }
 
 .unpaired-sample__banner {

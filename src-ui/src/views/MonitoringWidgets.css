@@ -95,9 +95,9 @@
   background: var(--health-success);
 }
 
-/* Only a connection in progress moves; a settled state is a static dot. The
-   base rule used to pulse, and `.status-dot` is shared with the integration
-   list, so a connected integration pulsed forever once this sheet loaded. */
+/* Settled dots are static. The base rule used to pulse, and `.status-dot` is
+   shared with the integration list, so every integration dot pulsed forever
+   once this sheet loaded. No component emits `.status-dot-connecting` today. */
 .status-dot-connecting {
   background: var(--health-warning);
   animation: statusPulse var(--motion-status-breathe) var(--ease-standard)

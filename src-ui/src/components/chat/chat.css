@@ -507,12 +507,6 @@
   position: relative;
 }
 
-/* A message sent from a saved prompt: a static accent edge marks it. */
-.message--from-prompt {
-  background: var(--k-panel-raised);
-  border-left: 3px solid var(--k-action);
-  position: relative;
-}
 
 .message__trace {
   position: absolute;
