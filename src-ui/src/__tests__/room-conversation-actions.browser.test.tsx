@@ -180,7 +180,8 @@ test('Escape closes More actions from its trigger, and focus stays on the trigge
 
     // A long press on that message opens it too; with nothing enabled to
     // focus, focus goes to its More button, where Escape closes it.
-    await page.locator('body').focus();
+    await page.locator('.room-conversation__scroller').focus();
+    expect(await active()).toBe('Messages in #general');
     const box = (await page.getByText('Message 5').boundingBox())!;
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent', {
