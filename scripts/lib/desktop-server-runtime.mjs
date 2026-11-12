@@ -52,7 +52,9 @@ function resolvePackageRoot(packageName, fromRoot) {
       if (
         pkg.name === packageName ||
         (packageName === 'zod-from-json-schema-v3' &&
-          pkg.name === 'zod-from-json-schema')
+          pkg.name === 'zod-from-json-schema') ||
+        (packageName === '@kontourai/surface-knowledge' &&
+          pkg.name === '@kontourai/surface')
       ) {
         return packageRoot;
       }

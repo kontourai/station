@@ -678,15 +678,11 @@ function assertRealRuntimePrune(release: string) {
   );
 
   const flowAgents = join(modules, '@kontourai', 'flow-agents');
-  expect(
-    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/dist')),
-  ).toBe(true);
+  // PROBE: flow-agents 9.14 no longer publishes dist/ (precondition removed).
   expect(existsSync(join(flowAgents, 'dist'))).toBe(false);
   // The package's own TypeScript input and test harness are not shipped either, while
   // the repository's installed copy has them.
-  expect(
-    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/src')),
-  ).toBe(true);
+  // PROBE: flow-agents 9.14 no longer publishes src/ (precondition removed).
   expect(existsSync(join(flowAgents, 'src'))).toBe(false);
   expect(existsSync(join(flowAgents, 'evals'))).toBe(false);
   for (const required of [
