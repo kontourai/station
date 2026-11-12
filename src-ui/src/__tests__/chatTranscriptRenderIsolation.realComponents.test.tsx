@@ -96,7 +96,6 @@ function selectTranscript(state: ChatUIState | null): ChatSession | null {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
   };
 }
 

@@ -109,7 +109,6 @@ export function buildTranscriptSession(
     error: state.error ?? null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationStatus: state.orchestrationStatus,
     pendingApprovals: state.pendingApprovals,
     // Answered here, still open on the server: the transcript subtracts these

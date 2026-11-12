@@ -2218,6 +2218,43 @@ Renames a conversation and invalidates that agent's conversation list on success
 
 Deletes a conversation, invalidates that agent's conversation list, and removes its cached message query on success.
 
+### Read markers
+
+Unread state is kept by the server (see
+[read marker contracts](contracts.md#read-marker-contracts)). Conversation
+inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
+rather than comparing `acknowledgedAt` or `updatedAt` yourself. `version` is
+the conversation's content version: a monotonic, opaque number that moves only
+when readable content arrives, never its `updatedAt`. Compare it only with
+versions of the same conversation. `{ version, unavailable: true }` means the
+server could not read it: show it as unknown, never as read.
+
+- `useAcknowledgeConversationMutation()` takes `{ conversationId, updatedAt,
+  readVersion? }`: `readVersion` is the content version the client rendered
+  (`readState.version`) and is what the server marks read; `updatedAt` is the
+  inventory version shown, kept as "last viewed". With `readVersion` the
+  cached row reads as read at once; if the server refuses, the row is restored
+  and the mutation rejects. Without it (older callers) the server records only
+  "last viewed" and marks nothing read, so the row stays unread. An unknown
+  row stays unknown until the server answers.
+- `acknowledgeConversation(apiBase, conversationId, updatedAt, opts?,
+  readVersion?)` is the same call without React Query.
+- `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
+  the same immediate update for an agent conversation.
+- `useReadMarkerSummaryQuery(targets, config?)` reads up to 100 agent
+  conversations, Project rooms (`{ kind: 'project-room', projectSlug,
+  roomId }`) and Task rooms (`{ kind: 'task-room', taskId }`) in one request.
+  It is disabled for an empty list.
+- `markRead(apiBase, target, version)` and
+  `fetchReadMarkerSummary(apiBase, targets)` are the same calls without React
+  Query. `readMarkerQueries` owns the cache keys.
+
+Gate the summary and mark calls on the handshake's `readMarkers` flag: an
+older host answers them 404. Open clients of the same person refresh on their
+own: the shared orchestration event stream re-reads the inventory and
+read-marker queries when that person's marker moves, coalesced with the
+inventory's own refresh.
+
 ### `useCreateProjectMutation(requestScope?)`
 
 `useCreateProjectMutation(requestScope?)` accepts an optional captured host
@@ -6624,8 +6661,8 @@ browser fixtures do not establish native/installed/release qualification.
 `@kontourai/station-sdk/workspace-file-preview` exports
 `readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
 Pass the render-captured request scope and abort signal in `options`. The
-read-only POST returns a validated HTML page plus isolated frame origin, or a
-bounded raster preview. `thread` selects an authorized Session workspace;
+read-only POST returns a validated HTML page, plus the isolated frame origin
+for a browser on the Station host, or a bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL. A failed
 read throws `WorkspaceVisualFileError` with `status` and a `reason`

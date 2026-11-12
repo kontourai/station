@@ -2242,6 +2242,74 @@ they are not all reported as bad requests.
 
 ---
 
+## Read markers
+
+The [read marker routes](../../src-server/routes/read-markers/read-marker-routes.ts)
+read and advance the caller's own unread state for agent conversations, Project
+rooms and Task rooms ([contracts](contracts.md#read-marker-contracts)). The
+handshake advertises them as `readMarkers`. Both are `orchestration:read` for
+paired devices: each writes only the caller's markers, and each target is
+re-read under the caller's own conversation or room authority.
+
+```http
+POST /api/read-markers/summary
+{ "targets": [{ "kind": "agent-conversation", "conversationId": "…" },
+              { "kind": "project-room", "projectSlug": "launch", "roomId": "…" },
+              { "kind": "task-room", "taskId": "…" }] }
+```
+
+The response holds one item per target, in request order:
+`{ target, latestVersion, seenVersion, unread, unreadCount? }`, or
+`{ target, unavailable: true }`. More than 100 targets is a 400 with
+`read_marker_too_many_targets`.
+
+```http
+POST /api/read-markers/mark
+{ "target": { "kind": "agent-conversation", "conversationId": "…" }, "version": 1794414034117 }
+```
+
+The response is the resulting state. An older version answers the stored
+state and changes nothing. A version above the current one is a 409 with
+`read_marker_future_version` and `latestVersion`. A conversation the caller
+cannot read is a 404, and a caller that is not a person a 403 (on a hosted
+Station, a request that carries only the tenant). A marker store that does
+not decode for the caller is a 503, never an answer of "read". A file-backed
+conversation id keeps the conversation id contract (ids such as
+`human:tailscale-serve:casey@example.test:…` are valid); one with a path
+separator, a `.` or `..` segment, a control character such as NUL, or an
+encoded separator (`%2F`, `%5C`) names no file, and the stored record must
+carry exactly the requested id; anything else is a 404. A marker that moves is
+announced as `read-markers:changed` on that person's own
+`GET /api/orchestration/events` streams, with an empty payload; whose streams
+those are is checked again for every change, so a device that loses owner
+standing stops receiving the owner's changes at once.
+
+History from before read state began reads as seen only for the personal
+owner (`personal:owner`: the local operator and devices with owner standing).
+Any other caller, including a visitor device and every person on a hosted
+Station, sees that history as unread until it is rendered.
+
+An agent conversation's version is its content version: a monotonic number
+from the event store that moves only when readable transcript content is
+appended (a prompt, assistant text, a tool result, host images, a turn
+completing, ending unfinished or failing), never on lifecycle bookkeeping.
+`GET /api/conversations` items carry it as `readState.version`, or
+`readState: { version, unavailable: true }` when the caller's read state
+cannot be read; the conversations are listed either way.
+
+```http
+POST /api/conversations/:id/acknowledgement
+{ "updatedAt": "2026-11-11T10:15:00.000Z", "readVersion": 41 }
+```
+
+`readVersion` is the content version the client rendered and is what is marked
+read; above the current one it is a 409. `updatedAt` is the inventory version
+shown, recorded as "last viewed" (`acknowledgedAt`, Home's Just finished) and
+refused above the current `updatedAt`. A request without `readVersion` (an
+older client) records only "last viewed" and marks nothing read: what it saw
+cannot be known from a timestamp, so its conversations stay unread until it
+sends `readVersion`.
+
 ## Conversation Management
 
 The [conversation routes](../../src-server/routes/chat/conversations.ts) combine

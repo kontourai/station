@@ -95,7 +95,6 @@ function session(turns: number, tail = '') {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle' as const,
     createdAt: 1,
     updatedAt: 1,

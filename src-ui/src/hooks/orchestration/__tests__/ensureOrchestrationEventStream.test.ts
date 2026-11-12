@@ -2,7 +2,7 @@ import type {
   FetchSseConnection,
   FetchSseOptions,
 } from '@kontourai/station-sdk/client';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applyOrchestrationSnapshot = vi.fn();
@@ -123,6 +123,122 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       releaseRetired();
       client.clear();
       retired.clear();
+    }
+  });
+
+  test('#3075: a read-marker change re-reads the inventory and read-marker queries for this stream’s authority only', () => {
+    const apiBase = 'https://read-markers-changed.example.test';
+    const client = new QueryClient();
+    const matching = [
+      ['conversation-inventory'],
+      ['conversation-inventory', apiBase, 'current'],
+      ['read-markers', 'summary', ['agent-conversation:c1']],
+    ];
+    const foreign = [
+      ['conversation-inventory', apiBase, 'retired'],
+      ['conversation-inventory', 'https://other.example.test', 'current'],
+      ['orchestration-sessions', apiBase, 'current'],
+    ];
+    const releaseScope = registerOrchestrationStreamQueryClient(
+      apiBase,
+      client,
+      'current',
+    );
+    const release = ensureOrchestrationEventStream(apiBase, client);
+    try {
+      for (const key of [...matching, ...foreign]) client.setQueryData(key, []);
+      capturedOnMessage()({ event: 'read-markers:changed', data: '{}' });
+      for (const key of matching)
+        expect(
+          client.getQueryState(key)?.isInvalidated,
+          JSON.stringify(key),
+        ).toBe(true);
+      for (const key of foreign)
+        expect(
+          client.getQueryState(key)?.isInvalidated,
+          JSON.stringify(key),
+        ).toBe(false);
+    } finally {
+      release();
+      releaseScope();
+      client.clear();
+    }
+  });
+
+  test('#3075 review: a burst of read-marker changes refetches each read-state query a bounded number of times and never cancels a refetch', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const apiBase = 'https://read-markers-burst.example.test';
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const releaseScope = registerOrchestrationStreamQueryClient(
+      apiBase,
+      client,
+      'current',
+    );
+    const release = ensureOrchestrationEventStream(apiBase, client);
+    const fetches = { inventory: 0, dockInventory: 0, summary: 0 };
+    let cancelled = 0;
+    const settle: Array<() => void> = [];
+    const observe = (
+      queryKey: readonly unknown[],
+      kind: keyof typeof fetches,
+    ) =>
+      new QueryObserver(client, {
+        queryKey,
+        queryFn: ({ signal }) => {
+          fetches[kind] += 1;
+          signal.addEventListener('abort', () => {
+            cancelled += 1;
+          });
+          return new Promise<string[]>((resolve) => {
+            settle.push(() => resolve([]));
+          });
+        },
+      }).subscribe(() => {});
+    const settleAll = async () => {
+      for (const done of settle.splice(0)) done();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    const stops = [
+      observe(['conversation-inventory', apiBase, 'current'], 'inventory'),
+      // The dock's own inventory query names no read target, so its key is
+      // unscoped (`useConversationInventoryQuery()`); it must refresh too.
+      observe(['conversation-inventory'], 'dockInventory'),
+      observe(
+        ['read-markers', 'summary', ['agent-conversation:c1']],
+        'summary',
+      ),
+    ];
+    try {
+      await settleAll();
+      expect(fetches).toEqual({ inventory: 1, dockInventory: 1, summary: 1 });
+
+      // 25 marks from another client, the first refetch still in flight.
+      for (let i = 0; i < 25; i += 1) {
+        capturedOnMessage()({ event: 'read-markers:changed', data: '{}' });
+        await vi.advanceTimersByTimeAsync(10);
+      }
+      // Well past the refresh window, settling every read along the way.
+      for (let i = 0; i < 4; i += 1) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        await settleAll();
+      }
+
+      expect(cancelled).toBe(0);
+      // At most one refetch now and one trailing refetch for the burst.
+      expect(fetches.inventory - 1).toBeGreaterThanOrEqual(1);
+      expect(fetches.inventory - 1).toBeLessThanOrEqual(2);
+      expect(fetches.summary - 1).toBeGreaterThanOrEqual(1);
+      expect(fetches.summary - 1).toBeLessThanOrEqual(2);
+      expect(fetches.dockInventory - 1).toBeGreaterThanOrEqual(1);
+      expect(fetches.dockInventory - 1).toBeLessThanOrEqual(2);
+    } finally {
+      for (const stop of stops) stop();
+      release();
+      releaseScope();
+      client.clear();
+      vi.useRealTimers();
     }
   });
 
