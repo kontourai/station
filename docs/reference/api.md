@@ -1096,8 +1096,10 @@ reacted. The stored message row is never rewritten.
   Past a limit the server refuses with `429 project_room_capacity`. Files use
   the Task room's limits: at most 5 per message, 5 MiB each and 15 MiB in all,
   as images, PDF, text, Markdown, CSV or JSON (`400 project_room_invalid`). An
-  uploaded file can be sent in one message, in the room it was uploaded to.
-  Its bytes can be read only while that message stands.
+  uploaded file can be sent only by the person who uploaded it, in one
+  message, in the room it was uploaded to. Its bytes can be read only while
+  that message stands. Account-bound devices may upload and read room files;
+  unlike Task-room files, these never reach an Agent request.
 - **Read state.** Reactions, edits and deletes do not move the room's
   `checkpoint.lastSeq`, which read markers count, so they never mark a channel
   unread. They do wake `/events`, which sends `changed` with the same `lastSeq`

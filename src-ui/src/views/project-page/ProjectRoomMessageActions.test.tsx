@@ -226,6 +226,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(window, 'matchMedia');
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
 });
@@ -435,4 +436,70 @@ test('a host without message actions keeps the room as it was', async () => {
   // Reactions others made still show; they just cannot be changed here.
   const pill = screen.getByRole('button', { name: '👍 2: Jo and You' });
   expect(pill.matches(':disabled')).toBe(true);
+});
+
+/** A phone: touch keyboard, coarse pointer and the mobile breakpoint. */
+function emulatePhone() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: /coarse|hover: none|max-width/.test(query),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
+test('on a touch phone, ⋯ opens a labelled menu: focus moves in, Delete is destructive, Esc returns to ⋯', async () => {
+  emulatePhone();
+  mount();
+  const own = await row('Good catch, updating now.');
+  // No unlabelled icon bar on touch: the actions live behind ⋯.
+  expect(within(own).queryByRole('toolbar')).toBe(null);
+  const more = within(own).getByRole('button', { name: /^More actions for/ });
+  fireEvent.click(more);
+  const menu = await screen.findByRole('menu');
+  const items = within(menu).getAllByRole('menuitem');
+  expect(items.map((item) => item.textContent?.trim())).toEqual([
+    'React',
+    'Reply',
+    'Edit',
+    'Delete',
+  ]);
+  await waitFor(() => expect(document.activeElement).toBe(items[0]));
+  expect(items[3]!.className).toContain('action-overflow__row--danger');
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('menu')).toBe(null));
+  expect(document.activeElement).toBe(more);
+  // Someone else's message with reactions offers who reacted, not Edit.
+  fireEvent.click(
+    within(await row('Pricing copy is ready.')).getByRole('button', {
+      name: /^More actions for/,
+    }),
+  );
+  const theirs = await screen.findByRole('menu');
+  expect(
+    within(theirs)
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent?.trim()),
+  ).toEqual(['React', 'Reply', 'Who reacted']);
+  // Delete from the menu still asks first.
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  fireEvent.click(
+    within(own).getByRole('button', { name: /^More actions for/ }),
+  );
+  fireEvent.click(
+    within(await screen.findByRole('menu')).getByRole('menuitem', {
+      name: 'Delete',
+    }),
+  );
+  expect(
+    await screen.findByRole('alertdialog', { name: 'Delete this message?' }),
+  ).toBeTruthy();
 });

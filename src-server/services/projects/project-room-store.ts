@@ -1069,14 +1069,14 @@ export class ProjectRoomStore {
     );
   }
   /**
-   * The room whose message carries `attachmentId`, when that message is
-   * readable: a deleted message's files are withheld with its text.
+   * The room and author of the message that carries `attachmentId`, when that
+   * message is readable: a deleted message's files are withheld with its text.
    */
   attachmentRoom(
     scope: ProjectMembershipScope,
     attachmentId: string,
     channelId?: string,
-  ): string | null {
+  ): { roomId: string; author: ProjectRoomActor } | null {
     const { roomId } = this.room(scope, channelId);
     const row = this.db
       .prepare(
@@ -1088,7 +1088,7 @@ export class ProjectRoomStore {
     if (!message.attachments?.some((a) => a.id === attachmentId)) corrupt();
     return this.latestRevision(roomId, message.messageId)?.kind === 'delete'
       ? null
-      : roomId;
+      : { roomId, author: { ...message.actor } };
   }
   history(
     scope: ProjectMembershipScope,

@@ -3798,51 +3798,60 @@ function roomConversationScreens(): Screen[] {
                 ).toBeVisible();
               } else {
                 await expectTouchTarget(pill, 'Reaction pill');
-                // The phone's actions: React, Reply, Edit, Delete, Who reacted.
+                // The phone's actions are a labelled menu behind ⋯ (no
+                // tooltips on touch): full-width 44px rows, Delete last and
+                // destructive, focus moved in.
                 const own = messageRow(
                   'Good catch. Jonas, can you update both before we ship?',
                 );
-                await own
-                  .getByRole('button', { name: /^More actions/ })
-                  .click();
-                for (const name of [
-                  'React to Maya Chen',
-                  'Reply to Maya Chen',
-                  'Edit message',
-                  'Delete message',
+                const more = own.getByRole('button', { name: /^More actions/ });
+                await expectTouchTarget(more, 'More actions');
+                await more.click();
+                const menu = page.getByRole('menu');
+                await expect(menu.getByRole('menuitem')).toHaveText([
+                  'React',
+                  'Reply',
+                  'Edit',
                   'Who reacted',
-                ])
-                  await expectTouchTarget(
-                    own.getByRole('button', { name }),
-                    name,
-                  );
-                // The opened bar on the last message stays in view and the
-                // list keeps following the end (no Jump to latest).
+                  'Delete',
+                ]);
                 await expect(
-                  roomRegion.getByRole('button', { name: /Jump to latest/ }),
-                ).toHaveCount(0);
-                const bar = await own
-                  .getByRole('button', { name: 'Who reacted' })
-                  .boundingBox();
-                const field = await composer.boundingBox();
-                expect(
-                  bar!.y + bar!.height,
-                  'actions bar ends above the composer (px)',
-                ).toBeLessThanOrEqual(field!.y);
+                  menu.getByRole('menuitem', { name: 'React' }),
+                ).toBeFocused();
+                const menuBox = await menu.boundingBox();
+                for (const item of await menu.getByRole('menuitem').all()) {
+                  const box = await item.boundingBox();
+                  expect(
+                    Math.round(box!.height),
+                    'menu row height',
+                  ).toBeGreaterThanOrEqual(44);
+                  expect(box!.width, 'menu row spans the menu').toBeGreaterThan(
+                    menuBox!.width - 24,
+                  );
+                }
+                await expect(
+                  menu.getByRole('menuitem', { name: 'Delete' }),
+                ).toHaveClass(/action-overflow__row--danger/);
               }
             }
             if (scene === 'reaction-picker') {
               const target = messageRow(
                 'Morning! The pricing page copy is ready for review.',
               );
-              if (viewport.width === DESKTOP.width) await target.hover();
-              else
+              if (viewport.width === DESKTOP.width) {
+                await target.hover();
+                await target
+                  .getByRole('button', { name: 'React to Jonas Berg' })
+                  .click();
+              } else {
                 await target
                   .getByRole('button', { name: /^More actions/ })
                   .click();
-              await target
-                .getByRole('button', { name: 'React to Jonas Berg' })
-                .click();
+                await page
+                  .getByRole('menu')
+                  .getByRole('menuitem', { name: 'React' })
+                  .click();
+              }
               const picker = page.getByRole('dialog', { name: 'Add reaction' });
               await expect(picker).toBeVisible();
               await expect(

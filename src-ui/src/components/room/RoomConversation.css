@@ -510,7 +510,7 @@ a.room-attachments__file:focus-visible {
   grid-template-columns: var(--room-avatar-size) minmax(0, 1fr) 44px;
 }
 
-.room-conversation--more .button.room-row__more {
+.room-conversation--more .room-row__more {
   --icon-button-size: 44px;
   grid-column: 3;
   grid-row: 1;
@@ -520,6 +520,7 @@ a.room-attachments__file:focus-visible {
 }
 
 .room-conversation--more .room-row--message:focus-within .room-row__more,
+.room-conversation--more .room-row__more.is-active,
 .room-conversation--more .room-row--actions-open .room-row__more {
   color: var(--k-text);
 }
@@ -548,4 +549,12 @@ a.room-attachments__file:focus-visible {
 /* Touch and phone: icon actions are full 44px targets. */
 .room-conversation--more .room-row__actions {
   --icon-button-size: 44px;
+}
+
+/* The ⋯ that opens a row's labelled menu (ActionOverflowMenu): a quiet 44px
+   control in the same grid cell as the icon-bar ⋯. */
+.room-conversation--more .action-overflow__trigger.room-row__more {
+  width: 44px;
+  height: 44px;
+  border-color: transparent;
 }

@@ -4830,7 +4830,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/:slug/room/events' },
     // Reactions, edits and deletes (#4796, #4797) compose the room's discuss
     // tier; the room refuses edits and deletes of anyone else's message.
-    // Files (#4812): upload is discuss, a read is the room's view tier.
+    // Files (#4812): upload is discuss, a read is the room's view tier. Unlike
+    // Task-room files, they never feed an Agent request, and each is bound to
+    // its uploader (see account-bound-device-gate.ts isAccountBoundRoomLeaf).
     {
       method: 'POST',
       path: '/api/projects/:slug/room/messages/:messageId/reactions',

@@ -10,6 +10,11 @@ import {
   useState,
 } from 'react';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import {
+  ActionOverflowMenu,
+  type OverflowAction,
+  type OverflowMenuHandle,
+} from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import {
   type ChatScrollAnchor,
@@ -66,6 +71,12 @@ export interface RoomConversationRow {
   readonly footer?: ReactNode;
   /** The row's action bar: shown on hover, focus or long press. */
   readonly actions?: ReactNode;
+  /**
+   * The same actions as labelled menu rows. Where there is no hover (touch
+   * and phone layouts) the ⋯ control and a long press open these as a menu
+   * instead of the icon bar, whose icons would have no visible names there.
+   */
+  readonly menu?: readonly OverflowAction[];
   readonly tone?: 'failed' | 'pending';
   /** Written by the reader: the list follows it instead of counting it as new. */
   readonly own?: boolean;
@@ -138,6 +149,8 @@ function Row({
 }) {
   const actionsId = useId();
   const moreButton = useRef<HTMLButtonElement>(null);
+  const menuHandle = useRef<OverflowMenuHandle>(null);
+  const menuOnTouch = showMore && !!row.menu?.length;
   const rowElement = useRef<HTMLDivElement>(null);
   const actionsElement = useRef<HTMLDivElement>(null);
   // Opening by the button or a long press moves focus into the actions; with
@@ -198,32 +211,36 @@ function Row({
     press.current = undefined;
   }, []);
   useEffect(() => cancelPress, [cancelPress]);
-  const touchHandlers = row.actions
-    ? {
-        onPointerDown: (event: React.PointerEvent) => {
-          if (event.pointerType !== 'touch') return;
-          origin.current = { x: event.clientX, y: event.clientY };
-          cancelPress();
-          press.current = window.setTimeout(() => {
-            press.current = undefined;
-            onLongPress(row.id);
-          }, LONG_PRESS_MS);
-        },
-        onPointerMove: (event: React.PointerEvent) => {
-          const start = origin.current;
-          if (
-            start &&
-            Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
-          )
+  const touchHandlers =
+    row.actions || menuOnTouch
+      ? {
+          onPointerDown: (event: React.PointerEvent) => {
+            if (event.pointerType !== 'touch') return;
+            origin.current = { x: event.clientX, y: event.clientY };
             cancelPress();
-        },
-        onPointerUp: cancelPress,
-        onPointerCancel: cancelPress,
-        onContextMenu: (event: React.MouseEvent) => {
-          if (actionsOpen) event.preventDefault();
-        },
-      }
-    : {};
+            press.current = window.setTimeout(() => {
+              press.current = undefined;
+              if (menuOnTouch) menuHandle.current?.open();
+              else onLongPress(row.id);
+            }, LONG_PRESS_MS);
+          },
+          onPointerMove: (event: React.PointerEvent) => {
+            const start = origin.current;
+            if (
+              start &&
+              Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
+            )
+              cancelPress();
+          },
+          onPointerUp: cancelPress,
+          onPointerCancel: cancelPress,
+          onContextMenu: (event: React.MouseEvent) => {
+            if (actionsOpen) event.preventDefault();
+          },
+        }
+      : {};
+  // The time tells one author's messages apart.
+  const moreLabel = `More actions for ${row.author?.label ?? 'this'}'s message${row.at && Number.isFinite(Date.parse(row.at)) ? ` at ${roomShortTime(row.at)}` : ''}`;
   const day =
     placement.newDay && row.at ? (
       <div className="room-divider room-divider--day">
@@ -332,12 +349,20 @@ function Row({
           {!row.deleted && row.reactions}
           {row.footer && <div className="room-row__footer">{row.footer}</div>}
         </div>
-        {row.actions && showMore && (
+        {menuOnTouch && (
+          <ActionOverflowMenu
+            actions={row.menu!}
+            handleRef={menuHandle}
+            triggerClassName="action-overflow__trigger room-row__more"
+            label={moreLabel}
+          />
+        )}
+        {row.actions && showMore && !menuOnTouch && (
           <IconButton
             ref={moreButton}
             className="room-row__more"
             // The time tells one author's messages apart.
-            aria-label={`More actions for ${row.author?.label ?? 'this'}'s message${row.at && Number.isFinite(Date.parse(row.at)) ? ` at ${roomShortTime(row.at)}` : ''}`}
+            aria-label={moreLabel}
             aria-expanded={actionsOpen}
             aria-controls={actionsId}
             onClick={() =>
@@ -348,7 +373,7 @@ function Row({
             <MoreGlyph />
           </IconButton>
         )}
-        {row.actions && (
+        {row.actions && !menuOnTouch && (
           <div
             ref={actionsElement}
             id={actionsId}

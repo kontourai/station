@@ -70,12 +70,22 @@ export interface ProjectRoomAttachmentPort {
     attachments: ProjectRoomAttachment[],
   ): unknown;
 }
-/** A room's files belong to that room of that Project incarnation. */
-const attachmentBinding = (scope: ProjectMembershipScope, roomId: string) => [
+/**
+ * A file belongs to the person who uploaded it, in one room of one Project
+ * incarnation. A message can name only its author's own uploads, and a read
+ * resolves through the author of the message that carries the file.
+ */
+const attachmentBinding = (
+  scope: ProjectMembershipScope,
+  roomId: string,
+  uploader: ProjectRoomActor,
+) => [
   scope.stationId,
   scope.localProjectId,
   scope.portableProjectId,
   roomId,
+  uploader.kind,
+  uploader.id,
 ];
 export class ProjectRoomService {
   private closed = false;
@@ -312,12 +322,15 @@ export class ProjectRoomService {
       'discuss',
       guard,
       (scope, actor, _caps, assertCurrent) => {
-        // Every file must already be stored for this room, unchanged.
+        // Every file must be the sender's own upload to this room, unchanged.
         if (input.attachments?.length) {
           const roomId = this.store.lookupRoom(scope, channelId)?.roomId;
           if (!roomId) throw new ProjectRoomRefusal('not_found');
           this.files((port) =>
-            port.resolve(attachmentBinding(scope, roomId), input.attachments!),
+            port.resolve(
+              attachmentBinding(scope, roomId, actor),
+              input.attachments!,
+            ),
           );
         }
         return this.store.append(scope, actor, input, assertCurrent, channelId);
@@ -413,11 +426,11 @@ export class ProjectRoomService {
       slug,
       'discuss',
       guard,
-      (scope, _actor, _caps, assertCurrent) => {
+      (scope, actor, _caps, assertCurrent) => {
         const roomId = this.store.writableRoomId(scope, channelId);
         assertCurrent();
         return this.files((port) =>
-          port.store(attachmentBinding(scope, roomId), inputs),
+          port.store(attachmentBinding(scope, roomId, actor), inputs),
         );
       },
       channelId,
@@ -436,14 +449,10 @@ export class ProjectRoomService {
       'view',
       undefined,
       (scope, _actor, _caps, assertCurrent) => {
-        const roomId = this.store.attachmentRoom(
-          scope,
-          attachmentId,
-          channelId,
-        );
-        const file = roomId
+        const owner = this.store.attachmentRoom(scope, attachmentId, channelId);
+        const file = owner
           ? this.attachments?.read(
-              attachmentBinding(scope, roomId),
+              attachmentBinding(scope, owner.roomId, owner.author),
               attachmentId,
             )
           : undefined;

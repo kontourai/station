@@ -1117,6 +1117,15 @@ test('message files: upload, send, read back; past the count or size limit is re
   const stored = await upload([png()]);
   expect(stored.status).toBe(200);
   const [file] = (await data(stored)) as { id: string }[];
+  // A file is its uploader's: another member cannot send it as theirs.
+  const b = await h.discover('bob');
+  const borrowed = await h.request('bob', '/messages', 'POST', {
+    ...guard(b),
+    intentId: randomUUID(),
+    text: 'Look what I made',
+    attachments: [file],
+  });
+  expect(borrowed.status).toBe(400);
   // Unsent, the file is nobody's to read.
   expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(404);
   // Six descriptors are refused at the message too, not only at upload.

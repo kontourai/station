@@ -941,6 +941,63 @@ function ProjectRoomSession({
           onShowWho={showReactions}
         />
       ) : undefined,
+      // Touch and phones: the same actions as labelled menu rows (no
+      // tooltips there), Delete last and destructive.
+      menu:
+        view.capabilities.discuss && !message.deletedAt
+          ? [
+              ...(canAct
+                ? [
+                    {
+                      key: 'react',
+                      label: 'React',
+                      glyph: <ReactGlyph />,
+                      onSelect: (trigger: HTMLElement) =>
+                        openPopover(setPicker, message.messageId, trigger),
+                    },
+                  ]
+                : []),
+              {
+                key: 'reply',
+                label: 'Reply',
+                glyph: <ReturnGlyph />,
+                disabled: room.send.isPending,
+                onSelect: () => {
+                  setReplyTo(message.messageId);
+                  composer.current?.focus();
+                },
+              },
+              ...(canAct && isOwn(message)
+                ? [
+                    {
+                      key: 'edit',
+                      label: 'Edit',
+                      glyph: <EditGlyph />,
+                      disabled: !!proposal,
+                      onSelect: () => startEdit(message),
+                    },
+                    {
+                      key: 'delete',
+                      label: 'Delete',
+                      glyph: <TrashGlyph />,
+                      tone: 'danger' as const,
+                      onSelect: () => setDeleting(message.messageId),
+                    },
+                  ]
+                : []),
+              ...(reactions.length
+                ? [
+                    {
+                      key: 'who-reacted',
+                      label: 'Who reacted',
+                      glyph: <PeopleGlyph />,
+                      onSelect: (trigger: HTMLElement) =>
+                        showReactions(trigger),
+                    },
+                  ]
+                : []),
+            ]
+          : undefined,
       // A tombstone takes no actions: there is nothing left to answer.
       // Icon-only, as chat toolbars are; each says what it does by name and
       // tooltip (#3045 keeps a row to two labelled actions).

@@ -354,7 +354,10 @@ describe('Project room message activity', () => {
     const file = image();
     const message = post(ada, '', { attachments: [file] });
     expect(message.attachments).toEqual([file]);
-    expect(runtime.store.attachmentRoom(scope, file.id)).toBe(message.roomId);
+    expect(runtime.store.attachmentRoom(scope, file.id)).toEqual({
+      roomId: message.roomId,
+      author: ada,
+    });
     expect(runtime.store.attachmentRoom(scope, randomUUID())).toBeNull();
     expect(() => post(bo, 'mine now', { attachments: [file] })).toThrow(
       'conflict',
