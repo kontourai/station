@@ -1512,3 +1512,104 @@ test('a thread link to a message the channel does not have says so, with no comp
   ).toBe(2);
   expect(screen.queryByRole('textbox', { name: 'Reply in thread' })).toBeNull();
 });
+
+// #4855 delta review: several quick backward pages, and thread drafts.
+/** The room with a route-owned thread whose `open` re-renders the route. */
+function mountThreadRoute(rootId?: string) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  let ui: ReturnType<typeof render>;
+  const tree = (next?: string) => (
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId: next, open: (root) => ui.rerender(tree(root)) }}
+      />
+    </QueryClientProvider>
+  );
+  ui = render(tree(rootId));
+  return ui;
+}
+/** Records each history read's `after` cursor. */
+function watchHistoryReads() {
+  const reads: number[] = [];
+  watchMarks(async (url) => {
+    reads.push(Number(url.searchParams.get('after')));
+    return undefined;
+  });
+  return reads;
+}
+
+test('a thread link pages back through many quick windows to a root inside the bound', async () => {
+  // 501 short messages answer at once, so React batches the renders between
+  // pages; the root (seq 26) is in the 20th and last window kept loaded.
+  messages = Array.from({ length: 501 }, (_, index) =>
+    storedMessage(index + 1, `Deep update ${index + 1}`),
+  );
+  const reads = watchHistoryReads();
+  mountThreadRoute(String(messages[25]!.messageId));
+  await screen.findByText('Deep update 26', {}, { timeout: 10_000 });
+  expect(reads).toHaveLength(20);
+  expect(reads.at(-1)).toBe(1);
+  expect(screen.getByRole('textbox', { name: 'Reply in thread' })).toBeTruthy();
+});
+
+test('a thread link past the loaded-history bound stops at 20 windows and says so', async () => {
+  messages = Array.from({ length: 501 }, (_, index) =>
+    storedMessage(index + 1, `Bound update ${index + 1}`),
+  );
+  const reads = watchHistoryReads();
+  mountThreadRoute(String(messages[0]!.messageId));
+  await screen.findByText(
+    'This thread is too far back to open here.',
+    {},
+    { timeout: 10_000 },
+  );
+  expect(reads).toHaveLength(20);
+  expect(Math.min(...reads)).toBe(1);
+  expect(screen.queryByRole('textbox', { name: 'Reply in thread' })).toBeNull();
+});
+
+test('an unsent thread reply stays with its thread; the channel composer has its own draft', async () => {
+  const root = storedMessage(1, 'Draft target root');
+  messages = [root];
+  mountThreadRoute(root.messageId);
+  const threadInput = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  fireEvent.change(threadInput, {
+    target: { value: 'Unsent answer for this thread' },
+  });
+  // Leaving the thread does not carry its text to the channel.
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Back to #general' })[0]!,
+  );
+  const channelInput = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  expect(channelInput.value).toBe('');
+  const send = () =>
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Send message' });
+  fireEvent.change(channelInput, { target: { value: 'A channel message' } });
+  await waitFor(() => expect(send().disabled).toBe(false));
+  fireEvent.click(send());
+  await screen.findByText('A channel message');
+  // Back in the thread, its own draft is waiting and still answers the root.
+  // The root is the first message; its Reply opens its thread.
+  fireEvent.click(screen.getAllByRole('button', { name: 'Reply to Ada' })[0]!);
+  const restored = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  expect(restored.value).toBe('Unsent answer for this thread');
+  await waitFor(() => expect(send().disabled).toBe(false));
+  fireEvent.click(send());
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes.map((write) => [write.text, write.replyTo ?? null])).toEqual([
+    ['A channel message', null],
+    ['Unsent answer for this thread', root.messageId],
+  ]);
+});

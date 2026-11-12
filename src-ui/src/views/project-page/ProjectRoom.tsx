@@ -331,6 +331,11 @@ const PROJECT_DRAFT_CODEC = {
   isEmpty: (draft: ProjectRoomDraft) =>
     !draft.text && !draft.replyTo && !draft.recipient,
 };
+/** An open thread's own draft key: its channel's draft key plus the root. */
+function threadDraftKey(key: string | undefined, root: string | undefined) {
+  if (!key || !root) return key;
+  return JSON.stringify([...(JSON.parse(key) as string[]), 'thread', root]);
+}
 type Update<T> = T | ((current: T) => T);
 function apply<T>(update: Update<T>, current: T): T {
   return typeof update === 'function'
@@ -393,10 +398,14 @@ function ProjectRoomSession({
     if (channelMissing) onSelectChannel(undefined);
   }, [channelMissing, onSelectChannel]);
   const [tab, setTab] = useState<'conversation' | 'notes'>('conversation');
+  const threadsOn = variant === 'full' && !!thread;
+  const threadRoot = threadsOn ? thread?.rootId : undefined;
   // Text, reply target and Agent recipient are restored together; the
-  // recipient is revalidated against the live catalog before it is used.
+  // recipient is revalidated against the live catalog before it is used. An
+  // open thread keeps its own draft, so unsent text never moves between a
+  // thread and its channel and never changes destination (#4855).
   const [draft, setDraft] = useRoomDraftValue(
-    draftKey,
+    threadDraftKey(draftKey, threadRoot),
     EMPTY_PROJECT_DRAFT,
     PROJECT_DRAFT_CODEC,
   );
@@ -580,8 +589,6 @@ function ProjectRoomSession({
     room.stopped ? undefined : view?.roomId,
     room.history.data?.pages.flatMap((page) => page.messages) ?? [],
   );
-  const threadsOn = variant === 'full' && !!thread;
-  const threadRoot = threadsOn ? thread?.rootId : undefined;
   // Every send and Agent ask from an open thread replies to its root, read
   // from the route on each send rather than kept in the draft (#4795).
   const replyTarget = threadRoot ?? replyTo;
@@ -605,6 +612,7 @@ function ProjectRoomSession({
   // A thread link can name a root older than the newest window: page back
   // to it, within the windows a room keeps loaded.
   const historyPages = room.history.data?.pages.length ?? 0;
+  const historyLoaded = room.history.data !== undefined;
   const threadRootLoaded =
     !!threadRoot &&
     messages.some((message) => message.messageId === threadRoot);
@@ -613,17 +621,42 @@ function ProjectRoomSession({
     !threadRootLoaded &&
     !!room.history.hasNextPage &&
     historyPages >= PROJECT_ROOM_HISTORY_MAX_PAGES;
-  const seekThreadRoot =
+  const awaitingThreadRoot =
     !!threadRoot &&
     !threadRootLoaded &&
-    room.history.isSuccess &&
     !!room.history.hasNextPage &&
-    !room.history.isFetchingNextPage &&
     historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
-  const { fetchNextPage } = room.history;
+  // The seek advances on each page's own result rather than on a render in
+  // between: pages that settle quickly can batch those renders away, which
+  // left a valid link loading forever (#4855). It runs once per thread, per
+  // loaded history and per Retry; a failed page stops it until Retry.
+  const latestHistory = useRef(room.history);
+  latestHistory.current = room.history;
+  const [seekAttempt, setSeekAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seekAttempt restarts the seek on Retry.
   useEffect(() => {
-    if (seekThreadRoot) void fetchNextPage();
-  }, [seekThreadRoot, fetchNextPage]);
+    if (!threadRoot || !historyLoaded) return;
+    let current = true;
+    void (async () => {
+      let result = latestHistory.current;
+      while (current) {
+        const pages = result.data?.pages ?? [];
+        if (
+          pages.some((page) =>
+            page.messages.some((message) => message.messageId === threadRoot),
+          ) ||
+          !result.hasNextPage ||
+          pages.length >= PROJECT_ROOM_HISTORY_MAX_PAGES
+        )
+          return;
+        result = await result.fetchNextPage();
+        if (result.isError) return;
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [threadRoot, historyLoaded, seekAttempt]);
   // A send whose acknowledgement was lost is settled once the room shows it.
   const committed =
     !!proposal &&
@@ -951,7 +984,7 @@ function ProjectRoomSession({
     !room.history.isError &&
     (room.history.isPending ||
       room.history.isFetchingNextPage ||
-      seekThreadRoot);
+      awaitingThreadRoot);
   const faces = (
     <span className="project-room__faces" aria-hidden="true">
       {participants.slice(0, 3).map((actor) => (
@@ -1092,9 +1125,9 @@ function ProjectRoomSession({
                     action={
                       <Button
                         onClick={() =>
-                          void (room.history.isFetchNextPageError
-                            ? room.history.fetchNextPage()
-                            : room.history.refetch())
+                          room.history.isFetchNextPageError
+                            ? setSeekAttempt((attempt) => attempt + 1)
+                            : void room.history.refetch()
                         }
                       >
                         Retry
