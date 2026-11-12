@@ -3,7 +3,10 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { buildHomeWorkItems } from '../../../views/home/home-view-model';
+import {
+  buildHomeWorkItems,
+  type HomeWorkItem,
+} from '../../../views/home/home-view-model';
 import { buildWorkFacts } from '../../../views/home/work-facts';
 import { renderHomeWorkRow } from '../HomeWorkRow';
 
@@ -66,10 +69,11 @@ function planWindow(
 function renderRow(
   summary: OrchestrationSessionSummary,
   size: 'card' | 'slim' = 'card',
+  itemOverrides: Partial<HomeWorkItem> = {},
 ) {
   const sessions = [summary];
   const items = buildHomeWorkItems({ chats: {}, agents: [], sessions });
-  const [item] = items;
+  const item = { ...items[0], ...itemOverrides };
   return render(
     <ul>
       {renderHomeWorkRow({
@@ -176,7 +180,16 @@ describe("Home rows show the Session's agent-reported plan (#4695)", () => {
         '.task-plan-progress',
       ),
     ).toBeNull();
-    // Neither the ended row nor the one-line row read the Session at all.
+    cleanup();
+
+    // A row from another Station names a Session this Station cannot read.
+    expect(
+      renderRow(session({}), 'card', {
+        kind: 'remote-session',
+        environmentLabel: 'Build box',
+      }).container.querySelector('.task-plan-progress'),
+    ).toBeNull();
+    // The ended, one-line and remote rows never read the Session at all.
     expect(useOrchestrationSessionActivityQuery).not.toHaveBeenCalled();
   });
 });
