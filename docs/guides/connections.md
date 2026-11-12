@@ -89,7 +89,11 @@ recorded when no reset was reported (the shortest window these providers
 report), or when the provider accepts a later turn on the same account, for
 example on another model. A refusal on another account, such as one an agent
 pins, does not change the badge; the engine's **Overview** lists it under
-**Usage limit**. Station reads these refusals from the events it already
+**Usage limit**, naming the saved account only for viewers with
+`access:manage`; others see **Another account**. Claude Code's recorded refusal
+does not say which model's window refused, so a refusal on one model marks the
+engine until the provider accepts a later turn on that account or the reset
+passes. Station reads these refusals from the events it already
 recorded and calls no provider to do so. The engine's **Accounts** tab still
 shows live allowance to viewers with `access:manage`.
 

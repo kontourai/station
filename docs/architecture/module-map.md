@@ -2735,7 +2735,8 @@ Last, it attaches `allowanceEvidence`: one read of recorded quota refusals and
 later accepted turns from the orchestration `EventStore` (wired by
 `setAllowanceEvidenceSource`), scoped per account by each run's process epoch
 ([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
-A failed read attaches nothing. Dispatch does not read it.
+A failed read attaches nothing. Dispatch does not read it. The same two routes
+drop each refusal's `account` for those viewers (`allowanceEvidenceForViewer`).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims

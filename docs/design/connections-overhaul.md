@@ -1,9 +1,9 @@
 # Connections overhaul and the resource-hub kit
 
 > **Status: proposal, 2026-11-07; owner-directed.** Tracking issue
-> [#4710](https://github.com/kontourai/station/issues/4710). Nothing here is
-> implemented yet. The [Connections guide](../guides/connections.md) remains the
-> current user journey until each slice lands and updates it. This record keeps
+> [#4710](https://github.com/kontourai/station/issues/4710). Slices 1–3 are
+> implemented; slices 4–6 are in progress. The [Connections guide](../guides/connections.md)
+> is the current user journey and is updated as each slice lands. This record keeps
 > the finite readiness labels and explicit-Add rules in
 > [connections onboarding](connections-onboarding.md). It changes one recorded
 > decision there, the `/connections` resolver, as stated under [Overview](#pages).
@@ -83,8 +83,12 @@ allowance through **recorded evidence**: a fresh, provider-reported quota refusa
 from a real turn (`provider-plan-quota-exhausted`, Codex usage-limit details,
 the usage-limit banner's recovery state), scoped to the account that served it.
 That evidence becomes a server-side contract field next to `readinessEvidence`,
-so every viewer gets the same answer and dispatch and Connections agree. Live
-allowance stays detail on the engine page for viewers with `access:manage`.
+so every viewer gets the same answer; only a viewer with `access:manage` (or the
+operator in person) learns which saved account a refusal ran on. Connections
+reports refusals from the same recorded events recovery acts on. Dispatch
+acceptance is unchanged: Station still dispatches to the engine, and recovery
+(usage-limit automatic resume, opt-in credential recovery) handles the turn.
+Live allowance stays detail on the engine page for viewers with `access:manage`.
 
 ## Usage for every connection
 
@@ -167,7 +171,7 @@ Overview, Usage (by `modelConnectionId`), Models and Settings.
 | 3. Engines detail | Tabs, usage panel, editor hook, detected rows, routing disclosure | 1, 2 |
 | 4. Overview | `/connections` page and attention list | 1, 2, 3 |
 | 5. Models, Tools, Knowledge, Computers | Rows, details, used-by projection on the kit | 1, 2 |
-| 6. Allowance evidence | Server contract field from recorded quota refusals; status and dispatch agree | 1 |
+| 6. Allowance evidence | Server contract field from recorded quota refusals, from the same events recovery acts on; dispatch unchanged | 1 |
 
 Each slice updates the Connections guide and module map for what it ships.
 

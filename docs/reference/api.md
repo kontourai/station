@@ -2721,7 +2721,8 @@ it is never withheld.
 Engine rows can carry `allowanceEvidence`: fresh quota refusals the provider
 reported for real turns, newest per credential account
 (`EngineAllowanceEvidence`). Each names its `source` (`usage-limit` or
-`plan-quota`), the `account` (`default` or a profile `ref`), whether it
+`plan-quota`), the `account` (`default` or a profile `ref`; omitted under the
+same viewer rule as a `station` or `policy` origin above), whether it
 `applies` to the engine's `current-account`, an `other-account` or a
 `proxy-route`, `observedAt`, the provider's `resetAt` or unqualified
 `resetReported` when reported, and `expiresAt`. The server reads it from
