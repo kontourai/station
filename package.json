@@ -375,6 +375,7 @@
     "@kontourai/station-sdk": "^0.13.0",
     "@kontourai/station-shared": "^0.13.0",
     "@kontourai/surface": "6.3.0",
+    "@kontourai/telltale": "0.1.0",
     "@kontourai/survey": "8.4.0",
     "@kontourai/thread": "0.6.0",
     "@kontourai/ui": "^1.19.0",

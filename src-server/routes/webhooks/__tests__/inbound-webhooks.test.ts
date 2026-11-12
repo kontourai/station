@@ -8,12 +8,12 @@ import {
   parseManagedPolicyDocument,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
+import { FailureBudget } from '@kontourai/telltale';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   installManagedApprovalCeiling,
   ManagedApprovalCeilingStartRefusedError,
 } from '../../../security/managed-approval-ceiling.js';
-import { RuntimeAuthFailureLimiter } from '../../../security/runtime-request-security.js';
 import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
@@ -26,7 +26,6 @@ import {
 import {
   createInboundWebhookRoutes,
   INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_MAX_ATTEMPTS,
-  InboundWebhookNoiseAggregator,
 } from '../inbound-webhooks.js';
 
 const now = 1_780_000_000_000;
@@ -396,6 +395,100 @@ describe('inbound webhooks', () => {
     expect(await replay.json()).toMatchObject({ code: 'replay' });
   });
 
+  // #4837: freshness is inclusive (|now - T| <= WINDOW), so the identical
+  // request at exactly T + WINDOW is still fresh. Its replay key must still
+  // be held then; one millisecond later the request is stale instead.
+  test('the identical request at exactly timestamp + window is refused as a replay (#4837)', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir);
+    let clock = now;
+    const authorization = new InboundWebhookAuthorizationService(
+      homeDir,
+      () => clock,
+    );
+    const deps = foregroundDependencies();
+    const route = createInboundWebhookRoutes({
+      homeDir,
+      authorization,
+      logger: { warn: vi.fn() },
+      startTurn: (input) =>
+        executeForegroundMessage(
+          { ...input, userId: 'human:local:operator' },
+          deps,
+        ),
+    });
+    const nonce = randomBytes(16).toString('base64url');
+    const signedAtMs = Number(timestamp) * 1000;
+    const windowMs = 5 * 60_000;
+
+    expect((await request(route, body(), nonce)).status).toBe(202);
+
+    clock = signedAtMs + windowMs;
+    const replay = await request(route, body(), nonce);
+    expect(replay.status).toBe(403);
+    expect(await replay.json()).toMatchObject({ code: 'replay' });
+    expect(deps.startSession).toHaveBeenCalledTimes(1);
+
+    clock = signedAtMs + windowMs + 1;
+    const stale = await request(route, body(), nonce);
+    expect(stale.status).toBe(403);
+    expect(await stale.json()).toMatchObject({ code: 'stale_timestamp' });
+    expect(deps.startSession).toHaveBeenCalledTimes(1);
+  });
+
+  // Telltale counts a request that has not authenticated yet against the
+  // shared budget, so a body that never finishes must not hold that room.
+  test('a body that never finishes is refused at the deadline and returns its budget room', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir);
+    const budget = new FailureBudget(
+      INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_MAX_ATTEMPTS,
+      60_000,
+    );
+    const authorization = new InboundWebhookAuthorizationService(
+      homeDir,
+      () => now,
+    );
+    const startTurn = vi.fn();
+    const route = createInboundWebhookRoutes({
+      homeDir,
+      authorization,
+      logger: { warn: vi.fn() },
+      unauthenticatedBudget: budget,
+      startTurn,
+    });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const nonce = randomBytes(16).toString('base64url');
+      const pending = route.request('http://station.test/inbound', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-station-webhook-token': 'ci-deploy',
+          'x-station-webhook-timestamp': timestamp,
+          'x-station-webhook-nonce': nonce,
+          'x-station-webhook-signature': signature(body(), nonce),
+        },
+        // A sender that never finishes its body.
+        body: new ReadableStream<Uint8Array>({
+          pull: () => new Promise<void>(() => undefined),
+        }),
+        duplex: 'half',
+      } as RequestInit);
+      await vi.waitFor(() => expect(budget.inflight).toBe(1));
+      await vi.advanceTimersByTimeAsync(10_000);
+      const response = await pending;
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        code: 'malformed_request',
+      });
+      expect(budget.inflight).toBe(0);
+      expect(startTurn).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Review test-power note: every other test signs JSON.stringify output, so
   // an implementation that re-serialized the parsed body before HMAC would
   // produce identical bytes and stay green. Non-canonical whitespace pins
@@ -607,21 +700,13 @@ describe('global unauthenticated-attempt budget (review M2)', () => {
     // separately with the real constant.
     maxFailures = INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_MAX_ATTEMPTS,
   ) {
-    const unauthenticatedBudget = new RuntimeAuthFailureLimiter({
-      now: () => now,
-      maxFailures,
-      windowMs: 60_000,
-      maxTrackedPeers: 1,
-    });
-    const noiseAggregator = new InboundWebhookNoiseAggregator(
-      new InboundWebhookAuditStore(homeDir),
-      () => now,
-    );
+    // Telltale's budget, shared with the route; its post-trip noise is
+    // aggregated by Telltale and written through the audit binding.
+    const unauthenticatedBudget = new FailureBudget(maxFailures, 60_000);
     return createInboundWebhookRoutes({
       homeDir,
       logger: { warn: vi.fn() },
       unauthenticatedBudget,
-      noiseAggregator,
       startTurn: async () => ({
         conversationId: 'unused',
         providerTurnId: 'unused',

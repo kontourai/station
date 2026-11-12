@@ -1,6 +1,10 @@
-import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
+import {
+  FailureBudget,
+  TelltaleHost,
+  type UnauthenticatedBudget,
+} from '@kontourai/telltale';
 import { Hono } from 'hono';
 import { readBoundedRequestBodyBytes } from '../../security/bounded-request-body.js';
 import { managedApprovalCeilingFailureBody } from '../../security/managed-approval-ceiling.js';
@@ -8,28 +12,33 @@ import {
   managedCapabilityRefusalBody,
   webhookAutomationsAllowedByManagedPolicy,
 } from '../../security/managed-capability-limits.js';
-import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
-import { InboundWebhookAuthorizationService } from '../../services/webhooks/inbound-webhook-authorization.js';
 import {
-  type InboundWebhookAuditReason,
-  InboundWebhookAuditStore,
-} from '../../services/webhooks/inbound-webhook-store.js';
+  INBOUND_WEBHOOK_REPLAY_WINDOW_SECONDS,
+  InboundWebhookAuthorizationService,
+} from '../../services/webhooks/inbound-webhook-authorization.js';
 import { inboundWebhookRequests } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 
 const INBOUND_WEBHOOK_PATH = '/inbound';
+/** The Telltale source id; one webhook source per route instance. */
+const INBOUND_WEBHOOK_SOURCE_ID = 'inbound';
 const INBOUND_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
-const INBOUND_WEBHOOK_RATE_WINDOW_MS = 60_000;
 const INBOUND_WEBHOOK_MAX_ATTEMPTS_PER_WINDOW = 60;
-const INBOUND_WEBHOOK_MAX_TRACKED_PRINCIPALS = 1_024;
+/**
+ * A request holds room in the unauthenticated budget until it authenticates
+ * (Telltale counts requests in flight against it), so a sender that never
+ * finishes its body must not hold that room. A real 256 KiB body arrives in
+ * far less; past this the request is refused `malformed_request`.
+ */
+const INBOUND_WEBHOOK_BODY_DEADLINE_MS = 10_000;
 /**
  * Review M2: a GLOBAL budget of unauthenticated attempts, independent of the
- * attacker-chosen token id. `InboundWebhookAttemptLimiter` below buckets on a
- * hash of the supplied token, so a rotating id gets a fresh bucket every
- * request and never trips it; every refusal until this budget trips still
- * costs one config read and one audit write. Once THIS budget trips,
- * refusal is nearly free — no config read, no per-request audit write (see
- * `InboundWebhookNoiseAggregator`).
+ * attacker-chosen token id. The per-token attempt limit buckets on a hash of
+ * the supplied token, so a rotating id gets a fresh bucket every request and
+ * never trips it; every refusal until this budget trips still costs one
+ * config read and one audit write. Once THIS budget trips, refusal is nearly
+ * free: no config read, no per-request audit write (Telltale aggregates the
+ * suppressed refusals into one `unauthenticated_flood` entry a minute).
  */
 /**
  * Review H1 — this is an ADMISSION kill switch, not only a cost bound, and
@@ -48,15 +57,6 @@ const INBOUND_WEBHOOK_MAX_TRACKED_PRINCIPALS = 1_024;
  */
 export const INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_MAX_ATTEMPTS = 300;
 const INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_WINDOW_MS = 60_000;
-/**
- * Review M2: how often a tripped budget's suppressed-refusal count may flush
- * to one aggregated audit entry. Bounding flushes to this cadence is what
- * stops a post-trip flood from evicting earlier, more diagnostically useful
- * entries out of the audit store's bounded 256-entry ring buffer.
- */
-const INBOUND_WEBHOOK_NOISE_FLUSH_INTERVAL_MS = 60_000;
-/** Single, constant, attacker-independent key: this budget is global, never per-token. */
-const UNAUTHENTICATED_BUDGET_KEY = 'unauthenticated';
 
 type WebhookPayload = { agent: string; project?: string; message: string };
 
@@ -68,129 +68,11 @@ type TurnStarter = (input: {
   webhookTokenId: string;
 }) => Promise<{ conversationId: string; providerTurnId: string }>;
 
-type AttemptWindow = { attempts: number; expiresAt: number };
-
-/** Bounded, token-id-hashed inbound-attempt limiter. It never retains the supplied id. */
-class InboundWebhookAttemptLimiter {
-  private readonly entries = new Map<string, AttemptWindow>();
-
-  constructor(private readonly now: () => number = Date.now) {}
-
-  retryAfterSeconds(tokenId: string | undefined): number | undefined {
-    const now = this.now();
-    this.prune(now);
-    const entry = this.entries.get(this.key(tokenId));
-    if (!entry || entry.attempts < INBOUND_WEBHOOK_MAX_ATTEMPTS_PER_WINDOW) {
-      return undefined;
-    }
-    return Math.max(1, Math.ceil((entry.expiresAt - now) / 1000));
-  }
-
-  record(tokenId: string | undefined): void {
-    const now = this.now();
-    this.prune(now);
-    const key = this.key(tokenId);
-    const current = this.entries.get(key);
-    if (current) {
-      current.attempts += 1;
-      this.entries.delete(key);
-      this.entries.set(key, current);
-      return;
-    }
-    while (this.entries.size >= INBOUND_WEBHOOK_MAX_TRACKED_PRINCIPALS) {
-      const oldest = this.entries.keys().next().value;
-      if (oldest === undefined) break;
-      this.entries.delete(oldest);
-    }
-    this.entries.set(key, {
-      attempts: 1,
-      expiresAt: now + INBOUND_WEBHOOK_RATE_WINDOW_MS,
-    });
-  }
-
-  private key(tokenId: string | undefined): string {
-    return createHash('sha256')
-      .update(tokenId ?? '<missing>')
-      .digest('hex');
-  }
-
-  private prune(now: number): void {
-    for (const [key, entry] of this.entries) {
-      if (entry.expiresAt <= now) this.entries.delete(key);
-    }
-  }
-}
-
 /**
- * Review M2: batches refusal noise that arrives after the unauthenticated
- * budget has already tripped into at most one aggregated audit entry per
- * {@link INBOUND_WEBHOOK_NOISE_FLUSH_INTERVAL_MS}, instead of one entry per
- * refusal. A flood of rotating-token-id requests therefore cannot evict
- * earlier, more diagnostically useful entries out of the audit store's
- * bounded 256-entry ring buffer — the aggregate write itself is rare enough
- * to never approach that cap. Chosen over "write nothing, ever, once
- * tripped": an operator watching the audit log still sees that a flood
- * happened and roughly how large it was, just not one line per request.
+ * `outcome` is `accepted`, `managed_policy`, a Station refusal or one of
+ * Telltale's closed refusal reasons, so the metric's label set stays bounded.
  */
-export class InboundWebhookNoiseAggregator {
-  #count = 0;
-  #windowStartAt: number;
-
-  constructor(
-    private readonly audit: InboundWebhookAuditStore,
-    private readonly now: () => number = Date.now,
-    private readonly flushIntervalMs = INBOUND_WEBHOOK_NOISE_FLUSH_INTERVAL_MS,
-  ) {
-    this.#windowStartAt = this.now();
-  }
-
-  #pendingFlush: ReturnType<typeof setTimeout> | undefined;
-
-  /**
-   * Notes one suppressed refusal. Review M2: flushing only from a later
-   * `note()` meant a flood shorter than the interval never produced its
-   * aggregate entry at all (tripping the budget takes 40 attempts; floods
-   * need not outlast 60s), and a residual count flushed hours later was
-   * stamped with the wrong moment. An `unref`'d timer flushes the window's
-   * residual on schedule without holding the process open; an exit inside
-   * the final window can still lose that window's count, which is the
-   * remaining, disclosed bound.
-   */
-  note(): void {
-    this.#count += 1;
-    const now = this.now();
-    if (now - this.#windowStartAt >= this.flushIntervalMs) {
-      this.#flush(now);
-      return;
-    }
-    if (this.#pendingFlush === undefined) {
-      const delay = Math.max(
-        1,
-        this.flushIntervalMs - (now - this.#windowStartAt),
-      );
-      this.#pendingFlush = setTimeout(() => {
-        this.#pendingFlush = undefined;
-        if (this.#count > 0) this.#flush(this.now());
-      }, delay);
-      this.#pendingFlush.unref?.();
-    }
-  }
-
-  #flush(now: number): void {
-    if (this.#pendingFlush !== undefined) {
-      clearTimeout(this.#pendingFlush);
-      this.#pendingFlush = undefined;
-    }
-    if (this.#count === 0) return;
-    this.audit.recordAggregatedNoise(this.#count);
-    this.#count = 0;
-    this.#windowStartAt = now;
-  }
-}
-
-function recordOutcome(
-  outcome: 'accepted' | 'managed_policy' | InboundWebhookAuditReason,
-): void {
+function recordOutcome(outcome: string): void {
   try {
     inboundWebhookRequests.add(1, { outcome });
   } catch {
@@ -198,13 +80,12 @@ function recordOutcome(
   }
 }
 
-function parsePayload(bytes: Uint8Array): WebhookPayload | null {
-  let value: unknown;
-  try {
-    value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-  } catch {
-    return null;
-  }
+/**
+ * The payload shape, on the body Telltale already decoded (strict UTF-8,
+ * then JSON) after the signature held. A body that was not JSON arrives as
+ * `{ text }` or `{ bytes }`, which this refuses like any other wrong shape.
+ */
+function payloadFrom(value: unknown): WebhookPayload | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
   if (
@@ -236,12 +117,24 @@ async function readBoundedBody(request: Request): Promise<Uint8Array | null> {
   ) {
     return null;
   }
-  const result = await readBoundedRequestBodyBytes(
-    request,
-    INBOUND_WEBHOOK_MAX_BODY_BYTES,
-  );
-  if (result.status === 'no-body') return new Uint8Array();
-  return result.status === 'ok' ? result.bytes : null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), INBOUND_WEBHOOK_BODY_DEADLINE_MS);
+    timer.unref?.();
+  });
+  try {
+    // On the deadline the request is refused and its budget room returned;
+    // the abandoned read ends with the connection.
+    const result = await Promise.race([
+      readBoundedRequestBodyBytes(request, INBOUND_WEBHOOK_MAX_BODY_BYTES),
+      deadline,
+    ]);
+    if (!result) return null;
+    if (result.status === 'no-body') return new Uint8Array();
+    return result.status === 'ok' ? result.bytes : null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function targetFor(payload: WebhookPayload): ExecutionTarget {
@@ -257,18 +150,23 @@ function targetFor(payload: WebhookPayload): ExecutionTarget {
 }
 
 /**
- * The one public webhook leaf. Authentication is intentionally bespoke (named
- * HMAC tokens), while the actual turn goes through the same foreground
- * execution seam as UI/CLI/MCP callers.
+ * The one public webhook leaf. Telltale's `webhook` source verifies the
+ * request (named HMAC tokens, freshness, replay, rate budgets) and stamps it
+ * `untrusted`: trust comes from the route it entered by, never from its
+ * content. Station keeps the authority (the token's start grants) and the
+ * action: the turn goes through the same foreground execution seam as
+ * UI/CLI/MCP callers.
  */
 export function createInboundWebhookRoutes(options: {
   homeDir: string;
   startTurn: TurnStarter;
   logger: Pick<Logger, 'warn'>;
   authorization?: InboundWebhookAuthorizationService;
-  limiter?: InboundWebhookAttemptLimiter;
-  unauthenticatedBudget?: RuntimeAuthFailureLimiter;
-  noiseAggregator?: InboundWebhookNoiseAggregator;
+  /**
+   * Shared by Telltale (admission and its own refusals) and by this route
+   * (refusals after Telltale accepted), so every refusal spends one budget.
+   */
+  unauthenticatedBudget?: UnauthenticatedBudget;
 }): Hono {
   const app = new Hono();
   const authorization =
@@ -278,22 +176,50 @@ export function createInboundWebhookRoutes(options: {
       undefined,
       options.logger,
     );
-  const limiter = options.limiter ?? new InboundWebhookAttemptLimiter();
-  const unauthenticatedBudget =
+  const budget =
     options.unauthenticatedBudget ??
-    new RuntimeAuthFailureLimiter({
-      maxFailures: INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_MAX_ATTEMPTS,
-      windowMs: INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_WINDOW_MS,
-      // Exactly one key (UNAUTHENTICATED_BUDGET_KEY) is ever used: this is a
-      // single global counter, never per-token, so a rotating id cannot buy
-      // itself a fresh bucket.
-      maxTrackedPeers: 1,
-    });
-  const noiseAggregator =
-    options.noiseAggregator ??
-    new InboundWebhookNoiseAggregator(
-      new InboundWebhookAuditStore(options.homeDir),
+    new FailureBudget(
+      INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_MAX_ATTEMPTS,
+      INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_WINDOW_MS,
     );
+  const host = new TelltaleHost({
+    clock: authorization.clock,
+    // Telltale redacts every line and never logs request content.
+    logger: {
+      info: () => undefined,
+      warn: (message, meta) => options.logger.warn(message, meta),
+    },
+  });
+  host.add({
+    id: INBOUND_WEBHOOK_SOURCE_ID,
+    type: 'webhook',
+    // A signature proves who sent the request, not who wrote what is in it.
+    trust: 'untrusted',
+    options: {
+      scheme: 'signed-timestamp',
+      headers: {
+        token: 'x-station-webhook-token',
+        timestamp: 'x-station-webhook-timestamp',
+        nonce: 'x-station-webhook-nonce',
+        signature: 'x-station-webhook-signature',
+      },
+      windowSeconds: INBOUND_WEBHOOK_REPLAY_WINDOW_SECONDS,
+      maxBodyBytes: INBOUND_WEBHOOK_MAX_BODY_BYTES,
+      perCredentialPerMinute: INBOUND_WEBHOOK_MAX_ATTEMPTS_PER_WINDOW,
+    },
+    bindings: {
+      credentials: authorization.credentials,
+      replay: authorization.replay,
+      audit: authorization.audit,
+      budget,
+    },
+  });
+  // An unsubscribed source accepts nothing. Station acts on the accepted
+  // result below, after delivery, so the subscriber only takes the event.
+  const listening = host.subscribe(INBOUND_WEBHOOK_SOURCE_ID, () => undefined);
+  listening.catch(() => {
+    options.logger.warn('Inbound webhook intake failed to start');
+  });
 
   app.post(INBOUND_WEBHOOK_PATH, async (c) => {
     // #4521: the managed policy turned webhook automations off. Refused
@@ -304,111 +230,80 @@ export function createInboundWebhookRoutes(options: {
       recordOutcome('managed_policy');
       return c.json(managedCapabilityRefusalBody('webhook automations'), 403);
     }
-    const tokenId = c.req.header('x-station-webhook-token');
-
-    // Review M2: checked first, before any disk I/O. Once this budget has
-    // tripped, refusal costs no config read and (ordinarily) no audit write
-    // — a rotating token id can no longer buy an unbounded number of config
-    // reads or audit read-modify-rewrites merely by presenting a new id.
-    if (
-      unauthenticatedBudget.retryAfterSeconds(UNAUTHENTICATED_BUDGET_KEY) !==
-      undefined
-    ) {
-      noiseAggregator.note();
-      recordOutcome('rate_limited');
+    try {
+      await listening;
+    } catch {
+      recordOutcome('not_listening');
       return c.json(
-        { success: false, code: 'rate_limited', retryable: true },
-        429,
+        { success: false, code: 'not_listening', retryable: true },
+        503,
       );
     }
 
-    const retryAfter = limiter.retryAfterSeconds(tokenId);
-    if (retryAfter !== undefined) {
-      unauthenticatedBudget.recordFailure(UNAUTHENTICATED_BUDGET_KEY);
-      authorization.recordFailure('rate_limited');
-      recordOutcome('rate_limited');
-      c.header('Retry-After', String(retryAfter));
-      return c.json(
-        { success: false, code: 'rate_limited', retryable: true },
-        429,
-      );
-    }
-    limiter.record(tokenId);
-
-    // Review L1: every header-only check (off switch, token
-    // existence/revocation, timestamp/nonce format, freshness) runs BEFORE
-    // the body is read. Only a request that survives this phase pays for a
-    // body read at all.
-    const headerResult = authorization.authorizeHeaders({
-      tokenId,
-      timestamp: c.req.header('x-station-webhook-timestamp'),
-      nonce: c.req.header('x-station-webhook-nonce'),
+    // Review L1: Telltale runs every header-only check (budget, attempts,
+    // off switch, token, revocation, timestamp/nonce format, freshness)
+    // before it calls the body reader, then verifies the HMAC over the raw
+    // received bytes, and only then reserves the replay key.
+    const result = await host.receive(INBOUND_WEBHOOK_SOURCE_ID, {
+      headers: c.req.raw.headers,
+      body: () => readBoundedBody(c.req.raw),
     });
-    if (!headerResult.allowed) {
-      unauthenticatedBudget.recordFailure(UNAUTHENTICATED_BUDGET_KEY);
-      recordOutcome(headerResult.reason);
-      options.logger.warn('Inbound webhook refused', {
-        reason: headerResult.reason,
-      });
+    if (!result.accepted) {
+      // Budget and audit were already charged by Telltale.
+      recordOutcome(result.reason);
+      if (result.retryAfterSeconds !== undefined)
+        c.header('Retry-After', String(result.retryAfterSeconds));
       return c.json(
-        { success: false, code: headerResult.reason, retryable: false },
-        headerResult.status,
+        { success: false, code: result.reason, retryable: result.retryable },
+        result.status,
       );
     }
 
-    const body = await readBoundedBody(c.req.raw);
-    if (!body) {
-      unauthenticatedBudget.recordFailure(UNAUTHENTICATED_BUDGET_KEY);
-      authorization.recordFailure('malformed_request');
-      recordOutcome('malformed_request');
-      return c.json({ success: false, code: 'malformed_request' }, 400);
-    }
-    const payload = parsePayload(body);
-    if (!payload) {
-      unauthenticatedBudget.recordFailure(UNAUTHENTICATED_BUDGET_KEY);
-      authorization.recordFailure('malformed_request');
-      recordOutcome('malformed_request');
-      return c.json({ success: false, code: 'malformed_request' }, 400);
-    }
+    // A refusal after Telltale accepted: charged to the same budget and
+    // audit as Telltale's own refusals.
+    const refuse = (
+      reason: 'malformed_request' | 'forbidden_start' | 'policy_unavailable',
+      status: 400 | 403,
+      tokenId?: string,
+    ) => {
+      budget.fail(authorization.clock.now());
+      authorization.recordFailure(reason, tokenId);
+      recordOutcome(reason);
+      options.logger.warn('Inbound webhook refused', { reason });
+      return c.json({ success: false, code: reason, retryable: false }, status);
+    };
+    // The `received` payload Telltale documents for a webhook source; its
+    // package exports no type for it yet. `credentialId` is the token the
+    // request authenticated with, never a value from the body.
+    const { credentialId, body } = result.event.payload as {
+      credentialId: string;
+      body: unknown;
+    };
+    const payload = payloadFrom(body);
+    // A malformed payload records no token id, as before Telltale.
+    if (!payload) return refuse('malformed_request', 400);
     let target: ExecutionTarget;
     try {
       target = targetFor(payload);
     } catch {
-      unauthenticatedBudget.recordFailure(UNAUTHENTICATED_BUDGET_KEY);
-      authorization.recordFailure('malformed_request');
-      recordOutcome('malformed_request');
-      return c.json({ success: false, code: 'malformed_request' }, 400);
+      return refuse('malformed_request', 400);
     }
-    const decision = authorization.authorizeBody({
-      token: headerResult.token,
-      timestamp: headerResult.timestamp,
-      nonce: headerResult.nonce,
-      signature: c.req.header('x-station-webhook-signature'),
-      body,
-      agentId: payload.agent,
-      projectSlug: payload.project,
-    });
-    if (!decision.allowed) {
-      unauthenticatedBudget.recordFailure(UNAUTHENTICATED_BUDGET_KEY);
-      recordOutcome(decision.reason);
-      options.logger.warn('Inbound webhook refused', {
-        reason: decision.reason,
-      });
-      return c.json(
-        { success: false, code: decision.reason, retryable: false },
-        decision.status,
-      );
-    }
+    const startRefusal = authorization.startRefusal(
+      credentialId,
+      payload.agent,
+      payload.project,
+    );
+    if (startRefusal) return refuse(startRefusal, 403, credentialId);
     try {
       const started = await options.startTurn({
         target,
         message: payload.message,
         ephemeral: true,
-        webhookTokenId: decision.token.id,
+        webhookTokenId: credentialId,
       });
       // Review M3: the durable record an OTel counter alone cannot provide —
       // binds this token id to the conversation it started.
-      authorization.recordSuccess(decision.token.id, started.conversationId);
+      authorization.recordSuccess(credentialId, started.conversationId);
       recordOutcome('accepted');
       return c.json(
         {
