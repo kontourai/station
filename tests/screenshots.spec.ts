@@ -28,8 +28,11 @@ import {
 } from './helpers/keyboard-emulation';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
+  GALLERY_DESIGN_ROOM_ID,
+  installProjectConversationsFixture,
   installProjectRoomFixture,
   installTaskRoomFixture,
+  NAVIGATION_THREAD_ROOT,
   type ProjectRoomScene,
   type TaskRoomScene,
 } from './helpers/room-gallery-fixtures';
@@ -3853,8 +3856,115 @@ function roomConversationScreens(): Screen[] {
   );
 }
 
+/**
+ * Channel navigation (#4794, #4795): the Project's channel list (the phone's
+ * Project page; at 1440 the sidebar with one Project expanded and one
+ * collapsed), a channel opened by its address, a thread, and the phone's
+ * navigation drawer. Unread state comes from the read-marker fixture.
+ */
+const CHANNEL_NAV_SCENES = [
+  'list',
+  'conversation',
+  'thread',
+  'drawer',
+] as const;
+
+function channelNavigationScreens(): Screen[] {
+  return CHANNEL_NAV_SCENES.flatMap((scene) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      // The drawer is the phone's sidebar; at 1440 the list scene shows it.
+      (scene === 'drawer' ? [MOBILE] : [DESKTOP, MOBILE]).map(
+        (viewport): Screen => {
+          const width =
+            viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+          const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
+          const other = `${slug}-site`;
+          let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+          const created: string[] = [];
+          const cleanups: (() => Promise<void>)[] = [];
+          const query =
+            scene === 'conversation'
+              ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
+              : scene === 'thread'
+                ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
+                : '';
+          const screen: Screen = {
+            name: `channel-nav-${scene}-${theme}-${width}`,
+            title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
+            path: `/projects/${slug}${query}`,
+            viewport,
+            async beforeGoto(page) {
+              request = createAuthenticatedE2ERequest(page.request);
+              const createProject = async (name: string, projectSlug: string) => {
+                const response = await request.post(
+                  `${resolveE2EApiBase()}/api/projects`,
+                  { data: { name, slug: projectSlug } },
+                );
+                expect(response.ok()).toBe(true);
+                created.push(projectSlug);
+                return (await response.json()).data as { id: string };
+              };
+              const project = await createProject('Onboarding revamp', slug);
+              // A second Project stays collapsed in the sidebar.
+              await createProject('Kontour site', other);
+              const room = await installProjectRoomFixture(page, {
+                slug,
+                projectId: project.id,
+                scene: 'navigation',
+              });
+              cleanups.push(room.cleanup);
+              const conversations = await installProjectConversationsFixture(
+                page,
+                { slug, projectId: project.id },
+              );
+              cleanups.push(conversations.cleanup);
+            },
+            async afterGoto(page) {
+              await page.evaluate(
+                (selected) =>
+                  document.documentElement.setAttribute('data-theme', selected),
+                theme,
+              );
+              if (scene === 'conversation' || scene === 'thread') {
+                await expect(
+                  page.getByRole('region', { name: 'Project room', exact: true }),
+                ).toBeVisible();
+                return;
+              }
+              await expect(
+                page.getByText('Onboarding revamp').first(),
+              ).toBeVisible();
+              if (scene === 'drawer') {
+                await page
+                  .locator('button[aria-controls="mobile-navigation"]')
+                  .first()
+                  .click();
+                await expect(
+                  page.getByRole('navigation', { name: 'Mobile navigation' }),
+                ).toBeVisible();
+              }
+              await page.mouse.move(0, 0);
+            },
+            async cleanup() {
+              for (const release of cleanups.splice(0)) await release();
+              for (const projectSlug of created.splice(0)) {
+                const removed = await request.delete(
+                  `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+                );
+                expect(removed.ok()).toBe(true);
+              }
+            },
+          };
+          return screen;
+        },
+      ),
+    ),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...roomConversationScreens(),
+  ...channelNavigationScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),

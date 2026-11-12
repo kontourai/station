@@ -9,19 +9,22 @@ import type { RoomVersion, RoomVersionSource } from './read-marker-service.js';
 /**
  * Project room versions for read markers (#3075), read through the room
  * service's own `view` admission. The marker is keyed by the room id the
- * store already assigns; a `roomId` that is not this Project's room reads as
+ * store already assigns. Every channel is a room whose `channelId` is its
+ * `roomId`, `#general` included (#4792), so the target's `roomId` is looked
+ * up as a channel of this Project. A `roomId` that is not one reads as
  * unavailable, exactly like a Project the caller cannot see.
  */
 export function projectRoomVersionSource(rooms: {
   discover(
     request: Request,
     slug: string,
+    channelId: string,
   ): Promise<{ data: Pick<ProjectRoomBrowserView, 'roomId' | 'checkpoint'> }>;
 }): RoomVersionSource<{ projectSlug: string; roomId: string }> {
   return {
     async latest({ projectSlug, roomId }, request) {
       try {
-        const { data } = await rooms.discover(request, projectSlug);
+        const { data } = await rooms.discover(request, projectSlug, roomId);
         if (data.roomId !== roomId) return undefined;
         return {
           key: `project-room:${data.roomId}`,

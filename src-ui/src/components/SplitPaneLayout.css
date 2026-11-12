@@ -1010,6 +1010,22 @@
   min-height: 0;
   border: 0;
 }
+/* A companion as its own page on a phone (#4795): the whole screen, no
+   scrim or rounded sheet edge; the dialog's header keeps the way back. */
+.split-pane-companion__page-overlay.responsive-surface-overlay {
+  align-items: stretch;
+  padding: 0;
+  background: var(--k-bg);
+}
+.split-pane-companion__page-overlay > .split-pane-companion__page {
+  width: 100%;
+  height: var(--responsive-visual-viewport-height, 100dvh);
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-top: var(--safe-top, 0px);
+}
 
 /* A 640px main surface and 16rem supporting inspection share wide containers.
    Local takeover preserves the mounted main surface when they cannot fit. */

@@ -35,10 +35,12 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { IconButton } from '../../components/IconButton';
-import { ReturnGlyph } from '../../components/icons/Glyph';
+import { ArrowLeftGlyph, ReturnGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { RoomAvatar } from '../../components/room/RoomAvatar';
 import { RoomComposer } from '../../components/room/RoomComposer';
+import { RoomThreadSummary } from '../../components/room/RoomThreadSummary';
+import { useMarkRoomRead } from '../../components/room/useMarkRoomRead';
 import {
   RoomConversation,
   type RoomConversationRow,
@@ -57,6 +59,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
 import {
+  type ChannelScreen,
   currentProjectRoomChannel,
   ProjectRoomChannelHeader,
 } from './ProjectRoomChannels';
@@ -68,6 +71,21 @@ export interface ProjectRoomProps {
   requestScope: ApiRequestScope & { draftRecoveryKey?: string };
   variant?: 'preview' | 'full';
   onOpenRoom?(): void;
+  /**
+   * The room destination's channel, owned by the route (#4795), so a link,
+   * the sidebar and Back all address it; `id` absent is the default channel.
+   * Without it the room remembers its own selection.
+   */
+  routeChannel?: { id: string | undefined };
+  /** Called when the reader picks a channel the route should show. */
+  onRouteChannel?(channelId: string | undefined): void;
+  /**
+   * Threads (#4795): the open thread's root message, owned by the route.
+   * Without it replies stay inline, as in the Overview preview.
+   */
+  thread?: { rootId: string | undefined; open(rootId: string | undefined): void };
+  /** A phone's full-screen conversation (#4795): a back button replaces the page chrome. */
+  screen?: { backLabel: string; onBack(): void };
 }
 function scopeKey(props: ProjectRoomProps) {
   return JSON.stringify([
@@ -125,16 +143,25 @@ export function ProjectRoom(props: ProjectRoomProps) {
     roomKey,
     channelId: readSelectedChannel(roomKey),
   }));
-  const channelId =
+  const remembered =
     selection.roomKey === roomKey
       ? selection.channelId
       : readSelectedChannel(roomKey);
+  const routeOwned = !!props.routeChannel;
+  const routeChannelId = props.routeChannel?.id;
+  const channelId = routeOwned ? routeChannelId : remembered;
+  // The route's channel is also the one the Overview preview shows next.
+  useEffect(() => {
+    if (routeOwned) writeSelectedChannel(roomKey, routeChannelId);
+  }, [routeOwned, routeChannelId, roomKey]);
+  const { onRouteChannel } = props;
   const selectChannel = useCallback(
     (next: string | undefined) => {
       writeSelectedChannel(roomKey, next);
       setSelection({ roomKey, channelId: next });
+      onRouteChannel?.(next);
     },
-    [roomKey],
+    [roomKey, onRouteChannel],
   );
   const draftKey = channelId
     ? roomDraftKey(
@@ -308,6 +335,8 @@ function ProjectRoomSession({
   draftKey,
   channelId,
   onSelectChannel,
+  thread,
+  screen,
 }: ProjectRoomProps & {
   storageKey: string;
   draftKey: string | undefined;
@@ -428,7 +457,18 @@ function ProjectRoomSession({
   );
   // Switching channels is a local state change, so it asks through the same
   // guard when an unconfirmed send or a notes draft would be left behind.
-  const channelHeader = (
+  const phone = variant === 'full' && screen ? screen : undefined;
+  /** The phone's bar (#4795): back, then the channel; `extra` adds faces and commands. */
+  const screenBar = (extra?: Partial<ChannelScreen>): ChannelScreen | undefined =>
+    phone
+      ? {
+          backLabel: phone.backLabel,
+          onBack: phone.onBack,
+          actions: [],
+          ...extra,
+        }
+      : undefined;
+  const channelHeader = (bar = screenBar()) => (
     <div className="project-room__title">
       <ProjectRoomChannelHeader
         channels={channels}
@@ -443,6 +483,8 @@ function ProjectRoomSession({
             : undefined
         }
         onSelect={(next) => guard(() => onSelectChannel(next))}
+        projectSlug={slug}
+        screen={bar}
       />
     </div>
   );
@@ -509,6 +551,35 @@ function ProjectRoomSession({
     room.stopped ? undefined : view?.roomId,
     room.history.data?.pages.flatMap((page) => page.messages) ?? [],
   );
+  // Read through the version this discovery reported, while the full
+  // conversation is on screen (#3075, #4794): opening a channel clears its
+  // unread state here and on the reader's other devices.
+  useMarkRoomRead(
+    view ? { kind: 'project-room', projectSlug: slug, roomId: view.roomId } : undefined,
+    view?.checkpoint.lastSeq,
+    variant === 'full' && tab === 'conversation' && !room.stopped,
+  );
+  const threadsOn = variant === 'full' && !!thread;
+  const threadRoot = threadsOn ? thread?.rootId : undefined;
+  // The composer replies into the open thread. Leaving the thread drops a
+  // reply target nothing was typed for, so the channel composer is plain.
+  const previousThread = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousThread.current;
+    previousThread.current = threadRoot;
+    if (threadRoot)
+      setDraft((current) =>
+        current.replyTo === threadRoot
+          ? current
+          : { ...current, replyTo: threadRoot },
+      );
+    else if (previous)
+      setDraft((current) => {
+        if (current.replyTo !== previous || current.text) return current;
+        const { replyTo: _left, ...rest } = current;
+        return rest;
+      });
+  }, [threadRoot, setDraft]);
   // A send whose acknowledgement was lost is settled once the room shows it.
   const committed =
     !!proposal &&
@@ -592,9 +663,11 @@ function ProjectRoomSession({
       void room.discovery.refetch();
     }
   }
+  const roomClass = `project-room${phone ? ' project-room--screen' : ''}`;
   if (room.stopped)
     return (
-      <section className="project-room" aria-label="Project room">
+      <section className={roomClass} aria-label="Project room">
+        {phone && channelHeader()}
         <p role="status">
           Room access changed. Your draft was cleared. Check access to continue.
         </p>
@@ -603,8 +676,8 @@ function ProjectRoomSession({
     );
   if (room.unprovisioned)
     return (
-      <section className="project-room" aria-label="Project room">
-        {channelHeader}
+      <section className={roomClass} aria-label="Project room">
+        {channelHeader()}
         {room.initialize.isError && (
           <p role="alert">
             Opening was not confirmed. Check access, then try again.
@@ -627,7 +700,8 @@ function ProjectRoomSession({
     );
   if (room.discovery.isError)
     return (
-      <section className="project-room" aria-label="Project room">
+      <section className={roomClass} aria-label="Project room">
+        {phone && channelHeader()}
         <ErrorState
           variant="compact"
           title="Room unavailable. Check your connection and Project access."
@@ -637,11 +711,40 @@ function ProjectRoomSession({
     );
   if (!view)
     return (
-      <section className="project-room" aria-label="Project room">
+      <section className={roomClass} aria-label="Project room">
+        {phone && channelHeader()}
         <SkeletonBlock count={2} label="Loading room" />
       </section>
     );
-  const visibleMessages = variant === 'preview' ? messages.slice(-5) : messages;
+  const byId = new Map(messages.map((message) => [message.messageId, message]));
+  /** A reply's thread is its earliest loaded ancestor (#4795). */
+  const rootOf = (messageId: string) => {
+    let id = messageId;
+    for (let depth = 0; depth < 32; depth += 1) {
+      const parent = byId.get(id)?.replyTo;
+      if (!parent || !byId.has(parent)) break;
+      id = parent;
+    }
+    return id;
+  };
+  // With threads on, a reply whose root is loaded lives in that root's
+  // thread; one whose root is not loaded stays inline, quoting it.
+  const repliesByRoot = new Map<string, RoomMessage[]>();
+  if (threadsOn)
+    for (const message of messages) {
+      if (!message.replyTo || !byId.has(message.replyTo)) continue;
+      const root = rootOf(message.messageId);
+      repliesByRoot.set(root, [...(repliesByRoot.get(root) ?? []), message]);
+    }
+  const threaded = new Set(
+    [...repliesByRoot.values()].flat().map((message) => message.messageId),
+  );
+  const openThread = threadRoot ? byId.get(threadRoot) : undefined;
+  const channelMessages = threadsOn
+    ? messages.filter((message) => !threaded.has(message.messageId))
+    : messages;
+  const visibleMessages =
+    variant === 'preview' ? channelMessages.slice(-5) : channelMessages;
   const participants = [
     ...new Map(
       view.presence
@@ -658,123 +761,216 @@ function ProjectRoomSession({
       <ReturnGlyph /> Replying to <strong>{authorOf(messageId)}</strong>
     </span>
   );
-  const rows: RoomConversationRow[] = visibleMessages.map((message) => ({
-    id: message.messageId,
-    kind: 'message',
-    author: {
-      id: message.actor.id,
-      label: message.actor.displayName,
-      agent: message.actor.kind === 'agent',
-    },
-    at: message.createdAt,
-    reply: !!message.replyTo,
-    context: message.replyTo ? replyContext(message.replyTo) : undefined,
-    text: message.text,
-    own: message.actor.id === view.actor.id,
-    actions: view.capabilities.discuss ? (
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={room.send.isPending}
-        aria-label={`Reply to ${message.actor.displayName}`}
-        onClick={() => {
-          setReplyTo(message.messageId);
-          composer.current?.focus();
-        }}
-      >
-        <ReturnGlyph /> Reply
-      </Button>
-    ) : undefined,
-  }));
-  if (proposal && !committed)
-    rows.push({
-      id: `proposal:${proposal.intentId}`,
+  const toRow = (
+    message: RoomMessage,
+    inThread = false,
+  ): RoomConversationRow => {
+    const replies = inThread
+      ? []
+      : (repliesByRoot.get(message.messageId) ?? []);
+    const repliers = [
+      ...new Map(
+        replies.map((reply) => [
+          reply.actor.id,
+          {
+            key: reply.actor.id,
+            label: reply.actor.displayName,
+            agent: reply.actor.kind === 'agent',
+          },
+        ]),
+      ).values(),
+    ];
+    return {
+      id: message.messageId,
       kind: 'message',
       author: {
-        id: view.actor.id,
-        label: view.actor.displayName,
-        agent: view.actor.kind === 'agent',
+        id: message.actor.id,
+        label: message.actor.displayName,
+        agent: message.actor.kind === 'agent',
       },
-      reply: !!proposal.replyTo,
-      context: proposal.replyTo ? replyContext(proposal.replyTo) : undefined,
-      text: proposal.text,
-      own: true,
-      tone: room.send.isPending ? 'pending' : 'failed',
-      footer: room.send.isPending ? (
-        <span className="project-room__delivery">Sending…</span>
-      ) : (
-        <span className="project-room__delivery project-room__delivery--failed">
-          <span>Send not confirmed.</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Retry same message"
-            onClick={() => void send(proposal)}
-          >
-            Retry
-          </Button>
-          <Button variant="ghost" size="sm" onClick={discardProposal}>
-            Discard
-          </Button>
-        </span>
-      ),
-    });
+      at: message.createdAt,
+      reply: !inThread && !!message.replyTo,
+      context:
+        !inThread && message.replyTo ? replyContext(message.replyTo) : undefined,
+      text: message.text,
+      own: message.actor.id === view.actor.id,
+      footer:
+        replies.length && thread ? (
+          <RoomThreadSummary
+            repliers={repliers}
+            count={replies.length}
+            lastAt={replies.at(-1)?.createdAt}
+            onOpen={() => thread.open(message.messageId)}
+          />
+        ) : undefined,
+      actions: view.capabilities.discuss ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={room.send.isPending}
+          aria-label={`Reply to ${message.actor.displayName}`}
+          onClick={() => {
+            if (threadsOn && !inThread && thread) {
+              thread.open(rootOf(message.messageId));
+              return;
+            }
+            if (!inThread) setReplyTo(message.messageId);
+            composer.current?.focus();
+          }}
+        >
+          <ReturnGlyph /> {threadsOn && !inThread ? 'Reply in thread' : 'Reply'}
+        </Button>
+      ) : undefined,
+    };
+  };
+  const proposalRoot =
+    proposal?.replyTo && byId.has(proposal.replyTo)
+      ? rootOf(proposal.replyTo)
+      : undefined;
+  const proposalInThread =
+    !!openThread && threadsOn && proposalRoot === threadRoot;
+  const proposalRow = (inThread: boolean): RoomConversationRow | undefined =>
+    proposal && !committed
+      ? {
+          id: `proposal:${proposal.intentId}`,
+          kind: 'message',
+          author: {
+            id: view.actor.id,
+            label: view.actor.displayName,
+            agent: view.actor.kind === 'agent',
+          },
+          reply: !inThread && !!proposal.replyTo,
+          context:
+            !inThread && proposal.replyTo
+              ? replyContext(proposal.replyTo)
+              : undefined,
+          text: proposal.text,
+          own: true,
+          tone: room.send.isPending ? 'pending' : 'failed',
+          footer: room.send.isPending ? (
+            <span className="project-room__delivery">Sending…</span>
+          ) : (
+            <span className="project-room__delivery project-room__delivery--failed">
+              <span>Send not confirmed.</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Retry same message"
+                onClick={() => void send(proposal)}
+              >
+                Retry
+              </Button>
+              <Button variant="ghost" size="sm" onClick={discardProposal}>
+                Discard
+              </Button>
+            </span>
+          ),
+        }
+      : undefined;
+  const rows: RoomConversationRow[] = visibleMessages.map((message) =>
+    toRow(message),
+  );
+  const pendingRow = proposalRow(proposalInThread);
+  if (pendingRow && !proposalInThread) rows.push(pendingRow);
+  const threadRows: RoomConversationRow[] = openThread
+    ? [
+        toRow(openThread, true),
+        ...(repliesByRoot.get(openThread.messageId) ?? []).map((message) =>
+          toRow(message, true),
+        ),
+        ...(pendingRow && proposalInThread ? [pendingRow] : []),
+      ]
+    : [];
+  const leaveThread = () => thread?.open(undefined);
+  const faces = (
+    <span className="project-room__faces" aria-hidden="true">
+      {participants.slice(0, 3).map((actor) => (
+        <RoomAvatar
+          key={actor.id}
+          name={actor.displayName}
+          agent={actor.kind === 'agent'}
+        />
+      ))}
+    </span>
+  );
   return (
     <section
       ref={section}
-      className={`project-room project-room--${variant}${compact ? ' project-room--compact' : ''}`}
+      className={`project-room project-room--${variant}${compact ? ' project-room--compact' : ''}${phone ? ' project-room--screen' : ''}`}
       aria-label="Project room"
     >
-      <header className="project-room__header">
-        {channelHeader}
-        <div
-          className="project-room__presence"
-          role="status"
-          aria-label="People here"
-        >
-          {participants.length ? (
-            <>
-              <span className="project-room__faces" aria-hidden="true">
-                {participants.slice(0, 3).map((actor) => (
-                  <RoomAvatar
-                    key={actor.id}
-                    name={actor.displayName}
-                    agent={actor.kind === 'agent'}
-                  />
-                ))}
-              </span>
-              <span className="project-room__names">
-                {participants.map((actor) => actor.displayName).join(', ')}
-              </span>
-            </>
-          ) : (
-            <span className="project-room__names">Just you</span>
+      {phone ? (
+        <header className="project-room__header project-room__header--screen">
+          {channelHeader(
+            screenBar({
+              ...(threadRoot
+                ? {
+                    backLabel: `Back to #${channelName}`,
+                    onBack: leaveThread,
+                    heading: { title: 'Thread', subtitle: `#${channelName}` },
+                  }
+                : {}),
+              trailing: participants.length ? faces : undefined,
+              actions: [
+                tab === 'conversation'
+                  ? {
+                      key: 'notes',
+                      label: 'Shared notes',
+                      onSelect: () => guard(() => setTab('notes')),
+                    }
+                  : {
+                      key: 'conversation',
+                      label: 'Conversation',
+                      onSelect: () => guard(() => setTab('conversation')),
+                    },
+              ],
+            }),
           )}
-        </div>
-        <nav className="project-room__tabs" aria-label="Room views">
-          <Button
-            size="sm"
-            active={tab === 'conversation'}
-            aria-pressed={tab === 'conversation'}
-            onClick={() => guard(() => setTab('conversation'))}
+        </header>
+      ) : (
+        <header className="project-room__header">
+          {channelHeader()}
+          <div
+            className="project-room__presence"
+            role="status"
+            aria-label="People here"
           >
-            Conversation
-          </Button>
-          <Button
-            size="sm"
-            active={tab === 'notes'}
-            aria-pressed={tab === 'notes'}
-            onClick={() => guard(() => setTab('notes'))}
-          >
-            Notes
-          </Button>
-        </nav>
-        {variant === 'preview' && onOpenRoom && (
-          <Button size="sm" onClick={onOpenRoom}>
-            Open room
-          </Button>
-        )}
-      </header>
+            {participants.length ? (
+              <>
+                {faces}
+                <span className="project-room__names">
+                  {participants.map((actor) => actor.displayName).join(', ')}
+                </span>
+              </>
+            ) : (
+              <span className="project-room__names">Just you</span>
+            )}
+          </div>
+          <nav className="project-room__tabs" aria-label="Room views">
+            <Button
+              size="sm"
+              active={tab === 'conversation'}
+              aria-pressed={tab === 'conversation'}
+              onClick={() => guard(() => setTab('conversation'))}
+            >
+              Conversation
+            </Button>
+            <Button
+              size="sm"
+              active={tab === 'notes'}
+              aria-pressed={tab === 'notes'}
+              onClick={() => guard(() => setTab('notes'))}
+            >
+              Notes
+            </Button>
+          </nav>
+          {variant === 'preview' && onOpenRoom && (
+            <Button size="sm" onClick={onOpenRoom}>
+              Open room
+            </Button>
+          )}
+        </header>
+      )}
       {room.streamError && (
         <p role="status" className="project-room__notice">
           Live updates are interrupted.{' '}
@@ -797,6 +993,42 @@ function ProjectRoomSession({
       )}
       {tab === 'conversation' ? (
         <>
+          {threadRoot && !phone && (
+            <div className="project-room__thread-bar">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Back to #${channelName}`}
+                onClick={leaveThread}
+              >
+                <ArrowLeftGlyph /> #{channelName}
+              </Button>
+              <h4 className="project-room__thread-title">Thread</h4>
+            </div>
+          )}
+          {threadRoot ? (
+            <RoomConversation
+              key={`thread:${threadRoot}`}
+              label="Thread"
+              regionLabel="Messages in this thread"
+              className="project-room__conversation"
+              rows={threadRows}
+              loading={room.history.isPending}
+              empty={
+                room.history.isPending ? undefined : (
+                  <Empty
+                    variant="compact"
+                    label="This message is not in the loaded history."
+                    action={
+                      <Button onClick={leaveThread}>
+                        Back to #{channelName}
+                      </Button>
+                    }
+                  />
+                )
+              }
+            />
+          ) : (
           <RoomConversation
             label="Conversation"
             regionLabel={`Messages in #${channelName}`}
@@ -836,6 +1068,7 @@ function ProjectRoomSession({
               void room.history.fetchNextPage();
             }}
           />
+          )}
           {view.capabilities.discuss ? (
             <ProjectRoomComposer
               id={`message-${editorId}`}
@@ -876,6 +1109,7 @@ Report observed freshness and coverage, including timestamps or checkpoints when
                 void room.discovery.refetch();
                 void room.history.refetch();
               }}
+              thread={!!openThread}
             />
           ) : (
             <p className="project-room__notice">
@@ -995,6 +1229,7 @@ function ProjectRoomComposer({
   send,
   prepareRecap,
   refresh,
+  thread = false,
 }: {
   id: string;
   view: ProjectRoomBrowserView;
@@ -1022,6 +1257,8 @@ function ProjectRoomComposer({
   send(): void;
   prepareRecap(): void;
   refresh(): void;
+  /** Replies go to the open thread (#4795): `replyTo` is its root. */
+  thread?: boolean;
 }) {
   const agents = view.capabilities.execute;
   const catalog = useProjectRoomAgent(
@@ -1143,8 +1380,8 @@ function ProjectRoomComposer({
       )}
       <RoomComposer
         id={id}
-        label="Message the project"
-        placeholder={`Message #${channelName}`}
+        label={thread ? 'Reply in thread' : 'Message the project'}
+        placeholder={thread ? 'Reply in thread' : `Message #${channelName}`}
         value={text}
         onValueChange={(value, caret) => {
           setText(value);
@@ -1183,9 +1420,9 @@ function ProjectRoomComposer({
             ),
         }}
         above={
-          replyTo || recipient ? (
+          (replyTo && !thread) || recipient ? (
             <>
-              {replyTo && (
+              {replyTo && !thread && (
                 <span className="room-composer__chip">
                   Replying to <strong>{replyAuthor}</strong>
                   <Button
