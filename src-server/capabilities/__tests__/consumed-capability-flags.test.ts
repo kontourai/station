@@ -39,6 +39,7 @@ import {
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
 import { isStationInternalRequest } from '../../services/browser/browser-request-origin.js';
 import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -92,9 +93,12 @@ const CONSUMED_FLAGS: Record<
 > = {
   delegationToolConstraintsV1: async (deployment) => {
     const execute = vi.fn(
-      async (_input: { delegation?: AgentDelegationContext }) => ({
-        conversationId: 'probe',
-        sessionId: 'probe',
+      async (input: {
+        conversationId?: string;
+        delegation?: AgentDelegationContext;
+      }) => ({
+        conversationId: input.conversationId,
+        sessionId: input.conversationId,
         providerTurnId: 'probe-turn',
         environment: { id: 'probe-host', name: 'Probe host', kind: 'current' },
         target: { kind: 'agent', id: 'station' },
@@ -102,8 +106,11 @@ const CONSUMED_FLAGS: Record<
     );
     const routes = orchestrationRoutes(
       deployment,
-      {},
+      { hasSessionStartRecord: async () => false },
       {
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          makeTempDir('tool-constraints-capability-'),
+        ),
         executeForegroundMessage: execute,
         resolveRequestDelegation: createRequestDelegationResolver({
           isInternalRequest: isStationInternalRequest,
