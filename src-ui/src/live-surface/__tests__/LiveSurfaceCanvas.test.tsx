@@ -1652,7 +1652,9 @@ describe('LiveSurfaceCanvas: which input may take control', () => {
     const transport = vi.fn(
       async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         if (String(input).endsWith('/lease')) {
-          claims.push(JSON.parse(String(init?.body)));
+          const body = JSON.parse(String(init?.body));
+          if (body.action !== 'claim') return base(input, init);
+          claims.push(body);
           return Response.json({
             success: true,
             data: { ok: true, lease: lease(8, MY_HOLD) },
