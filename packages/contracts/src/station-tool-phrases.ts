@@ -1,19 +1,9 @@
 /**
- * #3418: Station's own tool calls in plain words ("Waited for Fix login",
- * "Declared PR #3271", "Claimed #3158") rather than as a raw tool name, for
- * every reader that names a call: the transcript row, the turn's live
- * progress line and the Session digest. One table, so a call reads the same
- * everywhere; the raw name stays in the expanded view.
- *
- * Every tool the Station Control, Station Knowledge, Station Browser and
- * Station Docs servers register has an entry. The server's catalog test
- * (`src-server/tools/__tests__/station-tool-phrases.test.ts`) fails when a
- * registered tool has none, or an entry names a tool that is not registered.
- *
- * A phrase only ever says what the call's own arguments say. A Session is
- * named by its title when the reader knows it (`sessionTitle`), and as
- * "a Session" when it does not; an id the tool already returns may be shown,
- * but nothing is guessed.
+ * #3418: Station's own tool calls in plain words ("Declared PR #3271"), for
+ * transcript rows, the live progress line and the Session digest. Every
+ * registered Station tool has an entry (`station-tool-phrases.test.ts` in
+ * src-server pins this). Phrases use only the call's own arguments; a Session
+ * is named by a title the reader supplies, otherwise "a Session".
  */
 
 /** The MCP servers whose tools are Station's own. */
@@ -52,10 +42,7 @@ interface PhraseEntry {
 
 const MAX_SLOT_CHARS = 48;
 
-/**
- * One argument as display text: its first line, whitespace collapsed, cut
- * by code point (an emoji at the cut stays whole). Undefined when absent.
- */
+/** One argument's first line, whitespace collapsed, cut by code point. */
 function text(args: Args, key: string): string | undefined {
   const value = args[key];
   if (typeof value === 'number' && Number.isFinite(value)) return `${value}`;
@@ -118,7 +105,7 @@ const read = (object: PhraseEntry['object']) => entry(...READ, object);
 const listed = (object: string) => entry(...LISTED, fixed(object));
 
 const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
-  // ── devices ───────────────────────────────────────────────────────────
+  // Devices
   device_list: listed('devices'),
   device_open: entry('Opened', 'Opening', 'Open', fixed('a device')),
   device_screenshot: entry(
@@ -171,7 +158,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   device_input: entry('Sent', 'Sending', 'Send', fixed('input to the device')),
   device_close: entry('Closed', 'Closing', 'Close', fixed('the device')),
 
-  // ── browser ───────────────────────────────────────────────────────────
+  // Browser
   browser_status: entry(
     'Checked',
     'Checking',
@@ -241,7 +228,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     fixed('a script on the page'),
   ),
 
-  // ── docs ──────────────────────────────────────────────────────────────
+  // Docs
   list_station_docs_topics: listed('documentation topics'),
   get_station_docs_topic: read(({ args }) => {
     const topic = text(args, 'id') ?? text(args, 'topicId');
@@ -252,7 +239,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     return query ? `documentation for ${query}` : 'documentation';
   }),
 
-  // ── agents and conversations ──────────────────────────────────────────
+  // Agents and conversations
   list_agents: listed('Agents'),
   get_agent: read(named('Agent', 'slug', 'an Agent')),
   create_agent: entry(
@@ -292,7 +279,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     return agent ? `Agent ${quoted(agent)}` : 'an Agent';
   }),
 
-  // ── Sessions in this Project ──────────────────────────────────────────
+  // Sessions in this Project
   get_session_inventory: read((context) => `what ${session(context)} reviewed`),
   search_sessions: entry('Searched', 'Searching', 'Search', ({ args }) => {
     const query = quoted(text(args, 'query'));
@@ -327,7 +314,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   renew_claim: entry('Renewed', 'Renewing', 'Renew', fixed('a claim')),
   release_claim: entry('Released', 'Releasing', 'Release', fixed('a claim')),
 
-  // ── boards ────────────────────────────────────────────────────────────
+  // Boards
   board_pin: entry('Pinned', 'Pinning', 'Pin', ({ args }) => {
     const name = quoted(text(args, 'name'));
     return name ? `${name} to a Board` : 'to a Board';
@@ -352,7 +339,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     fixed('a personal Board'),
   ),
 
-  // ── skills ────────────────────────────────────────────────────────────
+  // Skills
   list_skills: listed('Skills'),
   list_registry_skills: listed('Skills in the registry'),
   install_skill: entry(
@@ -386,7 +373,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     ({ args }) => `how ${named('Skill', 'name', 'a Skill')({ args })} went`,
   ),
 
-  // ── evidence ──────────────────────────────────────────────────────────
+  // Evidence
   run_independent_review: entry(
     'Requested',
     'Requesting',
@@ -424,7 +411,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     fixed('a visual reply'),
   ),
 
-  // ── automations and check-backs ───────────────────────────────────────
+  // Automations and check-backs
   list_jobs: listed('Automations'),
   add_job: entry(
     'Added',
@@ -500,7 +487,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     fixed('a check-back'),
   ),
 
-  // ── Station ───────────────────────────────────────────────────────────
+  // Station
   system_status: entry('Checked', 'Checking', 'Check', fixed('Station')),
   list_models: listed('models'),
   read_logs: read(fixed('Station logs')),
@@ -552,12 +539,12 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     fixed('a troubleshooting report'),
   ),
 
-  // ── Projects ──────────────────────────────────────────────────────────
+  // Projects
   list_projects: listed('Projects'),
   get_project: read(named('Project', 'slug', 'a Project')),
   list_project_layouts: listed('Project layouts'),
 
-  // ── delegation and environments ───────────────────────────────────────
+  // Delegation and environments
   list_delegation_environments: listed('delegation environments'),
   list_delegation_targets: listed('delegation targets'),
   create_ssh_environment: entry(
@@ -606,7 +593,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   ),
   interrupt_task: entry('Stopped', 'Stopping', 'Stop', fixed('a delegation')),
 
-  // ── Tasks ─────────────────────────────────────────────────────────────
+  // Tasks
   declare_pull_request: entry(
     'Declared',
     'Declaring',
@@ -648,7 +635,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     fixed('pull request guides'),
   ),
 
-  // ── integrations and plugins ──────────────────────────────────────────
+  // Integrations and plugins
   list_integrations: listed('Integrations'),
   get_integration: read(named('Integration', 'id', 'an Integration')),
   create_integration: entry(
@@ -715,7 +702,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     named('Plugin', 'name', 'a Plugin'),
   ),
 
-  // ── knowledge ─────────────────────────────────────────────────────────
+  // Knowledge
   reindex_knowledge: entry(
     'Reindexed',
     'Reindexing',
@@ -755,11 +742,9 @@ const QUALIFIED_NAME = new RegExp(
 );
 
 /**
- * The Station tool a call is, from its name as each engine spells it
- * (`mcp__station-control__x`, `station-control_x`, `station-control/x`,
- * `station-control.x`, `Tool: station-control/x`), or from a bare name with
- * the engine's separate `server` field. A bare name with no server is never
- * claimed: another server's tool may share it.
+ * The Station tool a call is, by its name as any engine spells it
+ * (`mcp__station-control__x`, `station-control/x`, …) or by a bare name plus
+ * the engine's `server` field. A bare name alone is never claimed.
  */
 export function stationToolOf(
   toolName: string | undefined,
@@ -797,11 +782,7 @@ function argumentsOf(args: unknown): Args {
     : {};
 }
 
-/**
- * The call in plain words for its phase ("Waiting for “Fix login”",
- * "Declared PR #3271", "Claim #3158"), or `undefined` for a tool the table
- * does not word, which a reader then shows by its own name.
- */
+/** The call's phrase for its phase, or `undefined` for an unworded tool. */
 export function stationToolPhrase(
   tool: string,
   phase: StationToolPhase,

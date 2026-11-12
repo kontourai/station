@@ -686,19 +686,13 @@ failed, the settled summary names them without a completed verb ("2 file
 edits"); one success keeps the completed phrase, and the failed and retried
 counts disclose the rest.
 
-Station's own tool calls (Station Control, Knowledge, Browser and Docs) carry
-Station's mark, the app icon's tile and river in the brand colour, named
-"Station" for assistive technology, and read as Station actions
-("Waited for “Fix login”", "Declared PR #3271") rather than "Used
+Station's own tool calls carry Station's mark (named "Station" for screen
+readers) and read as actions, such as "Waited for “Fix login”" instead of "Used
 `wait_session`" (#3418). The words come from
-[`station-tool-phrases`](../../packages/contracts/src/station-tool-phrases.ts),
-filled only from the call's own arguments. A Session is named by its title in a
-live conversation and as "a Session" when no title is known. Only an observed
-success takes the past tense; a running call takes the progressive; a proposed,
-failed, denied or unresolved one takes the bare verb ("Declare PR #3271"). A
-summary counts them as Station tools ("Ran 1 command, used 2 Station tools"),
-and the live progress line uses the same phrase. The expanded row keeps the
-tool's own name.
+[`station-tool-phrases`](../../packages/contracts/src/station-tool-phrases.ts)
+and follow the same tense rule: past only after success, bare while pending or
+failed. Summaries say "used 2 Station tools"; the expanded row keeps the raw
+name.
 
 User-message action menus reserve padding before hover so their targets cannot
 cover the text. Individual tool failures remain on their transcript rows rather

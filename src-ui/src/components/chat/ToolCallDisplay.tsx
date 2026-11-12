@@ -181,11 +181,7 @@ const KIND_GLYPH: Record<
   other: PlugGlyph,
 };
 
-/**
- * The kind glyph as a row shows it. Glyphs are decorative, except Station's
- * mark: it is the only thing that says a call is Station's own rather than
- * the engine's, so it carries that as its text alternative (#3418).
- */
+/** The row's kind glyph: decorative, except Station's mark, named "Station". */
 export function ToolCallGlyph({
   kind,
   className,

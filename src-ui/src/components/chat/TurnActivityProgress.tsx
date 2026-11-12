@@ -37,11 +37,7 @@ type TurnActivityProgressParts = {
   silence?: string;
 };
 
-/**
- * #3418: a Station tool by its phrase, the same words its transcript row
- * uses. The record holds no arguments, so the phrase is its plain form
- * ("Waiting for a Session"); any other tool keeps its name.
- */
+/** #3418: a Station tool by its argument-free phrase; others keep their name. */
 function toolLine(
   name: string,
   phase: StationToolPhase,
@@ -95,8 +91,7 @@ function describeTurnActivity(
       turnStartedAt !== undefined &&
       completedAt >= turnStartedAt
     ) {
-      // Only an observed success takes the past tense; the outcome word
-      // beside it says what became of any other call.
+      // Past tense only for a success; the outcome word covers the rest.
       parts.lastTool = toolLine(
         activity.lastTool.name,
         activity.lastTool.outcome === 'success' ? 'done' : 'pending',

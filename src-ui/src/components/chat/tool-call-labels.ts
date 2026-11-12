@@ -617,9 +617,8 @@ function stationToolOfCall(call: { toolName?: unknown; server?: unknown }) {
  * > gsd.mjs` guessed a read in one render and a search in another.
  */
 export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
-  // #3418: Station's own tools are worded by their phrase, ahead of the
-  // command rule: `terminal_run` (#3994) carries a command it only asks a
-  // person to run, so it reads "Asked to run …", never "Ran …".
+  // #3418: Station tools first, so `terminal_run` (#3994) reads "Asked to
+  // run …", never "Ran …".
   if (stationToolOfCall(call)) return 'station';
   if (hasCommandArgument(call.args)) return 'exec';
   if (typeof call.toolKind === 'string' && call.toolKind in ENGINE_KIND) {
@@ -929,11 +928,7 @@ export interface StationCallNaming {
   sessionTitle?: (sessionId: string) => string | undefined;
 }
 
-/**
- * The phrase form for a row phase. Only an observed success takes the past
- * tense; a failed, denied or never-resolved call takes the bare verb, as a
- * write does: "Declared PR #3271" would claim what may not have happened.
- */
+/** Only an observed success takes the past tense; anything unsettled is bare. */
 const STATION_PHASE: Record<ToolCallPhase, StationToolPhase> = {
   done: 'done',
   running: 'running',

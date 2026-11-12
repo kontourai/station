@@ -1,8 +1,5 @@
-/* #3418: Station's own tools carry its mark, in the brand colour at full
-   strength (an ordinary tool glyph recedes at 0.7). The brand passes 4.5:1 as
-   text on every page and panel surface in every channel and mode (the channel
-   block at the top of index.css), past the 3:1 a graphic needs. Two classes,
-   so it outranks `.tool-call__glyph` whatever order the sheets load in. */
+/* #3418: Station's mark in the brand colour (4.5:1 as text in every channel,
+   above the 3:1 a graphic needs). Two classes outrank `.tool-call__glyph`. */
 .tool-call__glyph.tool-call__glyph--station {
   color: var(--k-brand);
   opacity: 1;

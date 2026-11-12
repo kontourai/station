@@ -533,9 +533,7 @@ function noticeLine(content: string) {
 export function ConversationBody(
   props: ConversationBodyProps | RecordConversationBodyProps,
 ) {
-  // #3418: a live body names the Sessions its Station tool calls address
-  // ("Waited for “Fix login”"). A record (shared Task history) reads no
-  // Session list, so its calls say "a Session".
+  // #3418: only the live body reads Session titles for Station tool rows.
   return 'density' in props && props.density === 'record' ? (
     <RecordConversationBody {...props} />
   ) : (

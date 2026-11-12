@@ -74,10 +74,8 @@ export interface DigestTurn {
   sender?: ClientOriginSender;
   outcome: DigestTurnOutcome;
   /**
-   * Tool calls by name, most used first. A Station tool also carries its
-   * plain-language `label` (#3418), the words its transcript row uses, in
-   * the bare, argument-free form ("Wait for a Session"): the count covers
-   * every call whatever its outcome, so the label claims none.
+   * Tool calls by name, most used first. Station tools add a bare-form
+   * `label` ("Wait for a Session", #3418); the count spans every outcome.
    */
   toolCalls: Array<{ tool: string; calls: number; label?: string }>;
   /** Calls of tools beyond the listed names. */
