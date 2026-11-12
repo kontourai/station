@@ -86,7 +86,7 @@ function ShareTargetProjectList({
   if (projectsQuery.isLoading)
     return <SkeletonList count={4} label="Loading projects" />;
   if (options.length === 0)
-    return <Empty variant="compact" label="No matching projects" />;
+    return <Empty variant="compact" label="Nothing matches that search" />;
   return (
     <ul className="share-target-picker__items">
       {options.map((option) => (
