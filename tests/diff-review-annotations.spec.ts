@@ -1,3 +1,4 @@
+import type { GitStatusResult } from '@kontourai/station-sdk';
 import { expect, type Page } from '@playwright/test';
 import { selectCodingPane } from './helpers/coding-stack';
 import { test } from './helpers/fixture-audit';
@@ -57,7 +58,19 @@ async function seedRoutes(page: Page) {
       contentType: 'application/json',
       body: JSON.stringify({
         success: true,
-        data: { isRepo: true, branch: 'main', changes: ['M foo.ts'] },
+        data: {
+          isRepo: true,
+          branch: 'main',
+          changes: [' M foo.ts'],
+          staged: 0,
+          unstaged: 1,
+          untracked: 0,
+          lastCommit: null,
+          ahead: 0,
+          behind: 0,
+          remote: 'present',
+          repoRoot: '/repo',
+        } satisfies GitStatusResult,
       }),
     }),
   );
@@ -143,6 +156,9 @@ test.describe('Diff review annotations', () => {
         await expect(
           page.getByRole('button', { name: 'Wrap lines' }),
         ).toBeVisible();
+        await expect(
+          page.getByRole('textbox', { name: 'Commit message', exact: true }),
+        ).toHaveAttribute('placeholder', 'Commit message (1)');
 
         // The wiring fired: DiffPanel fetched the project's comments.
         await commentsRequest;
