@@ -3576,6 +3576,13 @@ function roomConversationScreens(): Screen[] {
             }
             if (scene === 'keyboard') {
               await composer.click();
+              if (viewport.width === DESKTOP.width) {
+                // No keyboard at 1440: a reply being typed, Send enabled.
+                await composer.pressSequentially('Updating both now');
+                await expect(
+                  roomRegion.getByRole('button', { name: /^Send/ }),
+                ).toBeEnabled();
+              }
               if (viewport.width === MOBILE.width) {
                 // 844 tall, 544 visible: the keyboard takes 300px (#4810
                 // gallery delta 2). Send stays above it, and the room keeps

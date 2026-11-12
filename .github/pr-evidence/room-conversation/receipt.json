@@ -1,18 +1,18 @@
 {
   "beforeSource": "c493a11367da6f920634c452fce9843847a37a75 (origin/main) UI with this branch's room gallery scenes and fixtures only",
-  "afterSource": "442c8b6394c0 (#4810 gallery delta: phone More actions, named scroll region, route-served gallery Task), merged with origin/main 87730c88104c",
+  "afterSource": "2b9a75fe232d+ (#4810 gallery deltas: phone More actions, named scroll region, route-served gallery Task, keyboard keep-in-view), merged with origin/main 87730c88104c",
   "capture": "node scripts/heavy-check-slot.mjs screenshots-room scripts/run-e2e-suite.mjs --suite=screenshot --screens=<the 40 room-* scenes>, local isolated e2e Station, Chromium",
   "assets": {
     "branch": "pr-assets/room-conversation-4810",
-    "commit": "89ffdfd7cb934e52ae7fe18e693e6a2475ef04bb",
+    "commit": "dc79d4ccb69177535de6aef02b77efd07d39df3d",
     "path": "room-conversation-4810/",
-    "rawBase": "https://raw.githubusercontent.com/kontourai/station/89ffdfd7cb934e52ae7fe18e693e6a2475ef04bb/room-conversation-4810"
+    "rawBase": "https://raw.githubusercontent.com/kontourai/station/dc79d4ccb69177535de6aef02b77efd07d39df3d/room-conversation-4810"
   },
-  "pixelComparison": "NOT_VERIFIED:40new/0comparisons (scenes are new; no tracked baseline)",
+  "pixelComparison": "NOT_VERIFIED:44new/0comparisons (scenes are new; no tracked baseline)",
   "files": [
     {
       "file": "after-room-agent-abandon-dark-desktop.png",
-      "sha256": "9f92a33690f42e4bf70d169e1e9221beae0f0caa347a131750c98f24a78528d4"
+      "sha256": "2448cb2c1269890718533ec45ddcd9741ae89e37ff23694f3c81248b999bc244"
     },
     {
       "file": "after-room-agent-abandon-dark-mobile.png",
@@ -28,7 +28,7 @@
     },
     {
       "file": "after-room-agent-pending-dark-desktop.png",
-      "sha256": "abb3a3a1df6b1704668c2352a206566f37767cb55e09d1526939a0717edd3afb"
+      "sha256": "19e548a997ca392f6166ee51499de8b25e9a1a596a46779ad64516f014fab4ff"
     },
     {
       "file": "after-room-agent-pending-dark-mobile.png",
@@ -44,7 +44,7 @@
     },
     {
       "file": "after-room-empty-dark-desktop.png",
-      "sha256": "58ec57894f57c51663e23da8486bf485322c6ef0088421f1d09a8c2dc243c63d"
+      "sha256": "78e1e5a49f1992ad3099a9068609112c9aecccc5a6b8e3384aa4ff59a3f70944"
     },
     {
       "file": "after-room-empty-dark-mobile.png",
@@ -75,8 +75,24 @@
       "sha256": "96ff4a608785c75b4a913a56a7925ed359eae25e3ed10ddf0edc6e547db264db"
     },
     {
+      "file": "after-room-keyboard-dark-desktop.png",
+      "sha256": "2cd85beaad7c7d4d93d3fab5108d32b8c90b24a7edc9398bd251f04c3dca21f1"
+    },
+    {
+      "file": "after-room-keyboard-dark-mobile.png",
+      "sha256": "7855e24f604837d24841f6e387322eaf6aa848b99f1d0129f3579dfe274ef0aa"
+    },
+    {
+      "file": "after-room-keyboard-light-desktop.png",
+      "sha256": "eb14aaf5ab74f161d04be3809bec2a6100c10aaf6bf468160549a97b41d8d296"
+    },
+    {
+      "file": "after-room-keyboard-light-mobile.png",
+      "sha256": "da6aab44b6943351834a06026317553c9f33d5682f9c743e7cbc10c6c30f4dc1"
+    },
+    {
       "file": "after-room-long-dark-desktop.png",
-      "sha256": "7998796961fed2ae50677fd6b864a9a51ff189c961380b1b695ca321a6be67a0"
+      "sha256": "41971ef7e0e6b70cd5061e3dad3cc789a74edadecc4e900ca67a60883e78f9f8"
     },
     {
       "file": "after-room-long-dark-mobile.png",
@@ -100,7 +116,7 @@
     },
     {
       "file": "after-room-mention-light-desktop.png",
-      "sha256": "9a476762f8b1222ff184a95c6e2d813546ed3ad13732b4aa4cee6ee872d24424"
+      "sha256": "e168e04edca5b387d39758cf25f88007839c3884fc3d47ecde70c3afc59763c0"
     },
     {
       "file": "after-room-mention-light-mobile.png",
