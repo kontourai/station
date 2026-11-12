@@ -37,6 +37,8 @@ export interface ProjectConversationIndex {
     isError: boolean;
     /** The host predates channels: only its default room exists. */
     unsupported: boolean;
+    /** The Project is not on this Station: nothing to list or retry. */
+    projectMissing: boolean;
     retry(): void;
     /**
      * Channels are listed but their unread state could not be read: the rows
@@ -118,8 +120,12 @@ export function useProjectConversationIndex(
     channels: {
       entries: channelEntries(project.slug, listed, states),
       isPending: channels.list.isPending && !channels.unsupported,
-      isError: channels.list.isError && !channels.unsupported,
+      isError:
+        channels.list.isError &&
+        !channels.unsupported &&
+        !channels.projectMissing,
       unsupported: channels.unsupported,
+      projectMissing: channels.projectMissing,
       retry: () => void channels.list.refetch(),
       unreadError: listed.length > 0 && summary.isError,
       retryUnread: () => void summary.refetch(),

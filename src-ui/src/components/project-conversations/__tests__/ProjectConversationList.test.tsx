@@ -318,3 +318,22 @@ test('a failed summary with no Tasks still says unread is unknown and retries it
   expect(bold(unread)).toBe(true);
   expect(screen.queryByText('Unread state could not be loaded.')).toBeNull();
 });
+
+test('a Project this Station does not have lists nothing and offers no retry', async () => {
+  const fetchMock = vi.mocked(fetch);
+  const real = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (input, init) =>
+    new URL(String(input)).pathname === '/api/projects/team/channels'
+      ? Response.json(
+          { error: { code: 'project_room_project_not_found' } },
+          { status: 404 },
+        )
+      : real(input, init),
+  );
+  renderList();
+  await screen.findByText("This Project isn't on this Station.");
+  // Not an older host (whose fallback is #general), and not an outage.
+  expect(screen.queryByRole('button', { name: 'general' })).toBeNull();
+  expect(screen.queryByText('Channels could not be loaded.')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+});

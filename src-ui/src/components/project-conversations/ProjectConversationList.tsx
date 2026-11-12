@@ -92,6 +92,7 @@ export function ProjectConversationList({
   const placeholder =
     !index.channels.isPending &&
     !index.channels.isError &&
+    !index.channels.projectMissing &&
     channelRows.length === 0;
   if (placeholder)
     channelRows.push({
@@ -205,6 +206,11 @@ export function ProjectConversationList({
         </div>
         {index.channels.isPending ? (
           <SkeletonBlock count={2} label="Loading channels" />
+        ) : index.channels.projectMissing ? (
+          <Empty
+            variant="compact"
+            label="This Project isn't on this Station."
+          />
         ) : index.channels.isError ? (
           <ErrorState
             variant="compact"

@@ -1613,3 +1613,26 @@ test('an unsent thread reply stays with its thread; the channel composer has its
     ['Unsent answer for this thread', root.messageId],
   ]);
 });
+
+test('a Project this Station does not have reads as missing, not as an unavailable room to retry', async () => {
+  // The room routes answer 404 with the Project's own code (#4855).
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (
+      init?.method !== 'POST' &&
+      (url.pathname === '/api/projects/team/room' ||
+        url.pathname === '/api/projects/team/channels')
+    )
+      return Response.json(
+        { error: { code: 'project_room_project_not_found' } },
+        { status: 404 },
+      );
+    return original(input, init);
+  });
+  mount();
+  await screen.findByText("This Project isn't on this Station.");
+  expect(screen.queryByText(/Room unavailable/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open room' })).toBeNull();
+});

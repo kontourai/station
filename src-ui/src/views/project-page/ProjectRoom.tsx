@@ -771,6 +771,14 @@ function ProjectRoomSession({
         />
       </section>
     );
+  // The Project is not on this Station (#4855): not an outage, so no retry.
+  if (room.projectMissing)
+    return (
+      <section className={roomClass} aria-label="Project room">
+        {phone && channelHeader()}
+        <Empty variant="compact" label="This Project isn't on this Station." />
+      </section>
+    );
   if (room.discovery.isError)
     return (
       <section className={roomClass} aria-label="Project room">
