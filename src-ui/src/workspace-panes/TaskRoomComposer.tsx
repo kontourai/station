@@ -17,14 +17,18 @@ import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
-import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
+import { RoomComposer } from '../components/room/RoomComposer';
+import {
+  type RoomMentionCandidate,
+  RoomMentionPicker,
+  useRoomMention,
+} from '../components/room/RoomMentionPicker';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
-import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
-import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 import {
   readTaskRoomDraft,
   removeTaskRoomDraft,
@@ -68,6 +72,7 @@ export function TaskRoomComposer({
   readable: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const compact = useIsMobile();
   const statusMutation = useUpdateTaskStatusMutation();
   const recoveryOwner = scope?.draftRecoveryKey
     ? JSON.stringify([
@@ -121,12 +126,6 @@ export function TaskRoomComposer({
   const [draft, setDraft] = useState('');
   const [recipient, setRecipient] = useState<{ id: string; name: string }>();
   const [leadingPerson, setLeadingPerson] = useState<string>();
-  const [mention, setMention] = useState<{
-    start: number;
-    end: number;
-    query: string;
-  }>();
-  const [active, setActive] = useState(0);
   const [composing, setComposing] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState<TaskRoomWorkInput>();
   const [unconfirmedMessage, setUnconfirmedMessage] = useState<{
@@ -328,10 +327,15 @@ export function TaskRoomComposer({
     setReturnToMessage(undefined);
     applyReturnFocus([returnToMessage.element], returnToMessage.element);
   }, [returnToMessage, owner, scope, writable, locked]);
-  const candidates = [
+  const candidates: RoomMentionCandidate[] = [
     ...(options.isError ? [] : (options.data?.targets ?? [])).map((target) => ({
-      ...target,
-      person: false,
+      id: target.id,
+      name: target.name,
+      agent: true,
+      handle: target.id,
+      description: target.description,
+      ready: target.ready,
+      unavailableReason: target.unavailableReason,
     })),
     ...(room?.live?.participants ?? [])
       .filter(
@@ -342,56 +346,39 @@ export function TaskRoomComposer({
       .map((participant) => ({
         id: participant.actor.actorId,
         name: participant.actor.label,
+        agent: false,
         description: 'Here now',
         ready: true,
-        unavailableReason: undefined,
-        person: true,
       })),
-  ]
-    .filter((target) =>
-      `${target.name} ${target.id} ${target.description ?? ''}`
-        .toLocaleLowerCase()
-        .includes(mention?.query.toLocaleLowerCase() ?? ''),
-    )
-    .slice(0, 8);
-  const selected = Math.min(active, Math.max(0, candidates.length - 1));
-  const picker = writable && !!mention && !composing && !recipient && !locked;
-  const select = (index: number) => {
-    const agent = candidates[index];
-    if (!agent?.ready || !mention) return;
-    setDraftOwner(owner);
-    if (agent.person) {
-      if (!draft.slice(0, mention.start).trim()) setLeadingPerson(agent.name);
-      setDraft(
-        draft.slice(0, mention.start) +
-          `@${agent.name} ` +
-          draft.slice(mention.end),
+  ];
+  const mention = useRoomMention({
+    candidates,
+    enabled: writable && !composing && !recipient && !locked,
+    onPick(candidate, query) {
+      setDraftOwner(owner);
+      if (!candidate.agent) {
+        if (!draft.slice(0, query.start).trim())
+          setLeadingPerson(candidate.name);
+        setDraft(
+          draft.slice(0, query.start) +
+            `@${candidate.name} ` +
+            draft.slice(query.end),
+        );
+        textarea.current?.focus();
+        return;
+      }
+      briefSelection.current += 1;
+      setLeadingPerson(undefined);
+      setRecipient({ id: candidate.id, name: candidate.name });
+      setBrief(
+        !requests.isError && scope?.isCurrent()
+          ? (requests.data?.context ?? undefined)
+          : undefined,
       );
-      setMention(undefined);
+      setDraft(draft.slice(0, query.start) + draft.slice(query.end));
       textarea.current?.focus();
-      return;
-    }
-    briefSelection.current += 1;
-    setLeadingPerson(undefined);
-    setRecipient({ id: agent.id, name: agent.name });
-    setBrief(
-      !requests.isError && scope?.isCurrent()
-        ? (requests.data?.context ?? undefined)
-        : undefined,
-    );
-    setDraft(draft.slice(0, mention.start) + draft.slice(mention.end));
-    setMention(undefined);
-    textarea.current?.focus();
-  };
-  const findMention = (value: string, caret: number) => {
-    const match = /(?:^|\s)@([^\s@]*)$/.exec(value.slice(0, caret));
-    setActive(0);
-    setMention(
-      match
-        ? { start: caret - match[1].length - 1, end: caret, query: match[1] }
-        : undefined,
-    );
-  };
+    },
+  });
   const submit = async () => {
     if (
       !writable ||
@@ -694,7 +681,9 @@ export function TaskRoomComposer({
     }
   };
   return (
-    <div className="task-room-composer">
+    <div
+      className={`task-room-composer${compact ? ' task-room-composer--compact' : ''}`}
+    >
       {recovery.saved && recovery.owner === recoveryOwner && (
         <section aria-label="Saved Task draft">
           <p>
@@ -815,233 +804,157 @@ export function TaskRoomComposer({
           uses the same operation; discarding only removes your local copy.
         </p>
       )}
-      <label className="sr-only" htmlFor={`${id}-message`}>
-        Message the Task
-      </label>
-      <TaskRoomAttachmentComposer
-        attachments={attachments}
-        locked={!writable || locked || !scope}
-        owner={owner}
-      >
-        <TaskRoomMessageInput
-          onSend={() => {
-            if (
-              !composing &&
-              !locked &&
-              writable &&
-              (draft.trim() || attachments.files.length)
-            )
-              void submit();
-          }}
-          id={`${id}-message`}
-          placeholder="Message the Task…"
-          ref={textarea}
-          value={draft}
-          disabled={!writable || locked || !scope}
-          aria-controls={picker ? `${id}-agents` : undefined}
-          aria-activedescendant={
-            picker && candidates.length ? `${id}-agent-${selected}` : undefined
-          }
-          aria-describedby={`${id}-help`}
-          onCompositionStart={() => setComposing(true)}
-          onCompositionEnd={(event) => {
+      <RoomComposer
+        id={`${id}-message`}
+        label="Message the Task"
+        placeholder="Message the Task…"
+        value={draft}
+        textareaRef={textarea}
+        disabled={!writable || locked || !scope}
+        onValueChange={(value, caret) => {
+          setNotice('');
+          setDraftOwner(owner);
+          setDraft(value);
+          if (!startsWithSelectedPerson(value, leadingPerson))
+            setLeadingPerson(undefined);
+          mention.find(value, caret);
+        }}
+        onSend={() => {
+          if (!composing) void submit();
+        }}
+        canSend={
+          writable &&
+          !recoveryHeld &&
+          !connectionChanged &&
+          !!scope &&
+          (!!draft.trim() ||
+            attachments.files.length > 0 ||
+            !!unconfirmed?.attachments?.length ||
+            !!unconfirmedMessage?.attachments?.length) &&
+          !(recipient && (!requests.data || requests.isError))
+        }
+        pending={pending}
+        sendLabel={
+          unconfirmedMessage
+            ? 'Retry same room message'
+            : unconfirmed
+              ? 'Retry same agent request'
+              : recipient
+                ? `Ask ${recipient.name}`
+                : 'Send to task room'
+        }
+        attachments={{
+          port: attachments,
+          locked: !writable || locked || !scope,
+          owner,
+        }}
+        inputProps={{
+          'aria-controls': mention.open ? `${id}-agents` : undefined,
+          'aria-activedescendant':
+            mention.open && mention.filtered.length
+              ? `${id}-agents-option-${mention.selected}`
+              : undefined,
+          'aria-describedby': `${id}-help`,
+          onCompositionStart: () => setComposing(true),
+          onCompositionEnd: (event) => {
             setComposing(false);
-            findMention(
+            mention.find(
               event.currentTarget.value,
               event.currentTarget.selectionStart,
             );
-          }}
-          onChange={(event) => {
-            setNotice('');
-            setDraftOwner(owner);
-            setDraft(event.currentTarget.value);
-            if (
-              !startsWithSelectedPerson(
-                event.currentTarget.value,
-                leadingPerson,
-              )
-            )
-              setLeadingPerson(undefined);
-            findMention(
+          },
+          onClick: (event) =>
+            mention.find(
               event.currentTarget.value,
               event.currentTarget.selectionStart,
-            );
-          }}
-          onClick={(event) =>
-            findMention(
-              event.currentTarget.value,
-              event.currentTarget.selectionStart,
-            )
-          }
-          onKeyDown={(event) => {
-            if (!picker || composing || event.nativeEvent.isComposing) return;
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setMention(undefined);
-            }
-            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-              event.preventDefault();
-              setActive(
-                Math.max(
-                  0,
-                  Math.min(
-                    candidates.length - 1,
-                    selected + (event.key === 'ArrowDown' ? 1 : -1),
-                  ),
-                ),
-              );
-            }
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              select(selected);
-            }
-          }}
-        />
-      </TaskRoomAttachmentComposer>
-      <div className="task-room-composer-actions">
-        {recipient ? (
-          <fieldset aria-label="Agent recipient">
-            Asking <strong>@{recipient.name}</strong>
-            <Button
-              size="sm"
-              disabled={locked}
-              aria-label={`Remove ${recipient.name}`}
-              onClick={() => {
-                briefSelection.current += 1;
-                setRecipient(undefined);
-              }}
+            ),
+          onKeyDown: mention.onKeyDown,
+        }}
+        above={
+          recipient ? (
+            <fieldset
+              className="room-composer__chip"
+              aria-label="Agent recipient"
             >
-              Remove
-            </Button>
-          </fieldset>
-        ) : (
-          <Button
-            size="sm"
-            className="task-room-agent-action"
-            disabled={!writable || locked}
-            onClick={() => {
-              setDraftOwner(owner);
-              setMention({ start: draft.length, end: draft.length, query: '' });
-              setActive(0);
-              textarea.current?.focus();
-            }}
-          >
-            Ask an agent
-          </Button>
-        )}
-        <label className="task-room-brief-choice">
-          <input
-            type="checkbox"
-            aria-label="Brief attached to agent requests"
-            checked={includeBrief}
-            disabled={locked}
-            onChange={(event) => setIncludeBrief(event.currentTarget.checked)}
-          />
-          <span className="task-room-brief-long">
-            Brief attached to agent requests
-          </span>
-          <span className="task-room-brief-short">Brief attached</span>
-        </label>
-        <Button
-          className="task-room-send"
-          aria-label={
-            pending
-              ? 'Sending…'
-              : unconfirmedMessage
-                ? 'Retry same room message'
-                : unconfirmed
-                  ? 'Retry same agent request'
-                  : recipient
-                    ? `Ask ${recipient.name}`
-                    : 'Send to task room'
-          }
-          pending={pending}
-          pendingLabel="Sending…"
-          disabled={
-            !writable ||
-            recoveryHeld ||
-            connectionChanged ||
-            !scope ||
-            (!draft.trim() &&
-              !attachments.files.length &&
-              !unconfirmed?.attachments?.length &&
-              !unconfirmedMessage?.attachments?.length) ||
-            (recipient && (!requests.data || requests.isError))
-          }
-          onClick={() => void submit()}
-        >
-          {unconfirmed || unconfirmedMessage
-            ? 'Retry'
-            : recipient
-              ? `Ask ${recipient.name}`
-              : 'Send'}
-        </Button>
-      </div>
-      {recipient && brief?.text.includes('Brief shortened to fit') && (
-        <p role="status">
-          The brief exceeds 16,000 characters. A shortened version with a notice
-          will be attached.
-        </p>
-      )}
-      <p className="task-room-composer-help" id={`${id}-help`}>
-        Enter to send, Shift+Enter for a new line. Type @ for agents and people,
-        / for commands.
-      </p>
-      {picker ? (
-        <div id={`${id}-agents`} role="listbox" aria-label="Choose an agent">
-          {options.isLoading ? (
-            <SkeletonList count={3} label="Finding agents" />
-          ) : null}
-          {options.isError ? (
-            <p role="alert">Agent choices are unavailable.</p>
-          ) : null}
-          {!options.isLoading && !options.isError && !candidates.length ? (
-            mention.query ? (
-              <FilteredEmpty
-                query={mention.query}
-                noun="agents"
-                onClear={() => {
-                  setDraft(
-                    draft.slice(0, mention.start) +
-                      '@' +
-                      draft.slice(mention.end),
-                  );
-                  setMention({
-                    start: mention.start,
-                    end: mention.start + 1,
-                    query: '',
-                  });
-                  setActive(0);
+              Asking <strong>@{recipient.name}</strong>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={locked}
+                aria-label={`Remove ${recipient.name}`}
+                onClick={() => {
+                  briefSelection.current += 1;
+                  setRecipient(undefined);
+                }}
+              >
+                Remove
+              </Button>
+            </fieldset>
+          ) : undefined
+        }
+        tools={
+          <>
+            {!recipient && (
+              <Button
+                size="sm"
+                className="task-room-agent-action"
+                disabled={!writable || locked}
+                onClick={() => {
+                  setDraftOwner(owner);
+                  mention.openAt(draft.length);
                   textarea.current?.focus();
                 }}
-              />
-            ) : (
-              <Empty variant="compact" label="Nothing available" />
-            )
-          ) : null}
-          {candidates.map((agent, index) => (
-            <div key={agent.id}>
-              <Button
-                id={`${id}-agent-${index}`}
-                role="option"
-                tabIndex={-1}
-                aria-selected={selected === index}
-                aria-disabled={!agent.ready}
-                disabled={!agent.ready}
-                onClick={() => select(index)}
               >
-                {agent.name}
-                {agent.person ? '' : ` @${agent.id}`}
+                Ask an agent
               </Button>
-              <p>
-                {agent.ready
-                  ? agent.description
-                  : (agent.unavailableReason ?? 'Unavailable')}
+            )}
+            <label className="task-room-brief-choice">
+              <input
+                type="checkbox"
+                aria-label="Brief attached to agent requests"
+                checked={includeBrief}
+                disabled={locked}
+                onChange={(event) =>
+                  setIncludeBrief(event.currentTarget.checked)
+                }
+              />
+              <span className="task-room-brief-long">
+                Brief attached to agent requests
+              </span>
+              <span className="task-room-brief-short">Brief attached</span>
+            </label>
+          </>
+        }
+        below={
+          <>
+            <RoomMentionPicker
+              id={`${id}-agents`}
+              state={mention}
+              loading={options.isLoading}
+              failed={options.isError}
+              onClearQuery={() => {
+                const query = mention.mention;
+                if (!query) return;
+                setDraft(
+                  `${draft.slice(0, query.start)}@${draft.slice(query.end)}`,
+                );
+                mention.openAt(query.start);
+                textarea.current?.focus();
+              }}
+            />
+            {recipient && brief?.text.includes('Brief shortened to fit') && (
+              <p className="room-composer__status" role="status">
+                The brief exceeds 16,000 characters. A shortened version with a
+                notice will be attached.
               </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
+            )}
+            <p className="sr-only" id={`${id}-help`}>
+              Enter to send, Shift+Enter for a new line. Type @ for agents and
+              people, / for commands.
+            </p>
+          </>
+        }
+      />
       {notice ? (
         <p className="task-room-inline-status" role="status">
           {notice}

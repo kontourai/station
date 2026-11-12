@@ -1088,9 +1088,14 @@ issue; if the issue already has an open Task, Station opens that Task instead.
 After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
 
 The Task opens as a chat room. Press Enter to send, or Shift+Enter for a new
-line. New messages follow the newest message while you are at the bottom; if
-you scroll up, **Jump to latest** returns you there. **Load earlier messages**
-appears above the visible history. A failed agent request stays in the room
+line; on a phone keyboard, Return adds a line and the round send button sends.
+An unsent draft is kept for each room and thread in this tab. Messages from one
+person within a few minutes share one name and avatar, a divider marks each day,
+and agents have square avatars where people have round ones. New messages
+follow the newest message while you are at the bottom; if you scroll up, the
+room keeps your place, marks where new messages start, and **N new messages**
+returns you to the latest. **Load earlier messages** appears above the visible
+history. A failed agent request stays in the room
 with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
@@ -1099,6 +1104,16 @@ After first-run setup, Home can offer **Start your first task** for a confirmed
 Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
+
+When a Task's Session reports a plan (ACP engines do), its Tasks board card
+and Project task row show **Agent plan 3/5** and a thin bar. It is the agent's
+newest plan in that Session's latest turn, refreshed every few seconds while
+the Task is in progress or blocked. **Stopped** follows the count when the
+turn was stopped or the Session failed or was canceled with steps open, and
+**Waiting** when the Session needs input or an approval. There is no bar
+without a plan, for a plan from an earlier turn, or on done and canceled
+Tasks. The count is agent-reported: it never marks a Task done or satisfies a
+gate.
 
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains

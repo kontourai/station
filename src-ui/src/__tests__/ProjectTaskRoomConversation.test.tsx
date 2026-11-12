@@ -14,6 +14,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   realGuard: false,
   authorityCurrent: true,
+  authorityKey: 'owner',
   historyError: null as Error | null,
   collaboration: false,
   records: [] as ProjectTaskRoomBrowserRecord[],
@@ -47,7 +48,8 @@ vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station',
-    authorityKey: 'owner',
+    authorityKey: mocks.authorityKey,
+    draftRecoveryKey: 'owner-partition',
     isCurrent: () => mocks.authorityCurrent,
   }),
 }));
@@ -174,6 +176,8 @@ function record(sequence: number, agent = false): ProjectTaskRoomBrowserRecord {
 afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
+  // Thread drafts persist per tab (useRoomDraft); each test starts clean.
+  sessionStorage.clear();
   mocks.upload.mockReset().mockResolvedValue([
     {
       id: '00000000-0000-4000-8000-000000000001',
@@ -184,6 +188,7 @@ beforeEach(() => {
     },
   ]);
   mocks.authorityCurrent = true;
+  mocks.authorityKey = 'owner';
   mocks.historyError = null;
   mocks.realGuard = false;
   mocks.collaboration = false;
@@ -417,7 +422,7 @@ test('an unpublished answer remains visible with full-run access when the live t
   mocks.running = true;
   mocks.failedAnswer = true;
   mount();
-  expect(screen.getByText("Answer couldn't be posted ·")).toBeTruthy();
+  expect(screen.getByText("Answer couldn't be posted")).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open full run' }));
   expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
   expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
@@ -544,44 +549,41 @@ test('failed agent requests retain a quiet line and retry the original request i
   );
 });
 
-test('new messages follow only the message scroller and preserve a reader who scrolled up', () => {
+test('new messages follow only the room scroller, and a reader who scrolled up stays put and sees the count', () => {
   mocks.records = [record(1)];
   const view = mount();
   const list = screen
     .getByRole('list', { name: 'Task room history' })
-    .closest<HTMLElement>('.task-room-messages')!;
+    .closest<HTMLElement>('.room-conversation__scroller')!;
   Object.defineProperties(list, {
     scrollHeight: { configurable: true, value: 1000 },
     clientHeight: { configurable: true, value: 200 },
   });
-  list.scrollTop = 800;
-  fireEvent.scroll(list);
-  mocks.records = [record(1), record(2)];
-  view.rerender(
-    <QueryClientProvider client={new QueryClient()}>
-      <ProjectTaskRoomConversation
-        taskId="task-1"
-        projectSlug="project"
-        taskCreatedAt="2026-10-01T00:00:00.000Z"
-      />
-    </QueryClientProvider>,
-  );
+  const rerender = (count: number) => {
+    mocks.records = Array.from({ length: count }, (_, index) =>
+      record(index + 1),
+    );
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProjectTaskRoomConversation
+          taskId="task-1"
+          projectSlug="project"
+          taskCreatedAt="2026-10-01T00:00:00.000Z"
+        />
+      </QueryClientProvider>,
+    );
+  };
+  rerender(2);
   expect(list.scrollTop).toBe(1000);
+  // A reader gesture, then the scroll it causes.
+  fireEvent.wheel(list, { deltaY: -600 });
   list.scrollTop = 100;
   fireEvent.scroll(list);
-  mocks.records = [record(1), record(2), record(3)];
-  view.rerender(
-    <QueryClientProvider client={new QueryClient()}>
-      <ProjectTaskRoomConversation
-        taskId="task-1"
-        projectSlug="project"
-        taskCreatedAt="2026-10-01T00:00:00.000Z"
-      />
-    </QueryClientProvider>,
-  );
+  rerender(4);
   expect(list.scrollTop).toBe(100);
-  fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }));
+  fireEvent.click(screen.getByRole('button', { name: /2 new messages/ }));
   expect(list.scrollTop).toBe(1000);
+  expect(screen.queryByRole('button', { name: /new message/ })).toBeNull();
 });
 
 test('thread Enter sends while Shift+Enter and IME keep the reply draft', async () => {
@@ -611,6 +613,58 @@ test('answers that fit do not show an expansion control', () => {
   mount();
   expect(screen.getByText('A short answer.')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+});
+
+test('a thread reply draft survives leaving the Task and stays with its own thread', () => {
+  const second = record(2, true);
+  mocks.records = [
+    record(1, true),
+    {
+      ...second,
+      actor: { ...second.actor, label: 'Builder' },
+      execution: { sessionId: 'session-2', turnId: 'turn-2' },
+    },
+  ];
+  const first = mount();
+  const replyIn = (index: number) =>
+    fireEvent.click(
+      within(
+        screen.getByRole('list', { name: 'Task room history' }),
+      ).getAllByRole('button', { name: 'Reply in thread' })[index],
+    );
+  const field = () =>
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply to this agent',
+    });
+  replyIn(0);
+  fireEvent.change(field(), { target: { value: 'Half-written follow-up' } });
+  first.unmount();
+  mount();
+  replyIn(0);
+  expect(field().value).toBe('Half-written follow-up');
+  fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
+  replyIn(1);
+  expect(field().value).toBe('');
+});
+
+test('a thread reply draft survives a reload whose authority epoch changes (#4810 review 1)', () => {
+  mocks.records = [record(1, true)];
+  const first = mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Reply to this agent' }),
+    { target: { value: 'Keep this across reload' } },
+  );
+  first.unmount();
+  // A reload mints a new activation epoch in the same recovery partition.
+  mocks.authorityKey = 'owner-after-reload';
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  expect(
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply to this agent',
+    }).value,
+  ).toBe('Keep this across reload');
 });
 
 test('cancel retains a thread draft, while confirmed discard cannot carry it to another agent', async () => {

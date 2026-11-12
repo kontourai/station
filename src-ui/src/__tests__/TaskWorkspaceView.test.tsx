@@ -1002,7 +1002,7 @@ describe('TaskWorkspaceView', () => {
       await screen.findByRole('button', { name: 'Ask an agent' }),
     );
     fireEvent.click(
-      screen.getByRole('option', { name: 'Researcher @researcher' }),
+      screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
     );
     fireEvent.click(
       screen.getByRole('checkbox', {
