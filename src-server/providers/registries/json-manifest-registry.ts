@@ -360,9 +360,12 @@ export class JsonManifestRegistryProvider
     private readonly logger?: Pick<Logger, 'warn'>,
     /**
      * #4521: whether this is the starter manifest that ships with Station,
-     * which `limits.registries.allowedUrls` never refuses.
+     * which `limits.registries.allowedUrls` never refuses. `root` confines a
+     * local manifest's sources to a folder other than the default (the
+     * parent of the manifest's folder): a folder added as a source sets it
+     * to that folder, so its index cannot name files beside it.
      */
-    readonly origin: { bundled?: boolean } = {},
+    readonly origin: { bundled?: boolean; root?: string } = {},
   ) {}
 
   /**
@@ -446,8 +449,14 @@ export class JsonManifestRegistryProvider
   }
 
   async getCatalogSnapshot(): Promise<PluginRegistryCatalogSnapshot> {
+    return this.catalogSnapshotOfKind('plugin');
+  }
+
+  private async catalogSnapshotOfKind(
+    kind: 'agent' | 'plugin',
+  ): Promise<PluginRegistryCatalogSnapshot> {
     const manifest = await this.fetchManifest(true);
-    const entries = this.manifestEntriesOfKind(manifest, 'plugin');
+    const entries = this.manifestEntriesOfKind(manifest, kind);
     return {
       revision: createHash('sha256')
         .update(JSON.stringify(manifest))
@@ -522,6 +531,7 @@ export class JsonManifestRegistryProvider
    * their plugins as `../<example>` siblings of the `registry/` directory.
    */
   private getLocalRegistryRoot(): string {
+    if (this.origin.root !== undefined) return resolve(this.origin.root);
     return resolve(dirname(resolve(this.manifestUrl)), '..');
   }
 
@@ -962,6 +972,28 @@ export class JsonManifestRegistryProvider
           : [],
       install: (id: string) => this.install(id),
       uninstall: (id: string) => this.uninstall(id),
+    };
+  }
+
+  /**
+   * The agent entries as a catalog of their own, for a source that lists
+   * agents beside plugins. It is the same manifest and the same installer:
+   * an agent entry is a package installed through the plugin pipeline, so
+   * install, removal and package resolution are this provider's.
+   */
+  agentCatalog(): IPluginRegistryProvider {
+    return {
+      registryKey: this.registryKey,
+      getCatalogSnapshot: () => this.catalogSnapshotOfKind(AGENT_MANIFEST_KIND),
+      refresh: () => this.refresh(),
+      getCatalogRevision: () => this.getCatalogRevision(),
+      resolvePackage: (id) => this.resolvePackage(id),
+      resolveSource: (id) => this.resolveSource(id),
+      listAvailable: () => this.listAvailableOfKind(AGENT_MANIFEST_KIND),
+      listInstalled: () => this.listInstalledOfKind(AGENT_MANIFEST_KIND),
+      install: (id, options) => this.install(id, options),
+      uninstall: (id) => this.uninstall(id),
+      update: (id) => this.update(id),
     };
   }
 

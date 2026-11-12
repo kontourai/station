@@ -33,7 +33,16 @@ export class FilesystemSkillRegistryProvider implements ISkillRegistryProvider {
   private readonly roots: string[];
   private children?: FilesystemSkillRegistryProvider[];
 
-  constructor(roots: string[] = defaultSkillRoots()) {
+  constructor(
+    roots: string[] = defaultSkillRoots(),
+    /**
+     * Refuse a listing in which two roots hold the same skill name instead of
+     * keeping the first. A source whose skills were found by a scan sets it:
+     * its roots are one library, so a repeated name is ambiguous, not an
+     * override.
+     */
+    private readonly options: { refuseAmbiguousNames?: boolean } = {},
+  ) {
     this.roots = [...roots];
   }
 
@@ -73,7 +82,11 @@ export class FilesystemSkillRegistryProvider implements ISkillRegistryProvider {
         const raw = await readFile(skillPath, 'utf-8');
         const { metadata } = parseFrontmatter(raw);
         const id = metadata.name || basename(skillDir);
-        if (seen.has(id)) continue;
+        if (seen.has(id)) {
+          if (this.options.refuseAmbiguousNames)
+            throw new Error(`Skill library has ambiguous skill name '${id}'`);
+          continue;
+        }
         seen.add(id);
 
         items.push({

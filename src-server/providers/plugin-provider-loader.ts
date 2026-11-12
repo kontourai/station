@@ -286,10 +286,16 @@ export async function preparePluginProviders(
               (options.artifact
                 ? { ready: () => false, permits: () => false }
                 : undefined),
+            // Each registry type gets the view of the manifest it names:
+            // the agent registry lists only agent entries, never the
+            // manifest's plugins (#1536 D2), now that every agent catalog
+            // is listed rather than only the first.
             provider:
               provider.type === 'integrationRegistry'
                 ? instance.integrationRegistry()
-                : instance,
+                : provider.type === 'agentRegistry'
+                  ? instance.agentRegistry()
+                  : instance,
             source: pluginName,
             layout: provider.layout,
           });

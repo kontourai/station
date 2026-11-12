@@ -51,6 +51,7 @@ import type {
   IUserIdentityProvider,
 } from '../provider-interfaces.js';
 import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
+import { createAgentRegistryProvider } from './agent-registry-provider.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
 import { mcpSubregistryIntegrationProviders } from './mcp-subregistry-provider.js';
 
@@ -832,15 +833,25 @@ export function getUserDirectoryProvider(): IUserDirectoryProvider {
 
 export function registerAgentRegistryProvider(
   provider: IAgentRegistryProvider,
+  source = 'Core',
 ) {
-  registerProvider('agentRegistry', provider);
+  registerProvider('agentRegistry', provider, { source });
 }
 
+/**
+ * Every registered agent catalog, merged: the configured or bundled manifest
+ * and any a plugin contributes. None is preferred by registration order; see
+ * {@link createAgentRegistryProvider}.
+ */
 export function getAgentRegistryProvider(): IAgentRegistryProvider {
   const entries = listProviders('agentRegistry');
-  return entries.length > 0
-    ? (entries[0].provider as IAgentRegistryProvider)
-    : new DefaultAgentRegistryProvider();
+  if (entries.length === 0) return new DefaultAgentRegistryProvider();
+  return createAgentRegistryProvider(
+    entries.map((entry) => ({
+      provider: entry.provider as IAgentRegistryProvider,
+      source: entry.source,
+    })),
+  );
 }
 
 // ── Tool Registry ──────────────────────────────────────
