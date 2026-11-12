@@ -40,10 +40,10 @@ usual group. Rows with a shortcut show it.
 Type to search. Results are grouped into commands, actions (such as opening the
 chat dock, a new Board, the tour, **Troubleshoot an issue** or **Report a problem**), places to go,
 plugins, Settings rows, open chats, Projects, workspace panes, Agents and
-skills. After two characters it also searches indexed conversation messages.
+skills. After two characters it also searches chat messages.
 Among close matches, items you use often rank higher; **Reset command history**
 clears that. Choose
-**Workspace search (this Station)** at the top to switch to workspace search.
+**Search Tasks and messages** at the top to switch to workspace search.
 
 A command row shows its current shortcut, if it has one, so the palette doubles
 as a way to learn them.

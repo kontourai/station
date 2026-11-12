@@ -524,7 +524,7 @@ describe('CommandPalette', () => {
     open();
     const input = screen.getByRole('combobox');
     expect(input.getAttribute('aria-label')).toBe(
-      'Search commands and indexed conversation messages',
+      'Search commands, projects and chats',
     );
     expect(input.getAttribute('placeholder')).toBe(
       'Search commands, projects and chats…',
