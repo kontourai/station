@@ -157,6 +157,16 @@
   color: var(--k-text-muted);
 }
 
+/* #4830: the proposing chat had read content written by others. */
+.agent-schedule-card__untrusted {
+  margin: 0;
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-caution-soft);
+  color: var(--k-text);
+  border-left: 3px solid var(--k-caution);
+}
+
 .agent-schedule-card__error {
   margin: 0;
   color: var(--k-negative);

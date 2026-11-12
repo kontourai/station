@@ -28,8 +28,13 @@ import {
   type AgentScheduleRoutesDeps,
   createJobProposalApproval,
 } from '../../routes/orchestration/agent-schedule.js';
+import type {
+  AutomationProposalOperator,
+  AutomationProposalRoutesDeps,
+} from '../../routes/orchestration/automation-proposals.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import type { AutomationProposalStore } from '../../services/automation/automation-proposals.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type AgentScheduleStore,
@@ -95,10 +100,25 @@ export interface AgentScheduleCompositionDeps {
     conversationId: string,
     context: Context,
   ): Promise<readonly ConversationAutomation[]>;
+  /** #4830: agent-proposed Automation sources and rules. */
+  readonly automationProposals?: AutomationProposalCompositionDeps;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
   now?: () => number;
+}
+
+/** What #4830's proposals need beyond the schedule's own reads. */
+export interface AutomationProposalCompositionDeps {
+  /** Absent (hosted, or no event store): proposals are unavailable. */
+  readonly store: AutomationProposalStore | undefined;
+  readonly automations: AutomationProposalRoutesDeps['automations'];
+  /** The slug of the Project with this `ProjectConfig.id`, if any. */
+  projectSlugForId(projectId: string): string | undefined;
+  projectName(projectId: string): string | undefined;
+  startedByAutomation(sessionId: string): boolean;
+  untrustedContent(conversationId: string): Promise<boolean>;
+  operator(request: Request): Promise<AutomationProposalOperator | undefined>;
 }
 
 /** The conversation a recorded wake-up belongs to; the guard's read. */
@@ -131,6 +151,8 @@ export interface AgentScheduleComposition {
     jobs: readonly SchedulerJob[],
   ): (run: RunSummary) => boolean;
   readonly delivery: AgentWakeUpDelivery | undefined;
+  /** What `createAutomationProposalRoutes` is mounted with. */
+  readonly automationProposalRouteDeps: AutomationProposalRoutesDeps;
   /** For the guard's `wake-up-stays-in-own-conversation` rule. */
   wakeUpConversation(wakeUpId: string): string | undefined;
   person(c: Context): AgentSchedulePerson | undefined;
@@ -339,6 +361,63 @@ export function composeAgentSchedule(
       remote: false,
     });
   };
+  const proposals = deps.automationProposals;
+  const proposalStore = deps.hosted ? undefined : proposals?.store;
+  if (proposalStore) {
+    const startedAt = deps.now?.() ?? Date.now();
+    try {
+      const reopened = proposalStore.reopenInterrupted(startedAt, startedAt);
+      if (reopened > 0)
+        deps.logger.warn(
+          'reopened automation proposals a restart left confirming',
+          { count: reopened },
+        );
+    } catch (error) {
+      deps.logger.warn('could not reopen interrupted automation proposals', {
+        error: errorMessage(error),
+      });
+    }
+  }
+  /**
+   * #4830: whether the proposing chat could start work for this Agent in this
+   * Project itself. The same scope rule a dispatch answers, for the Project
+   * (with `execute`) and for the Agent's own Project, as its recorded owner.
+   * An operator's bound caller reaches every Project, so the Project and the
+   * Agent must also exist.
+   */
+  const mayDispatchAutomation: AutomationProposalRoutesDeps['mayDispatch'] =
+    async (caller, projectId, agentId) => {
+      const ownerId = caller.principal?.elevationEligible
+        ? caller.principal.id
+        : undefined;
+      const projectSlug = proposals?.projectSlugForId(projectId);
+      if (ownerId === undefined || projectSlug === undefined) return false;
+      const projectTarget = deps.scope?.target(
+        { kind: 'new', ownerId, projectSlug, remote: false },
+        'execute',
+      );
+      if (stationControlScopeRefusal(caller, projectTarget)) return false;
+      // Throws when the Agent does not exist, which refuses.
+      const agentTarget = await jobAgentTarget(agentId, ownerId);
+      return !stationControlScopeRefusal(caller, agentTarget);
+    };
+  const automationProposalRouteDeps: AutomationProposalRoutesDeps = {
+    isInternalRequest: deps.isInternalRequest,
+    store: proposalStore,
+    automations: proposals?.automations,
+    hosted: deps.hosted,
+    mayDispatch: mayDispatchAutomation,
+    // Unwired, fail closed: every caller counts as automation-started.
+    startedByAutomation: (sessionId) =>
+      proposals?.startedByAutomation(sessionId) ?? true,
+    untrustedContent: async (conversationId) =>
+      (await proposals?.untrustedContent(conversationId)) ?? true,
+    projectName: (projectId) => proposals?.projectName(projectId),
+    person,
+    operator: async (request) => proposals?.operator(request),
+    logger: deps.logger,
+    ...(deps.now ? { now: deps.now } : {}),
+  };
   const routeDeps: AgentScheduleRoutesDeps = {
     isInternalRequest: deps.isInternalRequest,
     scope: deps.scope,
@@ -348,6 +427,12 @@ export function composeAgentSchedule(
     person,
     jobAgentTarget,
     hosted: deps.hosted,
+    ...(proposalStore
+      ? {
+          automationProposals: (conversationId: string) =>
+            proposalStore.openProposals(conversationId),
+        }
+      : {}),
     ...(deps.conversationAutomations
       ? { conversationAutomations: deps.conversationAutomations }
       : {}),
@@ -373,6 +458,7 @@ export function composeAgentSchedule(
   const composition: AgentScheduleComposition = {
     routeDeps,
     delivery,
+    automationProposalRouteDeps,
     person,
     admitAutomationTarget: admitAutomationTargetFor(deps, person),
     admitAutomationJob: admitAutomationJobFor(person),

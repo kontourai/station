@@ -2,8 +2,9 @@ import type {
   AgentJobProposal,
   AgentWakeUp,
 } from '@kontourai/station-contracts/agent-schedule';
+import type { AutomationProposal } from '@kontourai/station-contracts/automation';
 import { usePreviewSchedule } from '@kontourai/station-sdk';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useAgentSchedule } from '../../hooks/useAgentSchedule';
 import {
   PRESENCE_FALLBACK_MS,
@@ -11,17 +12,21 @@ import {
 } from '../../hooks/usePresenceList';
 import { clockTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
+import { Checkbox } from '../Checkbox';
 import { CalendarGlyph, TimeGlyph } from '../icons/Glyph';
 import { scheduleText } from './agentScheduleText';
 import './AgentScheduleNotes.css';
 
 const wakeUpKey = (wakeUp: AgentWakeUp) => wakeUp.id;
 const proposalKey = (proposal: AgentJobProposal) => proposal.id;
+const automationProposalKey = (proposal: AutomationProposal) => proposal.id;
+const NO_AUTOMATION_PROPOSALS: readonly AutomationProposal[] = [];
 
 /**
  * What an agent scheduled in this chat, above the composer: a quiet note for
  * each check-back it will make, an approval card for each check-back that
- * waits for the person, and one for each job it asked the person to create.
+ * waits for the person, and one for each job or Automation it asked the
+ * person to create.
  * Rows that arrive or leave while the chat is open grow and collapse in
  * place; nothing shows when nothing is scheduled.
  */
@@ -40,6 +45,8 @@ export function AgentScheduleNotes({
     declineWakeUp,
     declineProposal,
     approveProposal,
+    confirmAutomationProposal,
+    declineAutomationProposal,
   } = useAgentSchedule(conversationId, refreshKey);
   const wakeUps = usePresenceList(
     schedule.wakeUps,
@@ -53,11 +60,57 @@ export function AgentScheduleNotes({
     PRESENCE_FALLBACK_MS,
     loaded,
   );
-  if (wakeUps.list.length === 0 && proposals.list.length === 0) return null;
+  const automationProposals = usePresenceList(
+    schedule.automationProposals ?? NO_AUTOMATION_PROPOSALS,
+    automationProposalKey,
+    PRESENCE_FALLBACK_MS,
+    loaded,
+  );
+  if (
+    wakeUps.list.length === 0 &&
+    proposals.list.length === 0 &&
+    automationProposals.list.length === 0
+  )
+    return null;
   const now = Date.now();
   const wakeUpBusy = approveWakeUp.isPending || declineWakeUp.isPending;
+  const automationBusy =
+    confirmAutomationProposal.isPending || declineAutomationProposal.isPending;
   return (
     <ul className="agent-schedule-notes" aria-label="Scheduled in this chat">
+      {automationProposals.list.map(({ item, key, phase }) => (
+        <PresenceRow
+          key={key}
+          phase={phase}
+          onSettled={() => automationProposals.settle(key)}
+        >
+          <AutomationProposalCard
+            proposal={item}
+            busy={automationBusy}
+            confirming={
+              confirmAutomationProposal.isPending &&
+              confirmAutomationProposal.variables?.id === item.id
+            }
+            declining={
+              declineAutomationProposal.isPending &&
+              declineAutomationProposal.variables === item.id
+            }
+            error={
+              confirmAutomationProposal.isError &&
+              confirmAutomationProposal.variables?.id === item.id
+                ? confirmAutomationProposal.error.message
+                : declineAutomationProposal.isError &&
+                    declineAutomationProposal.variables === item.id
+                  ? declineAutomationProposal.error.message
+                  : undefined
+            }
+            onConfirm={(enable) =>
+              confirmAutomationProposal.mutate({ id: item.id, enable })
+            }
+            onDecline={() => declineAutomationProposal.mutate(item.id)}
+          />
+        </PresenceRow>
+      ))}
       {proposals.list.map(({ item, key, phase }) => (
         <PresenceRow
           key={key}
@@ -327,6 +380,104 @@ function JobProposalCard({
           onClick={onApprove}
         >
           Approve
+        </Button>
+        <Button
+          size="sm"
+          pending={declining}
+          pendingLabel="Declining…"
+          disabled={busy}
+          onClick={onDecline}
+        >
+          Decline
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * #4830: an Automation source or rule an agent asked for. Every line is
+ * Station's own description of what it would do, never the agent's words
+ * (the agent's reason is shown apart, as its own). Confirming creates it
+ * disabled or observing unless the person ticks "Turn it on now".
+ */
+function AutomationProposalCard({
+  proposal,
+  busy,
+  confirming,
+  declining,
+  error,
+  onConfirm,
+  onDecline,
+}: {
+  proposal: AutomationProposal;
+  busy: boolean;
+  confirming: boolean;
+  declining: boolean;
+  error: string | undefined;
+  onConfirm: (enable: boolean) => void;
+  onDecline: () => void;
+}) {
+  const [enable, setEnable] = useState(false);
+  const { description } = proposal;
+  const what = proposal.kind === 'source' ? 'source' : 'rule';
+  return (
+    <section
+      className="agent-schedule-card"
+      aria-label={`Proposed automation ${what}: ${description.title}`}
+    >
+      <p className="agent-schedule-card__title">
+        <CalendarGlyph className="agent-schedule-notes__glyph" />
+        <strong>Add this automation {what}?</strong>
+      </p>
+      {description.untrusted ? (
+        <p className="agent-schedule-card__untrusted" role="note">
+          {description.untrusted}
+        </p>
+      ) : null}
+      <dl className="agent-schedule-card__facts">
+        <dt>What</dt>
+        <dd>{description.title}</dd>
+        <dt>Watches</dt>
+        <dd>{description.watches}</dd>
+        <dt>Opens</dt>
+        <dd>{description.opens}</dd>
+        <dt>Wakes</dt>
+        <dd
+          className="agent-schedule-card__prompt"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable to be scrolled by keyboard.
+          tabIndex={0}
+        >
+          {description.wakes}
+        </dd>
+        <dt>Authority</dt>
+        <dd>{description.authority}</dd>
+        <dt>Starts</dt>
+        <dd>{enable ? description.ifEnabled : description.startsAs}</dd>
+      </dl>
+      {proposal.rationale ? (
+        <p className="agent-schedule-card__why">
+          The agent says: {proposal.rationale}
+        </p>
+      ) : null}
+      <Checkbox checked={enable} disabled={busy} onChange={setEnable}>
+        Turn it on now
+      </Checkbox>
+      {error ? (
+        <p className="agent-schedule-card__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="agent-schedule-card__actions">
+        <Button
+          variant="primary"
+          size="sm"
+          pending={confirming}
+          pendingLabel="Creating…"
+          disabled={busy}
+          onClick={() => onConfirm(enable)}
+        >
+          Confirm
         </Button>
         <Button
           size="sm"

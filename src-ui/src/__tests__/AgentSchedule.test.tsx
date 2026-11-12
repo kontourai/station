@@ -11,6 +11,7 @@ import type {
   AgentWakeUp,
   ConversationAgentSchedule,
 } from '@kontourai/station-contracts/agent-schedule';
+import type { AutomationProposal } from '@kontourai/station-contracts/automation';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -96,6 +97,44 @@ const proposal: AgentJobProposal = {
   updatedAt: '2026-10-20T14:00:00.000Z',
 };
 
+/** The envelope the automation-proposal routes record (#4830). */
+const automationProposal: AutomationProposal = {
+  id: 'ap1',
+  conversationId: CONVERSATION,
+  kind: 'source',
+  source: {
+    kind: 'github-poll',
+    name: 'ci',
+    repository: 'acme/widgets',
+    grants: [
+      {
+        projectId: 'local-project-a',
+        agentId: 'writer',
+        actions: ['dispatch-task'],
+      },
+    ],
+  },
+  description: {
+    title: 'Watch acme/widgets on GitHub (“ci”)',
+    watches:
+      'Completed GitHub Actions workflow runs in acme/widgets, checked every 5 minutes with no stored credential.',
+    opens:
+      'Nothing by itself. Rules you add to this source may open Tasks for the agents below.',
+    wakes: 'Agent writer in Project A (local-project-a)',
+    authority:
+      'It may let rules start a bounded Task (dispatch-task) and nothing else.',
+    startsAs: 'Created disabled: it polls nothing until it is enabled.',
+    ifEnabled: 'Enabled now: Station polls it.',
+    untrusted:
+      'This chat had read content written by others before the agent proposed this.',
+  },
+  untrustedContent: true,
+  rationale: 'You asked to hear about CI failures.',
+  state: 'open',
+  createdAt: '2026-10-20T14:00:00.000Z',
+  updatedAt: '2026-10-20T14:00:00.000Z',
+};
+
 let schedule: ConversationAgentSchedule;
 let calls: Array<{ method: string; url: string; body?: unknown }>;
 
@@ -146,6 +185,13 @@ beforeEach(() => {
             wakeUps: schedule.wakeUps.filter((item) => item.id !== 'w2'),
           };
           return Response.json({ success: true, data: { canceled: true } });
+        }
+        if (
+          url.endsWith('/automation-proposals/ap1/confirm') ||
+          url.endsWith('/automation-proposals/ap1/decline')
+        ) {
+          schedule = { ...schedule, automationProposals: [] };
+          return Response.json({ success: true, data: { ok: true } });
         }
         if (url.endsWith('/job-proposals/p1/decline')) {
           schedule = { ...schedule, jobProposals: [] };
@@ -201,6 +247,79 @@ function finishTransition(node: Element, propertyName: string) {
   Object.assign(event, { propertyName });
   node.dispatchEvent(event);
 }
+
+describe('an Automation proposal waits for the person (#4830)', () => {
+  beforeEach(() => {
+    schedule = {
+      wakeUps: [],
+      jobProposals: [],
+      jobs: [],
+      automationProposals: [automationProposal],
+    };
+  });
+
+  test('the card shows Station’s description and the untrusted-content label', async () => {
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    const card = await screen.findByRole('region', {
+      name: 'Proposed automation source: Watch acme/widgets on GitHub (“ci”)',
+    });
+    for (const line of [
+      automationProposal.description.watches,
+      automationProposal.description.opens,
+      automationProposal.description.wakes,
+      automationProposal.description.authority,
+      automationProposal.description.startsAs,
+    ])
+      expect(card.textContent).toContain(line);
+    expect(screen.getByRole('note').textContent).toBe(
+      automationProposal.description.untrusted,
+    );
+    expect(card.textContent).toContain('You asked to hear about CI failures.');
+  });
+
+  test('Confirm creates it in its default state unless “Turn it on now” is ticked', async () => {
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Turn it on now' }),
+    );
+    expect(
+      screen.getByText(automationProposal.description.ifEnabled),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() =>
+      expect(posts()).toEqual([
+        {
+          method: 'POST',
+          url: `${API}/api/orchestration/agent-schedule/${CONVERSATION}/automation-proposals/ap1/confirm`,
+          body: { enable: true },
+        },
+      ]),
+    );
+  });
+
+  test('a proposal from a chat that read no untrusted content has no label', async () => {
+    const { untrusted: _untrusted, ...description } =
+      automationProposal.description;
+    schedule = {
+      ...schedule,
+      automationProposals: [
+        { ...automationProposal, untrustedContent: false, description },
+      ],
+    };
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    await screen.findByRole('button', { name: 'Confirm' });
+    expect(screen.queryByRole('note')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    await waitFor(() =>
+      expect(posts()).toEqual([
+        {
+          method: 'POST',
+          url: `${API}/api/orchestration/agent-schedule/${CONVERSATION}/automation-proposals/ap1/decline`,
+        },
+      ]),
+    );
+  });
+});
 
 describe('in-chat notes', () => {
   test('a check-back reads as one quiet line with its local time, and Cancel cancels it on the server', async () => {

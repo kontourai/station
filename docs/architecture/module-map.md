@@ -1911,6 +1911,26 @@ drives that composition through the real boundary, guard and routes per
 credential channel, with a real thread inbox. A person reads a conversation
 schedule with conversation read access; an agent may read its own.
 
+**Automation proposals (#4830).** `propose_automation_source` and
+`propose_automation_rule` follow the same pattern for Automation sources and
+rules ([decision](../decisions/agent-proposed-automations.md)). The
+[routes](../../src-server/routes/orchestration/automation-proposals.ts) read
+the conversation from the verified caller. They refuse a Session in three
+cases: it acts for no one; it runs for an `automation-rule` Task; or its
+current turn's #4512 `dispatchOrigin` is `automation` or `delegation`.
+[Validation](../../src-server/services/automation/automation-proposals.ts)
+refuses anything wider than the caller's dispatch scope: actions other than
+`dispatch-task`, `auto` approval, and authority-bearing keys. The proposal
+records the untrusted-content mark (#3483) of the conversation, or of a child
+it delegated to, with Station's plain description, as a row on `EventStore`'s
+connection. It creates nothing. The chat schedule read lists open proposals
+as `automationProposals`. A person's Confirm also needs the operator in
+person, and creates through `AutomationStore`: disabled or `observe` unless
+the confirmation sets `enable`. The
+[authority test](../../src-server/security/__tests__/automation-proposal-authority.routes.test.ts)
+drives the composition through the real boundary, guard, `EventStore`,
+`AutomationStore` and untrusted-content ledger.
+
 ## SessionDigest
 
 An agent deciding whether a peer Session is worth a full transcript read needs
