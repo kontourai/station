@@ -477,6 +477,10 @@ import {
   queryTranscriptMessages,
 } from './transcript-search-queries.js';
 import {
+  isPersonAuthoredTurn,
+  PERSON_AUTHORED_TURN_SQL,
+} from './turn-authorship.js';
+import {
   createSqliteUsageLimitResumeChoices,
   type UsageLimitResumeChoices,
 } from './usage-limit-resume-choices.js';
@@ -9125,18 +9129,18 @@ export class EventStore {
 
   /**
    * #4827: what a person typed into `threadIds` (one conversation's
-   * Sessions), for the approval guardian. Selected by authorship, never by
-   * dispatch origin: `dispatchOrigin: 'interactive'` says whose chat a turn
-   * was placed in, and a child's result delivered into a person's chat
-   * inherits it (#4512). A prompt counts only when its `turn.started`
-   * (a steer included) carries the server-resolved `clientOrigin.actor` of a
-   * person (`operator` or `device`, #3419: the actor alone decides whether a
-   * turn was a person's), names no `sender` (an agent, a delegated result, a
-   * coordinator, an engine), and is not a server-verified MCP prompt
-   * expansion (`promptSource`). Station stamps all three; an adapter cannot.
-   * The prompt is Station's own dispatched input (`displayInput ?? input`),
-   * never an engine's report, and tool results and replies are other
-   * methods.
+   * Sessions), for the approval guardian. Selected by a positive mark, never
+   * by who authenticated or where the turn was placed: a turn counts only
+   * when Station stamped it `authoredBy: 'person'`, which only the composer
+   * entry points set, after `personTypedRequest` proved a person typed it
+   * into one of Station's clients. A device or operator credential alone is
+   * not enough (a peer Station's delegation, the CLI, a bridge all hold one),
+   * and neither is `dispatchOrigin: 'interactive'` (a child's result placed
+   * in a person's chat has it). As defence in depth a turn that also names a
+   * `clientOrigin.sender` or an MCP `promptSource` is excluded. An adapter
+   * cannot set any of these. The prompt is Station's own dispatched input
+   * (`displayInput ?? input`); tool results and replies are other methods.
+   * Turns recorded before the mark have none, so they do not count.
    *
    * Returns at most `limit` prompts, newest first, each as stored. One
    * indexed lookup per thread (`thread_id, method, sequence`).
@@ -9150,13 +9154,12 @@ export class EventStore {
     }
     const statement = this.db.prepare(
       `SELECT ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} AS prompt,
-              global_sequence
+              global_sequence,
+              json_extract(payload, '$.authoredBy') AS authored_by,
+              json_extract(payload, '$.promptSource') AS prompt_source,
+              json_type(payload, '$.clientOrigin.sender') AS sender_type
        FROM orchestration_events
-       WHERE thread_id = ? AND method = 'turn.started'
-         AND json_valid(payload)
-         AND json_extract(payload, '$.clientOrigin.actor.kind') IN ('operator', 'device')
-         AND json_type(payload, '$.clientOrigin.sender') IS NULL
-         AND json_type(payload, '$.promptSource') IS NULL
+       WHERE thread_id = ? AND ${PERSON_AUTHORED_TURN_SQL}
          AND ${PROMPTED_TURN_SQL}
        ORDER BY sequence DESC
        LIMIT ?`,
@@ -9166,9 +9169,23 @@ export class EventStore {
       const rows = statement.all(threadId, limit) as Array<{
         prompt: unknown;
         global_sequence: number | null;
+        authored_by: unknown;
+        prompt_source: unknown;
+        sender_type: string | null;
       }>;
       for (const row of rows) {
         if (typeof row.prompt !== 'string') continue;
+        // The shared predicate decides; the SQL above only narrows to it.
+        if (
+          !isPersonAuthoredTurn({
+            method: 'turn.started',
+            authoredBy: row.authored_by ?? undefined,
+            promptSource: row.prompt_source ?? undefined,
+            clientOrigin:
+              row.sender_type === null ? {} : { sender: row.sender_type },
+          })
+        )
+          continue;
         prompts.push({
           prompt: row.prompt,
           globalSequence: Number(row.global_sequence ?? 0),
@@ -9178,6 +9195,21 @@ export class EventStore {
     return prompts
       .sort((a, b) => b.globalSequence - a.globalSequence)
       .slice(0, limit);
+  }
+
+  /**
+   * #4827: `threadId`'s newest own `turn.started` (never a steer), for
+   * `isCurrentTurnPersonAuthored` (`turn-authorship.ts`).
+   */
+  latestOwnTurnStarted(threadId: string): PersistedRuntimeEvent | undefined {
+    const row = this.readStatement(
+      `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(false)}, created_at, observed_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+         ORDER BY sequence DESC
+         LIMIT 1`,
+    ).get(threadId);
+    return row ? this.mapEventRow(row, false) : undefined;
   }
 
   /**

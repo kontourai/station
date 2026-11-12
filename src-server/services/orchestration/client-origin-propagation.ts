@@ -68,6 +68,19 @@ function withPromptSource(
   return { ...event, promptSource };
 }
 
+/**
+ * #4827: stamps that a person typed the turn's prompt. Only Station sets it,
+ * from the entry point that admitted the send; `apply` drops an
+ * adapter-supplied value before this runs.
+ */
+function withAuthoredBy(
+  event: CanonicalRuntimeEvent,
+  authoredBy: 'person' | undefined,
+): CanonicalRuntimeEvent {
+  if (event.method !== 'turn.started' || authoredBy === undefined) return event;
+  return { ...event, authoredBy };
+}
+
 function withDispatchOrigin(
   event: CanonicalRuntimeEvent,
   dispatchOrigin: TurnDispatchOrigin | undefined,
@@ -92,6 +105,8 @@ interface TurnAttribution {
   dispatchOrigin?: TurnDispatchOrigin;
   /** #4827: the prompt is a verified MCP prompt expansion. */
   promptSource?: 'mcp-prompt';
+  /** #4827: a person typed the prompt into one of Station's clients. */
+  authoredBy?: 'person';
 }
 
 function hasAttribution(attribution: TurnAttribution): boolean {
@@ -156,6 +171,7 @@ export class ClientOriginTurnPropagation {
       | 'clientTurnId'
       | 'dispatchOrigin'
       | 'promptSource'
+      | 'authoredBy'
     >
   >();
   readonly #legacyAccepted = new Map<
@@ -168,6 +184,7 @@ export class ClientOriginTurnPropagation {
       | 'clientTurnId'
       | 'dispatchOrigin'
       | 'promptSource'
+      | 'authoredBy'
     >
   >();
   readonly #legacyEarly = new Map<string, CanonicalRuntimeEvent>();
@@ -180,6 +197,7 @@ export class ClientOriginTurnPropagation {
     clientTurnId?: string,
     dispatchOrigin?: TurnDispatchOrigin,
     promptSource?: 'mcp-prompt',
+    authoredBy?: 'person',
   ): boolean {
     const attribution: TurnAttribution = {
       clientOrigin,
@@ -188,6 +206,7 @@ export class ClientOriginTurnPropagation {
       clientTurnId,
       dispatchOrigin,
       promptSource,
+      authoredBy,
     };
     if (!reservesTurn(attribution) || this.#inFlight.has(threadId)) {
       return false;
@@ -206,6 +225,7 @@ export class ClientOriginTurnPropagation {
         clientTurnId,
         dispatchOrigin,
         promptSource,
+        authoredBy,
       });
     return true;
   }
@@ -236,6 +256,7 @@ export class ClientOriginTurnPropagation {
       clientTurnId: clientTurnId ?? reserved?.clientTurnId,
       dispatchOrigin: dispatchOrigin ?? reserved?.dispatchOrigin,
       promptSource: reserved?.promptSource,
+      authoredBy: reserved?.authoredBy,
     };
     this.#inFlight.delete(threadId);
     const legacy = this.#legacyPending.get(threadId);
@@ -280,6 +301,12 @@ export class ClientOriginTurnPropagation {
     if (event.promptSource !== undefined) {
       const { promptSource: _untrusted, ...unsourced } = event;
       event = unsourced;
+    }
+    // #4827: and who wrote it; the approval guardian reads it as the
+    // person's own words.
+    if (event.authoredBy !== undefined) {
+      const { authoredBy: _untrusted, ...unauthored } = event;
+      event = unauthored;
     }
     // #2324: a turn the engine opened on its own is no send's turn. Holding
     // it for an in-flight reservation would attribute that send's origin to
@@ -441,20 +468,24 @@ export class ClientOriginTurnPropagation {
       | 'clientTurnId'
       | 'dispatchOrigin'
       | 'promptSource'
+      | 'authoredBy'
     >,
   ): CanonicalRuntimeEvent {
-    const result = withPromptSource(
-      withDispatchOrigin(
-        withClientTurnId(
-          withPrincipal(
-            withClientOrigin(event, routing.clientOrigin),
-            routing.principal,
+    const result = withAuthoredBy(
+      withPromptSource(
+        withDispatchOrigin(
+          withClientTurnId(
+            withPrincipal(
+              withClientOrigin(event, routing.clientOrigin),
+              routing.principal,
+            ),
+            routing.clientTurnId,
           ),
-          routing.clientTurnId,
+          routing.dispatchOrigin,
         ),
-        routing.dispatchOrigin,
+        routing.promptSource,
       ),
-      routing.promptSource,
+      routing.authoredBy,
     );
     this.#trusted.add(result);
     return result;
@@ -464,18 +495,21 @@ export class ClientOriginTurnPropagation {
     event: CanonicalRuntimeEvent,
     attribution: TurnAttribution,
   ): CanonicalRuntimeEvent {
-    const attributed = withPromptSource(
-      withDispatchOrigin(
-        withClientTurnId(
-          withPrincipal(
-            withClientOrigin(event, attribution.clientOrigin),
-            attribution.principal,
+    const attributed = withAuthoredBy(
+      withPromptSource(
+        withDispatchOrigin(
+          withClientTurnId(
+            withPrincipal(
+              withClientOrigin(event, attribution.clientOrigin),
+              attribution.principal,
+            ),
+            attribution.clientTurnId,
           ),
-          attribution.clientTurnId,
+          attribution.dispatchOrigin,
         ),
-        attribution.dispatchOrigin,
+        attribution.promptSource,
       ),
-      attribution.promptSource,
+      attribution.authoredBy,
     );
     const result =
       attribution.experience && attributed.method === 'turn.started'

@@ -507,6 +507,16 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * sender's own input.
    */
   promptSource?: 'mcp-prompt';
+  /**
+   * #4827: the prompt is text a person typed into one of Station's own
+   * clients (the chat composer's send or steer, or that send queued on the
+   * conversation inbox). Stamped by Station only, at those entry points; an
+   * adapter-supplied value is dropped, like `dispatchOrigin`. Absent means
+   * not known to be the person's: a peer Station, a delegated or background
+   * send, a handoff, a bridge, voice, a webhook, a Task, an Automation, an
+   * agent's tool call, the CLI, and every turn recorded before this field.
+   */
+  authoredBy?: 'person';
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**

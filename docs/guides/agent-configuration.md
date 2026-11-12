@@ -482,22 +482,32 @@ The guardian ([source](../../src-server/services/approvals/approval-guardian.ts)
 judges a call against what the person asked for (#4827). Its prompt holds:
 
 - **What the person typed in this conversation**, oldest first: the prompts
-  of turns, steers included, whose authorship Station stamped as a person's.
-  The turn's server-resolved `clientOrigin.actor` is the operator or a paired
-  device, it names no `sender`, and its prompt is not a server-expanded MCP
-  prompt (`promptSource`). An engine cannot set any of these. Where a turn was
-  placed does not count: a delegated child's result delivered into the
-  person's chat is the child's text, not the person's. Tool results, replies,
-  engine steers, and turns sent by an agent, an Automation, a Task or the
-  coordinator are never included. Neither is an MCP prompt's expanded text:
-  the person chose the command, but the MCP server wrote the text, and only
-  the expansion is recorded, so the turn is left out. The prompts are read
-  across the conversation's newest 16 Sessions. The newest 20 are kept, each
-  cut to 1,500 characters, and older ones are dropped past 8,000 characters in
+  of turns Station marked `authoredBy: 'person'`, steers included. Station
+  sets that mark only where a person typed into one of its own clients: a
+  send or steer from the web, desktop or mobile chat composer, or a message
+  the composer queued on the conversation's inbox, made with the operator's
+  credential or session or a paired personal device. Everything else is
+  excluded, whatever credential it used. That covers:
+  - `/chat/delegated` (including a peer Station's delegation) and
+    `/chat/background`;
+  - handoffs and memory continuations;
+  - Discord and other chat bridges, and voice;
+  - webhooks, Tasks, Automations and Project or Task rooms;
+  - an agent's Station Control sends;
+  - the CLI and MCP clients.
+
+  An engine or adapter cannot set the mark; Station drops it if one tries.
+  A server-expanded MCP prompt is excluded even from the composer: the
+  person chose the command, but the MCP server wrote the text. Tool results
+  and replies are never included. The prompts are read across the
+  conversation's newest 16 Sessions. The newest 20 are kept, each cut to
+  1,500 characters, and older ones are dropped past 8,000 characters in
   total. When older messages are left out, including those in Sessions past
-  the 16th, the prompt says earlier messages are not shown. When nobody typed
-  anything (a scheduled or delegated run), the prompt says so, so no "only if
-  asked" rule can be met.
+  the 16th, the prompt says earlier messages are not shown. When nobody
+  typed anything (a scheduled or delegated run), the prompt says so, so no
+  "only if asked" rule can be met. The same test is available to other
+  features as `isPersonAuthoredTurn` and `isCurrentTurnPersonAuthored`
+  ([source](../../src-server/services/orchestration/turn-authorship.ts)).
 - **The call**: the agent, and the tool's name, description and arguments,
   each inside a per-review random fence marking them as tool-authored data.
 

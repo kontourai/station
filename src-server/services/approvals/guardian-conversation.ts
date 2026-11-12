@@ -69,9 +69,10 @@ function truncate(text: string, max: number): string {
 /**
  * Reads the person's own turns from Station's event store, never from an
  * engine's transcript or Station's chat memory, which also hold tool results
- * and replies. A turn is the person's by the authorship Station stamped on
- * it (see `EventStore.personAuthoredTurnPrompts`), never by its dispatch
- * origin. `conversationId` is the orchestration thread every engine
+ * and replies. A turn is the person's only by the shared predicate
+ * `isPersonAuthoredTurn` (`services/orchestration/turn-authorship.ts`),
+ * which `EventStore.personAuthoredTurnPrompts` applies: Station's positive
+ * `authoredBy: 'person'` mark, never a dispatch origin or an actor kind. `conversationId` is the orchestration thread every engine
  * adapter passes as `InvocationContext.conversationId`; its whole
  * conversation (earlier Sessions included) is read.
  *

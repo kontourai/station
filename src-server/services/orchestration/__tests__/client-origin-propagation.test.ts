@@ -36,6 +36,46 @@ describe('client origin propagation', () => {
     ).toEqual({ clientOrigin: origin });
   });
 
+  it('#4827 fix round 2: stamps a composer send as the person and drops an adapter-supplied mark', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    const base = {
+      provider: 'test',
+      createdAt: '2026-11-12T00:00:00.000Z',
+      method: 'turn.started' as const,
+    };
+    propagation.begin(
+      'thread-a',
+      origin,
+      undefined,
+      undefined,
+      undefined,
+      'interactive',
+      undefined,
+      'person',
+    );
+    propagation.settle('thread-a', 'turn-a', origin);
+    const marked = propagation.apply({
+      ...base,
+      threadId: 'thread-a',
+      eventId: 'e-a',
+      turnId: 'turn-a',
+    });
+    expect(marked?.method === 'turn.started' && marked.authoredBy).toBe(
+      'person',
+    );
+
+    propagation.begin('thread-b', origin);
+    propagation.settle('thread-b', 'turn-b', origin);
+    const claimed = propagation.apply({
+      ...base,
+      threadId: 'thread-b',
+      eventId: 'e-b',
+      turnId: 'turn-b',
+      authoredBy: 'person',
+    });
+    expect(claimed && 'authoredBy' in claimed).toBe(false);
+  });
+
   it('#4827: stamps an admitted MCP prompt as such and drops an adapter-supplied prompt source', () => {
     const propagation = new ClientOriginTurnPropagation();
     const base = {

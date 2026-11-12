@@ -2349,11 +2349,13 @@ own Sessions. The [approval guardian](../../src-server/services/approvals/guardi
 reads it only as a routing fact (#4827): an `interactive` newest turn is what
 lets an external engine's guardian escalation ask a person. It never reads the
 field as authorship, because a child's result delivered into a person's chat
-is `interactive` too. The person's own turns are those whose `clientOrigin`
-names a person actor and no `sender`, and whose prompt carries no
-`promptSource` (an admitted MCP prompt expansion, stamped by the same
-propagation). Its one consumer that acts on
-a Session is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+is `interactive` too. Authorship is a separate, positive mark: the same
+propagation stamps `authoredBy: 'person'` only for a send or steer that a
+composer route proved a person typed (`personTypedRequest`), or that such a
+route queued on the inbox, and drops any value an adapter supplies.
+[`isPersonAuthoredTurn` and `isCurrentTurnPersonAuthored`](../../src-server/services/orchestration/turn-authorship.ts)
+are the one shared reading of it. The dispatch origin's one consumer that
+acts on a Session is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 (preview `continue-unattended-after-restart`): after boot it continues each
 `task-dispatch` or `delegation` turn interrupted-turn recovery settled
 (`whenInterruptedTurnsRecovered`), once, through the conversation inbox under
