@@ -80,6 +80,9 @@ function fixture() {
         /^\/api\/projects\/team\/(?:room|channels\/([0-9a-f-]{36}))(\/.*)?$/,
       );
       if (!match) throw new Error(`Unexpected ${method} ${path}`);
+      // A host that predates channels has no /channels routes at all.
+      if (!channelsSupported && match[1])
+        return new Response('Not Found', { status: 404 });
       const roomId = match[1] ?? general;
       const suffix = match[2] ?? '';
       if (suffix === '' && method === 'PATCH') {
@@ -542,4 +545,24 @@ test('on a touch phone an archived channel offers no message actions', async () 
     screen.queryByRole('button', { name: /^More actions for / }),
   ).toBeNull();
   expect(screen.queryByRole('button', { name: /^Reply to / })).toBeNull();
+});
+
+test('a remembered channel falls back to #general on a host without channels', async () => {
+  const first = mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  first.unmount();
+  // The same tab reloads against an older host.
+  channelsSupported = false;
+  selectedAuthority = 'two';
+  reads = [];
+  mount('tab');
+  expect(await screen.findByRole('heading', { name: 'general' })).toBeTruthy();
+  expect(
+    await screen.findByRole('textbox', { name: 'Message the project' }),
+  ).toBeTruthy();
+  expect(screen.queryByText(/Room unavailable/)).toBeNull();
+  await waitFor(() =>
+    expect(reads).toContain('/api/projects/team/room/messages'),
+  );
 });

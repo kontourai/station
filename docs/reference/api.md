@@ -2248,8 +2248,9 @@ The [read marker routes](../../src-server/routes/read-markers/read-marker-routes
 read and advance the caller's own unread state for agent conversations, Project
 rooms and Task rooms ([contracts](contracts.md#read-marker-contracts)). The
 handshake advertises them as `readMarkers`. Both are `orchestration:read` for
-paired devices: each writes only the caller's markers, and each target is
-re-read under the caller's own conversation or room authority.
+paired devices and person self-service leaves for an account-bound member's
+Device: each writes only the caller's markers, and each target is re-read under
+the caller's own conversation or room authority.
 
 ```http
 POST /api/read-markers/summary
