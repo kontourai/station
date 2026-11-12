@@ -33,7 +33,7 @@ import {
  * send call it, and only those may set the marker; see
  * `PERSON_AUTHORED_TURN_INGRESS`.
  */
-export const PERSON_COMPOSER_SURFACES: readonly ClientOriginSurface[] = [
+const PERSON_COMPOSER_SURFACES: readonly ClientOriginSurface[] = [
   'web',
   'desktop',
   'mobile',
