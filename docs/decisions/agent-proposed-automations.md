@@ -71,12 +71,24 @@ This is the `propose_job` pattern Station already uses for scheduled jobs.
   creates nothing.
 - **Only a turn a person typed may propose (fail closed).** An automation
   run still cannot change automations (§5 "Never"). A proposal is allowed
-  only when the calling Session acts for a recorded owner and its current
-  turn carries the shared, server-stamped person mark
-  ([#4848](https://github.com/kontourai/station/pull/4848),
-  `isCurrentTurnPersonAuthored`). Station stamps that mark only on a turn the
-  web, desktop or mobile composer sent with a person credential, and it
-  decides by how the newest turn started, never by a steer.
+  only when the calling Session acts for a recorded owner and the turn making
+  the call carries the shared, server-stamped person mark
+  ([#4848](https://github.com/kontourai/station/pull/4848)). Station stamps
+  that mark only on a turn the web, desktop or mobile composer sent with a
+  person credential, and the decision reads that turn's own start, never a
+  steer.
+  - **Which turn is calling.** An engine's station-control call carries only
+    its Session's credential, never a turn. Station takes the calling turn
+    to be the one the Session is running, from its persisted lifecycle fold
+    (`stationControlCallingTurn`). This is the same lease
+    `declare_pull_request` uses. While a send's start is not yet stored (in
+    flight, accepted but not arrived, or held by origin propagation) the
+    answer is `pending`; with no running turn it is `none`. Both refuse, so a
+    continuation whose start is held is never judged by the person's turn
+    before it.
+  - **Check to write.** The route decides again inside the SQLite
+    transaction that stores the proposal and requires the same turn, so a
+    turn that starts in between stores nothing.
   - Everything else refuses: an automation's run, a delegated child's result
     continuing in the person's chat, a peer Station's `/chat/delegated` send,
     a background run, the CLI, an MCP prompt, a Task dispatch, a check-back, a

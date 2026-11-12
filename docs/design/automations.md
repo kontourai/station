@@ -551,9 +551,12 @@ text. The agent fetches logs itself with `gh`.
   standing grant.
 - **Never.** Merge, arm auto-merge, push to main, edit protected paths (port
   the list from `qualification-repair.mjs`), or change automations or
-  grants. This includes proposing them. Only a turn carrying the shared
-  person-authorship mark (#4848, `isCurrentTurnPersonAuthored`) may propose:
-  one a person typed into Station's composer. Everything else refuses,
+  grants. This includes proposing them. Only the turn making the call may
+  propose, and only if it carries the shared person-authorship mark (#4848):
+  one a person typed into Station's composer. The calling turn is the
+  Session's running turn by its persisted lifecycle fold; a start not yet
+  stored refuses, and the decision is made again in the transaction that
+  writes the proposal. Everything else refuses,
   including a delegated child's result that continues in the person's chat
   with `dispatchOrigin: interactive` (fail closed).
 - **Honest limit.** Station cannot police an external engine's use of

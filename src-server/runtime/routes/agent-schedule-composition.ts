@@ -124,8 +124,8 @@ export interface AutomationProposalCompositionDeps {
    * is the Agent's own Project slug. Throws when there is no such Agent.
    */
   agentDefinition(agentSlug: string): Promise<{ readonly project?: string }>;
-  /** `sessionMayProposeAutomations` over the Session's own records. */
-  mayPropose(sessionId: string): boolean;
+  /** `proposingTurnId` over the Session's calling turn. */
+  proposingTurn(sessionId: string): string | undefined;
   untrustedContent(conversationId: string): Promise<boolean>;
   operator(request: Request): Promise<AutomationProposalOperator | undefined>;
 }
@@ -457,7 +457,7 @@ export function composeAgentSchedule(
     hosted: deps.hosted,
     bind: bindAutomationTarget,
     // Unwired, fail closed: no caller may propose.
-    mayPropose: (sessionId) => proposals?.mayPropose(sessionId) ?? false,
+    proposingTurn: (sessionId) => proposals?.proposingTurn(sessionId),
     untrustedContent: async (conversationId) =>
       (await proposals?.untrustedContent(conversationId)) ?? true,
     projectName: (projectId) => proposals?.projectName(projectId),

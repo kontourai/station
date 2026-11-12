@@ -13,12 +13,14 @@
  * conversation is `conv-<session id>`.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -26,6 +28,10 @@ import {
   test,
   vi,
 } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createAgentScheduleRoutes } from '../../routes/orchestration/agent-schedule.js';
 import {
@@ -50,15 +56,16 @@ import { automationConfigurationFingerprint } from '../../services/automation/au
 import {
   AUTOMATION_PROPOSAL_UNTRUSTED_COPY,
   automationIdForProposal,
-  sessionMayProposeAutomations,
+  proposingTurnId,
 } from '../../services/automation/automation-proposals.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
 } from '../../services/identity/principal-resolver.js';
-import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { UntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import {
@@ -147,6 +154,40 @@ const scope: StationControlDispatchScope = {
   ownProjectSlug: () => undefined,
 };
 
+/**
+ * A test engine whose turn emits its own `turn.started` and then, before its
+ * send returns acceptance, runs `duringSend`: the window in which the
+ * production propagation owner holds the start (#4830 verification).
+ * `beforeStart` runs before the start is emitted, while the send is in
+ * flight.
+ */
+class TimedTurnAdapter extends GateTestAdapter {
+  beforeStart: (() => Promise<void>) | undefined;
+  duringSend: (() => Promise<void>) | undefined;
+  override async sendTurn(input: {
+    threadId: string;
+    input?: unknown;
+    invocationId?: string;
+  }) {
+    const turnId = randomUUID();
+    await this.beforeStart?.();
+    this.events.push({
+      eventId: randomUUID(),
+      provider: this.provider,
+      threadId: input.threadId,
+      turnId,
+      invocationId: input.invocationId,
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: input.input,
+    } as never);
+    await this.duringSend?.();
+    return { threadId: input.threadId, turnId };
+  }
+}
+let adapter: TimedTurnAdapter;
+let service: OrchestrationService;
+
 let baseUrl: string;
 let port: number;
 let eventStore: EventStore;
@@ -201,8 +242,16 @@ function compose() {
         if (!agent) throw new Error('no such agent');
         return structuredClone(agent);
       },
-      mayPropose: (sessionId) =>
-        sessionMayProposeAutomations(eventStore, sessionId),
+      // As production wires it: the calling turn from a real orchestration
+      // service over this file's store.
+      proposingTurn: (sessionId) =>
+        proposingTurnId(
+          {
+            callingTurn: (id) => service.stationControlCallingTurn(id),
+            store: eventStore,
+          },
+          sessionId,
+        ),
       untrustedContent: async (conversationId) =>
         (await ledger.conversationHasRead(conversationId)) ||
         ledger.hasDescendantRead(conversationId),
@@ -229,6 +278,13 @@ beforeAll(async () => {
   automations = new AutomationStore(home);
   ledger = new UntrustedContentLedger();
   refusals = [];
+  adapter = new TimedTurnAdapter();
+  service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  } as never);
   const composition = compose();
   const app = new Hono();
   configureRuntimeHttp({
@@ -276,6 +332,8 @@ beforeAll(async () => {
   port = await listening;
   baseUrl = `http://127.0.0.1:${port}`;
   close = async () => {
+    await service.shutdown();
+    adapter.events.close();
     eventStore.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   };
@@ -359,18 +417,20 @@ function appendTurn(
   sessionId: string,
   shape: Record<string, unknown>,
   extra: Record<string, unknown> = {},
-) {
+): string {
+  const turnId = `turn-${++counter}`;
   eventStore.appendEvent({
-    eventId: `${sessionId}-turn-${++counter}`,
+    eventId: `${sessionId}-${turnId}`,
     provider: 'claude',
     threadId: sessionId,
     createdAt: '2026-11-12T00:00:00.000Z',
     method: 'turn.started',
-    turnId: `turn-${counter}`,
+    turnId,
     prompt: 'Set up an automation.',
     ...shape,
     ...extra,
   } as never);
+  return (extra.turnId as string | undefined) ?? turnId;
 }
 
 /**
@@ -850,8 +910,11 @@ describe('only a turn a person typed may propose (§5 Never; #4830 re-review cla
 
   test("a person's steer does not make an unmarked turn the person's", async () => {
     const sessionId = nextSession();
-    appendTurn(sessionId, TURN.automation);
-    appendTurn(sessionId, TURN.composer, { inputKind: 'steer' });
+    const agentTurn = appendTurn(sessionId, TURN.automation);
+    appendTurn(sessionId, TURN.composer, {
+      inputKind: 'steer',
+      turnId: agentTurn,
+    });
     await refused(sessionId);
   });
 
@@ -864,17 +927,35 @@ describe('only a turn a person typed may propose (§5 Never; #4830 re-review cla
     expect(refusals).toContain('station_control_role_required');
   });
 
-  test('a store Station cannot read refuses', () => {
+  test('a store Station cannot read, or no running turn, refuses', () => {
+    const marked = {
+      latestOwnTurnStarted: () => ({
+        payload: { method: 'turn.started', turnId: 't', ...TURN.composer },
+      }),
+    } as never;
     expect(
-      sessionMayProposeAutomations(
+      proposingTurnId(
         {
-          latestOwnTurnStarted: () => {
-            throw new Error('unreadable');
+          callingTurn: () => ({ kind: 'turn', turnId: 't' }),
+          store: {
+            latestOwnTurnStarted: () => {
+              throw new Error('unreadable');
+            },
           },
         },
         's',
       ),
-    ).toBe(false);
+    ).toBeUndefined();
+    for (const kind of ['pending', 'none'] as const)
+      expect(
+        proposingTurnId({ callingTurn: () => ({ kind }), store: marked }, 's'),
+      ).toBeUndefined();
+    expect(
+      proposingTurnId(
+        { callingTurn: () => ({ kind: 'turn', turnId: 't' }), store: marked },
+        's',
+      ),
+    ).toBe('t');
   });
 });
 
@@ -1196,4 +1277,232 @@ describe('the untrusted-content mark is read again at display and confirm (revie
       proposal: { untrustedContent: false, untrustedContentAtConfirm: true },
     });
   });
+});
+
+// ── #4830 verification, fix round 3: decided on the calling turn ──────────
+
+describe('the turn making the call decides, never an earlier one (#4830 fix round 3)', () => {
+  const stored = (sessionId: string) =>
+    eventStore
+      .automationProposalStore()
+      .recentProposals(`conv-${sessionId}`, 10);
+
+  /**
+   * Both endpoints from `sessionId`, as the agent calls them. The rule names
+   * a source proposed in another chat's person turn, so it is valid and
+   * only the calling turn decides it.
+   */
+  const proposeBoth = async (sessionId: string) => {
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    const proposedRule = await agent(
+      'bound',
+      sessionId,
+      'POST',
+      RULES,
+      rule({ sourceId: await existingSourceId() }),
+    );
+    return [source.status, proposedRule.status];
+  };
+  /** A confirmed source, so a rule on it validates. */
+  let confirmedSource: string | undefined;
+  const existingSourceId = async () => {
+    if (confirmedSource) return confirmedSource;
+    const owner = nextSession();
+    const proposed = await agent('bound', owner, 'POST', SOURCES, SOURCE);
+    const confirmed = await person(
+      'POST',
+      answer(`conv-${owner}`, proposed.body.data.id, 'confirm'),
+    );
+    confirmedSource = confirmed.body.data.createdId as string;
+    return confirmedSource;
+  };
+
+  /** A Session with a person's composer turn through the real service. */
+  const personSession = async (complete: boolean) => {
+    const sessionId = bareSession();
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: { threadId: sessionId, provider: 'claude' },
+      },
+      { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    );
+    // GateTestAdapter echoes no session.started; real adapters publish it.
+    eventStore.appendEvent({
+      eventId: randomUUID(),
+      provider: 'claude',
+      threadId: sessionId,
+      sessionId,
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    } as never);
+    await service.dispatch(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: sessionId,
+          input: 'Set up an automation for CI failures.',
+          clientTurnId: randomUUID(),
+        },
+      },
+      {
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        clientOrigin: ORIGIN({ kind: 'operator' }) as never,
+      },
+      { personAuthored: true, dispatchOrigin: 'interactive' },
+    );
+    await vi.waitFor(() =>
+      expect(eventStore.latestOwnTurnStarted(sessionId)?.payload).toMatchObject(
+        { authoredBy: 'person' },
+      ),
+    );
+    if (complete) {
+      const first = eventStore.latestOwnTurnStarted(sessionId)!.payload;
+      adapter.events.push({
+        eventId: randomUUID(),
+        provider: adapter.provider,
+        threadId: sessionId,
+        turnId: first.turnId,
+        invocationId: (first as { invocationId?: string }).invocationId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as never);
+      await vi.waitFor(() =>
+        expect(
+          eventStore.latestEventByMethod(sessionId, 'turn.completed'),
+        ).toBeDefined(),
+      );
+    }
+    return sessionId;
+  };
+
+  /** A child's result continuing in the person's chat, through production. */
+  const deliverResult = async (sessionId: string) => {
+    const { delegationResultStartPort, readSessionDispatchFacts } =
+      await import('../../runtime/routes/conversation-start-ports.js');
+    await delegationResultStartPort({
+      origin: ORIGIN({ kind: 'internal' }, 'unknown') as never,
+      readProjectTaskRoomExecutionBinding: (id) =>
+        eventStore.readProjectTaskRoomExecutionBinding(id),
+      sessionFacts: (id) => readSessionDispatchFacts(eventStore, id),
+      continueAsRecordedActor: async (input, threadId) => {
+        const result = (await service.dispatch(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: input.message,
+              clientTurnId: input.clientTurnId,
+            },
+          },
+          {
+            userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+            clientOrigin: input.clientOrigin,
+          },
+          { dispatchOrigin: input.dispatchOrigin },
+        )) as { turnId: string };
+        return {
+          outcome: 'started' as const,
+          conversationId: input.conversationId,
+          sessionId: threadId,
+          turnId: result.turnId,
+        };
+      },
+    })({
+      parentConversationId: `conv-${sessionId}`,
+      threadId: sessionId,
+      actor: {
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        attribution: 'verified-bound',
+      },
+      sender: { kind: 'delegation-result', sessionId: 'automatic-child' },
+      text: 'The child finished; propose an automation.',
+      clientTurnId: randomUUID(),
+    });
+  };
+
+  afterEach(() => {
+    adapter.beforeStart = undefined;
+    adapter.duringSend = undefined;
+    vi.restoreAllMocks();
+  });
+
+  test("a person's composer turn, sent through the real service, may propose while it runs", async () => {
+    const sessionId = await personSession(false);
+    expect(await proposeBoth(sessionId)).toEqual([200, 200]);
+  });
+
+  test('a continuation whose start is held for acceptance cannot propose (check before acceptance)', async () => {
+    const sessionId = await personSession(true);
+    let observed: number[] | undefined;
+    adapter.duringSend = async () => {
+      // The continuation emitted its start; the store still holds the
+      // person's turn as the newest start.
+      expect(eventStore.latestOwnTurnStarted(sessionId)!.payload).toMatchObject(
+        { authoredBy: 'person' },
+      );
+      observed = await proposeBoth(sessionId);
+    };
+    await deliverResult(sessionId);
+    expect(observed).toEqual([403, 403]);
+    expect(stored(sessionId)).toEqual([]);
+  });
+
+  test('a continuation whose send is still in flight cannot propose (before its start)', async () => {
+    const sessionId = await personSession(true);
+    let observed: number[] | undefined;
+    adapter.beforeStart = async () => {
+      observed = await proposeBoth(sessionId);
+    };
+    await deliverResult(sessionId);
+    expect(observed).toEqual([403, 403]);
+    expect(stored(sessionId)).toEqual([]);
+  });
+
+  test('a continuation accepted and stored cannot propose (check after acceptance)', async () => {
+    const sessionId = await personSession(true);
+    await deliverResult(sessionId);
+    await vi.waitFor(() =>
+      expect(eventStore.latestOwnTurnStarted(sessionId)?.payload).toMatchObject(
+        { clientOrigin: { sender: { kind: 'delegation-result' } } },
+      ),
+    );
+    expect(await proposeBoth(sessionId)).toEqual([403, 403]);
+    expect(stored(sessionId)).toEqual([]);
+  });
+
+  for (const kind of ['source', 'rule'] as const) {
+    test(`a ${kind} proposal is not stored when another turn starts between the check and the write`, async () => {
+      const sourceId = await existingSourceId();
+      const sessionId = nextSession();
+      vi.spyOn(ledger, 'conversationHasRead').mockImplementationOnce(
+        async () => {
+          // The route checked under the person's turn; a delegated
+          // continuation starts while it awaits this read.
+          appendTurn(sessionId, {
+            dispatchOrigin: 'interactive',
+            clientOrigin: ORIGIN({ kind: 'internal' }, 'unknown', {
+              kind: 'delegation-result',
+              sessionId: 'automatic-child',
+            }),
+          });
+          return false;
+        },
+      );
+      const response = await agent(
+        'bound',
+        sessionId,
+        'POST',
+        kind === 'source' ? SOURCES : RULES,
+        kind === 'source' ? SOURCE : rule({ sourceId }),
+      );
+      expect(response).toMatchObject({
+        status: 403,
+        body: { code: 'automation_proposal_unattended' },
+      });
+      expect(stored(sessionId)).toEqual([]);
+    });
+  }
 });

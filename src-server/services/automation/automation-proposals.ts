@@ -624,27 +624,56 @@ export function describeRuleProposal(
 
 // ── who may propose ───────────────────────────────────────────────────────
 
+/** The turn a station-control call is made in (`stationControlCallingTurn`). */
+export type StationControlCallingTurn =
+  | { readonly kind: 'turn'; readonly turnId: string }
+  | { readonly kind: 'pending' | 'none' };
+
+export interface AutomationProposerReads {
+  /** The turn the call is made in: the Session's running turn, or why not. */
+  callingTurn(sessionId: string): StationControlCallingTurn;
+  /** The store read #4827's predicate needs. */
+  readonly store: CurrentTurnStartReader;
+}
+
 /**
- * Whether the Session's current turn may propose automations: only a turn a
- * person typed into one of Station's own clients, by the shared server-stamped
- * mark (#4827 `isCurrentTurnPersonAuthored`), decided by how the newest turn
- * started, never a steer. Not `dispatchOrigin` (#4830 re-review): a
- * delegated child's result continuing in a person's chat is `interactive`
- * but carries no mark. So an automation's run, a delegated result, a
- * `/chat/delegated` peer, a background run, the CLI, MCP, a Task dispatch,
- * a check-back and any turn recorded before the mark all refuse, as does a
- * read Station cannot make (fail closed). A Session that acts for no one
- * (an automation-rule Task's, a webhook's) is refused before this by its
- * missing recorded owner.
+ * The calling turn's id when that turn may propose automations, else
+ * `undefined`. Only a turn a person typed into one of Station's own clients
+ * qualifies, by the shared server-stamped mark (#4827), read from THAT
+ * turn's own `turn.started`, never a steer, never an earlier turn (#4830
+ * re-reviews):
+ *
+ * - the calling turn is the one the Session is running; a call while a
+ *   send's start is not yet stored (`pending`), or with no running turn
+ *   (`none`), refuses, so a delegated continuation whose start is held for
+ *   acceptance is never judged by the person turn before it;
+ * - the stored newest own start must be that running turn and carry the
+ *   mark; anything else, and anything Station cannot read, refuses.
+ *
+ * So an automation's run, a delegated result, a `/chat/delegated` peer, a
+ * background run, the CLI, MCP, a Task dispatch, a check-back and any turn
+ * recorded before the mark all refuse. A Session that acts for no one (an
+ * automation-rule Task's, a webhook's) is refused before this by its
+ * missing recorded owner. The route asks again inside the transaction that
+ * stores the proposal and requires the same turn.
  */
-export function sessionMayProposeAutomations(
-  store: CurrentTurnStartReader,
+export function proposingTurnId(
+  reads: AutomationProposerReads,
   sessionId: string,
-): boolean {
+): string | undefined {
   try {
-    return isCurrentTurnPersonAuthored(store, sessionId);
+    const calling = reads.callingTurn(sessionId);
+    if (calling.kind !== 'turn') return undefined;
+    const started = reads.store.latestOwnTurnStarted(sessionId);
+    if (
+      !started ||
+      started.payload.turnId !== calling.turnId ||
+      !isCurrentTurnPersonAuthored(reads.store, sessionId)
+    )
+      return undefined;
+    return calling.turnId;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -713,7 +742,8 @@ export type AutomationProposalAuthorityRecord = Readonly<{
 export type InsertAutomationProposalResult =
   | { readonly outcome: 'proposed'; readonly proposal: AutomationProposal }
   | { readonly outcome: 'limit-reached' }
-  | { readonly outcome: 'rate-limited' };
+  | { readonly outcome: 'rate-limited' }
+  | { readonly outcome: 'not-admitted' };
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -836,8 +866,15 @@ export function createSqliteAutomationProposalStore(
       proposer: AutomationProposer;
       untrusted: boolean;
       now: number;
+      /**
+       * Decided again inside this write transaction: false refuses, so a
+       * turn change between the route's check and this write stores nothing.
+       */
+      admit?: () => boolean;
     }): InsertAutomationProposalResult {
       return writeTransaction(db, 'automation_proposal_insert', () => {
+        if (input.admit && !input.admit())
+          return { outcome: 'not-admitted' as const };
         db.prepare(
           `DELETE FROM automation_proposals WHERE state = 'declined' AND updated_at <= ?`,
         ).run(input.now - RATE_WINDOW_MS);

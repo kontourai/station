@@ -109,7 +109,7 @@ import {
   isPrincipalScopedAgentRequest,
   stationControlRequestAuthority,
 } from '../../security/station-control-request-authority.js';
-import { sessionMayProposeAutomations } from '../../services/automation/automation-proposals.js';
+import { proposingTurnId } from '../../services/automation/automation-proposals.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
 import {
   type BrowserProjectAuthorizer,
@@ -7331,10 +7331,17 @@ export function configureRuntimeRoutes(
                 .find((project) => project.id === projectId)?.name,
             agentDefinition: async (agentSlug: string) =>
               context.agentService.getAgent(agentSlug),
-            mayPropose: (sessionId: string) => {
+            proposingTurn: (sessionId: string) => {
               const eventStore = context.orchestrationEventStore;
-              if (!eventStore) return false;
-              return sessionMayProposeAutomations(eventStore, sessionId);
+              if (!eventStore) return undefined;
+              return proposingTurnId(
+                {
+                  callingTurn: (id) =>
+                    context.orchestrationService.stationControlCallingTurn(id),
+                  store: eventStore,
+                },
+                sessionId,
+              );
             },
             untrustedContent: async (conversationId: string) =>
               (await sharedUntrustedContentLedger.conversationHasRead(

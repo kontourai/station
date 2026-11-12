@@ -1917,8 +1917,13 @@ schedule with conversation read access; an agent may read its own.
 rules ([decision](../decisions/agent-proposed-automations.md)). The
 [routes](../../src-server/routes/orchestration/automation-proposals.ts) read
 the conversation from the verified caller. Only a Session that acts for a
-recorded owner, whose newest turn started with the shared person mark
-(`isCurrentTurnPersonAuthored`, #4848), may propose. Everything else
+recorded owner may propose, and only from a calling turn that started with
+the shared person mark (#4848). The calling turn is the Session's running
+turn by its persisted lifecycle fold
+(`OrchestrationService.stationControlCallingTurn`); it is `pending` while
+`ClientOriginTurnPropagation.holdsTurnStart` holds a start not yet stored.
+`proposingTurnId` decides, and the insert decides again inside its write
+transaction for the same turn. Everything else
 refuses (fail closed), including a delegated result that continues in a
 person's chat with `dispatchOrigin: interactive`.
 [Validation](../../src-server/services/automation/automation-proposals.ts)

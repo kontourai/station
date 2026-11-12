@@ -118,8 +118,12 @@ export interface AutomationProposalRoutesDeps {
     projectId: string,
     agentId: string,
   ): Promise<AutomationTargetBinding | undefined>;
-  /** `sessionMayProposeAutomations` over the Session's own records. */
-  mayPropose(sessionId: string): boolean;
+  /**
+   * `proposingTurnId` over the Session's calling turn: its id when that
+   * turn may propose, else `undefined`. Asked before validation and again
+   * inside the transaction that stores the proposal.
+   */
+  proposingTurn(sessionId: string): string | undefined;
   /** The conversation (or a child it delegated to) read untrusted content. */
   untrustedContent(conversationId: string): Promise<boolean>;
   projectName?(projectId: string): string | undefined;
@@ -240,7 +244,8 @@ export function createAutomationProposalRoutes(
           'automation_proposal_unattended',
           AUTOMATION_PROPOSAL_COPY.unattendedNoOwner,
         );
-      if (!deps.mayPropose(caller.sessionId))
+      const turnId = deps.proposingTurn(caller.sessionId);
+      if (turnId === undefined)
         return refusal(
           c,
           'automation_proposal_unattended',
@@ -277,7 +282,15 @@ export function createAutomationProposalRoutes(
         },
         untrusted,
         now: now(),
+        // The same turn, still allowed, as the proposal is written.
+        admit: () => deps.proposingTurn(caller.sessionId) === turnId,
       });
+      if (inserted.outcome === 'not-admitted')
+        return refusal(
+          c,
+          'automation_proposal_unattended',
+          AUTOMATION_PROPOSAL_COPY.startedByAutomation,
+        );
       if (inserted.outcome === 'limit-reached')
         return refusal(
           c,

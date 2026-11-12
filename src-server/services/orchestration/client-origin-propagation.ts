@@ -369,6 +369,24 @@ export class ClientOriginTurnPropagation {
     return this.#routeLegacy(event, routing);
   }
 
+  /**
+   * #4830: whether a turn start on `threadId` is not yet what the store
+   * holds: a send in flight (its acceptance not returned), an accepted send
+   * whose `turn.started` has not arrived, or a start held for either. While
+   * this is true the store's newest start is not the turn now running.
+   */
+  holdsTurnStart(threadId: string): boolean {
+    if (this.#inFlight.has(threadId)) return true;
+    const prefix = `${threadId.length}:${threadId}:`;
+    for (const key of [
+      ...this.#early.keys(),
+      ...this.#accepted.keys(),
+      ...this.#legacyEarly.keys(),
+    ])
+      if (key.startsWith(prefix)) return true;
+    return false;
+  }
+
   clearThread(threadId: string): void {
     this.#legacyPending.delete(threadId);
     const prefix = `${threadId.length}:${threadId}:`;
