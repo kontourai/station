@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 /** One running Station over `dir`: event store, service and routes. */
-function boot(options: { upgrade?: boolean } = {}) {
+function boot() {
   const eventStore = new EventStore(join(dir, 'orchestration.sqlite'));
   const service = new OrchestrationService({
     adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
@@ -72,15 +72,15 @@ function boot(options: { upgrade?: boolean } = {}) {
   const authorityFor = (): SessionReadAuthority =>
     sessionReadAuthorityFromRequest(OWNER, undefined, undefined);
   const acknowledgements = new FileConversationAcknowledgementStore(dir);
-  // Read state began long before this conversation.
-  const store = new FileReadMarkerStore(dir, () => new Date(0));
-  // As the runtime does at start: a first-format store converts once.
-  if (options.upgrade)
-    upgradeReadMarkerStore({
-      store,
-      events: eventStore,
-      now: new Date('2026-11-12T00:00:00.000Z'),
-    });
+  const store = new FileReadMarkerStore(dir);
+  // As the runtime does at every start: read state begins once per home (a
+  // first-format store, or none).
+  upgradeReadMarkerStore({
+    store,
+    acknowledgements,
+    events: eventStore,
+    now: new Date('2026-11-12T00:00:00.000Z'),
+  });
   const readMarkers = new ReadMarkerService({
     store,
     conversations: acknowledgements,
@@ -355,7 +355,7 @@ test('an upgrade at the fence: nothing from before it reads unread, and content 
   // and its views in the acknowledgement store as the `updatedAt` shown.
   const db = new DatabaseSync(join(dir, 'orchestration.sqlite'));
   db.exec(
-    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_progress;',
+    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_migration;',
   );
   db.close();
   writeFileSync(
@@ -373,7 +373,7 @@ test('an upgrade at the fence: nothing from before it reads unread, and content 
     updatedAt: '2026-11-11T10:15:00.000Z',
   });
 
-  station = boot({ upgrade: true });
+  station = boot();
   try {
     const after = new Map(
       (await station.inventoryAll()).map((item) => [item.id, item.readState]),
@@ -654,7 +654,25 @@ test('a legacy acknowledgement of a provider snapshot never reads content ingest
   }
 }, 60_000);
 
-test('an upgrade never pre-reads content persisted after the recorded view', async () => {
+/**
+ * Back to a genuinely old home: a first-format read-marker store (`createdAt`
+ * as given) and an event store with no content projection, migration
+ * progress or cutoff, so the next start runs a real first migration.
+ */
+function makeGenuinelyOld(createdAt: number): void {
+  writeFileSync(
+    join(dir, READ_MARKER_STORE_FILE),
+    JSON.stringify({ version: 1, createdAt, markers: {} }),
+  );
+  rmSync(join(dir, `${READ_MARKER_STORE_FILE}.previous`), { force: true });
+  const db = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+  db.exec(
+    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_migration;',
+  );
+  db.close();
+}
+
+test('a genuinely old home: the person who had viewed keeps reading what they saw, and content persisted after the cutoff is unread', async () => {
   let station = boot();
   await readConversation(station);
   station.eventStore.appendEvent({
@@ -665,27 +683,35 @@ test('an upgrade never pre-reads content persisted after the recorded view', asy
     method: 'session.exited',
     sessionId: THREAD,
   } as never);
+  // The owner's view, recorded by the old build: an acknowledgement record.
   const shown = await station.inventory();
   expect((await station.acknowledge(shown.id, shown.updatedAt)).status).toBe(
     200,
   );
+  // Before the upgrade there was no server unread: this reply was simply
+  // there when the owner looked.
   seedTurn(
     station.eventStore,
-    'delayed',
+    'before-upgrade',
     '2026-11-11T10:09:00.000Z',
     '2026-11-11T10:10:00.000Z',
   );
-  expect((await station.inventory()).readState).toMatchObject({
-    unread: true,
-  });
   await station.stop();
-  writeFileSync(
-    join(dir, READ_MARKER_STORE_FILE),
-    JSON.stringify({ version: 1, createdAt: 0, markers: {} }),
-  );
-  rmSync(join(dir, `${READ_MARKER_STORE_FILE}.previous`), { force: true });
-  station = boot({ upgrade: true });
+  makeGenuinelyOld(0);
+
+  station = boot();
   try {
+    expect(station.eventStore.contentUpgradeFence()).toBeGreaterThan(0);
+    expect((await station.inventory()).readState).toMatchObject({
+      unread: false,
+    });
+    // A delayed reply persisted after the cutoff, backdated before it all.
+    seedTurn(
+      station.eventStore,
+      'after-cutoff',
+      '2026-11-11T09:00:00.000Z',
+      '2026-11-11T09:00:01.000Z',
+    );
     expect((await station.inventory()).readState).toMatchObject({
       unread: true,
     });
@@ -694,7 +720,7 @@ test('an upgrade never pre-reads content persisted after the recorded view', asy
   }
 }, 60_000);
 
-test('an upgrade baseline never covers backdated content persisted later', async () => {
+test('a genuinely old home where nobody had a record reads unread after the upgrade, whatever the old time baseline', async () => {
   let station = boot();
   await readConversation(station);
   seedTurn(
@@ -709,24 +735,13 @@ test('an upgrade baseline never covers backdated content persisted later', async
     '2026-11-11T10:00:06.000Z',
     '2026-11-11T10:00:07.000Z',
   );
-  expect((await station.inventory()).readState).toMatchObject({
-    unread: true,
-  });
   await station.stop();
   rmSync(join(dir, 'conversation-acknowledgements.json'), { force: true });
   rmSync(join(dir, 'conversation-acknowledgements.json.previous'), {
     force: true,
   });
-  writeFileSync(
-    join(dir, READ_MARKER_STORE_FILE),
-    JSON.stringify({
-      version: 1,
-      createdAt: Date.parse('2026-11-11T10:00:10.000Z'),
-      markers: {},
-    }),
-  );
-  rmSync(join(dir, `${READ_MARKER_STORE_FILE}.previous`), { force: true });
-  station = boot({ upgrade: true });
+  makeGenuinelyOld(Date.parse('2026-11-11T10:00:10.000Z'));
+  station = boot();
   try {
     expect((await station.inventory()).readState).toMatchObject({
       unread: true,

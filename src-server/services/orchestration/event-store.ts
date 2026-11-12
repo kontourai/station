@@ -11424,29 +11424,35 @@ export class EventStore {
   }
 
   /**
-   * #3075: the upgrade fence, the store-wide `global_sequence` the content
-   * projection's backfill covered when it completed: every event at or
-   * below it existed before content versions were kept (a contiguous prefix
-   * by construction). `undefined` until the backfill completes.
+   * #3075: the upgrade fence, the migration's immutable cutoff: the
+   * store-wide `global_sequence` recorded when the content projection's
+   * migration began, before its first batch. Every event at or below it
+   * existed before content versions were kept (a contiguous prefix by
+   * construction); content appended after it is projected but never inside
+   * it. `undefined` until the migration completes.
    */
   contentUpgradeFence(): number | undefined {
     const row = this.db
       .prepare(
-        `SELECT fence_sequence FROM orchestration_thread_content_progress
+        `SELECT cutoff_sequence FROM orchestration_thread_content_migration
          WHERE singleton = 1 AND completed_at IS NOT NULL`,
       )
-      .get() as { fence_sequence: number | null } | undefined;
-    return row?.fence_sequence === null || row?.fence_sequence === undefined
-      ? undefined
-      : Number(row.fence_sequence);
+      .get() as { cutoff_sequence: number } | undefined;
+    return row === undefined ? undefined : Number(row.cutoff_sequence);
   }
 
   /**
-   * #3075: the content-version projection, and its backfill from an existing
-   * history in bounded batches. Each batch commits with its progress cursor,
-   * so an interrupted start resumes where it stopped. The last batch, under
-   * the write lock, also records completion and the upgrade fence (the
-   * high-water sequence it covered) in the same write.
+   * #3075: the content-version projection, and its migration from an
+   * existing history.
+   *
+   * The cutoff is written once, atomically, before the first batch; a
+   * resume or a second initializer reads that same cutoff and never
+   * recomputes it, and completion never changes it. Each bounded batch
+   * re-reads the cursor and completion under its own writer lock (doing
+   * nothing once another initializer has finished), projects only events up
+   * to the cutoff, and commits with its progress, so an interrupted start
+   * resumes where it stopped. Content appended after the cutoff is projected
+   * by its own append.
    */
   private ensureThreadContentProjection(): void {
     this.db.exec(
@@ -11454,28 +11460,31 @@ export class EventStore {
          thread_id TEXT NOT NULL PRIMARY KEY,
          content_sequence INTEGER NOT NULL
        );
-       CREATE TABLE IF NOT EXISTS orchestration_thread_content_progress (
+       CREATE TABLE IF NOT EXISTS orchestration_thread_content_migration (
          singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
-         cursor_sequence INTEGER NOT NULL CHECK (cursor_sequence >= 0),
-         fence_sequence INTEGER,
-         completed_at TEXT,
-         CHECK ((completed_at IS NULL) = (fence_sequence IS NULL))
+         cutoff_sequence INTEGER NOT NULL CHECK (cutoff_sequence >= 0),
+         cursor_sequence INTEGER NOT NULL
+           CHECK (cursor_sequence >= 0 AND cursor_sequence <= cutoff_sequence),
+         completed_at TEXT
        );`,
     );
-    this.db
-      .prepare(
-        `INSERT OR IGNORE INTO orchestration_thread_content_progress
-           (singleton, cursor_sequence) VALUES (1, 0)`,
-      )
-      .run();
-    const progress = this.db
-      .prepare(
-        `SELECT cursor_sequence, completed_at
-         FROM orchestration_thread_content_progress WHERE singleton = 1`,
-      )
-      .get() as { cursor_sequence: number; completed_at: string | null };
-    if (progress.completed_at !== null) return;
-    let cursor = Number(progress.cursor_sequence);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO orchestration_thread_content_migration
+             (singleton, cutoff_sequence, cursor_sequence) VALUES (1, ?, 0)`,
+        )
+        .run(this.currentGlobalSequence());
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    const readMigration = this.db.prepare(
+      `SELECT cutoff_sequence, cursor_sequence, completed_at
+       FROM orchestration_thread_content_migration WHERE singleton = 1`,
+    );
     const project = this.db.prepare(
       `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
        SELECT e.thread_id, MAX(e.global_sequence)
@@ -11486,36 +11495,37 @@ export class EventStore {
        ON CONFLICT(thread_id) DO UPDATE SET
          content_sequence = MAX(content_sequence, excluded.content_sequence)`,
     );
+    const advance = this.db.prepare(
+      `UPDATE orchestration_thread_content_migration
+       SET cursor_sequence = ?, completed_at = ?
+       WHERE singleton = 1 AND completed_at IS NULL`,
+    );
     while (true) {
-      const end = cursor + THREAD_CONTENT_BACKFILL_BATCH;
-      let finished = false;
+      let cursor: number;
+      let finished: boolean;
       this.db.exec('BEGIN IMMEDIATE');
       try {
-        project.run(cursor, end);
-        const highWater = this.currentGlobalSequence();
-        if (end >= highWater) {
-          this.db
-            .prepare(
-              `UPDATE orchestration_thread_content_progress
-               SET cursor_sequence = ?, fence_sequence = ?, completed_at = ?
-               WHERE singleton = 1`,
-            )
-            .run(highWater, highWater, new Date().toISOString());
-          finished = true;
-        } else {
-          this.db
-            .prepare(
-              'UPDATE orchestration_thread_content_progress SET cursor_sequence = ? WHERE singleton = 1',
-            )
-            .run(end);
+        const migration = readMigration.get() as {
+          cutoff_sequence: number;
+          cursor_sequence: number;
+          completed_at: string | null;
+        };
+        if (migration.completed_at !== null) {
+          this.db.exec('COMMIT');
+          return;
         }
+        const cutoff = Number(migration.cutoff_sequence);
+        const from = Number(migration.cursor_sequence);
+        cursor = Math.min(from + THREAD_CONTENT_BACKFILL_BATCH, cutoff);
+        finished = cursor >= cutoff;
+        project.run(from, cursor);
+        advance.run(cursor, finished ? new Date().toISOString() : null);
         this.db.exec('COMMIT');
       } catch (error) {
         this.db.exec('ROLLBACK');
         throw error;
       }
       if (finished) return;
-      cursor = end;
       this.faults.threadContentBackfillBatch?.(cursor);
     }
   }

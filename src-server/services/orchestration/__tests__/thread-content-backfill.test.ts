@@ -41,7 +41,7 @@ function oldHome(path: string, events: number): void {
     'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
   ).run(events);
   db.exec(
-    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_progress;',
+    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_migration;',
   );
   db.exec('COMMIT');
   db.close();
@@ -52,12 +52,12 @@ function progress(path: string) {
   try {
     return db
       .prepare(
-        'SELECT cursor_sequence, fence_sequence, completed_at FROM orchestration_thread_content_progress WHERE singleton = 1',
+        'SELECT cutoff_sequence, cursor_sequence, completed_at FROM orchestration_thread_content_migration WHERE singleton = 1',
       )
       .get() as
       | {
+          cutoff_sequence: number;
           cursor_sequence: number;
-          fence_sequence: number | null;
           completed_at: string | null;
         }
       | undefined;
@@ -81,9 +81,10 @@ test('the backfill commits bounded batches and resumes an interrupted run where 
       }),
   ).toThrow('interrupted');
   const interrupted = progress(path);
+  // The cutoff was written before the first batch; the cursor is the batch.
   expect(interrupted).toMatchObject({
+    cutoff_sequence: events,
     cursor_sequence: THREAD_CONTENT_BACKFILL_BATCH,
-    fence_sequence: null,
     completed_at: null,
   });
 
@@ -105,8 +106,8 @@ test('the backfill commits bounded batches and resumes an interrupted run where 
     }
     const done = progress(path);
     expect(done?.completed_at).not.toBeNull();
-    // The fence is the contiguous prefix the backfill covered.
-    expect(done?.fence_sequence).toBe(events);
+    // Completion keeps the cutoff written before the first batch.
+    expect(done?.cutoff_sequence).toBe(events);
     expect(store.contentUpgradeFence()).toBe(events);
     const db = new DatabaseSync(path, { readOnly: true });
     try {
@@ -129,6 +130,123 @@ test('the backfill commits bounded batches and resumes an interrupted run where 
     } finally {
       db.close();
     }
+  } finally {
+    store.close();
+  }
+}, 60_000);
+
+/** Back to a pre-upgrade home after a writer's own start migrated it. */
+function forgetMigration(path: string): void {
+  const db = new DatabaseSync(path);
+  db.exec(
+    'DELETE FROM orchestration_thread_content; DELETE FROM orchestration_thread_content_migration;',
+  );
+  db.close();
+}
+
+/** Content written by a peer that was already running against the home. */
+function appendContent(store: EventStore, eventId: string): void {
+  store.appendEvent({
+    eventId,
+    provider: 'claude',
+    threadId: 'odd',
+    createdAt: '2026-11-11T10:00:00.000Z',
+    method: 'content.text-delta',
+    turnId: 't',
+    itemId: eventId,
+    delta: 'written during the migration',
+  } as never);
+}
+
+function projected(path: string, thread: string): number {
+  const db = new DatabaseSync(path, { readOnly: true });
+  try {
+    return Number(
+      (
+        db
+          .prepare(
+            'SELECT content_sequence FROM orchestration_thread_content WHERE thread_id = ?',
+          )
+          .get(thread) as { content_sequence: number }
+      ).content_sequence,
+    );
+  } finally {
+    db.close();
+  }
+}
+
+test('content appended between batches is projected but stays outside the cutoff', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  const events = THREAD_CONTENT_BACKFILL_BATCH * 2 + 123;
+  oldHome(path, events);
+  const writer = new EventStore(path);
+  forgetMigration(path);
+  let appended = false;
+  const store = new EventStore(path, undefined, undefined, {
+    threadContentBackfillBatch: () => {
+      if (appended) return;
+      appended = true;
+      appendContent(writer, 'between-batches');
+    },
+  });
+  try {
+    writer.close();
+    expect(appended).toBe(true);
+    // The cutoff is the sequence when the migration began, never later.
+    expect(store.contentUpgradeFence()).toBe(events);
+    expect(projected(path, 'odd')).toBe(events + 1);
+  } finally {
+    store.close();
+  }
+}, 60_000);
+
+test('an append during an interrupted run is projected and stays outside the cutoff after the resume', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  const events = THREAD_CONTENT_BACKFILL_BATCH * 2 + 123;
+  oldHome(path, events);
+  // A writer already open on the pre-upgrade home.
+  const writer = new EventStore(path);
+  forgetMigration(path);
+  expect(
+    () =>
+      new EventStore(path, undefined, undefined, {
+        threadContentBackfillBatch: () => {
+          appendContent(writer, 'during-backfill');
+          throw new Error('interrupted');
+        },
+      }),
+  ).toThrow('interrupted');
+  writer.close();
+  const resumed = new EventStore(path);
+  try {
+    // Projected (no cursor skipped it) and never inside the cutoff.
+    expect(projected(path, 'odd')).toBe(events + 1);
+    expect(resumed.contentUpgradeFence()).toBe(events);
+  } finally {
+    resumed.close();
+  }
+}, 60_000);
+
+test('overlapping initializers: one completes, the other resumes and never moves the fence', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  const events = THREAD_CONTENT_BACKFILL_BATCH * 2 + 123;
+  oldHome(path, events);
+  let peerFence: number | undefined;
+  const store = new EventStore(path, undefined, undefined, {
+    threadContentBackfillBatch: () => {
+      if (peerFence !== undefined) return;
+      // A second initializer runs to completion between A's batches, then
+      // new content arrives.
+      const peer = new EventStore(path);
+      peerFence = peer.contentUpgradeFence();
+      appendContent(peer, 'after-peer-completed');
+      peer.close();
+    },
+  });
+  try {
+    expect(peerFence).toBe(events);
+    expect(store.contentUpgradeFence()).toBe(peerFence);
+    expect(projected(path, 'odd')).toBe(events + 1);
   } finally {
     store.close();
   }

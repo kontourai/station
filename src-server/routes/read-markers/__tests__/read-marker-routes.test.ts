@@ -45,6 +45,7 @@ import {
   FileReadMarkerStore,
   READ_MARKER_STORE_FILE,
 } from '../../../services/read-markers/read-marker-store.js';
+import { upgradeReadMarkerStore } from '../../../services/read-markers/read-marker-upgrade.js';
 import {
   projectRoomVersionSource,
   taskRoomVersionSource,
@@ -135,8 +136,13 @@ function station(
       throughSeq: number;
       members: string[];
     };
-    /** When the store is first created; epoch 0 unless a test says otherwise. */
+    /**
+     * Where read state began (the migration cutoff, in these fixtures'
+     * epoch-ms versions); epoch 0 unless a test says otherwise.
+     */
     baseline?: string;
+    /** The people who had a record when read state began. */
+    established?: string[];
     /**
      * A hosted Station with tenant `alpha`. The test header names a verified
      * person, or `tenant-only` for a request carrying only the tenant.
@@ -239,11 +245,14 @@ function station(
   };
   // The baseline in both spaces: the fixtures' versions are epoch ms.
   const baselineAt = options.baseline ? Date.parse(options.baseline) : 0;
-  const store = new FileReadMarkerStore(
-    dir,
-    () => new Date(baselineAt),
-    () => baselineAt,
-  );
+  const store = new FileReadMarkerStore(dir);
+  // Read state begins as the runtime begins it, once per home.
+  if (store.pendingUpgrade())
+    store.completeUpgrade({
+      baselineSequence: baselineAt,
+      baselineTime: baselineAt,
+      establishedPrincipals: options.established ?? [],
+    });
   const acknowledgements = new FileConversationAcknowledgementStore(dir);
   const service = new ReadMarkerService({
     store,
@@ -511,6 +520,8 @@ describe('POST /api/read-markers/mark', () => {
         ['c2', T2],
       ]),
       baseline: '2026-11-01T10:02:00.000Z',
+      // Ada had a record when read state began.
+      established: ['human:test:ada'],
     });
     const before = await s.inventory('ada');
     expect(before.get('c1')?.readState?.unread).toBe(false);
@@ -1033,5 +1044,58 @@ describe('file conversation ids keep their contract (#4813 round 3)', () => {
       const response = await s.mark('ada', target(id), V1);
       expect(response.status, JSON.stringify(id)).toBe(404);
     }
+  });
+});
+
+describe('the migration baseline belongs to established principals (#4813 fence round)', () => {
+  test('a person with a record before the upgrade keeps the baseline; a person first seen after it starts without', async () => {
+    // A first-format home: Ada has a record, Bob has none.
+    writeFileSync(
+      join(dir, READ_MARKER_STORE_FILE),
+      JSON.stringify({
+        version: 1,
+        createdAt: 0,
+        markers: {
+          'tenant:alpha#human:test:ada': {
+            'project-room:room-1': { v: 2, at: T1 },
+          },
+        },
+      }),
+    );
+    upgradeReadMarkerStore({
+      store: new FileReadMarkerStore(dir),
+      acknowledgements: new FileConversationAcknowledgementStore(dir),
+      events: { contentUpgradeFence: () => V1 },
+      now: new Date(T2),
+    });
+    const s = station({
+      hosted: true,
+      room: { roomId: 'room-1', lastSeq: 3, members: ['ada', 'bob'] },
+      taskRoom: {
+        channelId: 'task-channel',
+        epoch: 1,
+        throughSeq: 4,
+        members: ['ada', 'bob'],
+      },
+    });
+    const room = {
+      kind: 'project-room',
+      projectSlug: 'alpha',
+      roomId: 'room-1',
+    };
+    const task = { kind: 'task-room', taskId: 'task-1' };
+    // The agent fence touches neither room's own sequence nor Ada's marker.
+    const adaRooms = await json(await s.summary('ada', [room, task]));
+    expect(
+      adaRooms.data.items.map((i: { unreadCount: number }) => i.unreadCount),
+    ).toEqual([1, 4]);
+    // Ada had a record: content up to the fence reads as it did before.
+    expect((await s.inventory('ada')).get('c1')?.readState).toMatchObject({
+      unread: false,
+    });
+    // Bob was never seen: uncertain is unread.
+    expect((await s.inventory('bob')).get('c1')?.readState).toMatchObject({
+      unread: true,
+    });
   });
 });

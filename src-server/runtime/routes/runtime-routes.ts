@@ -11898,14 +11898,14 @@ export function configureRuntimeRoutes(
   };
   const readMarkerStore = new FileReadMarkerStore(
     context.configLoader.getProjectHomeDir(),
-    undefined,
-    () => context.orchestrationEventStore?.currentGlobalSequence() ?? 0,
   );
-  // A first-format store converts once, before anything reads it.
+  // Read state begins once, before anything reads it: for a first-format
+  // store and for a home with none.
   if (context.orchestrationEventStore)
     try {
       upgradeReadMarkerStore({
         store: readMarkerStore,
+        acknowledgements: conversationAcknowledgements,
         events: context.orchestrationEventStore,
         now: new Date(),
       });

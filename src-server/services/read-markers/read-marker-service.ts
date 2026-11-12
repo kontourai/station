@@ -190,9 +190,9 @@ const AGENT_PREFIX = 'agent-conversation:';
 export class ReadMarkerService {
   constructor(private readonly deps: ReadMarkerServiceDeps) {}
 
-  /** When read state began being kept; see `ReadMarkerStore.baseline`. */
-  baseline(): ReadMarkerBaseline {
-    return this.deps.store.baseline();
+  /** Where read state began for a person; see `ReadMarkerStore.baselineFor`. */
+  private baselineFor(person: string): ReadMarkerBaseline {
+    return this.deps.store.baselineFor(person);
   }
 
   private personKey(c: ReadMarkerRequestContext): string {
@@ -283,7 +283,7 @@ export class ReadMarkerService {
     const person = this.personKey(c);
     const resolved = await this.resolve(targets, c.req.raw);
     const seen = this.seen(person, resolved);
-    const baseline = this.baseline();
+    const baseline = this.baselineFor(person);
     return targets.map((target, index) => {
       const item = resolved[index];
       if (!item) return { target, unavailable: true as const };
@@ -326,7 +326,7 @@ export class ReadMarkerService {
     });
     const after = this.seen(person, [resolved]).get(resolved.key) ?? 0;
     if (after > before) this.deps.onChanged?.(person);
-    return this.state(target, resolved, after, this.baseline());
+    return this.state(target, resolved, after, this.baselineFor(person));
   }
 
   /**
@@ -380,7 +380,7 @@ export class ReadMarkerService {
               target,
               resolved,
               this.seen(person, [resolved]).get(resolved.key) ?? 0,
-              this.baseline(),
+              this.baselineFor(person),
             )
           : this.advance(
               person,
@@ -413,7 +413,7 @@ export class ReadMarkerService {
       person,
       [...versions.keys()].map((id) => `${AGENT_PREFIX}${id}`),
     );
-    const baseline = this.baseline();
+    const baseline = this.baselineFor(person);
     return new Map(
       [...versions].map(([id, { version, space }]) => {
         const seenVersion = Math.min(

@@ -230,6 +230,14 @@ export class FileConversationAcknowledgementStore
     return {};
   }
 
+  /**
+   * Every key with a recorded view, for the one-time read-marker migration
+   * (#3075): each is an established principal.
+   */
+  principals(): string[] {
+    return Object.keys(this.readAcknowledgements());
+  }
+
   /** One fresh snapshot per inventory read; never cache across requests. */
   getMany(
     userId: string,
