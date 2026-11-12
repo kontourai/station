@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
 
@@ -26,6 +26,7 @@ vi.mock('@kontourai/station-sdk', () => ({
         displayName: 'Community',
         origin: 'user',
         location: '/catalog',
+        adapter: 'directory',
         enabled: false,
         status: 'disabled',
       },
@@ -72,27 +73,145 @@ afterEach(() => {
   extraSources.length = 0;
 });
 
-test('adds the selected supported adapter with the entered location and name', () => {
+const hillClimb = {
+  id: 'hill-climb',
+  kind: 'skills',
+  displayName: 'Bil0000/Hill-Climb',
+  origin: 'user',
+  location: 'https://github.com/Bil0000/Hill-Climb',
+  ref: 'main',
+  adapter: 'github',
+  enabled: true,
+  status: 'ready',
+  detection: {
+    state: 'detected',
+    index: 'claude-marketplace:.claude-plugin/marketplace.json',
+    revision: '551c997e9eb3ae81fed9edf1d8a66bd32cd0dbf8',
+    checkedAt: new Date().toISOString(),
+    kinds: [
+      { kind: 'skills', count: 1, via: 'skill-md', installable: true },
+      {
+        kind: 'plugins',
+        count: 1,
+        via: 'claude-marketplace',
+        installable: false,
+        note: 'Claude Code plugin packages are recognized but are not a format Station installs.',
+      },
+    ],
+  },
+};
+
+test('adds a source from a location and optional ref, with no type to choose, then shows what was detected', () => {
   render(<MarketplaceSources selected="all" onSelect={select} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Add marketplace' }));
-  fireEvent.change(screen.getByLabelText('Marketplace name'), {
-    target: { value: 'Engineering workflows' },
+  fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
+  const dialog = screen.getByRole('dialog', { name: 'Add source' });
+  expect(within(dialog).queryByRole('combobox')).toBeNull();
+  fireEvent.change(within(dialog).getByLabelText('Location'), {
+    target: { value: ' https://github.com/Bil0000/Hill-Climb ' },
   });
-  fireEvent.change(screen.getByLabelText('Repository URL'), {
-    target: { value: 'https://github.com/mattpocock/skills' },
+  fireEvent.change(within(dialog).getByLabelText(/^Ref/), {
+    target: { value: 'main' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Connect marketplace' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Add source' }));
   expect(mutate).toHaveBeenCalledWith(
     {
       action: 'add',
       source: {
-        displayName: 'Engineering workflows',
-        adapter: 'github',
-        location: 'https://github.com/mattpocock/skills',
+        location: 'https://github.com/Bil0000/Hill-Climb',
+        ref: 'main',
       },
     },
     expect.any(Object),
   );
+  const { onSuccess } = mutate.mock.calls[0]![1] as {
+    onSuccess: (source: unknown) => void;
+  };
+  act(() => onSuccess(hillClimb));
+  const result = screen.getByRole('dialog', {
+    name: 'Added Bil0000/Hill-Climb',
+  });
+  expect(result.textContent).toContain('1 skill');
+  expect(result.textContent).toContain(
+    '1 plugin · recognized, not installable',
+  );
+  expect(result.textContent).toContain('Nothing is installed yet');
+  fireEvent.click(
+    within(result).getByRole('button', { name: 'Browse this source' }),
+  );
+  expect(select).toHaveBeenCalledWith('hill-climb', 'skills');
+});
+
+test('a source card shows its trust tier, detected kinds with counts and its freshness', () => {
+  extraSources.push(hillClimb, {
+    id: 'notes',
+    kind: 'skills',
+    displayName: 'Notes',
+    origin: 'user',
+    location: '/notes',
+    adapter: 'directory',
+    enabled: true,
+    status: 'ready',
+    detection: {
+      state: 'nothing-recognized',
+      kinds: [],
+      checkedAt: new Date().toISOString(),
+    },
+  });
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const card = screen
+    .getByText('Bil0000/Hill-Climb', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  expect(within(card).getByText('Unverified')).toBeTruthy();
+  expect(card.textContent).toContain(
+    'https://github.com/Bil0000/Hill-Climb @ main',
+  );
+  const kinds = within(card).getByRole('list', {
+    name: 'What this source provides',
+  });
+  expect(
+    within(kinds)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['1 skill', '1 plugin · recognized, not installable']);
+  expect(card.textContent).toContain('revision 551c997');
+  const notes = screen
+    .getByText('Notes', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  expect(notes.textContent).toContain('Nothing Station recognizes yet');
+  const station = screen
+    .getByText('Station', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  expect(within(station).getByText('Ships with Station')).toBeTruthy();
+});
+
+test('a kinds-filtered view includes a source that supplies that kind beside its primary one', () => {
+  extraSources.push({
+    ...hillClimb,
+    id: 'mixed',
+    displayName: 'Mixed folder',
+    detection: {
+      ...hillClimb.detection,
+      kinds: [
+        { kind: 'skills', count: 2, via: 'skill-md', installable: true },
+        {
+          kind: 'plugins',
+          count: 1,
+          via: 'station-manifest',
+          installable: true,
+        },
+      ],
+    },
+  });
+  render(
+    <MarketplaceSources selected="all" onSelect={select} kinds={['plugins']} />,
+  );
+  const options = within(screen.getByLabelText('Browse marketplace'))
+    .getAllByRole('option')
+    .map((option) => option.textContent);
+  expect(options).toContain('Mixed folder');
+  // Recognized-but-not-installable plugins do not make a source a plugin catalog.
+  expect(options).not.toContain('Bil0000/Hill-Climb');
+  expect(options).not.toContain('Community (disabled)');
 });
 
 test('filters by host source identity and keeps plugin ownership and offline status visible', () => {
@@ -105,7 +224,7 @@ test('filters by host source identity and keeps plugin ownership and offline sta
   expect(
     screen.getByText('Offline catalog. Last successful snapshot retained.'),
   ).toBeTruthy();
-  fireEvent.click(screen.getByText('Manage connected marketplaces'));
+  fireEvent.click(screen.getByText('Manage sources (3)'));
   expect(screen.getAllByRole('button', { name: 'Disable' })).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Enable' }));
   expect(mutate).toHaveBeenCalledWith(
@@ -136,7 +255,7 @@ test('#4521: a source the managed policy refuses shows why and cannot be enabled
   });
   render(<MarketplaceSources selected="all" onSelect={select} />);
   const card = screen
-    .getByText('Unapproved folder')
+    .getByText('Unapproved folder', { selector: 'strong' })
     .closest('article') as HTMLElement;
   expect(card.textContent).toContain(
     "Acme's policy manages this marketplace: it is turned off.",
@@ -148,10 +267,47 @@ test('#4521: a source the managed policy refuses shows why and cannot be enabled
   expect((enable as HTMLButtonElement).disabled).toBe(true);
   // The ordinary disabled source stays enable-able.
   const community = screen
-    .getByText('Community')
+    .getByText('Community', { selector: 'strong' })
     .closest('article') as HTMLElement;
   const enableCommunity = Array.from(community.querySelectorAll('button')).find(
     (button) => button.textContent === 'Enable',
   ) as HTMLButtonElement;
   expect(enableCommunity.disabled).toBe(false);
+});
+
+test('a kind the managed policy refuses is marked on that kind, not on the whole source', () => {
+  extraSources.push({
+    ...hillClimb,
+    id: 'partly',
+    displayName: 'Partly refused',
+    detection: {
+      ...hillClimb.detection,
+      kinds: [
+        {
+          kind: 'skills',
+          count: 1,
+          via: 'skill-md',
+          installable: true,
+          managedDenial:
+            "Acme's policy manages skills from marketplaces, because they cannot be signed.",
+        },
+        {
+          kind: 'plugins',
+          count: 3,
+          via: 'station-manifest',
+          installable: true,
+        },
+      ],
+    },
+  });
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const card = screen
+    .getByText('Partly refused', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  const items = within(card).getAllByRole('listitem');
+  expect(items.map((item) => item.textContent)).toEqual([
+    '1 skill · blocked by policy',
+    '3 plugins',
+  ]);
+  expect(items[0]!.getAttribute('title')).toContain('cannot be signed');
 });

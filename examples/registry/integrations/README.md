@@ -91,7 +91,7 @@ The following are integration targets, not source formats this change adds.
   adapter and provider setup; using the gateway changes who holds credentials
   and mediates calls.
 
-**Add marketplace** takes a location and detects what it provides: Station
+**Add source** takes a location and detects what it provides: Station
 JSON manifests, `SKILL.md` libraries in a folder or public GitHub repository,
 and recognized-but-not-installable Claude Code marketplaces and MCP
 definitions. Tool servers from an added source are counted, not yet listed for

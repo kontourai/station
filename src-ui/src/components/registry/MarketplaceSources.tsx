@@ -1,4 +1,7 @@
-import type { RegistrySource } from '@kontourai/station-contracts/catalog';
+import type {
+  RegistrySource,
+  RegistrySourceDetectedKind,
+} from '@kontourai/station-contracts/catalog';
 import {
   useRegistrySourceActionMutation,
   useRegistrySourcesQuery,
@@ -9,6 +12,129 @@ import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
+
+type CatalogKind = RegistrySource['kind'];
+
+/**
+ * Whether a source supplies a catalog of one of `kinds`: its primary kind, or
+ * an installable kind its content was detected to provide.
+ */
+function supplies(source: RegistrySource, kinds?: readonly CatalogKind[]) {
+  if (!kinds) return true;
+  return (
+    kinds.includes(source.kind) ||
+    (source.detection?.kinds ?? []).some(
+      (detected) =>
+        detected.installable &&
+        detected.kind !== 'integrations' &&
+        kinds.includes(detected.kind),
+    )
+  );
+}
+
+const KIND_NAMES: Record<RegistrySourceDetectedKind['kind'], [string, string]> =
+  {
+    skills: ['skill', 'skills'],
+    plugins: ['plugin', 'plugins'],
+    agents: ['agent', 'agents'],
+    integrations: ['tool server', 'tool servers'],
+  };
+
+function kindLabel(kind: RegistrySourceDetectedKind) {
+  const [one, many] = KIND_NAMES[kind.kind];
+  return `${kind.count} ${kind.count === 1 ? one : many}`;
+}
+
+/**
+ * Who stands behind a source. Only Station's own collection and an operator's
+ * configuration are vouched for by this Station; a source a person added, and
+ * its publisher metadata, are not verified.
+ */
+function trust(source: RegistrySource): { label: string; detail: string } {
+  switch (source.origin) {
+    case 'station':
+      return { label: 'Station', detail: 'Ships with Station' };
+    case 'configured':
+      return {
+        label: 'Operator',
+        detail: 'Configured for this Station by its operator',
+      };
+    case 'plugin':
+      return {
+        label: 'Plugin',
+        detail: `Provided by plugin ${source.owner ?? ''}`,
+      };
+    default:
+      return {
+        label: 'Unverified',
+        detail: 'Added on this Station. Its publisher is not verified.',
+      };
+  }
+}
+
+function relative(iso: string | undefined): string | undefined {
+  if (!iso) return undefined;
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return undefined;
+  const minutes = Math.round((Date.now() - then) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return new Date(then).toLocaleDateString();
+}
+
+const NOTHING_RECOGNIZED =
+  'Nothing Station recognizes yet. It looks for SKILL.md skills, a Station manifest, Claude Code marketplaces and MCP definitions.';
+
+function DetectedKinds({ source }: { source: RegistrySource }) {
+  const detection = source.detection;
+  if (!detection) return null;
+  if (detection.state === 'nothing-recognized')
+    return <p className="marketplaces__note">{NOTHING_RECOGNIZED}</p>;
+  if (detection.kinds.length === 0) return null;
+  return (
+    <ul className="marketplaces__kinds" aria-label="What this source provides">
+      {detection.kinds.map((kind) => {
+        const blocked = kind.managedDenial !== undefined;
+        const muted = blocked || !kind.installable;
+        return (
+          <li
+            key={kind.kind}
+            className={`marketplaces__kind${muted ? ' marketplaces__kind--muted' : ''}`}
+            title={kind.managedDenial ?? kind.note}
+          >
+            <strong>{kindLabel(kind)}</strong>
+            {blocked ? (
+              <span> · blocked by policy</span>
+            ) : !kind.installable ? (
+              <span> · recognized, not installable</span>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Freshness({ source }: { source: RegistrySource }) {
+  const detection = source.detection;
+  const checked = relative(detection?.checkedAt ?? source.checkedAt);
+  const changed = relative(detection?.changedAt);
+  const revision = detection?.revision?.slice(0, 7);
+  const parts = [
+    checked ? `Checked ${checked}` : undefined,
+    revision ? `revision ${revision}` : undefined,
+    changed ? `changed upstream ${changed}` : undefined,
+  ].filter(Boolean);
+  if (parts.length === 0 && source.lastSuccessfulAt)
+    parts.push(
+      `Last successful catalog ${relative(source.lastSuccessfulAt) ?? ''}`,
+    );
+  return parts.length > 0 ? (
+    <p className="marketplaces__meta">{parts.join(' · ')}</p>
+  ) : null;
+}
 
 export function MarketplaceSources({
   selected,
@@ -22,12 +148,21 @@ export function MarketplaceSources({
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
   const [location, setLocation] = useState('');
-  const [adapter, setAdapter] = useState<'manifest' | 'github' | 'directory'>(
-    kinds && !kinds.includes('skills') ? 'manifest' : 'github',
-  );
+  const [ref, setRef] = useState('');
+  const [name, setName] = useState('');
+  const [added, setAdded] = useState<RegistrySource | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const visible = (sources.data ?? []).filter((source) =>
+    supplies(source, kinds),
+  );
+  const closeDialog = () => {
+    setOpen(false);
+    setAdded(null);
+    setLocation('');
+    setRef('');
+    setName('');
+  };
   const act = (
     source: RegistrySource,
     action: 'enable' | 'disable' | 'refresh' | 'remove',
@@ -40,15 +175,17 @@ export function MarketplaceSources({
           if (action === 'remove' && selected === source.id) onSelect('all');
           setNotice(
             action === 'remove'
-              ? 'Marketplace removed. Installed content is preserved in your Library.'
-              : 'Marketplace updated.',
+              ? 'Source removed. Installed content is preserved in your Library.'
+              : action === 'refresh'
+                ? 'Source read again.'
+                : 'Source updated.',
           );
         },
       },
     );
   };
   return (
-    <section className="marketplaces" aria-label="Connected marketplaces">
+    <section className="marketplaces" aria-label="Connected sources">
       <div className="marketplaces__toolbar">
         <label>
           Browse marketplace
@@ -63,73 +200,90 @@ export function MarketplaceSources({
               )
             }
           >
-            <option value="all">All marketplaces</option>
-            {(sources.data ?? [])
-              .filter((source) => !kinds || kinds.includes(source.kind))
-              .map((source) => (
-                <option key={source.id} value={source.id}>
-                  {source.displayName}
-                  {!source.enabled ? ' (disabled)' : ''}
-                </option>
-              ))}
+            <option value="all">All sources</option>
+            {visible.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.displayName}
+                {!source.enabled ? ' (disabled)' : ''}
+              </option>
+            ))}
           </select>
         </label>
         <Button
           variant="secondary"
           onClick={() => {
             mutation.reset();
+            setAdded(null);
             setOpen(true);
           }}
         >
-          Add marketplace
+          Add source
         </Button>
       </div>
       {sources.error && (
         <p role="alert">
-          Connected marketplaces could not be loaded. Check your connection and
+          Connected sources could not be loaded. Check your connection and
           operator access.
           <Button variant="secondary" onClick={() => void sources.refetch()}>
             Retry
           </Button>
         </p>
       )}
-      <details>
-        <summary>Manage connected marketplaces</summary>
-        <p>
-          Adding a marketplace makes its catalog available. Each item still
-          requires its own installation and approval. Publisher metadata does
+      <details className="marketplaces__manage">
+        <summary>Manage sources ({visible.length})</summary>
+        <p className="marketplaces__note">
+          A source makes its catalog available; it installs nothing. Each item
+          still needs its own installation and approval. Publisher metadata does
           not establish Station endorsement.
         </p>
         {sources.isLoading && (
-          <SkeletonList count={3} label="Loading marketplaces" />
+          <SkeletonList count={3} label="Loading sources" />
         )}
-        {(sources.data ?? [])
-          .filter((source) => !kinds || kinds.includes(source.kind))
-          .map((source) => (
-            <article key={source.id} className="marketplaces__source">
-              <div>
-                <strong>{source.displayName}</strong>
-                <span className="page__meta-pill">{source.status}</span>
-                <p>
-                  {source.origin === 'plugin'
-                    ? `Provided by plugin ${source.owner ?? ''}`
-                    : source.origin === 'station'
-                      ? 'Station collection'
-                      : 'Connected by this Station'}
-                </p>
-                {source.location && <code>{source.location}</code>}
-                {source.lastSuccessfulAt && (
-                  <p>
-                    Last successful catalog:{' '}
-                    {new Date(source.lastSuccessfulAt).toLocaleString()}
+        <div className="marketplaces__grid">
+          {visible.map((source) => {
+            const tier = trust(source);
+            const unread =
+              source.detection?.state === 'refused' ||
+              source.detection?.state === 'unavailable';
+            return (
+              <article key={source.id} className="marketplaces__source">
+                <header className="marketplaces__source-head">
+                  <strong className="marketplaces__source-name">
+                    {source.displayName}
+                  </strong>
+                  <span
+                    className={`marketplaces__trust marketplaces__trust--${source.origin}`}
+                    title={tier.detail}
+                  >
+                    {tier.label}
+                  </span>
+                  <span className="page__meta-pill">{source.status}</span>
+                </header>
+                <p className="marketplaces__meta">{tier.detail}</p>
+                {source.location && (
+                  <code className="marketplaces__location">
+                    {source.location}
+                    {source.ref ? ` @ ${source.ref}` : ''}
+                  </code>
+                )}
+                <DetectedKinds source={source} />
+                <Freshness source={source} />
+                {unread && source.detection?.reason ? (
+                  <p role="status" className="marketplaces__problem">
+                    {source.detection.reason}
+                  </p>
+                ) : (
+                  source.error && (
+                    <p role="status" className="marketplaces__problem">
+                      {source.error}
+                    </p>
+                  )
+                )}
+                {source.managedDenial && (
+                  <p role="status" className="marketplaces__problem">
+                    {source.managedDenial}
                   </p>
                 )}
-                {source.error && <p role="status">{source.error}</p>}
-                {source.managedDenial && (
-                  <p role="status">{source.managedDenial}</p>
-                )}
-              </div>
-              <div>
                 <ActionRow
                   className="marketplaces__actions"
                   overflowLabel={`More actions for ${source.displayName}`}
@@ -174,110 +328,136 @@ export function MarketplaceSources({
                   }
                 />
                 {source.origin === 'plugin' && (
-                  <p>
+                  <p className="marketplaces__note">
                     Enable, disable, or revoke this source through its owning
                     plugin.
                   </p>
                 )}
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
+        </div>
       </details>
       {notice && <p role="status">{notice}</p>}
-      {mutation.error && (
+      {mutation.error && !open && (
         <p role="alert">{describeStationFailure(mutation.error).body}</p>
       )}
       {open && (
         <Dialog
-          title="Add marketplace"
-          closeLabel="Close add marketplace"
-          onClose={() => setOpen(false)}
+          title={added ? `Added ${added.displayName}` : 'Add source'}
+          closeLabel="Close add source"
+          onClose={closeDialog}
           footer={
-            <>
-              <Button variant="secondary" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
+            added ? (
               <Button
                 variant="primary"
-                disabled={
-                  mutation.isPending || !name.trim() || !location.trim()
-                }
-                onClick={() =>
-                  mutation.mutate(
-                    {
-                      action: 'add',
-                      source: { displayName: name, location, adapter },
-                    },
-                    {
-                      onSuccess: (source) => {
-                        setOpen(false);
-                        setName('');
-                        setLocation('');
-                        if (source) onSelect(source.id, source.kind);
-                      },
-                    },
-                  )
-                }
+                onClick={() => {
+                  onSelect(added.id, added.kind);
+                  closeDialog();
+                }}
               >
-                {mutation.isPending ? 'Connecting…' : 'Connect marketplace'}
+                Browse this source
               </Button>
-            </>
+            ) : (
+              <>
+                <Button variant="secondary" onClick={closeDialog}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={mutation.isPending || !location.trim()}
+                  onClick={() =>
+                    mutation.mutate(
+                      {
+                        action: 'add',
+                        source: {
+                          location: location.trim(),
+                          ...(ref.trim() ? { ref: ref.trim() } : {}),
+                          ...(name.trim() ? { displayName: name.trim() } : {}),
+                        },
+                      },
+                      {
+                        onSuccess: (source) => {
+                          if (source) setAdded(source);
+                          else closeDialog();
+                        },
+                      },
+                    )
+                  }
+                >
+                  {mutation.isPending ? 'Reading source…' : 'Add source'}
+                </Button>
+              </>
+            )
           }
         >
-          <div className="marketplaces__form">
-            <label>
-              Marketplace name
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                maxLength={100}
-              />
-            </label>
-            <label>
-              Catalog type
-              <select
-                className="choice-trigger"
-                value={adapter}
-                onChange={(event) =>
-                  setAdapter(event.target.value as typeof adapter)
-                }
-              >
-                {(!kinds || kinds.includes('skills')) && (
-                  <option value="github">Public GitHub skill library</option>
-                )}
-                <option value="manifest">Station JSON manifest</option>
-                {(!kinds || kinds.includes('skills')) && (
-                  <option value="directory">Local skill directory</option>
-                )}
-              </select>
-            </label>
-            <label>
-              {adapter === 'directory'
-                ? 'Absolute directory path on this Station'
-                : adapter === 'github'
-                  ? 'Repository URL'
-                  : 'HTTPS manifest URL or absolute local file path'}
-              <input
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
-                placeholder={
-                  adapter === 'github'
-                    ? 'https://github.com/mattpocock/skills'
-                    : adapter === 'directory'
-                      ? '/path/to/skills'
-                      : 'https://example.com/catalog.json'
-                }
-              />
-            </label>
-            <p>
-              Public GitHub libraries and Station JSON manifests are supported.
-              Other marketplace indexes require an adapter. Private
-              credential-bearing URLs are not supported.
-            </p>
-            {mutation.error && (
-              <p role="alert">{describeStationFailure(mutation.error).body}</p>
-            )}
-          </div>
+          {added ? (
+            <div className="marketplaces__form">
+              <p>
+                {added.detection?.state === 'detected'
+                  ? 'Station read this source and found:'
+                  : added.detection?.state === 'nothing-recognized'
+                    ? NOTHING_RECOGNIZED
+                    : (added.detection?.reason ??
+                      'Station could not read this source yet. Refresh it once it is available.')}
+              </p>
+              <DetectedKinds source={added} />
+              <p className="marketplaces__note">
+                Nothing is installed yet. Choose items from the catalog and
+                approve each one when you install it.
+              </p>
+            </div>
+          ) : (
+            <div className="marketplaces__form">
+              <p>
+                Station reads the source and lists what it contains (skills,
+                plugins and agents) from its files. You don't pick a type.
+              </p>
+              <label>
+                Location
+                <input
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                  placeholder="https://github.com/owner/repository or /path/on/this/station"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label>
+                Ref (optional)
+                <input
+                  value={ref}
+                  onChange={(event) => setRef(event.target.value)}
+                  placeholder="main, v1.2.0 or a commit"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={200}
+                />
+                <span className="marketplaces__hint">
+                  A branch, tag or commit of a GitHub repository. Leave empty
+                  for its default branch.
+                </span>
+              </label>
+              <label>
+                Name (optional)
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  maxLength={100}
+                />
+              </label>
+              <p className="marketplaces__note">
+                Public GitHub repositories, folders and files on this Station,
+                and HTTPS catalog addresses are supported. Credential-bearing
+                addresses are not.
+              </p>
+              {mutation.error && (
+                <p role="alert">
+                  {describeStationFailure(mutation.error).body}
+                </p>
+              )}
+            </div>
+          )}
         </Dialog>
       )}
     </section>

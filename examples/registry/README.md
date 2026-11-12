@@ -2,7 +2,7 @@
 
 This directory holds the default registry and the fuller checkout catalog. The Registry
 marketplace can also connect this manifest as an additional source through
-Add marketplace, using its absolute path on the host; Station recognizes it as
+**Add source**, using its absolute path on the host; Station recognizes it as
 a Station manifest from its content.
 Its entries still use the existing plugin preview, consent and installation
 transaction. Source labels and author metadata do not establish verified
