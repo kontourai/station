@@ -2321,23 +2321,34 @@ Every marker lives in the
 [read-marker store](../../src-server/services/read-markers/read-marker-store.ts).
 A client marks read the content version it rendered (`readVersion` on
 `POST /api/conversations/:id/acknowledgement`, or `version` on
-`POST /api/read-markers/mark`), never more than the current one. An older
-client that sends only `updatedAt` is mapped conservatively: content appended
-no later than the first event that gave the conversation that `updatedAt`, so
-content persisted afterwards stays unread whatever its own timestamp. The
+`POST /api/read-markers/mark`), never more than the current one. Nothing is
+inferred from timestamps: a false unread is acceptable, a false read is not.
+An older client that sends only `updatedAt` records "last viewed" and moves
+no marker, so its conversations read unread until it sends `readVersion`. The
 inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
 Just finished reads; an acknowledgement writes it alongside, and unread never
 reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
 new marker.
 
-Nothing recorded what anyone had seen before read state was kept, so agent
-conversations read as seen up to where the store began: the event store's
-sequence for runtime conversations, its creation time for file-backed ones.
-A home from before content versions upgrades once at start: the event store
-backfills the projection from its history, the store's time baseline becomes
-the sequence as of that time, and each recorded view becomes the content
-version as of its time, so nobody reads unread on upgrade.
+Before server-kept unread there was no unread, so agent conversations read as
+seen up to where the store began: the event store's sequence for runtime
+conversations, its start time for file-backed ones. A home from before
+content versions upgrades once at start, at one fence. The event store
+backfills the projection from its history in bounded batches, each committed
+with its progress, so an interrupted start resumes where it stopped. The last
+batch records completion and the upgrade fence (the store's high-water
+sequence, a contiguous prefix) in the same write. The read-marker store's
+baseline then becomes that fence: everything up to it reads as seen for
+everyone, as it did before upgrading, and anything appended after it reads
+unread until rendered. Recorded views are not converted.
+
+Each field the built-in Home's work rows carry is part of the Home role's
+projection ([`workspace-home-role`](../../packages/contracts/src/workspace-home-role.ts)),
+so adding `unread`, `readVersion` and `readStateUnavailable` widens it. Under
+the role rules a widened projection is a new grant: an existing Home-role
+plugin grant needs re-consent, and until then the built-in Home is shown with
+an explanation. This is accepted, not worked around.
 
 A marker that moves emits `read-markers:changed` (scoped). The orchestration
 event stream forwards it only to that person's own streams, with an empty

@@ -2225,8 +2225,9 @@ POST /api/conversations/:id/acknowledgement
 read; above the current one it is a 409. `updatedAt` is the inventory version
 shown, recorded as "last viewed" (`acknowledgedAt`, Home's Just finished) and
 refused above the current `updatedAt`. A request without `readVersion` (an
-older client) is mapped conservatively: only content appended no later than
-the first event that gave the conversation that `updatedAt` is marked read.
+older client) records only "last viewed" and marks nothing read: what it saw
+cannot be known from a timestamp, so its conversations stay unread until it
+sends `readVersion`.
 
 ## Conversation Management
 

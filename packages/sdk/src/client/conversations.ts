@@ -298,8 +298,8 @@ export async function listConversationInventory(
  * `updatedAt` must be the value returned by the inventory, never a client
  * wall-clock timestamp: it is the "last viewed" record. `readVersion` is the
  * content version the client rendered (`readState.version`); the server
- * marks exactly that content read. Without it the server maps `updatedAt`
- * conservatively (#3075).
+ * marks exactly that content read. Without it the server records only "last
+ * viewed" and marks nothing read (#3075).
  */
 export async function acknowledgeConversation(
   apiBase: string,

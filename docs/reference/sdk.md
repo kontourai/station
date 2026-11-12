@@ -2205,9 +2205,9 @@ server could not read it: show it as unknown, never as read.
   (`readState.version`) and is what the server marks read; `updatedAt` is the
   inventory version shown, kept as "last viewed". With `readVersion` the
   cached row reads as read at once; if the server refuses, the row is restored
-  and the mutation rejects. Without it (older callers) the row waits for the
-  server, which maps `updatedAt` conservatively. An unknown row stays unknown
-  until the server answers.
+  and the mutation rejects. Without it (older callers) the server records only
+  "last viewed" and marks nothing read, so the row stays unread. An unknown
+  row stays unknown until the server answers.
 - `acknowledgeConversation(apiBase, conversationId, updatedAt, opts?,
   readVersion?)` is the same call without React Query.
 - `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
