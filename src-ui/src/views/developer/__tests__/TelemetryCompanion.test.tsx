@@ -256,7 +256,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
       ).toBeTruthy();
     } else {
       expect(
-        await screen.findByText(/preparation outcome is unconfirmed/),
+        await screen.findByText(/Station didn.t confirm the result/),
       ).toBeTruthy();
       expect(
         screen.getByRole('button', { name: 'Prepare signed archive' }),
@@ -277,7 +277,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
       ).toBeTruthy();
     } else {
       expect(
-        await screen.findByText(/recorded operation has no readable receipt/),
+        await screen.findByText(/last operation's result can't be read/),
       ).toBeTruthy();
       expect(
         screen.getByRole('button', { name: 'Prepare signed archive' }),
@@ -428,11 +428,11 @@ test.each(['recovered', 'unconfirmed'] as const)(
     await waitFor(() => expect(control).toHaveBeenCalledTimes(1));
     if (recovery === 'recovered')
       expect(
-        await screen.findByText(/Running. Receiver storage is ready/),
+        await screen.findByText(/Running. Storage is ready/),
       ).toBeTruthy();
     else
       expect(
-        await screen.findByText(/last start outcome needs reconciliation/),
+        await screen.findByText(/Station didn.t confirm the last start/),
       ).toBeTruthy();
     const stop = await screen.findByRole('button', { name: 'Stop companion' });
     await waitFor(() => expect(stop).toHaveProperty('disabled', false));
@@ -446,11 +446,11 @@ test.each(['recovered', 'unconfirmed'] as const)(
     mount(options);
     if (recovery === 'recovered')
       expect(
-        await screen.findByText(/Running. Receiver storage is ready/),
+        await screen.findByText(/Running. Storage is ready/),
       ).toBeTruthy();
     else
       expect(
-        await screen.findByText(/last start outcome needs reconciliation/),
+        await screen.findByText(/Station didn.t confirm the last start/),
       ).toBeTruthy();
     expect(control).toHaveBeenCalledTimes(1);
     expect(install).toHaveBeenCalledTimes(1);
@@ -461,12 +461,10 @@ test('renders the host observation from the real SDK/route without claiming inst
   const h = mount();
   expect(
     await screen.findByText(
-      /Host prerequisites passed: Linux arm64, Docker 29.4.0, Compose 5.1.2/,
+      /Prerequisites passed: Linux arm64, Docker 29.4.0, Compose 5.1.2/,
     ),
   ).toBeTruthy();
-  expect(
-    screen.getByText(/Host capability alone does not establish/),
-  ).toBeTruthy();
+  expect(screen.queryByText(/installed/i)).toBeNull();
   expect(h.probe).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
 });
@@ -487,10 +485,12 @@ test('renders verified parent evidence through the SDK while refusing installati
   });
   expect(
     await screen.findByText(
-      /Parent release 0.7.0-nightly.12 has a verified signed envelope/,
+      /Release 0.7.0-nightly.12 is signed and its companion files match/,
     ),
   ).toBeTruthy();
-  expect(screen.getByText(/archive must be authenticated/)).toBeTruthy();
+  expect(
+    screen.getByText(/Prepare the archive below before installing/),
+  ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
 });
 
@@ -498,29 +498,29 @@ test('a refused operator read shows the required authority and launches no probe
   const h = mount({ operator: false });
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining('operator session'),
+    expect.stringContaining('Sign in as the Station operator'),
   );
   expect(h.probe).not.toHaveBeenCalled();
-  expect(screen.queryByText(/Host prerequisites passed/)).toBeNull();
+  expect(screen.queryByText(/Prerequisites passed/)).toBeNull();
 });
 
 test('a malformed refresh replaces prior success with an error', async () => {
   mount();
-  await screen.findByText(/Host prerequisites passed/);
+  await screen.findByText(/Prerequisites passed/);
   vi.mocked(fetch).mockResolvedValueOnce(
     Response.json({ data: { kind: 'available' } }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Check host again' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check prerequisites again' }));
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining('host check is unavailable'),
+    expect.stringContaining("Couldn't check this computer"),
   );
-  expect(screen.queryByText(/Host prerequisites passed/)).toBeNull();
+  expect(screen.queryByText(/Prerequisites passed/)).toBeNull();
 });
 
 test('the SDK refuses a response that promotes build evidence to installation authority', async () => {
   mount();
-  await screen.findByText(/Host prerequisites passed/);
+  await screen.findByText(/Prerequisites passed/);
   vi.mocked(fetch).mockResolvedValueOnce(
     Response.json({
       data: {
@@ -536,12 +536,12 @@ test('the SDK refuses a response that promotes build evidence to installation au
       },
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Check host again' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check prerequisites again' }));
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining('host check is unavailable'),
+    expect.stringContaining("Couldn't check this computer"),
   );
-  expect(screen.queryByText(/Parent release/)).toBeNull();
+  expect(screen.queryByText(/Release 0.7.0/)).toBeNull();
 });
 
 test('a delayed prior-authority result cannot replace the newly selected authority', async () => {
@@ -566,12 +566,12 @@ test('a delayed prior-authority result cannot replace the newly selected authori
   await waitFor(() => expect(h.probe).toHaveBeenCalledTimes(1));
   host.authorityKey = 'operator-two';
   h.rerender();
-  await screen.findByText(/Install Docker and Compose on the Station host/);
+  await screen.findByText(/Install Docker and Compose on the computer running Station/);
   await act(async () => {
     release?.(available);
     await old;
   });
-  expect(screen.queryByText(/Host prerequisites passed/)).toBeNull();
+  expect(screen.queryByText(/Prerequisites passed/)).toBeNull();
   expect(
     JSON.stringify(
       h.client
