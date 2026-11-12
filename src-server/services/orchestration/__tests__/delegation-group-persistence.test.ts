@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
+import fs, {
   chmodSync,
   existsSync,
   linkSync,
@@ -11,6 +11,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import type { RootAuthorityV2 } from '@kontourai/flow-agents/delegation-authority-contract';
@@ -192,6 +193,71 @@ function fixture(runtimeHome = false) {
     },
   };
 }
+
+test('read-only execution snapshots sync the record and directory once and withhold failed durability', async () => {
+  const f = fixture();
+  const service = createDelegationAuthorityServiceV3(
+    f.persistence.roundsAuthorityStore(f.finalizeCurrent),
+    {
+      now: () => new Date().toISOString(),
+      authorize: async () => true,
+      confirmExecution: async () => true,
+      authenticateRenewal: async () => null,
+    },
+    { maxRenewals: 0 },
+  );
+  await service.issue(f.authorityRoot);
+  const directory = fs.statSync(join(f.root, 'station-rounds-authorities-v3'));
+  const record = fs.statSync(
+    join(
+      f.root,
+      'station-rounds-authorities-v3',
+      `${createHash('sha256').update(f.authorityRoot.authority_id).digest('hex')}.json`,
+    ),
+  );
+  const sync = fs.fsyncSync;
+  let directorySyncs = 0;
+  let recordSyncs = 0;
+  let fail = false;
+  let revoke = false;
+  const failure = new Error('controlled snapshot directory sync failure');
+  const observe = vi.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+    const status = fs.fstatSync(fd);
+    if (status.dev === record.dev && status.ino === record.ino) recordSyncs++;
+    if (status.dev === directory.dev && status.ino === directory.ino) {
+      directorySyncs++;
+      if (fail) throw failure;
+      if (revoke) f.revoke();
+    }
+    return sync(fd);
+  });
+  syncBuiltinESMExports();
+  const read = () =>
+    f.persistence.readReportExecution(
+      'missing-group',
+      f.authorityRoot.authority_id,
+      f.finalizeCurrent,
+    );
+  try {
+    const snapshot = await read();
+    expect(snapshot.group).toBeNull();
+    expect(snapshot.authority?.epochs[0].root).toEqual(f.authorityRoot);
+    expect(recordSyncs).toBe(1);
+    expect(
+      directorySyncs,
+      'one read-only authority snapshot directory flush',
+    ).toBe(1);
+    fail = true;
+    await expect(read()).rejects.toBe(failure);
+    fail = false;
+    await expect(read()).resolves.toMatchObject({ group: null });
+    revoke = true;
+    await expect(read()).rejects.toThrow('actual-request-revoked');
+  } finally {
+    observe.mockRestore();
+    syncBuiltinESMExports();
+  }
+});
 
 test('real public authority service preserves unknown hold on reopen and cancellation', async () => {
   const f = fixture();
