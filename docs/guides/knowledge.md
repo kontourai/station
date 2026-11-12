@@ -230,8 +230,8 @@ Known limits:
   the Kit's question-answering recall, brief compiler, envelope decoder and marker
   (`@kontourai/flow-agents/memory-recall`, `/memory-brief`, `/memory-envelope`,
   `/memory-marker`; [flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)),
-  but Station does not use them yet: it still decodes envelopes, compiles the
-  brief and matches recall with its own code.
+  and Station takes the brief's markers from `/memory-marker`. It still decodes
+  envelopes, compiles the brief and matches recall with its own code.
 
 ### Measuring whether review is worth it
 

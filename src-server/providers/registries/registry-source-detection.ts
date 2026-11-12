@@ -19,13 +19,19 @@
  * source model and the source manager do not change.
  */
 import { createHash } from 'node:crypto';
-import { lstat, readdir, readFile, stat } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { lstat, readdir, stat } from 'node:fs/promises';
+import { isAbsolute, join, resolve } from 'node:path';
 import type {
   RegistrySourceDetectedKind,
   RegistrySourceKind,
 } from '@kontourai/station-contracts/catalog';
 import { readBoundedJson } from './catalog-http.js';
+import {
+  LocalSourceConfinementError,
+  LocalSourceFileTooLargeError,
+  readBoundedFile,
+  readConfinedFile,
+} from './confined-local-read.js';
 import { fetchRegistryResource, managedRegistryHop } from './registry-fetch.js';
 
 export interface RegistrySourceScanLimits {
@@ -50,10 +56,13 @@ export const REGISTRY_SOURCE_SCAN_LIMITS: Readonly<RegistrySourceScanLimits> =
     maxSkills: 512,
   });
 
-/** A read Station stopped at a bound instead of truncating. */
+/**
+ * A read Station stopped at a bound instead of truncating, or refused because
+ * a local path left the source folder (`confinement`).
+ */
 export class RegistrySourceScanRefusal extends Error {
   constructor(
-    readonly bound: keyof RegistrySourceScanLimits,
+    readonly bound: keyof RegistrySourceScanLimits | 'confinement',
     message: string,
   ) {
     super(message);
@@ -66,6 +75,8 @@ export interface SourceTree {
   revision: string;
   /** Regular files, as `/`-separated paths relative to the source root. */
   files: readonly string[];
+  /** Each listed file's size in bytes, where the listing states it. */
+  sizes: ReadonlyMap<string, number>;
   read(path: string, limits: RegistrySourceScanLimits): Promise<Buffer>;
 }
 
@@ -106,6 +117,7 @@ export async function readLocalSourceTree(
   if (!(await stat(root)).isDirectory())
     throw new Error('Local source is not a folder.');
   const files: string[] = [];
+  const sizes = new Map<string, number>();
   const digest = createHash('sha256');
   let entries = 0;
   const walk = async (directory: string, prefix: string, depth: number) => {
@@ -125,6 +137,7 @@ export async function readLocalSourceTree(
         const info = await lstat(join(directory, child.name));
         digest.update(`f\0${path}\0${info.size}\0${info.mtimeMs}\n`);
         files.push(path);
+        sizes.set(path, info.size);
       } else {
         digest.update(`o\0${path}\n`);
       }
@@ -134,16 +147,23 @@ export async function readLocalSourceTree(
   return {
     revision: digest.digest('hex'),
     files,
+    sizes,
     async read(path, readLimits) {
-      const target = resolve(root, path);
-      const inside = relative(resolve(root), target);
-      if (!inside || inside.startsWith('..') || isAbsolute(inside))
-        throw new Error('Source file escapes its folder.');
-      const info = await lstat(target);
-      if (!info.isFile()) throw new Error('Source file is not a regular file.');
-      if (info.size > readLimits.maxFileBytes)
-        refuseFileBytes(path, readLimits);
-      return readFile(target);
+      // Confined by real path at the moment of the read: the tree was listed
+      // earlier, and a directory in it may have become a link since.
+      try {
+        return await readConfinedFile(
+          root,
+          resolve(root, path),
+          readLimits.maxFileBytes,
+        );
+      } catch (error) {
+        if (error instanceof LocalSourceFileTooLargeError)
+          refuseFileBytes(path, readLimits);
+        if (error instanceof LocalSourceConfinementError)
+          throw new RegistrySourceScanRefusal('confinement', error.message);
+        throw error;
+      }
     },
   };
 }
@@ -225,6 +245,7 @@ export async function readGitHubSourceTree(
   );
   if (entries.length > limits.maxEntries) refuseEntries(limits);
   const blobs = new Map<string, GitHubTreeEntry>();
+  const sizes = new Map<string, number>();
   for (const entry of entries) {
     const parts = entry.path.split('/');
     if (
@@ -234,13 +255,16 @@ export async function readGitHubSourceTree(
       throw new Error('GitHub tree contains an unsafe path.');
     const depth = entry.type === 'tree' ? parts.length : parts.length - 1;
     if (depth > limits.maxDepth) refuseDepth(limits);
-    if (entry.type === 'blob' && ['100644', '100755'].includes(entry.mode))
+    if (entry.type === 'blob' && ['100644', '100755'].includes(entry.mode)) {
       blobs.set(entry.path, entry);
+      if (typeof entry.size === 'number') sizes.set(entry.path, entry.size);
+    }
   }
   const commitSha = commit.sha;
   return {
     revision: commitSha,
     files: [...blobs.keys()],
+    sizes,
     async read(path, readLimits) {
       const entry = blobs.get(path);
       if (!entry) throw new Error('Source file is not in the tree.');
@@ -283,7 +307,15 @@ export async function readSourceDocument(
     const info = await lstat(location);
     if (!info.isFile()) throw new Error('Source file is not a regular file.');
     if (info.size > limits.maxFileBytes) refuseFileBytes(location, limits);
-    value = JSON.parse(await readFile(location, 'utf8'));
+    try {
+      value = JSON.parse(
+        (await readBoundedFile(location, limits.maxFileBytes)).toString('utf8'),
+      );
+    } catch (error) {
+      if (error instanceof LocalSourceFileTooLargeError)
+        refuseFileBytes(location, limits);
+      throw error;
+    }
   } else {
     const response = await fetchRegistryResource(
       location,
@@ -405,6 +437,13 @@ export const skillDocumentDetector: RegistrySourceStructureDetector = {
         'maxSkills',
         `Source has more than ${limits.maxSkills} skills. Point it at a smaller folder or repository.`,
       );
+    // Every SKILL.md is read when its catalog is listed, so the read bound
+    // applies to each one here, before any of them is read.
+    for (const path of skills) {
+      const size = tree.sizes.get(path);
+      if (size === undefined || size > limits.maxFileBytes)
+        refuseFileBytes(path, limits);
+    }
     const roots = new Set(
       skills.map((path) => {
         const parts = path.split('/');

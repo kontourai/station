@@ -22,19 +22,67 @@ export const AMBIGUOUS_AGENT_SOURCE_STATUS = 'ambiguous-source';
  * but an install is refused until every catalog answers, because the
  * unanswered one might offer the same id.
  */
+export type AgentCatalogOwnership =
+  | { state: 'owned'; catalog: AgentCatalog }
+  | { state: 'none' }
+  /** `reason` is a fixed sentence naming the catalogs by their labels. */
+  | { state: 'ambiguous'; catalogs: string[]; reason: string }
+  | { state: 'unavailable'; catalogs: string[]; reason: string };
+
+async function readCatalogs(
+  catalogs: readonly AgentCatalog[],
+  method: 'listAvailable' | 'listInstalled',
+) {
+  return Promise.all(
+    catalogs.map(async (catalog) => {
+      try {
+        return { catalog, items: await catalog.provider[method]() };
+      } catch {
+        return { catalog, items: null };
+      }
+    }),
+  );
+}
+
+/**
+ * Which catalog owns a plain agent id. Ownership is decided only when every
+ * catalog answered: a catalog that could not be read might offer the same
+ * id, so its silence is `unavailable`, never "not offered".
+ */
+export async function agentCatalogOwnership(
+  catalogs: readonly AgentCatalog[],
+  id: string,
+  method: 'listAvailable' | 'listInstalled' = 'listAvailable',
+): Promise<AgentCatalogOwnership> {
+  const lists = await readCatalogs(catalogs, method);
+  const failed = lists
+    .filter(({ items }) => items === null)
+    .map(({ catalog }) => catalog.source);
+  if (failed.length > 0)
+    return {
+      state: 'unavailable',
+      catalogs: failed,
+      reason: `The agent catalog ${failed.join(', ')} could not be read, so ${id} cannot be matched to one catalog. Try again when it is available.`,
+    };
+  const owners = lists
+    .filter(({ items }) => items!.some((item) => item.id === id))
+    .map(({ catalog }) => catalog);
+  if (owners.length > 1) {
+    const names = owners.map((catalog) => catalog.source);
+    return {
+      state: 'ambiguous',
+      catalogs: names,
+      reason: `${id} is offered by more than one agent catalog (${names.join(', ')}). Disable or remove one of them first.`,
+    };
+  }
+  return owners[0] ? { state: 'owned', catalog: owners[0] } : { state: 'none' };
+}
+
 export function createAgentRegistryProvider(
   catalogs: readonly AgentCatalog[],
 ): IAgentRegistryProvider {
-  const read = async (method: 'listAvailable' | 'listInstalled') =>
-    Promise.all(
-      catalogs.map(async (catalog) => {
-        try {
-          return { catalog, items: await catalog.provider[method]() };
-        } catch {
-          return { catalog, items: null };
-        }
-      }),
-    );
+  const read = (method: 'listAvailable' | 'listInstalled') =>
+    readCatalogs(catalogs, method);
   const attribute = (
     lists: Awaited<ReturnType<typeof read>>,
     markAmbiguous: boolean,
@@ -57,21 +105,10 @@ export function createAgentRegistryProvider(
     id: string,
     method: 'listAvailable' | 'listInstalled',
   ): Promise<AgentCatalog | InstallResult | null> => {
-    const lists = await read(method);
-    if (lists.some(({ items }) => items === null))
-      return {
-        success: false,
-        message: `Could not read every agent catalog, so ${id} cannot be matched to one. Try again.`,
-      };
-    const owners = lists
-      .filter(({ items }) => items!.some((item) => item.id === id))
-      .map(({ catalog }) => catalog);
-    if (owners.length > 1)
-      return {
-        success: false,
-        message: `${id} is offered by more than one agent catalog (${owners.map((catalog) => catalog.source).join(', ')}). Disable or remove one of them first.`,
-      };
-    return owners[0] ?? null;
+    const ownership = await agentCatalogOwnership(catalogs, id, method);
+    if (ownership.state === 'owned') return ownership.catalog;
+    if (ownership.state === 'none') return null;
+    return { success: false, message: ownership.reason };
   };
   const isCatalog = (value: unknown): value is AgentCatalog =>
     typeof value === 'object' && value !== null && 'provider' in value;

@@ -112,6 +112,18 @@ const configuration = z.object({
     .refine((snapshots) => Object.keys(snapshots).length <= 32)
     .default({}),
   disabled: z.array(z.string()).max(128),
+  /**
+   * Offline catalogs whose rows carry a catalog kind a Station that predates
+   * detection does not know (`agents`). That Station validates every
+   * `snapshots` entry against its own kinds and would refuse the whole file,
+   * but it drops an unknown top-level key, so these live here: it ignores
+   * them and keeps every source, ref check included. Merged into `snapshots`
+   * on read; see {@link serializeRegistrySourceConfiguration}.
+   */
+  kindSnapshots: z
+    .record(z.string(), snapshotSchema)
+    .refine((snapshots) => Object.keys(snapshots).length <= 32)
+    .default({}),
   detections: z
     .record(z.string().uuid(), detectionSchema)
     .refine((detections) => Object.keys(detections).length <= 32)
@@ -158,7 +170,39 @@ export function migrateRegistrySourceConfiguration(
       source ? snapshotKey(key, legacyRegistrySourceKind(source.adapter)) : key
     ] = snapshot;
   }
-  return { ...config, snapshots };
+  return {
+    ...config,
+    snapshots: { ...snapshots, ...config.kindSnapshots },
+    kindSnapshots: {},
+  };
+}
+
+/** Catalog kinds a Station that predates detection reads in `snapshots`. */
+const ORIGINAL_SNAPSHOT_KINDS: ReadonlySet<string> = new Set([
+  'skills',
+  'plugins',
+]);
+
+/**
+ * The file's bytes for a configuration: snapshots whose rows name a newer
+ * catalog kind are written under `kindSnapshots`, so an earlier Station can
+ * still read the file (it ignores that key). Every other field is written as
+ * held.
+ */
+export function serializeRegistrySourceConfiguration(
+  config: SourceConfig,
+): SourceConfig {
+  const snapshots: SourceConfig['snapshots'] = {};
+  const kindSnapshots: SourceConfig['kindSnapshots'] = {};
+  for (const [key, snapshot] of Object.entries(config.snapshots)) {
+    const newer = snapshot.data.some(
+      (item) =>
+        item.catalog !== undefined &&
+        !ORIGINAL_SNAPSHOT_KINDS.has(item.catalog.kind),
+    );
+    (newer ? kindSnapshots : snapshots)[key] = snapshot;
+  }
+  return { ...config, snapshots, kindSnapshots };
 }
 export function digest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -234,6 +278,7 @@ export function readRegistrySourceConfiguration(file: string): SourceConfig {
         sources: [],
         disabled: [],
         snapshots: {},
+        kindSnapshots: {},
         detections: {},
       };
     throw new Error(

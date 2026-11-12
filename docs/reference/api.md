@@ -4999,7 +4999,9 @@ and requires the instance operator.
 
 `POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
 A plain ID that more than one registered Agent catalog offers is refused with
-409 before any install path runs. A source-qualified ID from an added source
+409 (`agent-catalog-ambiguous`), and one that cannot be matched because a
+catalog could not be read is refused with 503 (`agent-catalog-unavailable`,
+naming it), before any install path runs. A source-qualified ID from an added source
 installs through the plugin path, because a manifest agent entry is a package.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
 Otherwise it calls the Agent registry provider (which copies a plugin tree into

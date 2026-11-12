@@ -43,6 +43,7 @@ import {
   type SourceConfig,
   type StoredSource,
   type StoredSourceDetection,
+  serializeRegistrySourceConfiguration,
   snapshotKey,
   sourceInput,
 } from './registry-source-configuration.js';
@@ -200,7 +201,7 @@ export class RegistrySourceManager {
 
   private persist(next: SourceConfig): void {
     const retained = retainRegistrySourceSnapshots(next);
-    writeJsonDurably(this.file, retained);
+    writeJsonDurably(this.file, serializeRegistrySourceConfiguration(retained));
     this.config = retained;
     const retainedIds = new Set(Object.keys(retained.snapshots));
     for (const id of this.snapshots.keys())
@@ -511,6 +512,7 @@ export class RegistrySourceManager {
         () =>
           new FilesystemSkillRegistryProvider(roots, {
             refuseAmbiguousNames: true,
+            confineTo: source.location,
           }),
       );
     }
