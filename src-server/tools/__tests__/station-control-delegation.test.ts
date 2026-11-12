@@ -1274,56 +1274,74 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
-  test.each([undefined, false, true])(
-    'forwards inherited allowlists only with receiver support %s',
-    async (supported) => {
-      const handle = delegationHandle({
-        taskId: 'task-constrained',
-        status: 'running',
-        sessionId: 'task-constrained',
-      });
-      installRemoteStationFetch('/api/orchestration/delegations', handle);
-      const base = fetchMock.getMockImplementation()!;
-      fetchMock.mockImplementation(async (input, init) =>
-        String(input) === `${REMOTE_API}/.well-known/station/v1`
-          ? json({
-              environmentId: 'environment-remote',
-              capabilities: { delegationToolConstraintsV1: supported },
-            })
-          : base(input, init),
+  describe.each(['task', 'message'] as const)(
+    'inherited allowlists on %s forwarding',
+    (kind) => {
+      test.each([
+        [undefined, 'environment-remote', false],
+        [false, 'environment-remote', false],
+        [true, 'environment-other', false],
+        [true, 'environment-remote', true],
+      ] as const)(
+        'requires receiver support %s and identity %s',
+        async (supported, responder, accepted) => {
+          const path =
+            kind === 'task'
+              ? '/api/orchestration/delegations'
+              : '/api/orchestration/chat/delegated';
+          const handle =
+            kind === 'task' ? delegationHandle() : foregroundHandle();
+          installRemoteStationFetch(path, handle);
+          const base = fetchMock.getMockImplementation()!;
+          fetchMock.mockImplementation(async (input, init) =>
+            String(input) === `${REMOTE_API}/.well-known/station/v1`
+              ? json({
+                  environmentId: responder,
+                  capabilities: { delegationToolConstraintsV1: supported },
+                })
+              : base(input, init),
+          );
+          const { delegateTask, executeExecutionTargetMessage } = await import(
+            '../station-control-delegation.js'
+          );
+          const delegation = {
+            mode: 'isolated-child' as const,
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: agentId('planner'),
+            rootAgentSlug: agentId('planner'),
+            toolAllowlistConstraints: [['github_*']],
+          };
+          const pending =
+            kind === 'task'
+              ? delegateTask({
+                  prompt: 'Stay scoped',
+                  target: savedTarget(),
+                  delegation,
+                })
+              : executeExecutionTargetMessage({
+                  message: 'Stay scoped',
+                  target: savedTarget(),
+                  delegation,
+                });
+          if (accepted) {
+            await expect(pending).resolves.toEqual(handle);
+            const call = fetchMock.mock.calls.find(
+              ([url]) => String(url) === `${REMOTE_API}${path}`,
+            );
+            expect(bodyOf(call!)).toMatchObject({ delegation });
+          } else {
+            await expect(pending).rejects.toThrow(
+              'cannot preserve inherited tool restrictions',
+            );
+            expect(
+              fetchMock.mock.calls.some(
+                ([url]) => String(url) === `${REMOTE_API}${path}`,
+              ),
+            ).toBe(false);
+          }
+        },
       );
-      const { delegateTask } = await import('../station-control-delegation.js');
-      const delegation = {
-        mode: 'isolated-child' as const,
-        depth: 1,
-        maxDepth: 2,
-        parentAgentSlug: agentId('planner'),
-        rootAgentSlug: agentId('planner'),
-        toolAllowlistConstraints: [['github_*']],
-      };
-      const pending = delegateTask({
-        prompt: 'Stay scoped',
-        target: savedTarget(),
-        delegation,
-      });
-      if (supported) {
-        await expect(pending).resolves.toEqual(handle);
-        const call = fetchMock.mock.calls.find(
-          ([url]) =>
-            String(url) === `${REMOTE_API}/api/orchestration/delegations`,
-        );
-        expect(bodyOf(call!)).toMatchObject({ delegation });
-      } else {
-        await expect(pending).rejects.toThrow(
-          'cannot preserve inherited tool restrictions',
-        );
-        expect(
-          fetchMock.mock.calls.some(
-            ([url]) =>
-              String(url) === `${REMOTE_API}/api/orchestration/delegations`,
-          ),
-        ).toBe(false);
-      }
     },
   );
 

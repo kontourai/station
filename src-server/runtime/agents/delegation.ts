@@ -91,6 +91,15 @@ export function createChildDelegationContext(options: {
   ).map((group) => [...group]);
   if (options.current?.allowedTools?.length)
     toolAllowlistConstraints.push([...options.current.allowedTools]);
+  if (
+    toolAllowlistConstraints.some(
+      (group) =>
+        group.length > 256 || group.some((pattern) => pattern.length > 256),
+    )
+  )
+    throw new DelegationPolicyLimitError(
+      'Delegation inherited allowlist exceeds its pattern bounds.',
+    );
   if (toolAllowlistConstraints.length > 64)
     throw new DelegationPolicyLimitError(
       'Delegation allowlist ancestry exceeds 64 groups.',
