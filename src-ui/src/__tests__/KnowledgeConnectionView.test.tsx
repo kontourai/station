@@ -314,6 +314,16 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
       expect(window.location.pathname).toBe('/connections/models/openai-embed');
     });
 
+    it('says a turned-off vector store is off', () => {
+      knowledgeStatusQueryState = {
+        data: { vectorDb: { ...store, enabled: false }, embedding, stats },
+      };
+      render(<KnowledgeConnectionView />);
+      const region = readinessRegion();
+      expect(region.textContent).toContain('Semantic search off');
+      expect(region.textContent).toContain('The vector store is turned off.');
+    });
+
     it('says it is on with a store and an embedding model, offering no fix, and shows the index', () => {
       knowledgeStatusQueryState = {
         data: { vectorDb: store, embedding, stats },

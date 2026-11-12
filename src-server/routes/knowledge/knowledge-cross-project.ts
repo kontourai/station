@@ -19,16 +19,16 @@ export function createCrossProjectKnowledgeRoutes(
   app.get('/status', async (c) => {
     try {
       const connections = providerService.listProviderConnections();
-      const vectorDbConn =
-        connections.find(
-          (connection) =>
-            connection.enabled && connection.capabilities.includes('vectordb'),
-        ) ?? null;
-      const embeddingConn =
-        connections.find(
-          (connection) =>
-            connection.enabled && connection.capabilities.includes('embedding'),
-        ) ?? null;
+      // The one in use (turned on), else a configured one that is turned off,
+      // so a reader can say "turned off" rather than "none".
+      const configured = (capability: 'vectordb' | 'embedding') => {
+        const all = connections.filter((connection) =>
+          connection.capabilities.includes(capability),
+        );
+        return all.find((connection) => connection.enabled) ?? all[0] ?? null;
+      };
+      const vectorDbConn = configured('vectordb');
+      const embeddingConn = configured('embedding');
 
       const projects = storageAdapter.listProjects();
       let totalDocuments = 0;
