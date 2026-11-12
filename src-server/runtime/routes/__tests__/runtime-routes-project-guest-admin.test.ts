@@ -1599,7 +1599,11 @@ describe('project guest administration over the production composition', () => {
     ).toBe(404);
 
     // A signed-in account that is not a member is refused.
-    const outsider = h.pairAccountBound('markers-outsider', GUEST_GRANT);
+    const outsider = h.pairAccountBound(
+      'markers-outsider',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
     const stranger = h.guestHeaders(
       outsider.credential,
       'fixture_account=peer',
