@@ -44,7 +44,8 @@
 .station-switcher__identity {
   gap: 2px;
 }
-.station-switcher__row {
+/* Compound: `.menu-row` (index.css) resets padding at equal specificity. */
+.menu-row.station-switcher__row {
   padding-block: var(--k-space-2);
 }
 .station-switcher__status {
