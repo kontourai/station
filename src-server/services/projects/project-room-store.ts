@@ -692,7 +692,21 @@ export class ProjectRoomStore {
         row.payload
       )
         corrupt();
-      return v as unknown as StoredRevision;
+      const actor = v.actor as ProjectRoomActor;
+      return {
+        roomId: String(v.roomId),
+        messageId: String(v.messageId),
+        revision: Number(v.revision),
+        kind: edit ? 'edit' : 'delete',
+        ...('text' in input ? { text: input.text } : {}),
+        actor: {
+          id: actor.id,
+          displayName: actor.displayName,
+          kind: actor.kind,
+        },
+        intentId: input.intentId,
+        createdAt: String(v.createdAt),
+      };
     });
   }
   /** The message's newest edit or delete, if any. */
@@ -736,7 +750,18 @@ export class ProjectRoomStore {
         !date(v.createdAt)
       )
         corrupt();
-      return v as unknown as StoredReaction;
+      const actor = v.actor as ProjectRoomActor;
+      return {
+        roomId: String(v.roomId),
+        messageId: String(v.messageId),
+        emoji: String(v.emoji),
+        actor: {
+          id: actor.id,
+          displayName: actor.displayName,
+          kind: actor.kind,
+        },
+        createdAt: String(v.createdAt),
+      };
     });
   }
   private reactions(roomId: string, messageId: string): ProjectRoomReaction[] {
