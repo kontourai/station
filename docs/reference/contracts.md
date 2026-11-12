@@ -2332,29 +2332,25 @@ reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
 new marker.
 
 Read state begins once per home, at the event store's migration cutoff.
-Before server-kept unread there was no unread, so a person who already had a
-record (an acknowledgement or a marker), an established principal, reads
-every runtime conversation's content up to the cutoff, and every file-backed
-conversation's up to the moment read state began, as seen, as before
-upgrading. Anyone else, including a person first seen later, starts without
-that baseline: uncertain reads unread. Anything appended after the cutoff
-reads unread until rendered.
+Before server-kept unread there was no unread, so on a personal Station the
+owner reads every runtime conversation's content up to the cutoff, and every
+file-backed conversation's up to the moment read state began, as seen, as
+before upgrading. The owner is exactly one key, `personal:owner`, fixed by
+Station's own rules: the local operator, a bare personal principal, and a
+paired device with owner standing all resolve to it. Every other key,
+including a visitor device, has no baseline, so its history reads unread. A
+hosted Station gives nobody a baseline: all history from before the upgrade
+reads unread there. Who had a record before the upgrade is never sampled.
+Anything appended after the cutoff reads unread until rendered, for
+everyone.
 
 The cutoff is the store's high-water `global_sequence` (a contiguous prefix)
-when the event store opens. It is written once, before the migration's first
-batch, in one SQLite write with the recipient snapshot: the established
-principals. SQLite publishes the cutoff and the list atomically, but the
-acknowledgement store and any first-format marker store they come from are
-JSON files, read just before that commit, not locked by it. The runtime takes
-the snapshot after device pairing is loaded and before it serves a request,
-so a first-format owner-device acknowledgement names the person the runtime
-resolves that device to, not the device key. A resumed or second initializer
-reuses both and never re-samples, and completion changes neither, so a
-person whose first record comes after the cutoff is not established. A
-missing snapshot establishes nobody. A snapshot is frozen missing, with a
-logged diagnostic, when a source file is over 4 MiB or cannot be read, or
-the list has more than 1,000 people, a key over 512 characters, or more than
-256 KiB serialized. It is never truncated.
+when the event store opens, written once before the migration's first batch.
+A resumed or second initializer reuses it, and completion never changes it.
+The migration runs while the event store opens: a failure (another writer
+holding the lock past the busy timeout, an interrupted batch) fails the
+open, and the next open reuses the cutoff and resumes at the last committed
+batch.
 The event store backfills the projection up to the cutoff in bounded batches,
 each committed with its progress cursor under the writer lock, so an
 interrupted start resumes where it stopped and a batch finding the migration

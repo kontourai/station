@@ -2208,6 +2208,11 @@ announced as `read-markers:changed` on that person's own
 those are is checked again for every change, so a device that loses owner
 standing stops receiving the owner's changes at once.
 
+History from before read state began reads as seen only for the personal
+owner (`personal:owner`: the local operator and devices with owner standing).
+Any other caller, including a visitor device and every person on a hosted
+Station, sees that history as unread until it is rendered.
+
 An agent conversation's version is its content version: a monotonic number
 from the event store that moves only when readable transcript content is
 appended (a prompt, assistant text, a tool result, host images, a turn
