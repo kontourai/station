@@ -647,6 +647,13 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
   };
   expect((await first.controller.create(command)).projection.revision).toBe(1);
   expect((await first.controller.create(command)).replayed).toBe(true);
+  const snapshot = await f.persistence.readReportExecution(
+    spec.groupId,
+    root.authority_id,
+    f.finalizeCurrent,
+  );
+  expect(snapshot.group?.spec).toEqual(spec);
+  expect(snapshot.authority?.epochs[0].root).toEqual(root);
   const noOpReadbacks = [
     {
       directory: 'station-rounds-authorities-v3',

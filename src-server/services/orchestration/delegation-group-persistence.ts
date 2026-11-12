@@ -254,7 +254,11 @@ function syncDirectory(path: string): void {
 }
 
 /** Bounded fd read: a present corrupt/aliased record never becomes an absent ledger. */
-function readBytes(path: string, limit: number): string | null {
+function readBytes(
+  path: string,
+  limit: number,
+  directoryFence: 'immediate' | 'domain-return' = 'immediate',
+): string | null {
   let fd: number;
   try {
     fd = openSync(
@@ -286,7 +290,8 @@ function readBytes(path: string, limit: number): string | null {
     }
     requirePersistence(total <= limit, 'delegation_record_too_large');
     fsyncSync(fd);
-    syncDirectory(dirname(path));
+    // Read-only snapshots retain their directory fence in PrivateDomain.locked.
+    if (directoryFence === 'immediate') syncDirectory(dirname(path));
     return new TextDecoder('utf-8', { fatal: true }).decode(
       Buffer.concat(chunks),
     );
@@ -1372,7 +1377,11 @@ export class StationDelegationPersistence {
     const domain = this.#reportAdmissions;
     const file = address(groupId);
     return domain.locked(finalizeCurrent, async () => {
-      const bytes = readBytes(join(domain.directory, file), 1024 * 1024);
+      const bytes = readBytes(
+        join(domain.directory, file),
+        1024 * 1024,
+        'domain-return',
+      );
       if (bytes === null) return null;
       const record = validateStationReportAdmission(JSON.parse(bytes));
       requirePersistence(
@@ -1422,10 +1431,12 @@ export class StationDelegationPersistence {
         const groupBytes = readBytes(
           join(this.#rounds.directory, groupFile),
           ROUNDS_MAX_BYTES,
+          'domain-return',
         );
         const authorityBytes = readBytes(
           join(this.#roundsAuthorities.directory, authorityFile),
           AUTHORITY_V3_MAX_BYTES,
+          'domain-return',
         );
         const journal: DelegationRoundsJournal | null =
           groupBytes === null ? null : JSON.parse(groupBytes);
