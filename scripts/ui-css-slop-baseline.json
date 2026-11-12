@@ -29,15 +29,6 @@
     "src-ui/src/components/SplitPaneLayout.css": {
       "numeric-z-index": 3
     },
-    "src-ui/src/components/TasksLayout.css": {
-      "hex-color": 1
-    },
-    "src-ui/src/components/chat-dock/BackgroundTasksSheet.css": {
-      "hex-color": 6
-    },
-    "src-ui/src/components/chat-dock/SessionInventoryCompact.css": {
-      "hex-color": 3
-    },
     "src-ui/src/components/chat-start/ChatStart.css": {
       "numeric-z-index": 1
     },
@@ -59,9 +50,9 @@
       "backdrop-blur": 1
     },
     "src-ui/src/components/chat/chat.css": {
-      "gradient": 7,
+      "gradient": 5,
       "infinite-animation": 3,
-      "hex-color": 5
+      "hex-color": 2
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "numeric-z-index": 1
@@ -71,12 +62,6 @@
     },
     "src-ui/src/components/coding-layout/CodingWorkbench.css": {
       "numeric-z-index": 1
-    },
-    "src-ui/src/components/coding-layout/DiffPanel.css": {
-      "hex-color": 1
-    },
-    "src-ui/src/components/coding-layout/FileTreePanel.css": {
-      "hex-color": 1
     },
     "src-ui/src/components/first-run/UnpairedSampleWorkspace.css": {
       "numeric-z-index": 1
@@ -104,9 +89,6 @@
     "src-ui/src/components/project-sidebar/ProjectSidebar.css": {
       "infinite-animation": 1
     },
-    "src-ui/src/components/review/review-detail.css": {
-      "hex-color": 2
-    },
     "src-ui/src/components/room/RoomConversation.css": {
       "numeric-z-index": 1
     },
@@ -122,24 +104,20 @@
       "infinite-animation": 1
     },
     "src-ui/src/components/voice/VoicePill.css": {
-      "hex-color": 5,
-      "infinite-animation": 3
+      "infinite-animation": 3,
+      "hex-color": 1
     },
     "src-ui/src/float-over-chat/FloatOverChat.css": {
       "numeric-z-index": 3
     },
     "src-ui/src/index.css": {
       "numeric-z-index": 14,
-      "hex-color": 19,
-      "gradient": 5,
-      "infinite-animation": 6
+      "infinite-animation": 6,
+      "gradient": 3
     },
     "src-ui/src/live-surface/LiveSurfaceCanvas.css": {
-      "hex-color": 7,
+      "hex-color": 6,
       "numeric-z-index": 4
-    },
-    "src-ui/src/views/KnowledgeConnectionView.css": {
-      "hex-color": 3
     },
     "src-ui/src/views/MonitoringWidgets.css": {
       "infinite-animation": 5,
@@ -147,11 +125,7 @@
     },
     "src-ui/src/views/PluginManagementView.css": {
       "backdrop-blur": 1,
-      "hex-color": 1,
       "infinite-animation": 1
-    },
-    "src-ui/src/views/ProjectPage.css": {
-      "hex-color": 4
     },
     "src-ui/src/views/ProjectSettingsView.css": {
       "gradient": 1
@@ -163,37 +137,20 @@
     "src-ui/src/views/SessionsView.css": {
       "numeric-z-index": 1
     },
-    "src-ui/src/views/SettingsView.css": {
-      "hex-color": 2
-    },
     "src-ui/src/views/SortableTable.css": {
       "gradient": 2
     },
     "src-ui/src/views/TaskWorkspaceView.css": {
-      "gradient": 1,
       "infinite-animation": 1
-    },
-    "src-ui/src/views/editor-layout.css": {
-      "hex-color": 5
     },
     "src-ui/src/views/page-layout.css": {
       "numeric-z-index": 1
     },
-    "src-ui/src/views/sessions/RunBoardSummary.css": {
-      "hex-color": 2
-    },
     "src-ui/src/workspace-panes/SessionInventory.css": {
       "gradient": 1
     },
-    "src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.css": {
-      "hex-color": 18
-    },
     "src-ui/src/workspace-panes/WorkspacePaneHost.css": {
-      "hex-color": 2,
       "numeric-z-index": 1
-    },
-    "src-ui/src/workspace-panes/agents/ChildWorkRow.css": {
-      "hex-color": 5
     },
     "src-ui/src/workspace-panes/browser-pane/BrowserAnnotation.css": {
       "numeric-z-index": 1

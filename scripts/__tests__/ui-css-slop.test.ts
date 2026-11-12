@@ -31,7 +31,7 @@ describe('UI CSS slop policy', () => {
       ),
     ).toEqual(['gradient']);
     expect(
-      kinds('.a { mask: conic-gradient(from 0deg, black, white) }'),
+      kinds('.a { background: conic-gradient(from 0deg, black, white) }'),
     ).toEqual(['gradient']);
     expect(kinds('.a { backdrop-filter: blur(8px); }')).toEqual([
       'backdrop-blur',
@@ -52,10 +52,32 @@ describe('UI CSS slop policy', () => {
     expect(kinds('.a { z-index: -2; }')).toEqual(['numeric-z-index']);
     expect(kinds('.a { color: #fff; }')).toEqual(['hex-color']);
     expect(kinds('.a { border: 1px solid #5B8CFFcc; }')).toEqual(['hex-color']);
-    // A hex fallback inside var() still hard-codes a color in feature CSS.
-    expect(kinds('.a { outline-color: var(--accent, #5b8cff); }')).toEqual([
-      'hex-color',
-    ]);
+    // A hex outside the var() call still counts.
+    expect(
+      kinds('.a { border: 1px solid var(--k-line); color: #5b8cff; }'),
+    ).toEqual(['hex-color']);
+    expect(
+      kinds('.a { box-shadow: 0 0 0 1px var(--k-line), 0 0 2px #000; }'),
+    ).toEqual(['hex-color']);
+  });
+
+  it('leaves a var() fallback hex to component-style-hygiene, and skips mask gradients', () => {
+    // component-style-hygiene counts the legacy --accent reference; one edit
+    // must not fail two gates.
+    for (const css of [
+      '.a { outline-color: var(--accent, #5b8cff); }',
+      '.a { color: var(--k-text, var(--text-primary, #fff)); }',
+      '.a { mask-image: linear-gradient(to bottom, #000 80%, transparent); }',
+      '.a { -webkit-mask-image: linear-gradient(#000, transparent); }',
+      '.a { mask: radial-gradient(circle, #000 60%, transparent) }',
+      '.a { -webkit-mask: conic-gradient(#000, transparent) }',
+    ]) {
+      expect(kinds(css), css).toEqual([]);
+    }
+    // The mask exemption is for masks only.
+    expect(
+      kinds('.a { background-image: linear-gradient(#000, transparent); }'),
+    ).toEqual(['gradient', 'hex-color']);
   });
 
   it('does not count tokens, local stacking, settled motion or definitions', () => {

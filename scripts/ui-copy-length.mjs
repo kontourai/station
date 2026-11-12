@@ -316,24 +316,32 @@ export function parseUiSource(file, source) {
   );
 }
 
-/** Accessible names, read as copy only when a caller asks for them. */
-const ACCESSIBLE_NAME_ATTRIBUTE = /^(?:aria-label|alt)$/;
+/**
+ * Accessible names, read as copy only when a caller asks for them: the
+ * `aria-label` and `alt` attributes, an `ariaLabel` prop, and an
+ * `ariaLabel` or `'aria-label'` object property.
+ */
+const ACCESSIBLE_NAME_ATTRIBUTE = /^(?:aria-label|ariaLabel|alt)$/;
+const ACCESSIBLE_NAME_PROPERTY = /^(?:aria-label|ariaLabel)$/;
 
 /**
  * Every user-facing copy candidate in one source file, keyed by where it is
  * shown: `text:<tag>` for element text, `attr:<name>` for an attribute,
  * `prop:<name>` for a copy-named object property.
  *
- * Options, both off by default (the length rules never need them):
+ * Options, all off by default (the length rules never need them):
  * - `words`: keep single-word text in element text and copy-bearing
  *   attributes and properties (`Loading...`, a `Legacy` badge). The
  *   catch-all literal rule still requires whitespace, because a single-word
  *   literal there is almost always an identifier.
- * - `accessibleNames`: read `aria-label` and `alt` as copy. A screen reader
- *   speaks them, so wording rules apply even though length rules do not.
+ * - `accessibleNames`: read accessible names (`ACCESSIBLE_NAME_ATTRIBUTE`,
+ *   `ACCESSIBLE_NAME_PROPERTY`) as copy. A screen reader speaks them, so
+ *   wording rules apply even though length rules do not.
+ * - `ast`: a tree `parseUiSource` already built for this file, so a caller
+ *   with its own rules parses once.
  */
 export function collectUiCopy(file, source, options = {}) {
-  const ast = parseUiSource(file, source);
+  const ast = options.ast ?? parseUiSource(file, source);
   const candidates = [];
   const add = (key, raw, keepWords = false) => {
     const text = normalize(raw);
@@ -388,7 +396,9 @@ export function collectUiCopy(file, source, options = {}) {
     if (
       ts.isPropertyAssignment(node) &&
       (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
-      COPY_ATTRIBUTE.test(node.name.text)
+      (COPY_ATTRIBUTE.test(node.name.text) ||
+        (options.accessibleNames === true &&
+          ACCESSIBLE_NAME_PROPERTY.test(node.name.text)))
     )
       for (const text of literalAlternatives(node.initializer, claimed))
         add(`prop:${node.name.text}`, text, true);

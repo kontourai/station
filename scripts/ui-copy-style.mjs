@@ -6,22 +6,27 @@
  * It reads exactly the copy `scripts/ui-copy-length.mjs` reads (the shared
  * `collectUiCopy` extractor), plus single-word element text and copy-bearing
  * attributes (`Loading...`, a `Legacy` badge) and accessible names
- * (`aria-label`, `alt`), which a screen reader speaks. Comments, identifiers,
+ * (`aria-label`, `alt`, an `ariaLabel` prop, and `ariaLabel`/`'aria-label'`
+ * object properties), which a screen reader speaks. Known gap: a single-word
+ * literal outside those places (`const label = 'Legacy'`) is not read,
+ * because there it is almost always an identifier. Comments, identifiers,
  * class names, `code`/`pre`/`kbd` text, log calls and test files are not
  * copy. Finding kinds, each counted per file:
  *
  * - `jargon:<word>`: a word from `JARGON` (whole word, any case).
- * - `issue-ref`: `station#1234`, or a bare `#123` or longer.
+ * - `issue-ref`: `station#1234`, `archive#1234`, or a bare `#123` to `#99999`.
  * - `filler`: a phrase from `FILLER`, or `!` ending a sentence.
  * - `not-just`: "not just" or "not only".
  * - `ascii-ellipsis`: `...` where `…` belongs.
  * - `emoji`: an Extended_Pictographic character. ©, ®, ™, arrows and
  *   geometric shapes are typography, not emoji.
  * - `em-dash`: a string containing " — ". DESIGN.md prefers a full stop.
- * - `title-dup`: a JSX element whose literal `title` equals its own literal
- *   text or its literal `aria-label`. The tooltip repeats what is already on
- *   screen or already announced. Truncated text that needs the tooltip is
- *   not detectable from source, so the baseline absorbs those.
+ * - `title-dup`: a JSX element whose literal `title` equals its own
+ *   non-empty literal visible text. The tooltip repeats what is already on
+ *   screen. An icon-only control's `title` matching its `aria-label` is not
+ *   counted: there the tooltip is the only hover hint. Truncated text that
+ *   needs the tooltip is not detectable from source, so the baseline absorbs
+ *   those.
  *
  * Each kind counts strings, not occurrences: a string with two jargon words
  * adds one to each word's count.
@@ -55,7 +60,9 @@ const REMEDY =
  * what happened (SPEC copy rule 2, docs/guides/ui-copy.md). Each entry is a
  * finding key and the whole-word pattern that matches it in any case.
  * `binding` excludes key and keyboard bindings; `lease` is a whole word, so
- * "release" never matches.
+ * "release" never matches. "Secret binding" is a product name (the secret
+ * binding administration surface) that `binding` still counts; its existing
+ * uses sit in the baseline rather than in an exception here.
  */
 export const JARGON = Object.freeze({
   authority: /\bauthorit(?:y|ies|ative)\b/i,
@@ -94,7 +101,7 @@ export const FILLER = Object.freeze([
 ]);
 
 // Three to five digits: a six-digit `#000000` is a color, not an issue.
-const ISSUE_REF = /\bstation#\d+\b|(?<![\w&/])#\d{3,5}\b/i;
+const ISSUE_REF = /\b(?:station|archive)#\d+\b|(?<![\w&/])#\d{3,5}\b/i;
 const NOT_JUST = /\bnot (?:just|only)\b/i;
 const ASCII_ELLIPSIS = /\.\.\./;
 // Typographic marks, arrows and geometric shapes (a `▶` disclosure caret)
@@ -142,12 +149,16 @@ function literalAttribute(opening, ast, name) {
 }
 
 /**
- * Elements whose literal `title` repeats their literal text or literal
- * `aria-label`. Only literal values compare: an interpolated title may say
- * more than the text it sits on.
+ * Elements whose literal `title` repeats their own non-empty literal visible
+ * text. Only literal values compare: an interpolated title may say more than
+ * the text it sits on. `aria-label` is deliberately not compared: on an
+ * icon-only button the tooltip is the only hover hint for its name.
  */
-export function titleDuplicates(file, source) {
-  const ast = parseUiSource(file, source);
+export function titleDuplicates(
+  file,
+  source,
+  ast = parseUiSource(file, source),
+) {
   const found = [];
   function visit(node) {
     const opening = ts.isJsxElement(node)
@@ -155,15 +166,10 @@ export function titleDuplicates(file, source) {
       : ts.isJsxSelfClosingElement(node)
         ? node
         : undefined;
-    if (opening) {
+    if (opening && ts.isJsxElement(node)) {
       const title = literalAttribute(opening, ast, 'title');
-      if (title) {
-        const label = literalAttribute(opening, ast, 'aria-label');
-        const text = ts.isJsxElement(node)
-          ? normalizeText(jsxTextRun(node, ast))
-          : '';
-        if (title === label || title === text) found.push(title);
-      }
+      if (title && title === normalizeText(jsxTextRun(node, ast)))
+        found.push(title);
     }
     ts.forEachChild(node, visit);
   }
@@ -174,12 +180,14 @@ export function titleDuplicates(file, source) {
 /** Every style finding in one source file: `{ kind, text }`. */
 export function inspectUiCopyStyle(file, source) {
   const findings = [];
+  const ast = parseUiSource(file, source);
   for (const { text } of collectUiCopy(file, source, {
     words: true,
     accessibleNames: true,
+    ast,
   }))
     for (const kind of styleKinds(text)) findings.push({ kind, text });
-  for (const text of titleDuplicates(file, source))
+  for (const text of titleDuplicates(file, source, ast))
     findings.push({ kind: 'title-dup', text });
   return findings;
 }

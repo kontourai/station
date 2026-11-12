@@ -14,7 +14,13 @@
  *   order siblings inside one stacking context. Anything higher invents a
  *   layer; use a `--layer-*` role from `src-ui/src/tokens.css`.
  * - `hex-color`: a `#rgb`/`#rrggbb`/`#rrggbbaa` color outside a custom
- *   property definition. Colors come from `--k-*` tokens.
+ *   property definition. Colors come from `--k-*` tokens. A hex that is only
+ *   the fallback of a `var(--x, #hex)` is not counted: component-style-hygiene
+ *   already counts that legacy reference, and one edit should fail one gate.
+ *
+ * `mask`, `mask-image` and their `-webkit-` forms are skipped for `gradient`
+ * and `hex-color`: a mask gradient is an alpha ramp (a fade at a scroll
+ * edge), not decoration, and its colors are never painted.
  *
  * Not counted here: legacy (non `--k-*`) token references. That burn-down
  * (#1225, #4690) is already a growth-only ratchet, `legacy-token` in
@@ -50,6 +56,28 @@ const INFINITE = /\binfinite\b/i;
 const HEX_COLOR = /#(?:[\da-f]{8}|[\da-f]{6}|[\da-f]{3,4})\b/i;
 const Z_INDEX_KEYWORD = /^(?:auto|inherit|initial|unset|revert(?:-layer)?)$/i;
 const LOCAL_Z_INDEX = /^(?:-1|0|1)$/;
+const MASK_PROPERTY = /^(?:-webkit-)?mask(?:-|$)/;
+
+/**
+ * A value with each `var(...)` call removed, balanced, so a hex that is only
+ * a var() fallback is gone and a hex elsewhere in the value stays.
+ */
+export function withoutVarCalls(value) {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const start = value.indexOf('var(', i);
+    if (start === -1) return out + value.slice(i);
+    out += `${value.slice(i, start)} `;
+    let depth = 0;
+    let end = start + 3;
+    for (; end < value.length; end++) {
+      if (value[end] === '(') depth++;
+      else if (value[end] === ')' && --depth === 0) break;
+    }
+    i = end + 1;
+  }
+}
 
 const REMEDIES = Object.freeze({
   gradient: 'use a flat --k-* surface.',
@@ -92,7 +120,8 @@ export function cssDeclarations(source) {
 export function declarationKinds({ property, value }) {
   const kinds = [];
   const custom = property.startsWith('--');
-  if (GRADIENT.test(value)) kinds.push('gradient');
+  const mask = MASK_PROPERTY.test(property);
+  if (!mask && GRADIENT.test(value)) kinds.push('gradient');
   if (/^(?:-webkit-)?backdrop-filter$/.test(property) && BLUR.test(value))
     kinds.push('backdrop-blur');
   if (
@@ -109,7 +138,8 @@ export function declarationKinds({ property, value }) {
     )
       kinds.push('numeric-z-index');
   }
-  if (!custom && HEX_COLOR.test(value)) kinds.push('hex-color');
+  if (!custom && !mask && HEX_COLOR.test(withoutVarCalls(value)))
+    kinds.push('hex-color');
   return kinds;
 }
 

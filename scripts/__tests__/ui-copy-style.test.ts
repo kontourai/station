@@ -85,6 +85,7 @@ describe('UI copy style policy', () => {
 
   it('catches issue numbers, filler, not-just, ASCII ellipses, emoji and em-dash asides', () => {
     expect(styleKinds('Fixed in station#1234.')).toEqual(['issue-ref']);
+    expect(styleKinds('Moved from archive#55.')).toEqual(['issue-ref']);
     expect(styleKinds('See #4690 for details.')).toEqual(['issue-ref']);
     expect(styleKinds('Background #000000')).toEqual([]);
     expect(styleKinds('Item #12')).toEqual([]);
@@ -131,6 +132,18 @@ describe('UI copy style policy', () => {
       'jargon:receipt',
     ]);
     expect(kinds('<img alt="Durable history" />')).toEqual(['jargon:durable']);
+    expect(kinds('<IconButton ariaLabel="Open the receipt" />')).toEqual([
+      'jargon:receipt',
+    ]);
+    expect(kinds("const a = { 'aria-label': 'Legacy' };")).toEqual([
+      'jargon:legacy',
+    ]);
+    expect(
+      kinds("const a = { ariaLabel: busy ? 'Saving...' : 'Save' };"),
+    ).toEqual(['ascii-ellipsis']);
+    // Known gap, pinned so a change is deliberate: a single-word literal
+    // outside copy slots is not read.
+    expect(kinds("const label = 'Legacy';")).toEqual([]);
     expect(kinds("const steps = [{ label: 'Legacy' }];")).toEqual([
       'jargon:legacy',
     ]);
@@ -166,19 +179,10 @@ describe('UI copy style policy', () => {
     }
   });
 
-  it('flags a literal title that repeats its own text or aria-label, and nothing else', () => {
+  it('flags a literal title that repeats its own visible text, and nothing else', () => {
     expect(
-      titleDuplicates(
-        'src-ui/src/Z.tsx',
-        '<button title="Zoom in">Zoom in</button>',
-      ),
-    ).toEqual(['Zoom in']);
-    expect(
-      titleDuplicates(
-        'src-ui/src/Z.tsx',
-        '<IconButton title="Zoom in" aria-label="Zoom in" />',
-      ),
-    ).toEqual(['Zoom in']);
+      titleDuplicates('src-ui/src/Z.tsx', '<button title="Save">Save</button>'),
+    ).toEqual(['Save']);
     expect(
       titleDuplicates(
         'src-ui/src/Z.tsx',
@@ -186,15 +190,18 @@ describe('UI copy style policy', () => {
       ),
     ).toEqual(['Zoom in']);
     for (const source of [
+      // Icon-only: the tooltip is the only hover hint for the name.
+      '<IconButton title="Zoom in" aria-label="Zoom in" />',
+      '<button title="Zoom in" aria-label="Zoom in"><ZoomIcon /></button>',
+      '<button title="Zoom in"><ZoomIcon /></button>',
       '<button title="Zoom in (Ctrl +)">Zoom in</button>',
       '<button title={label}>{label}</button>',
-      '<IconButton title="Zoom in" aria-label="Increase zoom" />',
-      '<button title="Zoom in"><ZoomIcon /></button>',
+      '<span title="">{name}</span>',
     ]) {
       expect(titleDuplicates('src-ui/src/Z.tsx', source), source).toEqual([]);
     }
     expect(
-      kinds('<button title="Zoom in">Zoom in</button>').filter(
+      kinds('<button title="Save">Save</button>').filter(
         (kind) => kind === 'title-dup',
       ),
     ).toHaveLength(1);

@@ -7,23 +7,11 @@
     "src-ui/src/components/EnginePicker.tsx": {
       "em-dash": 1
     },
-    "src-ui/src/components/ImageInspector.tsx": {
-      "title-dup": 2
-    },
     "src-ui/src/components/LocalUiSessionGate.tsx": {
       "em-dash": 1
     },
     "src-ui/src/components/ModelSelector.tsx": {
       "ascii-ellipsis": 2
-    },
-    "src-ui/src/components/PathAutocomplete.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/components/PdfCanvasViewer.tsx": {
-      "title-dup": 3
-    },
-    "src-ui/src/components/SplitPaneLayout.tsx": {
-      "title-dup": 2
     },
     "src-ui/src/components/TelemetryFeedbackPrompt.tsx": {
       "em-dash": 1
@@ -58,34 +46,23 @@
       "em-dash": 1,
       "jargon:binding": 1
     },
-    "src-ui/src/components/chat-dock/ChatDockActiveIdentity.tsx": {
-      "title-dup": 1
-    },
     "src-ui/src/components/chat-dock/ChatDockHeader.tsx": {
       "em-dash": 2
     },
     "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx": {
-      "em-dash": 1,
-      "title-dup": 1
+      "em-dash": 1
     },
     "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx": {
       "em-dash": 1
     },
     "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx": {
-      "em-dash": 1,
-      "title-dup": 1
-    },
-    "src-ui/src/components/chat-dock/ComposerActionsMenu.tsx": {
-      "title-dup": 1
+      "em-dash": 1
     },
     "src-ui/src/components/chat-dock/ConversationContextResetDialog.tsx": {
       "jargon:receipt": 1,
       "jargon:durable": 1,
       "jargon:reconcile": 1,
       "jargon:terminal state": 1
-    },
-    "src-ui/src/components/chat-dock/MobileInboxPanel.tsx": {
-      "title-dup": 1
     },
     "src-ui/src/components/chat-dock/SessionContextCard.tsx": {
       "em-dash": 4
@@ -105,9 +82,6 @@
     "src-ui/src/components/chat-start/ContextPickerOptions.tsx": {
       "ascii-ellipsis": 1
     },
-    "src-ui/src/components/chat-start/StartComposer.tsx": {
-      "title-dup": 1
-    },
     "src-ui/src/components/chat-start/StartMenus.tsx": {
       "ascii-ellipsis": 1
     },
@@ -122,9 +96,6 @@
     },
     "src-ui/src/components/chat/CheckpointRestoreButton.tsx": {
       "jargon:authority": 1
-    },
-    "src-ui/src/components/chat/ClipboardImagePasteButton.tsx": {
-      "title-dup": 1
     },
     "src-ui/src/components/chat/CodeBlockFrame.tsx": {
       "em-dash": 1
@@ -142,25 +113,12 @@
       "jargon:re-anchor": 3,
       "jargon:durable": 1
     },
-    "src-ui/src/components/chat/ConversationTimeline.tsx": {
-      "title-dup": 2
-    },
-    "src-ui/src/components/chat/EphemeralMessage.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/components/chat/MessageBubble.tsx": {
-      "title-dup": 1
-    },
     "src-ui/src/components/chat/OutboundQueuedMessages.tsx": {
       "jargon:durable": 2,
       "em-dash": 1
     },
     "src-ui/src/components/chat/ReplayTransport.tsx": {
-      "jargon:canonical": 1,
-      "title-dup": 3
-    },
-    "src-ui/src/components/chat/ScrollToBottomButton.tsx": {
-      "title-dup": 1
+      "jargon:canonical": 1
     },
     "src-ui/src/components/chat/SessionSummaryCard.tsx": {
       "em-dash": 4,
@@ -174,12 +132,6 @@
       "not-just": 1,
       "em-dash": 2
     },
-    "src-ui/src/components/chat/ToolCallDisplay.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/components/chat/TranscriptTurnRail.tsx": {
-      "title-dup": 2
-    },
     "src-ui/src/components/chat/TurnProvenanceCard.tsx": {
       "jargon:re-anchor": 1,
       "jargon:receipt": 1
@@ -187,33 +139,17 @@
     "src-ui/src/components/chat/UIBlockRenderer.tsx": {
       "em-dash": 1
     },
-    "src-ui/src/components/chat/message-bubble/MessageRating.tsx": {
-      "title-dup": 2
-    },
     "src-ui/src/components/coding-layout/BranchToolbar.tsx": {
       "em-dash": 2
     },
     "src-ui/src/components/coding-layout/CodingInspectorPanel.tsx": {
       "em-dash": 1
     },
-    "src-ui/src/components/coding-layout/CodingTerminalPanel.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/components/coding-layout/DiffPanel.tsx": {
-      "title-dup": 5
-    },
-    "src-ui/src/components/coding-layout/FileTreePanel.tsx": {
-      "title-dup": 2
-    },
     "src-ui/src/components/coding-layout/NewTerminalModal.tsx": {
       "ascii-ellipsis": 1
     },
     "src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx": {
-      "em-dash": 2,
-      "title-dup": 2
-    },
-    "src-ui/src/components/coding-layout/PullRequestsPanel.tsx": {
-      "title-dup": 1
+      "em-dash": 2
     },
     "src-ui/src/components/coding-layout/TerminalPanel.tsx": {
       "ascii-ellipsis": 2
@@ -302,21 +238,6 @@
     "src-ui/src/components/profile/StationPeoplePanel.tsx": {
       "jargon:binding": 1
     },
-    "src-ui/src/components/project-icon/ProjectIconPicker.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/components/project-sidebar/ProjectSidebar.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx": {
-      "title-dup": 2
-    },
-    "src-ui/src/components/project-sidebar/ProjectSidebarHeader.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/components/pull-requests/ConversationPullRequestLinks.tsx": {
-      "title-dup": 2
-    },
     "src-ui/src/components/readiness/ReadinessPanel.tsx": {
       "em-dash": 1
     },
@@ -345,9 +266,6 @@
     "src-ui/src/components/review/reviewEvidenceCopy.ts": {
       "em-dash": 1,
       "jargon:receipt": 1
-    },
-    "src-ui/src/components/room/RoomComposer.tsx": {
-      "title-dup": 2
     },
     "src-ui/src/components/scheduler/CronEditor.tsx": {
       "ascii-ellipsis": 1
@@ -472,12 +390,6 @@
     },
     "src-ui/src/lib/serverHealth.ts": {
       "jargon:authority": 2
-    },
-    "src-ui/src/live-surface/LiveSurfaceCanvas.tsx": {
-      "title-dup": 2
-    },
-    "src-ui/src/live-surface/LiveSurfaceViewerControls.tsx": {
-      "title-dup": 1
     },
     "src-ui/src/pages/ProfilePage.tsx": {
       "jargon:receipt": 1
@@ -608,9 +520,6 @@
     "src-ui/src/views/agent-editor/AgentEditorPromptTab.tsx": {
       "ascii-ellipsis": 2
     },
-    "src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx": {
-      "title-dup": 1
-    },
     "src-ui/src/views/agent-editor/AgentsViewEditorPane.tsx": {
       "em-dash": 2,
       "filler": 1
@@ -729,8 +638,7 @@
       "ascii-ellipsis": 1
     },
     "src-ui/src/views/project-page/ProjectRoom.tsx": {
-      "jargon:authority": 1,
-      "title-dup": 1
+      "jargon:authority": 1
     },
     "src-ui/src/views/project-page/ProjectTaskSharingControl.tsx": {
       "jargon:authority": 1
@@ -821,9 +729,6 @@
       "jargon:re-anchor": 1,
       "jargon:legacy": 1
     },
-    "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx": {
-      "title-dup": 1
-    },
     "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx": {
       "jargon:authority": 1
     },
@@ -842,29 +747,8 @@
     "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx": {
       "em-dash": 1
     },
-    "src-ui/src/workspace-panes/browser-pane/BrowserConsoleDrawer.tsx": {
-      "title-dup": 2
-    },
-    "src-ui/src/workspace-panes/browser-pane/BrowserImmersiveNav.tsx": {
-      "title-dup": 3
-    },
-    "src-ui/src/workspace-panes/browser-pane/BrowserPageDialog.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx": {
-      "title-dup": 4
-    },
-    "src-ui/src/workspace-panes/browser-pane/BrowserRecording.tsx": {
-      "title-dup": 1
-    },
-    "src-ui/src/workspace-panes/browser-pane/BrowserScreenshot.tsx": {
-      "title-dup": 1
-    },
     "src-ui/src/workspace-panes/browser-pane/browserArtifactContent.ts": {
       "em-dash": 1
-    },
-    "src-ui/src/workspace-panes/device/DeviceFoldControls.tsx": {
-      "title-dup": 1
     },
     "src-ui/src/workspace-panes/spatial-board-types.ts": {
       "jargon:receipt": 2
