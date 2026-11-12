@@ -225,6 +225,9 @@ test.describe('Project channels on a phone (#4795)', () => {
       await expect(list.getByRole('button', { name: 'general' })).toBeVisible();
       await expectNoHorizontalScroll(page);
 
+      // The page's height settles once both sections have answered: a
+      // Tasks skeleton is taller than its "No Task rooms yet." line.
+      await expect(page.getByText('No Task rooms yet.')).toBeVisible();
       // Scroll the Project page until the last channel is in reach.
       const target = list.getByRole('button', { name: 'team-12' });
       await target.scrollIntoViewIfNeeded();
