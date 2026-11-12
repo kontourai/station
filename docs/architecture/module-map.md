@@ -2345,7 +2345,12 @@ unrecognised value, including every event persisted before the field, as
 `unknown`. Steers and engine-opened turns carry none. The value is the
 admitting Station's claim: a `turn.started` mirrored from another Station
 carries that Station's, so restart recovery must act only on this Station's
-own Sessions. Its one consumer is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+own Sessions. The [approval guardian](../../src-server/services/approvals/guardian-conversation.ts)
+reads it too (#4827): the prompts of a conversation's `interactive` turns
+(never steers) are what it is told the person typed, and an `interactive`
+newest turn is what lets an external engine's guardian escalation ask a
+person; it decides nothing else from the field. Its one consumer that acts on
+a Session is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 (preview `continue-unattended-after-restart`): after boot it continues each
 `task-dispatch` or `delegation` turn interrupted-turn recovery settled
 (`whenInterruptedTurnsRecovered`), once, through the conversation inbox under
