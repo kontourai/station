@@ -1065,13 +1065,9 @@ describe('TaskWorkspaceView', () => {
       screen.getByLabelText('Answer provenance for turn turn-answer'),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        'Execution captured; semantic support is separate and has not been assessed.',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText('Execution captured; semantic support not assessed.'),
-    ).toBeTruthy();
+      screen.queryByText('No run details were recorded for this answer.'),
+    ).toBeNull();
+    expect(screen.getByText('No supporting claim linked yet.')).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Associate support' }),
     ).toBeTruthy();
@@ -1202,11 +1198,11 @@ describe('TaskWorkspaceView', () => {
       screen.getByText('provenance_gap · high · Missing direct provenance.'),
     ).toBeTruthy();
     expect(screen.getByText(/rationale not provided/)).toBeTruthy();
-    expect(screen.getByText(/explicit authored association/i)).toBeTruthy();
     expect(
-      screen.getByText(
-        'No supported execution provenance is recorded. The explicit authored semantic support shown below is separate.',
-      ),
+      screen.getByText('Linked by a person, not inferred from the run.'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('No run details were recorded for this answer.'),
     ).toBeTruthy();
   });
 
@@ -1279,7 +1275,7 @@ describe('TaskWorkspaceView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(screen.getByRole('dialog')).toBeTruthy();
@@ -1361,7 +1357,7 @@ describe('TaskWorkspaceView', () => {
       error: new Error('denied'),
     };
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
-    expect(screen.getByText(/No cached support detail is shown/)).toBeTruthy();
+    expect(screen.getByText(/Couldn't load bundles/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'claim-a' })).toBeNull();
   });
 
@@ -1473,7 +1469,7 @@ describe('TaskWorkspaceView', () => {
     );
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(
@@ -1491,7 +1487,7 @@ describe('TaskWorkspaceView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove association' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(
@@ -1503,13 +1499,13 @@ describe('TaskWorkspaceView', () => {
   });
 
   test.each([
-    ['claim-missing', 'The associated claim is no longer available.'],
-    ['corrupt', 'The associated Surface bundle/report cannot be interpreted.'],
+    ['claim-missing', 'The linked claim is no longer available.'],
+    ['corrupt', "The linked Surface bundle can't be read."],
     [
       'unsupported-version',
-      'The associated support record uses an unsupported version.',
+      "The linked claim uses a format this Station can't read.",
     ],
-    ['unavailable', 'Semantic support is unavailable.'],
+    ['unavailable', 'Support details are unavailable.'],
   ])(
     'keeps %s support state distinct and does not reveal protected detail',
     (state, label) => {
@@ -1537,12 +1533,12 @@ describe('TaskWorkspaceView', () => {
         screen.getByRole('button', { name: 'Retry support' }),
       ).toBeTruthy();
       expect(
-        screen.getByText(
-          'No supported execution provenance is recorded. It is distinct from the semantic-support state shown below.',
-        ),
+        screen.getByText('No run details were recorded for this answer.'),
       ).toBeTruthy();
       if (state === 'unavailable') {
-        expect(screen.getByText(/No support detail is shown/)).toBeTruthy();
+        expect(
+          screen.getByText("This Station can't reopen support for this answer."),
+        ).toBeTruthy();
       }
     },
   );
@@ -2782,7 +2778,7 @@ describe('TaskWorkspaceView', () => {
       ),
     ).toBeTruthy();
     expect(inputs.textContent).toContain(
-      'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
+      'Pinned to this Task by a person.',
     );
     expect(inputs.textContent).toContain(
       'brief.pdf · application/pdf · 2,048 bytes',

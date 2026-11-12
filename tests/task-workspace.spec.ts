@@ -692,9 +692,7 @@ test.describe
           .getByText(answer, { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText(
-          /semantic support is separate and has not been assessed/i,
-        ),
+        page.getByText('No supporting claim linked yet.'),
       ).toBeVisible();
       await expect(page.getByText(/reasoning/i)).toHaveCount(0);
       await expectNoBlockingAccessibilityViolations(
