@@ -1,3 +1,4 @@
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { SendTurnRefusedError } from '../../providers/adapter-shape.js';
 
 class DelegationToolPolicyUnavailableError extends SendTurnRefusedError {
@@ -80,4 +81,52 @@ export function assertInheritedDelegationToolBinding(
         'The existing Session does not retain the required inherited tool restrictions.',
       );
   }
+}
+
+/** Capture policy data without cloning server authority objects carried beside it. */
+export function captureInheritedDelegationToolContext(
+  delegation: AgentDelegationContext | undefined,
+): AgentDelegationContext | undefined {
+  const groups = inheritedGroups(delegation);
+  if (!delegation || !groups.length) return delegation;
+  return {
+    ...delegation,
+    toolAllowlistConstraints: groups,
+    ...(delegation.allowedTools !== undefined
+      ? { allowedTools: patterns(delegation.allowedTools) }
+      : {}),
+    ...(delegation.blockedTools !== undefined
+      ? { blockedTools: patterns(delegation.blockedTools) }
+      : {}),
+  };
+}
+
+export function inheritedDelegationToolPolicyIdentity(
+  delegation: AgentDelegationContext | undefined,
+) {
+  const captured = captureInheritedDelegationToolContext(delegation);
+  if (!captured?.toolAllowlistConstraints?.length) return undefined;
+  return {
+    mode: captured.mode,
+    depth: captured.depth,
+    maxDepth: captured.maxDepth,
+    parentAgentSlug: captured.parentAgentSlug,
+    parentSessionId: captured.parentSessionId ?? null,
+    parentConversationId: captured.parentConversationId ?? null,
+    rootAgentSlug: captured.rootAgentSlug,
+    rootConversationId: captured.rootConversationId ?? null,
+    allowedTools: captured.allowedTools ?? null,
+    blockedTools: captured.blockedTools ?? null,
+    denyApprovals: captured.denyApprovals ?? null,
+    toolAllowlistConstraints: captured.toolAllowlistConstraints,
+  };
+}
+
+/** Identity only: this never authenticates or grants the policy it records. */
+export function bindInheritedDelegationToolIntent(
+  intent: unknown,
+  delegation: AgentDelegationContext | undefined,
+): unknown {
+  const requiredDelegation = inheritedDelegationToolPolicyIdentity(delegation);
+  return requiredDelegation ? { intent, requiredDelegation } : intent;
 }

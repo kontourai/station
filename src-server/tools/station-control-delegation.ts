@@ -137,7 +137,10 @@ import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
 } from '../services/orchestration/delegation-files.js';
-import { assertInheritedDelegationToolPolicy } from '../services/orchestration/delegation-tool-policy.js';
+import {
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../services/orchestration/delegation-tool-policy.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
@@ -5555,7 +5558,11 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
-  input = { ...input, clientTurnId: input.clientTurnId ?? randomUUID() };
+  input = {
+    ...input,
+    clientTurnId: input.clientTurnId ?? randomUUID(),
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
     throw new Error('Task attachments require Task room invocation admission.');
   if (
@@ -6784,6 +6791,10 @@ export async function executeExecutionTargetMessage(
       },
     };
   }
+  input = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     {

@@ -24,6 +24,7 @@ import type {
   ForegroundMessageHandle,
   ForegroundMessageInput,
 } from '../execution-target/execution-target-execution.js';
+import { bindInheritedDelegationToolIntent } from './delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from './turn-submission-digest.js';
 
 const MAX_CLAIMS = 1024;
@@ -496,14 +497,17 @@ export async function runDelegationCreate(
       authority,
       callerSessionId: input.createRequestCallerSessionId,
       requestKey: input.clientTurnId!,
-      intent: input.createRequestIntent ?? {
-        prompt: input.prompt,
-        attemptId: input.delegationAttemptId ?? null,
-        target: input.target,
-        parentTaskId: input.parentTaskId ?? null,
-        sessionId: input.sessionId ?? null,
-        attachments: input.taskRoomAttachments ?? null,
-      },
+      intent: bindInheritedDelegationToolIntent(
+        input.createRequestIntent ?? {
+          prompt: input.prompt,
+          attemptId: input.delegationAttemptId ?? null,
+          target: input.target,
+          parentTaskId: input.parentTaskId ?? null,
+          sessionId: input.sessionId ?? null,
+          attachments: input.taskRoomAttachments ?? null,
+        },
+        input.delegation,
+      ),
       sessionId: existingAttemptSessionId ?? input.sessionId,
       hasSessionStartRecord,
     },
@@ -537,7 +541,7 @@ export async function runForegroundCreateClaim(
       authority,
       callerSessionId,
       requestKey: input.clientTurnId,
-      intent,
+      intent: bindInheritedDelegationToolIntent(intent, input.delegation),
       hasSessionStartRecord,
     },
     async (conversationId) =>

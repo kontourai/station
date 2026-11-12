@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
   type ChatAttachmentInput,
   parseChatAttachmentDataUrl,
@@ -11,6 +12,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import { SendTurnRefusedError } from '../../providers/adapter-shape.js';
+import { inheritedDelegationToolPolicyIdentity } from './delegation-tool-policy.js';
 
 export class TurnSubmissionUnsupportedError extends SendTurnRefusedError {
   readonly code = CLIENT_TURN_INPUT_UNSUPPORTED_CODE;
@@ -180,6 +182,7 @@ export function directTurnSubmissionDigest(
 /** Foreground identity is shared by live sends and their durable inbox placement. */
 export function foregroundTurnSubmissionDigest(input: {
   message: string;
+  delegation?: AgentDelegationContext;
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   target: ExecutionTarget;
   ambientContext?: string;
@@ -190,6 +193,9 @@ export function foregroundTurnSubmissionDigest(input: {
   setApprovalMode?: unknown;
   setApprovalModeBasedOn?: unknown;
 }): string {
+  const requiredDelegation = inheritedDelegationToolPolicyIdentity(
+    input.delegation,
+  );
   return turnSubmissionDigest({
     text: input.message,
     ...(input.ambientContext !== undefined
@@ -204,6 +210,7 @@ export function foregroundTurnSubmissionDigest(input: {
       : {}),
     scope: {
       target: input.target,
+      ...(requiredDelegation ? { requiredDelegation } : {}),
       ...(input.mcpPromptOrigin
         ? { mcpPromptOrigin: input.mcpPromptOrigin }
         : {}),

@@ -57,6 +57,7 @@ import { markCreateRequestStarting } from '../orchestration/create-request-claim
 import {
   assertInheritedDelegationToolBinding,
   assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
 } from '../orchestration/delegation-tool-policy.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
@@ -697,6 +698,10 @@ export async function executeForegroundMessage(
   context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
+  input = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   if (input.clientTurnId || input.handoffIntent) {
     input = snapshotTurnSubmissionFields(input, [
       'target',
