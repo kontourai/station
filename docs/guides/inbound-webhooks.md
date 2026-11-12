@@ -53,15 +53,16 @@ user (`chmod 600`):
 | Field | Meaning |
 | --- | --- |
 | `enabled` | Must be exactly `true`, or every request is refused with `disabled`. |
-| `tokens[].id` | The value the caller sends in `x-station-webhook-token`: 1 to 128 letters, digits, `_` or `-`. |
+| `tokens[].id` | The value the caller sends in `x-station-webhook-token`: 1 to 128 letters, digits, `_` or `-`. It must not contain any token's secret. |
 | `tokens[].name` | A label for you. |
 | `tokens[].secret` | The HMAC secret, at least 32 characters. It is stored in this file and never returned by any API. |
 | `tokens[].revokedAt` | Present means the token is revoked. |
 | `tokens[].starts[]` | What the token may start. `agentId` must match the request's `agent` exactly. `projectSlug` must match the request's `project`; a grant without `projectSlug` allows only requests that name no Project. An absent or empty list allows nothing. |
 
-If the file is invalid, or any secret is shorter than 32 characters, Station
-refuses every webhook request with `policy_unavailable` and logs a warning
-naming the problem.
+If the file is invalid, any secret is shorter than 32 characters, or a token
+id breaks the format above or contains a secret, Station refuses every webhook
+request with `policy_unavailable` and logs a warning naming the problem (an id
+problem names the token by its position in the list, never by its id).
 
 ## Send a request
 
@@ -93,7 +94,8 @@ curl -sS -X POST "$STATION/api/webhooks/inbound" \
   --data-binary "$body"
 ```
 
-The body is a JSON object with `agent`, `message` and an optional `project`.
+The body is a JSON object with `agent`, `message` and an optional `project`;
+other fields are ignored.
 The message is sent to the Agent as written; there is no templating, except
 that a webhook token's secret appearing in it is replaced with `[redacted]`. The turn
 runs on this Station, in the Project's workspace when `project` is given.
@@ -138,21 +140,26 @@ Station does not call the sender back when the turn ends.
 
 A refusal's body is `{ "success": false, "code", "retryable" }`. A request
 is checked in four stages, and the first refusal wins. Telltale runs the
-first three; Station runs the last.
+first three; Station runs the last, before Telltale records the request in
+the replay ledger.
 
 1. **Before the body is read:** the rate limits, then the configuration file,
    the `enabled` switch, the token, its revocation, the timestamp and nonce
    format and the timestamp's freshness.
 2. **The body:** it is read, up to 256 KiB and within 10 seconds.
 3. **The signature, then the replay ledger.** The body is parsed as JSON
-   only after the signature matches.
+   only after the signature matches. The ledger reserves the token,
+   timestamp and nonce.
 4. **What it may start:** the body must be the expected JSON object, and the
-   token's grants must allow its Agent and Project.
+   token's grants must allow its Agent and Project. A refusal here releases
+   the reservation; otherwise the request is recorded as used.
 
 So a request with no signature and a malformed body is refused with
-`403 invalid_signature`. The replay ledger records a request in stage 3, so a
-request refused in stage 4, or one that gets `turn_start_failed`, has used
-its nonce: send it again with a new nonce and signature.
+`403 invalid_signature`. A request refused in stage 4 has not used its nonce:
+once its token's grants are fixed, the same signed request (a redelivery, for
+example) is accepted while it is fresh. A request that gets
+`turn_start_failed` has used its nonce: send it again with a new nonce and
+signature.
 
 | Status | Code | Cause |
 | --- | --- | --- |

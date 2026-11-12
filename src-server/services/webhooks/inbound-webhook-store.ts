@@ -97,6 +97,7 @@ function writePrivateJson(path: string, value: unknown): void {
  * already known to be a non-empty string.
  */
 function assertSecretFloor(configuration: InboundWebhookConfiguration): void {
+  assertTokenIds(configuration);
   for (const token of configuration.tokens ?? []) {
     if (token.secret.length < INBOUND_WEBHOOK_MIN_SECRET_LENGTH) {
       throw new InboundWebhookConfigurationError(
@@ -104,6 +105,33 @@ function assertSecretFloor(configuration: InboundWebhookConfiguration): void {
       );
     }
   }
+}
+
+/** The documented token-id format, the one the request header must match. */
+const INBOUND_WEBHOOK_TOKEN_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * Every token id must have the documented format and must not contain any
+ * configured secret. Telltale redacts every secret it has verified with from
+ * what it emits and logs, so an id holding a secret would read back as
+ * another string (`ci-[redacted]`) and could shadow a different token, and
+ * the audit would store the secret itself. A refused token is named by its
+ * position, never by its id, so the message cannot echo a secret.
+ */
+function assertTokenIds(configuration: InboundWebhookConfiguration): void {
+  const tokens = configuration.tokens ?? [];
+  tokens.forEach((token, index) => {
+    if (!INBOUND_WEBHOOK_TOKEN_ID.test(token.id)) {
+      throw new InboundWebhookConfigurationError(
+        `Inbound webhook token at position ${index + 1} has an id that is not 1 to 128 letters, digits, _ or -. Rename it.`,
+      );
+    }
+    if (tokens.some((other) => token.id.includes(other.secret))) {
+      throw new InboundWebhookConfigurationError(
+        `Inbound webhook token at position ${index + 1} has an id that contains a webhook secret. Rename it and rotate that secret.`,
+      );
+    }
+  });
 }
 
 /**
@@ -143,8 +171,8 @@ type ReplayEntry = {
   key: string;
   expiresAt: number;
   /**
-   * Absent on entries written before the Telltale ledger: those were claimed
-   * once the request was accepted, so they read as `delivered`.
+   * Absent on entries written before the Telltale ledger; they are migrated
+   * as they are read (see {@link migrateLegacyEntry}).
    */
   state?: 'reserved' | 'delivered';
   token?: string;
@@ -171,7 +199,21 @@ function readReplayEntries(path: string): ReplayEntry[] {
   ) {
     throw new Error('invalid replay ledger');
   }
-  return value as ReplayEntry[];
+  return (value as ReplayEntry[]).map(migrateLegacyEntry);
+}
+
+/**
+ * Before the Telltale ledger, an entry was claimed once the request was
+ * accepted and kept while `expiresAt > now`, with `expiresAt` the last fresh
+ * instant (`max(now, signedAt) + window`, freshness inclusive). Telltale's
+ * `expiresAt` is the first instant the key is free again, so an old entry
+ * moves one millisecond later. The next write stores it with a `state`, so
+ * it is never moved twice. Without this, the identical request at exactly
+ * `signedAt + window` would still be fresh and no longer held (#4837).
+ */
+function migrateLegacyEntry(entry: ReplayEntry): ReplayEntry {
+  if (entry.state !== undefined) return entry;
+  return { key: entry.key, expiresAt: entry.expiresAt + 1, state: 'delivered' };
 }
 
 /**

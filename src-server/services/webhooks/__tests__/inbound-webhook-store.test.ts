@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   InboundWebhookConfigurationError,
+  InboundWebhookConfigurationStore,
   InboundWebhookReplayStore,
 } from '../inbound-webhook-store.js';
 
@@ -75,6 +76,32 @@ describe('InboundWebhookReplayStore as a Telltale replay ledger', () => {
     expect(store.release('k', second)).toBe(false);
   });
 
+  // #4837 for upgraded installs: the old ledger stored the last fresh
+  // instant and kept a key while `expiresAt > now`; Telltale's `expiresAt` is
+  // the first instant the key is free.
+  test('a pre-Telltale entry is held through its old last instant, moved once', () => {
+    const homeDir = temporary('station-replay-');
+    writeLedger(homeDir, [
+      { key: 'legacy', expiresAt: NOW + 1000 },
+      { key: 'other-legacy', expiresAt: NOW + 5000 },
+    ]);
+    const store = new InboundWebhookReplayStore(homeDir);
+    expect(store.reserve('legacy', NOW + 9000, NOW + 1000)).toEqual({
+      outcome: 'replayed',
+    });
+    expect(store.reserve('legacy', NOW + 9000, NOW + 1001).outcome).toBe(
+      'reserved',
+    );
+    // Written back once with a state, so a later read does not move it again.
+    expect(JSON.parse(readFileSync(ledgerPath(homeDir), 'utf8'))).toEqual([
+      { key: 'other-legacy', expiresAt: NOW + 5001, state: 'delivered' },
+      expect.objectContaining({ key: 'legacy', state: 'reserved' }),
+    ]);
+    expect(store.reserve('other-legacy', NOW + 9000, NOW + 5001).outcome).toBe(
+      'reserved',
+    );
+  });
+
   test('entries written before the Telltale ledger still refuse their replay', () => {
     const homeDir = temporary('station-replay-');
     writeLedger(homeDir, [{ key: 'legacy', expiresAt: NOW + 1000 }]);
@@ -119,5 +146,69 @@ describe('InboundWebhookReplayStore as a Telltale replay ledger', () => {
     expect(() =>
       new InboundWebhookReplayStore(homeDir).reserve('k', NOW + 1000, NOW),
     ).toThrow(InboundWebhookConfigurationError);
+  });
+});
+
+describe('InboundWebhookConfigurationStore token ids', () => {
+  const SECRET = 'test-webhook-secret-32-chars-min';
+  const OTHER = 'another-webhook-secret-with-32-characters';
+  const token = (id: string, secret = SECRET) => ({
+    id,
+    name: 'Token',
+    secret,
+    starts: [{ agentId: 'station' }],
+  });
+
+  test.each([
+    ['contains its own secret', [token(`ci-${SECRET}`)]],
+    [
+      'contains another token secret',
+      [token('ci-deploy', SECRET), token(`ci-${SECRET}`, OTHER)],
+    ],
+    ['is outside the documented format', [token('ci-[redacted]')]],
+    ['has a dot', [token('ci.deploy')]],
+  ])(
+    'write and read refuse an id that %s, without echoing it',
+    (_name, tokens) => {
+      const homeDir = temporary('station-webhook-ids-');
+      const configuration = {
+        schemaVersion: 1 as const,
+        enabled: true,
+        tokens,
+      };
+      let refusal: unknown;
+      try {
+        new InboundWebhookConfigurationStore(homeDir).write(configuration);
+      } catch (error) {
+        refusal = error;
+      }
+      expect(refusal).toBeInstanceOf(InboundWebhookConfigurationError);
+      expect(String((refusal as Error).message)).not.toContain(SECRET);
+      expect(String((refusal as Error).message)).toMatch(/position \d/);
+
+      // A hand-written file is refused at read the same way.
+      mkdirSync(join(homeDir, 'security'), { recursive: true });
+      writeFileSync(
+        join(homeDir, 'security', 'inbound-webhooks.json'),
+        JSON.stringify(configuration),
+      );
+      expect(() =>
+        new InboundWebhookConfigurationStore(homeDir).read(),
+      ).toThrow(InboundWebhookConfigurationError);
+    },
+  );
+
+  test('ids in the documented format, holding no secret, are kept', () => {
+    const homeDir = temporary('station-webhook-ids-');
+    const store = new InboundWebhookConfigurationStore(homeDir);
+    store.write({
+      schemaVersion: 1,
+      enabled: true,
+      tokens: [token('ci-deploy'), token('ci_nightly-2', OTHER)],
+    });
+    expect(store.read().tokens?.map((entry) => entry.id)).toEqual([
+      'ci-deploy',
+      'ci_nightly-2',
+    ]);
   });
 });

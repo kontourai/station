@@ -320,8 +320,10 @@ Four findings shape the design.
   global budget of 300 unauthenticated attempts, the credential, freshness,
   a 256 KB cap, HMAC over `ts\nnonce\nbody` on the raw bytes, then the
   replay reservation. Telltale stamps the event `untrusted`, from the route
-  it entered by. Station then checks the payload shape and the token's
-  grants, starts the turn, and answers 202 only after the turn starts.
+  it entered by. Before Telltale commits the replay key, Station checks the
+  payload shape and the token's grants (bound to the token its own lookup
+  returned) and emits only the fields it uses; a refusal releases the key.
+  Station then starts the turn and answers 202 only after the turn starts.
   [Authorization](../../src-server/services/webhooks/inbound-webhook-authorization.ts)
   supplies Telltale's credential, replay and audit bindings and keeps the
   grant check.

@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ import {
   parseManagedPolicyDocument,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
-import { FailureBudget } from '@kontourai/telltale';
+import { FailureBudget, TelltaleHost } from '@kontourai/telltale';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   installManagedApprovalCeiling,
@@ -438,7 +438,7 @@ describe('inbound webhooks', () => {
 
   // Telltale counts a request that has not authenticated yet against the
   // shared budget, so a body that never finishes must not hold that room.
-  test('a body that never finishes is refused at the deadline and returns its budget room', async () => {
+  test('a body that never finishes is refused at the deadline, returns its budget room and is cancelled', async () => {
     const homeDir = home();
     writeEnabled(homeDir);
     const budget = new FailureBudget(
@@ -460,6 +460,12 @@ describe('inbound webhooks', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const nonce = randomBytes(16).toString('base64url');
+      const cancel = vi.fn();
+      // A sender that never finishes its body.
+      const stream = new ReadableStream<Uint8Array>({
+        pull: () => new Promise<void>(() => undefined),
+        cancel,
+      });
       const pending = route.request('http://station.test/inbound', {
         method: 'POST',
         headers: {
@@ -469,10 +475,7 @@ describe('inbound webhooks', () => {
           'x-station-webhook-nonce': nonce,
           'x-station-webhook-signature': signature(body(), nonce),
         },
-        // A sender that never finishes its body.
-        body: new ReadableStream<Uint8Array>({
-          pull: () => new Promise<void>(() => undefined),
-        }),
+        body: stream,
         duplex: 'half',
       } as RequestInit);
       await vi.waitFor(() => expect(budget.inflight).toBe(1));
@@ -483,7 +486,11 @@ describe('inbound webhooks', () => {
         code: 'malformed_request',
       });
       expect(budget.inflight).toBe(0);
+      expect(budget.failures(now)).toBe(1);
       expect(startTurn).not.toHaveBeenCalled();
+      // Review 4865: the read is cancelled, not abandoned with the reader held.
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(stream.locked).toBe(false);
     } finally {
       vi.useRealTimers();
     }
@@ -831,5 +838,242 @@ describe('global unauthenticated-attempt budget (review M2)', () => {
     expect(
       afterFlood.some((entry) => entry.tokenId === 'pre-budget-second'),
     ).toBe(true);
+  });
+});
+
+// Review of #4865 (fix round 1): each test failed against the first
+// Telltale-backed head and holds the contract main had, or the one #4837 asks.
+describe('inbound webhooks through Telltale: Station decides before the replay key is committed', () => {
+  function routeWith(
+    homeDir: string,
+    options: { clock?: () => number; budget?: FailureBudget } = {},
+  ) {
+    const budget = options.budget ?? new FailureBudget(300, 60_000);
+    const authorization = new InboundWebhookAuthorizationService(
+      homeDir,
+      options.clock ?? (() => now),
+    );
+    const deps = foregroundDependencies();
+    const route = createInboundWebhookRoutes({
+      homeDir,
+      authorization,
+      unauthenticatedBudget: budget,
+      logger: { warn: vi.fn() },
+      startTurn: (input) =>
+        executeForegroundMessage(
+          { ...input, userId: 'human:local:operator' },
+          deps,
+        ),
+    });
+    return { route, deps, budget };
+  }
+
+  function deeplyNested(levels: number): unknown {
+    let nested: unknown = 'leaf';
+    for (let i = 0; i < levels; i += 1) nested = { nested };
+    return nested;
+  }
+
+  test('a forbidden start leaves its nonce unused, so the same request starts once the grant is fixed', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir, {
+      tokens: [{ id: 'ci-deploy', name: 'CI', secret, starts: [] }],
+    });
+    const { route, deps } = routeWith(homeDir);
+    const nonce = 'forbidden_nonce_123456';
+
+    const first = await request(route, body(), nonce);
+    expect(first.status).toBe(403);
+    expect(await first.json()).toMatchObject({ code: 'forbidden_start' });
+
+    writeEnabled(homeDir);
+    const retry = await request(route, body(), nonce);
+    expect(retry.status).toBe(202);
+    expect(deps.startSession).toHaveBeenCalledOnce();
+    // The accepted request now holds the key.
+    expect(await (await request(route, body(), nonce)).json()).toMatchObject({
+      code: 'replay',
+    });
+  });
+
+  test('the grant, receipts and audit use the identity Station looked up, not the redacted event copy', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir);
+    const { route, deps } = routeWith(homeDir);
+    // A request verified with `secret` registers it with Telltale for
+    // redaction for as long as the route lives.
+    expect((await request(route, body())).status).toBe(202);
+
+    // The secret is retired, and a new token's id happens to contain it.
+    // Telltale's event and audit copies read that id as `ci-[redacted]`.
+    const shadowId = `ci-${secret}`;
+    const shadowSecret = 'another-webhook-secret-with-32-characters';
+    new InboundWebhookConfigurationStore(homeDir).write({
+      schemaVersion: 1,
+      enabled: true,
+      tokens: [
+        {
+          id: shadowId,
+          name: 'Renamed CI',
+          secret: shadowSecret,
+          starts: [{ agentId: 'station' }],
+        },
+      ],
+    });
+    const signedBy = (payload: string, nonce: string, at = timestamp) =>
+      `sha256=${createHmac('sha256', shadowSecret)
+        .update(`${at}\n${nonce}\n${payload}`)
+        .digest('hex')}`;
+
+    const staleAt = String(Math.floor((now - 5 * 60_000 - 1000) / 1000));
+    const staleNonce = 'shadow_stale_nonce_0001';
+    const stale = await request(route, body(), staleNonce, {
+      tokenId: shadowId,
+      at: staleAt,
+      signature: signedBy(body(), staleNonce, staleAt),
+    });
+    expect(await stale.json()).toMatchObject({ code: 'stale_timestamp' });
+
+    const nonce = 'shadow_valid_nonce_0001';
+    const accepted = await request(route, body(), nonce, {
+      tokenId: shadowId,
+      signature: signedBy(body(), nonce),
+    });
+    expect(accepted.status).toBe(202);
+    const startInput = vi.mocked(deps.startSession).mock.calls[1]?.[1];
+    if (!startInput) throw new Error('The shadow token started no session');
+    expect(
+      (startInput.metadata as Record<string, unknown>).webhookTokenId,
+    ).toBe(shadowId);
+    const audit = new InboundWebhookAuditStore(homeDir).read();
+    expect(audit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: 'stale_timestamp',
+          tokenId: shadowId,
+        }),
+        expect.objectContaining({ reason: 'accepted', tokenId: shadowId }),
+      ]),
+    );
+    expect(audit.some((entry) => entry.tokenId?.includes('[redacted]'))).toBe(
+      false,
+    );
+  });
+
+  test('a deeply nested body with the wrong shape is one bounded, charged refusal', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir);
+    const { route, deps, budget } = routeWith(homeDir);
+
+    const response = await request(
+      route,
+      JSON.stringify({ nested: deeplyNested(70) }),
+      'deep_nonce_123456789',
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'malformed_request' });
+    expect(budget.failures(now)).toBe(1);
+    expect(budget.inflight).toBe(0);
+    expect(new InboundWebhookAuditStore(homeDir).read()).toEqual([
+      expect.objectContaining({ reason: 'malformed_request' }),
+    ]);
+    expect(deps.startSession).not.toHaveBeenCalled();
+  });
+
+  test('a valid payload starts even when an ignored extension field is deeply nested', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir);
+    const { route, deps } = routeWith(homeDir);
+
+    const response = await request(
+      route,
+      JSON.stringify({
+        agent: 'station',
+        message: 'hello',
+        extension: deeplyNested(70),
+      }),
+      'extra_nonce_123456789',
+    );
+
+    expect(response.status).toBe(202);
+    expect(deps.startSession).toHaveBeenCalledOnce();
+  });
+
+  test('a failure inside Telltale on an authenticated request is one typed, charged refusal', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir);
+    const { route, deps, budget } = routeWith(homeDir);
+    const receive = vi
+      .spyOn(TelltaleHost.prototype, 'receive')
+      .mockRejectedValueOnce(new Error('value is nested too deeply to redact'));
+    try {
+      const response = await request(route, body());
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        code: 'malformed_request',
+        retryable: false,
+      });
+      expect(budget.failures(now)).toBe(1);
+      expect(new InboundWebhookAuditStore(homeDir).read()).toEqual([
+        expect.objectContaining({ reason: 'malformed_request' }),
+      ]);
+      expect(deps.startSession).not.toHaveBeenCalled();
+    } finally {
+      receive.mockRestore();
+    }
+  });
+
+  test.each([
+    ['bad JSON', '{', 'malformed_request'],
+    ['wrong shape', '{}', 'malformed_request'],
+    [
+      'invalid target',
+      JSON.stringify({ agent: 'INVALID!', message: 'hi' }),
+      'malformed_request',
+    ],
+    ['forbidden start', body({ agent: 'other' }), 'forbidden_start'],
+  ])(
+    'a Station refusal (%s) is charged exactly once',
+    async (_name, payload, code) => {
+      const homeDir = home();
+      writeEnabled(homeDir);
+      const { route, budget } = routeWith(homeDir);
+
+      const response = await request(route, payload);
+
+      expect(await response.json()).toMatchObject({ code });
+      expect(budget.failures(now)).toBe(1);
+      expect(budget.inflight).toBe(0);
+      expect(new InboundWebhookAuditStore(homeDir).read()).toEqual([
+        expect.objectContaining({ reason: code }),
+      ]);
+    },
+  );
+
+  test('an entry from the pre-Telltale ledger still refuses its replay at exactly timestamp + window (#4837)', async () => {
+    const homeDir = home();
+    writeEnabled(homeDir);
+    const nonce = 'legacy_nonce_123456789';
+    // The old ledger's key and its last fresh instant, as it wrote them.
+    const key = createHash('sha256')
+      .update('ci-deploy')
+      .update('\0')
+      .update(timestamp)
+      .update('\0')
+      .update(nonce)
+      .digest('hex');
+    const boundary = Number(timestamp) * 1000 + 5 * 60_000;
+    writeFileSync(
+      join(homeDir, 'security', 'inbound-webhook-replays.json'),
+      JSON.stringify([{ key, expiresAt: boundary }]),
+    );
+    const { route, deps } = routeWith(homeDir, { clock: () => boundary });
+
+    const response = await request(route, body(), nonce);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'replay' });
+    expect(deps.startSession).not.toHaveBeenCalled();
   });
 });

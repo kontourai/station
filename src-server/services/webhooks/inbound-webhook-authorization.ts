@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type {
   InboundWebhookConfiguration,
   InboundWebhookStartGrant,
@@ -43,6 +44,24 @@ function grantAllows(
     ) === true
   );
 }
+
+/**
+ * What Station itself established about one request while Telltale verified
+ * it. Telltale's emitted event and audit entries carry the credential id
+ * through its secret redaction, so they are not an identity; this is.
+ */
+export interface InboundWebhookRequest {
+  /** The presented token id, when it has Station's documented format. */
+  presentedTokenId?: string;
+  /**
+   * The exact token id Station's lookup returned for this request. Telltale
+   * verifies the signature only with that credential, so once it accepted
+   * the request this is the authenticated identity.
+   */
+  credentialId?: string;
+}
+
+const requests = new AsyncLocalStorage<InboundWebhookRequest>();
 
 /** Wall-clock time from `now`, with unref'd timers so none holds the process open. */
 function stationClock(now: () => number): Clock {
@@ -94,11 +113,31 @@ export class InboundWebhookAuthorizationService {
   }
 
   /**
+   * Runs `work` (one `host.receive`) with its own request record, which the
+   * credential lookup, the audit binding and the route share. Every Telltale
+   * callback for that request runs inside it.
+   */
+  withRequest<T>(
+    work: (request: InboundWebhookRequest) => Promise<T>,
+  ): Promise<T> {
+    const request: InboundWebhookRequest = {};
+    return requests.run(request, () => work(request));
+  }
+
+  /** The request record of the request being verified, inside {@link withRequest}. */
+  currentRequest(): InboundWebhookRequest | undefined {
+    return requests.getStore();
+  }
+
+  /**
    * Telltale's credential lookup. The off switch is checked before the
    * token, so any token id is told `disabled`. A configuration that cannot
    * be read throws, which Telltale refuses as `policy_unavailable`.
    */
   lookup(presented: string): WebhookLookup {
+    const request = requests.getStore();
+    const tokenId = safeTokenId(presented);
+    if (request) request.presentedTokenId = tokenId;
     let configuration: InboundWebhookConfiguration;
     try {
       configuration = this.config.read();
@@ -116,10 +155,10 @@ export class InboundWebhookAuthorizationService {
     }
     // Exact-true provides a durable, reversible off switch with a safe default.
     if (configuration.enabled !== true) return { enabled: false };
-    const tokenId = safeTokenId(presented);
     const token = configuration.tokens?.find(
       (candidate) => candidate.id === tokenId,
     );
+    if (request && token) request.credentialId = token.id;
     return {
       enabled: true,
       ...(token
@@ -173,11 +212,23 @@ export class InboundWebhookAuthorizationService {
     this.auditStore.recordSuccess(tokenId, conversationId);
   }
 
+  /**
+   * Telltale names a credential only once it is known to exist (an unknown
+   * id is the caller's choice) or for the off switch. Station records its
+   * own reading of that identity, not Telltale's redacted copy.
+   */
   private recordAudit(entry: WebhookAuditEntry): void {
     if (entry.reason === 'unauthenticated_flood') {
       this.auditStore.recordAggregatedNoise(entry.count ?? 0);
       return;
     }
-    this.auditStore.record(entry.reason, entry.credentialId);
+    const request = requests.getStore();
+    const tokenId =
+      entry.credentialId === undefined
+        ? undefined
+        : request
+          ? (request.credentialId ?? request.presentedTokenId)
+          : entry.credentialId;
+    this.auditStore.record(entry.reason, tokenId);
   }
 }

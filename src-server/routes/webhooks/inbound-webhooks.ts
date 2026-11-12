@@ -2,8 +2,12 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
 import {
   FailureBudget,
+  type SourceApi,
+  type SourceType,
   TelltaleHost,
   type UnauthenticatedBudget,
+  type WebhookBindings,
+  webhookSourceType,
 } from '@kontourai/telltale';
 import { Hono } from 'hono';
 import { readBoundedRequestBodyBytes } from '../../security/bounded-request-body.js';
@@ -15,6 +19,7 @@ import {
 import {
   INBOUND_WEBHOOK_REPLAY_WINDOW_SECONDS,
   InboundWebhookAuthorizationService,
+  type InboundWebhookRequest,
 } from '../../services/webhooks/inbound-webhook-authorization.js';
 import { inboundWebhookRequests } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
@@ -22,6 +27,8 @@ import type { Logger } from '../../utils/logger.js';
 const INBOUND_WEBHOOK_PATH = '/inbound';
 /** The Telltale source id; one webhook source per route instance. */
 const INBOUND_WEBHOOK_SOURCE_ID = 'inbound';
+/** Telltale's `webhook` type with Station's decision before delivery (below). */
+const INBOUND_WEBHOOK_SOURCE_TYPE = 'station-inbound-webhook';
 const INBOUND_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
 const INBOUND_WEBHOOK_MAX_ATTEMPTS_PER_WINDOW = 60;
 /**
@@ -117,23 +124,47 @@ async function readBoundedBody(request: Request): Promise<Uint8Array | null> {
   ) {
     return null;
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), INBOUND_WEBHOOK_BODY_DEADLINE_MS);
-    timer.unref?.();
-  });
+  // On the deadline the stream is cancelled and the request refused, so it
+  // returns its budget room and holds no reader.
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () => deadline.abort(),
+    INBOUND_WEBHOOK_BODY_DEADLINE_MS,
+  );
+  timer.unref?.();
   try {
-    // On the deadline the request is refused and its budget room returned;
-    // the abandoned read ends with the connection.
-    const result = await Promise.race([
-      readBoundedRequestBodyBytes(request, INBOUND_WEBHOOK_MAX_BODY_BYTES),
-      deadline,
-    ]);
-    if (!result) return null;
+    const result = await readBoundedRequestBodyBytes(
+      request,
+      INBOUND_WEBHOOK_MAX_BODY_BYTES,
+      deadline.signal,
+    );
     if (result.status === 'no-body') return new Uint8Array();
     return result.status === 'ok' ? result.bytes : null;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** What Station decided about an authenticated request, before delivery. */
+type InboundWebhookDecision =
+  | {
+      kind: 'start';
+      credentialId: string;
+      payload: WebhookPayload;
+      target: ExecutionTarget;
+    }
+  | {
+      kind: 'refuse';
+      reason: 'malformed_request' | 'forbidden_start' | 'policy_unavailable';
+      /** Recorded with the refusal; absent for a malformed payload, as before Telltale. */
+      tokenId?: string;
+    };
+
+/** Thrown from `emit` so Telltale releases the replay reservation. */
+class InboundWebhookStationRefusal extends Error {
+  constructor() {
+    super('inbound webhook refused by Station before delivery');
+    this.name = 'InboundWebhookStationRefusal';
   }
 }
 
@@ -190,9 +221,67 @@ export function createInboundWebhookRoutes(options: {
       warn: (message, meta) => options.logger.warn(message, meta),
     },
   });
+  // Station decides before Telltale commits the replay key: the payload
+  // shape, the target and the token's start grant. A refusal throws from
+  // `emit`, and Telltale releases the reservation, so the same signed
+  // request is accepted once the grant is fixed (as before Telltale). Only
+  // the fields Station uses are emitted: Telltale redacts the whole emitted
+  // payload, and an unused, deeply nested field of the body must not decide
+  // the request. The decision runs on the body Telltale parsed after the
+  // signature held, and binds the identity Station's own lookup returned,
+  // never the event's redacted copy.
+  const decisions = new WeakMap<
+    InboundWebhookRequest,
+    InboundWebhookDecision
+  >();
+  const decide = (body: unknown): InboundWebhookDecision => {
+    const credentialId = authorization.currentRequest()?.credentialId;
+    if (credentialId === undefined)
+      return { kind: 'refuse', reason: 'policy_unavailable' };
+    const payload = payloadFrom(body);
+    if (!payload) return { kind: 'refuse', reason: 'malformed_request' };
+    let target: ExecutionTarget;
+    try {
+      target = targetFor(payload);
+    } catch {
+      return { kind: 'refuse', reason: 'malformed_request' };
+    }
+    const refusal = authorization.startRefusal(
+      credentialId,
+      payload.agent,
+      payload.project,
+    );
+    if (refusal)
+      return { kind: 'refuse', reason: refusal, tokenId: credentialId };
+    return { kind: 'start', credentialId, payload, target };
+  };
+  const stationWebhook: SourceType<WebhookBindings> = {
+    ...webhookSourceType,
+    start(api) {
+      const deciding: SourceApi<WebhookBindings> = Object.create(api);
+      deciding.emit = (name, delivered, meta) => {
+        const request = authorization.currentRequest();
+        const decision = decide((delivered as { body?: unknown }).body);
+        if (request) decisions.set(request, decision);
+        if (decision.kind === 'refuse')
+          return Promise.reject(new InboundWebhookStationRefusal());
+        return api.emit(
+          name,
+          {
+            credentialId: decision.credentialId,
+            body: decision.payload,
+            headers: (delivered as { headers?: unknown }).headers,
+          },
+          meta,
+        );
+      };
+      return webhookSourceType.start(deciding);
+    },
+  };
+  host.registerType(INBOUND_WEBHOOK_SOURCE_TYPE, stationWebhook);
   host.add({
     id: INBOUND_WEBHOOK_SOURCE_ID,
-    type: 'webhook',
+    type: INBOUND_WEBHOOK_SOURCE_TYPE,
     // A signature proves who sent the request, not who wrote what is in it.
     trust: 'untrusted',
     options: {
@@ -240,27 +329,8 @@ export function createInboundWebhookRoutes(options: {
       );
     }
 
-    // Review L1: Telltale runs every header-only check (budget, attempts,
-    // off switch, token, revocation, timestamp/nonce format, freshness)
-    // before it calls the body reader, then verifies the HMAC over the raw
-    // received bytes, and only then reserves the replay key.
-    const result = await host.receive(INBOUND_WEBHOOK_SOURCE_ID, {
-      headers: c.req.raw.headers,
-      body: () => readBoundedBody(c.req.raw),
-    });
-    if (!result.accepted) {
-      // Budget and audit were already charged by Telltale.
-      recordOutcome(result.reason);
-      if (result.retryAfterSeconds !== undefined)
-        c.header('Retry-After', String(result.retryAfterSeconds));
-      return c.json(
-        { success: false, code: result.reason, retryable: result.retryable },
-        result.status,
-      );
-    }
-
-    // A refusal after Telltale accepted: charged to the same budget and
-    // audit as Telltale's own refusals.
+    // A refusal Station makes (before or after Telltale): charged once to the
+    // same budget, audit and metric as Telltale's own refusals.
     const refuse = (
       reason: 'malformed_request' | 'forbidden_start' | 'policy_unavailable',
       status: 400 | 403,
@@ -272,32 +342,57 @@ export function createInboundWebhookRoutes(options: {
       options.logger.warn('Inbound webhook refused', { reason });
       return c.json({ success: false, code: reason, retryable: false }, status);
     };
-    // The `received` payload Telltale documents for a webhook source; its
-    // package exports no type for it yet. `credentialId` is the token the
-    // request authenticated with, never a value from the body.
-    const { credentialId, body } = result.event.payload as {
-      credentialId: string;
-      body: unknown;
-    };
-    const payload = payloadFrom(body);
-    // A malformed payload records no token id, as before Telltale.
-    if (!payload) return refuse('malformed_request', 400);
-    let target: ExecutionTarget;
+
+    // Review L1: Telltale runs every header-only check (budget, attempts,
+    // off switch, token, revocation, timestamp/nonce format, freshness)
+    // before it calls the body reader, then verifies the HMAC over the raw
+    // received bytes, and only then reserves the replay key.
+    let request: InboundWebhookRequest | undefined;
+    let result: Awaited<ReturnType<typeof host.receive>>;
     try {
-      target = targetFor(payload);
+      result = await authorization.withRequest((current) => {
+        request = current;
+        return host.receive(INBOUND_WEBHOOK_SOURCE_ID, {
+          headers: c.req.raw.headers,
+          body: () => readBoundedBody(c.req.raw),
+        });
+      });
     } catch {
+      const decision = request ? decisions.get(request) : undefined;
+      if (decision?.kind === 'refuse')
+        return refuse(
+          decision.reason,
+          decision.reason === 'malformed_request' ? 400 : 403,
+          decision.tokenId,
+        );
+      // Telltale failed inside an authenticated request (for example while
+      // redacting what it would emit) instead of answering. Its reservation
+      // was released and nothing was charged: refuse it once, as malformed.
+      options.logger.warn('Inbound webhook intake failed on a request');
       return refuse('malformed_request', 400);
     }
-    const startRefusal = authorization.startRefusal(
-      credentialId,
-      payload.agent,
-      payload.project,
-    );
-    if (startRefusal) return refuse(startRefusal, 403, credentialId);
+    if (!result.accepted) {
+      // Budget and audit were already charged by Telltale.
+      recordOutcome(result.reason);
+      if (result.retryAfterSeconds !== undefined)
+        c.header('Retry-After', String(result.retryAfterSeconds));
+      return c.json(
+        { success: false, code: result.reason, retryable: result.retryable },
+        result.status,
+      );
+    }
+    const decision = request ? decisions.get(request) : undefined;
+    if (decision?.kind !== 'start') {
+      // Telltale delivered only what `emit` decided to start.
+      options.logger.warn('Inbound webhook delivered without a decision');
+      return refuse('policy_unavailable', 403);
+    }
+    const { credentialId, payload, target } = decision;
     try {
       const started = await options.startTurn({
         target,
-        message: payload.message,
+        // As Telltale emitted it: a webhook secret quoted in it is redacted.
+        message: host.secrets.text(payload.message),
         ephemeral: true,
         webhookTokenId: credentialId,
       });
