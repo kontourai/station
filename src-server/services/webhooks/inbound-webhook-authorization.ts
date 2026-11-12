@@ -47,12 +47,10 @@ function grantAllows(
 
 /**
  * What Station itself established about one request while Telltale verified
- * it. Telltale's emitted event and audit entries carry the credential id
- * through its secret redaction, so they are not an identity; this is.
+ * it. Telltale's emitted event carries the credential id through its secret
+ * redaction, so it is not an identity; this is.
  */
 export interface InboundWebhookRequest {
-  /** The presented token id, when it has Station's documented format. */
-  presentedTokenId?: string;
   /**
    * The exact token id Station's lookup returned for this request. Telltale
    * verifies the signature only with that credential, so once it accepted
@@ -137,7 +135,6 @@ export class InboundWebhookAuthorizationService {
   lookup(presented: string): WebhookLookup {
     const request = requests.getStore();
     const tokenId = safeTokenId(presented);
-    if (request) request.presentedTokenId = tokenId;
     let configuration: InboundWebhookConfiguration;
     try {
       configuration = this.config.read();
@@ -213,22 +210,15 @@ export class InboundWebhookAuthorizationService {
   }
 
   /**
-   * Telltale names a credential only once it is known to exist (an unknown
-   * id is the caller's choice) or for the off switch. Station records its
-   * own reading of that identity, not Telltale's redacted copy.
+   * Telltale's audit entries name the credential as presented, unredacted
+   * (only its emitted event is redacted), and only once it is known to exist
+   * or for the off switch.
    */
   private recordAudit(entry: WebhookAuditEntry): void {
     if (entry.reason === 'unauthenticated_flood') {
       this.auditStore.recordAggregatedNoise(entry.count ?? 0);
       return;
     }
-    const request = requests.getStore();
-    const tokenId =
-      entry.credentialId === undefined
-        ? undefined
-        : request
-          ? (request.credentialId ?? request.presentedTokenId)
-          : entry.credentialId;
-    this.auditStore.record(entry.reason, tokenId);
+    this.auditStore.record(entry.reason, entry.credentialId);
   }
 }
