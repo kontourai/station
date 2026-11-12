@@ -580,7 +580,7 @@ describe('WorkspacePaneAvailabilityList', () => {
   });
 
   test('offers access review without a host callback before a competing retry', () => {
-    const onAction = vi.fn(() => 'Checking the current pane availability.');
+    const onAction = vi.fn(() => 'Checking which panes are available…');
     const gated = {
       ...entry('Remote retry', {
         state: 'temporarily-unavailable' as const,

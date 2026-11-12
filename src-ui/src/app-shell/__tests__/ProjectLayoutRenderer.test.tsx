@@ -1522,7 +1522,7 @@ describe('ProjectLayoutRenderer', () => {
         expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
         expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
         expect(screen.getByRole('alert').textContent).toContain(
-          'Experimental evidence panes unavailable',
+          'Experimental panes unavailable',
         );
       }
     },

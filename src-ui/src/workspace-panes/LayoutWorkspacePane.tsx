@@ -316,11 +316,11 @@ function mainOnlyReason(
 ): string {
   switch (kind) {
     case 'stack':
-      return 'This layout is a pane host of its own; a docked copy would share the main region’s saved panes.';
+      return 'This layout already holds its own panes, so it opens only in the main area.';
     case 'chat':
-      return 'A Chat layout takes the whole viewport, including the region this tab is in.';
+      return 'A Chat layout fills the whole window, so it opens only in the main area.';
     default:
-      return 'This kind of layout renders only in the main region.';
+      return 'This kind of layout opens only in the main area.';
   }
 }
 

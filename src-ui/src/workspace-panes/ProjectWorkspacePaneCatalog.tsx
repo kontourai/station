@@ -7,6 +7,7 @@ import type { ResolvedWorkspacePaneCatalogEntry } from './resolvedWorkspacePaneC
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
 import { WorkspacePaneCatalogRefreshNotice } from './WorkspacePaneCatalogRefreshNotice';
 import type { WorkspacePaneAvailabilityCatalogEntry } from './workspacePaneAvailabilityPresentation';
+import { WORKSPACE_PANE_CATALOG_LOAD_FAILED } from './workspacePaneCopy';
 import { isProjectPlaceableWorkspacePane } from './workspacePaneHostAdmission';
 
 interface CatalogProps {
@@ -57,7 +58,7 @@ function CatalogContents({
     return (
       <ErrorState
         title="Could not load workspace panes"
-        description="Station could not read this Project’s pane catalog."
+        description={WORKSPACE_PANE_CATALOG_LOAD_FAILED}
         action={
           <button type="button" onClick={onRetry}>
             Retry
@@ -144,7 +145,7 @@ export function ProjectWorkspacePaneModal({
   onClose,
   notice,
   title = 'Add workspace pane',
-  subtitle = 'Every pane this Project can hold is listed. Available panes open directly; the others carry their state as a badge with the next step.',
+  subtitle,
   ...catalog
 }: CatalogProps & {
   show: boolean;

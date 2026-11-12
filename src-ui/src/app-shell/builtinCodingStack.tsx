@@ -580,8 +580,8 @@ export function resolveBuiltinCodingStack({
           ) : null}
           {evidenceCompositionUnavailable && (
             <ErrorState
-              title="Experimental evidence panes unavailable"
-              description="Some opted-in tools could not be admitted. Your Coding workspace remains available."
+              title="Experimental panes unavailable"
+              description="Some experimental panes didn't load. The rest of the workspace still works."
             />
           )}
           {evidenceCompositionReceipts.map((receipt) => (
