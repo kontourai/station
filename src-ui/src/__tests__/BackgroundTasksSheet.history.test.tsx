@@ -27,6 +27,7 @@ vi.mock('@kontourai/station-sdk', () => {
 });
 
 import { BackgroundTasksSheet } from '../components/chat-dock/BackgroundTasksSheet';
+import type { ChatDockMobileOverflowActions } from '../components/chat-dock/ChatDockMobileHeader';
 import { ChatDockMobileOverflowSheet } from '../components/chat-dock/ChatDockMobileOverflowSheet';
 import { DIALOG_HISTORY_KEY } from '../components/dialog-history';
 
@@ -40,6 +41,22 @@ const running: BackgroundTaskEntry = {
   state: 'running',
 };
 
+const noop = () => {};
+/** The ⋯ sheet's required actions this test never presses. */
+const UNUSED_ACTIONS: ChatDockMobileOverflowActions = {
+  onOpenConversation: noop,
+  onToggleHistory: noop,
+  onOpenChatSettings: noop,
+  onOpenProject: null,
+  openProjectName: null,
+  onOpenProfile: noop,
+  onOpenAppSettings: noop,
+  onCollapseDock: noop,
+  onExpandDock: noop,
+  onRestoreDock: noop,
+  isDockMaximized: false,
+};
+
 function Harness({ lazy }: { lazy: boolean }) {
   const [actionsOpen, setActionsOpen] = useState(true);
   const [tasksOpen, setTasksOpen] = useState(false);
@@ -49,6 +66,7 @@ function Harness({ lazy }: { lazy: boolean }) {
       {actionsOpen && (
         <ChatDockMobileOverflowSheet
           overflow={{
+            ...UNUSED_ACTIONS,
             onOpenBackgroundTasks: () => {
               if (!lazy) return setTasksOpen(true);
               setTimeout(() => setTasksOpen(true), 0);
