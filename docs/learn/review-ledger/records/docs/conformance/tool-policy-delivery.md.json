@@ -132,7 +132,11 @@
 
     "scripts/generate-runtime-conformance.mjs",
 
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+
+    "src-server/services/orchestration/delegation-tool-policy.ts",
+
+    "src-server/runtime/agents/request-delegation.ts"
   ],
 
   "checks": [
