@@ -35,6 +35,7 @@ import {
   ProjectRoomStore,
 } from '../../services/projects/project-room-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
+import { projectRoomVersionSource } from '../../services/read-markers/room-version-sources.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
@@ -952,4 +953,50 @@ test('channels: an archived channel refuses posts and note edits but still serve
     archived: false,
   });
   expect((await message('back')).status).toBe(200);
+});
+
+test('read markers (#3075): each channel has its own room version, read through the room service', async () => {
+  const h = await harness();
+  const general = await h.discover('bob');
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design')),
+  );
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'bob', `/channels/${design.channelId}`)),
+  );
+  for (const text of ['one', 'two'])
+    expect(
+      (
+        await api(h, 'bob', `/channels/${design.channelId}/messages`, 'POST', {
+          ...guard(view),
+          intentId: randomUUID(),
+          text,
+        })
+      ).status,
+    ).toBe(200);
+  const versions = projectRoomVersionSource(h.service);
+  const as = (who: 'alice' | 'bob') =>
+    new Request('http://localhost', {
+      headers: { authorization: `Bearer ${who}-session` },
+    });
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: design.channelId },
+      as('bob'),
+    ),
+  ).toEqual({ key: `project-room:${design.channelId}`, latestVersion: 2 });
+  // #general keeps its own key and version.
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: general.roomId },
+      as('bob'),
+    ),
+  ).toEqual({ key: `project-room:${general.roomId}`, latestVersion: 0 });
+  // A room id that is not one of this Project's channels stays unavailable.
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: randomUUID() },
+      as('bob'),
+    ),
+  ).toBeUndefined();
 });
