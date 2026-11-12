@@ -91,9 +91,11 @@ The following are integration targets, not source formats this change adds.
   adapter and provider setup; using the gateway changes who holds credentials
   and mediates calls.
 
-At the source baseline for this change, **Add marketplace** accepts Station
-JSON manifests, public GitHub Skill libraries and local Skill directories.
-It does not ingest arbitrary marketplace formats. See the
+**Add marketplace** takes a location and detects what it provides: Station
+JSON manifests, `SKILL.md` libraries in a folder or public GitHub repository,
+and recognized-but-not-installable Claude Code marketplaces and MCP
+definitions. Tool servers from an added source are counted, not yet listed for
+installation, and it does not ingest arbitrary marketplace formats. See the
 [current source contract](../../../docs/guides/plugins.md#plugin-registry).
 The in-flight [MCP subregistry work](https://github.com/kontourai/station/pull/4280)
 is the existing implementation lane for the standard MCP format; do not create
