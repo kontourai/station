@@ -4,7 +4,7 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  color: var(--text-tertiary);
+  color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -31,7 +31,7 @@
 
 .background-tasks-banner__task-title {
   overflow: hidden;
-  color: var(--text-secondary);
+  color: var(--k-text);
   font-size: var(--k-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
