@@ -344,6 +344,16 @@ a.room-attachments__file:focus-visible {
   box-shadow: inset 2px 0 0 var(--k-active);
 }
 
+/* Faint text on a row's wash (actions open, being edited, hovered) misses
+   4.5:1 in the light theme; muted keeps the hierarchy and passes. */
+:is(.room-row--highlighted, .room-row--actions-open)
+  :is(.room-row__time, .room-row__gutter-time, .room-row__edited),
+.room-conversation--hover
+  .room-row--message:hover
+  :is(.room-row__time, .room-row__gutter-time, .room-row__edited) {
+  color: var(--k-text-muted);
+}
+
 .room-row--actions-open {
   background: color-mix(in oklab, var(--k-text) 6%, transparent);
 }
