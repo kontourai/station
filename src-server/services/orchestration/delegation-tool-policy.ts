@@ -2,13 +2,54 @@ import { SendTurnRefusedError } from '../../providers/adapter-shape.js';
 
 class DelegationToolPolicyUnavailableError extends SendTurnRefusedError {
   readonly code = 'delegation_lineage_unavailable' as const;
-  constructor() {
-    super(
-      'The selected engine cannot enforce inherited tool restrictions.',
-      'permission_denied',
-    );
+  constructor(
+    message = 'The selected engine cannot enforce inherited tool restrictions.',
+  ) {
+    super(message, 'permission_denied');
     this.name = 'DelegationToolPolicyUnavailableError';
   }
+}
+
+function patterns(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 256)
+    throw new DelegationToolPolicyUnavailableError();
+  return value.map((pattern) => {
+    if (typeof pattern !== 'string' || !pattern.length || pattern.length > 256)
+      throw new DelegationToolPolicyUnavailableError();
+    return pattern;
+  });
+}
+
+function inheritedGroups(delegation: unknown): string[][] {
+  if (
+    !delegation ||
+    typeof delegation !== 'object' ||
+    Array.isArray(delegation)
+  )
+    return [];
+  if (
+    !('toolAllowlistConstraints' in delegation) ||
+    delegation.toolAllowlistConstraints === undefined
+  )
+    return [];
+  const groups = delegation.toolAllowlistConstraints;
+  if (!Array.isArray(groups) || groups.length > 64)
+    throw new DelegationToolPolicyUnavailableError();
+  return groups.map(patterns);
+}
+
+function effectiveGroups(delegation: unknown): string[][] {
+  const groups = inheritedGroups(delegation);
+  if (
+    delegation &&
+    typeof delegation === 'object' &&
+    'allowedTools' in delegation &&
+    delegation.allowedTools !== undefined
+  ) {
+    const local = patterns(delegation.allowedTools);
+    if (local.length) groups.push(local);
+  }
+  return groups;
 }
 
 /** A required policy must have a complete effect-time owner, not merely metadata delivery. */
@@ -16,29 +57,27 @@ export function assertInheritedDelegationToolPolicy(
   provider: string | undefined,
   delegation: unknown,
 ): void {
-  if (
-    !delegation ||
-    typeof delegation !== 'object' ||
-    Array.isArray(delegation)
-  )
-    return;
-  if (!('toolAllowlistConstraints' in delegation)) return;
-  const groups = delegation.toolAllowlistConstraints;
-  if (groups === undefined) return;
-  const valid =
-    Array.isArray(groups) &&
-    groups.length <= 64 &&
-    groups.every(
-      (group) =>
-        Array.isArray(group) &&
-        group.length <= 256 &&
-        group.every(
-          (pattern) =>
-            typeof pattern === 'string' &&
-            pattern.length > 0 &&
-            pattern.length <= 256,
-        ),
-    );
-  if (valid && (groups.length === 0 || provider === 'station-agent')) return;
+  const groups = inheritedGroups(delegation);
+  if (!groups.length || provider === 'station-agent') return;
   throw new DelegationToolPolicyUnavailableError();
+}
+
+/** Reuse never installs a new policy into a live Session. Its recorded clauses must already retain each requirement. */
+export function assertInheritedDelegationToolBinding(
+  required: unknown,
+  recorded: unknown,
+): void {
+  if (!inheritedGroups(required).length) return;
+  const actual = effectiveGroups(recorded);
+  for (const group of effectiveGroups(required)) {
+    const permitted = new Set(group);
+    if (
+      !actual.some((clause) =>
+        clause.every((pattern) => permitted.has(pattern)),
+      )
+    )
+      throw new DelegationToolPolicyUnavailableError(
+        'The existing Session does not retain the required inherited tool restrictions.',
+      );
+  }
 }

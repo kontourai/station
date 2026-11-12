@@ -38,6 +38,10 @@ import {
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { InjectableStream } from '../../runtime/streaming/InjectableStream.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import {
+  assertInheritedDelegationToolBinding,
+  assertInheritedDelegationToolPolicy,
+} from '../../services/orchestration/delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import {
   chatContextInjectionBlocks,
@@ -495,6 +499,7 @@ export function streamPrimaryAgentChat({
         typeof operationContext.delegation === 'object'
           ? operationContext.delegation
           : undefined;
+      assertInheritedDelegationToolPolicy('station-agent', requestedDelegation);
       await ensureChatConversation({
         conversationStorage,
         conversationId: operationContext.conversationId,
@@ -514,6 +519,11 @@ export function streamPrimaryAgentChat({
             )
           : null;
       const persistedDelegation = persistedConversation?.metadata?.delegation;
+      if (persistedConversation)
+        assertInheritedDelegationToolBinding(
+          requestedDelegation,
+          persistedDelegation,
+        );
       if (persistedDelegation && typeof persistedDelegation === 'object') {
         operationContext.delegation =
           persistedDelegation as AgentDelegationContext;
