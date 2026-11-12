@@ -213,6 +213,7 @@ describe('#3157 Codex usage-limit stop', () => {
     expect(notified).toMatchObject({
       retriable: false,
       details: {
+        codexErrorInfo: 'usageLimitExceeded',
         usageLimit: true,
         scope: 'account',
         resetAt: '2026-09-25T01:10:00.000Z',

@@ -14,10 +14,12 @@
  * `src-server/routes/agents/enriched-agents.ts`), so a degraded engine the
  * resolver labels "Limited" is not ready here.
  *
- * Provider-reported allowance is deliberately not an input: it needs
+ * Live provider allowance is deliberately not an input: it needs
  * credential-management access and a live provider call, so feeding it to
  * the rail or rows would poll every engine and give each viewer a different
- * verdict.
+ * verdict. A provider's recorded refusal of a real turn is: the server
+ * attaches it to the engine view (`allowanceEvidence`), so every viewer
+ * reads the same answer.
  */
 
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
@@ -67,6 +69,10 @@ const READINESS_VERDICT: Record<ProviderReadiness, ConnectionVerdict> = {
   'Reachable — no model catalog': 'degraded',
   'Unreachable — retrying': 'degraded',
   Limited: 'degraded',
+  // Recorded refusal on the current account: the reader can wait for the
+  // reset or switch accounts, so it needs attention, though dispatch still
+  // accepts the engine.
+  'Usage limit reached': 'degraded',
   'Check failed': 'failing',
   'Cannot reach provider': 'failing',
   Unreachable: 'failing',
@@ -94,6 +100,9 @@ export function engineHealthInput(
     prerequisites: connection.prerequisites,
     ...(connection.readinessEvidence
       ? { readinessEvidence: connection.readinessEvidence }
+      : {}),
+    ...(connection.allowanceEvidence
+      ? { allowanceEvidence: connection.allowanceEvidence }
       : {}),
     setup: connection.setup,
     href: '',

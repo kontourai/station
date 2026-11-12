@@ -1,3 +1,4 @@
+import type { EngineAllowanceEvidence } from '@kontourai/station-contracts/engine-accounts';
 import type {
   AgentConnectionView,
   EngineRouteObservation,
@@ -111,4 +112,62 @@ export function lastCheckFact(connection: AgentConnectionView): string {
     timeStyle: 'short',
   });
   return `${smoke.status === 'passed' ? 'Answered' : 'Failed'} · ${at}`;
+}
+
+const ALLOWANCE_ACCOUNT: Record<EngineAllowanceEvidence['applies'], string> = {
+  'current-account': "This engine's account",
+  'other-account': 'Another account',
+  // Every account reads `proxy-route` while the engine is proxied, so the
+  // line cannot claim the refused account is the engine's own.
+  'proxy-route': 'An account not used while routed through a proxy',
+};
+
+function shortTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function namedAccount(evidence: EngineAllowanceEvidence): string {
+  // The current account reads as the engine's own; a withheld account
+  // (below `access:manage`) reads by how it applies.
+  if (evidence.applies === 'current-account' || !evidence.account)
+    return ALLOWANCE_ACCOUNT[evidence.applies];
+  const named =
+    evidence.account.kind === 'profile'
+      ? `Saved account ${evidence.account.ref}`
+      : 'The default account';
+  return evidence.applies === 'proxy-route'
+    ? `${named}, not used while routed through a proxy`
+    : named;
+}
+
+/**
+ * One line per account the provider refused a turn on, still fresh. A
+ * viewer below `access:manage` receives no account identity, so another
+ * account reads as "Another account" rather than by name. When the header
+ * shows the usage-limit label it carries the current account's reset, so
+ * that line names only the account and when; otherwise (another status
+ * outranks the label) every line adds its reset. Empty when nothing fresh
+ * is recorded, which is unknown, not allowance left.
+ */
+export function allowanceFacts(
+  connection: AgentConnectionView,
+  options: { headerShowsUsageLimit: boolean; now?: number },
+): string[] {
+  const now = options.now ?? Date.now();
+  return (connection.allowanceEvidence ?? [])
+    .filter((evidence) => Date.parse(evidence.expiresAt) > now)
+    .map((evidence) => {
+      const reset =
+        evidence.applies === 'current-account' && options.headerShowsUsageLimit
+          ? ''
+          : evidence.resetAt
+            ? ` · resets ${shortTime(evidence.resetAt)}`
+            : evidence.resetReported
+              ? ` · resets ${evidence.resetReported} (provider time)`
+              : '';
+      return `${namedAccount(evidence)} · refused ${shortTime(evidence.observedAt)}${reset}`;
+    });
 }

@@ -559,6 +559,10 @@ export function handleCodexNotification(
           additionalDetails: extractString(
             notification.params.error.additionalDetails,
           ),
+          // Recorded as the failed `turn/completed` above records it, so a
+          // reader can tell a per-minute rate limit from the allowance
+          // running out; the classification itself is unchanged.
+          codexErrorInfo: notification.params.error.codexErrorInfo,
           ...usageLimit,
         },
       } satisfies ProviderRuntimeErrorEvent);

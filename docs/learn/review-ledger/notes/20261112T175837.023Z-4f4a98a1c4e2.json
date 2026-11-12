@@ -1,0 +1,7 @@
+{
+  "revision": "70c222ba3f274fb583340739ebc3af8b740fb2e3",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the Usage limit reached label, Usage limits section and Overview bullet against providerCatalog readyPresentation, connection-health READINESS_VERDICT, engine-allowance-evidence projection (sources, account and proxy scoping, five-hour fallback, reset expiry, accepted-turn supersession), the AgentConnectionView fix suppression, and the usageLimitAutoResume gate in session-recovery-coordinator. Dispatch unchanged (enriched-agents reads status only).","inputs":["docs/guides/connections.md","packages/contracts/src/tool.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/connections/engine-route-observation.ts","src-ui/src/__tests__/EngineAccountOverview.test.tsx","src-ui/src/app-shell/routing.ts","src-ui/src/components/resource-hub/UsagePanel.tsx","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/connections-hub/connection-health.ts","src-ui/src/views/engine-detail/EngineModelsTab.tsx","src-ui/src/views/engine-detail/EngineOverviewTab.tsx","src-ui/src/views/engine-detail/EngineSettingsTab.tsx","src-ui/src/views/engine-detail/EngineUsageTab.tsx","src-ui/src/views/provider-settings/providerCatalog.tsx","tests/connections-crud.spec.ts"]}
+  ]
+}

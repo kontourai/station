@@ -14,6 +14,7 @@
   min-height: 44px;
 }
 .engine-overview__dependents ul,
+.engine-overview__refusals,
 .engine-settings__commands,
 .engine-settings__prerequisites {
   margin: 0;

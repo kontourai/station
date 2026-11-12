@@ -1,0 +1,7 @@
+{
+  "revision": "70c222ba3f274fb583340739ebc3af8b740fb2e3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the ConnectionService paragraph against listRuntimeConnectionsForModels calling withAllowanceEvidence, the station-runtime setAllowanceEvidenceSource wiring to the orchestration EventStore, and the failed-read path; dispatch does not import the projection.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/connections.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/connections/connection-service.ts","src-server/services/connections/engine-route-observation.ts","src-server/services/orchestration/event-store.ts","src-ui/src/app-shell/routing.ts"]}
+  ]
+}

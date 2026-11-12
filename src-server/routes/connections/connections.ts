@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { EngineAllowanceEvidence } from '@kontourai/station-contracts/engine-accounts';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import type {
   ConnectionConfig,
@@ -21,6 +22,7 @@ import {
   type ConnectionService,
   ModelSelectionRequiredError,
 } from '../../services/connections/connection-service.js';
+import { allowanceEvidenceForViewer } from '../../services/connections/engine-allowance-evidence.js';
 import { routeObservationForViewer } from '../../services/connections/engine-route-observation.js';
 import { boundFleetContributionManifest } from '../../services/inference/fleet-inference-service.js';
 import {
@@ -111,7 +113,7 @@ export function createConnectionRoutes(
         await connectionService.listRuntimeConnectionInventory();
       return c.json({
         success: true,
-        data: withViewerRoutes(c, connections),
+        data: forViewer(c, connections),
         failures,
       });
     } catch (error: unknown) {
@@ -122,7 +124,7 @@ export function createConnectionRoutes(
   app.get('/agents/catalog', async (c) => {
     try {
       const data = await connectionService.listRuntimeConnectionCatalog();
-      return c.json({ success: true, data: withViewerRoutes(c, data) });
+      return c.json({ success: true, data: forViewer(c, data) });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }
@@ -309,31 +311,47 @@ export function createConnectionRoutes(
 }
 
 /**
- * #4710: these lists are readable at `orchestration:read`, but an endpoint
- * from Station's environment or the managed policy is host configuration.
- * Only the operator in person or a viewer granted `access:manage` reads its
- * origin.
+ * These lists are readable at `orchestration:read`, but two things on them
+ * are for the operator in person or a non-agent viewer granted
+ * `access:manage`:
+ *
+ * - #4710: an endpoint from Station's environment or the managed policy is
+ *   host configuration, so others do not read its origin.
+ * - Recorded quota refusals are Station-wide, but which saved account a
+ *   refusal ran on is credential management, so others read the refusal
+ *   without the account.
  */
-function withViewerRoutes<
-  T extends { routeObservation?: EngineRouteObservation },
+function forViewer<
+  T extends {
+    routeObservation?: EngineRouteObservation;
+    allowanceEvidence?: EngineAllowanceEvidence[];
+  },
 >(c: Context, connections: readonly T[]): T[] {
   const scope = grantedPairingScope(c);
-  // An agent's request never reads host endpoints, whatever scope its
-  // credential carries.
+  // An agent's request never reads host endpoints or the refused account,
+  // whatever scope its credential carries.
   const mayRead =
     isOperatorInPersonNotAgent(c.req.raw) ||
     (!requestMayBeAnAgent(c.req.raw) &&
       scope !== undefined &&
       pairingScopeIncludes(scope, 'access:manage'));
-  return connections.map((connection) =>
-    connection.routeObservation
+  return connections.map((connection) => ({
+    ...connection,
+    ...(connection.routeObservation
       ? {
-          ...connection,
           routeObservation: routeObservationForViewer(
             connection.routeObservation,
             mayRead,
           ),
         }
-      : connection,
-  );
+      : {}),
+    ...(connection.allowanceEvidence
+      ? {
+          allowanceEvidence: allowanceEvidenceForViewer(
+            connection.allowanceEvidence,
+            mayRead,
+          ),
+        }
+      : {}),
+  }));
 }

@@ -560,6 +560,9 @@ export function AgentConnectionView({
           Enable
         </Button>
       );
+    // Waiting for the reset (or switching accounts) is the fix; a check
+    // would only spend a turn the provider refuses.
+    if (verdict.label === 'Usage limit reached') return undefined;
     if (selectedAcpConnectionId)
       return (
         <Button
@@ -677,6 +680,7 @@ export function AgentConnectionView({
             connection={savedCopy}
             defaultModel={String(savedCopy.config.defaultModel || '')}
             managedFact={managedEngineFact(selectedManagedState)}
+            headerShowsUsageLimit={health?.label === 'Usage limit reached'}
             dependents={agentsUsingEngine(agents, current.id)}
             onOpenAgent={(slug) => onNavigate({ type: 'agent-edit', slug })}
             notices={

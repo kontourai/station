@@ -1,0 +1,7 @@
+{
+  "revision": "70c222ba3f274fb583340739ebc3af8b740fb2e3",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the engine-accounts row against the exported EngineAllowanceEvidence type and the pure currentAccountAllowanceRefusal helper (time as a parameter).","inputs":["docs/reference/contracts.md","packages/contracts/src/tool.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

@@ -233,6 +233,108 @@ describe('Connection Routes', () => {
     }
   });
 
+  test('a refusal reads below access:manage without naming its account', async () => {
+    const service = createMockConnectionService();
+    const listed = [
+      {
+        id: 'claude',
+        kind: 'agent' as const,
+        type: 'claude',
+        name: 'Claude Code',
+        enabled: true,
+        config: {},
+        status: 'ready' as const,
+        prerequisites: [],
+        lastCheckedAt: null,
+        allowanceEvidence: [
+          {
+            source: 'usage-limit',
+            account: { kind: 'profile', ref: 'work' },
+            applies: 'current-account',
+            observedAt: '2099-01-01T10:00:00.000Z',
+            resetAt: '2099-01-01T15:00:00.000Z',
+            expiresAt: '2099-01-01T15:00:00.000Z',
+          },
+          {
+            source: 'usage-limit',
+            account: { kind: 'default' },
+            applies: 'other-account',
+            observedAt: '2099-01-01T09:00:00.000Z',
+            expiresAt: '2099-01-01T14:00:00.000Z',
+          },
+        ],
+      },
+    ];
+    service.listRuntimeConnectionInventory.mockResolvedValue({
+      connections: listed,
+      failures: [],
+    });
+    service.listRuntimeConnectionCatalog.mockResolvedValue(listed);
+    const presenting = (
+      scope: string | undefined,
+      principal?: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
+    ) => {
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        if (scope !== undefined) setGrantedPairingScope(c, scope);
+        if (principal)
+          setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
+        await next();
+      });
+      outer.route('/', createConnectionRoutes(service as any));
+      return outer;
+    };
+    const evidence = async (app: Hono, path: string) =>
+      (await json(await app.request(path))).data[0].allowanceEvidence;
+
+    for (const path of ['/agents', '/agents/catalog']) {
+      const below = await evidence(presenting('orchestration:read'), path);
+      expect(below).toEqual([
+        {
+          source: 'usage-limit',
+          applies: 'current-account',
+          observedAt: '2099-01-01T10:00:00.000Z',
+          resetAt: '2099-01-01T15:00:00.000Z',
+          expiresAt: '2099-01-01T15:00:00.000Z',
+        },
+        {
+          source: 'usage-limit',
+          applies: 'other-account',
+          observedAt: '2099-01-01T09:00:00.000Z',
+          expiresAt: '2099-01-01T14:00:00.000Z',
+        },
+      ]);
+      expect(JSON.stringify(below)).not.toContain('work');
+      expect(await evidence(presenting('access:manage'), path)).toEqual(
+        listed[0]!.allowanceEvidence,
+      );
+      // The operator in person reads the account with no pairing scope.
+      expect(
+        await evidence(
+          presenting(undefined, {
+            kind: 'credential',
+            credential: 'operator',
+            authority: 'operator-credential',
+            source: 'bearer',
+          }),
+          path,
+        ),
+      ).toEqual(listed[0]!.allowanceEvidence);
+      // Station's internal caller is an agent's: refused even at access:manage.
+      expect(
+        await evidence(
+          presenting('access:manage', {
+            kind: 'internal',
+            credential: 'internal',
+            authority: undefined,
+            source: 'bearer',
+          }),
+          path,
+        ),
+      ).toEqual(below);
+    }
+  });
+
   test('GET /models and /agents return filtered lists', async () => {
     const app = createConnectionRoutes(createMockConnectionService() as any);
     const models = await json(await app.request('/models'));

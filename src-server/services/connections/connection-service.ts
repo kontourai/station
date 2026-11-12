@@ -19,6 +19,7 @@ import type {
   CredentialRecoveryGroupProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import { resolveCredentialProfileApplicationCapability } from '@kontourai/station-contracts/connection-recovery';
+import type { EngineAllowanceEvidence } from '@kontourai/station-contracts/engine-accounts';
 import type { FleetContributionManifest } from '@kontourai/station-contracts/fleet-contribution';
 import {
   declaredContributionConnectionIds,
@@ -66,6 +67,10 @@ import {
 import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import {
+  type AllowanceEvidenceSource,
+  readEngineAllowanceEvidence,
+} from './engine-allowance-evidence.js';
 import {
   type EngineProxyRoute,
   resolveEngineProxy,
@@ -589,8 +594,25 @@ interface ModelCheckObservation {
   unreachable?: { since: string; consecutive: number; afterPass: boolean };
 }
 
+/**
+ * The adapter provider kind an engine view's recorded events carry. A
+ * runtime adapter's view states it as `config.provider`; an ACP connection's
+ * view (connection-inspector.ts) carries `engineId: 'acp'` and no provider,
+ * though its adapter records `provider: 'acp'`.
+ */
+function allowanceProviderKind(
+  connection: AgentConnectionView,
+): string | undefined {
+  const provider = connection.config.provider;
+  if (typeof provider === 'string') return provider;
+  return connection.type === 'acp' || connection.config.engineId === 'acp'
+    ? 'acp'
+    : undefined;
+}
+
 export class ConnectionService {
   private smokeRunner: ConnectionSmokeRunner | null = null;
+  private allowanceEvidenceSource: AllowanceEvidenceSource | null = null;
   private readonly modelCatalogCache = new Map<
     string,
     ModelCatalogCacheEntry
@@ -780,6 +802,63 @@ export class ConnectionService {
 
   setSmokeRunner(runner: ConnectionSmokeRunner): void {
     this.smokeRunner = runner;
+  }
+
+  /** Where recorded quota refusals are read from (Connections slice 6). */
+  setAllowanceEvidenceSource(source: AllowanceEvidenceSource): void {
+    this.allowanceEvidenceSource = source;
+  }
+
+  /**
+   * Fresh recorded quota refusals, attached to each engine view. A failed
+   * read attaches nothing, which readers treat as unknown, never as
+   * allowance left.
+   */
+  private withAllowanceEvidence(
+    connections: AgentConnectionView[],
+    appConfig: AppConfig,
+  ): AgentConnectionView[] {
+    const source = this.allowanceEvidenceSource;
+    if (!source || connections.length === 0) return connections;
+    let evidence: Map<string, EngineAllowanceEvidence[]>;
+    try {
+      evidence = readEngineAllowanceEvidence(
+        source,
+        connections.flatMap((connection) => {
+          const provider = allowanceProviderKind(connection);
+          if (!provider) return [];
+          const registry = normalizeCredentialProfileRegistry(
+            appConfig.agentConnections?.[
+              this.credentialRecoverySettingsId(connection.id)
+            ]?.credentialRecovery,
+          );
+          return [
+            {
+              id: connection.id,
+              provider,
+              profileRefs: (registry.profiles ?? []).map(
+                (profile) => profile.ref,
+              ),
+              ...(registry.activeProfileRef
+                ? { activeProfileRef: registry.activeProfileRef }
+                : {}),
+              proxyRouted: connection.routeObservation?.kind === 'proxy',
+            },
+          ];
+        }),
+        Date.now(),
+      );
+    } catch (error) {
+      logger.warn('Engine allowance evidence could not be read', {
+        error: errorMessage(error),
+      });
+      return connections;
+    }
+    if (evidence.size === 0) return connections;
+    return connections.map((connection) => {
+      const found = evidence.get(connection.id);
+      return found ? { ...connection, allowanceEvidence: found } : connection;
+    });
   }
 
   /**
@@ -1545,7 +1624,7 @@ export class ConnectionService {
           }
         : withEvidence;
     });
-    return projected;
+    return this.withAllowanceEvidence(projected, appConfig);
   }
 
   private async refreshLaunchableModelInventory(

@@ -6,7 +6,7 @@ import { Empty } from '../../components/state';
 import type { AgentSummary } from '../../types';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
 import { engineCatalogSourceLabel } from './EngineModelsTab';
-import { engineRouteFact, lastCheckFact } from './engine-facts';
+import { allowanceFacts, engineRouteFact, lastCheckFact } from './engine-facts';
 import './engine-detail.css';
 
 /**
@@ -21,6 +21,7 @@ export function EngineOverviewTab({
   dependents,
   onOpenAgent,
   notices,
+  headerShowsUsageLimit,
 }: {
   connection: AgentConnectionView;
   /** The saved default (the draft's, when unsaved, is on Models). */
@@ -31,9 +32,15 @@ export function EngineOverviewTab({
   onOpenAgent: (slug: string) => void;
   /** Readiness instructions, sign-in and policy notices, when they apply. */
   notices?: ReactNode;
+  /**
+   * The header reads "Usage limit reached" (and so states the current
+   * account's reset); false when another status outranks it.
+   */
+  headerShowsUsageLimit: boolean;
 }) {
   const models = runtimeCatalogVisibleModels(connection);
   const route = engineRouteFact(connection.routeObservation);
+  const refusals = allowanceFacts(connection, { headerShowsUsageLimit });
   const defaultName =
     models.find((model) => model.id === defaultModel)?.name ?? defaultModel;
   return (
@@ -62,6 +69,18 @@ export function EngineOverviewTab({
             value: engineCatalogSourceLabel(connection),
           },
           managedFact !== null && { label: 'Policy', value: managedFact },
+          refusals.length > 0 && {
+            label: 'Usage limit',
+            value: (
+              <ul className="engine-overview__refusals">
+                {/* Two withheld accounts can read alike, so lines key by
+                    position; the list is rebuilt whole on each read. */}
+                {refusals.map((line, index) => (
+                  <li key={index}>{line}</li>
+                ))}
+              </ul>
+            ),
+          },
           { label: 'Last check', value: lastCheckFact(connection) },
         ]}
       />

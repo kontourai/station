@@ -293,3 +293,63 @@ describe('deriveConnectionHealth', () => {
     ).toBe(true);
   });
 });
+
+describe('recorded allowance evidence', () => {
+  // Fixed far-future instants: the selector compares `expiresAt` with the
+  // clock, and these stay fresh for any test run.
+  const refusal = (
+    applies: 'current-account' | 'other-account' | 'proxy-route',
+    expiresAt = '2099-01-01T15:00:00.000Z',
+  ) => ({
+    source: 'usage-limit' as const,
+    account: { kind: 'default' as const },
+    applies,
+    observedAt: '2099-01-01T10:00:00.000Z',
+    resetAt: expiresAt,
+    expiresAt,
+  });
+
+  test("a fresh refusal on the engine's current account needs attention, with its reset", () => {
+    const health = deriveConnectionHealth(
+      engineHealthInput(
+        engine({ allowanceEvidence: [refusal('current-account')] }),
+      ),
+    );
+    expect(health).toMatchObject({
+      verdict: 'degraded',
+      label: 'Usage limit reached',
+      needsAttention: true,
+    });
+    expect(health.reason).toContain(
+      'The provider refused a turn on its usage limit. Resets',
+    );
+    expect(health.reason).toContain('2099');
+  });
+
+  test('another account, a proxied route or an expired refusal leaves the engine Ready', () => {
+    for (const evidence of [
+      [refusal('other-account')],
+      [refusal('proxy-route')],
+      [refusal('current-account', '2001-01-01T00:00:00.000Z')],
+    ]) {
+      expect(
+        deriveConnectionHealth(
+          engineHealthInput(engine({ allowanceEvidence: evidence })),
+        ),
+      ).toMatchObject({ verdict: 'ready', label: 'Ready' });
+    }
+  });
+
+  test("an engine's observed status is not masked by a refusal", () => {
+    expect(
+      deriveConnectionHealth(
+        engineHealthInput(
+          engine({
+            status: 'error',
+            allowanceEvidence: [refusal('current-account')],
+          }),
+        ),
+      ),
+    ).toMatchObject({ verdict: 'failing', label: 'Unreachable' });
+  });
+});

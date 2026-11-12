@@ -149,3 +149,60 @@ export interface EngineAccountLogin {
   userCode?: string;
   reason?: string;
 }
+
+/**
+ * A provider-reported quota refusal from a real turn, recorded on the
+ * engine connection view (docs/design/connections-overhaul.md, Readiness).
+ * Station never derives it from allowance percentages: only the provider's
+ * own refusal of a turn counts, and only for the account that served it.
+ *
+ * - `usage-limit`: Claude Code or Codex stopped a turn on the account's
+ *   usage limit (`UsageLimitFailureDetails`).
+ * - `plan-quota`: an ACP engine's provider refused a turn on its plan quota
+ *   (`provider-plan-quota-exhausted`).
+ */
+export interface EngineAllowanceEvidence {
+  source: 'usage-limit' | 'plan-quota';
+  /**
+   * The credential account the refused turn ran on. Absent for a viewer
+   * below `access:manage` (not the operator in person): evidence is
+   * Station-wide, but which saved accounts exist is credential management.
+   * `applies` still says whether it is this engine's account.
+   */
+  account?: { kind: 'default' } | { kind: 'profile'; ref: string };
+  /**
+   * Whether that account is the one this engine uses now:
+   * `other-account` when an agent pin or credential recovery ran the turn on
+   * another account, `proxy-route` when the engine now routes through a saved
+   * proxy, which does not spend the account.
+   */
+  applies: 'current-account' | 'other-account' | 'proxy-route';
+  /** When Station recorded the refusal. */
+  observedAt: string;
+  /** The provider's reset time (ISO 8601), when it reported a qualified one. */
+  resetAt?: string;
+  /**
+   * `plan-quota` only: the provider's reset text, which has no timezone.
+   * Display only; never parsed.
+   */
+  resetReported?: string;
+  /**
+   * When this evidence stops counting: the reset when known, otherwise a
+   * bounded window after `observedAt`. After it, the evidence is absent.
+   */
+  expiresAt: string;
+}
+
+/**
+ * The refusal that describes the engine's current account at `now`, if any.
+ * A cached read can outlive the reset, so readers re-check `expiresAt`.
+ */
+export function currentAccountAllowanceRefusal(
+  evidence: readonly EngineAllowanceEvidence[] | undefined,
+  now: number = Date.now(),
+): EngineAllowanceEvidence | undefined {
+  return evidence?.find(
+    (item) =>
+      item.applies === 'current-account' && Date.parse(item.expiresAt) > now,
+  );
+}
