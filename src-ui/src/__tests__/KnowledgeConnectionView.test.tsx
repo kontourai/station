@@ -257,10 +257,82 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
 
     render(<KnowledgeConnectionView />);
 
-    expect(screen.getByText('documents')).toBeTruthy();
-    expect(screen.getByText('chunks')).toBeTruthy();
+    // A zero is a receipt too: the tiles render it, not an empty state.
+    const index = screen.getByRole('group', { name: 'Index statistics' });
+    expect(index.textContent).toContain('Documents');
+    expect(index.textContent).toContain('Chunks');
+    expect(index.textContent).toContain('0');
     expect(
       screen.getByText(/counted by the server when this page loaded/),
     ).toBeTruthy();
+  });
+
+  describe('semantic search readiness', () => {
+    const store = {
+      id: 'lancedb-builtin',
+      name: 'Station Built-In',
+      type: 'lancedb',
+      enabled: true,
+    };
+    const embedding = {
+      id: 'openai-embed',
+      name: 'OpenAI embeddings',
+      type: 'openai',
+      enabled: true,
+    };
+    const stats = { totalDocuments: 12, totalChunks: 3400, projectCount: 2 };
+    const readinessRegion = () =>
+      screen.getByRole('region', { name: 'Semantic search' });
+
+    it('says it is off without an embedding model, with the one fix', () => {
+      knowledgeStatusQueryState = {
+        data: { vectorDb: store, embedding: null, stats },
+      };
+      render(<KnowledgeConnectionView />);
+      const region = readinessRegion();
+      expect(region.textContent).toContain('Semantic search off');
+      expect(region.textContent).toContain('No embedding model.');
+      const fixes = region.querySelectorAll('button');
+      expect(fixes).toHaveLength(1);
+      fireEvent.click(fixes[0]!);
+      expect(window.location.pathname).toBe('/connections/models');
+    });
+
+    it('opens a turned-off embedding model as the fix', () => {
+      knowledgeStatusQueryState = {
+        data: {
+          vectorDb: store,
+          embedding: { ...embedding, enabled: false },
+          stats,
+        },
+      };
+      render(<KnowledgeConnectionView />);
+      expect(readinessRegion().textContent).toContain(
+        'The embedding model is turned off.',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Open it' }));
+      expect(window.location.pathname).toBe('/connections/models/openai-embed');
+    });
+
+    it('says it is on with a store and an embedding model, offering no fix, and shows the index', () => {
+      knowledgeStatusQueryState = {
+        data: { vectorDb: store, embedding, stats },
+      };
+      render(<KnowledgeConnectionView />);
+      const region = readinessRegion();
+      expect(region.textContent).toContain('Semantic search on');
+      expect(region.querySelectorAll('button')).toHaveLength(0);
+      const index = screen.getByRole('group', { name: 'Index statistics' });
+      expect(index.textContent).toContain('12');
+      expect(index.textContent).toContain((3400).toLocaleString());
+    });
+
+    it('claims nothing while the status is unknown', () => {
+      knowledgeStatusQueryState = { isLoading: true };
+      render(<KnowledgeConnectionView />);
+      expect(
+        screen.queryByRole('region', { name: 'Semantic search' }),
+      ).toBeNull();
+    });
   });
 });

@@ -6,10 +6,13 @@ import {
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { getPathForView } from '../app-shell/routing';
+import { Button } from '../components/Button';
 import { CheckGlyph, CloseGlyph } from '../components/icons/Glyph';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
 import { PageEyebrowTrail, usePageHeader } from '../components/page-frame';
+import { MetricTiles } from '../components/resource-hub/MetricTiles';
+import { ResourceStatusBadge } from '../components/resource-hub/ResourceStatusBadge';
 import { SectionNav } from '../components/SectionNav';
 import { Empty, ErrorState, Skeleton } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -22,6 +25,10 @@ import {
   findModelConnectionById,
   getKnowledgeInventory,
 } from './connectionInventory';
+import {
+  type KnowledgeFix,
+  knowledgeReadiness,
+} from './connections-hub/knowledge-readiness';
 import './KnowledgeConnectionView.css';
 import './editor-layout.css';
 
@@ -158,6 +165,20 @@ export function KnowledgeConnectionView({
    */
   usePageHeader(embedded ? null : { eyebrow: CONNECTIONS_EYEBROW });
 
+  const readiness = status ? knowledgeReadiness(status) : null;
+  const applyFix = (fix: KnowledgeFix) => {
+    if (fix.kind === 'add-store') navigate('/settings?view=knowledge');
+    else if (fix.kind === 'add-embedding')
+      navigate(getPathForView({ type: 'connections-models' })!);
+    else
+      navigate(
+        getPathForView({
+          type: 'connections-model-edit',
+          id: fix.connectionId,
+        })!,
+      );
+  };
+
   return (
     <>
       <div className="knowledge-view">
@@ -178,6 +199,21 @@ export function KnowledgeConnectionView({
           <br />
           For project knowledge, open the project's settings.
         </p>
+
+        {readiness ? (
+          <section
+            className="knowledge-view__readiness"
+            aria-label="Semantic search"
+          >
+            <ResourceStatusBadge status={{ ...readiness, reason: undefined }} />
+            {readiness.reason ? <p>{readiness.reason}</p> : null}
+            {readiness.fix ? (
+              <Button onClick={() => applyFix(readiness.fix!)}>
+                {readiness.fix.label}
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
 
         <SectionNav
           aria-label="Knowledge sections"
@@ -428,26 +464,17 @@ export function KnowledgeConnectionView({
             title="Usage"
             description="What this Station's knowledge index actually holds, counted by the server when this page loaded."
           >
-            <div className="knowledge-view__stats">
-              <div className="knowledge-view__stat">
-                <span className="knowledge-view__stat-value">
-                  {stats.totalDocuments}
-                </span>
-                <span className="knowledge-view__stat-label">documents</span>
-              </div>
-              <div className="knowledge-view__stat">
-                <span className="knowledge-view__stat-value">
-                  {stats.totalChunks.toLocaleString()}
-                </span>
-                <span className="knowledge-view__stat-label">chunks</span>
-              </div>
-              <div className="knowledge-view__stat">
-                <span className="knowledge-view__stat-value">
-                  {stats.projectCount}
-                </span>
-                <span className="knowledge-view__stat-label">projects</span>
-              </div>
-            </div>
+            <MetricTiles
+              label="Index statistics"
+              metrics={[
+                { label: 'Documents', value: stats.totalDocuments },
+                {
+                  label: 'Chunks',
+                  value: stats.totalChunks.toLocaleString(),
+                },
+                { label: 'Projects', value: stats.projectCount },
+              ]}
+            />
           </PageSection>
         )}
       </div>
