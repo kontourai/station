@@ -227,9 +227,9 @@ export function BrowserRelayEnrollmentDialog({
       }
     >
       <p className="connections-computers__note">
-        This pilot supports Stations with a provider-approved username and
-        password enrollment flow. Other provider configurations refuse until
-        they support this Device ceremony.
+        This pilot works with Stations whose provider allows username and
+        password setup. Other providers refuse until they support device
+        approval.
       </p>
       <label className="editor-field">
         <span className="editor-label">Station account name</span>
@@ -268,8 +268,8 @@ export function BrowserRelayEnrollmentDialog({
             onChange={(event) => setInvitationToken(event.target.value)}
           />
           <span id={`${invitationFieldId}-hint`} className="editor-hint">
-            Accept your Project invitation after this Device is approved. The
-            invitation grants only its named Project role, never Device access.
+            Accept your Project invitation after this device is approved. The
+            invitation grants only its named Project role, never device access.
           </span>
         </div>
       )}

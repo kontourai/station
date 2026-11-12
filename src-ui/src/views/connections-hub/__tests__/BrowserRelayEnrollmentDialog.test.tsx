@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   complete: false,
   join: vi.fn(),
   enrollError: null as Error | null,
-  endState: null as 'failed' | 'cancelled' | null,
+  endState: null as 'failed' | 'cancelled' | 'activating' | null,
 }));
 
 vi.mock('../../../lib/browserRelayRouteBinding', () => ({
@@ -108,6 +108,26 @@ it('refuses to send account credentials when the encrypted Station route is abse
     ),
   ).toBeTruthy();
   expect(mocks.credentials).toBeNull();
+});
+
+it('words device approval and invitations in plain, lowercase terms', () => {
+  render(
+    <BrowserRelayEnrollmentDialog
+      connection={connection}
+      onClose={mocks.close}
+    />,
+  );
+  expect(
+    screen.getByText(
+      /password setup\. Other providers refuse until they support device approval\./,
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/after this device is approved\. .*never device access\./),
+  ).toBeTruthy();
+  expect(document.body.textContent).not.toMatch(
+    /Device ceremony|enrollment flow/,
+  );
 });
 
 it('clears the password while waiting for operator Device approval and cancels on close', async () => {
@@ -248,6 +268,7 @@ it('a refused account verification reads as its reason, not its field key', asyn
 it.each([
   ['failed', 'Setup didn’t finish.'],
   ['cancelled', 'Setup cancelled.'],
+  ['activating', 'Activating the approved device and account session…'],
 ] as const)('a %s setup says so in plain words', async (state, message) => {
   mocks.endState = state;
   mocks.capture.mockReturnValue({ transport: vi.fn(), isCurrent: () => true });
@@ -266,7 +287,9 @@ it.each([
     });
     fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
     expect(await screen.findByText(message)).toBeTruthy();
-    expect(screen.queryByText(/Enrollment/)).toBeNull();
+    expect(
+      screen.queryByText(/Enrollment|Device ceremony|enrollment flow/),
+    ).toBeNull();
   } finally {
     mocks.endState = null;
   }

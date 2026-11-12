@@ -329,7 +329,7 @@ test('losing administration on a refetch names the cause without claiming a refr
   expect(screen.queryByText(/List refreshed/)).toBeNull();
 });
 
-test('a refused sign-in says what to do and never claims the list was refreshed', async () => {
+test("a 401 refusal re-reads the list and points at this browser's approval, not sign-in", async () => {
   const stub: Stub = {
     posts: [],
     access: () => envelope(adminView()),
@@ -344,11 +344,13 @@ test('a refused sign-in says what to do and never claims the list was refreshed'
   fireEvent.click(
     await screen.findByRole('button', { name: 'Confirm change' }),
   );
-  const banner = await screen.findByText(/no longer accepts this browser/);
-  expect(banner.textContent).toBe(
-    'Station no longer accepts this browser’s sign-in or approval. Sign in again, then choose Refresh people and access.',
+  const banner = await screen.findByText(
+    /refused this change for this browser/,
   );
-  expect(screen.queryByText(/List refreshed/)).toBeNull();
+  expect(banner.textContent).toBe(
+    "List refreshed. Station refused this change for this browser. If the list doesn't let you change people, request browser access again.",
+  );
+  expect(banner.textContent).not.toMatch(/Sign in again/);
   expect(stub.posts).toHaveLength(1);
 });
 

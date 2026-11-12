@@ -1610,7 +1610,9 @@ function CredentialRecoveryFeedback({
           role={isFailure ? 'alert' : 'status'}
         >
           {/* 'failed' also covers indeterminate and superseded applications
-              (connection-service), so it cannot promise the account held. */}
+              (connection-service), so it cannot promise the account held.
+              'rejected' and 'unsupported' are defensive: the projection does
+              not send them today. */}
           {isFailure
             ? outcome === 'rolled_back'
               ? 'Account not changed. The switch was undone.'

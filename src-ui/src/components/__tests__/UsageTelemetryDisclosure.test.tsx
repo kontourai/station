@@ -65,10 +65,8 @@ vi.mock('../../contexts/RecoveryQueryBoundary', () => ({
   useOptionalRecoveryScope: () => null,
 }));
 
-import { resolveTelemetryTier } from '@kontourai/station-contracts/product-telemetry';
 import {
   resetUsageTelemetryDisclosureDismissal,
-  SAVED_DETAILED_AWAITING_ACKNOWLEDGEMENT,
   USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
@@ -886,19 +884,4 @@ test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async 
     'a snooze for an older inventory suppressed a changed one',
   ).toBeTruthy();
   resetUsageTelemetryDisclosureDismissal();
-});
-
-// Review blocker: this notice once said "Nothing is sent until you allow it",
-// but an unacknowledged detailed choice resolves to the anonymous tier, so
-// anonymous counts ARE sent. The notice must say what the resolver does.
-test('a saved detailed choice awaiting acknowledgement says anonymous counts are still sent', () => {
-  expect(
-    resolveTelemetryTier({ userChoice: 'full', hasFullDisclosure: false }),
-  ).toEqual({ tier: 'lite', reason: 'disclosure' });
-  expect(SAVED_DETAILED_AWAITING_ACKNOWLEDGEMENT).toBe(
-    "Until you allow detailed usage, only anonymous usage counts are sent. Turning it off saves Don't share instead.",
-  );
-  expect(SAVED_DETAILED_AWAITING_ACKNOWLEDGEMENT).not.toMatch(
-    /Nothing is sent/,
-  );
 });

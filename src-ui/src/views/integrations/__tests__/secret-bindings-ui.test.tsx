@@ -346,6 +346,9 @@ describe('secret binding operator UI', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Link' }));
     await waitFor(() => expect(mocks.bindingRefetch).toHaveBeenCalledOnce());
+    expect(
+      await screen.findByText('Linked OTHER_TOKEN to GitHub token.'),
+    ).toBeTruthy();
     expect(mocks.refreshBindingState).toHaveBeenCalledOnce();
     expect(mocks.integrationRefetch).toHaveBeenCalledOnce();
 
@@ -368,9 +371,47 @@ describe('secret binding operator UI', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
     await waitFor(() => expect(mocks.unbind).toHaveBeenCalledOnce());
+    expect(
+      await screen.findByText('Unlinked OTHER_TOKEN from GitHub token.'),
+    ).toBeTruthy();
     expect(mocks.refreshBindingState).toHaveBeenCalledTimes(2);
     expect(mocks.bindingRefetch).toHaveBeenCalledTimes(2);
     expect(mocks.integrationRefetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('asks to unlink the current secret before choosing a different one', () => {
+    mocks.bindingData = [
+      ...mocks.bindingData,
+      {
+        id: 'other-token',
+        name: 'Other token',
+        revision: 1,
+        authRef: { env: 'OTHER_TOKEN' },
+        availability: { backend: 'env', available: true },
+        grants: [],
+      },
+    ];
+    mocks.integrationBindingData = {
+      integrationId: 'github',
+      secretEnvBindingIds: { OTHER_TOKEN: 'github-token' },
+    };
+    render(
+      <SecretBindingPicker
+        integrationId="github"
+        envNames={['OTHER_TOKEN']}
+        requireSave={false}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Secret'), {
+      target: { value: 'other-token' },
+    });
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Unlink the current secret before choosing a different one.',
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Link' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   test('keeps a revoked configured binding actionable for unbind, then permits a replacement after refresh', async () => {

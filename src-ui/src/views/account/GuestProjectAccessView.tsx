@@ -241,10 +241,12 @@ export function GuestProjectAccessView({
       if (cause instanceof StationHttpError && cause.status === 401) {
         await refreshReads();
         setBanner({
-          // The refresh needs the sign-in Station just refused.
-          refreshed: false,
+          // refreshReads() re-verifies the account before and after the
+          // read, so reaching here means sign-in still holds and the list was
+          // re-read; what Station refused is this browser's approval.
+          refreshed: true,
           cause:
-            'Station no longer accepts this browser’s sign-in or approval. Sign in again, then choose Refresh people and access.',
+            "Station refused this change for this browser. If the list doesn't let you change people, request browser access again.",
         });
         throw new Error(
           "Station refused this change because your sign-in or this browser's approval changed. It wasn't retried.",
@@ -409,7 +411,8 @@ export function GuestProjectAccessView({
 
 /**
  * `refreshed` is true only where the access list was actually re-read
- * successfully before the banner was set (a self-demotion, a 403 refusal), so
+ * successfully before the banner was set (a self-demotion, a 401 or 403
+ * refusal of a change), so
  * "List refreshed." is never claimed after a read Station refused.
  */
 interface GuestAccessBanner {
