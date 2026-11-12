@@ -7567,10 +7567,14 @@ describe('after an untrusted read, ACP changes to instructions are declined (#48
       'thread-acp-persistence',
       Promise.resolve(true),
     );
+    // Declined at once; a request sent to a person would still be open.
     for (const kind of ['edit', 'move', 'delete'])
-      await expect(
-        proc.client.requestPermission(unnamedEdit(`tool-${kind}`, kind)),
-      ).resolves.toEqual({
+      expect(
+        await Promise.race([
+          proc.client.requestPermission(unnamedEdit(`tool-${kind}`, kind)),
+          new Promise((resolve) => setTimeout(() => resolve('PENDING'), 1_000)),
+        ]),
+      ).toEqual({
         outcome: { outcome: 'selected', optionId: 'reject-once' },
       });
   });
