@@ -214,11 +214,16 @@ export class RegistrySourceManager {
    */
   async add(input: unknown): Promise<RegistrySource> {
     const parsed = sourceInput.safeParse(input);
-    if (!parsed.success)
+    if (!parsed.success) {
+      const field = parsed.error.issues[0]?.path[0];
       throw new RegistrySourceInputError(
-        parsed.error.issues[0]?.message ??
-          'Give a source location and, for a repository, an optional ref.',
+        field === 'ref'
+          ? 'Use a branch, tag or commit name of at most 200 characters.'
+          : field === 'displayName'
+            ? 'Use a name of at most 100 characters.'
+            : 'Give a source location of at most 2000 characters and, for a repository, an optional ref.',
       );
+    }
     const { location, transport } = normalizeRegistrySourceLocation(
       parsed.data.location,
       parsed.data.ref,

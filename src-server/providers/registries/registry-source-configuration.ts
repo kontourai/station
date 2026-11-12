@@ -302,10 +302,15 @@ export function retainRegistrySourceSnapshots(
   return retained;
 }
 
-/** A location or ref a person gave that Station cannot use; the message says why. */
+/**
+ * A location or ref a person gave that Station cannot use. `reason` is the
+ * outward sentence: always one of the fixed sentences written here, never
+ * text from a source or a lower layer, so routes serialize it rather than an
+ * arbitrary error message.
+ */
 export class RegistrySourceInputError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(readonly reason: string) {
+    super(reason);
     this.name = 'RegistrySourceInputError';
   }
 }

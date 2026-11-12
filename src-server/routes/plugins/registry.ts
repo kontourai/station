@@ -252,7 +252,7 @@ export function createRegistryRoutes(
             success: false,
             error:
               error instanceof RegistrySourceInputError
-                ? error.message
+                ? error.reason
                 : 'Could not add this source. Use a public https:// address or an absolute path on this Station.',
           },
           400,
