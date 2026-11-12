@@ -311,8 +311,9 @@ rechecks on foreground or network return. A refused credential waits for explici
 pairing; Request access opens the selected Station directly. Pairing inputs keep
 a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
 inside the available width. A disconnected
-phone starts with pairing and a computer-setup handoff. Host addresses and broker
-routes are under **Other ways to connect**. Native capability and coarse-pointer
+phone starts with pairing and a computer-setup handoff. **Enter a pairing code**
+and **Enter Station address** sit under the QR action; nearby discovery and saved
+Stations are under **More ways to connect**. Native capability and coarse-pointer
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 

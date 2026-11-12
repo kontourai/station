@@ -124,11 +124,13 @@ provider's dated breakdown and active/group/model/surface annotations.
 Unavailable fields remain **Not reported**. An unavailable quota percentage does
 not discard readable account/credit details.
 
-**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
-field paths and deliberate exclusions. Only field names leave the server for
-unmapped values. This bounded shape audit excludes null/empty fields, value
-validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+**Data captured** lists the reading's source, **Stored in** (secure store or
+credential file), **History**, **Fields Station didn't recognize**,
+**Excluded fields** and **Complete** (No when the response was too large to
+check). Only field names leave the server for unrecognized values, and the panel
+ends with “Values and credentials are never shown.” This bounded check excludes
+null/empty fields, value validation, credential stores and other endpoints;
+**None** does not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
 only window labels, percentages, durations, reset times and observation timestamps.
 It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.

@@ -1178,7 +1178,8 @@ const { candidates, refresh } = useConnectionCandidates();
 
 Plain browsers do not register a provider by default and never enumerate a
 guessed subnet or probe a hard-coded port. Manual address and pairing-code
-entry remain available under Other ways to connect.
+entry remain available on the phone welcome screen (**Enter a pairing code** and
+**Enter Station address**).
 
 The former `useNetworkDiscovery` and `DiscoveredServer` exports remain as
 deprecated source-compatibility adapters. The hook reads the same registered

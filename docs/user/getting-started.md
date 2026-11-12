@@ -42,8 +42,8 @@ without adding a model API key:
    Assistant** in the chat's Agent picker. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
-For a customized Codex Agent, open **Customize → Agents → New agent → Use an
-AI app**, enter a name, select **Codex**, and choose its model and Project.
+For a customized Codex Agent, open **Customize → Agents → New agent → Use a
+connected engine**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
 inspect the selection. Save with **Create agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
@@ -854,10 +854,10 @@ durable request flow.
 ### Finish setup and return
 
 When no selected Agent can respond, the composer shows a setup helper alongside
-your message and recent chats. It offers AI app setup, model-account setup,
+your message and recent chats. It offers engine setup, model-account setup,
 and a recheck. Available engine prerequisites include installation steps,
 commands, and links supplied by that engine’s integration. Commands are shown
-for you to run; opening a guide does not install software. Install AI apps on
+for you to run; opening a guide does not install software. Install engines on
 the computer hosting Station, including when using Station from a phone.
 Claude and Codex account management opens their existing in-UI sign-in flow;
 other integrations retain their own authorization instructions.
@@ -1316,7 +1316,7 @@ configured Projects.
 
 ## Run A Scheduled Readiness Check
 
-An automation that runs in a chat can use any agent, including AI app agents
+An automation that runs in a chat can use any agent, including agents that use an engine
 such as Claude Code or Codex, when your Station supports it (see
 [Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
 a model connection (Station's engine); if none is ready, the form offers **Set
