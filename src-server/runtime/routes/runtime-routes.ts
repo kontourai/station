@@ -10131,7 +10131,9 @@ export function configureRuntimeRoutes(
         },
         endProjectTerminals: async (projectId) =>
           scopedTerminals.sessions?.endProject(projectId),
-        visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
+        visualFileFrameOrigin: clientReachableFrameOrigin(
+          context.getMcpUiFrameOrigin,
+        ),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
@@ -11538,7 +11540,7 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       context.applyAgentConfigurationMutation,
-      context.getMcpUiFrameOrigin,
+      clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
       // #2144 slice 2: one project record for `GET /config/app?project=`.
@@ -11580,14 +11582,16 @@ export function configureRuntimeRoutes(
     '/api/boot',
     createBootRoutes({
       auth: async () => (await createAuthRoutes().request('/status')).json(),
-      config: async () =>
+      // The inner request has no client of its own: whether the frame origin
+      // is reachable is a fact about the BOOT request's client.
+      config: async (c) =>
         (
           await createConfigRoutes(
             context.configLoader,
             context.logger,
             context.eventBus,
             context.applyAgentConfigurationMutation,
-            context.getMcpUiFrameOrigin,
+            () => clientReachableFrameOrigin(context.getMcpUiFrameOrigin)(c),
             context.rebindBuiltinAgents,
             context.getPluginFrameOrigin,
           ).request('/app')
@@ -11789,7 +11793,7 @@ export function configureRuntimeRoutes(
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
-      frameOrigin: () => context.getMcpUiFrameOrigin?.(),
+      frameOrigin: clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>
         resolveStationControlCallerForRequest(
@@ -13110,6 +13114,20 @@ function isSameMachineBrowserCaller(c: {
     classifyRuntimePeer(attestedClient).peerClass === 'loopback' &&
     isLoopbackAuthority(attestedBrowserVisibleHost(request))
   );
+}
+
+/**
+ * The frame listener (`runtime/mcp/mcp-ui-frame-server.ts`) binds this host's
+ * loopback only, so its origin names a server only a browser ON this machine
+ * can reach. Any other client (a phone, a LAN or tailnet browser, a desktop
+ * app connected to this Station from elsewhere) would dial its own loopback
+ * and be refused, so it is told there is no distinct frame origin and renders
+ * with the opaque-origin sandbox instead.
+ */
+function clientReachableFrameOrigin(
+  origin: (() => string | undefined) | undefined,
+): (c: Context) => string | undefined {
+  return (c) => (isSameMachineBrowserCaller(c) ? origin?.() : undefined);
 }
 
 /** Timing-safe compare over digests, so a length mismatch never short-circuits. */
