@@ -257,6 +257,7 @@ export function AgentConnectionView({
   });
   const form = editor.draft;
   // A message about one engine is not about the next one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the engine id is the intentional reset signal.
   useEffect(() => {
     setError(null);
   }, [selectedEngineConnectionId]);
