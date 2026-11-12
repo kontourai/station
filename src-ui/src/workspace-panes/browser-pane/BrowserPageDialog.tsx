@@ -151,7 +151,6 @@ export function BrowserPageDialog({
             type="button"
             className="browser-pane__page-dialog-open"
             aria-label="Open in pane"
-            title="Open in pane"
             onClick={onOpenInPane}
           >
             <MonitorGlyph />

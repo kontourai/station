@@ -268,7 +268,6 @@ export function BrowserConsoleDrawer({
         </span>
         <IconButton
           aria-label="Clear console"
-          title="Clear console"
           disabled={!data || data.entries.length === 0}
           onClick={() =>
             data &&
