@@ -1,0 +1,168 @@
+---
+status: current
+subject: A registry source is a location; what it provides is detected from the structure of its content
+decided: 2026-11-12
+evidence:
+  - kind: doc
+    ref: src-server/providers/registries/registry-source-detection.ts
+  - kind: doc
+    ref: src-server/providers/registries/registry-source-manager.ts
+  - kind: doc
+    ref: src-server/providers/registries/registry-source-configuration.ts
+  - kind: doc
+    ref: src-server/providers/registries/agent-registry-provider.ts
+  - kind: doc
+    ref: src-server/routes/plugins/__tests__/registry-sources-detected.routes.test.ts
+  - kind: doc
+    ref: docs/decisions/managed-policy.md
+---
+
+# Registry sources detected by structure
+
+Every registry type accepts several sources. A person adds a source by giving
+a **location** and, for a repository, an optional **ref**. They do not choose
+an adapter or a kind. Station reads the source and decides what it provides
+from the structure of its content, not from where it lives. One source can
+provide several kinds.
+
+## The source model
+
+A source is `{location, ref?}` plus a label, which Station derives when the
+person gives none. There are three kinds of location:
+
+- `https://github.com/<owner>/<repository>`: read through GitHub's API at the
+  commit that `ref` names when it is read. Without a ref, Station reads the
+  default branch.
+- An absolute path on this Station: a folder is read as a tree, and a file as
+  one document.
+- Any other `https` URL: one document.
+
+The stored `adapter` field records how the location is read (`github`,
+`directory` or `manifest`). It is derived from the location and never decides
+a kind. Station keeps writing it so that a Station that predates detection can
+still read the file.
+
+## Detection order
+
+[`registry-source-detection.ts`](../../src-server/providers/registries/registry-source-detection.ts)
+runs detectors over the source's tree, or over its single document:
+
+1. **Index detectors** read a declared file at the root: Station's manifest
+   (`registry.json` or `manifest.json`, `{version, plugins, tools?}`) and a
+   Claude Code `.claude-plugin/marketplace.json`. An index decides every kind
+   its format can declare, including a declared zero. A structural scan then
+   neither adds items of that kind nor counts its packages again.
+2. **Structure detectors** scan the layout for the kinds that no index
+   declared. `**/SKILL.md` gives skills. `plugin.json` and
+   `.claude-plugin/plugin.json` give plugins. `mcp.json` and `.mcp.json` with
+   `mcpServers` give integrations.
+
+An index wins only for the kinds it declares, not for the whole source. Both
+reference sources, `anthropics/skills` and `Bil0000/Hill-Climb`, have a
+marketplace index that lists plugins beside `skills/*/SKILL.md`. If the index
+won for the whole source, neither would list a single installable skill.
+
+The result is a list of kinds, each with a count, the detector that found it,
+and whether Station can install it. Every installable kind maps onto an
+installer that already exists; detection adds none:
+
+| Kind | Installable from | Installer |
+| --- | --- | --- |
+| skills | folder, GitHub | filesystem or GitHub skill provider |
+| plugins, agents | a Station manifest in a folder or document | the manifest provider and the plugin pipeline |
+| plugins from a Claude marketplace, bare plugin packages, integrations | — | recognized and counted, `installable: false` with a note |
+
+Plugins and agents in a GitHub repository's Station manifest are counted but
+not installable. The manifest names its packages by repository-relative
+paths, and Station acquires those only from a local folder.
+
+A source that Station can read but recognizes nothing in has the state
+`nothing-recognized`, which is not an error. A read that hits a bound has the
+state `refused`. One that fails has the state `unavailable` and keeps the last
+kinds and catalogs it was seen to provide, marked stale.
+
+## Bounds refuse; they never truncate
+
+A scan stops at any of these bounds and refuses the whole source:
+
+- 8192 files and folders (`.git` excluded);
+- 16 folder levels;
+- 1 MiB per index or definition file, or per single-document source;
+- 128 definition reads;
+- 512 skills;
+- a GitHub tree that the API reports as truncated.
+
+Station refuses rather than truncates because a partial scan could hide an
+item, or turn an ambiguous name into a first match. Symlinks are never
+followed.
+
+## Several kinds from one source
+
+The source manager keeps one catalog entry for each installable kind of a
+source. The source keeps its id, and a selection names
+`{sourceId, itemId, revision, kind}`, so the same source's skills and plugins
+resolve through their own installers. `GET /api/registry/sources` returns one
+row for each source, with `detection.kinds`. `kind` stays the primary catalog
+kind for older clients. `RegistryCatalogSelection.kind` gains `agents`. The
+contract change is additive: an exhaustive switch over that union needs one
+more case.
+
+## Agents from every source
+
+`getAgentRegistryProvider()` used to return the first registered agent
+catalog. It now merges every registered catalog, like integrations, but
+without picking a winner. Each row names its catalog. An id that two catalogs
+offer is listed from both, marked `ambiguous-source`, and installing it is
+refused with the catalogs named. Agents from added sources are listed beside
+these rows with source-qualified ids, and they install through the plugin
+pipeline, because a manifest agent entry is a package. A plugin-contributed
+JSON agent registry now gets the manifest's agent view, not its whole plugin
+list.
+
+## Freshness and updates
+
+Each read records the source's revision: for GitHub, the commit that the ref
+names at that moment, never a local checkout or a cached tree; for a folder, a
+digest of the tree. A read that finds a new revision sets `changedAt`. Refresh
+reads the source again before reading its catalogs. A selection made against
+the old revision is refused as `source-changed`, so a person installs what the
+source is now, not what a stale copy said.
+
+## Migration with no action
+
+A `registry-sources.json` written before detection loads unchanged:
+
+- A source with no recorded detection keeps the one kind its adapter implied
+  (`manifest` gives plugins, and anything else gives skills). The kind's
+  provider and the revision formula are the same, so every stored selection
+  and installed alias keeps resolving.
+- A snapshot keyed by the bare source id moves to `<id>#<kind>` for that kind.
+- The first catalog read detects each enabled source and records the result.
+  From then on, the source provides what its content shows.
+
+The rewritten file keeps the earlier source keys, an `adapter` on each source
+and at most 32 snapshots, so an older Station still reads it. That stops
+holding once a person sets a `ref`: an older Station refuses an unknown key.
+An older client's `adapter` on add is accepted and ignored, except as the way
+to read a local path that does not exist yet.
+
+## Managed policy
+
+This change leaves policy strength as it was:
+
+- `limits.registries.allowedUrls` refuses a source by location before anything
+  is read from it.
+- `unsignedPackages: false` refuses every skill catalog from an added source.
+  Skills cannot be signed. That holds per kind: a source's refused skills are
+  marked on that kind, while its plugins stay listed and still need a trusted
+  signature to install.
+- A source whose every installable kind is refused is refused whole, at add
+  time and in its row, as a skill library was when a person chose its type.
+
+## Extension point
+
+A new format is one more index or structure detector, added to the lists in
+`registry-source-detection.ts`. The source model and the source manager do not
+change. A Flow Kit detector, for `kit.json` installed through
+`flow-agents kit install`, is the expected next one and is not part of this
+change.

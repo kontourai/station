@@ -3346,7 +3346,7 @@ SDK request scope. Source reads and actions require `access:manage` plus the
 Station operator principal; the hooks do not grant that authority.
 `useRegistrySourceActionMutation()` accepts `{action, id?,
 source?}` with `add`, `enable`, `disable`, `remove` or `refresh`; `add` supplies
-`{displayName, adapter, location}`. Mutations invalidate Registry queries.
+`{location, ref?, displayName?}`. Mutations invalidate Registry queries.
 `useRegistrySkillContentQuery(id)` inspects the unchanged opaque catalog
 selection ID and is disabled without an ID. These hooks use the existing
 React Query/request authority rather than a separate marketplace cache.
