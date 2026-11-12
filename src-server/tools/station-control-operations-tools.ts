@@ -163,6 +163,7 @@ const delegationContextSchema = z.object({
   maxDepth: z.number().int().positive(),
   parentAgentSlug: z.string().transform(agentId),
   parentConversationId: z.string().optional(),
+  parentSessionId: z.string().min(1).max(512).optional(),
   rootAgentSlug: z.string().transform(agentId),
   rootConversationId: z.string().optional(),
   allowedTools: z.array(z.string()).optional(),

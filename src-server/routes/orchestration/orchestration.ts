@@ -806,6 +806,7 @@ const agentDelegationContextSchema = z.object({
   maxDepth: z.number().int().min(1).max(64),
   parentAgentSlug: z.string().min(1).max(64),
   parentConversationId: z.string().min(1).max(512).optional(),
+  parentSessionId: z.string().min(1).max(512).optional(),
   rootAgentSlug: z.string().min(1).max(64),
   rootConversationId: z.string().min(1).max(512).optional(),
   allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),

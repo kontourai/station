@@ -746,6 +746,7 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
     const delegation = createChildDelegationContext({
       agentSlug: 'planner',
       conversationId: 'conversation-in-process',
+      sessionId: 'session-in-process',
       spec: SPECS.planner,
     });
     const response = await fetch(
@@ -781,6 +782,10 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       // A genuine attestation replayed onto another tree's root.
       {
         delegation: { ...genuine, rootConversationId: 'conversation-victim' },
+        delegationAttestation: attestDelegationContext(genuine),
+      },
+      {
+        delegation: { ...genuine, parentSessionId: 'session-victim' },
         delegationAttestation: attestDelegationContext(genuine),
       },
     ]) {
