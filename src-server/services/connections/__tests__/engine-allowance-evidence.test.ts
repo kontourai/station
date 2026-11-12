@@ -435,6 +435,20 @@ describe('recorded refusals read from the event store', () => {
     ]);
   });
 
+  test('a refusal on a proxy-routed run is not the account’s', () => {
+    startClaudeSession('proxied-only', null, {
+      modelRoute: {
+        connectionId: 'local-proxy',
+        label: 'Local',
+        endpoint: 'http://127.0.0.1:4000',
+      },
+    });
+    store.appendEvent(
+      claudeUsageLimitError('proxied-only', Date.now() + 2 * HOUR) as never,
+    );
+    expect(read()).toBeUndefined();
+  });
+
   test('only a turn the provider finished supersedes the refusal', () => {
     startClaudeSession('refused', null);
     store.appendEvent(
