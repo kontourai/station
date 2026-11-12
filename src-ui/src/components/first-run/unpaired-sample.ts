@@ -1,7 +1,7 @@
 /**
  * Fixture copy for the unpaired first-run sample (archive#2652 / #1772).
  *
- * This is a labeled sample so the receipts tour has something true to point
+ * This is a labeled sample so the first-run tour has something true to point
  * at when no Station host is paired. It is not a live run, and it must not
  * wear a derived verdict (verified / ready / pass) that nothing computed.
  */
@@ -12,17 +12,17 @@ const UNPAIRED_SAMPLE_SURFACES = {
   notifications: {
     title: 'Sample Task',
     eyebrow: 'Waiting for a decision',
-    body: 'A weekly digest stopped here because someone still has to approve it. The decision, when it happens, stays with the run that asked for it.',
+    body: 'A weekly digest is waiting for approval. Your decision is saved with the run.',
   },
   activity: {
     title: 'Sample session',
     eyebrow: 'One completed run',
-    body: 'This session holds the events that produced its result, so an answer can be traced back to the work behind it.',
+    body: 'This session keeps the events behind its result.',
   },
   schedule: {
     title: 'Sample schedule',
     eyebrow: 'Every Monday at 9:00',
-    body: 'A scheduled job produces the same kind of evidence as work you start yourself. Nobody is watching it — which is when a receipt matters.',
+    body: 'Scheduled runs keep the same record as runs you start.',
   },
   customize: {
     title: 'Customize Station',

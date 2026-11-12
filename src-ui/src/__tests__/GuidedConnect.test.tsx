@@ -198,13 +198,13 @@ describe('GuidedConnect', () => {
   test.each([
     ['Pair with a code', 'pair-device'],
     ['Request access', 'request-access'],
-    ['Enter a host address', 'add'],
+    ['Enter Station address', 'add'],
   ] as const)(
     'opens the connection manager on the %s panel',
     (label, panel) => {
       render(<GuidedConnect />);
 
-      if (label === 'Enter a host address')
+      if (label === 'Enter Station address')
         fireEvent.click(screen.getByText('Other ways to connect'));
       fireEvent.click(screen.getByRole('button', { name: label }));
 
@@ -236,7 +236,7 @@ describe('GuidedConnect', () => {
   test('does not offer the sample tour unless the access gate asked for it', () => {
     render(<GuidedConnect />);
     expect(
-      screen.queryByRole('button', { name: 'See how Station works' }),
+      screen.queryByRole('button', { name: 'Explore a sample workspace' }),
     ).toBeNull();
   });
 
@@ -245,7 +245,7 @@ describe('GuidedConnect', () => {
     render(<GuidedConnect onExploreSample={onExploreSample} />);
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'See how Station works' }),
+      screen.getByRole('button', { name: 'Explore a sample workspace' }),
     );
 
     expect(onExploreSample).toHaveBeenCalledTimes(1);

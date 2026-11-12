@@ -1056,9 +1056,11 @@ function SetupLauncher({
       aria-label={firstRun ? 'First-run setup reminder' : 'Setup reminder'}
     >
       <div className="onboarding-setup-launcher__panel" role="status">
-        <div className="onboarding-setup-launcher__eyebrow">
-          {firstRun ? 'First run' : 'Setup needed'}
-        </div>
+        {/* Only a genuine first run earns an eyebrow; otherwise the title
+            already says what needs attention. */}
+        {firstRun && (
+          <div className="onboarding-setup-launcher__eyebrow">First run</div>
+        )}
         <div className="onboarding-setup-launcher__header">
           <div>
             <div className="onboarding-setup-launcher__title">
@@ -1070,7 +1072,7 @@ function SetupLauncher({
           </div>
           <button
             type="button"
-            aria-label="Dismiss setup launcher"
+            aria-label="Dismiss setup reminder"
             onClick={onDismiss}
             className="onboarding-setup-launcher__dismiss"
           >
@@ -1103,12 +1105,10 @@ function SetupLauncher({
         >
           {content.actionLabel}
         </Button>
+        {/* Dismissal is the × above; a second "continue" button did the same. */}
         <div className="onboarding-setup-launcher__actions">
           <Button variant="secondary" size="sm" onClick={onOpenHub}>
-            View All Connections
-          </Button>
-          <Button variant="secondary" size="sm" onClick={onDismiss}>
-            Continue Without Setup
+            All connections
           </Button>
         </div>
       </div>

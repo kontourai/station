@@ -68,7 +68,7 @@ final class StationRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(manualTitle.frame.width, manualTitleFrame.width, accuracy: 1)
 
         // No code or request is submitted. Closing returns to the same welcome;
-        // address-based setup is a separate deliberate route through disclosure.
+        // address-based setup is a separate deliberate route through More ways to connect.
         let closeManager = app.buttons["Close Station manager"]
         XCTAssertTrue(closeManager.isHittable)
         XCTAssertTrue(
@@ -77,11 +77,11 @@ final class StationRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(waitForElement(scan, budget: 10))
         XCTAssertTrue(scan.isHittable)
-        let otherWays = app.buttons["Other ways to connect"].firstMatch
-        let connect = app.buttons["Open connection manager"]
+        let moreWays = app.buttons["More ways to connect"].firstMatch
+        let connect = app.descendants(matching: .any)["Manage Stations"].firstMatch
         XCTAssertTrue(
-            tap(otherWays, until: connect, budget: 20),
-            "Other ways to connect did not disclose the connection manager. Accessibility hierarchy:\n\(app.debugDescription)"
+            tap(moreWays, until: connect, budget: 20),
+            "More ways to connect did not offer Manage Stations. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         connect.tap()
         let connectStation = app.buttons["Connect a Station"]

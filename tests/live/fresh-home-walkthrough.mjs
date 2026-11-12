@@ -260,7 +260,7 @@ async function dismissFirstRun(page) {
   await settlePage(page, 'first boot');
   await screenshot(page, 'first-boot');
   const steps = [
-    ['button', 'Continue Without Setup'],
+    ['button', 'Dismiss setup reminder'],
     // #1582 A3 / #1600: both disclosure surfaces name the decision now.
     ['button', 'Keep usage telemetry on'],
     ['button', 'Not now'],
