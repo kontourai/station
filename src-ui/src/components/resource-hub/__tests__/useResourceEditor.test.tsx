@@ -18,11 +18,18 @@ interface Resource {
   name: string;
 }
 
-function Editor({ source }: { source: Resource | null }) {
+function Editor({
+  source,
+  saving = false,
+}: {
+  source: Resource | null;
+  saving?: boolean;
+}) {
   const editor = useResourceEditor<Resource>({
     source,
     identity: (resource) => resource.id,
     clone: (resource) => ({ ...resource }),
+    isSaving: () => saving,
   });
   return (
     <>
@@ -128,6 +135,25 @@ describe('useResourceEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(window.location.pathname).toBe('/elsewhere');
     // Discard discarded: the draft is the server copy again.
+    expect([draft(), dirty()]).toEqual(['Server', 'false']);
+  });
+
+  test('Discard waits while a save is in flight', () => {
+    act(() => navigationStore.navigate('/connections/engines/a'));
+    const { rerender } = render(
+      <Editor source={{ id: 'a', name: 'Server' }} saving />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    // Refused: the save may still land, so the edit and the route stay.
+    expect(screen.getByText('Unsaved Changes')).toBeTruthy();
+    expect(window.location.pathname).toBe('/connections/engines/a');
+    expect([draft(), dirty()]).toEqual(['Edited', 'true']);
+
+    rerender(<Editor source={{ id: 'a', name: 'Server' }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(window.location.pathname).toBe('/elsewhere');
     expect([draft(), dirty()]).toEqual(['Server', 'false']);
   });
 

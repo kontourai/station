@@ -43,7 +43,7 @@ export function useResourceEditor<T>({
   helpers.current = { identity, clone, isSaving };
   // Discard means discard: the draft returns to the server copy, so the
   // navigation that asked continues from a clean editor.
-  const discard = useRef(() => true);
+  const discard = useRef<() => boolean>(() => true);
   const { guard, DiscardModal } = useUnsavedGuard(dirty, () =>
     discard.current(),
   );
