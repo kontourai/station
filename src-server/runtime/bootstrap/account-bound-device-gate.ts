@@ -289,14 +289,16 @@ function isAccountBoundGuestAdminWrite(path: string, method: string): boolean {
  * Closed Room leaves; the mounted service owns each membership action. A
  * channel (#4792) serves the default room's per-room leaves under
  * `/channels/:channelId`, plus the channel list, create and update.
+ * Reactions, edits, deletes and message files (#4796, #4797, #4812) are
+ * per-room leaves too: `discuss` to write, `view` to read a file.
  */
 function isAccountBoundRoomLeaf(path: string, method: string): boolean {
   if (method === 'GET' || method === 'HEAD')
     return (
-      /^\/api\/projects\/[^/]+\/room(?:\/(?:messages|events|agents\/[^/]+))?$/.test(
+      /^\/api\/projects\/[^/]+\/room(?:\/(?:messages|events|agents\/[^/]+|attachments\/[^/]+))?$/.test(
         path,
       ) ||
-      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+(?:\/(?:messages|events|agents\/[^/]+))?)?$/.test(
+      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+(?:\/(?:messages|events|agents\/[^/]+|attachments\/[^/]+))?)?$/.test(
         path,
       )
     );
@@ -308,10 +310,10 @@ function isAccountBoundRoomLeaf(path: string, method: string): boolean {
     return /^\/api\/projects\/[^/]+\/channels\/[^/]+$/.test(path);
   return (
     method === 'POST' &&
-    (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+    (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
       path,
     ) ||
-      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
         path,
       ))
   );
