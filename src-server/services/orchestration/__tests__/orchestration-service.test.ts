@@ -1191,6 +1191,35 @@ describe('OrchestrationService', () => {
     });
   });
 
+  test('native inherited tool constraints refuse at canonical start and recorded turn admission', async () => {
+    const delegation = {
+      mode: 'isolated-child', depth: 1, maxDepth: 2,
+      parentAgentSlug: 'parent', rootAgentSlug: 'root',
+      toolAllowlistConstraints: [['github_*']],
+    };
+    await expect(service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'constrained-native', provider: 'claude', metadata: { delegation } },
+    })).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.startSession).not.toHaveBeenCalled();
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'constrained-native', provider: 'claude' },
+    });
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+    eventStore.appendEvent({
+      provider: 'claude', threadId: 'recorded-constrained-native',
+      eventId: 'constrained-native-record', createdAt: new Date().toISOString(),
+      method: 'session.started', sessionId: 'recorded-constrained-native',
+      metadata: { delegation },
+    } as CanonicalRuntimeEvent);
+    await expect(service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'recorded-constrained-native', input: 'No unqualified effect' },
+    })).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
     await service.dispatch({
       type: 'startSession',

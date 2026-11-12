@@ -137,6 +137,7 @@ import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
 } from '../services/orchestration/delegation-files.js';
+import { assertInheritedDelegationToolPolicy } from '../services/orchestration/delegation-tool-policy.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
@@ -6060,6 +6061,7 @@ export async function delegateTask(
       input.target,
       resolverDependencies,
     );
+    assertInheritedDelegationToolPolicy(resolved.provider, input.delegation);
     // #484 receiver placement: a portable intent that resolves to worktree
     // isolation refuses HERE — before any session exists, before any
     // filesystem provisioning, and before any provider effect. This

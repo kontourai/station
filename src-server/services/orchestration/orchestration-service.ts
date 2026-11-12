@@ -403,6 +403,7 @@ import {
   type CredentialRecoveryModule,
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
+import { assertInheritedDelegationToolPolicy } from './delegation-tool-policy.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
 import { splitOversizedDeltas } from './delta-splitting.js';
 import {
@@ -8371,6 +8372,10 @@ export class OrchestrationService {
             );
         },
         validateReattach: (input, existing) => {
+          assertInheritedDelegationToolPolicy(
+            existing.session.provider,
+            this.firstStartedMetadataOfThread(input.threadId)?.delegation,
+          );
           const reattach = normalizeOmittedModelId(input);
           const model = reattach.modelId?.trim();
           if (model) {
@@ -8406,6 +8411,10 @@ export class OrchestrationService {
             this.latestStartedMetadataOfThread(threadId),
         },
         prepareStart: async (postureInput, context, internal, adapter) => {
+          assertInheritedDelegationToolPolicy(
+            adapter.provider,
+            postureInput.metadata?.delegation,
+          );
           // #1796: a full-access grant that names no grantor would stamp an
           // unconfined session nothing could revoke. Refused before the
           // start does anything.
@@ -8847,6 +8856,10 @@ export class OrchestrationService {
           return startInput;
         },
         start: async (adapter, input, context, internal) => {
+          assertInheritedDelegationToolPolicy(
+            adapter.provider,
+            input.metadata?.delegation,
+          );
           const assertPostureCurrent = this.preparedStartPostures.get(input);
           if (!assertPostureCurrent)
             throw new SessionStartRefusedError(
@@ -9369,6 +9382,10 @@ export class OrchestrationService {
   }
 
   private assertTurnAdmitted(threadId: string): void {
+    assertInheritedDelegationToolPolicy(
+      this.firstStartedEngineOfThread(threadId),
+      this.firstStartedMetadataOfThread(threadId)?.delegation,
+    );
     for (const admission of this.turnAdmissions) {
       const result = admission({ threadId });
       if (!result.allowed) throw new Error(result.reason);
