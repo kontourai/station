@@ -261,3 +261,25 @@ test('arrow keys typed in the field are not the reader scrolling (#4810 scroll-c
     }
   }
 });
+
+test('a keyboard that grows after the first correction is followed, since the correction’s own scroll is not the reader’s (#4810 scroll-cancel delta)', async () => {
+  const { browser, page, errors } = await open();
+  try {
+    await page.getByRole('textbox', { name: 'Message' }).focus();
+    await keyboard(page, 150);
+    await settle(page);
+    const first = await scrollTop(page);
+    expect(first, 'the first correction scrolled').toBeGreaterThan(300);
+    expect(await overhang(page)).toBeLessThanOrEqual(0);
+    // A suggestion bar appears: the keyboard grows by 150px.
+    await keyboard(page, 300);
+    await settle(page);
+    expect(
+      await overhang(page),
+      'Send below the keyboard (px)',
+    ).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
