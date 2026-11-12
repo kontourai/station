@@ -140,7 +140,7 @@ export function ComposerActionsMenu({
                   onOpenConversationReference();
                 }}
               >
-                Reference conversation…
+                Reference chat…
               </button>
             )}
             {onOpenContextReset && (
@@ -149,17 +149,13 @@ export function ComposerActionsMenu({
                 role="menuitem"
                 className="composer-actions-menu__item"
                 disabled={handoffDisabled}
-                title={
-                  handoffDisabled
-                    ? handoffDisabledReason
-                    : 'Replace the next engine context'
-                }
+                title={handoffDisabled ? handoffDisabledReason : undefined}
                 onClick={() => {
                   close();
                   onOpenContextReset();
                 }}
               >
-                Replace engine context
+                Reset agent context
                 {contextBoundaryStatus && (
                   <span
                     className="composer-actions-menu__item-hint"

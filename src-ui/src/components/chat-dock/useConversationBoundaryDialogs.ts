@@ -165,13 +165,13 @@ export function useConversationBoundaryDialogs({
     contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
   const contextBoundaryLabel =
     contextBoundaryStatus === 'reserved'
-      ? `Next engine start: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'Empty' : 'Re-anchor'}`
+      ? `Next message: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'starts fresh' : 'continues'}`
       : contextBoundaryStatus === 'claimed'
-        ? 'Engine start reconciling'
+        ? 'Reset in progress'
         : contextBoundaryStatus === 'indeterminate'
-          ? 'Engine start needs inspection'
+          ? 'Reset unconfirmed, check the chat'
           : contextBoundaryStatus === 'failed'
-            ? 'Start failed; retry available'
+            ? 'Reset failed, retry available'
             : undefined;
   const hasLocalDeferredMessages = Boolean(
     activeSession?.queuedMessages?.length ||

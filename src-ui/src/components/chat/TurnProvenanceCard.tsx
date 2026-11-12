@@ -295,10 +295,10 @@ function contextBoundaryRow(
   const slot = envelope.contextBoundary;
   if (slot?.state !== 'observed') return undefined;
   return {
-    label: 'Conversation boundary',
+    label: 'Context reset',
     value: slot.value.priorTranscriptInjected
-      ? 'Prior transcript re-anchored into this engine context'
-      : 'Prior transcript omitted from this engine context',
+      ? 'Continued from chat history'
+      : 'Started fresh without chat history',
     gap: null,
   };
 }
