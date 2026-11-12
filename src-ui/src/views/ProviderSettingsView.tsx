@@ -800,8 +800,9 @@ export function ProviderSettingsView({
                 form={form}
                 isNew={false}
                 selectedProviderId={selectedProviderId}
-                testResult={testResult}
-                testError={testError}
+                // The result shows under the header, on every tab, once.
+                testResult={null}
+                testError={null}
                 isTesting={testMutation.isPending}
                 onSetField={setField}
                 onSetConfigField={setConfigField}

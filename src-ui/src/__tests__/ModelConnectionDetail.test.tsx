@@ -326,6 +326,9 @@ describe('Model connection detail', () => {
     expect(
       screen.queryByRole('region', { name: 'Unsaved changes' }),
     ).toBeNull();
+    // A ready connection can still be checked again from Settings.
+    fireEvent.click(screen.getByRole('button', { name: 'Test Connection' }));
+    expect(testMutate).toHaveBeenCalledWith('ollama-local');
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Renamed' },
     });

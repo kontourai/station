@@ -185,8 +185,8 @@ export function ProviderConnectionForm({
   /**
    * Which part a tabbed detail shows. `all` is the create form. On a saved
    * connection the detail's header and Overview own status, the readiness
-   * notice and the check, so `settings` leaves them out and `models` is the
-   * catalog alone.
+   * notice and the check's result, so `settings` leaves them out (keeping
+   * the check and its cost) and `models` is the catalog alone.
    */
   part?: 'all' | 'settings' | 'models';
 }) {
@@ -898,7 +898,7 @@ export function ProviderConnectionForm({
             </p>
           ) : null}
 
-          {showStatus && !isNew && selectedProviderId && (
+          {showFields && !isNew && selectedProviderId && (
             <div
               style={{
                 paddingTop: '8px',
