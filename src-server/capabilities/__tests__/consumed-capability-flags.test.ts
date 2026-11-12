@@ -102,6 +102,18 @@ const CONSUMED_FLAGS: Record<
         providerTurnId: 'probe-turn',
         environment: { id: 'probe-host', name: 'Probe host', kind: 'current' },
         target: { kind: 'agent', id: 'station' },
+        resolution: {
+          schemaVersion: 'station.execution-resolution/v1',
+          resolvedAt: new Date().toISOString(),
+          environmentId: 'probe-host',
+          agentId: 'station',
+          engine: { kind: 'station' },
+          provider: 'station-agent',
+          modelLaunchPlan: {
+            kind: 'engine-selected',
+            evidence: 'adapter-declared',
+          },
+        },
       }),
     );
     const routes = orchestrationRoutes(
