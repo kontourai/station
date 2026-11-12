@@ -906,9 +906,10 @@ ends, its exit code, and a group counts it as a background command.
 Every background-task row expands to its full title, status, start and end
 times, and, for a tool, which tool ran and a one-line summary of its input.
 
-Background-task **Recent activity** is a bounded cache. Older tool rows and
-closed-chat history can be omitted; counts marked **shown** describe retained
-rows. Closing a chat does not stop its child work. Use Activity to inspect the
+The background-task sheet shows recent tasks only (its footer says so). Older
+tool rows and closed-chat history can be omitted, and remote tasks are in
+Activity; counts marked **shown** describe retained rows. Closing a chat does
+not stop its child work. Use Activity to inspect the
 Session history available from that Station. Missing snapshot evidence keeps an
 outcome unresolved rather than declaring success.
 
