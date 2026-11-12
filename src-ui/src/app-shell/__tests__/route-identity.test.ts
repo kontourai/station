@@ -106,6 +106,13 @@ const REPLAYS: Array<[string, NavigationView, NavigationView]> = [
 
 const DOES_NOT_REPLAY: Array<[string, NavigationView, NavigationView]> = [
   [
+    // A route tab inside one engine's detail: the record and its unsaved
+    // settings stay mounted.
+    'a different tab of the same engine',
+    { type: 'connections-engine-edit', id: 'r1' },
+    { type: 'connections-engine-edit', id: 'r1', tab: 'usage' },
+  ],
+  [
     'an identical view rendered again',
     { type: 'settings' },
     { type: 'settings' },
@@ -213,6 +220,13 @@ describe('routeSurfaceIdentity', () => {
       routeSurfaceIdentity(engineEdit),
     );
     expect(routeSurfaceIdentity(engines)).toBe(routeSurfaceIdentity(engineNew));
+    expect(routeSurfaceIdentity(engines)).toBe(
+      routeSurfaceIdentity({
+        type: 'connections-engine-edit',
+        id: 'r1',
+        tab: 'settings',
+      }),
+    );
     expect(routeSurfaceIdentity(tools)).toBe(routeSurfaceIdentity(toolEdit));
     expect(routeSurfaceIdentity(models)).not.toBe(
       routeSurfaceIdentity(engines),

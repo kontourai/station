@@ -1,11 +1,11 @@
 import {
   type AgentHostAdapter,
+  createInProcessHostAdapter,
   createStrandsAdapter,
   createVoltAgentAdapter,
   type HostCapabilities,
   type LifecycleEvent,
   type LifecycleOutcome,
-  type PortableAsset,
 } from '@kontourai/conduit';
 import type {
   IAgentHooks,
@@ -38,6 +38,20 @@ const stationFrameworkCapabilities: HostCapabilities = Object.freeze({
   install: unavailableInstall,
 });
 
+/**
+ * Station's IAgentHooks projection as a Conduit in-process host adapter.
+ *
+ * Built by Conduit's own factory rather than hand-assembled: Conduit 0.8's
+ * `probeHostConformance` only runs its inert (I/O-free) install path for
+ * adapters a Conduit factory created, and refuses any other adapter with
+ * `UnsafeConformanceProbeError` (`no-inert-install`). The factory also applies
+ * Station's narrower capabilities to every outcome, so an unavailable phase
+ * projects to `observe` and a `modelContext` is stripped on every phase (this
+ * seam has no context-injection channel). The underlying framework adapter
+ * still projects first, so a framework limit narrower than Station's survives.
+ * Every install kind is `unavailable` and no `installAsset` is supplied:
+ * Station registers no assets through this seam.
+ */
 export function createStationFrameworkConduitAdapter(
   framework: StationFrameworkKind,
 ): AgentHostAdapter {
@@ -50,39 +64,10 @@ export function createStationFrameworkConduitAdapter(
       ? createStrandsAdapter(bridge)
       : createVoltAgentAdapter(bridge);
 
-  return Object.freeze({
+  return createInProcessHostAdapter({
     id: `station-${framework}`,
-    capabilities: () => stationFrameworkCapabilities,
-    install: (assets: readonly PortableAsset[]) => host.install(assets),
-    project: async (event: LifecycleEvent, outcome: LifecycleOutcome) => {
-      if (
-        stationFrameworkCapabilities.lifecycle[event.phase] === 'unavailable'
-      ) {
-        return Object.freeze({
-          decision: 'observe',
-          reason: `Station IAgentHooks does not expose ${event.phase}`,
-        });
-      }
-      const projected = await host.project(event, outcome);
-      // Station's IAgentHooks projection has no context-injection channel on
-      // any phase (`contextInjection: 'unavailable'` above), but the
-      // underlying strands/voltagent host adapter projects with the HOST's
-      // own capabilities, which do admit context injection — so a
-      // `modelContext` echoed through here would claim an influence this
-      // seam does not deliver. Conduit 0.6.0's `context-<phase>` conformance
-      // probes catch exactly that; strip it, mirroring conduit's own
-      // projectLifecycleOutcome semantics.
-      if (projected.modelContext !== undefined) {
-        return Object.freeze({
-          ...projected,
-          modelContext: undefined,
-          reason:
-            projected.reason ??
-            'Station IAgentHooks cannot inject model context',
-        });
-      }
-      return projected;
-    },
+    capabilities: stationFrameworkCapabilities,
+    applyOutcome: (event, outcome) => host.project(event, outcome),
   });
 }
 

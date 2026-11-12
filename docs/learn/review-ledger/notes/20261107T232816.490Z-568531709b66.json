@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Only SplitPaneLayout.tsx changed (type export SplitPaneItem). Checked the pane-relationship claims (opener/return records, owner resolves pane, routed return); none describe SplitPaneLayout props or list items. Unaffected.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}
