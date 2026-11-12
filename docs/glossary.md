@@ -485,6 +485,19 @@ release delivery.
 | An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
 | The live transcript's map of user turns, and stepping between them | **Conversation turns** (the desktop gutter's name; contributors call it the turn rail); **Previous turn** / **Next turn** on desktop, or **Browse turns** in the chat More menu on desktop and phones. History replay's separate view is **History** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
+| What a person talks to an agent in | **chat** ("New chat", "this chat"); never "thread", and never "conversation" as a synonym. **Conversation turns** and the Task **Conversation** tab are established labels and stay |
+| What acts in a chat | **agent**, lowercase in running text; the reserved agent is **Station**. Never "the AI" or "your AI" |
+| What runs an agent, in UI copy | **engine** (Claude Code, Codex, OpenCode, **Station's engine**); never "AI app", "agent app", "built-in assistant", "default assistant" or "harness" |
+| When to say **Session** | only where the execution record is the subject (Activity, session detail); a chat in general copy is a **chat** |
+| Casing in running text | **Task** and **Project**, capital first letter; **Station** with an article ("a Station", "this Station") |
+| The person who runs a Station | **Station operator** on first use, then "operator"; never "Station owner" or "administrator". Project roles keep their names: Viewer, Contributor, Admin, Owner |
+| The computer running Station | **Station**, or "computer" when the physical machine is meant; not "host", "server" or "machine" where Station or the computer is meant |
+| The phone and device control helper | **device helper**; never "device hub" |
+| An engine's sign-in credentials | **account**; never "credential entry" or "credential profile" |
+| Usage-sharing choices | the `SHARING_LABELS` names in `src-ui/src/components/UsageSharingChoices.tsx` ("Don't share", "Anonymous usage counts", "Detailed usage to help improve Station") and **Do Not Track**; never "Off / Lite / Full" or "DO_NOT_TRACK" |
+
+The wording rules that sit beside this vocabulary, and the gates that keep
+retired terms out of UI copy, are in the [UI copy guide](guides/ui-copy.md).
 
 ## Persisted identity records
 
