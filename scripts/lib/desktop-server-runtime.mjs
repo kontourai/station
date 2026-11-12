@@ -243,6 +243,13 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   runtime binary comes from `lib/native` or the `@koromix/koffi-<os>-<arch>`
  *   package. Off Windows nothing requires it at all, so koffi and its
  *   platform package keep only their metadata and license there.
+ * - flow-agents 9.14 ships its per-harness install bundles as one pack,
+ *   `bundles/flow-agents-bundles.pack` (~7 MB). Only its own CLI reads it:
+ *   `lib/bundle-store` expands it for `init`, `kit activate` and `workflow
+ *   doctor`, and `scripts/install-codex-home.sh` for a Codex home install.
+ *   Station imports none of those entrypoints and spawns no flow-agents CLI;
+ *   `bundle-store` is only loaded (inert) through the root index. Without the
+ *   pack, `resolveBundle` returns null and those commands report it.
  */
 export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
   Object.freeze({
@@ -289,6 +296,14 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
     id: 'koffi-build-sources',
     package: 'koffi',
     excludes: (segments) => ['vendor', 'doc'].includes(segments[0]),
+  }),
+  Object.freeze({
+    id: 'flow-agents-harness-bundle-pack',
+    package: '@kontourai/flow-agents',
+    excludes: (segments) =>
+      segments.length === 2 &&
+      segments[0] === 'bundles' &&
+      segments[1] === 'flow-agents-bundles.pack',
   }),
   Object.freeze({
     id: 'koffi-off-windows',

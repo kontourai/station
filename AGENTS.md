@@ -16,7 +16,7 @@
 
 ## Landing a pull request
 
-Arm auto-merge (`gh pr merge <n> --repo kontourai/station --auto`) with no merge-method flag, confirm once, then stop; never merge by hand or arm another lane's in-flight PR. [Landing a pull request](docs/guides/development.md#landing-a-pull-request) has the confirmation query; the ruleset owns required checks, strategy, and batching (currently 1 build, up to 3 merges, `ALLGREEN`). The guide covers attribution, queue confirmation, and base freshness.
+Arm auto-merge (`gh pr merge <n> --repo kontourai/station --auto`) with no merge-method flag and confirm once; never merge by hand or arm another lane's in-flight PR. Armed is not done: a PR is done only when it reads `MERGED`. Watch it with host PR tooling (or report it armed, with its link), never busy-poll, and report blockers. [Landing a pull request](docs/guides/development.md#landing-a-pull-request) has the confirmation query; the ruleset owns required checks, strategy, and batching (currently 1 build, up to 3 merges, `ALLGREEN`). The guide covers attribution, base freshness.
 
 ## Test evidence
 
