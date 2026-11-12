@@ -1,0 +1,15 @@
+{
+  "revision": "d4d4eef361bd8e4d0f62aefdf2824248be83de17",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Updated for the UI: the flow is named Add source, and each source under Manage sources shows its trust tier (Station, Default, Plugin, Unverified), detected kinds with counts, and freshness. Checked against MarketplaceSources.tsx. Choosing a source opens its catalog tab (RegistryView.tsx), which the guide does not restate.","inputs":["docs/guides/plugins.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"RegistryView.tsx now opens the chosen source's catalog tab and keeps the choice across the route remount. Marketplace sources still install and enable nothing, which is the claim this guide makes. No prose change.","inputs":["docs/guides/distribution-profiles.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"README.md","note":"Stale through plugins.md (Add source wording and the source card details). The root README states no Registry source-flow detail. No prose change.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Stale through plugins.md. This guide routes integrators to the plugin and API references and does not restate the Add source flow. No prose change.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Stale through plugins.md. Its Browse marketplaces mention (opens Registry while keeping the picker) is unaffected by the Add source rename or the source cards. No prose change.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]}
+  ]
+}
