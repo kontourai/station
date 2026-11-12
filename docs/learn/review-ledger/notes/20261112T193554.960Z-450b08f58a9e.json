@@ -1,0 +1,7 @@
+{
+  "revision": "2b6274ac29a5015d87d8dde3f17456585632efbd",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts after the plugins guide and API reference changed. The one changed line is the generated topic content for those owners. station-docs.md describes the tool and its topic routing, which are unchanged. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
