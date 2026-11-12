@@ -988,6 +988,7 @@ describe('server build package portability', () => {
       'cedar-node-runtime-only',
       'rxjs-node-runtime-only',
       'otlp-transformer-node-runtime-only',
+      'semantic-conventions-node-runtime-only',
       'node-pty-foreign-prebuilds',
       'koffi-build-sources',
       'koffi-off-windows',
