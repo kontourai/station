@@ -1,0 +1,7 @@
+{
+  "revision": "64525b24dd243022b7430e09c0f318179ff39529",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Checked after classify-ci-change.mjs added the startup cover's four channel-mark PNGs to the desktop Rust input list; this document describes no desktop Rust inputs or Windows-floor relevance, so no claim changed.","inputs":["docs/guides/dependency-security.md","scripts/classify-ci-change.mjs"]}
+  ]
+}
