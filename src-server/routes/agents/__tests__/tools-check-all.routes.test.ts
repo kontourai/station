@@ -47,7 +47,8 @@ function harness(servers: ToolDef[], outcomes: Record<string, ToolDef>) {
   const reinitialize = vi.fn(async () => {});
   const app = createToolRoutes(service as never, reinitialize);
   /** Lets each probe finish as it starts, until `pending` settles. */
-  const settle = async <T>(pending: Promise<T>): Promise<T> => {
+  const settle = async <T>(response: T | Promise<T>): Promise<T> => {
+    const pending = Promise.resolve(response);
     let done = false;
     pending.then(
       () => {

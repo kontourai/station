@@ -6,7 +6,6 @@ import {
   projectConnectionUsedBy,
 } from '@kontourai/station-contracts/connection-used-by';
 import type { Context } from 'hono';
-import { withoutReservedStationBinding } from '../../domain/agent-registry.js';
 import type { AgentAudienceGateDeps } from '../../runtime/bootstrap/agent-audience-gate.js';
 
 export interface ConnectionUsedByReaderDeps {
@@ -49,9 +48,10 @@ export function createConnectionUsedByReader(deps: ConnectionUsedByReaderDeps) {
       agents: definitions.map(({ metadata, spec }) => ({
         // The Station Agent's stored engine id is reserved: the engine it runs
         // on is resolved each boot, so its file names no engine connection.
-        ...(isStationAgentIdentity(metadata.slug)
-          ? withoutReservedStationBinding(metadata)
-          : metadata),
+        ...metadata,
+        ...(isStationAgentIdentity(metadata.slug) && metadata.execution
+          ? { execution: { ...metadata.execution, agentConnectionId: null } }
+          : {}),
         tools: spec.tools,
       })),
       projects,
