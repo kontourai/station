@@ -231,6 +231,18 @@ passes only on a person's recorded approval of that tool. Calls an engine
 makes to a server it connects to itself are not enforced
 ([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
 
+Engine-native web reads set the same mark (#4828): Claude Code through an
+in-process `PostToolUse` hook on every session (`WebFetch`, `WebSearch`), Codex
+from a completed `webSearch` item, ACP from a tool call of kind `fetch`, the
+Station engine's HTTP request in `afterToolCall`, and Station's browser tools
+at the browser-agent route. Muse is not covered. In a marked conversation the
+staged evaluator then runs one more stage before the untrusted-content
+permission: a file write to an agent-instruction file or to `.git/hooks` or
+`.git/config` is refused with `untrusted_persistence_protection`, and a shell
+command naming one is a required Ask. It runs wherever the staged evaluator
+runs (Station engine, Claude `PreToolUse`, ACP permission requests), not for
+Codex's own file changes and commands.
+
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
