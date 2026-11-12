@@ -14,8 +14,10 @@
  *  - pooled child: a stdio station-control child with no caller credential;
  *  - raw token: anything holding the per-boot internal token, with no caller.
  */
+
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   getOrchestrationSession,
@@ -1892,10 +1894,10 @@ describe("a delegated child's untrusted read reaches its parent (#4828)", () => 
         mode: 'isolated-child',
         depth: 1,
         maxDepth: 3,
-        parentAgentSlug: 'writer',
+        parentAgentSlug: agentId('writer'),
         parentConversationId: parentSessionId,
         parentSessionId,
-        rootAgentSlug: 'writer',
+        rootAgentSlug: agentId('writer'),
         rootConversationId: parentSessionId,
       },
     );
