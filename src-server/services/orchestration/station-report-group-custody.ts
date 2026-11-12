@@ -431,7 +431,21 @@ export class StationReportGroupCustody {
   }
 
   async inspect(context: RuntimeSourceRequestContext, groupId: string) {
-    return this.#inspect(await this.#context(context, 'GET'), groupId);
+    const captured = await this.#context(context, 'GET');
+    const owner = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
+    );
+    const result = await owner.runOwnedLease(context.req.raw.signal, (lease) =>
+      this.#inspect(
+        {
+          ...captured,
+          current: () => owner.runWithLease(lease, captured.current),
+        },
+        groupId,
+      ),
+    );
+    captured.current();
+    return result;
   }
   async inspectForMutation(
     context: RuntimeSourceRequestContext,

@@ -13,6 +13,7 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import {
+  type HomeWriterLease,
   HomeWriterOwner,
   HomeWriterUnavailableError,
 } from '../../ssh/home-writer-owner.js';
@@ -542,8 +543,51 @@ test('report metadata GET bounds physical Home ownership and observes a later wi
       holds <= 8,
       `metadata GET acquired Home ${holds} times; maximum 8`,
     );
+    assert.ok(
+      metadataRead.mock.calls.length > 0,
+      'the real metadata read must run',
+    );
+    const abort = new AbortController();
+    const cancelled = new Error('request withdrawn after Home read retirement');
+    const initialRequest = requestFor(h, 'GET');
+    const request = new Request(initialRequest, { signal: abort.signal });
+    const principal = getRuntimeAuthenticatedRequestPrincipal(initialRequest);
+    assert.ok(principal);
+    setRuntimeAuthenticatedRequestPrincipal(request, principal);
+    bindRuntimeLocalOperator(request);
+    const runOwnedLease = HomeWriterOwner.prototype.runOwnedLease;
+    let retired = false;
+    const retirement = vi
+      .spyOn(HomeWriterOwner.prototype, 'runOwnedLease')
+      .mockImplementationOnce(async function <Value>(
+        this: HomeWriterOwner,
+        signal: AbortSignal,
+        body: (lease: HomeWriterLease) => Promise<Value>,
+      ): Promise<Value> {
+        const value = await (runOwnedLease<Value>).call(this, signal, body);
+        retired = true;
+        abort.abort(cancelled);
+        return value;
+      });
+    try {
+      const readsBeforeCancellation = metadataRead.mock.calls.length;
+      await assert.rejects(
+        () => runtime.get(h.f.context(request), 'missing-read-group'),
+        (error) => error === cancelled,
+      );
+      assert.equal(
+        retired,
+        true,
+        'the real Home cleanup must finish before cancellation',
+      );
+      assert.ok(
+        metadataRead.mock.calls.length > readsBeforeCancellation,
+        'cancellation control must follow the real metadata read',
+      );
+    } finally {
+      retirement.mockRestore();
+    }
     const readsBeforeWithdrawal = metadataRead.mock.calls.length;
-    assert.ok(readsBeforeWithdrawal > 0, 'the real metadata read must run');
     h.f.environment.devicePairing.revokeDevice(
       h.f.paired.device.id,
       'operator-credential',

@@ -147,15 +147,15 @@ async function captureExistingLocalGrant(
     if (admit) await admit(requirePrincipal);
     else requirePrincipal();
     const before = await environment.readExistingRecord();
-    if (admit) await admit(requirePrincipal);
-    else requirePrincipal();
     const environmentId = before.environmentId;
     const binding = JSON.stringify([
       'station.provider-credential-observation.host-context.v1',
       environmentId,
     ]);
-    const sign = () =>
-      environment.signRevisionEvidenceAuthorityBinding(binding);
+    const sign = () => {
+      requirePrincipal();
+      return environment.signRevisionEvidenceAuthorityBinding(binding);
+    };
     const witness = admit ? await admit(sign) : sign();
     // The signer rechecks its own current ID but does not return that ID.
     // A reset between the async read and first sign could otherwise sign an
