@@ -108,6 +108,12 @@ async function fixture(page: Page, info: TestInfo) {
         sourceSurface: 'api',
       },
     }),
+  }).catch((error) => {
+    console.error('Task fixture browser state after setup failure', {
+      pageClosed: page.isClosed(),
+      browserConnected: page.context().browser()?.isConnected() ?? null,
+    });
+    throw error;
   });
   expect(result.success).toBe(true);
   const task = result.data;
@@ -127,25 +133,44 @@ async function fixture(page: Page, info: TestInfo) {
       dirty: false,
     },
   });
-  const [graph] = await Promise.all([
-    page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === `/api/tasks/${task.id}/graph` &&
-        response.request().method() === 'GET',
-      { timeout: 15_000 },
-    ),
-    page.goto(`/tasks/${task.id}?taskView=overview`),
-  ]);
-  expect(graph.ok()).toBe(true);
-  await graph.finished();
+  await openReviewTask(page, task.id, `/tasks/${task.id}?taskView=overview`);
   const panel = page.getByRole('region', { name: 'Code review', exact: true });
   await expect(panel).toBeVisible();
   return { panel, task, view: response.data, endpoint, directory };
 }
 
+async function openReviewTask(
+  page: Page,
+  taskId: string,
+  url: string,
+  reviewStatus = 200,
+) {
+  const [graph, review] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/tasks/${taskId}/graph` &&
+        response.request().method() === 'GET',
+      { timeout: 15_000 },
+    ),
+    page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/tasks/${taskId}/review/code` &&
+        response.request().method() === 'GET',
+      { timeout: 15_000 },
+    ),
+    page.goto(url),
+  ]);
+  expect(graph.ok()).toBe(true);
+  await graph.finished();
+  expect(review.status()).toBe(reviewStatus);
+  await review.finished();
+}
+
 async function capture(
   page: Page,
   testInfo: TestInfo,
+  taskId: string,
   name: string,
   unavailable = false,
 ) {
@@ -173,7 +198,7 @@ async function capture(
       await saved.finished();
     }
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    await page.goto(url);
+    await openReviewTask(page, taskId, url, unavailable ? 403 : 200);
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     const panel = unavailable
       ? page.getByText('Code review unavailable', { exact: true })
@@ -294,7 +319,7 @@ test('actual Task checkout and dirty-file disclosure stay distinct from review o
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled: true }),
   });
-  await capture(page, info, 'pass-1-location');
+  await capture(page, info, f.task.id, 'pass-1-location');
 });
 
 test('controlled review transport loss never automatically starts another review and retains freshness and failure states', async ({
@@ -374,7 +399,7 @@ test('controlled review transport loss never automatically starts another review
   await expect(
     f.panel.getByText('Reviewer execution did not complete.', { exact: true }),
   ).toBeVisible();
-  await capture(page, info, 'pass-2-review');
+  await capture(page, info, f.task.id, 'pass-2-review');
   expect(submissions).toBe(2);
   view.requests = [];
   view.requestsUnavailable = true;
@@ -472,7 +497,7 @@ test('controlled denied refresh removes cached findings and recovers through the
     page.getByText('Code review unavailable', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText(summary, { exact: true })).toHaveCount(0);
-  await capture(page, info, 'pass-4-denied', true);
+  await capture(page, info, f.task.id, 'pass-4-denied', true);
   denied = false;
   await page
     .getByRole('button', { name: 'Reload review data', exact: true })
