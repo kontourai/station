@@ -21,11 +21,12 @@
  *   credential: confirmation decides whether it starts enabled.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   AUTOMATION_ACTION_KINDS,
   AUTOMATION_EXECUTION_LIMITS,
   AUTOMATION_PROPOSAL_LIMITS,
+  AUTOMATION_PROPOSAL_UNTRUSTED_COPY,
   type AutomationConfiguration,
   type AutomationMatcher,
   type AutomationProposal,
@@ -39,6 +40,7 @@ import {
 } from '@kontourai/station-contracts/automation';
 import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import { z } from 'zod';
+import type { StationControlPolicyCaller } from '../../tools/station-control-policy.js';
 import { isRecord } from '../../utils/is-record.js';
 import {
   type TransactionalSqliteDatabase,
@@ -145,13 +147,64 @@ const ruleBodySchema = z
 
 // ── authority ─────────────────────────────────────────────────────────────
 
+/**
+ * One Project/Agent pair a proposal names, as Station resolved it when the
+ * chat proposed it. Agents have no identity beyond their slug, so the Agent
+ * is pinned by its slug, its own Project and a digest of its whole
+ * definition: a deleted Agent, one moved to another Project, or a slug
+ * reused for a different definition no longer matches (#4830 review).
+ */
+export type AutomationTargetBinding = Readonly<{
+  projectId: string;
+  projectSlug: string;
+  agentId: string;
+  /** The Agent's own Project slug; `null` for a global Agent. */
+  agentProject: string | null;
+  agentDigest: string;
+}>;
+
 /** What the proposing chat may do itself, decided by the dispatch scope rule. */
 export interface AutomationProposalAuthority {
   /**
-   * Whether the proposing chat could dispatch work to `agentId` in
-   * `projectId` itself. Anything Station cannot read answers false.
+   * The pair resolved, when the proposing chat could dispatch work to
+   * `agentId` in `projectId` itself; `undefined` when it could not or Station
+   * cannot read it.
    */
-  mayDispatch(projectId: string, agentId: string): Promise<boolean>;
+  bind(
+    projectId: string,
+    agentId: string,
+  ): Promise<AutomationTargetBinding | undefined>;
+}
+
+/** Whether a binding resolved now is the one recorded at proposal time. */
+export function sameAutomationTargetBinding(
+  recorded: AutomationTargetBinding,
+  current: AutomationTargetBinding | undefined,
+): boolean {
+  return (
+    current !== undefined &&
+    current.projectId === recorded.projectId &&
+    current.projectSlug === recorded.projectSlug &&
+    current.agentId === recorded.agentId &&
+    current.agentProject === recorded.agentProject &&
+    current.agentDigest === recorded.agentDigest
+  );
+}
+
+/** A stable digest of an Agent's definition: object keys sorted, arrays kept. */
+export function agentDefinitionDigest(definition: unknown): string {
+  return createHash('sha256').update(stableJson(definition)).digest('hex');
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (isRecord(value))
+    return `{${Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(',')}}`;
+  return JSON.stringify(value ?? null);
 }
 
 export interface AutomationProposalPlanContext {
@@ -173,6 +226,7 @@ export type AutomationProposalPlan =
       kind: 'source';
       source: AutomationSourceProposalInput;
       description: AutomationProposalDescription;
+      bindings: readonly AutomationTargetBinding[];
       rationale?: string;
     }>
   | Readonly<{
@@ -180,6 +234,7 @@ export type AutomationProposalPlan =
       kind: 'rule';
       rule: AutomationRuleProposalInput;
       description: AutomationProposalDescription;
+      bindings: readonly AutomationTargetBinding[];
       rationale?: string;
     }>
   | Readonly<{
@@ -228,21 +283,27 @@ function escalationRefusal(key: string): AutomationProposalPlan {
   );
 }
 
-async function pairsOutsideAuthority(
+/** Each pair resolved, or the pairs this chat could not dispatch to itself. */
+async function bindPairs(
   authority: AutomationProposalAuthority,
   pairs: readonly { projectId: string; agentId: string }[],
-): Promise<string[]> {
-  const refused: string[] = [];
+): Promise<
+  | { ok: true; bindings: AutomationTargetBinding[] }
+  | { ok: false; outside: string[] }
+> {
+  const bindings: AutomationTargetBinding[] = [];
+  const outside: string[] = [];
   for (const { projectId, agentId } of pairs) {
-    let allowed = false;
+    let binding: AutomationTargetBinding | undefined;
     try {
-      allowed = await authority.mayDispatch(projectId, agentId);
+      binding = await authority.bind(projectId, agentId);
     } catch {
-      allowed = false;
+      binding = undefined;
     }
-    if (!allowed) refused.push(`${agentId} in ${projectId}`);
+    if (binding) bindings.push(binding);
+    else outside.push(`${agentId} in ${projectId}`);
   }
-  return refused;
+  return outside.length > 0 ? { ok: false, outside } : { ok: true, bindings };
 }
 
 function currentConfiguration(
@@ -280,11 +341,11 @@ export async function planSourceProposal(
       'automation_proposal_exceeds_authority',
       'A proposed source may grant only dispatch-task. Isolated repair, publishing and notifications are set up by a person.',
     );
-  const outside = await pairsOutsideAuthority(context.authority, grants);
-  if (outside.length > 0)
+  const bound = await bindPairs(context.authority, grants);
+  if (!bound.ok)
     return refuse(
       'automation_proposal_exceeds_authority',
-      `This chat could not start work for ${outside.join(', ')} itself, so it cannot propose a source that grants it.`,
+      `This chat could not start work for ${bound.outside.join(', ')} itself, so it cannot propose a source that grants it.`,
     );
   const source: AutomationSourceProposalInput = {
     kind: 'github-poll',
@@ -319,6 +380,7 @@ export async function planSourceProposal(
     kind: 'source',
     source,
     description: describeSourceProposal(source, context),
+    bindings: bound.bindings,
     ...(why ? { rationale: why } : {}),
   };
 }
@@ -358,11 +420,11 @@ export async function planRuleProposal(
       'automation_proposal_exceeds_authority',
       'An agent cannot propose a rule that approves its own tool calls. Leave approvalMode out (it runs as ask).',
     );
-  const outside = await pairsOutsideAuthority(context.authority, [action.data]);
-  if (outside.length > 0)
+  const bound = await bindPairs(context.authority, [action.data]);
+  if (!bound.ok)
     return refuse(
       'automation_proposal_exceeds_authority',
-      `This chat could not start work for ${outside.join(', ')} itself, so it cannot propose a rule that would.`,
+      `This chat could not start work for ${bound.outside.join(', ')} itself, so it cannot propose a rule that would.`,
     );
   const configuration = currentConfiguration(context);
   if (!configuration)
@@ -451,24 +513,26 @@ export async function planRuleProposal(
       rule,
       source
         ? {
-            name: source.name,
             repository: source.repository,
             pending: candidateSource !== undefined,
           }
         : undefined,
       context,
     ),
+    bindings: bound.bindings,
     ...(why ? { rationale: why } : {}),
   };
 }
 
 // ── the description a person confirms ─────────────────────────────────────
+//
+// Every sentence here is Station's. Nothing the agent wrote (a name, a
+// matcher value, instructions, a reason) is put inside one: the card shows
+// those apart, labelled as the agent's, and whole (#4830 review). Only values
+// Station validated against its own records appear: the repository
+// (`owner/repo` of a fixed character set), the Agent slug and the Project.
 
-/** Fixed copy shown when the proposing chat had read untrusted content. */
-export const AUTOMATION_PROPOSAL_UNTRUSTED_COPY =
-  'This chat had read content written by others (such as email or web pages) before the agent proposed this. That content may have steered it: check it is what you asked for.';
-
-const INSTRUCTIONS_PREVIEW_CHARS = 280;
+export { AUTOMATION_PROPOSAL_UNTRUSTED_COPY };
 
 function minutes(ms: number): string {
   const value = Math.round(ms / 60_000);
@@ -480,18 +544,6 @@ function hours(ms: number): string {
   return value >= 1
     ? `${Number(value.toFixed(1))} hour${value === 1 ? '' : 's'}`
     : minutes(ms);
-}
-
-function quoteValues(value: string | readonly string[]): string {
-  const values = typeof value === 'string' ? [value] : value;
-  return values.map((item) => `“${item}”`).join(' or ');
-}
-
-function matcherSentence(matcher: AutomationMatcher): string {
-  const conditions = Object.entries(matcher.where).map(
-    ([field, value]) => `${field} is ${quoteValues(value)}`,
-  );
-  return conditions.length > 0 ? conditions.join(' and ') : 'any value';
 }
 
 function projectLabel(
@@ -527,7 +579,7 @@ export function describeSourceProposal(
       `Agent ${grant.agentId} in ${projectLabel(context, grant.projectId)}`,
   );
   return {
-    title: `Watch ${source.repository} on GitHub (“${source.name}”)`,
+    title: `Watch ${source.repository} on GitHub`,
     watches: `Completed GitHub Actions workflow runs in ${source.repository}, checked every ${minutes(interval)} with no stored credential.`,
     opens:
       pairs.length > 0
@@ -545,25 +597,21 @@ export function describeSourceProposal(
 
 export function describeRuleProposal(
   rule: AutomationRuleProposalInput,
-  source: { name: string; repository: string; pending: boolean } | undefined,
+  source: { repository: string; pending: boolean } | undefined,
   context: Pick<AutomationProposalPlanContext, 'projectName' | 'untrusted'>,
 ): AutomationProposalDescription {
   const { action } = rule;
   const from = source
-    ? `${source.pending ? 'the proposed source' : 'source'} “${source.name}” (${source.repository})`
-    : `source ${rule.sourceId ?? rule.sourceProposalId}`;
-  const instructions =
-    action.instructions.length > INSTRUCTIONS_PREVIEW_CHARS
-      ? `${action.instructions.slice(0, INSTRUCTIONS_PREVIEW_CHARS)}…`
-      : action.instructions;
+    ? `in ${source.repository}, from ${source.pending ? 'the source proposed in this chat, once you confirm it' : 'an existing source'}`
+    : 'from its source';
   const episode = rule.episode
-    ? ` Runs that share ${rule.episode.keyFields.join(', ')} are one episode: at most ${rule.episode.maxAttempts} attempt${rule.episode.maxAttempts === 1 ? '' : 's'} until ${rule.episode.closeOn ? matcherSentence(rule.episode.closeOn) : 'a person retries it'}.`
+    ? ` Matching runs that share ${rule.episode.keyFields.length} key field${rule.episode.keyFields.length === 1 ? '' : 's'} are one episode: at most ${rule.episode.maxAttempts} attempt${rule.episode.maxAttempts === 1 ? '' : 's'} until ${rule.episode.closeOn ? 'a run matches its close conditions' : 'a person retries it'}.`
     : '';
   return {
-    title: `Rule “${rule.name}”`,
-    watches: `Completed GitHub Actions runs from ${from}${source?.pending ? ', once you confirm it' : ''}, where ${matcherSentence(rule.match)}.`,
+    title: 'Open a Task when a matching GitHub run arrives',
+    watches: `Completed GitHub Actions runs ${from}, when every condition the agent wrote below matches.`,
     opens: `A Task in ${projectLabel(context, action.projectId)} for a matching run, at most ${rule.rateLimit.maxStartsPerHour} per hour.${episode}`,
-    wakes: `Agent ${action.agentId}, with these instructions: “${instructions}”`,
+    wakes: `Agent ${action.agentId} in ${projectLabel(context, action.projectId)}, with the agent's instructions below.`,
     authority: `Asks before each tool call (approval mode ask) and never has full access. Each run is limited to ${action.budget.maxTurns} turns, ${action.budget.maxTokens.toLocaleString('en-US')} tokens and ${hours(action.budget.maxWallRuntimeMs)}. It cannot merge, publish, or change automations or grants.`,
     startsAs:
       'Created observing: it records what it would have done for each matching run but never starts a Task.',
@@ -575,12 +623,17 @@ export function describeRuleProposal(
 
 // ── who may propose ───────────────────────────────────────────────────────
 
-export interface AutomationStartedReads {
+export interface AutomationProposerReads {
   /**
    * The origin of the Session's current turn: its newest turn that was not a
    * delegated result (#4512 `readSessionDispatchFacts().priorOrigin`).
    */
   currentTurnOrigin(sessionId: string): TurnDispatchOrigin;
+  /**
+   * A delegated child Station derived or attested (its start's delegation
+   * provenance stamp, #4512 `delegatedChild`).
+   */
+  delegatedChild(sessionId: string): boolean;
   /**
    * `createdBy` of the Task the Session runs for: `undefined` when it is not
    * bound to a Task, `null` when bound to one Station cannot read.
@@ -590,10 +643,10 @@ export interface AutomationStartedReads {
 
 /**
  * The production reads over the orchestration event store and the Task
- * graph: the #4512 dispatch facts for the current turn, and the room
- * execution binding for the Task.
+ * graph: the #4512 dispatch facts for the current turn and delegation
+ * provenance, and the room execution binding for the Task.
  */
-export function automationStartedReads(
+export function automationProposerReads(
   eventStore: Pick<
     EventStore,
     | 'latestEventByMethod'
@@ -603,10 +656,12 @@ export function automationStartedReads(
   readTaskView: (
     taskId: string,
   ) => { readonly createdBy?: string } | null | undefined,
-): AutomationStartedReads {
+): AutomationProposerReads {
   return {
     currentTurnOrigin: (sessionId) =>
       readSessionDispatchFacts(eventStore, sessionId).priorOrigin(),
+    delegatedChild: (sessionId) =>
+      readSessionDispatchFacts(eventStore, sessionId).delegatedChild,
     boundTaskCreatedBy: (sessionId) => {
       const binding = eventStore.readProjectTaskRoomExecutionBinding(sessionId);
       if (!binding) return undefined;
@@ -617,24 +672,41 @@ export function automationStartedReads(
 }
 
 /**
- * Whether a Session's current work was started by an automation, so §5's
- * "never change automations" applies: it runs for an `automation-rule` Task,
- * or its current turn was sent by an automation (a rule's action or a
- * scheduled run) or delegated by unattended work. Anything Station cannot
- * read counts as started by an automation.
+ * Whether a Session's current turn may propose automations. Fail closed
+ * (#4830 review): only a turn Station recorded as a person's own
+ * (`interactive`) qualifies. `unknown`, a missing turn record, a delegated
+ * child Station derived, a Session running for an `automation-rule` Task (or
+ * a Task Station cannot read), and anything Station cannot read refuse. So
+ * work an automation started (§5 "Never") never proposes, whether its turn
+ * says `automation`, `delegation`, `task-dispatch` or nothing at all.
  */
-export function sessionStartedByAutomation(
-  reads: AutomationStartedReads,
+export function sessionMayProposeAutomations(
+  reads: AutomationProposerReads,
   sessionId: string,
 ): boolean {
   try {
     const createdBy = reads.boundTaskCreatedBy(sessionId);
-    if (createdBy === null || createdBy === 'automation-rule') return true;
-    const origin = reads.currentTurnOrigin(sessionId);
-    return origin === 'automation' || origin === 'delegation';
+    if (createdBy === null || createdBy === 'automation-rule') return false;
+    if (reads.delegatedChild(sessionId)) return false;
+    return reads.currentTurnOrigin(sessionId) === 'interactive';
   } catch {
-    return true;
+    return false;
   }
+}
+
+/**
+ * The id a confirmed proposal's source or rule is created under, derived
+ * from the proposal: one proposal can name only one object, so a Confirm
+ * retried after a restart finds what an interrupted one created instead of
+ * creating a second (#4830 review). UUID-shaped (version 8, custom) so the
+ * operator API, which takes UUIDs, can address it.
+ */
+export function automationIdForProposal(proposalId: string): string {
+  const hex = createHash('sha256')
+    .update(`station-automation-proposal:${proposalId}`)
+    .digest('hex');
+  const variant = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 // ── records ───────────────────────────────────────────────────────────────
@@ -647,6 +719,9 @@ const AUTOMATION_PROPOSAL_SCHEMA = `CREATE TABLE IF NOT EXISTS automation_propos
   input_json TEXT NOT NULL,
   description_json TEXT NOT NULL,
   untrusted INTEGER NOT NULL,
+  proposer_json TEXT NOT NULL,
+  bindings_json TEXT NOT NULL,
+  untrusted_at_confirm INTEGER,
   rationale TEXT,
   state TEXT NOT NULL,
   settled_by TEXT,
@@ -669,6 +744,18 @@ export type AutomationProposalStoredState =
   | AutomationProposalState
   | 'confirming';
 
+/**
+ * The verified station-control caller that proposed it, as the scope rule
+ * reads a caller. Confirm decides the scope again for this caller, now.
+ */
+export type AutomationProposer = StationControlPolicyCaller &
+  Readonly<{ sessionId: string; conversationId: string }>;
+
+export type AutomationProposalAuthorityRecord = Readonly<{
+  proposer: AutomationProposer;
+  bindings: readonly AutomationTargetBinding[];
+}>;
+
 export type InsertAutomationProposalResult =
   | { readonly outcome: 'proposed'; readonly proposal: AutomationProposal }
   | { readonly outcome: 'limit-reached' }
@@ -690,6 +777,10 @@ function proposalOf(row: Record<string, unknown>): AutomationProposal {
     ...(typeof row.created_id === 'string'
       ? { createdId: row.created_id }
       : {}),
+    ...(row.untrusted_at_confirm === null ||
+    row.untrusted_at_confirm === undefined
+      ? {}
+      : { untrustedContentAtConfirm: Number(row.untrusted_at_confirm) === 1 }),
     createdAt: iso(Number(row.created_at)),
     updatedAt: iso(Number(row.updated_at)),
   };
@@ -701,6 +792,74 @@ function proposalOf(row: Record<string, unknown>): AutomationProposal {
         source: input as AutomationSourceProposalInput,
       }
     : { ...base, kind: 'rule', rule: input as AutomationRuleProposalInput };
+}
+
+const ASSURANCES = new Set(['bound', 'delegated-custody', 'bearer-exposed']);
+
+/** A stored proposer, or `undefined` when it is not one (which refuses). */
+function parseProposer(value: unknown): AutomationProposer | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.sessionId !== 'string' ||
+    typeof value.conversationId !== 'string' ||
+    typeof value.assurance !== 'string' ||
+    !ASSURANCES.has(value.assurance)
+  )
+    return undefined;
+  const principal = value.principal;
+  if (
+    principal !== undefined &&
+    (!isRecord(principal) ||
+      typeof principal.id !== 'string' ||
+      typeof principal.elevationEligible !== 'boolean')
+  )
+    return undefined;
+  const optionalString = (key: string) =>
+    value[key] === undefined || typeof value[key] === 'string';
+  if (
+    !optionalString('localProjectId') ||
+    !optionalString('projectSlug') ||
+    !(
+      value.projectIdSource === undefined ||
+      value.projectIdSource === 'session-record' ||
+      value.projectIdSource === 'slug-lookup'
+    )
+  )
+    return undefined;
+  return {
+    assurance: value.assurance as AutomationProposer['assurance'],
+    sessionId: value.sessionId,
+    conversationId: value.conversationId,
+    ...(isRecord(principal)
+      ? {
+          principal: {
+            id: principal.id as string,
+            elevationEligible: principal.elevationEligible as boolean,
+          },
+        }
+      : {}),
+    ...(typeof value.localProjectId === 'string'
+      ? { localProjectId: value.localProjectId }
+      : {}),
+    ...(value.projectIdSource === 'session-record' ||
+    value.projectIdSource === 'slug-lookup'
+      ? { projectIdSource: value.projectIdSource }
+      : {}),
+    ...(typeof value.projectSlug === 'string'
+      ? { projectSlug: value.projectSlug }
+      : {}),
+  };
+}
+
+function isTargetBinding(value: unknown): value is AutomationTargetBinding {
+  return (
+    isRecord(value) &&
+    typeof value.projectId === 'string' &&
+    typeof value.projectSlug === 'string' &&
+    typeof value.agentId === 'string' &&
+    (value.agentProject === null || typeof value.agentProject === 'string') &&
+    typeof value.agentDigest === 'string'
+  );
 }
 
 /** The durable proposals; every transition is one conditional UPDATE. */
@@ -719,6 +878,8 @@ export function createSqliteAutomationProposalStore(
       conversationId: string;
       sessionId: string;
       plan: Extract<AutomationProposalPlan, { ok: true }>;
+      /** The verified caller that proposed it, rechecked at Confirm. */
+      proposer: AutomationProposer;
       untrusted: boolean;
       now: number;
     }): InsertAutomationProposalResult {
@@ -751,9 +912,9 @@ export function createSqliteAutomationProposalStore(
         const { plan } = input;
         db.prepare(
           `INSERT INTO automation_proposals (id, conversation_id, session_id,
-             kind, input_json, description_json, untrusted, rationale, state,
-             created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
+             kind, input_json, description_json, untrusted, proposer_json,
+             bindings_json, rationale, state, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
         ).run(
           id,
           input.conversationId,
@@ -762,6 +923,8 @@ export function createSqliteAutomationProposalStore(
           JSON.stringify(plan.kind === 'source' ? plan.source : plan.rule),
           JSON.stringify(plan.description),
           input.untrusted ? 1 : 0,
+          JSON.stringify(input.proposer),
+          JSON.stringify(plan.bindings),
           plan.rationale ?? null,
           input.now,
           input.now,
@@ -770,6 +933,32 @@ export function createSqliteAutomationProposalStore(
       });
     },
     proposal: read,
+    /**
+     * Who proposed it and what it was bound to, for Confirm to recheck;
+     * `undefined` for an unknown proposal or one Station cannot read, which
+     * refuses.
+     */
+    authority(id: string): AutomationProposalAuthorityRecord | undefined {
+      const row = db
+        .prepare(
+          'SELECT proposer_json, bindings_json FROM automation_proposals WHERE id = ?',
+        )
+        .get(id) as Record<string, unknown> | undefined;
+      if (!row) return undefined;
+      try {
+        const proposer = parseProposer(JSON.parse(String(row.proposer_json)));
+        const bindings = JSON.parse(String(row.bindings_json)) as unknown;
+        if (
+          !proposer ||
+          !Array.isArray(bindings) ||
+          !bindings.every(isTargetBinding)
+        )
+          return undefined;
+        return { proposer, bindings };
+      } catch {
+        return undefined;
+      }
+    },
     /** Proposals still waiting for a person, oldest first. */
     openProposals(conversationId: string): AutomationProposal[] {
       return (
@@ -807,17 +996,30 @@ export function createSqliteAutomationProposalStore(
       to: AutomationProposalStoredState,
       settledBy: string | null,
       now: number,
-      createdId?: string,
+      settled?: { createdId?: string; untrustedAtConfirm?: boolean },
     ): boolean {
+      const untrustedAtConfirm =
+        settled?.untrustedAtConfirm === undefined
+          ? null
+          : settled.untrustedAtConfirm
+            ? 1
+            : 0;
       const result = db
         .prepare(
           `UPDATE automation_proposals SET state = ?, settled_by = ?, updated_at = ?,
-             created_id = COALESCE(?, created_id)
+             created_id = COALESCE(?, created_id),
+             untrusted_at_confirm = COALESCE(?, untrusted_at_confirm)
            WHERE id = ? AND state = ?`,
         )
-        .run(to, settledBy, now, createdId ?? null, id, from) as {
-        changes?: number | bigint;
-      };
+        .run(
+          to,
+          settledBy,
+          now,
+          settled?.createdId ?? null,
+          untrustedAtConfirm,
+          id,
+          from,
+        ) as { changes?: number | bigint };
       return Number(result.changes ?? 0) === 1;
     },
     /** The raw state, `confirming` included. */
@@ -830,20 +1032,47 @@ export function createSqliteAutomationProposalStore(
         : undefined;
     },
     /**
-     * Startup: a Confirm a restart cut short is open again, so a person can
-     * retry it. Only claims made before `claimedBefore` (this process's
-     * start). If the restart fell between creating the record and finalizing
-     * the proposal, a retried Confirm creates it a second time (a known
-     * limit: the configuration store has no idempotency key to match on).
+     * Startup: settle each Confirm a restart cut short (a claim made before
+     * `claimedBefore`, this process's start). Its source or rule is created
+     * under {@link automationIdForProposal}, so `exists` tells whether it got
+     * that far: if so the proposal is `confirmed` with that id (keeping who
+     * confirmed it); if not it is `open` again for a person to retry. Either
+     * way a retry never creates a second copy. An object created but not yet
+     * enabled stays in its default-deny state.
      */
-    reopenInterrupted(claimedBefore: number, now: number): number {
-      const result = db
+    reconcileInterrupted(
+      claimedBefore: number,
+      now: number,
+      exists: (createdId: string) => boolean,
+    ): { confirmed: number; reopened: number } {
+      const rows = db
         .prepare(
-          `UPDATE automation_proposals SET state = 'open', settled_by = NULL, updated_at = ?
-           WHERE state = 'confirming' AND updated_at < ?`,
+          `SELECT id FROM automation_proposals WHERE state = 'confirming' AND updated_at < ?`,
         )
-        .run(now, claimedBefore) as { changes?: number | bigint };
-      return Number(result.changes ?? 0);
+        .all(claimedBefore) as { id: string }[];
+      let confirmed = 0;
+      let reopened = 0;
+      for (const { id } of rows) {
+        const createdId = automationIdForProposal(id);
+        if (exists(createdId)) {
+          const result = db
+            .prepare(
+              `UPDATE automation_proposals SET state = 'confirmed', created_id = ?, updated_at = ?
+               WHERE id = ? AND state = 'confirming'`,
+            )
+            .run(createdId, now, id) as { changes?: number | bigint };
+          if (Number(result.changes ?? 0) === 1) confirmed += 1;
+        } else {
+          const result = db
+            .prepare(
+              `UPDATE automation_proposals SET state = 'open', settled_by = NULL, updated_at = ?
+               WHERE id = ? AND state = 'confirming'`,
+            )
+            .run(now, id) as { changes?: number | bigint };
+          if (Number(result.changes ?? 0) === 1) reopened += 1;
+        }
+      }
+      return { confirmed, reopened };
     },
   };
 }

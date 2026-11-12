@@ -713,9 +713,16 @@ type AutomationProposalBase = Readonly<{
   description: AutomationProposalDescription;
   /**
    * The proposing chat had read untrusted content (#3483) when it proposed
-   * this.
+   * this. Kept as recorded.
    */
   untrustedContent: boolean;
+  /**
+   * The chat is marked now, as read when this was listed. Absent when it was
+   * not read. A person sees a warning when this or `untrustedContent` is set.
+   */
+  untrustedContentNow?: boolean;
+  /** The chat's mark when a person confirmed it; present once confirmed. */
+  untrustedContentAtConfirm?: boolean;
   rationale?: string;
   state: AutomationProposalState;
   /** The created source's or rule's id, once confirmed. */
@@ -736,6 +743,14 @@ export type AutomationProposal =
  * a `live` rule, in the same step.
  */
 export type AutomationProposalConfirmation = Readonly<{ enable?: boolean }>;
+
+/** Shown when the proposing chat had read untrusted content before proposing. */
+export const AUTOMATION_PROPOSAL_UNTRUSTED_COPY =
+  'This chat had read content written by others (such as email or web pages) before the agent proposed this. That content may have steered it: check it is what you asked for.';
+
+/** Shown when the chat was marked only after the agent proposed this. */
+export const AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY =
+  'This chat has read content written by others (such as email or web pages) since the agent proposed this. Check it is still what you asked for.';
 
 export const AUTOMATION_PROPOSAL_LIMITS = {
   maxOpenPerConversation: 3,

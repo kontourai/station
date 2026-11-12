@@ -206,7 +206,9 @@ export interface AgentScheduleRoutesDeps {
    * #4830: the Automation source and rule proposals waiting in this
    * conversation. Absent (hosted): the chat lists none.
    */
-  automationProposals?(conversationId: string): readonly AutomationProposal[];
+  automationProposals?(
+    conversationId: string,
+  ): Promise<readonly AutomationProposal[]>;
   now?: () => number;
 }
 
@@ -498,7 +500,7 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
     }
     let automationProposals: readonly AutomationProposal[] | undefined;
     try {
-      automationProposals = deps.automationProposals?.(conversationId);
+      automationProposals = await deps.automationProposals?.(conversationId);
     } catch {
       // Left out rather than read as none.
       automationProposals = undefined;

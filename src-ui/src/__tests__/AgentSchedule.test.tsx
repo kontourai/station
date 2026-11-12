@@ -11,7 +11,10 @@ import type {
   AgentWakeUp,
   ConversationAgentSchedule,
 } from '@kontourai/station-contracts/agent-schedule';
-import type { AutomationProposal } from '@kontourai/station-contracts/automation';
+import {
+  AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY,
+  type AutomationProposal,
+} from '@kontourai/station-contracts/automation';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -115,7 +118,7 @@ const automationProposal: AutomationProposal = {
     ],
   },
   description: {
-    title: 'Watch acme/widgets on GitHub (“ci”)',
+    title: 'Watch acme/widgets on GitHub',
     watches:
       'Completed GitHub Actions workflow runs in acme/widgets, checked every 5 minutes with no stored credential.',
     opens:
@@ -130,6 +133,46 @@ const automationProposal: AutomationProposal = {
   },
   untrustedContent: true,
   rationale: 'You asked to hear about CI failures.',
+  state: 'open',
+  createdAt: '2026-10-20T14:00:00.000Z',
+  updatedAt: '2026-10-20T14:00:00.000Z',
+};
+
+/** A rule whose instructions run past any preview length. */
+const LONG_INSTRUCTIONS = `${'Check the failing job and report. '.repeat(12)}END_OF_INSTRUCTIONS`;
+const ruleProposal: AutomationProposal = {
+  id: 'ap2',
+  conversationId: CONVERSATION,
+  kind: 'rule',
+  rule: {
+    name: 'CI <img src=x onerror=alert(1)>',
+    sourceId: 'source-1',
+    match: {
+      type: 'github.workflow_run.completed',
+      where: { 'run.conclusion': ['failure', 'timed_out'] },
+    },
+    action: {
+      kind: 'dispatch-task',
+      projectId: 'local-project-a',
+      agentId: 'writer',
+      instructions: LONG_INSTRUCTIONS,
+      budget: { maxTurns: 4, maxTokens: 200_000, maxWallRuntimeMs: 1_800_000 },
+    },
+    rateLimit: { maxStartsPerHour: 2 },
+  },
+  description: {
+    title: 'Open a Task when a matching GitHub run arrives',
+    watches:
+      'Completed GitHub Actions runs in acme/widgets, from an existing source.',
+    opens: 'A Task in Project A (local-project-a) for a matching run.',
+    wakes:
+      "Agent writer in Project A (local-project-a), with the agent's instructions below.",
+    authority: 'Asks before each tool call.',
+    startsAs: 'Created observing.',
+    ifEnabled: 'Live now.',
+  },
+  untrustedContent: false,
+  untrustedContentNow: true,
   state: 'open',
   createdAt: '2026-10-20T14:00:00.000Z',
   updatedAt: '2026-10-20T14:00:00.000Z',
@@ -261,7 +304,7 @@ describe('an Automation proposal waits for the person (#4830)', () => {
   test('the card shows Station’s description and the untrusted-content label', async () => {
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
     const card = await screen.findByRole('region', {
-      name: 'Proposed automation source: Watch acme/widgets on GitHub (“ci”)',
+      name: 'Proposed automation source: Watch acme/widgets on GitHub',
     });
     for (const line of [
       automationProposal.description.watches,
@@ -294,6 +337,40 @@ describe('an Automation proposal waits for the person (#4830)', () => {
           body: { enable: true },
         },
       ]),
+    );
+  });
+
+  test('what the agent wrote is set apart, and its instructions open whole', async () => {
+    schedule = { ...schedule, automationProposals: [ruleProposal] };
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    const written = await screen.findByRole('region', {
+      name: 'Written by the agent',
+    });
+    expect(written.textContent).toContain(ruleProposal.rule.name);
+    expect(written.textContent).toContain(
+      'run.conclusion = failure | timed_out',
+    );
+    // Station's sentences carry none of it.
+    const facts = screen.getByText(ruleProposal.description.title);
+    expect(facts.textContent).not.toContain('<img');
+    // Folded until asked, then the whole text, to its last word.
+    expect(screen.queryByText(/END_OF_INSTRUCTIONS/)).toBeNull();
+    const toggle = screen.getByRole('button', {
+      name: /Instructions the agent will be given/,
+    });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    const region = screen.getByRole('region', {
+      name: 'Instructions the agent will be given',
+    });
+    expect(region.textContent).toBe(LONG_INSTRUCTIONS);
+  });
+
+  test('a chat marked after the agent proposed shows the since-then warning', async () => {
+    schedule = { ...schedule, automationProposals: [ruleProposal] };
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    expect((await screen.findByRole('note')).textContent).toBe(
+      AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY,
     );
   });
 

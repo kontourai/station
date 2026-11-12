@@ -46,10 +46,12 @@ import {
   mintStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { composeAgentSchedule } from '../../runtime/routes/agent-schedule-composition.js';
+import { automationConfigurationFingerprint } from '../../services/automation/automation-intent.js';
 import {
   AUTOMATION_PROPOSAL_UNTRUSTED_COPY,
-  automationStartedReads,
-  sessionStartedByAutomation,
+  automationIdForProposal,
+  automationProposerReads,
+  sessionMayProposeAutomations,
 } from '../../services/automation/automation-proposals.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
 import {
@@ -111,15 +113,22 @@ const facts = {
   mayNotSend: new Set<string>(),
   /** Tasks the stubbed Task graph reads, by id. */
   tasks: new Map<string, { createdBy: string }>(),
+  /** Runs on each operator check: before the claim, then inside each lock. */
+  onOperatorCheck: undefined as (() => void) | undefined,
 };
 
 const PROJECTS = new Map([
   ['local-project-a', 'project-a'],
   ['local-project-b', 'project-b'],
 ]);
-const AGENTS = new Map<string, string | null>([
-  ['writer', 'project-a'],
-  ['elsewhere', 'project-b'],
+/** Each Agent's stored definition, as `AgentService.getAgent` reads it. */
+const WRITER = { name: 'Writer', prompt: 'Write.', project: 'project-a' };
+const AGENTS = new Map<
+  string,
+  { name: string; prompt: string; project?: string }
+>([
+  ['writer', WRITER],
+  ['elsewhere', { name: 'Elsewhere', prompt: 'Work.', project: 'project-b' }],
 ]);
 
 const scope: StationControlDispatchScope = {
@@ -149,14 +158,9 @@ let ledger: UntrustedContentLedger;
 let refusals: string[];
 let close: () => Promise<void>;
 
-beforeAll(async () => {
-  __resetStationServerSelfAttestationForTests();
-  const home = makeTempDir('station-automation-proposals-');
-  eventStore = new EventStore(join(home, 'orchestration.sqlite'));
-  automations = new AutomationStore(home);
-  ledger = new UntrustedContentLedger();
-  refusals = [];
-  const composition = composeAgentSchedule({
+/** The production composition over this file's stores; again is a restart. */
+function compose() {
+  return composeAgentSchedule({
     store: eventStore.agentScheduleStore(),
     threadInbox: undefined,
     scope,
@@ -186,17 +190,23 @@ beforeAll(async () => {
         c as never,
       ),
     agentProject: async (slug) => {
-      if (!AGENTS.has(slug)) throw new Error('no such agent');
-      return AGENTS.get(slug) ?? undefined;
+      const agent = AGENTS.get(slug);
+      if (!agent) throw new Error('no such agent');
+      return agent.project;
     },
     automationProposals: {
       store: eventStore.automationProposalStore(),
       automations,
       projectSlugForId: (id) => PROJECTS.get(id),
       projectName: (id) => (id === 'local-project-a' ? 'Project A' : undefined),
-      startedByAutomation: (sessionId) =>
-        sessionStartedByAutomation(
-          automationStartedReads(
+      agentDefinition: async (slug) => {
+        const agent = AGENTS.get(slug);
+        if (!agent) throw new Error('no such agent');
+        return structuredClone(agent);
+      },
+      mayPropose: (sessionId) =>
+        sessionMayProposeAutomations(
+          automationProposerReads(
             eventStore,
             (taskId) => facts.tasks.get(taskId) ?? null,
           ),
@@ -209,11 +219,26 @@ beforeAll(async () => {
         facts.operator &&
         getRuntimeAuthenticatedRequestPrincipal(request)?.authority ===
           'operator-credential'
-          ? { id: 'operator', assertCurrent: async () => {} }
+          ? {
+              id: 'operator',
+              assertCurrent: async () => {
+                facts.onOperatorCheck?.();
+              },
+            }
           : undefined,
     },
     logger: quietLogger(),
   });
+}
+
+beforeAll(async () => {
+  __resetStationServerSelfAttestationForTests();
+  const home = makeTempDir('station-automation-proposals-');
+  eventStore = new EventStore(join(home, 'orchestration.sqlite'));
+  automations = new AutomationStore(home);
+  ledger = new UntrustedContentLedger();
+  refusals = [];
+  const composition = compose();
   const app = new Hono();
   configureRuntimeHttp({
     app: app as never,
@@ -276,12 +301,43 @@ beforeEach(() => {
   facts.operator = true;
   facts.mayNotSend.clear();
   facts.tasks.clear();
+  facts.onOperatorCheck = undefined;
+  AGENTS.set('writer', WRITER);
 });
 
 type Channel = 'bound' | 'delegated-custody';
 
 let counter = 0;
-const nextSession = (prefix = 'op-') => `${prefix}${++counter}`;
+/**
+ * A Session whose current turn a person sent: the `turn.started` a person's
+ * own send records (#4512 `interactive`, from an operator client origin).
+ * Only such a turn may propose (fail closed); a test that needs another
+ * origin appends a newer turn, or uses {@link bareSession}.
+ */
+const nextSession = (prefix = 'op-') => {
+  const sessionId = bareSession(prefix);
+  appendTurn(sessionId, 'interactive');
+  return sessionId;
+};
+const bareSession = (prefix = 'op-') => `${prefix}${++counter}`;
+function appendTurn(sessionId: string, dispatchOrigin: string) {
+  eventStore.appendEvent({
+    eventId: `${sessionId}-turn-${++counter}`,
+    provider: 'claude',
+    threadId: sessionId,
+    createdAt: '2026-11-12T00:00:00.000Z',
+    method: 'turn.started',
+    turnId: `turn-${counter}`,
+    dispatchOrigin,
+    clientOrigin: {
+      version: 1,
+      actor: {
+        kind: dispatchOrigin === 'interactive' ? 'operator' : 'internal',
+      },
+      reported: { version: 1, surface: 'unknown', build: null },
+    },
+  } as never);
+}
 
 async function agent(
   channel: Channel,
@@ -756,5 +812,368 @@ describe('a proposal from a chat that read untrusted content says so', () => {
     expect(
       cleanListed.body.data.automationProposals[0].description.untrusted,
     ).toBeUndefined();
+  });
+});
+
+// ── #4830 review, fix round 1 ─────────────────────────────────────────────
+
+describe('Confirm rechecks what the proposing chat may do now (review P1)', () => {
+  const refusedAtConfirm = async (
+    proposalId: string,
+    conversationId: string,
+    body?: unknown,
+  ) => {
+    const before = configured();
+    const response = await person(
+      'POST',
+      answer(conversationId, proposalId, 'confirm'),
+      body,
+    );
+    expect(response).toMatchObject({
+      status: 409,
+      body: { code: 'automation_proposal_binding_changed' },
+    });
+    expect(configured()).toEqual(before);
+    // Still open: the person can decline it.
+    expect(
+      eventStore.automationProposalStore().proposal(proposalId)?.state,
+    ).toBe('open');
+  };
+
+  test('an Agent moved out of the chat’s scope cannot be confirmed or enabled', async () => {
+    const sessionId = nextSession();
+    const conversationId = `conv-${sessionId}`;
+    const source = await agent(
+      'delegated-custody',
+      sessionId,
+      'POST',
+      SOURCES,
+      SOURCE,
+    );
+    const ruleProposal = await agent(
+      'delegated-custody',
+      sessionId,
+      'POST',
+      RULES,
+      rule({ sourceProposalId: source.body.data.id }),
+    );
+    expect([source.status, ruleProposal.status]).toEqual([200, 200]);
+    AGENTS.set('writer', { ...WRITER, project: 'project-b' });
+    // A fresh proposal is refused, and so is confirming the earlier one.
+    expect(
+      (await agent('delegated-custody', nextSession(), 'POST', SOURCES, SOURCE))
+        .status,
+    ).toBe(403);
+    await refusedAtConfirm(source.body.data.id, conversationId, {
+      enable: true,
+    });
+  });
+
+  test('a bound operator chat is pinned to the Agent it named, not just its slug', async () => {
+    // A bound operator reaches every Project, so only the binding tells.
+    const sessionId = nextSession();
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    expect(source.status).toBe(200);
+    AGENTS.set('writer', { ...WRITER, project: 'project-b' });
+    await refusedAtConfirm(source.body.data.id, `conv-${sessionId}`);
+  });
+
+  test('a deleted Agent cannot be confirmed', async () => {
+    const sessionId = nextSession();
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    AGENTS.delete('writer');
+    await refusedAtConfirm(source.body.data.id, `conv-${sessionId}`);
+  });
+
+  test('a slug reused for a different Agent cannot be confirmed', async () => {
+    const sessionId = nextSession();
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    AGENTS.set('writer', { ...WRITER, prompt: 'Something else entirely.' });
+    await refusedAtConfirm(source.body.data.id, `conv-${sessionId}`);
+  });
+
+  test('an Agent that changes inside the creation lock creates nothing', async () => {
+    const sessionId = nextSession();
+    const conversationId = `conv-${sessionId}`;
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    // The first operator check is Confirm's own, before it claims; the
+    // second runs inside the store's lock, after the Agent is replaced.
+    let checks = 0;
+    facts.onOperatorCheck = () => {
+      checks += 1;
+      if (checks === 2) AGENTS.delete('writer');
+    };
+    const before = configured();
+    const response = await person(
+      'POST',
+      answer(conversationId, source.body.data.id, 'confirm'),
+    );
+    expect(response.body.code).toBe('automation_proposal_binding_changed');
+    expect(checks).toBeGreaterThanOrEqual(2);
+    expect(configured()).toEqual(before);
+    expect(
+      eventStore.automationProposalStore().proposal(source.body.data.id)?.state,
+    ).toBe('open');
+  });
+
+  test('an Agent that changes inside the enabling lock is created but never enabled', async () => {
+    const sessionId = nextSession();
+    const conversationId = `conv-${sessionId}`;
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    // Checks: before the claim, in the creation lock, then in the enabling
+    // lock, where the Agent is gone.
+    let checks = 0;
+    facts.onOperatorCheck = () => {
+      checks += 1;
+      if (checks === 3) AGENTS.delete('writer');
+    };
+    const response = await person(
+      'POST',
+      answer(conversationId, source.body.data.id, 'confirm'),
+      { enable: true },
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ enabled: false });
+    expect(
+      configured().sources.find(
+        ({ id }) => id === response.body.data.createdId,
+      ),
+    ).toMatchObject({ enabled: false });
+  });
+});
+
+describe('only a person’s own turn may propose: unknown fails closed (review P1)', () => {
+  test('a turn with no recorded origin is refused', async () => {
+    const sessionId = bareSession();
+    const response = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    expect(response).toMatchObject({
+      status: 403,
+      body: { code: 'automation_proposal_unattended' },
+    });
+  });
+
+  for (const origin of ['unknown', 'task-dispatch', 'delegation'])
+    test(`a current turn recorded as ${origin} is refused`, async () => {
+      const sessionId = nextSession();
+      appendTurn(sessionId, origin);
+      expect(
+        (await agent('bound', sessionId, 'POST', SOURCES, SOURCE)).body.code,
+      ).toBe('automation_proposal_unattended');
+    });
+
+  test('a delegated child Station derived is refused, even on an interactive-looking turn', async () => {
+    const sessionId = bareSession();
+    // The start a delegation route writes: its provenance stamp and lineage.
+    eventStore.appendEvent({
+      eventId: `${sessionId}-start`,
+      provider: 'claude',
+      threadId: sessionId,
+      createdAt: '2026-11-12T00:00:00.000Z',
+      method: 'session.started',
+      metadata: {
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        stationDelegationProvenance: 'caller-derived',
+        delegation: {
+          mode: 'isolated-child',
+          parentSessionId: 'automation-parent',
+          parentConversationId: 'automation-parent',
+          rootConversationId: 'automation-parent',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'writer',
+          rootAgentSlug: 'writer',
+        },
+      },
+    } as never);
+    appendTurn(sessionId, 'interactive');
+    expect(
+      (await agent('bound', sessionId, 'POST', SOURCES, SOURCE)).body.code,
+    ).toBe('automation_proposal_unattended');
+  });
+
+  test('a read Station cannot make refuses', () => {
+    const reads = {
+      boundTaskCreatedBy: () => undefined,
+      delegatedChild: () => false,
+      currentTurnOrigin: (): never => {
+        throw new Error('unreadable');
+      },
+    };
+    expect(sessionMayProposeAutomations(reads, 's')).toBe(false);
+    expect(
+      sessionMayProposeAutomations(
+        { ...reads, currentTurnOrigin: () => 'interactive' },
+        's',
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('nothing the agent wrote is hidden or spoken in Station’s voice (review P2)', () => {
+  test('long instructions are stored whole and kept out of Station’s description', async () => {
+    const sessionId = nextSession();
+    const source = await agent('bound', sessionId, 'POST', SOURCES, {
+      ...SOURCE,
+      name: 'CI <img src=x onerror=alert(1)>',
+    });
+    const instructions = `${'A'.repeat(300)} HIDDEN_ACTION_SUFFIX`;
+    const proposal = await agent(
+      'bound',
+      sessionId,
+      'POST',
+      RULES,
+      rule(
+        { sourceProposalId: source.body.data.id },
+        { name: 'ci <b>rule</b>', action: action({ instructions }) },
+      ),
+    );
+    expect(proposal.status).toBe(200);
+    const stored = eventStore
+      .automationProposalStore()
+      .proposal(proposal.body.data.id)!;
+    expect(stored.kind === 'rule' && stored.rule.action.instructions).toBe(
+      instructions,
+    );
+    // Station's sentences carry none of the agent's words, so none can be
+    // cut short or read as Station's: the card shows them apart, whole.
+    for (const description of [
+      stored.description,
+      eventStore.automationProposalStore().proposal(source.body.data.id)!
+        .description,
+    ]) {
+      const text = Object.values(description).join('\n');
+      expect(text).not.toContain('AAAA');
+      expect(text).not.toContain('…');
+      expect(text).not.toContain('<img');
+      expect(text).not.toContain('<b>');
+      expect(text).not.toContain('failure');
+    }
+  });
+
+  test('unknown, prototype and nested authority fields cannot reach storage', async () => {
+    for (const extra of [
+      { config: { grants: SOURCE.grants } },
+      { grants: [{ ...SOURCE.grants[0], extra: true }] },
+      JSON.parse('{"__proto__":{"fullAccessGrant":true}}'),
+      { constructor: { prototype: { enabled: true } } },
+    ]) {
+      const sessionId = nextSession();
+      const response = await agent('bound', sessionId, 'POST', SOURCES, {
+        ...SOURCE,
+        ...extra,
+      });
+      expect([400, 403]).toContain(response.status);
+      expect(
+        eventStore
+          .automationProposalStore()
+          .recentProposals(`conv-${sessionId}`, 10),
+      ).toEqual([]);
+    }
+  });
+});
+
+describe('an interrupted Confirm never creates a second copy (review P2)', () => {
+  test('a restart after creating and enabling adopts the rule; a retry creates nothing', async () => {
+    const sessionId = nextSession();
+    const conversationId = `conv-${sessionId}`;
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    const sourceConfirmed = await person(
+      'POST',
+      answer(conversationId, source.body.data.id, 'confirm'),
+      { enable: true },
+    );
+    const proposed = await agent(
+      'bound',
+      sessionId,
+      'POST',
+      RULES,
+      rule({ sourceId: sourceConfirmed.body.data.createdId }),
+    );
+    const store = eventStore.automationProposalStore();
+    const pending = store.proposal(proposed.body.data.id)!;
+    if (pending.kind !== 'rule') throw new Error('expected a rule');
+    // Exactly what Confirm does before it records the outcome, then the
+    // process dies: claimed, created under the proposal's id, enabled.
+    const createdId = automationIdForProposal(pending.id);
+    expect(
+      store.transition(pending.id, 'open', 'confirming', 'operator', 1),
+    ).toBe(true);
+    const { sourceProposalId: _none, ...input } = pending.rule;
+    await automations.createRule(
+      { ...input, sourceId: input.sourceId! },
+      undefined,
+      { id: createdId },
+    );
+    await automations.setEnabled({
+      kind: 'rule',
+      id: createdId,
+      expectedFingerprint: automationConfigurationFingerprint(configured()),
+      mode: 'live',
+    });
+    // Restart: the composition settles what the cut left behind.
+    compose();
+    expect(store.proposal(pending.id)).toMatchObject({
+      state: 'confirmed',
+      createdId,
+    });
+    const retried = await person(
+      'POST',
+      answer(conversationId, pending.id, 'confirm'),
+      { enable: true },
+    );
+    expect(retried.body.code).toBe('automation_proposal_settled');
+    expect(
+      configured()
+        .rules.filter((candidate) => candidate.name === input.name)
+        .filter((candidate) => candidate.sourceId === input.sourceId),
+    ).toHaveLength(1);
+  });
+
+  test('a Confirm that finds its object already created adopts it', async () => {
+    const sessionId = nextSession();
+    const conversationId = `conv-${sessionId}`;
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    const pending = eventStore
+      .automationProposalStore()
+      .proposal(source.body.data.id)!;
+    if (pending.kind !== 'source') throw new Error('expected a source');
+    const createdId = automationIdForProposal(pending.id);
+    await automations.createSource({ ...pending.source }, undefined, {
+      id: createdId,
+    });
+    const count = configured().sources.length;
+    const confirmed = await person(
+      'POST',
+      answer(conversationId, pending.id, 'confirm'),
+    );
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.data.createdId).toBe(createdId);
+    expect(configured().sources).toHaveLength(count);
+  });
+});
+
+describe('the untrusted-content mark is read again at display and confirm (review)', () => {
+  test('a chat marked after proposing warns and records the mark at confirm', async () => {
+    const sessionId = nextSession();
+    const conversationId = `conv-${sessionId}`;
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    expect(
+      (await person('GET', schedule(conversationId))).body.data
+        .automationProposals[0],
+    ).toMatchObject({ untrustedContent: false, untrustedContentNow: false });
+    ledger.markConversation(conversationId, Promise.resolve(true));
+    const listed = await person('GET', schedule(conversationId));
+    expect(listed.body.data.automationProposals[0]).toMatchObject({
+      untrustedContent: false,
+      untrustedContentNow: true,
+    });
+    const confirmed = await person(
+      'POST',
+      answer(conversationId, source.body.data.id, 'confirm'),
+    );
+    expect(confirmed.body.data).toMatchObject({
+      untrustedContentAtConfirm: true,
+      proposal: { untrustedContent: false, untrustedContentAtConfirm: true },
+    });
   });
 });

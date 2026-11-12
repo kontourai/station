@@ -38,8 +38,11 @@ import {
   type AutomationProposalPlan,
   type AutomationProposalPlanContext,
   type AutomationProposalStore,
+  type AutomationTargetBinding,
+  automationIdForProposal,
   planRuleProposal,
   planSourceProposal,
+  sameAutomationTargetBinding,
 } from '../../services/automation/automation-proposals.js';
 import {
   type AutomationStore,
@@ -62,7 +65,7 @@ export const AUTOMATION_PROPOSAL_COPY = {
   unattendedNoOwner:
     'This session acts for no one, so it cannot propose automations. Ask the person in their own chat.',
   startedByAutomation:
-    'Work an automation started cannot create, change or remove automations. Tell the person what you would propose instead.',
+    'Only a turn a person sent in their own chat can propose automations. Work an automation, a delegation or a check-back started cannot create, change or remove automations. Tell the person what you would propose instead.',
   limitReached: `This chat already has ${AUTOMATION_PROPOSAL_LIMITS.maxOpenPerConversation} automation proposals waiting. Wait for the person to answer one.`,
   rateLimited:
     'This chat proposed too many automations in the last hour. Try again later.',
@@ -105,16 +108,18 @@ export interface AutomationProposalRoutesDeps {
   /** Hosted Stations have no Automation surface. */
   hosted?: boolean;
   /**
-   * Whether this caller could dispatch work to `agentId` in `projectId`
-   * itself, by the one dispatch scope rule. Unreadable answers false.
+   * The pair resolved (Project, Agent and the Agent's definition digest)
+   * when this caller could dispatch work to `agentId` in `projectId` itself,
+   * by the one dispatch scope rule; `undefined` when it could not or Station
+   * cannot read it. Asked at proposal time and again at Confirm.
    */
-  mayDispatch(
+  bind(
     caller: StationControlPolicyCaller,
     projectId: string,
     agentId: string,
-  ): Promise<boolean>;
-  /** `sessionStartedByAutomation` over the Session's own records. */
-  startedByAutomation(sessionId: string): boolean;
+  ): Promise<AutomationTargetBinding | undefined>;
+  /** `sessionMayProposeAutomations` over the Session's own records. */
+  mayPropose(sessionId: string): boolean;
   /** The conversation (or a child it delegated to) read untrusted content. */
   untrustedContent(conversationId: string): Promise<boolean>;
   projectName?(projectId: string): string | undefined;
@@ -135,6 +140,23 @@ async function readJson(request: Request): Promise<unknown> {
     return undefined;
   }
 }
+
+/** A recorded binding no longer holds; nothing is created or enabled. */
+class BindingChangedError extends Error {
+  constructor(binding: AutomationTargetBinding) {
+    super(
+      `This chat can no longer start work for ${binding.agentId} in ${binding.projectId} as it could when it proposed this, or that Agent has changed. Nothing was created or enabled. Decline it and ask the agent again.`,
+    );
+    this.name = 'BindingChangedError';
+  }
+}
+
+const bindingChanged = (c: Context, error: string) =>
+  c.json(
+    { success: false, code: 'automation_proposal_binding_changed', error },
+    409,
+    NO_STORE,
+  );
 
 export function createAutomationProposalRoutes(
   deps: AutomationProposalRoutesDeps,
@@ -218,7 +240,7 @@ export function createAutomationProposalRoutes(
           'automation_proposal_unattended',
           AUTOMATION_PROPOSAL_COPY.unattendedNoOwner,
         );
-      if (deps.startedByAutomation(caller.sessionId))
+      if (!deps.mayPropose(caller.sessionId))
         return refusal(
           c,
           'automation_proposal_unattended',
@@ -234,8 +256,8 @@ export function createAutomationProposalRoutes(
       const result = await plan(await readJson(c.req.raw), {
         conversationId: caller.conversationId,
         authority: {
-          mayDispatch: (projectId, agentId) =>
-            deps.mayDispatch(caller.policy, projectId, agentId),
+          bind: (projectId, agentId) =>
+            deps.bind(caller.policy, projectId, agentId),
         },
         configuration: () => automations.read(),
         proposal: (id) => store.proposal(id),
@@ -248,6 +270,11 @@ export function createAutomationProposalRoutes(
         conversationId: caller.conversationId,
         sessionId: caller.sessionId,
         plan: result,
+        proposer: {
+          ...caller.policy,
+          sessionId: caller.sessionId,
+          conversationId: caller.conversationId,
+        },
         untrusted,
         now: now(),
       });
@@ -436,6 +463,51 @@ export function createAutomationProposalRoutes(
           sourceId = source.createdId;
         }
       }
+      const recorded = store.authority(proposal.id);
+      if (!recorded)
+        return bindingChanged(
+          c,
+          'Station cannot read who proposed this. Decline it and ask the agent again.',
+        );
+      /**
+       * What the proposing chat may do NOW, for what it named THEN (#4830
+       * review): the scope rule decided again for the recorded caller, and
+       * each Agent still the one it named (same slug, Project and
+       * definition). Run before the claim, then again inside the store's
+       * lock for creation and for enabling, with the operator's own check.
+       */
+      const recheck = async () => {
+        await operator.assertCurrent();
+        for (const binding of recorded.bindings) {
+          let current: AutomationTargetBinding | undefined;
+          try {
+            current = await deps.bind(
+              recorded.proposer,
+              binding.projectId,
+              binding.agentId,
+            );
+          } catch {
+            current = undefined;
+          }
+          if (!sameAutomationTargetBinding(binding, current))
+            throw new BindingChangedError(binding);
+        }
+      };
+      try {
+        await recheck();
+      } catch (error) {
+        if (error instanceof BindingChangedError)
+          return bindingChanged(c, error.message);
+        throw error;
+      }
+      let untrustedAtConfirm: boolean;
+      try {
+        untrustedAtConfirm = await deps.untrustedContent(
+          proposal.conversationId,
+        );
+      } catch {
+        untrustedAtConfirm = true;
+      }
       if (
         !store.transition(
           proposal.id,
@@ -446,24 +518,37 @@ export function createAutomationProposalRoutes(
         )
       )
         return settled(c, store.storedState(proposal.id));
-      let createdId: string;
+      // One proposal names one object, created under an id derived from the
+      // proposal: a Confirm retried after an interrupted one finds what that
+      // created and adopts it rather than creating a second (#4830 review).
+      const createdId = automationIdForProposal(proposal.id);
+      const kind = proposal.kind;
       try {
-        if (proposal.kind === 'source') {
-          const created = await automations.createSource(
-            { ...proposal.source },
-            operator.assertCurrent,
-          );
-          createdId = created.source.id;
-        } else {
-          const { sourceProposalId: _pending, ...rule } = proposal.rule;
-          const created = await automations.createRule(
-            { ...rule, sourceId: sourceId! },
-            operator.assertCurrent,
-          );
-          createdId = created.id;
+        const current = automations.read();
+        const exists =
+          kind === 'source'
+            ? current.sources.some(({ id }) => id === createdId)
+            : current.rules.some(({ id }) => id === createdId);
+        if (!exists) {
+          if (proposal.kind === 'source')
+            await automations.createSource({ ...proposal.source }, recheck, {
+              id: createdId,
+            });
+          else {
+            const { sourceProposalId: _pending, ...rule } = proposal.rule;
+            await automations.createRule(
+              { ...rule, sourceId: sourceId! },
+              recheck,
+              {
+                id: createdId,
+              },
+            );
+          }
         }
       } catch (error) {
         store.transition(proposal.id, 'confirming', 'open', null, now());
+        if (error instanceof BindingChangedError)
+          return bindingChanged(c, error.message);
         if (error instanceof AutomationValidationError)
           return c.json(
             {
@@ -489,10 +574,11 @@ export function createAutomationProposalRoutes(
       // Default deny unless the person asked otherwise in this confirmation:
       // the store always creates a disabled source and an `observe` rule.
       let enabled = false;
+      let enableRefusal: string | undefined;
       if (enable) {
         try {
           await automations.setEnabled(
-            proposal.kind === 'source'
+            kind === 'source'
               ? {
                   kind: 'source',
                   id: createdId,
@@ -509,10 +595,12 @@ export function createAutomationProposalRoutes(
                   ),
                   mode: 'live',
                 },
-            operator.assertCurrent,
+            recheck,
           );
           enabled = true;
         } catch (error) {
+          if (error instanceof BindingChangedError)
+            enableRefusal = error.message;
           deps.logger.warn('confirmed automation was created but not enabled', {
             proposalId: proposal.id,
             error: errorMessage(error),
@@ -526,7 +614,7 @@ export function createAutomationProposalRoutes(
           'confirmed',
           person.userId,
           now(),
-          createdId,
+          { createdId, untrustedAtConfirm },
         )
       )
         deps.logger.warn(
@@ -543,9 +631,11 @@ export function createAutomationProposalRoutes(
             proposal: store.proposal(proposal.id),
             createdId,
             enabled,
+            untrustedContentAtConfirm: untrustedAtConfirm,
             ...(enable && !enabled
               ? {
                   message:
+                    enableRefusal ??
                     'Created, but it could not be enabled, so it starts disabled (a source) or observing (a rule).',
                 }
               : {}),

@@ -34,7 +34,10 @@ import type {
 } from '../../routes/orchestration/automation-proposals.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
-import type { AutomationProposalStore } from '../../services/automation/automation-proposals.js';
+import {
+  type AutomationProposalStore,
+  agentDefinitionDigest,
+} from '../../services/automation/automation-proposals.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type AgentScheduleStore,
@@ -116,7 +119,13 @@ export interface AutomationProposalCompositionDeps {
   /** The slug of the Project with this `ProjectConfig.id`, if any. */
   projectSlugForId(projectId: string): string | undefined;
   projectName(projectId: string): string | undefined;
-  startedByAutomation(sessionId: string): boolean;
+  /**
+   * The Agent's whole stored definition, read once per check; its `project`
+   * is the Agent's own Project slug. Throws when there is no such Agent.
+   */
+  agentDefinition(agentSlug: string): Promise<{ readonly project?: string }>;
+  /** `sessionMayProposeAutomations` over the Session's own records. */
+  mayPropose(sessionId: string): boolean;
   untrustedContent(conversationId: string): Promise<boolean>;
   operator(request: Request): Promise<AutomationProposalOperator | undefined>;
 }
@@ -366,11 +375,23 @@ export function composeAgentSchedule(
   if (proposalStore) {
     const startedAt = deps.now?.() ?? Date.now();
     try {
-      const reopened = proposalStore.reopenInterrupted(startedAt, startedAt);
-      if (reopened > 0)
+      const automations = proposals?.automations;
+      // An object an interrupted Confirm created is adopted; otherwise the
+      // proposal is open again. Unreadable configuration reconciles nothing.
+      const configuration = automations?.read();
+      const settled = configuration
+        ? proposalStore.reconcileInterrupted(
+            startedAt,
+            startedAt,
+            (createdId) =>
+              configuration.sources.some(({ id }) => id === createdId) ||
+              configuration.rules.some(({ id }) => id === createdId),
+          )
+        : { confirmed: 0, reopened: 0 };
+      if (settled.confirmed + settled.reopened > 0)
         deps.logger.warn(
-          'reopened automation proposals a restart left confirming',
-          { count: reopened },
+          'settled automation proposals a restart left confirming',
+          settled,
         );
     } catch (error) {
       deps.logger.warn('could not reopen interrupted automation proposals', {
@@ -379,37 +400,64 @@ export function composeAgentSchedule(
     }
   }
   /**
-   * #4830: whether the proposing chat could start work for this Agent in this
-   * Project itself. The same scope rule a dispatch answers, for the Project
-   * (with `execute`) and for the Agent's own Project, as its recorded owner.
-   * An operator's bound caller reaches every Project, so the Project and the
-   * Agent must also exist.
+   * #4830: the Project/Agent pair resolved when the proposing chat could
+   * start work for this Agent in this Project itself: the same scope rule a
+   * dispatch answers, for the Project (with `execute`) and for the Agent's own
+   * Project, as its recorded owner. An operator's bound caller reaches every
+   * Project, so the Project and the Agent must also exist. The Agent is read
+   * once, and pinned by its own Project and a digest of its definition, so
+   * Confirm can tell a moved, deleted or replaced Agent from the same one.
    */
-  const mayDispatchAutomation: AutomationProposalRoutesDeps['mayDispatch'] =
-    async (caller, projectId, agentId) => {
-      const ownerId = caller.principal?.elevationEligible
-        ? caller.principal.id
-        : undefined;
-      const projectSlug = proposals?.projectSlugForId(projectId);
-      if (ownerId === undefined || projectSlug === undefined) return false;
-      const projectTarget = deps.scope?.target(
-        { kind: 'new', ownerId, projectSlug, remote: false },
-        'execute',
-      );
-      if (stationControlScopeRefusal(caller, projectTarget)) return false;
-      // Throws when the Agent does not exist, which refuses.
-      const agentTarget = await jobAgentTarget(agentId, ownerId);
-      return !stationControlScopeRefusal(caller, agentTarget);
+  const bindAutomationTarget: AutomationProposalRoutesDeps['bind'] = async (
+    caller,
+    projectId,
+    agentId,
+  ) => {
+    if (!proposals) return undefined;
+    const ownerId = caller.principal?.elevationEligible
+      ? caller.principal.id
+      : undefined;
+    const projectSlug = proposals.projectSlugForId(projectId);
+    if (ownerId === undefined || projectSlug === undefined) return undefined;
+    const projectTarget = deps.scope?.target(
+      { kind: 'new', ownerId, projectSlug, remote: false },
+      'execute',
+    );
+    if (stationControlScopeRefusal(caller, projectTarget)) return undefined;
+    // Throws when the Agent does not exist, which refuses.
+    const definition = await proposals.agentDefinition(agentId);
+    const agentProject = definition.project ?? null;
+    const agentTarget =
+      agentProject === null
+        ? {
+            ownerId,
+            scope: { kind: 'global' as const },
+            host: false,
+            remote: false,
+          }
+        : deps.scope?.target({
+            kind: 'new',
+            ownerId,
+            projectSlug: agentProject,
+            remote: false,
+          });
+    if (stationControlScopeRefusal(caller, agentTarget)) return undefined;
+    return {
+      projectId,
+      projectSlug,
+      agentId,
+      agentProject,
+      agentDigest: agentDefinitionDigest(definition),
     };
+  };
   const automationProposalRouteDeps: AutomationProposalRoutesDeps = {
     isInternalRequest: deps.isInternalRequest,
     store: proposalStore,
     automations: proposals?.automations,
     hosted: deps.hosted,
-    mayDispatch: mayDispatchAutomation,
-    // Unwired, fail closed: every caller counts as automation-started.
-    startedByAutomation: (sessionId) =>
-      proposals?.startedByAutomation(sessionId) ?? true,
+    bind: bindAutomationTarget,
+    // Unwired, fail closed: no caller may propose.
+    mayPropose: (sessionId) => proposals?.mayPropose(sessionId) ?? false,
     untrustedContent: async (conversationId) =>
       (await proposals?.untrustedContent(conversationId)) ?? true,
     projectName: (projectId) => proposals?.projectName(projectId),
@@ -429,8 +477,24 @@ export function composeAgentSchedule(
     hosted: deps.hosted,
     ...(proposalStore
       ? {
-          automationProposals: (conversationId: string) =>
-            proposalStore.openProposals(conversationId),
+          // The mark as it is now beside the one recorded at proposal time:
+          // a chat marked after its agent proposed still warns (#4830 review).
+          // An unreadable mark reads as marked.
+          automationProposals: async (conversationId: string) => {
+            const open = proposalStore.openProposals(conversationId);
+            if (open.length === 0) return open;
+            let marked: boolean;
+            try {
+              marked =
+                (await proposals?.untrustedContent(conversationId)) ?? true;
+            } catch {
+              marked = true;
+            }
+            return open.map((proposal) => ({
+              ...proposal,
+              untrustedContentNow: marked,
+            }));
+          },
         }
       : {}),
     ...(deps.conversationAutomations

@@ -110,8 +110,8 @@ import {
   stationControlRequestAuthority,
 } from '../../security/station-control-request-authority.js';
 import {
-  automationStartedReads,
-  sessionStartedByAutomation,
+  automationProposerReads,
+  sessionMayProposeAutomations,
 } from '../../services/automation/automation-proposals.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
 import {
@@ -7318,11 +7318,13 @@ export function configureRuntimeRoutes(
               context.projectService
                 .listProjects()
                 .find((project) => project.id === projectId)?.name,
-            startedByAutomation: (sessionId: string) => {
+            agentDefinition: async (agentSlug: string) =>
+              context.agentService.getAgent(agentSlug),
+            mayPropose: (sessionId: string) => {
               const eventStore = context.orchestrationEventStore;
-              if (!eventStore) return true;
-              return sessionStartedByAutomation(
-                automationStartedReads(eventStore, (taskId) =>
+              if (!eventStore) return false;
+              return sessionMayProposeAutomations(
+                automationProposerReads(eventStore, (taskId) =>
                   context.taskGraphService.readTaskView(taskId),
                 ),
                 sessionId,
