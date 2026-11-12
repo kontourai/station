@@ -2350,7 +2350,8 @@ An older client that sends only `updatedAt` records "last viewed" and moves
 no marker, so its conversations read unread until it sends `readVersion`. The
 inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
 Just finished reads; an acknowledgement writes it alongside, and unread never
-reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
+reads it. A Project room uses its `checkpoint.lastSeq`; each named channel is
+its own room, so its `roomId` keys its own marker (#4792). A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
 new marker.
 

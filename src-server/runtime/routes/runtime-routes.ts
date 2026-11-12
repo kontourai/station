@@ -10199,7 +10199,9 @@ export function configureRuntimeRoutes(
         },
         endProjectTerminals: async (projectId) =>
           scopedTerminals.sessions?.endProject(projectId),
-        visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
+        visualFileFrameOrigin: clientReachableFrameOrigin(
+          context.getMcpUiFrameOrigin,
+        ),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
@@ -11606,7 +11608,7 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       context.applyAgentConfigurationMutation,
-      context.getMcpUiFrameOrigin,
+      clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
       // #2144 slice 2: one project record for `GET /config/app?project=`.
@@ -11648,14 +11650,15 @@ export function configureRuntimeRoutes(
     '/api/boot',
     createBootRoutes({
       auth: async () => (await createAuthRoutes().request('/status')).json(),
-      config: async () =>
+      // Reachability is decided by the boot request's client.
+      config: async (c) =>
         (
           await createConfigRoutes(
             context.configLoader,
             context.logger,
             context.eventBus,
             context.applyAgentConfigurationMutation,
-            context.getMcpUiFrameOrigin,
+            () => clientReachableFrameOrigin(context.getMcpUiFrameOrigin)(c),
             context.rebindBuiltinAgents,
             context.getPluginFrameOrigin,
           ).request('/app')
@@ -11857,7 +11860,7 @@ export function configureRuntimeRoutes(
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
-      frameOrigin: () => context.getMcpUiFrameOrigin?.(),
+      frameOrigin: clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>
         resolveStationControlCallerForRequest(
@@ -13256,6 +13259,17 @@ function isSameMachineBrowserCaller(c: {
     classifyRuntimePeer(attestedClient).peerClass === 'loopback' &&
     isLoopbackAuthority(attestedBrowserVisibleHost(request))
   );
+}
+
+/**
+ * The frame listener binds this host's loopback, so only a browser on this
+ * machine can reach its origin (#4821). Other clients get none and render in
+ * the opaque-origin sandbox.
+ */
+function clientReachableFrameOrigin(
+  origin: (() => string | undefined) | undefined,
+): (c: Context) => string | undefined {
+  return (c) => (isSameMachineBrowserCaller(c) ? origin?.() : undefined);
 }
 
 /** Timing-safe compare over digests, so a length mismatch never short-circuits. */
