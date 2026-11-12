@@ -24,6 +24,7 @@ import {
   forgetStationProbe,
   isProbeable,
   matchesStationFilter,
+  needsAccess,
   orderStations,
   probeStation,
   readRecentStations,
@@ -377,7 +378,7 @@ export function StationSwitcherMenu({
               // says nothing about whether this device is still accepted.
               const status: ConnectionIndicatorState = current
                 ? activeStatus
-                : label === 'Needs access'
+                : needsAccess(connection)
                   ? 'needs-credential'
                   : probed === 'online'
                     ? 'connected'

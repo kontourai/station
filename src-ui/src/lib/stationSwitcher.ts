@@ -180,6 +180,14 @@ export function ago(at: number, now: number): string {
   return /^\d/.test(text) ? `${text} ago` : text;
 }
 
+/** This device has no accepted credential for the Station. */
+export function needsAccess(connection: SavedConnection): boolean {
+  return (
+    connection.credentialState === 'required' ||
+    connection.lastError?.reason === 'authentication-failed'
+  );
+}
+
 export interface StationRowStatus {
   /** The state in a word or two; also the row's accessible description. */
   label: string;
@@ -242,10 +250,7 @@ export function describeStationRow({
     if (connection.injectedStatus === 'stopped')
       return { label: 'Not running', detail: '' };
   }
-  if (
-    connection.credentialState === 'required' ||
-    connection.lastError?.reason === 'authentication-failed'
-  ) {
+  if (needsAccess(connection)) {
     return {
       label: 'Needs access',
       detail: connection.lastError

@@ -120,6 +120,7 @@ export function StationConnectingScreen({
     const start = Date.now();
     setStartedAt(start);
     setNow(start);
+    setBackError(null);
     onRetry();
   };
 

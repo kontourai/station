@@ -291,6 +291,29 @@ describe('ConnectionHealthCoordinator', () => {
     unsubscribe();
   });
 
+  it('reports no check time once a probed Station resolves to the supervised local server', async () => {
+    const probed = createAccessEndpoint('https://station.example.test');
+    const managed = createAccessEndpoint('http://127.0.0.1:3142', {
+      kind: 'managed-loopback',
+    });
+    let endpoints = [probed];
+    const coordinator = new ConnectionHealthCoordinator({
+      endpoints: () => endpoints,
+      compatibility: () => ({ clientProtocol: 'http:', online: true }),
+      check: vi.fn().mockResolvedValue(true),
+    });
+    const unsubscribe = coordinator.subscribe(vi.fn());
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot().checkedAt).not.toBeNull(),
+    );
+    endpoints = [managed];
+    coordinator.trigger();
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot().checkedAt).toBeNull(),
+    );
+    unsubscribe();
+  });
+
   it('skips mixed-content LAN and selects compatible tailnet HTTPS', async () => {
     const lan = createAccessEndpoint('http://192.168.1.20:3141', {
       priority: 1,

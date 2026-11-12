@@ -698,7 +698,7 @@ export function AuthorityQueryProvider({
       // The Station already answered; only its data is still loading.
       return (
         <StationConnectingScreen
-          key={`${connectionId}:loading`}
+          key={`${observationKeyText}:loading`}
           step="Loading Station"
           answered
         />
@@ -766,7 +766,9 @@ export function AuthorityQueryProvider({
       value={{ status: 'unavailable', namespace: null, observation: null }}
     >
       <StationConnectingScreen
-        key={`${connectionId}:checking`}
+        // Keyed on the observation's identity: a credential change starts a
+        // new read, so it starts a new wait too.
+        key={`${observationKeyText}:checking`}
         step="Checking Station access"
         onRetry={restartObservation}
       />
