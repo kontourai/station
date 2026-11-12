@@ -944,6 +944,18 @@ reads it only from a station-control tool's whole result, and
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
 
+`@kontourai/station-contracts/station-tool-phrases` owns the plain-language
+words for Station's own tool calls (#3418): `stationToolOf`, which recognises
+a Station Control, Knowledge, Browser or Docs tool by its name as each engine
+spells it (or a bare name with the engine's `server` field), and
+`stationToolPhrase`, its past, progressive or bare phrase filled only from the
+call's own arguments ("Waited for “Fix login”", "Declare PR #3271"). A
+Session is named only by a title the reader supplies, otherwise "a Session".
+Transcript rows, batch summaries, the turn's live progress line and the
+Session digest's `label` read this one table;
+`src-server/tools/__tests__/station-tool-phrases.test.ts` fails when a
+registered tool has no phrase or an entry names no registered tool.
+
 `@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
 (the claude.ai page a Claude Code `Artifact` publish produced, and its
 title), `parseClaudeArtifactPublish`, which reads it only from a publish's
