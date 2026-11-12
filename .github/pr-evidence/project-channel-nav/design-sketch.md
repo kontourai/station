@@ -106,3 +106,15 @@ Project (overview)          Channel (pushed)             Thread (pushed)
 The selection key becomes `[authority, environment, Station, row.id]`. It drops
 `chatSessionId` and the binding's `affinity`, which the open itself writes. An
 `unavailable` outcome while still current reports through `onOpenFailed`.
+
+## Changed during implementation
+
+- On desktop a thread opens in the conversation area, with a bar back to the
+  channel, not beside it. The room keeps one composer and one retained send,
+  so the composer replies into the open thread instead of a second composer
+  competing with it.
+- In a thread, the root is followed by a quiet "N replies" divider, and
+  Recap is not offered.
+- The in-room back buttons go to their parent's address rather than calling
+  `history.back()`; the device's Back still retraces the pushed entries.
+- The working mark is a filled square in the active color, not an animation.
