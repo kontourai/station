@@ -39,7 +39,11 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { IconButton } from '../../components/IconButton';
-import { EditGlyph, ReturnGlyph } from '../../components/icons/Glyph';
+import {
+  CheckGlyph,
+  EditGlyph,
+  ReturnGlyph,
+} from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { useTouchKeyboard } from '../../components/room/composerKeys';
 import {
@@ -913,6 +917,7 @@ function ProjectRoomSession({
       text: message.text,
       editedAt: message.editedAt,
       deleted: !!message.deletedAt,
+      highlighted: editing?.messageId === message.messageId,
       own: message.actor.id === me.id,
       attachments: (
         <RoomAttachmentList
@@ -1580,6 +1585,7 @@ function ProjectRoomComposer({
                 : 'Send message'
         }
         textareaRef={composer}
+        sendGlyph={editing ? <CheckGlyph /> : undefined}
         attachments={
           files
             ? {

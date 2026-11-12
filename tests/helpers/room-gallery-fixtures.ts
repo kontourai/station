@@ -296,11 +296,13 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
       },
     ];
   if (scene === 'attachment')
+    // The files end the history, so a phone shows the image and the file.
     return [
       first,
+      fourth,
       {
         actor: JONAS,
-        at: at(1, 14, 3),
+        at: at(1, 14, 13),
         text: 'Here is the new pricing table on a phone.',
         attachments: [
           {
@@ -314,7 +316,7 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
       },
       {
         actor: PRIYA,
-        at: at(1, 14, 8),
+        at: at(1, 14, 15),
         text: '',
         attachments: [
           {
@@ -326,7 +328,6 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
           },
         ],
       },
-      fourth,
     ];
   return SHORT;
 }

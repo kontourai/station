@@ -55,6 +55,7 @@ export function RoomComposer({
   above,
   tools,
   below,
+  sendGlyph,
   attachments,
   className,
 }: {
@@ -81,6 +82,8 @@ export function RoomComposer({
   tools?: ReactNode;
   /** Below the frame: a picker, notices. */
   below?: ReactNode;
+  /** Replaces the send arrow, such as a check for saving an edit. */
+  sendGlyph?: ReactNode;
   attachments?: {
     port: RoomComposerAttachments;
     locked: boolean;
@@ -263,18 +266,20 @@ export function RoomComposer({
             disabled={!canSend}
             onClick={send}
           >
-            <svg
-              aria-hidden="true"
-              focusable="false"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M8 13V3.5M3.75 7.5 8 3.25l4.25 4.25" />
-            </svg>
+            {sendGlyph ?? (
+              <svg
+                aria-hidden="true"
+                focusable="false"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M8 13V3.5M3.75 7.5 8 3.25l4.25 4.25" />
+              </svg>
+            )}
           </Button>
         </div>
       </div>

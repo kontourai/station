@@ -60,6 +60,8 @@ export interface RoomConversationRow {
    * author and time stay so replies to it still read.
    */
   readonly deleted?: boolean;
+  /** The row the composer is editing: marked so the reader sees which. */
+  readonly highlighted?: boolean;
   /** Under the body: a thread summary or a delivery state. */
   readonly footer?: ReactNode;
   /** The row's action bar: shown on hover, focus or long press. */
@@ -262,6 +264,7 @@ function Row({
           placement.stackNext && 'room-row--continues',
           row.tone && `room-row--${row.tone}`,
           actionsOpen && 'room-row--actions-open',
+          row.highlighted && 'room-row--highlighted',
         ]
           .filter(Boolean)
           .join(' ')}

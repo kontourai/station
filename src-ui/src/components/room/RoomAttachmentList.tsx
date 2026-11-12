@@ -1,6 +1,7 @@
 import type { TaskRoomAttachment } from '@kontourai/station-contracts/project-task-room';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { DocumentGlyph } from '../icons/Glyph';
 
 /** How a room reads one file's bytes, bound to that room's authority. */
 export interface RoomAttachmentSource {
@@ -55,14 +56,22 @@ function RoomAttachmentItem({
           <img src={url} alt={attachment.name} />
         </a>
       ) : null}
-      {url && attachment.kind === 'file' ? (
-        <a
-          className="room-attachments__file"
-          href={url}
-          download={attachment.name}
-        >
-          {attachment.name}
-        </a>
+      {attachment.kind === 'file' ? (
+        url ? (
+          <a
+            className="room-attachments__file"
+            href={url}
+            download={attachment.name}
+          >
+            <DocumentGlyph />
+            <span>{attachment.name}</span>
+          </a>
+        ) : (
+          <span className="room-attachments__file">
+            <DocumentGlyph />
+            <span>{attachment.name}</span>
+          </span>
+        )
       ) : (
         <span>{attachment.name}</span>
       )}
