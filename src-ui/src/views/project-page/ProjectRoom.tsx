@@ -705,7 +705,8 @@ function ProjectRoomSession({
     setProposal(undefined);
   }, [committed, room.send.isPending, storageKey]);
   async function send(retry?: ProjectRoomMessageIntent) {
-    if (!view || room.stopped || !restored || room.send.isPending) return;
+    if (!view || room.stopped || !restored || unrevised || room.send.isPending)
+      return;
     if (proposal && !retry) return;
     const input = retry ?? {
       expectedRoomId: view.roomId,
@@ -1255,7 +1256,9 @@ function ProjectRoomSession({
               recipient={recipient}
               setRecipient={setRecipient}
               participants={participants}
-              restored={restored}
+              // Hold sends until a legacy draft's migrated revision has
+              // rendered, so an immediate Enter submits the revised draft.
+              restored={restored && !unrevised}
               blocked={!!proposal || room.send.isPending}
               sending={room.send.isPending}
               composer={composer}
