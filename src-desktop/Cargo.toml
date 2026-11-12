@@ -147,6 +147,9 @@ tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
 # only with STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs).
 tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
 tauri-plugin-station-discovery = { path = "plugins/station-discovery" }
+# Clipboard image paste (Android and iOS) and the Android image share target
+# (docs/design/native-capabilities.md#clipboard-images-and-the-share-target).
+tauri-plugin-station-media-intake = { path = "plugins/media-intake" }
 
 [target."cfg(target_os = \"android\")".dependencies]
 # Android's per-UID resolver is the authority for VPN DNS (including

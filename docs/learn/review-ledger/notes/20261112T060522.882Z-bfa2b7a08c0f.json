@@ -1,0 +1,9 @@
+{
+  "revision": "424caf0a0aa4837166a041c661e0fe65ab78b369",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Final round, checked: the share buffer admits only image shares (LatestBuffer accepts isImageShare) and remembers what load drained so deliverNewIntent skips that same intent; ShareIntakeSession takes the boot count, task id and URI text as injected functions (MediaIntakePlugin passes Settings.Global.BOOT_COUNT, activity.taskId, Uri.toString); the parser test now also rejects a malformed optional id. Added the buffer sentence to the Share target bullet. Device behavior remains NOT_VERIFIED.","inputs":["docs/design/native-capabilities.md","src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/MediaIntakePlugin.kt","src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ShareIntakeSession.kt","src-ui/src/platform/native/__tests__/capability-report-dev-build.test.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"The Kotlin runner's required media-intake cases were renamed and extended (buffer share-only, drained-intent skip, reboot); its invocation and the agent-activity requirements are unchanged.","inputs":["docs/design/notification-delivery.md","scripts/run-agent-activity-android-unit-tests.mjs"]}
+  ]
+}

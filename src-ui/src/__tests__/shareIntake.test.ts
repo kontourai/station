@@ -2,6 +2,7 @@
 
 import { describe, expect, test, vi } from 'vitest';
 import {
+  parseNativeImageList,
   parseNativeSharedImagePayload,
   sharedImagesToFiles,
 } from '../platform/native/share-image';
@@ -143,5 +144,59 @@ describe('receiveSharedImages', () => {
 
     expect(outcome.status).toBe('rejected');
     expect(openPicker).not.toHaveBeenCalled();
+  });
+});
+
+describe('shared image names', () => {
+  test.each([
+    ['right-to-left override', 'cat\u202egnp.exe'],
+    ['zero-width space', 'a\u200bb.png'],
+    ['line separator', 'a\u2028b.png'],
+    ['paragraph separator', 'a\u2029b.png'],
+    ['C1 control', 'a\u0085b.png'],
+    ['path separator', '../a.png'],
+  ])('refuses a name with a %s', (_label, name) => {
+    expect(
+      parseNativeSharedImagePayload({
+        files: [{ name, mimeType: 'image/png', dataUrl: PNG_DATA_URL }],
+      }),
+    ).toBeNull();
+  });
+
+  test('keeps an ordinary non-ASCII name', () => {
+    const payload = {
+      files: [
+        {
+          name: 'caf\u00e9 \u5199\u771f.png',
+          mimeType: 'image/png',
+          dataUrl: PNG_DATA_URL,
+        },
+      ],
+    };
+    expect(parseNativeSharedImagePayload(payload)).toEqual(payload);
+  });
+});
+
+describe('parseNativeImageList', () => {
+  test('an empty native read is an empty list, not a rejection', () => {
+    expect(parseNativeImageList({ files: [] })).toEqual({ files: [] });
+  });
+
+  test('a non-empty read is held to the share payload contract', () => {
+    expect(parseNativeImageList(validPayload(2))).toEqual(validPayload(2));
+    expect(parseNativeImageList(validPayload(6))).toBeNull();
+    expect(
+      parseNativeImageList({
+        files: [
+          { name: 'a.txt', mimeType: 'text/plain', dataUrl: PNG_DATA_URL },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  test('a reply without a files list is malformed', () => {
+    expect(parseNativeImageList(null)).toBeNull();
+    expect(parseNativeImageList({})).toBeNull();
+    expect(parseNativeImageList({ files: 'none' })).toBeNull();
   });
 });
