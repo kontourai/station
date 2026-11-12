@@ -2486,8 +2486,8 @@ function isReadableContentEvent(event: CanonicalRuntimeEvent): boolean {
     !isProviderTriggeredTurn(event)
   );
 }
-/** Events per committed batch of the content-projection backfill. */
-export const THREAD_CONTENT_BACKFILL_BATCH = 10_000;
+/** Threads per committed batch of the content-projection backfill. */
+export const THREAD_CONTENT_BACKFILL_BATCH = 500;
 /** {@link isReadableContentEvent} over stored rows (alias `e`). */
 const READABLE_CONTENT_EVENT_SQL = `(e.method IN (${[
   ...READABLE_CONTENT_METHODS,
@@ -2498,6 +2498,28 @@ const READABLE_CONTENT_EVENT_SQL = `(e.method IN (${[
   AND json_type(e.payload, '$.prompt') = 'text'
   AND length(json_extract(e.payload, '$.prompt')) > 0
   AND COALESCE(json_extract(e.payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'))`;
+/**
+ * The next thread after the backfill's cursor: one seek into the thread
+ * index, never a read of the thread's events.
+ */
+export const THREAD_CONTENT_BACKFILL_NEXT_THREAD_SQL = `SELECT MIN(thread_id) AS thread_id
+  FROM orchestration_events WHERE thread_id > ?`;
+/**
+ * One thread's content version at or below the cutoff: a walk back over
+ * `idx_events_thread_global_sequence` from the thread's newest event at the
+ * cutoff to its newest readable one. Pinned to that index because a range or
+ * per-method plan over the whole table (`idx_events_method`) reads every
+ * readable event in the store for each call.
+ */
+export const THREAD_CONTENT_BACKFILL_PROJECT_SQL = `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
+  SELECT e.thread_id, e.global_sequence
+  FROM orchestration_events e INDEXED BY idx_events_thread_global_sequence
+  WHERE e.thread_id = ? AND e.global_sequence <= ?
+    AND ${READABLE_CONTENT_EVENT_SQL}
+  ORDER BY e.global_sequence DESC
+  LIMIT 1
+  ON CONFLICT(thread_id) DO UPDATE SET
+    content_sequence = MAX(content_sequence, excluded.content_sequence)`;
 
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
@@ -2775,7 +2797,7 @@ export class EventStore {
       /** Before the content migration writes or reads its cutoff. */
       threadContentMigrationStart?: () => void;
       /** After each committed content-projection backfill batch. */
-      threadContentBackfillBatch?: (cursor: number) => void;
+      threadContentBackfillBatch?: (threadCursor: string) => void;
     } = {},
   ) {
     this.databasePath = dbPath;
@@ -11472,17 +11494,24 @@ export class EventStore {
    *
    * The cutoff is written once, atomically, before the first batch; a
    * resume or a second initializer reads that same cutoff and never
-   * recomputes it, and completion never changes it. Each bounded batch
-   * re-reads the cursor and completion under its own writer lock (doing
-   * nothing once another initializer has finished), projects only events up
-   * to the cutoff, and commits with its progress, so an interrupted start
-   * resumes where it stopped. Content appended after the cutoff is projected
-   * by its own append.
+   * recomputes it, and completion never changes it. The backfill walks the
+   * store's threads in id order: each thread's version is its newest readable
+   * event at or below the cutoff, found by walking back over the thread's
+   * own index, so the whole backfill reads each thread's tail once instead
+   * of rescanning the table per batch. Each bounded batch of threads re-reads
+   * the thread cursor and completion under its own writer lock (doing
+   * nothing once another initializer has finished) and commits with its
+   * progress, so an interrupted start resumes after the last committed
+   * thread. Content appended after the cutoff is projected by its own
+   * append. The MAX merge makes re-projecting a thread harmless, which is
+   * why a home that began the earlier global-sequence pass (its
+   * `cursor_sequence` part-way, no thread cursor) simply runs the thread
+   * pass from the first thread.
    *
    * It runs while the store opens. A failure (a writer holding the lock past
    * `busy_timeout`, an interrupted batch) fails the open, which leaves no
    * store; the next open reuses the durable cutoff and resumes at the
-   * committed cursor.
+   * committed thread cursor.
    */
   private ensureThreadContentProjection(): void {
     this.db.exec(
@@ -11495,13 +11524,26 @@ export class EventStore {
          cutoff_sequence INTEGER NOT NULL CHECK (cutoff_sequence >= 0),
          cursor_sequence INTEGER NOT NULL
            CHECK (cursor_sequence >= 0 AND cursor_sequence <= cutoff_sequence),
-         completed_at TEXT
+         completed_at TEXT,
+         cursor_thread_id TEXT
        );`,
     );
     this.faults.threadContentMigrationStart?.();
     // The cutoff is written once: a resume or a second initializer reuses it.
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      // A home that began the earlier global-sequence pass has no thread
+      // cursor column; adding it under the writer lock keeps two
+      // initializers from racing to add it.
+      const hasThreadCursor = (
+        this.db
+          .prepare('PRAGMA table_info(orchestration_thread_content_migration)')
+          .all() as { name: string }[]
+      ).some((column) => column.name === 'cursor_thread_id');
+      if (!hasThreadCursor)
+        this.db.exec(
+          'ALTER TABLE orchestration_thread_content_migration ADD COLUMN cursor_thread_id TEXT',
+        );
       const begun = this.db
         .prepare(
           'SELECT 1 AS begun FROM orchestration_thread_content_migration WHERE singleton = 1',
@@ -11521,32 +11563,37 @@ export class EventStore {
       throw error;
     }
     const readMigration = this.db.prepare(
-      `SELECT cutoff_sequence, cursor_sequence, completed_at
+      `SELECT cutoff_sequence, cursor_thread_id, completed_at
        FROM orchestration_thread_content_migration WHERE singleton = 1`,
     );
-    const project = this.db.prepare(
-      `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
-       SELECT e.thread_id, MAX(e.global_sequence)
-       FROM orchestration_events e
-       WHERE e.global_sequence > ? AND e.global_sequence <= ?
-         AND ${READABLE_CONTENT_EVENT_SQL}
-       GROUP BY e.thread_id
-       ON CONFLICT(thread_id) DO UPDATE SET
-         content_sequence = MAX(content_sequence, excluded.content_sequence)`,
+    const firstThread = this.db.prepare(
+      'SELECT MIN(thread_id) AS thread_id FROM orchestration_events',
     );
+    const nextThread = this.db.prepare(THREAD_CONTENT_BACKFILL_NEXT_THREAD_SQL);
+    const project = this.db.prepare(THREAD_CONTENT_BACKFILL_PROJECT_SQL);
     const advance = this.db.prepare(
       `UPDATE orchestration_thread_content_migration
-       SET cursor_sequence = ?, completed_at = ?
+       SET cursor_thread_id = ?
        WHERE singleton = 1 AND completed_at IS NULL`,
     );
+    // Completion leaves the legacy sequence cursor at the cutoff, so the
+    // row reads finished to any reader of either cursor.
+    const complete = this.db.prepare(
+      `UPDATE orchestration_thread_content_migration
+       SET cursor_thread_id = ?, cursor_sequence = cutoff_sequence,
+           completed_at = ?
+       WHERE singleton = 1 AND completed_at IS NULL`,
+    );
+    const threadOf = (row: unknown): string | null =>
+      (row as { thread_id: string | null } | undefined)?.thread_id ?? null;
     while (true) {
-      let cursor: number;
+      let cursor: string | null;
       let finished: boolean;
       this.db.exec('BEGIN IMMEDIATE');
       try {
         const migration = readMigration.get() as {
           cutoff_sequence: number;
-          cursor_sequence: number;
+          cursor_thread_id: string | null;
           completed_at: string | null;
         };
         if (migration.completed_at !== null) {
@@ -11554,18 +11601,30 @@ export class EventStore {
           return;
         }
         const cutoff = Number(migration.cutoff_sequence);
-        const from = Number(migration.cursor_sequence);
-        cursor = Math.min(from + THREAD_CONTENT_BACKFILL_BATCH, cutoff);
-        finished = cursor >= cutoff;
-        project.run(from, cursor);
-        advance.run(cursor, finished ? new Date().toISOString() : null);
+        cursor = migration.cursor_thread_id;
+        let thread = threadOf(
+          cursor === null ? firstThread.get() : nextThread.get(cursor),
+        );
+        for (
+          let projected = 0;
+          thread !== null && projected < THREAD_CONTENT_BACKFILL_BATCH;
+          projected += 1
+        ) {
+          project.run(thread, cutoff);
+          cursor = thread;
+          thread = threadOf(nextThread.get(thread));
+        }
+        finished = thread === null;
+        if (finished) complete.run(cursor, new Date().toISOString());
+        else advance.run(cursor);
         this.db.exec('COMMIT');
       } catch (error) {
         this.db.exec('ROLLBACK');
         throw error;
       }
       if (finished) return;
-      this.faults.threadContentBackfillBatch?.(cursor);
+      // A batch that did not finish projected at least one thread.
+      this.faults.threadContentBackfillBatch?.(cursor as string);
     }
   }
 
