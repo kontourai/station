@@ -121,7 +121,6 @@ vi.mock('../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 
 // The conversation fetch the cold open delegates to: it hands back the tab

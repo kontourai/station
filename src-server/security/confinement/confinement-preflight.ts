@@ -46,6 +46,36 @@ function reasonText(text: string): string {
   return sanitizeFreeText(text, MAX_CONFINEMENT_PREFLIGHT_REASON_LENGTH);
 }
 
+/**
+ * #4769: whether `provider` can restrict a confined start's network on this
+ * host: it must be able to (`restrictsNetwork`) and be available here.
+ */
+function restrictedNetworkFor(
+  provider: ConfinementProvider,
+  availability: ReturnType<ConfinementProvider['availability']>,
+): EngineConfinementPreflight['restrictedNetwork'] {
+  if (provider.restrictsNetwork !== true)
+    return {
+      state: 'unavailable',
+      reason: reasonText(
+        provider.networkRestrictionUnavailable ??
+          `${provider.mechanism} cannot restrict the network`,
+      ),
+    };
+  return availability.available
+    ? {
+        state: 'available',
+        reason:
+          "The Seatbelt profile allows outbound IPv4 TCP only to this host's addresses at the egress broker's port, and Mach lookups only to a reviewed list of local services; the broker admits the engine's model endpoint and the allowed hosts.",
+      }
+    : {
+        state: 'unavailable',
+        reason: reasonText(
+          `${provider.mechanism} is unavailable here: ${availability.reason}`,
+        ),
+      };
+}
+
 async function credentialFor(
   engine: string,
   checks: ConfinementPreflightInput['credentialChecks'],
@@ -99,6 +129,7 @@ export async function confinementPreflight(
           engine,
           input.credentialChecks,
         ),
+        restrictedNetwork: restrictedNetworkFor(provider, availability),
       });
     }
   }

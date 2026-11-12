@@ -21,6 +21,7 @@ import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { ReturnGlyph } from '../icons/Glyph';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
@@ -162,6 +163,7 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
       <RemoteAuthenticationRequiredNote
         environments={props.remoteAuthenticationRequired}
       />
+      <ReadStatusNote items={props.workItems} />
       <HomeWorkContent {...props} controller={controller} />
     </section>
   );

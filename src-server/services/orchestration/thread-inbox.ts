@@ -18,6 +18,12 @@ import {
   type SqliteKernelTables,
 } from '@kontourai/monument/sqlite';
 import {
+  CHAT_FILE_MIME_TYPES,
+  CHAT_IMAGE_MIME_TYPES,
+  QUEUED_ATTACHMENT_UNAVAILABLE_CODE,
+  type QueuedChatAttachmentDescriptor,
+} from '@kontourai/station-contracts/chat-attachment';
+import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
@@ -36,6 +42,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   errorCodeOf,
@@ -118,9 +125,20 @@ export interface ThreadInboxActor {
   readonly ownerAttribution?: StartOwnerAttribution;
 }
 
+/**
+ * A file held with a queued follow-up: its descriptor and the content address
+ * of its bytes in the attachment blob store. `blobRef` is written only by the
+ * server from bytes the sender supplied, never copied from a request.
+ */
+export interface ThreadInboxAttachment extends QueuedChatAttachmentDescriptor {
+  readonly blobRef: string;
+}
+
 /** What a queued follow-up sends: the continuation's input, and its sender. */
 export interface ThreadInboxPayload {
   readonly message: string;
+  /** Files sent with the message, read back from the blob store at placement. */
+  readonly attachments?: readonly ThreadInboxAttachment[];
   readonly expectedHead?: string;
   /** Server-created Automation intent, revalidated against its private ledger at placement. */
   readonly serverAutomationIntentId?: string;
@@ -228,6 +246,19 @@ function threadInboxDigest(
       canonicalJson([
         payload.actor.userId,
         payload.message,
+        // The same text with different files is a different submission.
+        ...(payload.attachments?.length
+          ? [
+              {
+                attachments: payload.attachments.map((file) => [
+                  file.kind,
+                  file.name,
+                  file.mimeType,
+                  file.blobRef,
+                ]),
+              },
+            ]
+          : []),
         payload.ambientContext ?? null,
         payload.model ?? null,
         ...(payload.serverAutomationIntentId
@@ -237,6 +268,49 @@ function threadInboxDigest(
       ]),
     )
     .digest('hex');
+}
+
+const QUEUED_ATTACHMENT_MIME_TYPES: ReadonlySet<string> = new Set([
+  ...CHAT_IMAGE_MIME_TYPES,
+  ...CHAT_FILE_MIME_TYPES,
+]);
+const BLOB_REF = /^sha256-[0-9a-f]{64}$/;
+
+/**
+ * The files a stored payload names, or `null` when the field is present but
+ * not exactly well-formed: an entry whose files cannot be read must not be
+ * sent as if it had none.
+ */
+function decodeAttachments(
+  value: unknown,
+): readonly ThreadInboxAttachment[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const files: ThreadInboxAttachment[] = [];
+  for (const item of value) {
+    const file = item as Record<string, unknown> | null;
+    if (
+      !file ||
+      (file.kind !== 'image' && file.kind !== 'file') ||
+      typeof file.name !== 'string' ||
+      typeof file.mimeType !== 'string' ||
+      !QUEUED_ATTACHMENT_MIME_TYPES.has(file.mimeType) ||
+      typeof file.size !== 'number' ||
+      !Number.isSafeInteger(file.size) ||
+      file.size <= 0 ||
+      typeof file.blobRef !== 'string' ||
+      !BLOB_REF.test(file.blobRef)
+    )
+      return null;
+    files.push({
+      kind: file.kind,
+      name: file.name,
+      mimeType: file.mimeType as ThreadInboxAttachment['mimeType'],
+      size: file.size,
+      blobRef: file.blobRef,
+    });
+  }
+  return files;
 }
 
 function decodePayload(raw: string): ThreadInboxPayload | undefined {
@@ -256,9 +330,12 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
       !/^[0-9a-f]{64}$/.test(value.serverAutomationIntentId))
   )
     return undefined;
+  const attachments = decodeAttachments(value.attachments);
+  if (attachments === null) return undefined;
   const attribution = actor.ownerAttribution;
   return {
     message: value.message,
+    ...(attachments ? { attachments } : {}),
     ...(value.automaticBackground === true
       ? { automaticBackground: true }
       : {}),
@@ -398,6 +475,19 @@ function projectThreadInboxEntry(
     state: PUBLIC_STATE[entry.state],
     ...(position !== undefined ? { position } : {}),
     message: payload?.message ?? '',
+    // Descriptors only: the blob reference stays on the Station.
+    ...(payload?.attachments?.length
+      ? {
+          attachments: payload.attachments.map(
+            ({ kind, name, mimeType, size }) => ({
+              kind,
+              name,
+              mimeType,
+              size,
+            }),
+          ),
+        }
+      : {}),
     createdAt: new Date(entry.createdAt).toISOString(),
     updatedAt: new Date(entry.updatedAt).toISOString(),
     ...(outcome.turnId ? { turnId: outcome.turnId } : {}),
@@ -838,6 +928,9 @@ function errorText(error: unknown): string {
  */
 const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
   SESSION_ENDED_REJECTION_CODE,
+  QUEUED_ATTACHMENT_UNAVAILABLE_CODE,
+  // A queued message's files the engine it reaches cannot take.
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   EXECUTION_ENGINE_CHANGED_CODE,
   PROVIDER_SESSION_START_FAILED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
@@ -851,6 +944,12 @@ const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
  */
 function refusalOf(error: unknown): PlacementOutcome {
   const code = errorCodeOf(error);
+  if (code === QUEUED_ATTACHMENT_UNAVAILABLE_CODE)
+    return {
+      reasonCode: code,
+      reason:
+        'A file in this message is no longer stored on Station. Nothing was sent.',
+    };
   return {
     reasonCode: code && START_REFUSAL_CODES.has(code) ? code : 'start_refused',
     reason: 'Station could not send this message. Nothing was sent.',

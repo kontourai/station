@@ -155,6 +155,13 @@ export class TerminalController {
   private metrics: CellMetrics | null = null;
   private theme: TerminalTheme | null = null;
   private size: EngineSize | null = null;
+  /**
+   * While earlier output replays, the size it was written for (#4625): the
+   * engine parses it at that size and returns to the box's size after.
+   */
+  private replayGrid: { cols: number; rows: number } | null = null;
+  /** The terminal's last recorded grid survives finishing replay and reconnects. */
+  private latestRecordedGrid: { cols: number; rows: number } | null = null;
   /** False while `size` is a placeholder: the view has had no box to measure. */
   private measured = false;
   private session: TerminalViewSession | null = null;
@@ -324,6 +331,8 @@ export class TerminalController {
 
   dispose(): void {
     this.disposed = true;
+    this.latestRecordedGrid = null;
+    this.replayGrid = null;
     this.releaseWrites();
     this.unsubscribeSession?.();
     for (const cleanup of this.cleanups.splice(0)) cleanup();
@@ -343,6 +352,8 @@ export class TerminalController {
     if (session === this.session) return;
     this.unsubscribeSession?.();
     this.unsubscribeSession = null;
+    this.latestRecordedGrid = null;
+    this.endReplayGrid();
     this.session = session;
     this.update({ session: session ? session.state : 'none' });
     if (session && this.engine) this.attachSession(session);
@@ -350,13 +361,21 @@ export class TerminalController {
 
   private attachSession(session: TerminalViewSession): void {
     this.unsubscribeSession?.();
+    this.latestRecordedGrid = null;
     // A new attachment replays its terminal from the oldest retained output,
     // so the screen an earlier one drew would show that history twice.
     if (this.drawn) this.engine?.send({ type: 'reset' });
     this.drawn = false;
+    this.endReplayGrid();
     this.unsubscribeSession = session.subscribe({
       output: (bytes, kind) => this.toEngine(bytes, kind),
-      reset: () => this.engine?.send({ type: 'reset' }),
+      resize: (cols, rows, kind) => this.recordedSize(cols, rows, kind),
+      replayed: () => this.endReplayGrid(),
+      reset: () => {
+        this.latestRecordedGrid = null;
+        this.engine?.send({ type: 'reset' });
+        this.endReplayGrid();
+      },
       state: (state, detail) => {
         this.update({ session: state });
         if (state === 'exited')
@@ -383,6 +402,8 @@ export class TerminalController {
   ): Promise<void> | undefined {
     const engine = this.engine;
     if (!engine || this.resyncing || this.disposed) return undefined;
+    if (kind === 'live') this.endReplayGrid();
+    else if (!this.replayGrid) this.restoreRecordedGrid();
     if (this.pendingWorkerBytes + bytes.byteLength > MAX_PENDING_WORKER_BYTES) {
       this.resync();
       return undefined;
@@ -400,6 +421,42 @@ export class TerminalController {
         owned.buffer,
       ]);
     });
+  }
+
+  /**
+   * A recorded size (#4625). Replayed output is parsed at the size it was
+   * written for: ConPTY repaints the screen for its size after a resize, and
+   * at another size that repaint lands over lines that had scrolled. Live
+   * output is drawn at this view's own size, as before.
+   */
+  private recordedSize(
+    cols: number,
+    rows: number,
+    kind: 'replay' | 'live',
+  ): void {
+    if (this.disposed) return;
+    this.latestRecordedGrid = { cols, rows };
+    if (kind === 'live') {
+      this.endReplayGrid();
+      return;
+    }
+    this.restoreRecordedGrid();
+  }
+
+  private restoreRecordedGrid(): void {
+    const grid = this.latestRecordedGrid;
+    if (!grid) return;
+    if (!this.engine || !this.size || this.resyncing || this.disposed) return;
+    this.replayGrid = { ...grid };
+    this.engine.send({ type: 'resize', size: { ...this.size, ...grid } });
+  }
+
+  /** Back to the box's size once replay is over; the engine reflows. */
+  private endReplayGrid(): void {
+    if (!this.replayGrid) return;
+    this.replayGrid = null;
+    if (this.engine && this.size)
+      this.engine.send({ type: 'resize', size: this.size });
   }
 
   private written(id: number): void {
@@ -489,7 +546,11 @@ export class TerminalController {
     this.size = next;
     this.measured = true;
     this.renderer.resize(next.cols, next.rows, this.metrics);
-    this.engine.send({ type: 'resize', size: next });
+    // A replay keeps its recorded grid; the box's size applies after it.
+    this.engine.send({
+      type: 'resize',
+      size: this.replayGrid ? { ...next, ...this.replayGrid } : next,
+    });
     // Resizes go to the PTY at most every 100ms while a drag is in progress.
     if (this.resizeTimer) clearTimeout(this.resizeTimer);
     this.resizeTimer = setTimeout(() => {

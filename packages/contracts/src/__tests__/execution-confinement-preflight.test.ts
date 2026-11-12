@@ -36,6 +36,16 @@ describe('#4774: parseConfinementPreflight', () => {
     ).toEqual({ engines: [ENTRY], decidedAtStart: ['workspace-too-broad'] });
   });
 
+  it.each(['codex-sandbox', 'seatbelt', 'bubblewrap'])(
+    'reads an entry for every mechanism a Station can report: %s',
+    (mechanism) => {
+      const entry = { ...ENTRY, mechanism };
+      expect(
+        parseConfinementPreflight(document({ engines: [entry] }))?.engines,
+      ).toEqual([entry]);
+    },
+  );
+
   it.each([
     ['an unknown mechanism state', { ...ENTRY, mechanismState: 'probably' }],
     ['an unknown mechanism', { ...ENTRY, mechanism: 'firejail' }],
@@ -187,5 +197,40 @@ describe('#4774: parseConfinementPreflight', () => {
     expect(parseConfinementPreflight(null)).toBe(undefined);
     expect(parseConfinementPreflight([])).toBe(undefined);
     expect(parseConfinementPreflight({ engines: 'x' })).toBe(undefined);
+  });
+});
+
+describe('#4769: the restricted-network fact', () => {
+  it('reads it when present and leaves it absent for an older Station', () => {
+    const entry = {
+      ...ENTRY,
+      restrictedNetwork: { state: 'available', reason: 'broker only' },
+    };
+    expect(
+      parseConfinementPreflight(document({ engines: [entry] }))?.engines,
+    ).toEqual([entry]);
+    expect(
+      parseConfinementPreflight(document())?.engines[0],
+    ).not.toHaveProperty('restrictedNetwork');
+  });
+
+  it.each([
+    ['an unknown state', { state: 'maybe', reason: 'x' }],
+    ['no reason', { state: 'unavailable' }],
+    [
+      'an over-long reason',
+      {
+        state: 'unavailable',
+        reason: 'x'.repeat(MAX_CONFINEMENT_PREFLIGHT_REASON_LENGTH + 1),
+      },
+    ],
+    ['a string', 'available'],
+    ['null', null],
+  ])('refuses the whole answer with %s', (_label, restrictedNetwork) => {
+    expect(
+      parseConfinementPreflight(
+        document({ engines: [{ ...ENTRY, restrictedNetwork }] }),
+      ),
+    ).toBeUndefined();
   });
 });

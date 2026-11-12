@@ -267,6 +267,11 @@ export const codexSandboxConfinementProvider: ConfinementProvider<CodexSandboxEv
     supportedIsolationModes: ['shared', 'worktree'],
     engagement: 'engine-native',
     engines: [PROVIDER_CODEX],
+    // #4769: Codex's sandbox allows the network or not, by its own
+    // configuration; it cannot send the agent through Station's broker.
+    restrictsNetwork: false,
+    networkRestrictionUnavailable:
+      "Codex's own sandbox cannot route the session through Station's egress broker, so a restricted network is not available for Codex sessions",
     availability: () => ({
       available: true,
       reason:

@@ -1,5 +1,6 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
+  ChildWorkKind,
   ChildWorkModel,
   ChildWorkSummarySource,
   ChildWorkTerminalDisplayStatus,
@@ -341,6 +342,8 @@ export type ChatBackgroundTask = {
   toolCallId?: string;
   description?: string;
   subagentType?: string;
+  /** What sort of work it is (`childWorkKindOf`): an agent, a command or a monitor. */
+  workKind?: ChildWorkKind;
   /** #3163: the child's own reported model, when its engine reported one. */
   model?: ChildWorkModel;
   backgrounded?: boolean;
@@ -481,7 +484,6 @@ export type ChatUIState = {
   status?: 'idle' | 'sending' | 'error' | 'queued';
   isProcessingStep?: boolean;
   error?: string | null;
-  hasUnread: boolean;
   abortController?: AbortController;
   /**
    * a Stop request is in flight for this session. Set before the
@@ -1084,7 +1086,6 @@ export function createDefaultChatState(
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     providerOptions: {},
     orchestrationSessionStarted: false,
     createdAt,
@@ -1228,7 +1229,6 @@ export function hydrateActiveChats(
         : {}),
       ...(unsentMessages.length ? { unsentMessages } : {}),
       inputHistory: stringList(session.inputHistory),
-      hasUnread: false,
       agentSlug: session.agentSlug,
       stationBinding,
       stationBindingLegacy:

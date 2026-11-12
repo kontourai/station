@@ -449,6 +449,18 @@
     "room-channels-light-mobile": [
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "room-keyboard-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-keyboard-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-keyboard-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-keyboard-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
     ]
   }
 }

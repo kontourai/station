@@ -198,6 +198,11 @@ interface ChatInputAreaProps {
    */
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
+  /**
+   * The host queues a follow-up together with its files
+   * (`followUpAttachments`), so a draft with files can be queued mid-turn.
+   */
+  busyQueueTakesFiles?: boolean;
   busySteeringUnavailableReason?: string;
   /** Hold the draft as a follow-up instead of steering the open turn. */
   onQueueFollowUp?: () => Promise<void>;
@@ -473,6 +478,7 @@ export function ChatInputArea({
   allowDraftWhileDisabled = false,
   turnInFlight,
   busySteeringKind = 'native',
+  busyQueueTakesFiles = false,
   busySteeringUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
@@ -593,12 +599,15 @@ export function ChatInputArea({
   const approvalEngineId = acpApproval
     ? acpApproval.engineId
     : (agentConnectionId ?? null);
-  // Steering takes text only (`steerTurn` carries an input string) and the
-  // mid-turn follow-up queue holds text only, so a draft with files cannot
-  // join a running turn. The paperclip stays usable — the next message can
-  // be prepared now — and this says why it waits, with the way out.
+  // Steering takes text only (`steerTurn` carries an input string). A host
+  // with `followUpAttachments` queues a draft's files with it; on any other
+  // the mid-turn queue holds text only, so a draft with files cannot join a
+  // running turn. The paperclip stays usable — the next message can be
+  // prepared now — and this says why it waits, with the way out.
   const busyAttachmentReason =
-    turnInFlight && (attachments.length > 0 || attachmentStages.length > 0)
+    turnInFlight &&
+    !busyQueueTakesFiles &&
+    (attachments.length > 0 || attachmentStages.length > 0)
       ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
       : undefined;
   const sendBlockedReason = sendBlockedReasonProp ?? busyAttachmentReason;

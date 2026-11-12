@@ -1,5 +1,6 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
+import type { QueuedChatAttachmentDescriptor } from './chat-attachment.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
@@ -1219,6 +1220,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
     latest: ClientOrigin;
     hasOtherOrigins: boolean;
   };
+  /**
+   * `'provider'` when this session's most recent `turn.started` is a turn the
+   * engine opened on its own (`isProviderTriggeredTurn`): a reply to
+   * background work, not to a send. Absent for any other latest turn. An
+   * inbox reads it so an engine-opened turn does not bring back a
+   * conversation the person dismissed.
+   */
+  latestTurnTrigger?: 'provider';
   lastEventAt?: string;
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */
@@ -1749,6 +1758,11 @@ export interface ConversationInboxEntry {
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;
   message: string;
+  /**
+   * Files sent with the message, when it carries any (`followUpAttachments`
+   * hosts). Descriptors only; the bytes stay on the Station.
+   */
+  attachments?: QueuedChatAttachmentDescriptor[];
   createdAt: string;
   updatedAt: string;
   /** The turn it started, once `sent`. */
@@ -1766,7 +1780,9 @@ export interface ConversationInboxEntry {
    * `continuation_workspace_corrupt_worktree_binding`,
    * `continuation_workspace_worktree_gone`,
    * `continuation_workspace_different_project`,
-   * `continuation_workspace_worktree_moved`, or `start_refused` for any
+   * `continuation_workspace_worktree_moved`, `attachment_unavailable` (a file
+   * held with the message was no longer stored), `attachment_input_unsupported`
+   * (the engine takes no files), or `start_refused` for any
    * other refusal.
    */
   reasonCode?: string;
@@ -1936,6 +1952,33 @@ export interface TerminalProcessDetail {
   history: string;
 }
 
+/** See {@link ConversationListItem.readState}. */
+export interface ConversationReadState {
+  /**
+   * This conversation's current content version (#3075): a monotonic
+   * number that moves only when readable transcript content is appended,
+   * never on lifecycle bookkeeping. Opaque: compare it only with versions
+   * of the same conversation, and acknowledge it as rendered
+   * (`readVersion`).
+   */
+  version: number;
+  /** The highest version the caller has been shown, never above `version`. */
+  seenVersion: number;
+  /** `version > seenVersion`. */
+  unread: boolean;
+}
+
+/**
+ * See {@link ConversationListItem.readState}: the caller is a person, but
+ * their read state could not be read (a store that does not decode). Unknown,
+ * never "read"; the conversation itself is still listed.
+ */
+export interface ConversationReadStateUnavailable {
+  /** The inventory's own version for the item (epoch ms of `updatedAt`). */
+  version: number;
+  unavailable: true;
+}
+
 /**
  * S2 of #1302 (conversation-surface consolidation): one item shape for the
  * global conversation-inventory endpoint (`GET /api/conversations`), folding
@@ -1995,8 +2038,20 @@ export interface ConversationListItem {
   acceptedModel?: string;
   /** Server-resolved Station/Environment namespace for this conversation. */
   environmentId?: string;
-  /** Version of this conversation that the current user has opened. */
+  /**
+   * The stored "last viewed" version this caller's person key holds. A raw
+   * fact: read {@link readState} for whether the conversation is unread.
+   */
   acknowledgedAt?: string;
+  /**
+   * #3075: the caller's read state, derived by the server
+   * (`@kontourai/station-contracts/read-markers`). `version` is this item's
+   * current content version, the value to send (as `readVersion`) when
+   * marking what was rendered read. Absent when the server keeps no read state for the
+   * caller; `{ version, unavailable: true }` when it keeps one but could not
+   * read it. Never guess it from `acknowledgedAt`.
+   */
+  readState?: ConversationReadState | ConversationReadStateUnavailable;
   /**
    * Whether the conversation has an open turn. When `activity` is present
    * this is exactly `activity.openTurn !== undefined`.

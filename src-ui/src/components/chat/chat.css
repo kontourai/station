@@ -2781,6 +2781,11 @@
   flex: 0 0 auto;
   align-items: center;
 }
+/* A modal sheet dims what it covers, so the transcript behind it does not
+   read as still interactive at full contrast. */
+.message-details__overlay {
+  background: var(--overlay-modal);
+}
 .message-details__panel {
   width: min(480px, 100%);
   background: var(--bg-primary);
@@ -2818,6 +2823,30 @@
 }
 .message-details__lead > .message-attribution {
   margin: 0;
+}
+/* The sheet states the model as a chip beside the engine and Station chips,
+   in their type and weight, rather than the bubble's small monospace line. */
+.message-details__lead .message__model-claims {
+  margin: 0;
+  gap: var(--k-space-1);
+}
+.message-details__lead :is(.message__model-claim, .message__model-badge) {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--k-panel-raised);
+  /* The attribution chips' text colour, in canonical tokens. */
+  color: color-mix(in srgb, var(--k-text) 50%, var(--k-text-muted));
+  font-family: inherit;
+  font-size: var(--k-text-sm);
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.4;
+  opacity: 1;
+  margin: 0;
+}
+.message-details__lead .message__model-claim-label {
+  color: var(--k-text-faint);
+  font-weight: 400;
 }
 /* The bubble truncates a long Station label to fit its width cap; the sheet
    is where the whole label is read, so it wraps instead of ellipsing. */
@@ -3390,6 +3419,11 @@
     flex-wrap: nowrap;
     gap: 4px;
   }
+  /* The Agent / Model / Approval chips start where the transcript's text
+     does (its --chat-message-gutter), not 4px from a phone's edge. */
+  .chat-input .chat-input__meta {
+    padding-inline: clamp(12px, 4vw, 20px);
+  }
   .chat-input__textarea-wrapper {
     flex: 0 0 auto;
     width: 100%;
@@ -3666,6 +3700,9 @@
   width: 100%;
 }
 .message-details__menu > .task-picker > .task-picker__trigger {
+  /* Centred like its sibling rows: the Button's label is a flex item, and
+     the default stretch pinned it to the row's top edge. */
+  align-items: center;
   justify-content: flex-start;
   min-height: 44px;
   padding: 0 var(--k-space-3);

@@ -361,6 +361,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
+| [`bubblewrap-kernel.yml`](../../.github/workflows/bubblewrap-kernel.yml) | — | **Tool: bubblewrap kernel legs** | manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
@@ -1038,18 +1039,26 @@ suite with the launch builder's cases: package managers' batch shims run
 through cmd.exe, and an approved command reaches cmd with its quotes as shown
 (#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
 runs each terminal process suite in a Vitest invocation of its own after the
-other files, so a forked worker that dies (an open,
-intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
+other files, so a forked worker that dies (the fault tracked in #4626) hides no
 other suite's results; every invocation runs, and any failure fails the floor
 without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
 exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
 the Windows verification artifact retains those records even when the floor
 fails. The observer does not consume worker exceptions or change verdicts.
-The adapter suite also runs in the floor: its owned children cover concurrent
-native exits/resizes, paused silent-reader retirement, and vendor cancellation.
-Issue #4626 records the captured access violation, handle-table reproduction,
-and dependency repair; retained source/binary receipts establish each run's
-qualification. A ConPTY cannot change
+A failed invocation also leaves its crash evidence in
+`.kontourai/verification-output/windows-portable-floor/`, which the job uploads:
+how each Vitest worker ended and whether Vitest had asked it to stop, Node
+fatal-error reports, and the Application log's crash entries since it started
+(#4626). Only the Application log's exact `NoMatchingEventsFound` error becomes
+an empty event list. An unavailable or refused log read remains an error in
+the evidence; it does not establish that no crash events occurred. The focused
+collector cases execute the generated PowerShell with a substituted event
+provider, rather than reading the machine's Application log.
+The adapter suite also runs in the floor: its owned children cover
+concurrent native exits/resizes, paused silent-reader retirement, and vendor
+cancellation. Issue #4626 records the captured access violation, handle-table
+reproduction, and dependency repair; retained source/binary receipts establish
+each run's qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
@@ -2848,11 +2857,50 @@ The `seatbelt-kernel` profile pins the kernel legs of
   Those run on Linux or Windows, where the whole suite skips and the skip
   passes. A regression in these legs therefore shows after merge, on the
   `main` push that introduced it, not on its pull request.
+- **Restricted network (#4769):** the nested `with a restricted network
+  (#4769)` legs run real `sandbox-exec` children under the broker-only
+  profile with an in-process egress broker and local listeners only; no
+  leg reaches the internet.
 - **Allowed to skip at runtime:** the app-launch and `security`-tool Keychain
-  legs skip when the host cannot provide their positive control. They must
-  still be present and must not fail.
-- **Not required:** the live Claude Code handshake runs only where `claude`
-  is on PATH, which a hosted runner does not have.
+  legs skip when the host cannot provide their positive control, and so do
+  three restricted-network legs: the host's own non-loopback address (a host
+  without one), IPv6 loopback (a host that cannot listen on `::1`) and the
+  background `URLSession` upload (no Swift toolchain, or no delivery even
+  unconfined). They must still be present and must not fail.
+- **Not required:** the live Claude Code handshake, and the live Claude turn
+  through the egress broker, run only where `claude` is on PATH, which a
+  hosted runner does not have.
+
+The `linux-bubblewrap-kernel` profile pins the kernel legs of
+`src-server/security/confinement/__tests__/bubblewrap.process.test.ts`
+(#4770):
+
+- **Where they run:** a Linux host where `/usr/bin/bwrap` applies the
+  production sandbox, which needs unprivileged user namespaces. That means a
+  developer's Linux machine, a container started with
+  `--security-opt seccomp=unconfined --security-opt apparmor=unconfined
+  --security-opt systempaths=unconfined` (Docker's defaults refuse the
+  namespaces and the new `/proc`), or the dispatch-only
+  [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
+  workflow. That workflow installs bubblewrap on a hosted Ubuntu runner,
+  gives `/usr/bin/bwrap` an AppArmor profile allowing user namespaces when
+  Ubuntu restricts them, and then runs the check. Run it in a container from
+  a copy of the checkout with a Linux `node_modules` installed there, never
+  the host's.
+- **Where they do not:** macOS and Windows lanes skip the whole suite. A
+  hosted Linux corpus lane runs the legs only if bubblewrap applies there;
+  no corpus lane checks that they did not skip.
+- **Allowed to skip at runtime:** the nested user namespace leg skips when
+  `unshare --user` cannot create one even outside the sandbox, and the
+  Docker socket leg skips when no Docker socket exists that the user can
+  connect to outside it. To run the Docker leg in a container, serve a
+  root-owned socket at `/run/docker.sock` for a `docker` group the test user
+  belongs to. The DNS leg skips when the host cannot resolve a name outside
+  the sandbox either. The suite's fixtures live under `/var/tmp`, outside the
+  sandbox's private `/tmp`.
+- **Required, unlike on macOS:** the live Claude Code handshake. It uses
+  `claude` on PATH, or else the Agent SDK's own binary for the platform,
+  which `npm run dependencies:ci` installs.
 
 ### Connected Agents Checklist
 

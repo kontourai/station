@@ -12,7 +12,10 @@
  * What it does not do: it does not hide arbitrary operator files (reads are
  * broad; `container` is the level that does), and it does not stop Apple
  * Events to unconfined applications or attacks on the operator's other
- * processes through broadly allowed Mach services. Its network is open.
+ * processes through broadly allowed Mach services. Its network is open,
+ * unless the start's policy restricts it (#4769): then the only outbound
+ * connection allowed is IPv4 TCP to this host's own addresses at the egress
+ * broker's port, and Mach lookups are an allow-list (`seatbeltNetworkRules`).
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -153,6 +156,21 @@ export async function discoverSeatbeltGitLayout(
 export function seatbeltHiddenPaths(
   options: { home?: string; stationRoot?: string; stationHome?: string } = {},
 ): { hidden: string[]; readable: string[] } {
+  const stationRoot = options.stationRoot ?? resolveStationRoot();
+  return {
+    hidden: hiddenSecretPaths(options).map(canonicalPath),
+    readable: [canonicalPath(join(stationRoot, 'installs'))],
+  };
+}
+
+/**
+ * The paths {@link seatbeltHiddenPaths} hides, as named (not
+ * symlink-resolved): the bubblewrap sandbox (#4770) also hides a link at
+ * one of these paths itself, not only what it points to.
+ */
+export function hiddenSecretPaths(
+  options: { home?: string; stationRoot?: string; stationHome?: string } = {},
+): string[] {
   const home = options.home ?? homedir();
   const stationRoot = options.stationRoot ?? resolveStationRoot();
   const stationHome = options.stationHome ?? resolveHomeDir();
@@ -174,10 +192,7 @@ export function seatbeltHiddenPaths(
     join('.claude', '.credentials.json'),
     join('.codex', 'auth.json'),
   ].map((entry) => join(home, entry));
-  return {
-    hidden: [...fromHome, stationRoot, stationHome].map(canonicalPath),
-    readable: [canonicalPath(join(stationRoot, 'installs'))],
-  };
+  return [...fromHome, stationRoot, stationHome];
 }
 
 /**
@@ -327,14 +342,106 @@ function sbplNamedSegmentDeny(root: string, name: string): string {
   return `(deny file-write* (regex #"^${literal(root)}/(.*/)?${caseless}(/|$)"))`;
 }
 
+/** The rule that leaves the network open: every network operation. */
+const SEATBELT_OPEN_NETWORK = '(allow network*)';
+
+/**
+ * #4769: the Mach services a restricted profile may still look up, each
+ * local to this machine: user and group lookups (`getpwuid`, group
+ * membership), the per-user temp and cache directory paths (`confstr`),
+ * `notify(3)` and the unified log. Found by running Node, Claude Code (its
+ * handshake and a model turn through the broker), a shell and git under a
+ * profile that denies every lookup, and reading the sandbox's own denials
+ * in the unified log (`log stream --predicate 'sender == "Sandbox"'`): these
+ * are the ones ordinary tools asked for; none of them makes a network
+ * request for its caller. Everything else is refused, among them
+ * `com.apple.nsurlsessiond` (a background `URLSession` upload runs in that
+ * daemon, outside the sandbox), LaunchServices (`com.apple.lsd.*`, which
+ * opens a URL in another application), Apple Events, `trustd`, `cloudd`
+ * and `configd`.
+ */
+const SEATBELT_RESTRICTED_MACH_SERVICES: readonly string[] = [
+  'com.apple.bsd.dirhelper',
+  'com.apple.diagnosticd',
+  'com.apple.logd',
+  'com.apple.system.notification_center',
+  'com.apple.system.opendirectoryd.libinfo',
+  'com.apple.system.opendirectoryd.membership',
+];
+
+/** The Mach rules a restricted profile adds after `(allow mach*)`. */
+const SEATBELT_RESTRICTED_MACH_RULES: readonly string[] = [
+  '(deny mach-lookup)',
+  `(allow mach-lookup ${SEATBELT_RESTRICTED_MACH_SERVICES.map((name) => `(global-name "${name}")`).join(' ')})`,
+];
+
+/**
+ * #4769: the network rules of a profile. Without a broker port, the network
+ * is open, as it always was. With one:
+ *
+ * - The only network operation allowed is an outbound IPv4 TCP connection to
+ *   that port on one of this host's own addresses. SBPL accepts only
+ *   `localhost` or `*` as the host (an explicit `127.0.0.1` is refused when
+ *   the profile is compiled), and `localhost` matches every address of this
+ *   host, its LAN address included, not only loopback. The broker listens
+ *   on `127.0.0.1` alone; `tcp4` keeps out `[::1]:<port>`, which `tcp` would
+ *   admit. Under `(deny default)` every other connect is refused by the
+ *   kernel, including one to a Unix socket (the DNS resolver's included),
+ *   UDP, another port such as Station's own, and every other host.
+ * - Mach lookups are limited to {@link SEATBELT_RESTRICTED_MACH_SERVICES}:
+ *   a service that makes requests for its caller (a background `URLSession`
+ *   in `nsurlsessiond`) would otherwise carry them outside the sandbox.
+ */
+export function seatbeltNetworkRules(brokerPort?: number): string[] {
+  if (brokerPort === undefined) return [SEATBELT_OPEN_NETWORK];
+  if (!Number.isInteger(brokerPort) || brokerPort < 1 || brokerPort > 65_535)
+    throw new Error('The egress broker port is not a TCP port.');
+  return [
+    `(allow network-outbound (remote tcp4 "localhost:${brokerPort}"))`,
+    ...SEATBELT_RESTRICTED_MACH_RULES,
+  ];
+}
+
+/**
+ * #4769: what a built profile lets the process reach: `full` when it holds
+ * the open-network rule, no other network rule and no Mach restriction;
+ * `restricted` when its only network rule is one broker rule and it carries
+ * exactly the restricted Mach rules; `undefined` for anything else (a
+ * profile Station did not build).
+ */
+export function seatbeltProfileNetwork(
+  profile: string | undefined,
+): 'full' | 'restricted' | undefined {
+  const lines = (profile ?? '').split('\n');
+  const rules = lines.filter((line) => /^\((allow|deny) network/.test(line));
+  const mach = lines.filter((line) => /^\((allow|deny) mach/.test(line));
+  if (rules.length !== 1) return undefined;
+  if (rules[0] === SEATBELT_OPEN_NETWORK)
+    return mach.length === 1 && mach[0] === '(allow mach*)'
+      ? 'full'
+      : undefined;
+  return /^\(allow network-outbound \(remote tcp4 "localhost:[1-9][0-9]{0,4}"\)\)$/.test(
+    rules[0]!,
+  ) &&
+    mach.length === 1 + SEATBELT_RESTRICTED_MACH_RULES.length &&
+    mach[0] === '(allow mach*)' &&
+    SEATBELT_RESTRICTED_MACH_RULES.every(
+      (rule, index) => mach[index + 1] === rule,
+    )
+    ? 'restricted'
+    : undefined;
+}
+
 /**
  * The Seatbelt profile for `grants`. Later rules win in SBPL, so the order
  * is load-bearing: deny everything, allow the broad base, hide the secret
  * stores, re-open the readable and writable grants, and finally deny the
- * writes no grant may cover.
+ * writes no grant may cover. `brokerPort` (#4769) replaces the open network
+ * with the egress broker alone; without it the profile is unchanged.
  */
 export function seatbeltProfile(
   grants: ConfinementSpawnSpec['grants'],
+  brokerPort?: number,
 ): string {
   const rule = (
     action: 'allow' | 'deny',
@@ -355,7 +462,7 @@ export function seatbeltProfile(
     '(allow mach*)',
     '(allow sysctl*)',
     '(allow ipc*)',
-    '(allow network*)',
+    ...seatbeltNetworkRules(brokerPort),
     '(allow file-write-data (literal "/dev/null") (literal "/dev/dtracehelper"))',
     ...rule('deny', 'file-read*', 'subpath', grants.hidden),
     ...rule('allow', 'file-read*', 'subpath', grants.readable),
@@ -401,6 +508,20 @@ export function seatbeltConfigRoot(stationHome: string): string {
 
 /** A confined session's temp directory name: `session-<owner pid>-<random>`. */
 const SESSION_DIR = /^session-(\d+)-[A-Za-z0-9]{6}$/;
+
+/**
+ * Whether `path` is a confined session's own temp directory: directly in
+ * `stationHome`'s confined-session root, named `session-<pid>-<random>`.
+ */
+export function isConfinedSessionTempDir(
+  path: string,
+  stationHome: string,
+): boolean {
+  return (
+    dirname(path) === seatbeltTempRoot(stationHome) &&
+    SESSION_DIR.test(basename(path))
+  );
+}
 
 /** The prefix `mkdtemp` completes for a session owned by `pid`. */
 export function seatbeltSessionDirPrefix(pid: number = process.pid): string {
@@ -601,7 +722,8 @@ function sameArgs(left: readonly string[], right: readonly string[]): boolean {
  * not known to hold.
  */
 export function observeSeatbeltPosture(
-  confined: Pick<ConfinementSpawnSpec, 'command' | 'args' | 'grants'>,
+  confined: Pick<ConfinementSpawnSpec, 'command' | 'args' | 'grants'> &
+    Partial<Pick<ConfinementSpawnSpec, 'network'>>,
   evidence: SeatbeltEvidence | undefined,
 ): ConfinementPosture {
   if (!evidence || evidence.handshake !== 'completed' || !evidence.spawned)
@@ -611,22 +733,41 @@ export function observeSeatbeltPosture(
     !sameArgs(evidence.spawned.args, confined.args)
   )
     return 'configured-but-failed';
+  // #4769: a restricted start is confined only if the profile it was
+  // spawned with restricts the network.
+  if (
+    confined.network === 'broker' &&
+    seatbeltProfileNetwork(evidence.spawned.args[1]) !== 'restricted'
+  )
+    return 'configured-but-failed';
   return seatbeltWriteGrantKinds(confined.grants, evidence.bounds)
     ? 'confined'
     : 'configured-but-failed';
 }
 
-/** `spec` wrapped in `sandbox-exec` with its profile. */
+/**
+ * `spec` wrapped in `sandbox-exec` with its profile: the network open for
+ * `full`, only the egress broker for `broker` (#4769). Anything else is
+ * refused.
+ */
 export function confineWithSeatbelt(
   spec: ConfinementSpawnSpec,
   sandboxExec: string = SANDBOX_EXEC,
 ): ConfinementSpawnSpec {
-  if (spec.network !== 'full')
-    throw new Error('The Seatbelt profile does not restrict the network.');
+  if (spec.network === 'broker' && spec.brokerPort === undefined)
+    throw new Error('A restricted network needs the egress broker port.');
+  if (spec.network !== 'full' && spec.network !== 'broker')
+    throw new Error(
+      'The Seatbelt profile either opens the network or restricts it to the egress broker.',
+    );
+  const profile =
+    spec.network === 'broker'
+      ? seatbeltProfile(spec.grants, spec.brokerPort)
+      : seatbeltProfile(spec.grants);
   return {
     ...spec,
     command: sandboxExec,
-    args: ['-p', seatbeltProfile(spec.grants), spec.command, ...spec.args],
+    args: ['-p', profile, spec.command, ...spec.args],
   };
 }
 
@@ -715,6 +856,7 @@ export function createSeatbeltConfinementProvider(
     supportedIsolationModes: ['shared', 'worktree'],
     engagement: 'spawn-wrapper',
     engines: [PROVIDER_CLAUDE],
+    restrictsNetwork: true,
     availability(): ConfinementAvailability {
       const platform = (deps.platform ?? osPlatform)();
       if (platform !== 'darwin')
@@ -741,6 +883,10 @@ export function createSeatbeltConfinementProvider(
         spec: confined,
         pending: {
           observe: (evidence) => observeSeatbeltPosture(confined, evidence),
+          network: () =>
+            seatbeltProfileNetwork(confined.args[1]) === 'restricted'
+              ? 'restricted'
+              : 'full',
         },
       };
     },

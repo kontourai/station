@@ -127,6 +127,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/feature-previews/` | The registry of feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
+| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
 | `src-server/services/session-summary/` | Session summary records and the server-observed intent source they are derived from | Source |
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
@@ -6926,7 +6927,8 @@ its journal live in the supervisor's workload host
 ([PtyWorkloadHost](../../src-server/services/terminal/pty-workload-host.ts), built as
 `station-pty-host.js`), and a running session is reattached after a core restart.
 [TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
-serialized sanitized records, bounded memory and append-only disk segments;
+serialized sanitized records, a shell's recorded sizes (#4625), bounded memory
+and append-only disk segments;
 [journal privacy](../../src-server/services/terminal/terminal-journal-privacy.ts)
 keeps them private to Station's user on Windows, where file modes set no ACL.
 The [operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
@@ -6939,7 +6941,9 @@ other terminal service or listener remains. An ACP engine's terminals are
 `command` sessions opened through
 [AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
 (pipes, an output cap, and termination that ends what the command started, from
-[command-process.ts](../../src-server/services/terminal/command-process.ts)),
+[command-process.ts](../../src-server/services/terminal/command-process.ts); on
+Windows a Job Object made by the
+[Job guard](../../src-server/services/terminal/windows-command-guard.ts), #4624),
 on personal hosts only, through `openAgentCommand`: only for a host-confined
 session in its own thread binding (#2497). `restart` keeps a session's id and starts a new
 journal segment. Deleting a Project ends its running sessions through
@@ -7014,7 +7018,7 @@ Worker. Only render-state rows marked dirty cross to the UI thread, named by
 stable row ids; the [host](../../packages/sdk/src/terminal-view/engine/engine-host.ts)
 holds one frame in flight until the UI acknowledges it and sends none while
 hidden. Replayed journal output updates the screen with the reply writer and
-bell detached. A session handed to a mounted view resets the emulator to a
+bell detached, parsed at the size the journal recorded for it (#4625). A session handed to a mounted view resets the emulator to a
 fresh terminal before its replay, so a reattach draws its history once. Keys
 the view does not keep, ⌘ chords on a Mac and Ctrl+Shift letters elsewhere,
 are left to the page. Its theme observer and the app's root-theme store share
@@ -7034,7 +7038,8 @@ during replay, the mirror after cursor-addressed redraws, find, selection and
 OSC 8. The [boundary test](../../packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts)
 keeps the Coding layout on the public entry. The
 [controller test](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
-covers replay once after a reattach and the keys left to the page.
+covers replay once after a reattach, replay at recorded sizes through the real
+engine, and the keys left to the page.
 **Do not reintroduce:** a second emulator, terminal state in React render,
 replies written during replay, a replay drawn over an earlier attachment's
 screen, or a Coding import of terminal internals.
