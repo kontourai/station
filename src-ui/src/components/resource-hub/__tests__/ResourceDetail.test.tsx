@@ -11,7 +11,7 @@ function detail(fixNotice?: string) {
     <ResourceDetail
       id="engine"
       title="Codex"
-      status={{ label: 'Check failed', tone: 'error' }}
+      status={{ label: 'Check failed', tone: 'negative' }}
       fixNotice={fixNotice}
       tabs={[{ key: 'overview', label: 'Overview' }]}
       activeTab="overview"
