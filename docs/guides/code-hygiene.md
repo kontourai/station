@@ -215,7 +215,8 @@ feature-specific geometry are not blanket utility conversions.
 
 `npm run lint:component-style` scans shipped shell, SDK and pane-package TSX
 and CSS, including untracked non-ignored source. Its baseline names each
-inherited file/signature: new legacy-token references, standard-action
+inherited file/signature: new legacy-token references (pre-`--k-*` families:
+space, text, radius, font, background, border, accent, color, status and shadow), standard-action
 native-button recipes, native `dialog`/`alertdialog` shells and `role="alert"`
 elements that hold their own button fail. Each finding prints its own fix.
 For an alert that offers a retry or other recovery, use `ErrorState` with an
