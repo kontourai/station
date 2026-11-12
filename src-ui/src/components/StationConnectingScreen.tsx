@@ -11,6 +11,7 @@ import {
 import { openConnectionsModal } from '../lib/connectionModalEvents';
 import { retainInitialStartup } from '../lib/startup-presentation';
 import { readRecentStations } from '../lib/stationSwitcher';
+import { describeStationFailure } from '../utils/stationFailure';
 import { ActionRow } from './ActionRow';
 import { Button } from './Button';
 import './StationConnectingScreen.css';
@@ -117,7 +118,7 @@ export function StationConnectingScreen({
     setActiveConnection(previous.id).catch((error: unknown) => {
       setLeaving(false);
       setBackError(
-        `Could not switch to ${previousName}: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not switch to ${previousName}: ${describeStationFailure(error).body}`,
       );
     });
   };
