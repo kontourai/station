@@ -1698,11 +1698,17 @@ only for a provider declared `per-turn` in
 the turn's frames. A session-cumulative provider (Codex) or an undeclared one
 leaves the span's usage absent, because its frames are session totals, not that
 turn's usage. Spans written before this change can carry a Codex session total.
+The bridge writes one `execute_tool` start per open tool call id: an engine
+that re-publishes `tool.started` as a call's title, kind or input changes (ACP)
+does not add start rows, and the start row keeps the input known at first sight.
 
 The emitter redacts content, emits the live event, and tracks an asynchronous
 persistence promise. Persistence rejection is contained; `flush()` waits for
-pending attempts but does not turn a failed write into durable evidence. This
-is operational history, not an execution receipt or the canonical EventStore.
+pending attempts but does not turn a failed write into durable evidence. The
+event log serializes appends and writes each line with one append call; a line
+torn by a writer that died mid-write is left as one malformed line, which reads
+skip with one warning per file per query. This is operational history, not an
+execution receipt or the canonical EventStore.
 
 ### Event Schema
 
