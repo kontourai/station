@@ -439,6 +439,33 @@ export async function installProjectRoomFixture(
   ];
   const handlers: [string, (route: Route) => Promise<void> | void][] = [
     ...roomRoutes(base, ROOM_ID, messages, scene === 'failed-send'),
+    // A full room marks itself read through what it shows (#4794); these
+    // rooms are fixture rooms, so the fixture answers as the server would.
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        const { target, version } = route.request().postDataJSON() as {
+          target: { kind: string; roomId?: string };
+          version: number;
+        };
+        if (target.kind !== 'project-room')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              target,
+              latestVersion: version,
+              seenVersion: version,
+              unread: false,
+              unreadCount: 0,
+            },
+          },
+        });
+      },
+    ],
     [
       `${project}/channels`,
       (route) => {
@@ -636,7 +663,9 @@ export async function installProjectConversationsFixture(
         const room = rooms.get(keyOf(target));
         if (!room) return rejectUnexpectedFixtureRequest(route);
         room.seen = Math.max(room.seen, Math.min(version, room.latest));
-        return route.fulfill({ json: { success: true, data: stateOf(target) } });
+        return route.fulfill({
+          json: { success: true, data: stateOf(target) },
+        });
       },
     ],
     [
@@ -931,6 +960,34 @@ export async function installTaskRoomFixture(
     [
       `**/api/tasks/${encoded}/**`,
       (route) => rejectUnexpectedFixtureRequest(route),
+    ],
+    // The open room marks itself read through its checkpoint (#4794).
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        const body = route.request().postDataJSON() as {
+          target: { kind: string; taskId?: string };
+          version: number;
+        };
+        if (
+          route.request().method() !== 'POST' ||
+          body.target.kind !== 'task-room' ||
+          body.target.taskId !== taskId
+        )
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              target: body.target,
+              latestVersion: body.version,
+              seenVersion: body.version,
+              unread: false,
+              unreadCount: 0,
+            },
+          },
+        });
+      },
     ],
     [
       '**/api/tasks',

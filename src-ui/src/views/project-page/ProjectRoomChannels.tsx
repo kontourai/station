@@ -11,13 +11,7 @@ import type {
   useProjectRoomChannels,
 } from '@kontourai/station-sdk/project-rooms';
 import { Badge, Field } from '@kontourai/ui/react';
-import {
-  type FormEvent,
-  type ReactNode,
-  useId,
-  useRef,
-  useState,
-} from 'react';
+import { type FormEvent, type ReactNode, useId, useRef, useState } from 'react';
 import {
   ActionOverflowMenu,
   type OverflowAction,
@@ -29,11 +23,11 @@ import {
   ArrowLeftGlyph,
   MoreGlyph,
 } from '../../components/icons/Glyph';
+import { useNewChannelRequest } from '../../components/project-conversations/new-channel-request';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../../components/ResponsiveDialogSurface';
-import { useNewChannelRequest } from '../../components/project-conversations/new-channel-request';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import './ProjectRoomChannels.css';
 
@@ -234,30 +228,32 @@ export function ProjectRoomChannelHeader({
           {screen.heading ? (
             <div className="room-channel__bar-title">
               <h1 className="room-channel__name">
-                <span className="room-channel__label">{screen.heading.title}</span>
+                <span className="room-channel__label">
+                  {screen.heading.title}
+                </span>
               </h1>
               {screen.heading.subtitle && (
                 <p className="room-channel__topic">{screen.heading.subtitle}</p>
               )}
             </div>
           ) : (
-          <div className="room-channel__bar-title">
-            <h1 className="room-channel__name">
-              <span className="room-channel__label" title={name}>
-                <span className="room-channel__hash" aria-hidden="true">
-                  #
+            <div className="room-channel__bar-title">
+              <h1 className="room-channel__name">
+                <span className="room-channel__label" title={name}>
+                  <span className="room-channel__hash" aria-hidden="true">
+                    #
+                  </span>
+                  {name ?? 'Room'}
                 </span>
-                {name ?? 'Room'}
-              </span>
-            </h1>
-            {current?.topic ? (
-              <p className="room-channel__topic" title={current.topic}>
-                {current.topic}
-              </p>
-            ) : current?.archivedAt ? (
-              <p className="room-channel__topic">Archived</p>
-            ) : null}
-          </div>
+              </h1>
+              {current?.topic ? (
+                <p className="room-channel__topic" title={current.topic}>
+                  {current.topic}
+                </p>
+              ) : current?.archivedAt ? (
+                <p className="room-channel__topic">Archived</p>
+              ) : null}
+            </div>
           )}
           {screen.trailing}
           {sheetRows.length > 0 && (
@@ -276,55 +272,55 @@ export function ProjectRoomChannelHeader({
         </div>
       ) : (
         <>
-        <div className="room-channel__line">
-          <h3 className="room-channel__name">
-            {switchable ? (
-              <button
-                ref={triggerRef}
-                type="button"
-                className="room-channel__trigger"
-                aria-haspopup="dialog"
-                aria-expanded={panel?.kind === 'switch'}
-                onClick={() => setPanel({ kind: 'switch' })}
-              >
-                <span className="room-channel__label" title={name}>
-                  <span className="room-channel__hash" aria-hidden="true">
-                    #
+          <div className="room-channel__line">
+            <h3 className="room-channel__name">
+              {switchable ? (
+                <button
+                  ref={triggerRef}
+                  type="button"
+                  className="room-channel__trigger"
+                  aria-haspopup="dialog"
+                  aria-expanded={panel?.kind === 'switch'}
+                  onClick={() => setPanel({ kind: 'switch' })}
+                >
+                  <span className="room-channel__label" title={name}>
+                    <span className="room-channel__hash" aria-hidden="true">
+                      #
+                    </span>
+                    {name}
                   </span>
-                  {name}
-                </span>
-                <span className="sr-only">, switch channel</span>
-                <ArrowDownGlyph className="room-channel__caret" />
-              </button>
-            ) : name ? (
-              <span className="room-channel__static">
-                <span className="room-channel__label" title={name}>
-                  <span className="room-channel__hash" aria-hidden="true">
-                    #
+                  <span className="sr-only">, switch channel</span>
+                  <ArrowDownGlyph className="room-channel__caret" />
+                </button>
+              ) : name ? (
+                <span className="room-channel__static">
+                  <span className="room-channel__label" title={name}>
+                    <span className="room-channel__hash" aria-hidden="true">
+                      #
+                    </span>
+                    {name}
                   </span>
-                  {name}
                 </span>
-              </span>
-            ) : channels.list.isError ? (
-              <span className="room-channel__static">Room</span>
-            ) : (
-              <SkeletonBlock label="Loading channel" />
+              ) : channels.list.isError ? (
+                <span className="room-channel__static">Room</span>
+              ) : (
+                <SkeletonBlock label="Loading channel" />
+              )}
+            </h3>
+            {current?.archivedAt && <Badge value="Archived" tone="neutral" />}
+            {settings.length > 0 && (
+              <ActionOverflowMenu
+                label="Channel settings"
+                actions={settings}
+                triggerClassName="action-overflow__trigger room-channel__settings"
+              />
             )}
-          </h3>
-          {current?.archivedAt && <Badge value="Archived" tone="neutral" />}
-          {settings.length > 0 && (
-            <ActionOverflowMenu
-              label="Channel settings"
-              actions={settings}
-              triggerClassName="action-overflow__trigger room-channel__settings"
-            />
+          </div>
+          {current?.topic && (
+            <p className="room-channel__topic" title={current.topic}>
+              {current.topic}
+            </p>
           )}
-        </div>
-        {current?.topic && (
-          <p className="room-channel__topic" title={current.topic}>
-            {current.topic}
-          </p>
-        )}
         </>
       )}
       {panel?.kind === 'actions' && (

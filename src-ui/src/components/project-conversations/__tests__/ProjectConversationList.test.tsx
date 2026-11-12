@@ -121,7 +121,9 @@ afterEach(() => {
   _setApiBase('');
 });
 
-function renderList(handlers: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}) {
+function renderList(
+  handlers: Partial<Record<string, ReturnType<typeof vi.fn>>> = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -242,10 +244,12 @@ test('caps Task rooms and offers More Tasks', async () => {
     screen.getAllByRole('button', { name: /^Task \d, Task room$/ }),
   ).toHaveLength(5);
   // Newest first: the two oldest are behind More.
-  expect(screen.queryByRole('button', { name: 'Task 1, Task room' })).toBeNull();
-  await userEvent.setup().click(
-    screen.getByRole('button', { name: 'More Tasks' }),
-  );
+  expect(
+    screen.queryByRole('button', { name: 'Task 1, Task room' }),
+  ).toBeNull();
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'More Tasks' }));
   expect(onMoreTasks).toHaveBeenCalledOnce();
 });
 

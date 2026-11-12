@@ -21,7 +21,9 @@ interface SeededProject {
   channels: Map<string, string>;
 }
 
-async function json(response: Awaited<ReturnType<AuthenticatedE2ERequest['get']>>) {
+async function json(
+  response: Awaited<ReturnType<AuthenticatedE2ERequest['get']>>,
+) {
   expect(response.ok(), await response.text()).toBe(true);
   return (await response.json()).data;
 }
@@ -71,8 +73,7 @@ async function post(
   text: string,
 ) {
   const roomId = seeded.channels.get(channel)!;
-  const path =
-    roomId === seeded.generalId ? 'room' : `channels/${roomId}`;
+  const path = roomId === seeded.generalId ? 'room' : `channels/${roomId}`;
   await json(
     await request.post(
       `${resolveE2EApiBase()}/api/projects/${seeded.slug}/${path}/messages`,
@@ -184,9 +185,9 @@ test.describe('Project channels in the sidebar (#4794)', () => {
       await expect(read).toBeVisible();
       await expect(read).not.toHaveClass(/conversation-list__row--unread/);
       await expect(read).toHaveAttribute('aria-current', 'page');
-      await expect.poll(() => readState(request, seeded, 'design')).toEqual(
-        expect.objectContaining({ unread: false }),
-      );
+      await expect
+        .poll(() => readState(request, seeded, 'design'))
+        .toEqual(expect.objectContaining({ unread: false }));
 
       // A message from elsewhere makes #launch unread on the next read.
       await post(request, seeded, 'launch', 'Launch checklist is drafted.');
@@ -216,7 +217,7 @@ test.describe('Project channels on a phone (#4795)', () => {
     try {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(`/projects/${slug}`);
-      const list = page.getByRole('group', { name: 'Channels' });
+      const list = page.getByRole('list', { name: 'Channels' });
       await expect(list.getByRole('button', { name: 'general' })).toBeVisible();
       await expectNoHorizontalScroll(page);
 
@@ -239,14 +240,18 @@ test.describe('Project channels on a phone (#4795)', () => {
         exact: true,
       });
       await expect(
-        room.getByRole('heading', { level: 1, name: '#team-12' }),
+        room.getByRole('heading', { level: 1, name: 'team-12' }),
       ).toBeVisible();
       // Full screen: the Project's own header and sections are gone.
-      await expect(page.getByRole('heading', { name: 'Channel journey' })).toHaveCount(0);
+      await expect(
+        page.getByRole('heading', { name: 'Channel journey' }),
+      ).toHaveCount(0);
       await expect(list).toBeHidden();
       await expectNoHorizontalScroll(page);
 
-      const composer = room.getByRole('textbox', { name: 'Message the project' });
+      const composer = room.getByRole('textbox', {
+        name: 'Message the project',
+      });
       await composer.fill('Hello from the phone');
       await room.getByRole('button', { name: 'Send message' }).click();
       const sent = room.getByText('Hello from the phone', { exact: true });
@@ -279,21 +284,23 @@ test.describe('Project channels on a phone (#4795)', () => {
       ).toHaveCount(0);
 
       // Back again: the list, scrolled where it was.
-      await room.getByRole('button', { name: 'Back to Channel journey' }).click();
+      await room
+        .getByRole('button', { name: 'Back to Channel journey' })
+        .click();
       await expect(list.getByRole('button', { name: 'team-12' })).toBeVisible();
       await expect
         .poll(() => scroller.evaluate((node) => node.scrollTop))
         .toBeGreaterThanOrEqual(before - 2);
-      expect(await scroller.evaluate((node) => node.scrollTop)).toBeLessThanOrEqual(
-        before + 2,
-      );
+      expect(
+        await scroller.evaluate((node) => node.scrollTop),
+      ).toBeLessThanOrEqual(before + 2);
 
       // 360 wide: still no horizontal scroll, list or conversation.
       await page.setViewportSize({ width: 360, height: 780 });
       await expectNoHorizontalScroll(page);
       await list.getByRole('button', { name: 'general' }).click();
       await expect(
-        room.getByRole('heading', { level: 1, name: '#general' }),
+        room.getByRole('heading', { level: 1, name: 'general' }),
       ).toBeVisible();
       await expectNoHorizontalScroll(page);
     } finally {

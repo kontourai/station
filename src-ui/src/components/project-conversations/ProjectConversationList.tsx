@@ -101,7 +101,10 @@ export function ProjectConversationList({
   const moreTasks = index.tasks.entries.length > TASK_ROOMS_SHOWN;
   const rows = [...channelRows, ...taskRows];
   const moreKey = 'more-tasks';
-  const order = [...rows.map((row) => row.key), ...(moreTasks ? [moreKey] : [])];
+  const order = [
+    ...rows.map((row) => row.key),
+    ...(moreTasks ? [moreKey] : []),
+  ];
   const stop =
     (focusKey && order.includes(focusKey) && focusKey) ||
     rows.find((row) => row.current)?.key ||
@@ -183,11 +186,7 @@ export function ProjectConversationList({
       className={`conversation-list conversation-list--${variant}`}
       onKeyDown={onKeyDown}
     >
-      <div
-        role="group"
-        className="conversation-list__section"
-        aria-labelledby={headingId('channels')}
-      >
+      <div className="conversation-list__section">
         <div className="conversation-list__heading">
           <Heading id={headingId('channels')}>Channels</Heading>
           <button
@@ -213,18 +212,19 @@ export function ProjectConversationList({
             }
           />
         ) : (
-          <ul className="conversation-list__rows">{channelRows.map(renderRow)}</ul>
+          <ul
+            className="conversation-list__rows"
+            aria-labelledby={headingId('channels')}
+          >
+            {channelRows.map(renderRow)}
+          </ul>
         )}
       </div>
       {(index.tasks.isPending ||
         index.tasks.isError ||
         taskRows.length > 0 ||
         variant === 'page') && (
-        <div
-          role="group"
-          className="conversation-list__section"
-          aria-labelledby={headingId('tasks')}
-        >
+        <div className="conversation-list__section">
           <div className="conversation-list__heading">
             <Heading id={headingId('tasks')}>Tasks</Heading>
           </div>
@@ -243,7 +243,10 @@ export function ProjectConversationList({
           ) : taskRows.length === 0 ? (
             <p className="conversation-list__empty">No Task rooms yet.</p>
           ) : (
-            <ul className="conversation-list__rows">
+            <ul
+              className="conversation-list__rows"
+              aria-labelledby={headingId('tasks')}
+            >
               {taskRows.map(renderRow)}
               {moreTasks && (
                 <li className="conversation-list__item">
@@ -299,7 +302,8 @@ function rowFor(
           ? channel.isDefault
           : current.channelId === channel.channelId),
       // The default channel is addressed without an id, as the room is.
-      open: () => onOpenChannel(channel.isDefault ? undefined : channel.channelId),
+      open: () =>
+        onOpenChannel(channel.isDefault ? undefined : channel.channelId),
     };
   }
   return {

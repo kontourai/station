@@ -2261,7 +2261,10 @@ POST /api/read-markers/summary
 The response holds one item per target, in request order:
 `{ target, latestVersion, seenVersion, unread, unreadCount? }`, or
 `{ target, unavailable: true }`. More than 100 targets is a 400 with
-`read_marker_too_many_targets`.
+`read_marker_too_many_targets`. A Project room target's `roomId` is any of the
+Project's channels (`channelId`, `#general` included); an id that is not one
+of its channels is unavailable. A Task room never opened is unavailable too:
+reading markers never opens one.
 
 ```http
 POST /api/read-markers/mark

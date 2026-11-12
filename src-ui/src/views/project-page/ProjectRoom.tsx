@@ -39,8 +39,6 @@ import { ArrowLeftGlyph, ReturnGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { RoomAvatar } from '../../components/room/RoomAvatar';
 import { RoomComposer } from '../../components/room/RoomComposer';
-import { RoomThreadSummary } from '../../components/room/RoomThreadSummary';
-import { useMarkRoomRead } from '../../components/room/useMarkRoomRead';
 import {
   RoomConversation,
   type RoomConversationRow,
@@ -50,6 +48,8 @@ import {
   RoomMentionPicker,
   useRoomMention,
 } from '../../components/room/RoomMentionPicker';
+import { RoomThreadSummary } from '../../components/room/RoomThreadSummary';
+import { useMarkRoomRead } from '../../components/room/useMarkRoomRead';
 import {
   roomDraftKey,
   useRoomDraftValue,
@@ -70,7 +70,8 @@ export interface ProjectRoomProps {
   /** `draftRecoveryKey` is the shell's non-secret reload partition. */
   requestScope: ApiRequestScope & { draftRecoveryKey?: string };
   variant?: 'preview' | 'full';
-  onOpenRoom?(): void;
+  /** The preview's Open room, with the channel it shows. */
+  onOpenRoom?(channelId: string | undefined): void;
   /**
    * The room destination's channel, owned by the route (#4795), so a link,
    * the sidebar and Back all address it; `id` absent is the default channel.
@@ -83,7 +84,10 @@ export interface ProjectRoomProps {
    * Threads (#4795): the open thread's root message, owned by the route.
    * Without it replies stay inline, as in the Overview preview.
    */
-  thread?: { rootId: string | undefined; open(rootId: string | undefined): void };
+  thread?: {
+    rootId: string | undefined;
+    open(rootId: string | undefined): void;
+  };
   /** A phone's full-screen conversation (#4795): a back button replaces the page chrome. */
   screen?: { backLabel: string; onBack(): void };
 }
@@ -337,6 +341,7 @@ function ProjectRoomSession({
   onSelectChannel,
   thread,
   screen,
+  routeChannel,
 }: ProjectRoomProps & {
   storageKey: string;
   draftKey: string | undefined;
@@ -459,7 +464,9 @@ function ProjectRoomSession({
   // guard when an unconfirmed send or a notes draft would be left behind.
   const phone = variant === 'full' && screen ? screen : undefined;
   /** The phone's bar (#4795): back, then the channel; `extra` adds faces and commands. */
-  const screenBar = (extra?: Partial<ChannelScreen>): ChannelScreen | undefined =>
+  const screenBar = (
+    extra?: Partial<ChannelScreen>,
+  ): ChannelScreen | undefined =>
     phone
       ? {
           backLabel: phone.backLabel,
@@ -482,7 +489,13 @@ function ProjectRoomSession({
               }
             : undefined
         }
-        onSelect={(next) => guard(() => onSelectChannel(next))}
+        // A route-owned switch is a navigation, which asks the same guard
+        // once; a remembered one is local state and asks here.
+        onSelect={(next) =>
+          routeChannel
+            ? onSelectChannel(next)
+            : guard(() => onSelectChannel(next))
+        }
         projectSlug={slug}
         screen={bar}
       />
@@ -555,7 +568,9 @@ function ProjectRoomSession({
   // conversation is on screen (#3075, #4794): opening a channel clears its
   // unread state here and on the reader's other devices.
   useMarkRoomRead(
-    view ? { kind: 'project-room', projectSlug: slug, roomId: view.roomId } : undefined,
+    view
+      ? { kind: 'project-room', projectSlug: slug, roomId: view.roomId }
+      : undefined,
     view?.checkpoint.lastSeq,
     variant === 'full' && tab === 'conversation' && !room.stopped,
   );
@@ -791,7 +806,9 @@ function ProjectRoomSession({
       at: message.createdAt,
       reply: !inThread && !!message.replyTo,
       context:
-        !inThread && message.replyTo ? replyContext(message.replyTo) : undefined,
+        !inThread && message.replyTo
+          ? replyContext(message.replyTo)
+          : undefined,
       text: message.text,
       own: message.actor.id === view.actor.id,
       footer:
@@ -965,7 +982,7 @@ function ProjectRoomSession({
             </Button>
           </nav>
           {variant === 'preview' && onOpenRoom && (
-            <Button size="sm" onClick={onOpenRoom}>
+            <Button size="sm" onClick={() => onOpenRoom(channelId)}>
               Open room
             </Button>
           )}
@@ -1029,45 +1046,45 @@ function ProjectRoomSession({
               }
             />
           ) : (
-          <RoomConversation
-            label="Conversation"
-            regionLabel={`Messages in #${channelName}`}
-            className="project-room__conversation"
-            rows={rows}
-            loading={room.history.isPending}
-            status={
-              room.history.isError ? (
-                <ErrorState
-                  variant="compact"
-                  title="History could not be loaded."
-                  action={
-                    <Button onClick={() => void room.history.refetch()}>
-                      Retry
-                    </Button>
-                  }
-                />
-              ) : room.history.isPending && !messages.length ? (
-                <SkeletonBlock count={2} label="Loading chat" />
-              ) : undefined
-            }
-            empty={
-              room.history.isError ? undefined : (
-                <Empty
-                  variant="compact"
-                  label={
-                    archived
-                      ? 'No messages were posted here.'
-                      : 'Start a chat with your project team.'
-                  }
-                />
-              )
-            }
-            hasOlder={variant === 'full' && !!room.history.hasNextPage}
-            loadingOlder={room.history.isFetchingNextPage}
-            onLoadOlder={() => {
-              void room.history.fetchNextPage();
-            }}
-          />
+            <RoomConversation
+              label="Conversation"
+              regionLabel={`Messages in #${channelName}`}
+              className="project-room__conversation"
+              rows={rows}
+              loading={room.history.isPending}
+              status={
+                room.history.isError ? (
+                  <ErrorState
+                    variant="compact"
+                    title="History could not be loaded."
+                    action={
+                      <Button onClick={() => void room.history.refetch()}>
+                        Retry
+                      </Button>
+                    }
+                  />
+                ) : room.history.isPending && !messages.length ? (
+                  <SkeletonBlock count={2} label="Loading chat" />
+                ) : undefined
+              }
+              empty={
+                room.history.isError ? undefined : (
+                  <Empty
+                    variant="compact"
+                    label={
+                      archived
+                        ? 'No messages were posted here.'
+                        : 'Start a chat with your project team.'
+                    }
+                  />
+                )
+              }
+              hasOlder={variant === 'full' && !!room.history.hasNextPage}
+              loadingOlder={room.history.isFetchingNextPage}
+              onLoadOlder={() => {
+                void room.history.fetchNextPage();
+              }}
+            />
           )}
           {view.capabilities.discuss ? (
             <ProjectRoomComposer

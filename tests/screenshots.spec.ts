@@ -3690,25 +3690,38 @@ function roomConversationScreens(): Screen[] {
               // #4792 on the shared conversation: switch to #design, keep a
               // draft across a real reload, then show the channel list over
               // that channel's conversation.
+              const phone = viewport.width === MOBILE.width;
+              // On a phone the switcher is in the channel's ⋯ sheet (#4795).
               const openChannels = async () => {
-                await roomRegion
-                  .getByRole('button', { name: /switch channel$/ })
-                  .click();
+                if (phone) {
+                  await roomRegion
+                    .getByRole('button', { name: 'Channel options' })
+                    .click();
+                  await page
+                    .getByRole('dialog', { name: /^#/ })
+                    .getByRole('button', { name: 'Switch channel' })
+                    .click();
+                } else
+                  await roomRegion
+                    .getByRole('button', { name: /switch channel$/ })
+                    .click();
                 return page.getByRole('dialog', { name: 'Channels' });
               };
+              const expectChannel = (region: Locator, name: string) =>
+                expect(
+                  phone
+                    ? region.getByRole('heading', { level: 1, name })
+                    : region.getByRole('button', {
+                        name: new RegExp(`^${name}\\b.*switch channel$`),
+                      }),
+                ).toBeVisible();
               const list = await openChannels();
               await list
                 .getByRole('button', { name: 'design', exact: true })
                 .click();
+              await expectChannel(roomRegion, 'design');
               await expect(
-                roomRegion.getByRole('button', {
-                  name: /^design\b.*switch channel$/,
-                }),
-              ).toBeVisible();
-              await expect(
-                conversation.getByText(
-                  'New checkout screens are up for review.',
-                ),
+                roomRegion.getByText('New checkout screens are up for review.'),
               ).toBeVisible();
               const draftText = 'Shorter CTA: “Pay now”';
               await composer.fill(draftText);
@@ -3716,11 +3729,7 @@ function roomConversationScreens(): Screen[] {
               const reloaded = page.getByRole('region', {
                 name: 'Project room',
               });
-              await expect(
-                reloaded.getByRole('button', {
-                  name: /^design\b.*switch channel$/,
-                }),
-              ).toBeVisible();
+              await expectChannel(reloaded, 'design');
               await expect(
                 reloaded.getByRole('textbox', { name: /^Message/ }),
               ).toHaveValue(draftText);
@@ -3875,8 +3884,7 @@ function channelNavigationScreens(): Screen[] {
       // The drawer is the phone's sidebar; at 1440 the list scene shows it.
       (scene === 'drawer' ? [MOBILE] : [DESKTOP, MOBILE]).map(
         (viewport): Screen => {
-          const width =
-            viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+          const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
           const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
           const other = `${slug}-site`;
           let request: ReturnType<typeof createAuthenticatedE2ERequest>;
@@ -3895,7 +3903,10 @@ function channelNavigationScreens(): Screen[] {
             viewport,
             async beforeGoto(page) {
               request = createAuthenticatedE2ERequest(page.request);
-              const createProject = async (name: string, projectSlug: string) => {
+              const createProject = async (
+                name: string,
+                projectSlug: string,
+              ) => {
                 const response = await request.post(
                   `${resolveE2EApiBase()}/api/projects`,
                   { data: { name, slug: projectSlug } },
@@ -3925,23 +3936,111 @@ function channelNavigationScreens(): Screen[] {
                   document.documentElement.setAttribute('data-theme', selected),
                 theme,
               );
-              if (scene === 'conversation' || scene === 'thread') {
+              const phone = viewport.width === MOBILE.width;
+              const sidebar = page.getByRole('navigation', {
+                name: 'Primary navigation',
+              });
+              // Unread and working come from the read-marker and session
+              // fixtures; the rows below are the server's answer.
+              const expectProjectList = async (list: Locator) => {
                 await expect(
-                  page.getByRole('region', { name: 'Project room', exact: true }),
+                  list.getByRole('button', { name: 'general, 3 unread' }),
+                ).toHaveClass(/conversation-list__row--unread/);
+                await expect(
+                  list.getByRole('button', { name: 'design', exact: true }),
                 ).toBeVisible();
+                await expect(
+                  list.getByRole('button', {
+                    name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
+                  }),
+                ).toBeVisible();
+                // A Task whose room never opened is not a Task room.
+                await expect(
+                  list.getByRole('button', { name: /Rename the onboarding/ }),
+                ).toHaveCount(0);
+              };
+              const room = page.getByRole('region', {
+                name: 'Project room',
+                exact: true,
+              });
+              if (scene === 'conversation' || scene === 'thread') {
+                await expect(room).toBeVisible();
+                if (scene === 'conversation') {
+                  await expect(
+                    room.getByText('New checkout screens are up for review.'),
+                  ).toBeVisible();
+                  if (phone) {
+                    await expect(
+                      room.getByRole('heading', { level: 1, name: 'design' }),
+                    ).toBeVisible();
+                    await expectTouchTarget(
+                      room.getByRole('button', {
+                        name: 'Back to Onboarding revamp',
+                      }),
+                      'Back',
+                    );
+                    await expectTouchTarget(
+                      room.getByRole('button', { name: 'Channel options' }),
+                      'Channel options',
+                    );
+                  } else {
+                    // Opening #design marked it read: the sidebar's row is
+                    // current and plain.
+                    const row = sidebar.getByRole('button', {
+                      name: 'design',
+                      exact: true,
+                    });
+                    await expect(row).toHaveAttribute('aria-current', 'page');
+                    await expect(row).not.toHaveClass(
+                      /conversation-list__row--unread/,
+                    );
+                  }
+                } else {
+                  await expect(
+                    room.getByText('Both numbers are fixed in the draft now.'),
+                  ).toBeVisible();
+                  await expect(
+                    room.getByRole('heading', { name: 'Thread' }),
+                  ).toBeVisible();
+                  await expect(
+                    room.getByRole('textbox', { name: 'Reply in thread' }),
+                  ).toBeVisible();
+                }
+                await page.mouse.move(0, 0);
                 return;
               }
-              await expect(
-                page.getByText('Onboarding revamp').first(),
-              ).toBeVisible();
               if (scene === 'drawer') {
                 await page
                   .locator('button[aria-controls="mobile-navigation"]')
                   .first()
                   .click();
+                const drawer = page.getByRole('navigation', {
+                  name: 'Mobile navigation',
+                });
+                await expect(drawer).toBeVisible();
+                await expectProjectList(drawer);
+                await expectTouchTarget(
+                  drawer.getByRole('button', { name: 'design', exact: true }),
+                  'Channel row',
+                );
+                return;
+              }
+              if (phone) {
+                const list = page.getByRole('main');
+                await expectProjectList(list);
+                await expectTouchTarget(
+                  list.getByRole('button', { name: 'design', exact: true }),
+                  'Channel row',
+                );
+              } else {
+                await expectProjectList(sidebar);
+                // The other Project stays collapsed: no rows of its own.
                 await expect(
-                  page.getByRole('navigation', { name: 'Mobile navigation' }),
+                  sidebar.getByRole('button', { name: /Kontour site/ }),
                 ).toBeVisible();
+                await expect(
+                  sidebar.getByRole('list', { name: 'Channels' }),
+                ).toHaveCount(1);
               }
               await page.mouse.move(0, 0);
             },

@@ -30,12 +30,12 @@ import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { RoomAvatar } from '../components/room/RoomAvatar';
 import { RoomComposer } from '../components/room/RoomComposer';
-import { RoomThreadSummary } from '../components/room/RoomThreadSummary';
-import { useMarkRoomRead } from '../components/room/useMarkRoomRead';
 import {
   RoomConversation,
   type RoomConversationRow,
 } from '../components/room/RoomConversation';
+import { RoomThreadSummary } from '../components/room/RoomThreadSummary';
+import { useMarkRoomRead } from '../components/room/useMarkRoomRead';
 import { roomDraftKey, useRoomDraft } from '../components/room/useRoomDraft';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { SkeletonBlock } from '../components/state';

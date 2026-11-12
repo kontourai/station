@@ -83,8 +83,11 @@ export function useProjectConversationIndex(
     ],
     [listed, candidates, project.slug],
   );
+  // Ask once both lists have answered, so a Project costs one summary
+  // request rather than one per list as each arrives.
+  const settled = !channels.list.isPending || channels.unsupported;
   const summary = useReadMarkerSummaryQuery(targets, {
-    enabled: active,
+    enabled: active && settled && !tasks.isPending,
     refetchInterval: active ? CONVERSATION_SUMMARY_REFRESH_MS : false,
   });
   const states = useMemo(() => readStates(summary.data), [summary.data]);
