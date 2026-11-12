@@ -74,6 +74,12 @@ export function projectRoomChannelsKey(
     projectId,
   ] as const;
 }
+/**
+ * Most 25-message history windows a room keeps loaded (500 messages). Paging
+ * past it drops the newest window, so a caller looking for an older message
+ * stops here rather than lose what is on screen.
+ */
+export const PROJECT_ROOM_HISTORY_MAX_PAGES = 20;
 export function isProjectRoomAccessError(error: unknown) {
   return (
     error instanceof StationHttpError &&
@@ -168,7 +174,7 @@ export function useProjectRoom(
     },
     getNextPageParam: (_last, _pages, { after }) =>
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
-    maxPages: 20,
+    maxPages: PROJECT_ROOM_HISTORY_MAX_PAGES,
   });
   const initialize = useMutation({
     retry: false,

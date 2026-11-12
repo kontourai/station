@@ -75,10 +75,11 @@ async function post(
   seeded: SeededProject,
   channel: string,
   text: string,
-) {
+  replyTo?: string,
+): Promise<{ messageId: string }> {
   const roomId = seeded.channels.get(channel)!;
   const path = roomId === seeded.generalId ? 'room' : `channels/${roomId}`;
-  await json(
+  return json(
     await request.post(
       `${resolveE2EApiBase()}/api/projects/${seeded.slug}/${path}/messages`,
       {
@@ -88,6 +89,7 @@ async function post(
           expectedActorId: seeded.actorId,
           intentId: randomUUID(),
           text,
+          ...(replyTo ? { replyTo } : {}),
         },
       },
     ),
@@ -205,6 +207,58 @@ test.describe('Project channels in the sidebar (#4794)', () => {
   });
 });
 
+test.describe('A thread link (#4795)', () => {
+  test('a link to a thread whose root is older than the newest messages opens it', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const request = createAuthenticatedE2ERequest(page.request);
+    const slug = `channels-old-thread-${Date.now().toString(36)}`;
+    const seeded = await seedProject(request, slug, ['archive']);
+    try {
+      // The room loads its newest 25 messages; the root is the first of 31.
+      const root = await post(
+        request,
+        seeded,
+        'archive',
+        'The oldest question',
+      );
+      for (let index = 2; index <= 30; index += 1)
+        await post(request, seeded, 'archive', `Update ${index}`);
+      await post(
+        request,
+        seeded,
+        'archive',
+        'An answer much later',
+        root.messageId,
+      );
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(
+        `/projects/${slug}?section=room&channel=${seeded.channels.get('archive')}&thread=${root.messageId}`,
+      );
+      const room = page.getByRole('region', {
+        name: 'Project room',
+        exact: true,
+      });
+      const thread = room.getByRole('region', {
+        name: 'Messages in this thread',
+      });
+      await expect(
+        thread.getByText('The oldest question', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        thread.getByText('An answer much later', { exact: true }),
+      ).toBeVisible();
+      await expect(thread.getByText('1 reply', { exact: true })).toBeVisible();
+      await expect(
+        room.getByRole('textbox', { name: 'Reply in thread' }),
+      ).toBeVisible();
+    } finally {
+      await removeProject(request, slug);
+    }
+  });
+});
+
 test.describe('Project channels on a phone (#4795)', () => {
   test('channel list, full-screen channel, send, thread, and Back keeps the list where it was', async ({
     page,
@@ -288,21 +342,43 @@ test.describe('Project channels on a phone (#4795)', () => {
       await expect(
         room.getByRole('heading', { level: 2, name: 'Thread' }),
       ).toBeVisible();
+      const rootId = new URL(page.url()).searchParams.get('thread');
+      // Every reply sent from the thread page answers its root, not only
+      // the first (#4855 review 2).
       const reply = room.getByRole('textbox', { name: 'Reply in thread' });
-      await reply.fill('A reply in the thread');
-      await room.getByRole('button', { name: 'Send message' }).click();
-      await expect(
-        room.getByText('A reply in the thread', { exact: true }),
-      ).toBeVisible();
+      for (const text of ['A reply in the thread', 'A second reply']) {
+        await reply.fill(text);
+        await room.getByRole('button', { name: 'Send message' }).click();
+        await expect(room.getByText(text, { exact: true })).toBeVisible();
+      }
+      await expect(room.getByText('2 replies', { exact: true })).toBeVisible();
+      // The server stored both as replies to the root.
+      const stored = await json(
+        await request.get(
+          `${resolveE2EApiBase()}/api/projects/${slug}/channels/${seeded.channels.get('team-12')}/messages?after=0&limit=100`,
+        ),
+      );
+      const replyTargets = Object.fromEntries(
+        (stored.messages as Array<{ text: string; replyTo?: string }>).map(
+          (message) => [message.text, message.replyTo ?? null],
+        ),
+      );
+      expect(replyTargets).toEqual({
+        'Hello from the phone': null,
+        'A reply in the thread': rootId,
+        'A second reply': rootId,
+      });
 
       // Back: to the channel, where the root shows its reply count.
       await room.getByRole('button', { name: 'Back to #team-12' }).click();
       await expect
         .poll(() => new URL(page.url()).searchParams.get('thread'))
         .toBeNull();
-      await expect(room.getByRole('button', { name: '1 reply' })).toBeVisible();
       await expect(
-        room.getByText('A reply in the thread', { exact: true }),
+        room.getByRole('button', { name: '2 replies' }),
+      ).toBeVisible();
+      await expect(
+        room.getByText('A second reply', { exact: true }),
       ).toHaveCount(0);
 
       // Back again: the list, scrolled where it was.

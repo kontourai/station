@@ -289,3 +289,32 @@ test('a failed summary keeps channels listed and offers a retry for Task rooms',
   );
   expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
 });
+
+test('a failed summary with no Tasks still says unread is unknown and retries it', async () => {
+  // No Tasks: the Task section has nothing to ask, so only the channel
+  // section can report the failure (#4855 review 4).
+  tasks = [];
+  const fetchMock = vi.mocked(fetch);
+  const real = fetchMock.getMockImplementation()!;
+  let failSummary = true;
+  fetchMock.mockImplementation(async (input, init) =>
+    failSummary &&
+    new URL(String(input)).pathname === '/api/read-markers/summary'
+      ? new Response('Bad Gateway', { status: 502 })
+      : real(input, init),
+  );
+  renderList();
+  // The channels stay listed, at normal weight: unknown is not unread.
+  const row = await screen.findByRole('button', { name: 'general' });
+  expect(bold(row)).toBe(false);
+  await screen.findByText('Unread state could not be loaded.');
+  failSummary = false;
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'Retry unread state' }));
+  const unread = await screen.findByRole('button', {
+    name: 'general, 3 unread',
+  });
+  expect(bold(unread)).toBe(true);
+  expect(screen.queryByText('Unread state could not be loaded.')).toBeNull();
+});

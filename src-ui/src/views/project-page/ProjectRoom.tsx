@@ -6,6 +6,7 @@ import {
 import {
   type ApiRequestScope,
   isProjectRoomAccessError,
+  PROJECT_ROOM_HISTORY_MAX_PAGES,
   type ProjectRoomAgentHandle,
   type ProjectRoomAgentIntent,
   type ProjectRoomBrowserView,
@@ -579,37 +580,50 @@ function ProjectRoomSession({
     room.stopped ? undefined : view?.roomId,
     room.history.data?.pages.flatMap((page) => page.messages) ?? [],
   );
-  // Read through the version this discovery reported, while the full
-  // conversation is on screen (#3075, #4794): opening a channel clears its
-  // unread state here and on the reader's other devices.
+  const threadsOn = variant === 'full' && !!thread;
+  const threadRoot = threadsOn ? thread?.rootId : undefined;
+  // Every send and Agent ask from an open thread replies to its root, read
+  // from the route on each send rather than kept in the draft (#4795).
+  const replyTarget = threadRoot ?? replyTo;
+  // Marks read only what the channel has shown (#3075, #4794): the newest
+  // message of a history read that succeeded. Room seqs count messages, so
+  // that is the version on screen. A held or failed read, or a thread
+  // showing part of the channel, acknowledges nothing.
+  const shownThrough = room.history.isSuccess
+    ? room.history.data?.pages[0]?.messages.at(-1)?.seq
+    : undefined;
   useMarkRoomRead(
     view
       ? { kind: 'project-room', projectSlug: slug, roomId: view.roomId }
       : undefined,
-    view?.checkpoint.lastSeq,
-    variant === 'full' && tab === 'conversation' && !room.stopped,
+    shownThrough,
+    variant === 'full' &&
+      tab === 'conversation' &&
+      !threadRoot &&
+      !room.stopped,
   );
-  const threadsOn = variant === 'full' && !!thread;
-  const threadRoot = threadsOn ? thread?.rootId : undefined;
-  // The composer replies into the open thread. Leaving the thread drops a
-  // reply target nothing was typed for, so the channel composer is plain.
-  const previousThread = useRef<string | undefined>(undefined);
+  // A thread link can name a root older than the newest window: page back
+  // to it, within the windows a room keeps loaded.
+  const historyPages = room.history.data?.pages.length ?? 0;
+  const threadRootLoaded =
+    !!threadRoot &&
+    messages.some((message) => message.messageId === threadRoot);
+  const threadBeyondWindow =
+    !!threadRoot &&
+    !threadRootLoaded &&
+    !!room.history.hasNextPage &&
+    historyPages >= PROJECT_ROOM_HISTORY_MAX_PAGES;
+  const seekThreadRoot =
+    !!threadRoot &&
+    !threadRootLoaded &&
+    room.history.isSuccess &&
+    !!room.history.hasNextPage &&
+    !room.history.isFetchingNextPage &&
+    historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
+  const { fetchNextPage } = room.history;
   useEffect(() => {
-    const previous = previousThread.current;
-    previousThread.current = threadRoot;
-    if (threadRoot)
-      setDraft((current) =>
-        current.replyTo === threadRoot
-          ? current
-          : { ...current, replyTo: threadRoot },
-      );
-    else if (previous)
-      setDraft((current) => {
-        if (current.replyTo !== previous || current.text) return current;
-        const { replyTo: _left, ...rest } = current;
-        return rest;
-      });
-  }, [threadRoot, setDraft]);
+    if (seekThreadRoot) void fetchNextPage();
+  }, [seekThreadRoot, fetchNextPage]);
   // A send whose acknowledgement was lost is settled once the room shows it.
   const committed =
     !!proposal &&
@@ -636,7 +650,7 @@ function ProjectRoomSession({
       expectedActorId: view.actor.id,
       intentId: randomCorrelationId(),
       text,
-      ...(replyTo ? { replyTo } : {}),
+      ...(replyTarget ? { replyTo: replyTarget } : {}),
     };
     try {
       // Persist the exact immutable payload before the network can commit it.
@@ -668,7 +682,13 @@ function ProjectRoomSession({
     clearProposal();
     // Nothing typed is lost: an empty composer takes the text back.
     setText((current) => current || retained.text);
-    setReplyTo((current) => current ?? retained.replyTo);
+    // An open thread's root comes from the route; only a channel reply is
+    // restored to the draft.
+    setReplyTo(
+      (current) =>
+        current ??
+        (retained.replyTo === threadRoot ? undefined : retained.replyTo),
+    );
   }
   async function saveNote() {
     if (!view || !noteDraft) return;
@@ -925,6 +945,13 @@ function ProjectRoomSession({
       ]
     : [];
   const leaveThread = () => thread?.open(undefined);
+  // Still paging back to the linked root (or reading the first window).
+  const threadLoading =
+    !openThread &&
+    !room.history.isError &&
+    (room.history.isPending ||
+      room.history.isFetchingNextPage ||
+      seekThreadRoot);
   const faces = (
     <span className="project-room__faces" aria-hidden="true">
       {participants.slice(0, 3).map((actor) => (
@@ -1056,12 +1083,37 @@ function ProjectRoomSession({
               regionLabel="Messages in this thread"
               className="project-room__conversation"
               rows={threadRows}
-              loading={room.history.isPending}
+              loading={threadLoading}
+              status={
+                openThread ? undefined : room.history.isError ? (
+                  <ErrorState
+                    variant="compact"
+                    title="This thread could not be loaded."
+                    action={
+                      <Button
+                        onClick={() =>
+                          void (room.history.isFetchNextPageError
+                            ? room.history.fetchNextPage()
+                            : room.history.refetch())
+                        }
+                      >
+                        Retry
+                      </Button>
+                    }
+                  />
+                ) : threadLoading ? (
+                  <SkeletonBlock count={2} label="Loading thread" />
+                ) : undefined
+              }
               empty={
-                room.history.isPending ? undefined : (
+                room.history.isError ? undefined : (
                   <Empty
                     variant="compact"
-                    label="This message is not in the loaded history."
+                    label={
+                      threadBeyondWindow
+                        ? 'This thread is too far back to open here.'
+                        : `This message is not in #${channelName}.`
+                    }
                     action={
                       <Button onClick={leaveThread}>
                         Back to #{channelName}
@@ -1112,7 +1164,7 @@ function ProjectRoomSession({
               }}
             />
           )}
-          {view.capabilities.discuss ? (
+          {threadRoot && !openThread ? null : view.capabilities.discuss ? (
             <ProjectRoomComposer
               id={`message-${editorId}`}
               view={view}
@@ -1124,8 +1176,8 @@ function ProjectRoomSession({
               storageKey={storageKey}
               text={text}
               setText={setText}
-              replyTo={replyTo}
-              replyAuthor={replyTo ? authorOf(replyTo) : undefined}
+              replyTo={replyTarget}
+              replyAuthor={replyTarget ? authorOf(replyTarget) : undefined}
               setReplyTo={setReplyTo}
               draft={draft}
               clearDraftIfCurrent={clearDraftIfCurrent}

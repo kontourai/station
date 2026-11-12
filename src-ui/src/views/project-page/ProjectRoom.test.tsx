@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { _setApiBase } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -157,6 +158,15 @@ function fixture() {
         }
         return response;
       }
+      // Read marks settle inside the test that made them (the SDK waits for
+      // an API base, so an unanswered one would land in a later test).
+      if (url.pathname === '/api/read-markers/mark')
+        return ok({
+          target: body.target,
+          latestVersion: body.version,
+          seenVersion: body.version,
+          unread: false,
+        });
       if (url.pathname === '/api/projects/team/channels')
         return ok({
           channels: provisioned
@@ -329,6 +339,7 @@ beforeEach(() => {
   conflict = false;
   note = null;
   selectedAuthority = 'one';
+  _setApiBase(requestScope.apiBase);
   setClientCredentialResolver(() => ({
     origin: requestScope.apiBase,
     requestAuthority: {
@@ -341,6 +352,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  _setApiBase('');
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
 });
@@ -1341,4 +1353,162 @@ test('a pushed completion waits for an in-flight inspect and then updates withou
   await screen.findByText('Agent answer shared in the Room.');
   expect(agentWrites).toHaveLength(1);
   expect(agentOperations).not.toContain('reconcile');
+});
+
+// #4855 review: read marking, thread sends and old thread links.
+function storedMessage(seq: number, text: string, replyTo?: string) {
+  return {
+    roomId,
+    messageId: `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`,
+    intentId: randomCorrelationId(),
+    seq,
+    actor,
+    text,
+    createdAt: at,
+    ...(replyTo ? { replyTo } : {}),
+  };
+}
+/** The room with a route-owned thread, as the room destination mounts it. */
+function mountThread(rootId: string) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId, open: () => {} }}
+      />
+    </QueryClientProvider>,
+  );
+}
+/** Records read-marker marks; `history` can hold or fail the history read. */
+function watchMarks(history?: (url: URL) => Promise<Response | undefined>) {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  const marks: Array<{ version: number }> = [];
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/read-markers/mark') {
+      const body = JSON.parse(String(init?.body));
+      marks.push(body);
+      return Response.json({
+        success: true,
+        data: {
+          target: body.target,
+          latestVersion: body.version,
+          seenVersion: body.version,
+          unread: false,
+        },
+      });
+    }
+    if (
+      history &&
+      url.pathname.endsWith('/messages') &&
+      init?.method !== 'POST'
+    ) {
+      const answer = await history(url);
+      if (answer) return answer;
+    }
+    return original(input, init);
+  });
+  return marks;
+}
+
+test('a held history read marks nothing; the shown version is marked once it shows', async () => {
+  messages = [storedMessage(1, 'Unseen held history')];
+  let requested = false;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const marks = watchMarks(async () => {
+    requested = true;
+    await held;
+    return undefined;
+  });
+  try {
+    mount();
+    await waitFor(() => expect(requested).toBe(true));
+    // Discovery already reported version 1; nothing of it is on screen.
+    await screen.findByRole('textbox', { name: 'Message the project' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByText('Unseen held history')).toBeNull();
+    expect(marks).toEqual([]);
+    release();
+    await screen.findByText('Unseen held history');
+    await waitFor(() => expect(marks.map((mark) => mark.version)).toEqual([1]));
+  } finally {
+    release();
+  }
+});
+
+test('a failed history read never moves the read marker', async () => {
+  messages = [storedMessage(1, 'Never shown')];
+  const marks = watchMarks(async () =>
+    Response.json({ success: false, error: 'Unavailable' }, { status: 503 }),
+  );
+  mount();
+  await screen.findByText('History could not be loaded.');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.queryByText('Never shown')).toBeNull();
+  expect(marks).toEqual([]);
+});
+
+test('every send from an open thread replies to its root, not only the first', async () => {
+  const root = storedMessage(1, 'Thread root');
+  messages = [root];
+  mountThread(root.messageId);
+  const input = await screen.findByRole('textbox', { name: 'Reply in thread' });
+  await screen.findByText('Thread root');
+  const sendReply = async (text: string) => {
+    fireEvent.change(input, { target: { value: text } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole<HTMLButtonElement>('button', { name: 'Send message' })
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await screen.findByText(text);
+  };
+  await sendReply('First reply');
+  await sendReply('Second reply');
+  expect(writes.map((write) => write.replyTo)).toEqual([
+    root.messageId,
+    root.messageId,
+  ]);
+  // Both stay in the thread, under its count.
+  expect(screen.getByText('2 replies')).toBeTruthy();
+});
+
+test('a thread link to a root older than the newest window pages back to it', async () => {
+  messages = Array.from({ length: 30 }, (_, index) =>
+    storedMessage(
+      index + 1,
+      index === 0 ? 'Older thread root' : `Other ${index + 1}`,
+    ),
+  );
+  const root = messages[0]!;
+  messages.push(storedMessage(31, 'A later reply', String(root.messageId)));
+  mountThread(String(root.messageId));
+  await screen.findByText('Older thread root');
+  expect(screen.getByText('A later reply')).toBeTruthy();
+  expect(screen.getByText('1 reply')).toBeTruthy();
+  expect(screen.getByRole('textbox', { name: 'Reply in thread' })).toBeTruthy();
+});
+
+test('a thread link to a message the channel does not have says so, with no composer', async () => {
+  messages = Array.from({ length: 31 }, (_, index) =>
+    storedMessage(index + 1, `Message ${index + 1}`),
+  );
+  mountThread('00000000-0000-4000-8000-999999999999');
+  await screen.findByText('This message is not in #general.');
+  // The empty state's own way back, beside the thread bar's.
+  expect(
+    screen.getAllByRole('button', { name: 'Back to #general' }).length,
+  ).toBe(2);
+  expect(screen.queryByRole('textbox', { name: 'Reply in thread' })).toBeNull();
 });

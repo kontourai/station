@@ -38,6 +38,12 @@ export interface ProjectConversationIndex {
     /** The host predates channels: only its default room exists. */
     unsupported: boolean;
     retry(): void;
+    /**
+     * Channels are listed but their unread state could not be read: the rows
+     * stay, at normal weight, beside a retry.
+     */
+    unreadError: boolean;
+    retryUnread(): void;
   };
   tasks: {
     entries: TaskRoomEntry[];
@@ -115,6 +121,8 @@ export function useProjectConversationIndex(
       isError: channels.list.isError && !channels.unsupported,
       unsupported: channels.unsupported,
       retry: () => void channels.list.refetch(),
+      unreadError: listed.length > 0 && summary.isError,
+      retryUnread: () => void summary.refetch(),
     },
     tasks: {
       entries: taskEntries,

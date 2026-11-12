@@ -216,12 +216,29 @@ export function ProjectConversationList({
             }
           />
         ) : (
-          <ul
-            className="conversation-list__rows"
-            aria-labelledby={headingId('channels')}
-          >
-            {channelRows.map(renderRow)}
-          </ul>
+          <>
+            <ul
+              className="conversation-list__rows"
+              aria-labelledby={headingId('channels')}
+            >
+              {channelRows.map(renderRow)}
+            </ul>
+            {index.channels.unreadError && (
+              <ErrorState
+                variant="compact"
+                title="Unread state could not be loaded."
+                action={
+                  <Button
+                    size="sm"
+                    aria-label="Retry unread state"
+                    onClick={index.channels.retryUnread}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            )}
+          </>
         )}
       </div>
       {(index.tasks.isPending ||
