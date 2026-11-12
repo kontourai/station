@@ -544,9 +544,8 @@ export function ProjectTasksSection({
       )}
       {starterLaunchProblem === 'retry-state-corrupt' && (
         <p role="status">
-          Nothing was started. This device’s record of your first-task setup
-          can’t be read, so Station won’t start it here. Create the task with
-          New Task instead.
+          This device’s record of your first-task setup can’t be read, so
+          Station won’t start it here. Create the task with New Task instead.
         </p>
       )}
       {starterLaunchProblem === 'retry-state-unavailable' && (
