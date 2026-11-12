@@ -302,3 +302,29 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+
+/* A background command has no agent identity: a terminal mark the size of
+   the identity avatar it stands in for. */
+.subagent-card__command-glyph {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text-muted);
+}
+
+.subagent-card__command {
+  margin: 0;
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 12em;
+  overflow-y: auto;
+}

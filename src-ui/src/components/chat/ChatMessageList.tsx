@@ -213,11 +213,26 @@ function backgroundTasksLabel(
   tasks: NonNullable<ChatSession['backgroundTasks']>,
 ): string {
   const first = tasks[0];
-  const description = first?.description || 'agent task';
+  const kinds = new Set(tasks.map((task) => task.workKind ?? 'agent'));
+  const noun =
+    kinds.size > 1
+      ? 'task'
+      : kinds.has('command')
+        ? 'command'
+        : kinds.has('monitor')
+          ? 'monitor'
+          : 'agent';
+  const description = first?.description || `background ${noun}`;
   if (tasks.length === 1) {
-    return `Background agent working — ${description}`;
+    return noun === 'agent'
+      ? `Background agent working — ${description}`
+      : noun === 'monitor'
+        ? `Monitor watching — ${description}`
+        : `Background command running — ${description}`;
   }
-  return `${tasks.length} background agents working — ${description}, …`;
+  return noun === 'agent'
+    ? `${tasks.length} background agents working — ${description}, …`
+    : `${tasks.length} background ${noun}s running — ${description}, …`;
 }
 
 // A resize below this delta is treated as jitter (sub-pixel layout rounding,
@@ -648,8 +663,8 @@ function ChatMessageListComponent({
     localBackgroundTasks.length > 0
       ? backgroundTasksLabel(localBackgroundTasks)
       : serverBackgroundCount === 1
-        ? 'Background agent working'
-        : `${serverBackgroundCount} background agents working`;
+        ? 'Background task running'
+        : `${serverBackgroundCount} background tasks running`;
   const backgroundBannerLabel = liveStatusUnavailable
     ? `Last known: ${currentBackgroundLabel.charAt(0).toLowerCase()}${currentBackgroundLabel.slice(1)} (status unavailable)`
     : currentBackgroundLabel;
@@ -2268,6 +2283,7 @@ function ChatMessageListComponent({
               nextTurn={nextTurn}
               onStep={stepToTurn}
               touchControls={touchTurnControls}
+              touchStepsShown={isUserScrolledUp}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region

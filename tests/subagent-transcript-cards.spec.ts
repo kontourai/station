@@ -92,12 +92,16 @@ async function expectDockFits(page: Page) {
       page.viewportSize()!.width + 1,
     );
   }
-  const title = page.locator('.subagent-card__title');
-  const fits = await title.evaluate(
-    (element) =>
-      element.getBoundingClientRect().right <=
-      element.parentElement!.getBoundingClientRect().right + 1,
-  );
+  // Every card's title, when a run draws several.
+  const fits = await page
+    .locator('.subagent-card__title')
+    .evaluateAll((elements) =>
+      elements.every(
+        (element) =>
+          element.getBoundingClientRect().right <=
+          element.parentElement!.getBoundingClientRect().right + 1,
+      ),
+    );
   expect(fits).toBe(true);
 }
 
@@ -638,4 +642,220 @@ test.describe('subagent transcript cards', () => {
       path: testInfo.outputPath('subagent-card-completed-mobile-390.png'),
     });
   });
+
+  /**
+   * The mobile report: a backgrounded `Bash` call drew its own tool row, a
+   * "subagent" card with an agent avatar, "model not reported", an
+   * instruction panel and a summary that repeated the title. A command is
+   * one command card, and the coding view's phone header is one row.
+   */
+  const shellCommands = [
+    {
+      id: 'toolu_bash_push',
+      childId: 'bpush1',
+      title: 'Push empty commit to re-trigger CI',
+      command: 'git commit --allow-empty -m "ci: retrigger" && git push',
+      settled: true,
+    },
+    {
+      id: 'toolu_bash_queue',
+      childId: 'bqueue1',
+      title: 'Wait until new runs leave queued state',
+      command:
+        'until ! gh run list --branch fix --json status -q ".[].status" | grep -q queued; do sleep 20; done',
+      settled: true,
+    },
+    {
+      id: 'toolu_bash_watch',
+      childId: 'bwatch1',
+      title: 'Watch until merged or a check fails',
+      command: 'gh pr checks 4767 --watch --fail-fast',
+      settled: false,
+    },
+  ];
+
+  async function emitShellTurn(page: Page) {
+    await emit(page, {
+      method: 'turn.started',
+      turnId: 'turn-1',
+      prompt: 'Re-trigger CI and watch it',
+    });
+    const running: Record<string, unknown>[] = [];
+    for (const command of shellCommands) {
+      await emit(page, {
+        method: 'tool.started',
+        turnId: 'turn-1',
+        itemId: command.id,
+        toolCallId: command.id,
+        toolName: 'Bash',
+        arguments: {
+          command: command.command,
+          description: command.title,
+          run_in_background: true,
+        },
+      });
+      const item = {
+        producer: 'engine-subagent',
+        reporterThreadId: SESSION_ID,
+        childId: command.childId,
+        status: 'running',
+        parent: { toolCallId: command.id, turnId: 'turn-1' },
+        title: command.title,
+        kindLabel: 'local_bash',
+        workKind: 'command',
+        backgrounded: true,
+        startedAt: STARTED_AT,
+        controls: { stop: 'provider-task-stop' },
+      };
+      running.push(item);
+      await emit(page, {
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: SESSION_ID,
+          running: [...running],
+        },
+      });
+      await emit(page, {
+        method: 'tool.completed',
+        turnId: 'turn-1',
+        itemId: command.id,
+        toolCallId: command.id,
+        toolName: 'Bash',
+        status: 'success',
+        output: `Command running in background with ID: ${command.childId}`,
+      });
+      if (command.settled) {
+        running.pop();
+        await emit(page, {
+          method: 'child-work.updated',
+          createdAt: '2026-10-14T14:27:41.000Z',
+          delta: {
+            kind: 'settle',
+            producer: 'engine-subagent',
+            reporterThreadId: SESSION_ID,
+            childId: command.childId,
+            status: 'completed',
+            result: {
+              summary: `Background command "${command.title}" completed (exit code 0)`,
+              source: 'provider-summary',
+            },
+            identity: {
+              parent: item.parent,
+              title: command.title,
+              kindLabel: 'local_bash',
+              workKind: 'command',
+              startedAt: STARTED_AT,
+              endedAt: '2026-10-14T14:27:41.000Z',
+            },
+          },
+        });
+      }
+    }
+    await emit(page, {
+      method: 'content.text-delta',
+      turnId: 'turn-1',
+      itemId: 'turn-1:text:1',
+      delta:
+        'The new runs are executing and auto-merge is still armed. I am watching them through to the end.',
+    });
+    await emit(page, {
+      method: 'turn.completed',
+      turnId: 'turn-1',
+      finishReason: 'stop',
+    });
+  }
+
+  async function expectCommandCards(page: Page) {
+    const group = page.locator('.subagent-group__heading');
+    await expect(group).toContainText('3 background commands');
+    await expect(group).toContainText('2 finished · 1 running');
+    // The calls are drawn as their cards, not folded into a summary too.
+    await expect(page.getByText(/^Ran \d+ commands?/)).toHaveCount(0);
+    // Each command's title is drawn once: the card stands in for its call.
+    for (const command of shellCommands)
+      await expect(page.getByText(command.title, { exact: true })).toHaveCount(
+        1,
+      );
+    await group.click();
+    const card = page
+      .getByTestId('subagent-card')
+      .filter({ hasText: 'Push empty commit to re-trigger CI' });
+    await expect(card.getByText('Exit code 0')).toBeVisible();
+    await card
+      .getByRole('button', { name: /Push empty commit to re-trigger CI/ })
+      .click();
+    await expect(card.getByText('Background command')).toBeVisible();
+    await expect(card.getByText(shellCommands[0]!.command)).toBeVisible();
+    await expect(page.getByText('model not reported')).toHaveCount(0);
+    await expect(page.getByText(/Instruction history/)).toHaveCount(0);
+    await expect(page.locator('.background-tasks-banner__label')).toHaveText(
+      /^Background command running — Watch until merged/,
+    );
+    return card;
+  }
+
+  for (const theme of ['dark', 'light'] as const) {
+    test.describe(`background shell commands, ${theme}`, () => {
+      test.beforeEach(async ({ page }) => {
+        await page.route(/\/api\/me\/preferences(?:\?.*)?$/, (route) =>
+          route.fulfill({
+            json: {
+              success: true,
+              data: { schemaVersion: 1, values: { theme } },
+            },
+          }),
+        );
+        await page.addInitScript((theme) => {
+          localStorage.setItem(
+            'station-device-settings-v1',
+            JSON.stringify({ version: 2, values: { theme } }),
+          );
+        }, theme);
+      });
+
+      test('on a phone in the coding view, commands are command cards under a one-row header', async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto(
+          `/projects/dev/layouts/code?chat=${encodeURIComponent(CONVERSATION_ID)}`,
+        );
+        await dismissSetupLauncher(page);
+        await waitForMockOrchestrationSse(page);
+        await emitShellTurn(page);
+        const header = page.getByTestId('chat-dock-mobile-header');
+        await expect(
+          header.getByRole('button', { name: 'Switch tool, current: Chat' }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Open Browser' }),
+        ).toHaveCount(0);
+        await expect(page.locator('.coding-workbench__bar')).toBeHidden();
+        const card = await expectCommandCards(page);
+        await expectDockFits(page);
+        await card.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: testInfo.outputPath(`command-cards-mobile-390-${theme}.png`),
+        });
+      });
+
+      test('on a wide screen, commands are command cards', async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
+        await dismissSetupLauncher(page);
+        await openChatRegion(page);
+        await waitForMockOrchestrationSse(page);
+        await emitShellTurn(page);
+        const card = await expectCommandCards(page);
+        await card.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: testInfo.outputPath(`command-cards-desktop-1440-${theme}.png`),
+        });
+      });
+    });
+  }
 });
