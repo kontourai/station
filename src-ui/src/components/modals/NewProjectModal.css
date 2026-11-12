@@ -62,7 +62,9 @@
   flex-direction: column;
   overflow: hidden;
   padding: 1.5rem;
-  background: var(--k-bg);
+  /* The surface the editor hints were measured against; --k-bg drops their
+     contrast below AA in the gallery's axe check. */
+  background: var(--bg-primary);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-overlay);
   box-shadow: var(--k-elevation-overlay);
@@ -164,7 +166,7 @@
 }
 
 .new-project-modal__panel--featured {
-  background: color-mix(in srgb, var(--k-action) 6%, var(--k-panel));
+  background: var(--bg-secondary);
 }
 
 .new-project-modal__panel-title {
@@ -338,7 +340,7 @@
   padding: 1.25rem;
   border: 1px solid var(--border-primary);
   border-radius: var(--k-radius-overlay);
-  background: var(--k-bg);
+  background: var(--bg-primary);
   box-shadow: var(--k-elevation-overlay);
 }
 
