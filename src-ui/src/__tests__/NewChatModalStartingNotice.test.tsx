@@ -133,7 +133,7 @@ beforeAll(() => {
 });
 afterEach(() => cleanup());
 
-test('an app still on its first start is reported, not replaced by the Station agent', async () => {
+test('an engine still on its first start is reported, not replaced by the Station agent', async () => {
   render(
     <NewChatModal
       agents={[STATION_AGENT]}

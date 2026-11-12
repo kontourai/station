@@ -240,14 +240,14 @@ export function IndependentReviewRunModal({
         {mode === 'delta' ? (
           <>
             <label>
-              Prior receipt ID
+              Prior review ID
               <input
                 value={priorReceiptId}
                 onChange={(event) => setPriorReceiptId(event.target.value)}
               />
             </label>
             <label>
-              Claimed finding IDs
+              Finding IDs
               <textarea
                 value={claimedFindingIds}
                 onChange={(event) => setClaimedFindingIds(event.target.value)}
