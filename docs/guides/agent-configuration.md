@@ -130,7 +130,9 @@ permissions. Missing Agent definitions or unreadable Project policy refuse
 engine startup; the conversation stays recoverable after the cause is fixed.
 
 **Browser access** is a separate Agent capability. Claude Code receives the
-Project's Station browser in process. Codex can use the same browser through
+Project's Station browser in process, except in a session whose network
+Station restricts ([`confinedNetwork`](../reference/config.md#optional-fields)):
+the browser runs outside that session's sandbox, so it is not offered there. Codex can use the same browser through
 the default-off **Codex browser and device tools** Feature Preview; ACP remains
 unavailable. The editor's engine status may not reflect that preview. **Workflow
 files** holds the workflow editor. Browser access is independent of attaching

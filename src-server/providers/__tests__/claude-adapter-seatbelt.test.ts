@@ -1,6 +1,6 @@
 /**
- * #2494: the Claude adapter's Seatbelt seam. A start whose plan names
- * `seatbelt` must spawn its engine through the provider's `confine`, take
+ * #2494: the Claude adapter's Seatbelt seam (and, #4770, the same seam for
+ * a plan naming `bubblewrap`). A start whose plan names `seatbelt` must spawn its engine through the provider's `confine`, take
  * its posture from the provider's `pending.observe` once the engine has
  * answered its handshake, and only then run at full access. Every other
  * start is untouched. The real adapter and the real spawn wrapper run here
@@ -8,7 +8,8 @@
  * production one, so the profile and the posture rules are real. The kernel
  * side is `seatbelt.process.test.ts`.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -69,6 +70,10 @@ vi.mock('../auth/cli-auth.js', () => ({
 }));
 
 import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
   type ConfinementProvider,
   ConfinementRefusedError,
 } from '../../security/confinement/confinement-provider.js';
@@ -83,6 +88,11 @@ import {
   sessionTempRoot,
   sessionTmpRoot,
 } from '../../services/infra/session-tmpdir.js';
+import {
+  RESTRICTED_NETWORK_STATION_CONTROL_TOOLS,
+  restrictedNetworkStationControlTools,
+  STATION_CONTROL_TOOL_POLICY,
+} from '../../tools/station-control-policy.js';
 import {
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -101,6 +111,29 @@ const SEATBELT_PLAN: ConfinementPlan = {
   level: 'os-profile',
   workspaceAccess: 'mounted',
 };
+const BUBBLEWRAP_PLAN: ConfinementPlan = {
+  ...SEATBELT_PLAN,
+  mechanism: 'bubblewrap',
+};
+/** #4769: a Seatbelt plan under a restricted network policy. */
+const RESTRICTED_PLAN: ConfinementPlan = {
+  ...SEATBELT_PLAN,
+  network: { policy: 'restricted', allowedHosts: ['registry.npmjs.org'] },
+};
+
+/** Sends `request` to a loopback port and reads until the socket closes. */
+function exchange(port: number, request: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, '127.0.0.1');
+    let text = '';
+    socket.on('data', (chunk) => {
+      text += chunk.toString('latin1');
+    });
+    socket.on('close', () => resolve(text));
+    socket.on('error', reject);
+    socket.write(request);
+  });
+}
 
 /** Masks every credential an ambient environment could carry. */
 const NO_CREDENTIAL = {
@@ -163,16 +196,44 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
   let workspace: string;
   let adapter: ClaudeAdapter;
   let events: CanonicalRuntimeEvent[];
+  /** #4769: what the adapter kept in the Station log. */
+  let decisionLog: Record<string, unknown>[] = [];
 
   function createAdapter(
     options: {
+      /** Serve Station's in-process browser to agent sessions. */
+      stationBrowser?: true;
+      /** Records the tools each in-process station-control server was given. */
+      stationControl?: (allowedTools: readonly string[] | undefined) => void;
+      /** Further adapter options, as given. */
+      extra?: Partial<ConstructorParameters<typeof ClaudeAdapter>[0]>;
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
+      /** Inject nothing: the adapter picks the server's own provider. */
+      serverProvider?: true;
       appHomeDir?: string;
       resolveMcpOAuth?: EngineMcpOAuthResolver;
     } = {},
   ) {
+    decisionLog = [];
     adapter = new ClaudeAdapter({
+      ...options.extra,
+      logNetworkDecision: (details) => decisionLog.push(details),
+      ...(options.stationBrowser
+        ? { createInProcessStationBrowser: () => ({}) as never }
+        : {}),
+      ...(options.stationControl
+        ? {
+            createInProcessStationControl: (
+              _threadId: string,
+              _tenant?: unknown,
+              allowedTools?: readonly string[],
+            ) => {
+              options.stationControl!(allowedTools);
+              return { connect: vi.fn(), close: vi.fn() } as never;
+            },
+          }
+        : {}),
       resolveMcpOAuth: options.resolveMcpOAuth,
       revokeStationControlCallerToken: revokeStationControlMcpToken,
       ...(options.appHomeDir
@@ -190,7 +251,12 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       confinementHandshakeTimeoutMs: 2_000,
       getConnectionEnv: async () =>
         options.connectionEnv ?? FAKE_ENV_CREDENTIAL,
-      seatbeltProvider: options.provider ?? createSeatbeltConfinementProvider(),
+      ...(options.serverProvider
+        ? {}
+        : {
+            seatbeltProvider:
+              options.provider ?? createSeatbeltConfinementProvider(),
+          }),
     });
     events = [];
     void (async () => {
@@ -596,44 +662,95 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     ).toBe('confined');
   });
 
-  test('a workspace that is the home folder is too broad to confine: Auto, recorded', async () => {
-    createAdapter();
+  test.each([
+    ['seatbelt', SEATBELT_PLAN],
+    ['bubblewrap', BUBBLEWRAP_PLAN],
+  ] as const)(
+    'a workspace that is the home folder is too broad to confine under %s: Auto, recorded, and the warning says why',
+    async (mechanism, plan) => {
+      createAdapter();
+      startingQuery(Promise.resolve({}));
+      const threadId = `home-${mechanism}`;
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        cwd: homedir(),
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: plan,
+      });
+      expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(
+        FAKE_CLAUDE_COMMAND,
+      );
+      expect((await started(threadId)).stationConfinementRecord).toMatchObject({
+        posture: 'no-mechanism',
+        fallback: 'workspace-too-broad',
+      });
+      const warning = events.find(
+        (e) => e.method === 'runtime.warning' && e.threadId === threadId,
+      ) as { message?: string } | undefined;
+      // The Seatbelt text is unchanged; bubblewrap adds its own rule.
+      const seatbeltText =
+        "Full access runs as Auto: this session's folder is or contains your home folder or Station's data, so confining it to that folder would confine nothing.";
+      expect(warning?.message).toBe(
+        mechanism === 'seatbelt'
+          ? seatbeltText
+          : `${seatbeltText} Under the bubblewrap sandbox this also covers a folder inside, or containing, a secret store the sandbox hides.`,
+      );
+    },
+  );
+
+  test('#4770: a bubblewrap workspace whose .git is a symbolic link is refused before spawning, naming why', async () => {
+    createAdapter({ serverProvider: true });
+    const real = join(workspace, '..', 'real-git');
+    mkdirSync(real);
+    symlinkSync(real, join(workspace, '.git'));
     startingQuery(Promise.resolve({}));
-    await adapter.startSession({
-      provider: 'claude',
-      threadId: 'home',
-      cwd: homedir(),
-      confinement: 'workspace',
-      modelOptions: { approvalMode: 'never' },
-      confinementPlan: SEATBELT_PLAN,
+    await expect(
+      startConfined('symlinked-git', { confinementPlan: BUBBLEWRAP_PLAN }),
+    ).rejects.toMatchObject({
+      code: 'confinement_not_observed',
+      message: expect.stringContaining(
+        'Its bubblewrap sandbox cannot be built: .git is a symbolic link',
+      ),
     });
-    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
-    expect((await started('home')).stationConfinementRecord).toMatchObject({
-      posture: 'no-mechanism',
-      fallback: 'workspace-too-broad',
-    });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  test('adoption pins the global config root, so it is never confined: Auto, recorded', async () => {
-    createAdapter();
-    mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
-    const query = startingQuery(Promise.resolve({}));
-    await adapter.adoptSession({
-      provider: 'claude',
-      threadId: 'adopted',
-      sourceSessionId: 'vendor-source',
-      sourceKind: 'claude-transcript',
-      cwd: workspace,
-      confinement: 'workspace',
-      modelOptions: { approvalMode: 'never' },
-      confinementPlan: SEATBELT_PLAN,
-    });
-    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
-    expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
-    expect((await started('adopted')).stationConfinementRecord).toMatchObject({
-      fallback: 'config-root-pinned',
-    });
-  });
+  test.each([
+    ['seatbelt', SEATBELT_PLAN],
+    ['bubblewrap', BUBBLEWRAP_PLAN],
+  ] as const)(
+    'adoption pins the global config root, so a %s plan is never confined: Auto, recorded',
+    async (mechanism, plan) => {
+      // The server's own provider for the mechanism, as production picks it.
+      createAdapter({ serverProvider: true });
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      const query = startingQuery(Promise.resolve({}));
+      const threadId = `adopted-${mechanism}`;
+      await adapter.adoptSession({
+        provider: 'claude',
+        threadId,
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: workspace,
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: plan,
+      });
+      expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(
+        FAKE_CLAUDE_COMMAND,
+      );
+      // Never full access outside a sandbox.
+      expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
+      expect(query.options?.permissionMode).not.toBe('bypassPermissions');
+      expect((await started(threadId)).stationConfinementRecord).toMatchObject({
+        posture: 'no-mechanism',
+        required: false,
+        fallback: 'config-root-pinned',
+      });
+    },
+  );
 
   test('chat-host-images: a confined session image root is exactly its Seatbelt TMPDIR, and no unused session-tmp folder is created', async () => {
     vi.stubEnv('STATION_HOME', stationHome);
@@ -825,6 +942,461 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
     });
+  });
+
+  test('#4770: a plan naming bubblewrap spawns through bwrap with the server’s own provider, lifted only once observed', async () => {
+    createAdapter({ serverProvider: true });
+    const handshake = deferred<unknown>();
+    const query = startingQuery(handshake.promise);
+    const starting = startConfined('bubblewrap', {
+      confinementPlan: BUBBLEWRAP_PLAN,
+    });
+    await vi.waitFor(() =>
+      expect(query.initializationResult).toHaveBeenCalled(),
+    );
+    const child = FakeClaudeChild.newest!;
+    expect(child.spawnArgs.command).toBe('/usr/bin/bwrap');
+    const args = child.spawnArgs.args;
+    expect(args.slice(0, 3)).toEqual([
+      '--unshare-user',
+      '--unshare-pid',
+      '--unshare-ipc',
+    ]);
+    expect(args[args.indexOf('--') + 1]).toBe(FAKE_CLAUDE_COMMAND);
+    expect(args).toEqual(
+      expect.arrayContaining(['--bind', workspace, workspace]),
+    );
+    expect(spawnedEnv().CLAUDE_CONFIG_DIR).toBe(
+      join(stationHome, 'confined-homes', 'claude'),
+    );
+    expect(query.options).toMatchObject({
+      permissionMode: 'acceptEdits',
+      allowDangerouslySkipPermissions: true,
+    });
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    expect(announced('bubblewrap')).toBe(false);
+
+    handshake.resolve({});
+    await starting;
+    expect(query.setPermissionMode).toHaveBeenCalledExactlyOnceWith(
+      'bypassPermissions',
+    );
+    expect((await started('bubblewrap')).stationConfinementRecord).toEqual({
+      level: 'os-profile',
+      required: true,
+      posture: 'confined',
+      mechanism: 'bubblewrap',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+      writeGrants: ['station-config', 'station-temp', 'workspace'],
+    });
+  });
+
+  test('#4770: a bubblewrap start whose engine never answers is refused, with no unconfined fallback spawn', async () => {
+    createAdapter({ serverProvider: true });
+    const query = startingQuery(
+      Promise.reject(new Error('Claude Code process exited with code 1')),
+    );
+    await expect(
+      startConfined('bubblewrap-failed', { confinementPlan: BUBBLEWRAP_PLAN }),
+    ).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_not_observed',
+      message: expect.stringContaining(
+        'not observed inside its bubblewrap sandbox (configured-but-failed)',
+      ),
+    });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe('/usr/bin/bwrap');
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    await expect(adapter.hasSession('bubblewrap-failed')).resolves.toBe(false);
+  });
+
+  test('#4769: a restricted plan spawns the broker-only profile, points the engine at its broker, records it, and reports a refusal once', async () => {
+    createAdapter({
+      connectionEnv: { ...FAKE_ENV_CREDENTIAL, NO_PROXY: '*' },
+    });
+    const handshake = deferred<unknown>();
+    const query = startingQuery(handshake.promise);
+    const starting = startConfined('restricted', {
+      confinementPlan: RESTRICTED_PLAN,
+    });
+    await vi.waitFor(() =>
+      expect(query.initializationResult).toHaveBeenCalled(),
+    );
+    const child = FakeClaudeChild.newest!;
+    const profile = child.spawnArgs.args[1]!;
+    expect(profile).not.toContain('(allow network*)');
+    const port = Number(
+      /\(allow network-outbound \(remote tcp4 "localhost:(\d+)"\)\)/.exec(
+        profile,
+      )?.[1],
+    );
+    expect(port).toBeGreaterThan(0);
+    const env = spawnedEnv();
+    expect(env.HTTPS_PROXY).toBe(`http://127.0.0.1:${port}`);
+    expect(env.HTTP_PROXY).toBe(`http://127.0.0.1:${port}`);
+    expect(env).not.toHaveProperty('NO_PROXY');
+    expect(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1');
+    handshake.resolve({});
+    await starting;
+    expect((await started('restricted')).stationConfinementRecord).toEqual({
+      level: 'os-profile',
+      required: true,
+      posture: 'confined',
+      mechanism: 'seatbelt',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+      writeGrants: ['station-config', 'station-temp', 'workspace'],
+      network: 'restricted',
+    });
+    // The session's broker refuses a host its policy does not list, and the
+    // person is told once, with the host and port and nothing else.
+    for (let attempt = 0; attempt < 2; attempt += 1)
+      expect(
+        await exchange(port, 'CONNECT exfil.example:443 HTTP/1.1\r\n\r\n'),
+      ).toMatch(/^HTTP\/1\.1 403/);
+    await vi.waitFor(() =>
+      expect(
+        events.filter(
+          (event) =>
+            event.method === 'runtime.warning' &&
+            (event as { code?: string }).code === 'confined_network_denied',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          threadId: 'restricted',
+          message: expect.stringContaining('exfil.example:443'),
+          details: { reason: 'not-allowed', host: 'exfil.example', port: 443 },
+        }),
+      ]),
+    );
+    // Kept once in the Station log, content-free.
+    expect(decisionLog).toEqual([
+      {
+        threadId: 'restricted',
+        at: expect.any(String),
+        verdict: 'denied',
+        reason: 'not-allowed',
+        host: 'exfil.example',
+        port: 443,
+      },
+    ]);
+    // Stopping the session closes its broker.
+    await adapter.stopSession('restricted');
+    await vi.waitFor(() =>
+      expect(exchange(port, 'x')).rejects.toMatchObject({
+        code: 'ECONNREFUSED',
+      }),
+    );
+  });
+
+  test('#4769: a restricted start whose provider spawned an open network is configured-but-failed: refused', async () => {
+    const real = createSeatbeltConfinementProvider();
+    // A provider that drops the restriction it was asked for.
+    const confine = (spec: Parameters<typeof real.confine>[0]) =>
+      real.confine({ ...spec, network: 'full' });
+    createAdapter({ provider: { ...real, confine } });
+    const query = startingQuery(Promise.resolve({}));
+    const refused = await startConfined('opened', {
+      confinementPlan: RESTRICTED_PLAN,
+    }).catch((error: unknown) => error);
+    expect(refused).toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_not_observed',
+      message: expect.stringContaining('(configured-but-failed)'),
+    });
+    expect(FakeClaudeChild.newest!.spawnArgs.args[1]).toContain(
+      '(allow network*)',
+    );
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    await expect(adapter.hasSession('opened')).resolves.toBe(false);
+  });
+
+  test('#4769: a restricted start is refused before spawning when its model endpoint or an allowed host cannot be read', async () => {
+    createAdapter({
+      connectionEnv: { ...FAKE_ENV_CREDENTIAL, CLAUDE_CODE_USE_BEDROCK: '1' },
+    });
+    await expect(
+      startConfined('bedrock', { confinementPlan: RESTRICTED_PLAN }),
+    ).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('CLAUDE_CODE_USE_BEDROCK'),
+    });
+    createAdapter({
+      connectionEnv: {
+        ...FAKE_ENV_CREDENTIAL,
+        ANTHROPIC_BASE_URL: 'http://gateway.example:4000',
+      },
+    });
+    await expect(
+      startConfined('plain-http', { confinementPlan: RESTRICTED_PLAN }),
+    ).rejects.toMatchObject({
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('HTTPS only'),
+    });
+    createAdapter();
+    await expect(
+      startConfined('bad-host', {
+        confinementPlan: {
+          ...SEATBELT_PLAN,
+          network: {
+            policy: 'restricted',
+            allowedHosts: ['https://x.example'],
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('https://x.example'),
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test('#4769: under a restricted network, a start that would fall back to Auto is refused, naming why, and nothing is spawned', async () => {
+    const refusedFor = async (reason: string, start: Promise<unknown>) => {
+      await expect(start).rejects.toMatchObject({
+        name: 'ConfinementRefusedError',
+        code: 'confinement_mechanism_unavailable',
+        message: expect.stringContaining(
+          `requires a restricted network, which cannot be applied to this start`,
+        ),
+      });
+      await expect(start).rejects.toThrow(`(${reason})`);
+    };
+    // No confined credential.
+    createAdapter({ connectionEnv: NO_CREDENTIAL });
+    await refusedFor(
+      'confined-credential-unavailable',
+      startConfined('no-credential-restricted', {
+        confinementPlan: RESTRICTED_PLAN,
+      }),
+    );
+    // A folder too broad to confine.
+    createAdapter();
+    await refusedFor(
+      'workspace-too-broad',
+      adapter.startSession({
+        provider: 'claude',
+        threadId: 'home-restricted',
+        cwd: homedir(),
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: RESTRICTED_PLAN,
+      }),
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
+    // A resume recorded under another configuration home.
+    startingQuery(Promise.resolve({}));
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'elsewhere-restricted',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    const binding = (await started('elsewhere-restricted'))
+      .nativeResumeBindingKey as string;
+    await adapter.stopSession('elsewhere-restricted');
+    mockQuery.mockClear();
+    await refusedFor(
+      'resume-bound-elsewhere',
+      startConfined('elsewhere-restricted', {
+        confinementPlan: RESTRICTED_PLAN,
+        resumeCursor: 'native-session-2',
+        nativeResumeBindingKey: binding,
+      }),
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
+    // Without the restriction the same fallbacks still run at Auto.
+    createAdapter({ connectionEnv: NO_CREDENTIAL });
+    startingQuery(Promise.resolve({}));
+    await startConfined('no-credential-open');
+    expect(
+      (await started('no-credential-open')).stationConfinementRecord,
+    ).toMatchObject({ fallback: 'confined-credential-unavailable' });
+  });
+
+  test('#4769: under a restricted network, an adoption (which pins the global config root) is refused, not run open', async () => {
+    createAdapter({ serverProvider: true });
+    mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+    startingQuery(Promise.resolve({}));
+    const adopting = adapter.adoptSession({
+      provider: 'claude',
+      threadId: 'adopted-restricted',
+      sourceSessionId: 'vendor-source',
+      sourceKind: 'claude-transcript',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'never' },
+      confinementPlan: RESTRICTED_PLAN,
+    });
+    await expect(adopting).rejects.toMatchObject({
+      name: 'ConfinementRefusedError',
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining('(config-root-pinned)'),
+    });
+    // Refused before the transcript is forked or an engine spawned.
+    expect(mockForkSession).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test('#4769: a restricted session gets station-control without the tools that act outside its sandbox (devices, previews, delegation, settings)', async () => {
+    const given: Array<readonly string[] | undefined> = [];
+    const knowledge: Array<readonly string[] | undefined> = [];
+    createAdapter({
+      stationControl: (tools) => given.push(tools),
+      extra: {
+        createInProcessStationKnowledge: (
+          _threadId: string,
+          _tenant?: unknown,
+          allowedTools?: readonly string[],
+        ) => {
+          knowledge.push(allowedTools);
+          return { connect: vi.fn(), close: vi.fn() } as never;
+        },
+      },
+    });
+    const toolServers = [
+      {
+        id: 'station-control',
+        transport: 'stdio' as const,
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+      },
+      {
+        id: 'station-knowledge',
+        transport: 'stdio' as const,
+        command: 'node',
+        args: [builtinStationKnowledgeServerPath()],
+      },
+    ];
+    for (const [threadId, plan] of [
+      ['control-open', SEATBELT_PLAN],
+      ['control-restricted', RESTRICTED_PLAN],
+    ] as const) {
+      startingQuery(Promise.resolve({}));
+      await startConfined(threadId, {
+        confinementPlan: plan,
+        agent: { slug: 'agent', toolServers },
+      });
+    }
+    // Unrestricted: every tool, as before.
+    expect(given[0]).toBeUndefined();
+    const restricted = given[1]!;
+    expect(restricted.length).toBeGreaterThan(0);
+    for (const withheld of [
+      'device_open',
+      'device_input',
+      'device_open_url',
+      'device_launch_app',
+      'html_preview',
+      'html_render',
+      'send_message',
+      'delegate_task',
+      'update_config',
+      'install_skill',
+    ])
+      expect(restricted, withheld).not.toContain(withheld);
+    expect(restricted).toContain('task_record');
+    expect(
+      restricted.every((name) =>
+        RESTRICTED_NETWORK_STATION_CONTROL_TOOLS.has(name),
+      ),
+    ).toBe(true);
+    // The knowledge server is held to the same allow-list.
+    expect(knowledge[0]).toBeUndefined();
+    expect(knowledge[1]).toEqual(restrictedNetworkStationControlTools());
+    expect(knowledge[1]).toContain('search_knowledge');
+  });
+
+  test('#4769: a coordinator session restricted at its start keeps the narrow station-control set when its tools are connected live', async () => {
+    const given = new Map<string, readonly string[] | undefined>();
+    createAdapter({
+      extra: {
+        isCoordinatorSession: () => true,
+        resolveCoordinatorStationControl: async () => ({
+          id: 'station-control',
+          transport: 'stdio' as const,
+          command: 'node',
+          args: [builtinStationControlServerPath()],
+          coordinatorDerived: true,
+          coordinatorGeneration: 0,
+        }),
+        createInProcessCoordinatorStationControl: (
+          threadId: string,
+          _tenant?: unknown,
+          allowedTools?: readonly string[],
+        ) => {
+          given.set(threadId, allowedTools);
+          return { connect: vi.fn(), close: vi.fn() } as never;
+        },
+      },
+    });
+    for (const [threadId, plan] of [
+      ['coordinator-open', SEATBELT_PLAN],
+      ['coordinator-restricted', RESTRICTED_PLAN],
+    ] as const) {
+      const query = startingQuery(Promise.resolve({})) as ReturnType<
+        typeof startingQuery
+      > & {
+        setMcpServers?: ReturnType<typeof vi.fn>;
+        mcpServerStatus?: ReturnType<typeof vi.fn>;
+      };
+      query.setMcpServers = vi.fn().mockResolvedValue({
+        added: ['station-control'],
+        removed: [],
+        errors: {},
+      });
+      query.mcpServerStatus = vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValue([
+          {
+            name: 'station-control',
+            source: 'sdk',
+            status: 'connected',
+            tools: Object.keys(STATION_CONTROL_TOOL_POLICY).map((name) => ({
+              name,
+            })),
+          },
+        ]);
+      await startConfined(threadId, {
+        confinementPlan: plan,
+        agent: { slug: 'agent', toolServers: [] },
+      });
+      // The live connection happens before the turn is dispatched; what the
+      // turn does after it is not under test.
+      void adapter.sendTurn({ threadId, input: 'go' }).catch(() => undefined);
+      await vi.waitFor(() => expect(given.has(threadId)).toBe(true));
+    }
+    expect(given.get('coordinator-open')).toBeUndefined();
+    const restricted = given.get('coordinator-restricted')!;
+    expect(restricted).toEqual(restrictedNetworkStationControlTools());
+    expect(restricted).not.toContain('device_open');
+    expect(restricted).not.toContain('delegate_task');
+  });
+
+  test("#4769: a restricted session is not given Station's in-process browser, which runs outside the sandbox", async () => {
+    createAdapter({ stationBrowser: true });
+    for (const [threadId, plan, expected] of [
+      ['browser-open', SEATBELT_PLAN, true],
+      ['browser-restricted', RESTRICTED_PLAN, false],
+    ] as const) {
+      const query = startingQuery(Promise.resolve({}));
+      await startConfined(threadId, {
+        confinementPlan: plan,
+        agent: { slug: 'agent' },
+      });
+      const servers = (query.options?.mcpServers ?? {}) as Record<
+        string,
+        unknown
+      >;
+      expect(Object.hasOwn(servers, 'station-browser'), threadId).toBe(
+        expected,
+      );
+    }
   });
 
   test('readiness says, on macOS, whether a confined credential exists, without a login', async () => {

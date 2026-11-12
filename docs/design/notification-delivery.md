@@ -40,6 +40,8 @@ commit a deferred write, or to drop it when Station changes.
 adds **Troubleshoot** to an error-tone toast that has fewer than two actions
 and is not one of troubleshooting's own (`troubleshoot-*` deduplication keys);
 see [troubleshoot with an agent](troubleshoot-in-app.md).
+On touch, a sideways swipe dismisses a transient toast; approval and pairing
+cards keep their explicit dismiss.
 
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through

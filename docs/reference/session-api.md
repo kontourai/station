@@ -15,6 +15,11 @@ authority and `orchestration:operate`. The current Codex adapter supports save
 paused, pause and clear; resume and Station-managed execution are unavailable.
 See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
 
+A Session that started in a worktree of its own records what became of its
+output once: `GET` or `POST /api/orchestration/sessions/:threadId/worktree-settlement`
+(discarded, kept, released or cleaned up without a decision). No composer
+control calls it yet. See [Worktree output settlement](api.md#worktree-output-settlement).
+
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
@@ -409,9 +414,12 @@ carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own
 `session.started`: the level, whether it was required, the posture the engine
 reported applying at that start (`confined`, `no-mechanism` or
-`configured-but-failed`), the mechanism (`codex-sandbox` or `seatbelt`),
-workspace access and policy basis. A Seatbelt record also lists the kinds of
-writes its profile grants (`writeGrants`). A start that asked for confinement
+`configured-but-failed`), the mechanism (`codex-sandbox`, `seatbelt` or
+`bubblewrap`), workspace access and policy basis. A Seatbelt or bubblewrap
+record also lists the kinds of writes its profile grants (`writeGrants`), and
+says `network: 'restricted'` when the Station's
+[`confinedNetwork`](config.md#optional-fields) policy limited the started
+process to Station's egress broker (#4769); absent, its network was open. A start that asked for confinement
 but ran at Auto with none engaged names why in `fallback`
 (`confined-credential-unavailable`, `config-root-pinned`,
 `resume-bound-elsewhere` or `workspace-too-broad`). It
@@ -422,7 +430,8 @@ answers with the refusal's closed code (`confinement_mechanism_unavailable`,
 `confinement_workspace_incompatible`, `confinement_not_observed`) and leaves
 the conversation able to start again.
 A start whose required confinement has no mechanism on this host is refused
-before anything starts. See
+before anything starts, as is one whose restricted network no mechanism here
+can enforce (`confinement_mechanism_unavailable`, naming why). See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 ### Find out what became of a send
@@ -595,10 +604,17 @@ refusal; a request alone does not prove storage.
   path too. An inbox holds at most 50 unsettled
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
-- Only a plain continuation can be held: no attachments, approval pick, input
+- Only a plain continuation can be held: no approval pick, input
   reply, visual skill start, engine or Agent-definition precondition
   (`expectedEngine`, `expectedDefinitionFingerprint`), delegated send, and no
-  target on another Station. Plain automatic replay may queue; its background
+  target on another Station. Files (`attachments` or staged `attachmentRefs`)
+  can be held only on a host that advertises `followUpAttachments` (absent on
+  hosted Stations): their bytes go to the attachment blob store, a staged
+  reference is accepted for the held entry (released if it is not queued), the
+  entry lists them as `attachments` descriptors (kind, name, MIME type, size;
+  never bytes), and placement sends them with the message. The same key with
+  different files is a different message. Without the flag a busy send with
+  files is not held. Plain automatic replay may queue; its background
   resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
   binding is what the message is sent through later. The sender must be one
@@ -665,8 +681,10 @@ own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
 `continuation_workspace_corrupt_worktree_binding`,
 `continuation_workspace_worktree_gone`,
 `continuation_workspace_different_project`,
-`continuation_workspace_worktree_moved`, or `start_refused` for any other
-refusal. Every client of the conversation sees the same list, except that
+`continuation_workspace_worktree_moved`, `attachment_unavailable` (a held
+file was no longer stored when it was due to be sent; nothing was sent),
+`attachment_input_unsupported` (the engine takes no files), or `start_refused`
+for any other refusal. Every client of the conversation sees the same list, except that
 someone else's message that may still be sent (`queued`, `sending`,
 `unconfirmed`) is shown without its `clientTurnId`. A
 conversation you may not read, or a Station without an inbox, answers `404`.
@@ -2066,6 +2084,10 @@ Snapshot and caught-up session summaries use the same scope as the stream:
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.
+The global stream (no `threadId`) also carries `read-markers:changed` with an
+empty payload and no `id`, only to the person whose
+[read marker](contracts.md#read-marker-contracts) moved; re-read the inventory
+and read-marker summaries.
 The browser opts in to general events with `?includeGeneral=1` on the shared
 orchestration stream only when its current authority's boot payload advertises
 `sharedRealtime: true`. A missing or failed boot read selects the legacy path;

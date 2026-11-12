@@ -3,8 +3,13 @@
   "exceptions": [
     {
       "path": "src-ui/src/components/chat-start/StartComposer.css",
-      "selector": ".start-composer[data-coarse-pointer] .start-composer__box .start-composer__input:focus-visible",
-      "reason": "On coarse-pointer devices the containing start-composer__box keeps its visible focus-within border. The touch browser journey verifies the focused field has no second inner outline; fine-pointer keyboard focus keeps the global outline."
+      "selector": ".start-composer__box .start-composer__input:focus-visible",
+      "reason": "The rounded start-composer__box is the visible field and draws the 2px focus ring, as chat-input__capsule does, whenever its input matches :focus-visible, on any pointer. field-focus-ring.browser.test.tsx verifies the input has no second inner outline, the box is ringed, and a chip inside the box keeps its own outline."
+    },
+    {
+      "path": "src-ui/src/components/CommandPalette.css",
+      "selector": ".command-palette__search-field .command-palette__input:focus-visible",
+      "reason": "The search row around the icon and input is the visible field and draws the 2px focus ring, as chat-input__capsule does, whenever its input matches :focus-visible. field-focus-ring.browser.test.tsx verifies the input has no inner outline and the row is ringed."
     },
     {
       "path": "packages/connect/src/react/ConnectionManagerModal.css",

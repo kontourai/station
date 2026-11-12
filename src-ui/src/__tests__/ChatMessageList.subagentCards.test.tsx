@@ -112,7 +112,6 @@ function chatSession(): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
   };
@@ -1278,6 +1277,152 @@ describe('subagent transcript cards', () => {
     expect(
       within(card).getByText('Result retained in terminal history'),
     ).toBeTruthy();
+  });
+
+  /** A backgrounded Bash call and the `local_bash` child it started. */
+  function shellTurn(
+    calls: { id: string; title: string; command: string }[],
+    workKind: ChildWorkItem['workKind'],
+  ) {
+    const items = calls.map(
+      (call): ChildWorkItem => ({
+        producer: 'engine-subagent',
+        reporterThreadId: THREAD,
+        childId: `bash-${call.id}`,
+        status: 'running',
+        parent: { toolCallId: call.id, turnId: 'turn-1' },
+        title: call.title,
+        kindLabel: 'local_bash',
+        ...(workKind ? { workKind } : {}),
+        backgrounded: true,
+        startedAt: STARTED_AT,
+        controls: { stop: 'provider-task-stop' },
+      }),
+    );
+    return [
+      runtimeEvent('2026-10-14T14:24:58.000Z', {
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'Re-trigger CI',
+      }),
+      ...calls.flatMap((call, index) => [
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.started',
+          turnId: 'turn-1',
+          itemId: call.id,
+          toolCallId: call.id,
+          toolName: 'Bash',
+          arguments: {
+            command: call.command,
+            description: call.title,
+            run_in_background: true,
+          },
+        }),
+        childWork(STARTED_AT, {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          running: items.slice(0, index + 1),
+        }),
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.completed',
+          turnId: 'turn-1',
+          itemId: call.id,
+          toolCallId: call.id,
+          toolName: 'Bash',
+          status: 'success',
+          output: `Command running in background with ID: bash-${call.id}`,
+        }),
+      ]),
+      runtimeEvent('2026-10-14T14:25:03.000Z', {
+        method: 'turn.completed',
+        turnId: 'turn-1',
+        finishReason: 'stop',
+      }),
+      ...items.map((item) =>
+        childWork(ENDED_AT, {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          childId: item.childId,
+          status: 'completed',
+          result: {
+            summary: `Background command "${item.title}" completed (exit code 0)`,
+            source: 'provider-summary',
+          },
+          identity: {
+            parent: item.parent,
+            title: item.title,
+            kindLabel: item.kindLabel,
+            ...(workKind ? { workKind } : {}),
+            startedAt: STARTED_AT,
+            endedAt: ENDED_AT,
+          },
+        }),
+      ),
+    ];
+  }
+
+  // History from before `workKind` (its kindLabel is the raw task type)
+  // must read the same as a child that reports it.
+  test.each([
+    ['reported', 'command' as const],
+    ['history', undefined],
+  ])(
+    'a background shell command (%s) is one command card, never a subagent',
+    async (_name, workKind) => {
+      windowEvents.current = shellTurn(
+        [
+          {
+            id: 'toolu_bash_1',
+            title: 'Push empty commit to re-trigger CI',
+            command: 'git commit --allow-empty -m retrigger && git push',
+          },
+        ],
+        workKind,
+      );
+      renderTranscript();
+      const card = await findCard();
+      await within(card).findByText('Run finished');
+      // The card stands in for the Bash call: the title is drawn once.
+      expect(
+        screen.getAllByText('Push empty commit to re-trigger CI'),
+      ).toHaveLength(1);
+      // The engine's summary only restates the title; its exit code is the news.
+      expect(within(card).getByText('Exit code 0')).toBeTruthy();
+      fireEvent.click(within(card).getByRole('button', { expanded: false }));
+      expect(within(card).getByText('Background command')).toBeTruthy();
+      expect(
+        within(card).getByText(
+          'git commit --allow-empty -m retrigger && git push',
+        ),
+      ).toBeTruthy();
+      expect(within(card).queryByText('model not reported')).toBeNull();
+      expect(
+        within(card).queryByText('local_bash', { exact: false }),
+      ).toBeNull();
+      expect(
+        within(card).queryByText(/Instruction history|Station instructions/),
+      ).toBeNull();
+      expect(within(card).queryByText('Provider summary')).toBeNull();
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
+
+  test('two background commands group as commands, counted in plain words', async () => {
+    windowEvents.current = shellTurn(
+      [
+        { id: 'toolu_bash_1', title: 'Push empty commit', command: 'git push' },
+        { id: 'toolu_bash_2', title: 'Wait for CI', command: 'gh run watch' },
+      ],
+      'command',
+    );
+    renderTranscript();
+    await waitFor(() =>
+      expect(screen.getByText('2 background commands')).toBeTruthy(),
+    );
+    expect(screen.getByText('2 finished')).toBeTruthy();
+    expect(screen.queryByText(/subagents/)).toBeNull();
   });
 
   test('a session that ends without settling its child reads No result, never Completed', async () => {

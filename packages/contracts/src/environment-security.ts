@@ -1272,6 +1272,13 @@ export interface StationCapabilityFlags {
    */
   sessionInventoryInputRead?: boolean;
   /**
+   * #3075: `POST /api/read-markers/summary` and `POST /api/read-markers/mark`
+   * read and advance the caller's server-kept read state for agent
+   * conversations, Project rooms and Task rooms. A host without them
+   * answers 404, so a client gates on this flag.
+   */
+  readMarkers?: boolean;
+  /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).
@@ -1401,6 +1408,15 @@ export interface StationCapabilityFlags {
    * agent" only on this flag.
    */
   troubleshootPrepare?: boolean;
+  /**
+   * A `/chat` send with files to a busy conversation (`whenBusy: 'queue'`)
+   * is held in its inbox with them: the bytes wait in the attachment blob
+   * store and are sent when the entry is placed. Inbox entries list the
+   * files as `attachments` descriptors. A host without it refuses a busy
+   * send with files, so a client keeps such a draft until the turn ends.
+   * Absent on hosted deployments, which have no conversation inbox.
+   */
+  followUpAttachments?: boolean;
 }
 
 export interface PublicStationHandshake {

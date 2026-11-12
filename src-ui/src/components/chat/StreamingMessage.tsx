@@ -31,8 +31,15 @@ import {
 import { TranscriptAppTools } from './TranscriptAppTools';
 import { TurnActivityProgress } from './TurnActivityProgress';
 import { deriveToolProgressSummary } from './tool-call-labels';
-import { isToolCallPart, splitToolCallRuns } from './tool-call-runs';
-import { useTranscriptChildBlocks } from './transcript-child-work';
+import {
+  isToolCallPart,
+  runWithoutCalls,
+  splitToolCallRuns,
+} from './tool-call-runs';
+import {
+  useTranscriptChildBlocks,
+  useTranscriptChildrenForCalls,
+} from './transcript-child-work';
 import { UIBlockRenderer } from './UIBlockRenderer';
 import { uiBlockIdentity } from './ui-block-identity';
 
@@ -191,6 +198,16 @@ function StreamingMessageWithApps({
     [contentParts, streamingText, appTools, showReasoning, renderReasoning],
   );
   const blocks = useTranscriptChildBlocks(baseBlocks);
+  // As the settled row: a call that spawned child work is drawn as its card.
+  const cardCallIds = new Set(
+    useTranscriptChildrenForCalls(
+      contentParts.flatMap((part) =>
+        part.toolCallId ? [part.toolCallId] : [],
+      ),
+    ).flatMap((child) =>
+      child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
+    ),
+  );
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -273,18 +290,28 @@ function StreamingMessageWithApps({
                 calls={block.calls}
               />
             );
+            // A call drawn as its child's card leaves the run, so the run
+            // neither repeats it nor folds it into "Ran N commands".
+            const run = runWithoutCalls(block, cardCallIds);
+            if (run.calls.length === 0)
+              return [
+                ...(run.interludes ?? []).map(({ part, index }) =>
+                  renderInterlude(part, index),
+                ),
+                subagents,
+              ];
             if (
-              block.calls.length + (block.interludes?.length ?? 0) <=
+              run.calls.length + (run.interludes?.length ?? 0) <=
               INLINE_RUN_LIMIT
             ) {
               return [
-                ...block.calls.map(({ part, index }) =>
+                ...run.calls.map(({ part, index }) =>
                   renderToolCall(part, index),
                 ),
                 subagents,
               ];
             }
-            const inlineRows = [...block.calls, ...(block.interludes ?? [])]
+            const inlineRows = [...run.calls, ...(run.interludes ?? [])]
               .sort((a, b) => a.index - b.index)
               .map(({ part, index }) =>
                 part.type === 'reasoning'
@@ -294,7 +321,7 @@ function StreamingMessageWithApps({
             return [
               <ToolCallBatchBoundary
                 key={block.key}
-                run={block}
+                run={run}
                 renderCall={renderToolCall}
                 renderInterlude={renderInterlude}
                 pending={inlineRows}

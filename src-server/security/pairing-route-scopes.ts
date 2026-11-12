@@ -815,6 +815,27 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // #3075: the caller's own read markers. Both are POSTs only because a batch
+  // body does not fit a query string; they read or advance the requesting
+  // person's markers and nothing else, and each target is re-authorized
+  // through its own conversation or room read. A read-only paired phone must
+  // reach them, or reading there could never clear unread anywhere.
+  {
+    id: '/api/read-markers/summary:read',
+    method: 'POST',
+    prefix: '/api/read-markers/summary',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/read-markers/mark:own',
+    method: 'POST',
+    prefix: '/api/read-markers/mark',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
   // return bounded projections — hashed transport keys, outcome codes and
   // ids, never a payload or secret. The shared ledger is operator management,
@@ -1850,6 +1871,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/orchestration/sessions/:threadId/goal:operate',
     method: 'POST',
     prefix: '/api/orchestration/sessions/:threadId/goal',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  // #4771: settling a worktree Session's output records a decision once and,
+  // for a discard, removes the worktree and branch Station created. The
+  // person-only, Session-mutation-gated control a paired device needs the
+  // operate tier for.
+  {
+    id: '/api/orchestration/sessions/:threadId/worktree-settlement:operate',
+    method: 'POST',
+    prefix: '/api/orchestration/sessions/:threadId/worktree-settlement',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
@@ -4537,6 +4570,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/goal' },
+    // #4771: the Session's one worktree output record, read with Session
+    // read authority; it names the Session's own repository, worktree path
+    // and branch, which the Session's own events already disclose.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/worktree-settlement',
+    },
     // Immutable experience history uses the same Session read authority;
     // the reader also authorizes every historical thread before publication.
     {

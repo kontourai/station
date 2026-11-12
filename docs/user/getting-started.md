@@ -722,6 +722,8 @@ or search the inbox, find matching **Dismissed** results, and choose
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+A turn the engine opens on its own, such as its reply when background work
+finishes, does not bring it back unless that turn fails, stops or needs you.
 Hidden **Third-party** sessions stay hidden through external updates until you
 restore them or bring them into Station.
 
@@ -897,6 +899,10 @@ was not recorded. A summary or transcript handle alone does not establish a
 returned result. An existing completion notice is corrected when a later
 structured tool return arrives from the same Station and child.
 
+A background shell command an engine started (or a monitor watching one) is
+not a subagent: its card shows a terminal mark, the command line and, once it
+ends, its exit code, and a group counts it as a background command.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
@@ -927,9 +933,11 @@ currently they wait until the turn finishes. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
-Steer and Queue carry text only. You can still attach files or dictate during a
-turn: files wait in the draft, which says why, until you send it after the turn
-ends.
+You can attach files or dictate during a turn. Steer carries text only, so a
+message with files is queued: Station keeps the files with it and sends them
+when the turn ends, and the pending row names them. On a Station that cannot
+hold files yet, they wait in the draft, which says why, until you send it after
+the turn ends.
 
 The app attempts to save a text message on this device before sending it. If
 the write fails or times out, it sends without that saved row and keeps the
@@ -1098,6 +1106,16 @@ After first-run setup, Home can offer **Start your first task** for a confirmed
 Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
+
+When a Task's Session reports a plan (ACP engines do), its Tasks board card
+and Project task row show **Agent plan 3/5** and a thin bar. It is the agent's
+newest plan in that Session's latest turn, refreshed every few seconds while
+the Task is in progress or blocked. **Stopped** follows the count when the
+turn was stopped or the Session failed or was canceled with steps open, and
+**Waiting** when the Session needs input or an approval. There is no bar
+without a plan, for a plan from an earlier turn, or on done and canceled
+Tasks. The count is agent-reported: it never marks a Task done or satisfies a
+gate.
 
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains

@@ -691,6 +691,7 @@ export function ProjectTaskRoomConversation({
               </header>
               <RoomConversation
                 label="Thread messages"
+                regionLabel="Messages in this thread"
                 className="task-room-thread-messages"
                 rows={threadRecords.map((record) => toRow(record, true))}
               />
@@ -780,6 +781,7 @@ export function ProjectTaskRoomConversation({
           renderList={(list) => (
             <RoomConversation
               label={list.label}
+              regionLabel="Messages in this Task room"
               className="task-room-messages"
               rows={list.records.map((record) => toRow(record))}
               loading={list.pending}

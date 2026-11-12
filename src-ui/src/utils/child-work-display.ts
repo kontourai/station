@@ -5,8 +5,10 @@ import type {
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
 import {
+  type ChildWorkItem,
   type ChildWorkKey,
   childWorkKey,
+  childWorkKindOf,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -32,6 +34,82 @@ export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkDisplayStatus, string> = {
   // its engine process ended while it ran, an observed end, not a gap.
   interrupted: 'Interrupted',
 };
+
+/**
+ * A status as a count's tail in a group heading ("2 finished · 1 running"),
+ * where the card's own "Run finished" would read "2 run finished".
+ */
+export const CHILD_WORK_GROUP_STATUS_LABEL: Record<
+  ChildWorkDisplayStatus,
+  string
+> = {
+  running: 'running',
+  completed: 'finished',
+  failed: 'failed',
+  cancelled: 'stopped',
+  'stopped-unconfirmed': 'stop not confirmed',
+  unresolved: 'no result',
+  interrupted: 'interrupted',
+};
+
+/**
+ * The producer's kind label as a person reads it: a subagent type
+ * ("Explore") prints, an engine's raw task type (`local_agent`,
+ * `local_bash`) does not.
+ */
+export function childWorkKindLabel(
+  item: Pick<ChildWorkItem, 'kindLabel'>,
+): string | undefined {
+  const label = item.kindLabel?.trim();
+  if (!label || /^(?:local|remote|in_process)_[a-z_]+$/.test(label))
+    return undefined;
+  return label;
+}
+
+/**
+ * What a group of children is called: "2 subagents", "2 background
+ * commands", or "3 background tasks" when they are of more than one kind.
+ */
+export function childWorkGroupLabel(
+  items: readonly Pick<ChildWorkItem, 'workKind' | 'kindLabel'>[],
+): string {
+  const kinds = new Set(items.map((item) => childWorkKindOf(item)));
+  const count = items.length;
+  if (kinds.size === 1) {
+    const [kind] = kinds;
+    if (kind === 'agent')
+      return count === 1 ? '1 subagent' : `${count} subagents`;
+    if (kind === 'monitor')
+      return count === 1 ? '1 monitor' : `${count} monitors`;
+    return count === 1
+      ? '1 background command'
+      : `${count} background commands`;
+  }
+  return `${count} background tasks`;
+}
+
+const CLAUDE_COMMAND_SUMMARY =
+  /^Background command "[\s\S]*" (?:completed|failed|was stopped|stopped|killed)(?: \(exit code (-?\d+)\))?\.?$/;
+
+/**
+ * The text worth showing as a child's result, or undefined. A result that
+ * only restates the title says nothing; Claude's summary for a background
+ * command ('Background command "…" completed (exit code 0)') repeats the
+ * title, so only its exit code is kept.
+ */
+export function childWorkResultText(
+  item: Pick<ChildWorkItem, 'result' | 'workKind' | 'kindLabel'>,
+  title: string,
+): string | undefined {
+  const summary = item.result?.summary?.trim();
+  if (!summary || summary === title.trim()) return undefined;
+  if (childWorkKindOf(item) !== 'agent') {
+    const match = CLAUDE_COMMAND_SUMMARY.exec(summary);
+    if (match)
+      return match[1] !== undefined ? `Exit code ${match[1]}` : undefined;
+  }
+  return summary;
+}
 
 /** `m:ss`, or `h:mm:ss` past an hour. */
 export function formatChildWorkElapsed(ms: number): string {

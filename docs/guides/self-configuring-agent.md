@@ -22,6 +22,8 @@ example does not grant one implicitly.
 
 Attach `station-control` and select `html_preview` and `html_render` to let an
 Agent preview and publish a self-contained HTML reply in its own conversation.
+A session whose network Station restricts is not given them: they run in
+Station's Chromium, outside its sandbox.
 This works through the existing Claude, Codex and ACP MCP passthroughs when the
 connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
 and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
@@ -219,6 +221,12 @@ Station checks an Agent's dispatch against its verified Session caller:
   with that owner's `execute` action in the target Project.
 - Other verified callers also stay within their calling Session's Project or
   global scope and cannot reach a conversation that runs unconfined (`host`).
+- A Session whose network Station restricts
+  ([`confinedNetwork`](../reference/config.md#optional-fields)) is not given
+  the dispatch tools at all, nor the device, HTML-preview and settings tools.
+  The server refuses it, with `station_control_network_restricted`, every
+  route owned only by withheld tools; a route a kept tool shares stays open
+  to the kept tool's calls (#4769).
 
 Here, `bound` describes verified caller assurance, not a selected approval mode.
 A plain folder target belongs to the deepest Project whose canonical working

@@ -64,6 +64,14 @@ export function sanitizeConfinementPreflight(
       return {
         ...entry,
         mechanismReason: doctorConfinementText(entry.mechanismReason),
+        ...(entry.restrictedNetwork
+          ? {
+              restrictedNetwork: {
+                ...entry.restrictedNetwork,
+                reason: doctorConfinementText(entry.restrictedNetwork.reason),
+              },
+            }
+          : {}),
         confinedAuthentication:
           credential.state === 'unavailable'
             ? {
@@ -121,6 +129,31 @@ function mechanismCheck(
         detail: `Decided by the engine at start, not checkable before one: ${reason}.${notApplicable}`,
       };
   }
+}
+
+/**
+ * #4769: whether this engine's mechanism can restrict a confined start's
+ * network on the Station's host; no row from a Station that predates it.
+ */
+function restrictedNetworkCheck(
+  entry: EngineConfinementPreflight,
+  named: string,
+): DoctorCheckRow | null {
+  const network = entry.restrictedNetwork;
+  if (!network) return null;
+  const label = `Restricted network (${entry.engine}: ${entry.mechanism})`;
+  const reason = doctorConfinementText(network.reason);
+  return network.state === 'available'
+    ? {
+        label,
+        status: 'pass',
+        detail: `Enforceable on the host of ${named}: ${reason}`,
+      }
+    : {
+        label,
+        status: 'warn',
+        detail: `Not enforceable on the host of ${named}: ${reason}. Under a restricted confined network policy, a ${entry.engine} start that requires ${entry.level} confinement is refused there.`,
+      };
 }
 
 /** What a checked credential answer covers, from its `appliesTo`. */
@@ -207,8 +240,11 @@ export function confinementDoctorChecks(
   const named = describeConfinementTarget(confinement.target);
   return confinement.preflight.engines.flatMap((entry) => {
     const credential = credentialCheck(entry, named);
-    return credential
-      ? [mechanismCheck(entry, named), credential]
-      : [mechanismCheck(entry, named)];
+    const network = restrictedNetworkCheck(entry, named);
+    return [
+      mechanismCheck(entry, named),
+      ...(credential ? [credential] : []),
+      ...(network ? [network] : []),
+    ];
   });
 }

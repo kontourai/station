@@ -9,7 +9,9 @@ const occupants: Plugin = {
   name: 'coding-tool-occupants',
   setup(builder) {
     const modules: Record<string, string> = {
-      ChatDock: `import React from 'react'; export const ChatWorkspacePane=()=> <div style={{padding:16}}><h2>Build the workspace</h2><p>Chat and tools keep their own state.</p><textarea aria-label="Message" placeholder="Message your agent" /></div>;`,
+      // The phone chat header draws the host's leading control (the tool
+      // picker) first, as ChatDockMobileHeader does.
+      ChatDock: `import React,{useContext} from 'react'; import {MobileDockHeaderLeadingContext} from './src-ui/src/components/chat-dock/MobileDockHeaderLeading'; export const ChatWorkspacePane=()=> <div style={{padding:16}}><div data-testid="chat-dock-mobile-header">{useContext(MobileDockHeaderLeadingContext)}</div><h2>Build the workspace</h2><p>Chat and tools keep their own state.</p><textarea aria-label="Message" placeholder="Message your agent" /></div>;`,
       KeyboardShortcutsContext:
         'export const useKeyboardShortcuts=()=>({isMac:false}); export const getShortcutContext=()=>false;',
       useKeyboardShortcut: 'export const useKeyboardShortcut=()=>{};',

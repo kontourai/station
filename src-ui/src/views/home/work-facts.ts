@@ -80,6 +80,13 @@ export interface WorkFacts {
     OrchestrationSessionSummary['ownedWork']
   >['state'];
   ownedStopReasons?: readonly string[];
+  /**
+   * The conversation's open or latest turn is one the engine opened on its
+   * own (a reply to background work), not a send: the open turn's trigger
+   * while it runs, the summary's `latestTurnTrigger` after. A fact beside the
+   * item, not an item field, so the Home role projection is unchanged.
+   */
+  engineOpenedTurn?: true;
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -243,6 +250,13 @@ export function buildWorkFacts({
           session.delegation.environmentId,
       };
     }
+    if (
+      session &&
+      (session.conversationActivity?.openTurn
+        ? session.conversationActivity.openTurn.trigger === 'provider'
+        : session.latestTurnTrigger === 'provider')
+    )
+      entry.engineOpenedTurn = true;
     if (item.lifecycleLabel === 'Needs attention') {
       const attention = moreUrgentAttention(
         moreUrgentAttention(

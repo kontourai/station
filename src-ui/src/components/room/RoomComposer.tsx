@@ -19,6 +19,7 @@ import { IconButton } from '../IconButton';
 import { AttachmentGlyph } from '../icons/Glyph';
 import { composerEnterAction, useTouchKeyboard } from './composerKeys';
 import './RoomComposer.css';
+import { useKeepAboveKeyboard } from './useKeepAboveKeyboard';
 
 /** The attachment port a room offers when its messages can carry files. */
 export type RoomComposerAttachments = Pick<
@@ -99,6 +100,8 @@ export function RoomComposer({
   const touchKeyboard = useTouchKeyboard();
   const mobile = useIsMobile();
   const viewport = useMobileVisualViewport();
+
+  useKeepAboveKeyboard(root, mobile, viewport);
 
   // Grow with the text up to the CSS cap, then scroll inside the field.
   useLayoutEffect(() => {

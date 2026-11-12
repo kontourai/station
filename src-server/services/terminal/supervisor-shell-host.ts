@@ -101,6 +101,10 @@ class HostedJournal {
     );
   }
 
+  resize(): Promise<void> {
+    return this.append();
+  }
+
   private fromDisk(): Promise<TerminalJournal> {
     this.local ??= (async () => {
       const journal = new TerminalJournal(

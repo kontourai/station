@@ -868,7 +868,15 @@
 
     "packages/sdk/src/__tests__/managed-policy-query.test.ts",
 
-    "packages/sdk/src/__tests__/orchestration-command-receipt-authority.test.ts"
+    "packages/sdk/src/__tests__/orchestration-command-receipt-authority.test.ts",
+
+    "packages/sdk/src/terminal-view/controller.ts",
+
+    "packages/sdk/src/terminal-view/store-session.ts",
+
+    "packages/sdk/src/terminal-view/session.ts",
+
+    "packages/sdk/src/__tests__/terminal-view/controller.test.ts"
   ],
 
   "checks": [

@@ -1,6 +1,6 @@
 {
   "seatbelt-kernel": {
-    "description": "Kernel legs of the Seatbelt confinement profile (#2494, #4772). They run only on a macOS host where sandbox-exec applies the production profile, and are skipped elsewhere.",
+    "description": "Kernel legs of the Seatbelt confinement profile (#2494, #4772), including the restricted-network legs (#4769). They run only on a macOS host where sandbox-exec applies the production profile, and are skipped elsewhere.",
     "files": {
       "src-server/security/confinement/__tests__/seatbelt.process.test.ts": {
         "mustPass": [
@@ -195,6 +195,46 @@
           [
             "Seatbelt profile under the real kernel",
             "signals reach only processes inside the sandbox"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "the spawn is the restricted profile: one rule, to the broker port, and the proxy points at it"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a direct TCP connection to another loopback port is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a direct TCP connection to an outside address is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a Unix socket at a known path is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a UDP datagram is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a connection through the broker to an allowed host is tunnelled to it"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a connection through the broker to a host that is not allowed gets 403, and is recorded"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a Mach service outside the allow-list is refused: configd answers scutil outside the profile and not inside it"
           ]
         ],
         "mayRuntimeSkip": [
@@ -211,6 +251,30 @@
               "the login Keychain is unreachable through the security tool"
             ],
             "reason": "Skips at runtime (ctx.skip) when the host user has no readable login Keychain item to compare against. A fresh hosted runner user is not expected to have one; a skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a direct TCP connection to this host's own non-loopback address is refused by the kernel"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when the host has no non-loopback IPv4 address, so there is no outside address of its own to compare against; the documentation-address leg proves the refusal on every host. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a connection to the broker port over IPv6 loopback is refused by the kernel"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when the host cannot listen on ::1 at the broker port, so there is no IPv6 listener to compare against. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when /usr/bin/swiftc cannot build the probe (no Swift toolchain), or when nsurlsessiond does not deliver the upload even unconfined, so a missing request inside would prove nothing. A skip is recorded, a failure is not accepted."
           }
         ],
         "notRequired": [
@@ -220,8 +284,257 @@
               "the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined"
             ],
             "reason": "Guarded by test.skipIf(!claudeExecutable): it needs Claude Code on PATH, which a hosted macOS runner does not have, so requiring it would fail every hosted run. It still runs on a developer Mac with claude on PATH."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "the installed Claude Code answers its handshake inside the restricted profile, and its model request reaches the model endpoint only through the broker"
+            ],
+            "reason": "Guarded by test.skipIf(!claudeExecutable): it needs Claude Code on PATH, which a hosted macOS runner does not have, so requiring it would fail every hosted run. It still runs on a developer Mac with claude on PATH."
           }
         ]
+      }
+    }
+  },
+  "linux-bubblewrap-kernel": {
+    "description": "Kernel legs of the Linux bubblewrap confinement sandbox (#4770, #4772). They run only on a Linux host where bwrap applies the production sandbox (unprivileged user namespaces allowed), and are skipped elsewhere. The live Claude handshake uses `claude` on PATH or the Agent SDK's own binary for the platform, which dependencies:ci installs, so it is required too.",
+    "files": {
+      "src-server/security/confinement/__tests__/bubblewrap.process.test.ts": {
+        "mustPass": [
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the probe passed on this host, and the provider a start consults reports the sandbox available"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a write in the workspace is allowed; a write outside it is denied"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree's git metadata is read-only: status works, staging and committing are refused (a stated difference)"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write a shared hook"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write the shared config"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write shared info"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not move main"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not create another branch"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not repoint the .git pointer file"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not remove the .git pointer file"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write config.worktree"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not repoint its commondir"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a linked worktree may not write object alternates"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot write a hook"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot write its config"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot write info"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot add a commondir redirect"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot add object alternates"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot repoint another worktree's gitdir"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot add a submodule's config"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot create a branch"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot rename the .git"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace cannot remove the .git"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a checkout whose .git is inside the workspace still has a writable workspace"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "secret stores and Station data cannot be read; Station installs stay readable"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an SSH key does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "AWS credentials does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the gh login does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a netrc file does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the operator's Claude credential file does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "Station's runtime home does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "Station's root, outside the runtime home does not reveal its content, however it is spelled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the operator's Claude config is not writable; the Station-owned one is"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot write its settings"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot add local settings"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot rename it away"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing engine configuration directory at the workspace root is read-only: a confined process cannot remove it"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a new engine configuration directory can be created in the workspace: a stated difference from Seatbelt"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the session temp directory is writable and the confined env points at it"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "processes outside the sandbox are invisible and cannot be signalled"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the confined process runs with no_new_privs, so a setuid program gains nothing"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hidden file cannot be hard-linked into the workspace"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hard link made outside the sandbox beforehand is readable: an accepted residual"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a listening socket at a hidden path refuses a connection from inside"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing .git is read-only even when its layout cannot be read"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hidden home file the host replaces by rename mid-session stays unreadable"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hidden socket the host unlinks and creates again mid-session refuses a connection"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a socket under the host's /tmp, there at the start or created mid-session, is unreachable"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a hidden path that is a link stays unreadable when the host replaces the link with the secret mid-session"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an entry the host removes after the arguments are built is left out, and the start still runs"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "a granted path does not grant its sibling that shares the prefix"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "the installed Claude Code answers its handshake from inside the sandbox, and the provider observes it confined"
+          ]
+        ],
+        "mayRuntimeSkip": [
+          {
+            "test": [
+              "bubblewrap sandbox under the real kernel",
+              "a nested user namespace cannot be created inside, so the mounts cannot be rearranged"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when `unshare --user` cannot create a user namespace even outside the sandbox (util-linux missing, or a host policy), so the refusal inside would prove nothing. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "bubblewrap sandbox under the real kernel",
+              "the host's Docker socket refuses a connection from inside"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when no Docker socket exists that this user can connect to outside the sandbox, so the refusal inside would prove nothing. A hosted runner whose user is in the docker group runs it; a skip is recorded, a failure is not accepted. The hidden-socket leg proves the mechanism on every host."
+          },
+          {
+            "test": [
+              "bubblewrap sandbox under the real kernel",
+              "a name resolves through DNS inside the sandbox"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when this host cannot resolve a name outside the sandbox either (no resolver or no network), so a failure inside would prove nothing. A skip is recorded, a failure is not accepted."
+          }
+        ],
+        "notRequired": []
       }
     }
   }

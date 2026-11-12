@@ -44,7 +44,10 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
-import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
+import {
+  type ConfinementNetworkPlan,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from '@kontourai/station-contracts/execution-confinement';
 import type { SessionGrantScope } from '@kontourai/station-contracts/input-request';
 import {
   type LearningReviewRevisionRef,
@@ -243,6 +246,7 @@ import {
   type ConfinementProvider,
   noMechanismConfinementRecord,
   readConfinementRecord,
+  requiredConfinementLevel,
   resolveConfinement,
 } from '../../security/confinement/confinement-provider.js';
 import { DEFAULT_CONFINEMENT_PROVIDERS } from '../../security/confinement/default-confinement-providers.js';
@@ -1158,9 +1162,18 @@ interface OrchestrationServiceOptions {
   isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
   /**
    * #2494: the confinement mechanisms a start can resolve to. Absent:
-   * Codex's own sandbox and Station's Seatbelt profile for Claude.
+   * Codex's own sandbox and, for Claude, Station's bubblewrap sandbox on
+   * Linux or Seatbelt profile elsewhere (`defaultConfinementProviders`).
    */
   confinementProviders?: readonly ConfinementProvider[];
+  /**
+   * #4769: this Station's confined network policy (the `confinedNetwork`
+   * setting), read only for a start that requires confinement: restricted,
+   * or `undefined` for an open network. It throws a
+   * `ConfinementRefusedError` when the setting cannot be read, so such a
+   * start is refused, not run open. Absent: the network is open.
+   */
+  confinedNetworkPolicy?: () => Promise<ConfinementNetworkPlan | undefined>;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -3128,8 +3141,8 @@ export class OrchestrationService {
       requireAdapter: (provider) => this.requireAdapter(provider),
       assertAdapterCurrent: (adapter) => this.assertAdapterCurrent(adapter),
       assertAdapterReady: (adapter) => this.assertAdapterReady(adapter),
-      applyConfinement: (input) =>
-        this.withConfinement(
+      applyConfinement: async (input) =>
+        await this.withConfinement(
           input.provider,
           input,
           input.confinement === 'host' ? 'host' : 'workspace',
@@ -8308,7 +8321,7 @@ export class OrchestrationService {
           // The isolation comes from the server-resolved workspace binding
           // (a canonically provisioned or verified owned worktree), never the
           // caller-controlled `metadata.workspaceIsolation`.
-          startInput = this.withConfinement(
+          startInput = await this.withConfinement(
             adapter.provider,
             startInput,
             confinement,
@@ -15133,25 +15146,32 @@ export class OrchestrationService {
    * and records the posture), else the `no-mechanism` record stamped now.
    * Called after the reserved-key strip, with the input's final model
    * options. Throws `ConfinementRefusedError` when a required level has no
-   * usable mechanism.
+   * usable mechanism. #4769: a start that requires confinement reads the
+   * confined network policy first; every other start never reads it.
    */
-  private withConfinement<
+  private async withConfinement<
     T extends Omit<ProviderSessionStartInput, 'resumeCursor'>,
   >(
     engine: EngineId,
     input: T,
     confinement: StationConfinement,
     isolationMode: WorkspaceIsolationMode,
-  ): T {
+  ): Promise<T> {
+    const appliedMode = approvalKnobSupported(engine)
+      ? readApprovalMode(input.modelOptions)
+      : undefined;
+    const network =
+      requiredConfinementLevel(confinement, appliedMode) === 'host'
+        ? undefined
+        : await this.options.confinedNetworkPolicy?.();
     const resolution = resolveConfinement({
       confinement,
       engine,
-      appliedMode: approvalKnobSupported(engine)
-        ? readApprovalMode(input.modelOptions)
-        : undefined,
+      appliedMode,
       isolationMode,
       providers:
         this.options.confinementProviders ?? DEFAULT_CONFINEMENT_PROVIDERS,
+      network: () => network,
     });
     if (resolution.plan) return { ...input, confinementPlan: resolution.plan };
     return {

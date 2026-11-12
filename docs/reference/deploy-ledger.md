@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-11T19:51:34Z | nightly-desktop | 0.1.11-nightly.20261111.2 | `e5b5bd2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43074100998) |
+| 2026-11-11T19:51:31Z | nightly-android | 0.1.11-nightly.20261111.2 | `e5b5bd2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43074100998) |
+| 2026-11-11T18:24:10Z | nightly-npm | 0.11.0-nightly.20261111.43074100998 | `e5b5bd2` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43074100998) |
 | 2026-11-11T11:00:57Z | nightly-desktop | 0.1.11-nightly.20261111.1 | `d4292a6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42998652773) |
 | 2026-11-11T11:00:54Z | nightly-android | 0.1.11-nightly.20261111.1 | `d4292a6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42998652773) |
 | 2026-11-11T10:08:32Z | nightly-npm | 0.11.0-nightly.20261111.42998652773 | `d4292a6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42998652773) |
@@ -461,6 +464,78 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-11T19:51:34Z · nightly-desktop · 0.1.11-nightly.20261111.2
+
+- Ship SHA: `e5b5bd24e1ae4e588e3466e979188e014ddd0354`
+- Artifact built at: `2026-11-11T18:28:44.322Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 43074100998)
+
+### Changelog
+
+Commits since `d4292a6` ([full sha](https://github.com/kontourai/station/commit/d4292a6bd18d1d97b54b05df3019e715c492cb48)):
+
+**Features**
+
+- [#4784](https://github.com/kontourai/station/pull/4784) feat(coordinator): put Houston behind the Coordinator chat Feature Preview and explain it on Home
+- [#4778](https://github.com/kontourai/station/pull/4778) feat!: retire the strands-runtime flag, show the Knowledge conversations setting, stop Flow links dead-ending
+
+**Fixes**
+
+- [#4786](https://github.com/kontourai/station/pull/4786) fix(ui): shared status, empty state, dialog and section header across Connections, onboarding and Tasks
+
+**CI / workflow**
+
+- [#4787](https://github.com/kontourai/station/pull/4787) ci(confinement): run the Seatbelt kernel legs on main pushes that touch confinement code (#4772)
+
+## 2026-11-11T19:51:31Z · nightly-android · 0.1.11-nightly.20261111.2
+
+- Ship SHA: `e5b5bd24e1ae4e588e3466e979188e014ddd0354`
+- Artifact built at: `2026-11-11T18:42:08.017Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 43074100998)
+
+### Changelog
+
+Commits since `d4292a6` ([full sha](https://github.com/kontourai/station/commit/d4292a6bd18d1d97b54b05df3019e715c492cb48)):
+
+**Features**
+
+- [#4784](https://github.com/kontourai/station/pull/4784) feat(coordinator): put Houston behind the Coordinator chat Feature Preview and explain it on Home
+- [#4778](https://github.com/kontourai/station/pull/4778) feat!: retire the strands-runtime flag, show the Knowledge conversations setting, stop Flow links dead-ending
+
+**Fixes**
+
+- [#4786](https://github.com/kontourai/station/pull/4786) fix(ui): shared status, empty state, dialog and section header across Connections, onboarding and Tasks
+
+**CI / workflow**
+
+- [#4787](https://github.com/kontourai/station/pull/4787) ci(confinement): run the Seatbelt kernel legs on main pushes that touch confinement code (#4772)
+
+## 2026-11-11T18:24:10Z · nightly-npm · 0.11.0-nightly.20261111.43074100998
+
+- Ship SHA: `e5b5bd24e1ae4e588e3466e979188e014ddd0354`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261111.43074100998 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `d4292a6` ([full sha](https://github.com/kontourai/station/commit/d4292a6bd18d1d97b54b05df3019e715c492cb48)):
+
+**Features**
+
+- [#4784](https://github.com/kontourai/station/pull/4784) feat(coordinator): put Houston behind the Coordinator chat Feature Preview and explain it on Home
+- [#4778](https://github.com/kontourai/station/pull/4778) feat!: retire the strands-runtime flag, show the Knowledge conversations setting, stop Flow links dead-ending
+
+**Fixes**
+
+- [#4786](https://github.com/kontourai/station/pull/4786) fix(ui): shared status, empty state, dialog and section header across Connections, onboarding and Tasks
+
+**CI / workflow**
+
+- [#4787](https://github.com/kontourai/station/pull/4787) ci(confinement): run the Seatbelt kernel legs on main pushes that touch confinement code (#4772)
 
 ## 2026-11-11T11:00:57Z · nightly-desktop · 0.1.11-nightly.20261111.1
 
