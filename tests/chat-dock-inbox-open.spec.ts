@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { mockChatShell } from './helpers/chat-shell-fixture';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   installMockOrchestrationSse,
@@ -111,6 +111,39 @@ async function storeConversation(page: Page) {
   await page.route(
     `**/api/conversations/${THREAD_ID}/acknowledgement`,
     (route) => route.fulfill(json({ success: true })),
+  );
+  // What an open chat reads next, as each route answers a conversation that
+  // has none of it: no Project chat layer (the client's own 404 meaning),
+  // no terminal runs, and nothing scheduled.
+  await page.route('**/api/projects/default/chat-defaults', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: false, error: 'Not found' }),
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    (url) =>
+      url.pathname === '/api/terminal/runs' &&
+      url.searchParams.get('conversationId') === THREAD_ID,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill(json({ success: true, data: { runs: [] } }))
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    `**/api/orchestration/agent-schedule/${THREAD_ID}`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill(
+            json({
+              success: true,
+              data: { wakeUps: [], jobProposals: [], jobs: [] },
+            }),
+          )
+        : rejectUnexpectedFixtureRequest(route),
   );
   await mockRuntimeConversation(page, {
     id: THREAD_ID,

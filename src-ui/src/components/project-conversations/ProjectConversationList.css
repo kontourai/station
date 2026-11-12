@@ -218,6 +218,7 @@
 /* Phone page: full-width rows, room for a thumb. */
 .conversation-list--page {
   gap: var(--k-space-4);
+  margin-bottom: var(--k-space-5);
 }
 
 .conversation-list--page .conversation-list__heading {

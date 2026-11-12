@@ -39,10 +39,14 @@ async function seedProject(
       data: { name: 'Channel journey', slug },
     }),
   );
-  const room = await json(
+  await json(
     await request.post(`${api}/api/projects/${slug}/room/init`, {
       data: { expectedProjectId: project.id },
     }),
+  );
+  // Discovery names the person the room sees; opening answers only its id.
+  const room = await json(
+    await request.get(`${api}/api/projects/${slug}/room`),
   );
   const guards = {
     expectedProjectId: project.id,

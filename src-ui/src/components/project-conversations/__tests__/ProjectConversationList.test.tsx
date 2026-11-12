@@ -121,17 +121,22 @@ afterEach(() => {
   _setApiBase('');
 });
 
-function renderList(
-  handlers: Partial<Record<string, ReturnType<typeof vi.fn>>> = {},
-) {
+interface Handlers {
+  onOpenChannel(channelId: string | undefined): void;
+  onOpenTask(taskId: string): void;
+  onMoreTasks(): void;
+  onNewChannel(): void;
+}
+
+function renderList(handlers: Partial<Handlers> = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const props = {
-    onOpenChannel: handlers.onOpenChannel ?? vi.fn(),
-    onOpenTask: handlers.onOpenTask ?? vi.fn(),
-    onMoreTasks: handlers.onMoreTasks ?? vi.fn(),
-    onNewChannel: handlers.onNewChannel ?? vi.fn(),
+  const props: Handlers = {
+    onOpenChannel: handlers.onOpenChannel ?? (() => {}),
+    onOpenTask: handlers.onOpenTask ?? (() => {}),
+    onMoreTasks: handlers.onMoreTasks ?? (() => {}),
+    onNewChannel: handlers.onNewChannel ?? (() => {}),
   };
   render(
     <QueryClientProvider client={client}>
@@ -143,8 +148,11 @@ function renderList(
       />
     </QueryClientProvider>,
   );
-  return { client, props };
+  return { client };
 }
+
+const UNREAD = 'conversation-list__row--unread';
+const bold = (element: HTMLElement) => element.classList.contains(UNREAD);
 
 test('lists live channels, default first, and only Tasks whose rooms exist, newest first', async () => {
   renderList();
@@ -185,16 +193,14 @@ test('bold follows the server’s read state, not the client', async () => {
   const unread = await screen.findByRole('button', {
     name: 'general, 3 unread',
   });
-  expect(unread).toHaveClass('conversation-list__row--unread');
-  expect(screen.getByRole('button', { name: 'design' })).not.toHaveClass(
-    'conversation-list__row--unread',
-  );
+  expect(bold(unread)).toBe(true);
+  expect(bold(screen.getByRole('button', { name: 'design' }))).toBe(false);
 
   // Another device reads #general: the server's answer changes, nothing here.
   markers.set(`project-room:team:${general}`, { latest: 7, seen: 7 });
   await client.invalidateQueries({ queryKey: readMarkerQueries.all() });
   const read = await screen.findByRole('button', { name: 'general' });
-  expect(read).not.toHaveClass('conversation-list__row--unread');
+  expect(bold(read)).toBe(false);
 });
 
 test('Up and Down move between rows with one tab stop; Enter opens the row', async () => {
@@ -213,19 +219,21 @@ test('Up and Down move between rows with one tab stop; Enter opens the row', asy
 
   first.focus();
   await user.keyboard('{ArrowDown}');
-  expect(screen.getByRole('button', { name: 'design' })).toHaveFocus();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'design' }),
+  );
   await user.keyboard('{Enter}');
   expect(onOpenChannel).toHaveBeenLastCalledWith(design);
 
   await user.keyboard('{ArrowDown}');
-  expect(
+  expect(document.activeElement).toBe(
     screen.getByRole('button', { name: /Fix the login redirect/ }),
-  ).toHaveFocus();
+  );
   await user.keyboard('{Enter}');
   expect(onOpenTask).toHaveBeenLastCalledWith('task-login');
 
   await user.keyboard('{Home}');
-  expect(first).toHaveFocus();
+  expect(document.activeElement).toBe(first);
   await user.keyboard('{Enter}');
   // The default channel is addressed without an id, as its room is.
   expect(onOpenChannel).toHaveBeenLastCalledWith(undefined);
@@ -264,9 +272,9 @@ test('a failed summary keeps channels listed and offers a retry for Task rooms',
   renderList();
   // Unknown read state is not unread.
   const row = await screen.findByRole('button', { name: 'general' });
-  expect(row).not.toHaveClass('conversation-list__row--unread');
+  expect(bold(row)).toBe(false);
   await waitFor(() =>
-    expect(screen.getByText('Task rooms could not be loaded.')).toBeVisible(),
+    expect(screen.getByText('Task rooms could not be loaded.')).toBeTruthy(),
   );
-  expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
 });

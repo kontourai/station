@@ -4036,7 +4036,10 @@ function channelNavigationScreens(): Screen[] {
                 await expectProjectList(sidebar);
                 // The other Project stays collapsed: no rows of its own.
                 await expect(
-                  sidebar.getByRole('button', { name: /Kontour site/ }),
+                  sidebar.getByRole('button', {
+                    name: 'Kontour site',
+                    exact: true,
+                  }),
                 ).toBeVisible();
                 await expect(
                   sidebar.getByRole('list', { name: 'Channels' }),

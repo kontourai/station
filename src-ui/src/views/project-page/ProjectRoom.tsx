@@ -889,12 +889,23 @@ function ProjectRoomSession({
   );
   const pendingRow = proposalRow(proposalInThread);
   if (pendingRow && !proposalInThread) rows.push(pendingRow);
+  const threadReplies = openThread
+    ? (repliesByRoot.get(openThread.messageId) ?? [])
+    : [];
   const threadRows: RoomConversationRow[] = openThread
     ? [
         toRow(openThread, true),
-        ...(repliesByRoot.get(openThread.messageId) ?? []).map((message) =>
-          toRow(message, true),
-        ),
+        // The root, then its replies under a quiet count.
+        ...(threadReplies.length
+          ? [
+              {
+                id: `thread-replies:${openThread.messageId}`,
+                kind: 'system' as const,
+                text: `${threadReplies.length} ${threadReplies.length === 1 ? 'reply' : 'replies'}`,
+              },
+            ]
+          : []),
+        ...threadReplies.map((message) => toRow(message, true)),
         ...(pendingRow && proposalInThread ? [pendingRow] : []),
       ]
     : [];
@@ -1393,6 +1404,7 @@ function ProjectRoomComposer({
           onAsked={clearDraftIfCurrent}
           prepareRecap={prepareRecap}
           refresh={refresh}
+          inThread={thread}
         />
       )}
       <RoomComposer
@@ -1546,6 +1558,7 @@ function ProjectRoomAgentPanel({
   prompt,
   checkpointSeq,
   replyTo,
+  inThread = false,
   blocked,
   prepareRecap,
   refresh,
@@ -1565,6 +1578,8 @@ function ProjectRoomAgentPanel({
   prompt: string;
   checkpointSeq: number;
   replyTo?: string;
+  /** A thread's replies have nothing to recap (#4795). */
+  inThread?: boolean;
   blocked: boolean;
   prepareRecap(): void;
   refresh(): void;
@@ -1775,26 +1790,28 @@ function ProjectRoomAgentPanel({
 
   const tools = retained ? null : (
     <>
-      <Button
-        size="sm"
-        aria-label="Recap Project"
-        disabled={blocked || !ready || stopped || !!prompt || !!replyTo}
-        title={
-          prompt || replyTo
-            ? 'Keep or clear your current draft and reply before preparing a recap.'
-            : 'Prepare a recap prompt to review before asking an Agent.'
-        }
-        onClick={() => {
-          if (blocked || !ready || stopped || retained || prompt || replyTo)
-            return;
-          prepareRecap();
-        }}
-      >
-        <span className="room-composer__long">Recap Project</span>
-        <span className="room-composer__short" aria-hidden="true">
-          Recap
-        </span>
-      </Button>
+      {!inThread && (
+        <Button
+          size="sm"
+          aria-label="Recap Project"
+          disabled={blocked || !ready || stopped || !!prompt || !!replyTo}
+          title={
+            prompt || replyTo
+              ? 'Keep or clear your current draft and reply before preparing a recap.'
+              : 'Prepare a recap prompt to review before asking an Agent.'
+          }
+          onClick={() => {
+            if (blocked || !ready || stopped || retained || prompt || replyTo)
+              return;
+            prepareRecap();
+          }}
+        >
+          <span className="room-composer__long">Recap Project</span>
+          <span className="room-composer__short" aria-hidden="true">
+            Recap
+          </span>
+        </Button>
+      )}
       <Button
         size="sm"
         aria-label="Bring an Agent"

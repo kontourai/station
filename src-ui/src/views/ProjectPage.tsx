@@ -365,17 +365,7 @@ function ProjectOperatorPage({
               hidden={destination !== 'overview'}
               aria-label="Project overview"
             >
-              <div className="project-page__operator-actions">
-                <Button
-                  variant="primary"
-                  onClick={() => requestTaskShaping({ projectSlug: slug })}
-                >
-                  New Task
-                </Button>
-                <Button onClick={() => selectDestination('sources')}>
-                  Add files
-                </Button>
-              </div>
+              {/* #4795: on a phone the Project page leads with its channels. */}
               {phone && (
                 <ProjectConversationList
                   variant="page"
@@ -385,7 +375,6 @@ function ProjectOperatorPage({
                     name: project.name || slug,
                   }}
                   requestScope={requestScope}
-                  enabled={destination === 'overview'}
                   onOpenChannel={(channelId) =>
                     openFromList(() => openRoom(channelId))
                   }
@@ -403,6 +392,17 @@ function ProjectOperatorPage({
                   }}
                 />
               )}
+              <div className="project-page__operator-actions">
+                <Button
+                  variant="primary"
+                  onClick={() => requestTaskShaping({ projectSlug: slug })}
+                >
+                  New Task
+                </Button>
+                <Button onClick={() => selectDestination('sources')}>
+                  Add files
+                </Button>
+              </div>
               <ProjectLiveWorkSection slug={slug} />
             </section>
 

@@ -201,7 +201,8 @@ export function ProjectRoomChannelHeader({
           tone: action.tone,
           onSelect: () => {
             close();
-            action.onSelect();
+            // The settings open their own panels; none reads the trigger.
+            if (triggerRef.current) action.onSelect(triggerRef.current);
           },
         })),
         ...screen.actions.map((action) => ({
@@ -361,7 +362,10 @@ export function ProjectRoomChannelHeader({
           }}
         />
       )}
-      {panel && panel.kind !== 'switch' && guards && (
+      {panel &&
+        panel.kind !== 'switch' &&
+        panel.kind !== 'actions' &&
+        guards && (
         <ChannelForm
           key={panel.kind}
           panel={panel}
@@ -558,7 +562,7 @@ function ChannelForm({
   onClose,
   onCreated,
 }: {
-  panel: Exclude<Panel, { kind: 'switch' }>;
+  panel: Exclude<Panel, { kind: 'switch' | 'actions' }>;
   channels: ProjectRoomChannels;
   guards: ProjectRoomChannelGuards;
   anchorRef: React.RefObject<HTMLButtonElement | null>;

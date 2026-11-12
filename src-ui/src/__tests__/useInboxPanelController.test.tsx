@@ -380,7 +380,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
     async () => {
       const { failures, acknowledge } = mount(
         layout,
-        async () => 'unavailable',
+        async () => 'unavailable' as const,
       );
       fireEvent.click(
         screen.getByRole('button', { name: 'First selection, Workshop' }),
