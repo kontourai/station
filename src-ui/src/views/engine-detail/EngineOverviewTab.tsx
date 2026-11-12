@@ -6,7 +6,7 @@ import { Empty } from '../../components/state';
 import type { AgentSummary } from '../../types';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
 import { engineCatalogSourceLabel } from './EngineModelsTab';
-import { engineRouteFact, lastCheckFact } from './engine-facts';
+import { allowanceFacts, engineRouteFact, lastCheckFact } from './engine-facts';
 import './engine-detail.css';
 
 /**
@@ -34,6 +34,7 @@ export function EngineOverviewTab({
 }) {
   const models = runtimeCatalogVisibleModels(connection);
   const route = engineRouteFact(connection.routeObservation);
+  const refusals = allowanceFacts(connection);
   const defaultName =
     models.find((model) => model.id === defaultModel)?.name ?? defaultModel;
   return (
@@ -62,6 +63,16 @@ export function EngineOverviewTab({
             value: engineCatalogSourceLabel(connection),
           },
           managedFact !== null && { label: 'Policy', value: managedFact },
+          refusals.length > 0 && {
+            label: 'Usage limit',
+            value: (
+              <ul className="engine-overview__refusals">
+                {refusals.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            ),
+          },
           { label: 'Last check', value: lastCheckFact(connection) },
         ]}
       />

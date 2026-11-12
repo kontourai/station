@@ -1,3 +1,4 @@
+import type { EngineAllowanceEvidence } from '@kontourai/station-contracts/engine-accounts';
 import type {
   AgentConnectionView,
   EngineRouteObservation,
@@ -111,4 +112,49 @@ export function lastCheckFact(connection: AgentConnectionView): string {
     timeStyle: 'short',
   });
   return `${smoke.status === 'passed' ? 'Answered' : 'Failed'} · ${at}`;
+}
+
+const ALLOWANCE_ACCOUNT: Record<EngineAllowanceEvidence['applies'], string> = {
+  'current-account': "This engine's account",
+  'other-account': 'Another account',
+  'proxy-route': 'Its account, not used while routed through a proxy',
+};
+
+function shortTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+/**
+ * One line per account the provider refused a turn on, still fresh. The
+ * header carries the current account's reason, so its line names only the
+ * account and when; another account's line adds its reset. Empty when
+ * nothing fresh is recorded, which is unknown, not allowance left.
+ */
+export function allowanceFacts(
+  connection: AgentConnectionView,
+  now: number = Date.now(),
+): string[] {
+  return (connection.allowanceEvidence ?? [])
+    .filter((evidence) => Date.parse(evidence.expiresAt) > now)
+    .map((evidence) => {
+      const account =
+        evidence.applies === 'other-account' &&
+        evidence.account.kind === 'profile'
+          ? `Saved account ${evidence.account.ref}`
+          : evidence.applies === 'other-account'
+            ? 'The default account'
+            : ALLOWANCE_ACCOUNT[evidence.applies];
+      const reset =
+        evidence.applies === 'current-account'
+          ? ''
+          : evidence.resetAt
+            ? ` · resets ${shortTime(evidence.resetAt)}`
+            : evidence.resetReported
+              ? ` · resets ${evidence.resetReported} (provider time)`
+              : '';
+      return `${account} · refused ${shortTime(evidence.observedAt)}${reset}`;
+    });
 }

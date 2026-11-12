@@ -4836,6 +4836,11 @@ export class StationRuntime {
             this.connectionService.setSmokeRunner((input) =>
               this.orchestrationService.runConnectionSmoke(input),
             );
+            // Connections slice 6: engine views read recorded quota
+            // refusals from the same events recovery classifies.
+            this.connectionService.setAllowanceEvidenceSource(
+              this.orchestrationEventStore,
+            );
             this.usageAggregator = services.usageAggregator;
             // archive#1879: register the `conversation-store` K2 adapter and
             // (flag-gated) ensure `root:conversations` — this is the earliest

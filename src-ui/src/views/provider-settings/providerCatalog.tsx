@@ -1,4 +1,8 @@
 import {
+  currentAccountAllowanceRefusal,
+  type EngineAllowanceEvidence,
+} from '@kontourai/station-contracts/engine-accounts';
+import {
   type AgentConnectionView,
   type ConnectionReadinessEvidence,
   connectionCheckOutranksSmoke,
@@ -272,6 +276,13 @@ export type ProviderReadiness =
   | 'Cannot reach provider'
   | 'Setup required'
   | 'Limited'
+  /**
+   * The provider refused a real turn on the account this engine uses now,
+   * for its usage limit or plan quota, and the refusal is still fresh
+   * (`allowanceEvidence`, recorded by the server). Never derived from an
+   * allowance percentage.
+   */
+  | 'Usage limit reached'
   | 'Disabled'
   | 'Unreachable';
 
@@ -298,6 +309,8 @@ interface ProviderCatalogInputBase {
    * this Station has never observed).
    */
   readinessEvidence?: ConnectionReadinessEvidence;
+  /** Engines only: the server's recorded quota refusals, per account. */
+  allowanceEvidence?: readonly EngineAllowanceEvidence[];
 }
 
 /**
@@ -487,6 +500,57 @@ const REMEDY_PRESENTATION: Record<
   },
 };
 
+/** The refusal and its reset in one sentence pair, for a recorded refusal. */
+export function allowanceRefusalDetail(
+  evidence: EngineAllowanceEvidence,
+): string {
+  const refused =
+    evidence.source === 'plan-quota'
+      ? 'The provider refused a turn on its plan quota.'
+      : 'The provider refused a turn on its usage limit.';
+  if (evidence.resetAt)
+    return `${refused} Resets ${new Date(evidence.resetAt).toLocaleString(
+      undefined,
+      { dateStyle: 'medium', timeStyle: 'short' },
+    )}.`;
+  if (evidence.resetReported)
+    return `${refused} Resets ${evidence.resetReported} (provider time).`;
+  return `${refused} Reset time not reported.`;
+}
+
+/**
+ * Ready, unless the provider refused a turn on this engine's current
+ * account and that refusal is still fresh. Dispatch still accepts the
+ * engine; this reports what the provider last said.
+ */
+function readyPresentation(
+  brand: string,
+  input: ProviderCatalogInput,
+): ProviderPresentation {
+  // An engine whose status is not ready is reported by that status
+  // (`deriveConnectionHealth`); a refusal does not mask it.
+  const refusal =
+    input.kind === 'agent' &&
+    (input.status === 'ready' || input.status === 'available')
+      ? currentAccountAllowanceRefusal(input.allowanceEvidence)
+      : undefined;
+  if (refusal)
+    return {
+      brand,
+      readiness: 'Usage limit reached',
+      tone: 'warn',
+      detail: allowanceRefusalDetail(refusal),
+      actionLabel: 'Details',
+    };
+  return {
+    brand,
+    readiness: 'Ready',
+    tone: 'ready',
+    detail: 'Ready to use in chats and agents.',
+    actionLabel: 'Details',
+  };
+}
+
 export function resolveProviderPresentation(
   input: ProviderCatalogInput,
 ): ProviderPresentation {
@@ -532,15 +596,7 @@ export function resolveProviderPresentation(
       actionLabel: 'Check connection',
     };
   }
-  if (input.setup?.state === 'ready') {
-    return {
-      brand,
-      readiness: 'Ready',
-      tone: 'ready',
-      detail: 'Ready to use in chats and agents.',
-      actionLabel: 'Details',
-    };
-  }
+  if (input.setup?.state === 'ready') return readyPresentation(brand, input);
 
   if (input.setup?.state === 'configured') {
     return {
@@ -691,15 +747,8 @@ export function resolveProviderPresentation(
     }
   }
 
-  if (input.status === 'ready' || input.status === 'available') {
-    return {
-      brand,
-      readiness: 'Ready',
-      tone: 'ready',
-      detail: 'Ready to use in chats and agents.',
-      actionLabel: 'Details',
-    };
-  }
+  if (input.status === 'ready' || input.status === 'available')
+    return readyPresentation(brand, input);
 
   if (input.status === 'degraded') {
     return {

@@ -5,6 +5,7 @@ import type {
   CredentialProfileRegistryState,
   CredentialRecoveryGroupProjection,
 } from './connection-recovery';
+import type { EngineAllowanceEvidence } from './engine-accounts';
 import type { ControlPlaneObservation } from './engine-capability-matrix';
 import type { ModelInventoryExecutionIdentity } from './model-inventory';
 import type { CanonicalModelIdentityReference } from './model-inventory.js';
@@ -904,6 +905,12 @@ export interface AgentConnectionView extends ConnectionConfig {
    * read from the env Station launches it with. Absent on other engines.
    */
   routeObservation?: EngineRouteObservation;
+  /**
+   * Fresh provider-reported quota refusals from real turns on this engine,
+   * newest per credential account. Absent when none is fresh: that is
+   * unknown, never "allowance left". See `EngineAllowanceEvidence`.
+   */
+  allowanceEvidence?: EngineAllowanceEvidence[];
 }
 
 /**
