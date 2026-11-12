@@ -31,8 +31,13 @@ internal sealed class PendingShare<out T> {
  */
 internal class ShareIntakeSession<T>(
   private val taken: TakenShares,
-  private val key: (List<T>) -> String,
+  /** Settings.Global.BOOT_COUNT on Android; -1 when the platform will not say. */
+  private val bootCount: () -> Int,
+  private val taskId: () -> Int,
+  private val describe: (T) -> String,
 ) {
+  private val key: (List<T>) -> String = { streams -> shareKey(bootCount(), taskId(), streams.map(describe)) }
+
   private val lock = Any()
   private var pending: PendingShare<T> = PendingShare.None
   private var pendingKey: String? = null
@@ -133,30 +138,53 @@ internal class IntakeSources<T>(
     )
 }
 
-/** Holds the latest value until taken; a matching [discard] drops it. */
-internal class LatestBuffer<T : Any> {
-  @Volatile private var value: T? = null
+/**
+ * Holds the latest accepted value until taken. Only a value [accepts] admits
+ * replaces a held one, so an unrelated value cannot push out a held share.
+ * It remembers what [take] drained, so the same value delivered afterwards
+ * is not handled twice.
+ */
+internal class LatestBuffer<T : Any>(private val accepts: (T) -> Boolean) {
+  private var value: T? = null
+  private var drained: T? = null
 
   fun offer(next: T) {
-    value = next
+    if (!accepts(next)) return
+    synchronized(this) { value = next }
   }
 
-  fun take(): T? = synchronized(this) { value.also { value = null } }
+  fun take(): T? = synchronized(this) {
+    val taken = value
+    value = null
+    if (taken != null) drained = taken
+    taken
+  }
 
-  fun discard(delivered: T) {
-    synchronized(this) { if (value === delivered) value = null }
+  /**
+   * A value delivered to a loaded receiver: false when [take] already drained
+   * this very value (by identity); otherwise drops it if held and returns true.
+   */
+  fun claimDelivered(delivered: T): Boolean = synchronized(this) {
+    if (drained === delivered) return@synchronized false
+    if (value === delivered) value = null
+    true
   }
 }
+
+/** A new intent for a loaded plugin: adopted unless `load` already drained it. */
+internal fun <I : Any> deliverNewIntent(buffer: LatestBuffer<I>, intent: I, adopt: (I) -> Boolean): Boolean =
+  buffer.claimDelivered(intent) && adopt(intent)
 
 /**
  * Intents MainActivity receives in `onNewIntent`. Tauri forwards a new intent
  * only to plugins already registered, and after process death a share can
  * arrive before this plugin loads; MainActivity offers every new intent here
- * (scripts/apply-android-native-bootstrap.mjs adds that override), a loaded
- * plugin discards the one it was handed, and `load` takes any left.
+ * (scripts/apply-android-native-bootstrap.mjs adds that override); only an
+ * image share is kept, a loaded plugin claims the one it was handed (skipping
+ * one `load` already drained), and `load` takes any left.
  */
 object ShareIntentBuffer {
-  internal val intents = LatestBuffer<Intent>()
+  internal val intents = LatestBuffer<Intent> { isImageShare(it.action, it.type) }
 
   @JvmStatic
   fun offer(intent: Intent) = intents.offer(intent)

@@ -27,8 +27,8 @@ class ShareIntakeSessionTest {
 
   private val notAShare = IntentFacts<String>("android.intent.action.MAIN", null, false) { null to null }
 
-  private fun session(taken: MemoryTaken = MemoryTaken()) =
-    ShareIntakeSession<String>(taken) { streams -> shareKey(1, 9, streams) }
+  private fun session(taken: MemoryTaken = MemoryTaken(), boot: Int = 1) =
+    ShareIntakeSession<String>(taken, bootCount = { boot }, taskId = { 9 }, describe = { it })
 
   @Test
   fun loadAdoptsTheLaunchIntentAsALaunch() {
@@ -96,6 +96,18 @@ class ShareIntakeSessionTest {
   }
 
   @Test
+  fun aTakenShareDoesNotSuppressTheSameTaskAfterAReboot() {
+    val taken = MemoryTaken()
+    val first = session(taken, boot = 1)
+    assertTrue(first.onLoad(share("content://media/1"), null))
+    first.take()
+    // Same boot: a restored launch intent is a replay.
+    assertFalse(session(taken, boot = 1).onLoad(share("content://media/1"), null))
+    // After a reboot the task id may be reused; the share is new.
+    assertTrue(session(taken, boot = 2).onLoad(share("content://media/1"), null))
+  }
+
+  @Test
   fun shareKeysDependOnTheBoot() {
     assertTrue(shareKey(1, 9, listOf("a")) != shareKey(2, 9, listOf("a")))
     assertEquals(shareKey(1, 9, listOf("a")), shareKey(1, 9, listOf("a")))
@@ -150,18 +162,48 @@ class ShareIntakeSessionTest {
 
   // --- Buffer ----------------------------------------------------------
 
+  private class Delivery(val share: Boolean)
+
   @Test
-  fun theBufferKeepsTheLatestUntilTakenAndDropsOnlyWhatWasDelivered() {
-    val buffer = LatestBuffer<Any>()
-    val first = Any()
-    val second = Any()
+  fun theBufferKeepsTheLatestShareUntilTakenAndDropsOnlyWhatWasDelivered() {
+    val buffer = LatestBuffer<Delivery> { it.share }
+    val first = Delivery(true)
+    val second = Delivery(true)
     buffer.offer(first)
     buffer.offer(second)
-    buffer.discard(first)
+    assertTrue(buffer.claimDelivered(first))
     assertSame(second, buffer.take())
     assertNull(buffer.take())
-    buffer.offer(first)
-    buffer.discard(first)
+    val third = Delivery(true)
+    buffer.offer(third)
+    assertTrue(buffer.claimDelivered(third))
+    assertNull(buffer.take())
+  }
+
+  @Test
+  fun onlyAShareReplacesABufferedShare() {
+    val buffer = LatestBuffer<Delivery> { it.share }
+    val share = Delivery(true)
+    buffer.offer(share)
+    buffer.offer(Delivery(false))
+    assertSame(share, buffer.take())
+  }
+
+  @Test
+  fun anIntentLoadDrainedIsNotAdoptedAgainWhenDelivered() {
+    val buffer = LatestBuffer<Delivery> { it.share }
+    val share = Delivery(true)
+    buffer.offer(share)
+    // load (off the main thread) drains it before Tauri forwards it.
+    assertSame(share, buffer.take())
+    val adopted = mutableListOf<Delivery>()
+    assertFalse(deliverNewIntent(buffer, share) { adopted.add(it) })
+    assertEquals(emptyList<Delivery>(), adopted)
+    // A different intent still reaches the plugin.
+    val next = Delivery(true)
+    buffer.offer(next)
+    assertTrue(deliverNewIntent(buffer, next) { adopted.add(it) })
+    assertEquals(listOf(next), adopted)
     assertNull(buffer.take())
   }
 }

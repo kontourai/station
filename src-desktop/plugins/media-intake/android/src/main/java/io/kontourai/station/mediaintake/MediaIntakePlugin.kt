@@ -47,7 +47,9 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
         store.edit().putString(TAKEN_KEYS, keys.joinToString("\n")).apply()
       }
     },
-    key = { streams -> shareKey(bootCount(), activity.taskId, streams.map { it.toString() }) },
+    bootCount = ::bootCount,
+    taskId = { activity.taskId },
+    describe = { it.toString() },
   )
 
   private val sources = IntakeSources<Uri>(
@@ -73,9 +75,11 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
   }
 
   override fun onNewIntent(intent: Intent) {
-    // MainActivity buffered this same intent before Tauri forwarded it here.
-    ShareIntentBuffer.intents.discard(intent)
-    if (session.onNewIntent(facts(intent))) trigger(SHARED_IMAGES_EVENT, JSObject())
+    // MainActivity buffered this same intent before Tauri forwarded it here;
+    // one `load` already drained is not adopted twice.
+    if (deliverNewIntent(ShareIntentBuffer.intents, intent) { session.onNewIntent(facts(it)) }) {
+      trigger(SHARED_IMAGES_EVENT, JSObject())
+    }
   }
 
   private fun facts(intent: Intent) = IntentFacts(

@@ -102,6 +102,8 @@ defined in [`share-image.ts`](../../src-ui/src/platform/native/share-image.ts).
   records the intent (`setIntent`) and offers it to the plugin's buffer
   before Tauri forwards it: Tauri forwards a new intent only to plugins
   already loaded, and after process death a share can arrive first. The
+  buffer keeps image shares only, and an intent `load` already drained is not
+  adopted again when Tauri delivers it. The
   plugin adopts, in `load`, a buffered share as a fresh share or else the
   launch intent's share, and a share delivered to `onNewIntent` (running),
   which alone triggers `sharedImages`; it keeps only the URIs, and

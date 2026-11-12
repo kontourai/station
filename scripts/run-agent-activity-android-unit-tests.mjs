@@ -103,7 +103,10 @@ const REQUIRED_TEST_CASES = Object.freeze({
     'everyReadIsHeldToTheUriGuard',
     'aFailedOwnProviderLookupRefusesEverySource',
     'theClipboardNeverAsksTypesOfSourcesItWouldRefuse',
-    'theBufferKeepsTheLatestUntilTakenAndDropsOnlyWhatWasDelivered',
+    'theBufferKeepsTheLatestShareUntilTakenAndDropsOnlyWhatWasDelivered',
+    'onlyAShareReplacesABufferedShare',
+    'anIntentLoadDrainedIsNotAdoptedAgainWhenDelivered',
+    'aTakenShareDoesNotSuppressTheSameTaskAfterAReboot',
   ],
 });
 

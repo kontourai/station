@@ -166,6 +166,17 @@ describe('capability report forward compatibility', () => {
     expect((await report(noReason)).status).toBe('error');
   });
 
+  it('rejects a malformed entry for an optional known id', async () => {
+    for (const id of ['image-share-intake', 'clipboard-image']) {
+      const corrupted = CAPABILITIES.map((capability) =>
+        capability.id === id
+          ? { ...capability, state: 'sometimes' }
+          : capability,
+      );
+      expect((await report(corrupted)).status).toBe('error');
+    }
+  });
+
   it('still rejects an entry that is not a capability at all', async () => {
     expect((await report([...CAPABILITIES, 'haptics'])).status).toBe('error');
     expect((await report([...CAPABILITIES, { state: 'enabled' }])).status).toBe(
