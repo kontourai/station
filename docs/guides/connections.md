@@ -364,11 +364,24 @@ without switching or opening the chooser. On a phone the chooser offers
 **Connect another device** where a computer offers **Pair phone**.
 
 Opening the chooser checks whether each other Station answers its public
-handshake, from this device, without credentials. A green dot means it
-answered; **Unreachable** means nothing did within a few seconds. Answering
-proves only that the address responds, not that this device still has access.
-Stations reached through a broker route are not checked, nor, from an HTTPS
-page, a plain-HTTP address other than loopback, which the browser would block.
+handshake, from this device, without credentials. Each row reads **Checking…**
+until its answer arrives, then **Online** or **Unreachable**, with why and
+when: "no answer in time" or "nothing answered", "checked just now", and when
+this device last connected to it. Answering proves only that the address
+responds, not that this device still has access. Stations reached through a
+broker route are not checked, nor, from an HTTPS page, a plain-HTTP address
+other than loopback, which the browser would block; those rows show the last
+failure this device saved and how old it is, or **Not checked**. A Station that
+refused this device reads **Needs access** with when it refused. The current
+Station's row shows its live status, why its last check failed if it did, and
+when it was checked. Station checks the current Station every 10 seconds while
+it is healthy and sooner, backing off to 10 seconds, while it is failing, and
+again whenever the app returns to the foreground.
+
+After you choose a Station, the app names it, its address and the step it is
+on while it verifies access. If that takes longer than six seconds, it offers
+**Try again**, **Back to** the Station you came from, and **Manage Stations**,
+instead of waiting out the request deadline.
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**

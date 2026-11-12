@@ -47,6 +47,11 @@ export interface ConnectionHealthSnapshot {
   }>;
   /** Per-route outcome of the last completed run, in probe order. */
   routes: ReadonlyArray<ConnectionRouteResult>;
+  /**
+   * When the last run finished (epoch ms), whatever its outcome; null until
+   * one has. An aborted run is not a check and leaves it unchanged.
+   */
+  checkedAt: number | null;
 }
 
 export type ConnectionHealthCheckResult =
@@ -89,6 +94,7 @@ export class ConnectionHealthCoordinator {
     blocked: false,
     failureWindows: [],
     routes: [],
+    checkedAt: null,
   };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private windowOpen = false;
@@ -175,6 +181,7 @@ export class ConnectionHealthCoordinator {
           endpointId: endpoint.id,
           state: index === 0 ? 'in-use' : 'not-checked',
         })),
+        checkedAt: Date.now(),
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
       this.runQueuedCheck();
@@ -261,6 +268,7 @@ export class ConnectionHealthCoordinator {
         blocked: false,
         failureWindows: this.closeFailureWindow(),
         routes: routeResults,
+        checkedAt: Date.now(),
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
     } else {
@@ -319,6 +327,7 @@ export class ConnectionHealthCoordinator {
         blocked,
         failureWindows,
         routes: routeResults,
+        checkedAt: Date.now(),
       });
       if (!blocked) this.schedule(this.retryDelay());
     }

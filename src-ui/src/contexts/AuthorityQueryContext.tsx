@@ -118,6 +118,7 @@ import {
   QueryClient,
   QueryClientProvider,
   useQuery,
+  useQueryClient,
 } from '@tanstack/react-query';
 import {
   type AsyncStorage,
@@ -137,7 +138,7 @@ import {
   notifyPluginCommandEffectAuthoritySwitch,
   notifyPluginCommandEffectCookieAuthEligibility,
 } from '../components/plugin-command-effect-switch-signal';
-import { StartupScreen } from '../components/StartupScreen';
+import { StationConnectingScreen } from '../components/StationConnectingScreen';
 import { retireStationConnectionRegistries } from '../connections/station-connection-registry';
 import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
 import {
@@ -380,6 +381,18 @@ export function AuthorityQueryProvider({
   const reobserve = useCallback(() => {
     void refetchObservation();
   }, [refetchObservation]);
+  // A first read still in flight has no data, and React Query's `refetch`
+  // joins such a fetch rather than restarting it, so "Try again" cancels
+  // the stuck read (aborting its request) before reading again.
+  const observationClient = useQueryClient();
+  const observationKeyText = JSON.stringify(observationKey);
+  const restartObservation = useCallback(() => {
+    const queryKey: unknown[] | null = JSON.parse(observationKeyText);
+    if (!queryKey) return;
+    void observationClient
+      .cancelQueries({ queryKey, exact: true })
+      .then(() => refetchObservation());
+  }, [observationClient, observationKeyText, refetchObservation]);
 
   // A cached success from a previous activation must never verify the
   // current one: while the current key's fetch is in flight React Query
@@ -681,7 +694,7 @@ export function AuthorityQueryProvider({
     // Let the native aggregate seed before boot-critical hooks mount; otherwise
     // it would compete with the individual requests it is meant to replace.
     if (profile.isTauri && nativeBootFinished !== active.queryClient) {
-      return <StartupScreen message="Loading Station" />;
+      return <StationConnectingScreen step="Loading Station" />;
     }
     return (
       <AuthorityPersistenceContext.Provider
@@ -744,7 +757,10 @@ export function AuthorityQueryProvider({
     <AuthorityPersistenceContext.Provider
       value={{ status: 'unavailable', namespace: null, observation: null }}
     >
-      <StartupScreen message="Checking Station access" />
+      <StationConnectingScreen
+        step="Checking Station access"
+        onRetry={restartObservation}
+      />
     </AuthorityPersistenceContext.Provider>
   );
 }
