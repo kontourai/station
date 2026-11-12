@@ -44,9 +44,10 @@ the repair at six reads against a maximum of five. All 54 publication, custody
 and local-grant cases pass after it; the unboxed-result mutation fails the exact
 validation sequence and byte-exact restoration passes. An earlier observer used
 the wrong temporary-home path and measured zero; that attempt is invalid cost
-evidence. Server-test types pass. The full finalizer batch at this revision has
-again timed out in lost-reappraisal; its remaining cases are still running at
-this checkpoint. No end-to-end speedup or finalizer qualification follows.
+evidence. Server-test types pass. The full finalizer batch at this revision
+passes 17 cases and fails lost-reappraisal at 60 seconds (519.36 seconds total).
+The original configured command is terminal with exit 1. No end-to-end speedup
+or finalizer qualification follows.
 
 Installed Claude Agent SDK is now 0.3.318. The older CLI 2.1.318 / Agent SDK
 0.3.312 native witness remains historical, including its separate wrong-ACK
