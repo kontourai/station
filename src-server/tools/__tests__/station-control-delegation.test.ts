@@ -1001,6 +1001,44 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal).not.toHaveBeenCalled();
   });
 
+  test('a durable delegation key cannot replay under changed inherited policy', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const input = {
+      prompt: 'Use this exact policy',
+      clientTurnId: 'inherited-policy-key',
+      createRequestIntent: { prompt: 'Use this exact policy' },
+      target: currentTarget(),
+      delegation: {
+        mode: 'isolated-child' as const,
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('parent'),
+        rootAgentSlug: agentId('root'),
+        toolAllowlistConstraints: [['repo_read']],
+      },
+    };
+    const original = await delegateTask(input, service as never);
+    await expect(delegateTask(input, service as never)).resolves.toEqual(
+      original,
+    );
+    await expect(
+      delegateTask(
+        {
+          ...input,
+          delegation: {
+            ...input.delegation,
+            toolAllowlistConstraints: [['repo_write']],
+          },
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
   test('executes a local delegation through the injected canonical service', async () => {
     installCurrentStationFetch();
     const service = localService();

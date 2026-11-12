@@ -136,24 +136,33 @@ const CONSUMED_FLAGS: Record<
         }),
       },
     );
-    const response = await routes.request('/chat/delegated', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        clientTurnId: 'tool-constraints-probe',
-        message: 'Read within scope',
-        target: { environment: { kind: 'current' }, agent: 'station' },
-        delegation: {
-          mode: 'isolated-child',
-          depth: 1,
-          maxDepth: 2,
-          parentAgentSlug: 'parent',
-          rootAgentSlug: 'root',
-          toolAllowlistConstraints: [['repo_read']],
-        },
-      }),
-    });
+    const body = {
+      clientTurnId: 'tool-constraints-probe',
+      message: 'Read within scope',
+      target: { environment: { kind: 'current' }, agent: 'station' },
+      delegation: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: 'parent',
+        rootAgentSlug: 'root',
+        toolAllowlistConstraints: [['repo_read']],
+      },
+    };
+    const post = () =>
+      routes.request('/chat/delegated', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const response = await post();
     expect(response.status, await response.clone().text()).toBe(200);
+    const replay = await post();
+    expect(replay.status, await replay.text()).toBe(200);
+    body.delegation.toolAllowlistConstraints = [['repo_write']];
+    const changed = await post();
+    expect(changed.status, await changed.text()).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
     const delegation = execute.mock.calls[0]?.[0].delegation;
     return (
       response.status === 200 &&
