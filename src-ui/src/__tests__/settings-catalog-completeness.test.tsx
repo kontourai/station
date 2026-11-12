@@ -2257,7 +2257,7 @@ describe('settings catalog completeness', () => {
       expect(reset.disabled).toBe(true);
       expect(
         screen.getByText(
-          'Save or discard your unsaved changes first. Discard is always available.',
+          'Save or discard your changes first.',
         ),
       ).toBeTruthy();
       fireEvent.click(reset);

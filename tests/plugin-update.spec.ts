@@ -432,9 +432,16 @@ test.describe('Plugin Update Flow', () => {
     await expect(
       page.getByRole('heading', { name: 'Lifecycle Plugin' }),
     ).toBeVisible();
-    await expect(page.getByText('layout:ops')).toBeVisible();
-    await expect(page.getByText('agent:lifecycle-agent')).toBeVisible();
-    await expect(page.getByText('type:voice')).toBeVisible();
+    const adds = page.locator('.plugins__contributions');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Layout' }),
+    ).toContainText('Ops');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Agent' }),
+    ).toContainText('Lifecycle Agent');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Connection type' }),
+    ).toContainText('voice');
     await expect(page.getByText('main@abcdef1')).toBeVisible();
 
     await page.getByRole('button', { name: 'Update to v2.0.0' }).click();
