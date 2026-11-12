@@ -185,7 +185,7 @@
   line-clamp: 1;
 }
 .room-channel--screen .room-channel__topic {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .room-channel-list__item[data-tone="danger"] {
   color: var(--k-negative);
