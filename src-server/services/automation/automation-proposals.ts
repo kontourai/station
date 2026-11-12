@@ -38,7 +38,6 @@ import {
   type AutomationSource,
   type AutomationSourceProposalInput,
 } from '@kontourai/station-contracts/automation';
-import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import { z } from 'zod';
 import type { StationControlPolicyCaller } from '../../tools/station-control-policy.js';
 import { isRecord } from '../../utils/is-record.js';
@@ -46,8 +45,10 @@ import {
   type TransactionalSqliteDatabase,
   writeTransaction,
 } from '../orchestration/delegation-result-delivery.js';
-import type { EventStore } from '../orchestration/event-store.js';
-import { readSessionDispatchFacts } from '../orchestration/session-dispatch-facts.js';
+import {
+  type CurrentTurnStartReader,
+  isCurrentTurnPersonAuthored,
+} from '../orchestration/turn-authorship.js';
 import { automationConfigurationProblems } from './automation-config-validation.js';
 
 const RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -623,72 +624,25 @@ export function describeRuleProposal(
 
 // ── who may propose ───────────────────────────────────────────────────────
 
-export interface AutomationProposerReads {
-  /**
-   * The origin of the Session's current turn: its newest turn that was not a
-   * delegated result (#4512 `readSessionDispatchFacts().priorOrigin`).
-   */
-  currentTurnOrigin(sessionId: string): TurnDispatchOrigin;
-  /**
-   * A delegated child Station derived or attested (its start's delegation
-   * provenance stamp, #4512 `delegatedChild`).
-   */
-  delegatedChild(sessionId: string): boolean;
-  /**
-   * `createdBy` of the Task the Session runs for: `undefined` when it is not
-   * bound to a Task, `null` when bound to one Station cannot read.
-   */
-  boundTaskCreatedBy(sessionId: string): string | null | undefined;
-}
-
 /**
- * The production reads over the orchestration event store and the Task
- * graph: the #4512 dispatch facts for the current turn and delegation
- * provenance, and the room execution binding for the Task.
- */
-export function automationProposerReads(
-  eventStore: Pick<
-    EventStore,
-    | 'latestEventByMethod'
-    | 'listEventsByMethods'
-    | 'readProjectTaskRoomExecutionBinding'
-  >,
-  readTaskView: (
-    taskId: string,
-  ) => { readonly createdBy?: string } | null | undefined,
-): AutomationProposerReads {
-  return {
-    currentTurnOrigin: (sessionId) =>
-      readSessionDispatchFacts(eventStore, sessionId).priorOrigin(),
-    delegatedChild: (sessionId) =>
-      readSessionDispatchFacts(eventStore, sessionId).delegatedChild,
-    boundTaskCreatedBy: (sessionId) => {
-      const binding = eventStore.readProjectTaskRoomExecutionBinding(sessionId);
-      if (!binding) return undefined;
-      const task = readTaskView(binding.taskId);
-      return task ? (task.createdBy ?? '') : null;
-    },
-  };
-}
-
-/**
- * Whether a Session's current turn may propose automations. Fail closed
- * (#4830 review): only a turn Station recorded as a person's own
- * (`interactive`) qualifies. `unknown`, a missing turn record, a delegated
- * child Station derived, a Session running for an `automation-rule` Task (or
- * a Task Station cannot read), and anything Station cannot read refuse. So
- * work an automation started (§5 "Never") never proposes, whether its turn
- * says `automation`, `delegation`, `task-dispatch` or nothing at all.
+ * Whether the Session's current turn may propose automations: only a turn a
+ * person typed into one of Station's own clients, by the shared server-stamped
+ * mark (#4827 `isCurrentTurnPersonAuthored`), decided by how the newest turn
+ * started, never a steer. Not `dispatchOrigin` (#4830 re-review): a
+ * delegated child's result continuing in a person's chat is `interactive`
+ * but carries no mark. So an automation's run, a delegated result, a
+ * `/chat/delegated` peer, a background run, the CLI, MCP, a Task dispatch,
+ * a check-back and any turn recorded before the mark all refuse, as does a
+ * read Station cannot make (fail closed). A Session that acts for no one
+ * (an automation-rule Task's, a webhook's) is refused before this by its
+ * missing recorded owner.
  */
 export function sessionMayProposeAutomations(
-  reads: AutomationProposerReads,
+  store: CurrentTurnStartReader,
   sessionId: string,
 ): boolean {
   try {
-    const createdBy = reads.boundTaskCreatedBy(sessionId);
-    if (createdBy === null || createdBy === 'automation-rule') return false;
-    if (reads.delegatedChild(sessionId)) return false;
-    return reads.currentTurnOrigin(sessionId) === 'interactive';
+    return isCurrentTurnPersonAuthored(store, sessionId);
   } catch {
     return false;
   }

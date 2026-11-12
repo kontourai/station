@@ -69,15 +69,23 @@ This is the `propose_job` pattern Station already uses for scheduled jobs.
   claiming the proposal, then again inside the configuration store's lock
   for creation and for enabling. A binding that changed or cannot be read
   creates nothing.
-- **Only a person's own turn may propose (fail closed).** An automation run
-  still cannot change automations (§5 "Never"). A proposal is allowed only
-  when the calling Session acts for a recorded owner and its current turn's
-  #4512 `dispatchOrigin` is `interactive`. These are refused:
-  - `automation`, `delegation`, `task-dispatch` and `unknown` turns;
-  - a missing turn record;
-  - a delegated child Station derived (its start's provenance stamp);
-  - a Session running for an `automation-rule` Task, or one Station cannot
-    read.
+- **Only a turn a person typed may propose (fail closed).** An automation
+  run still cannot change automations (§5 "Never"). A proposal is allowed
+  only when the calling Session acts for a recorded owner and its current
+  turn carries the shared, server-stamped person mark
+  ([#4848](https://github.com/kontourai/station/pull/4848),
+  `isCurrentTurnPersonAuthored`). Station stamps that mark only on a turn the
+  web, desktop or mobile composer sent with a person credential, and it
+  decides by how the newest turn started, never by a steer.
+  - Everything else refuses: an automation's run, a delegated child's result
+    continuing in the person's chat, a peer Station's `/chat/delegated` send,
+    a background run, the CLI, an MCP prompt, a Task dispatch, a check-back, a
+    turn recorded before the mark, no turn at all, and an unreadable store.
+  - `dispatchOrigin: 'interactive'` is not enough. It says whose chat a turn
+    was placed in, and a child's result continuing in a person's chat
+    inherits it (the #4850 re-review's finding).
+  - A Session running for an `automation-rule` Task acts for no one, so it
+    is refused earlier, by its missing recorded owner.
 
   A delegated `send_message` that names a conversation no Session holds yet
   now records `delegation`, not `unknown`.

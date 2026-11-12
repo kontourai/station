@@ -5381,11 +5381,12 @@ conditions, instructions and reason stay in the proposal's `source` or
 `rule` and `rationale`, and the card shows them apart, whole.
 It is refused with one of these codes:
 
-- 403 `automation_proposal_unattended`: the Session's current turn is not
-  one Station recorded as a person's own (`interactive`). An automation's
-  run, a delegated child, a check-back, a Task dispatch, an `unknown` or
-  missing origin, and a Session running for an `automation-rule` Task are
-  all refused. A Session that acts for no one is refused earlier by the
+- 403 `automation_proposal_unattended`: the Session's newest turn did not
+  start with the server-stamped person mark (`authoredBy: 'person'`, read
+  by `isCurrentTurnPersonAuthored`). Only the composer sets it. A delegated
+  child's result, a `/chat/delegated` peer send, a background or CLI run,
+  an MCP prompt, an automation, a Task dispatch, a check-back, a turn
+  recorded before the mark, and no turn at all are refused. A Session that acts for no one is refused earlier by the
   station-control guard (`station_control_role_required`).
 - 403 `automation_proposal_exceeds_authority`: a Project or Agent outside
   the chat's dispatch scope, an action other than `dispatch-task`,

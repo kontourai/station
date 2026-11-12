@@ -964,10 +964,10 @@ grant more than this chat could do itself:
 - `approvalMode: "auto"`;
 - `fullAccessGrant`, a credential, a secret, `enabled` or `mode`.
 
-Only a turn a person sent in their own chat can propose
-(`automation_proposal_unattended`). A turn an automation, a delegation, a
-check-back or a Task dispatch started cannot, and neither can a turn whose
-origin Station did not record. If this chat has read content written by
+Only a turn a person typed into Station's composer can propose
+(`automation_proposal_unattended`). A turn started by anything else cannot:
+an automation, a delegated child's result in the person's chat, a peer
+Station, the CLI, an MCP prompt, a Task dispatch or a check-back. If this chat has read content written by
 others (#3483), when it proposes or at any time before the person answers,
 the card tells the person so. The card shows Station's own description, and
 apart from it, under "Written by the agent", the name, conditions, reason

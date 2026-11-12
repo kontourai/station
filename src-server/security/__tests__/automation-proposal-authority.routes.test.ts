@@ -50,7 +50,6 @@ import { automationConfigurationFingerprint } from '../../services/automation/au
 import {
   AUTOMATION_PROPOSAL_UNTRUSTED_COPY,
   automationIdForProposal,
-  automationProposerReads,
   sessionMayProposeAutomations,
 } from '../../services/automation/automation-proposals.js';
 import { AutomationStore } from '../../services/automation/automation-store.js';
@@ -111,8 +110,6 @@ const facts = {
   operator: true,
   /** Conversations the person may not send to. */
   mayNotSend: new Set<string>(),
-  /** Tasks the stubbed Task graph reads, by id. */
-  tasks: new Map<string, { createdBy: string }>(),
   /** Runs on each operator check: before the claim, then inside each lock. */
   onOperatorCheck: undefined as (() => void) | undefined,
 };
@@ -205,13 +202,7 @@ function compose() {
         return structuredClone(agent);
       },
       mayPropose: (sessionId) =>
-        sessionMayProposeAutomations(
-          automationProposerReads(
-            eventStore,
-            (taskId) => facts.tasks.get(taskId) ?? null,
-          ),
-          sessionId,
-        ),
+        sessionMayProposeAutomations(eventStore, sessionId),
       untrustedContent: async (conversationId) =>
         (await ledger.conversationHasRead(conversationId)) ||
         ledger.hasDescendantRead(conversationId),
@@ -300,7 +291,6 @@ beforeEach(() => {
   refusals.length = 0;
   facts.operator = true;
   facts.mayNotSend.clear();
-  facts.tasks.clear();
   facts.onOperatorCheck = undefined;
   AGENTS.set('writer', WRITER);
 });
@@ -308,19 +298,68 @@ beforeEach(() => {
 type Channel = 'bound' | 'delegated-custody';
 
 let counter = 0;
+
+const ORIGIN = (
+  actor: Record<string, string>,
+  surface = 'web',
+  sender?: Record<string, string>,
+) => ({
+  version: 1,
+  actor,
+  reported: { version: 1, surface, build: null },
+  ...(sender ? { sender } : {}),
+});
+
 /**
- * A Session whose current turn a person sent: the `turn.started` a person's
- * own send records (#4512 `interactive`, from an operator client origin).
- * Only such a turn may propose (fail closed); a test that needs another
- * origin appends a newer turn, or uses {@link bareSession}.
+ * Each `turn.started` shape as Station's own writers stamp it (#4827's
+ * `turn-authorship` table). Only the composer marks a turn
+ * `authoredBy: 'person'`; every other entry point leaves the mark off.
  */
-const nextSession = (prefix = 'op-') => {
-  const sessionId = bareSession(prefix);
-  appendTurn(sessionId, 'interactive');
-  return sessionId;
-};
-const bareSession = (prefix = 'op-') => `${prefix}${++counter}`;
-function appendTurn(sessionId: string, dispatchOrigin: string) {
+const TURN = {
+  /** A person typed it into the web, desktop or mobile composer. */
+  composer: {
+    clientOrigin: ORIGIN({ kind: 'operator' }),
+    dispatchOrigin: 'interactive',
+    authoredBy: 'person',
+  },
+  /** The CLI or a background run on the operator's credential: no mark. */
+  cli: {
+    clientOrigin: ORIGIN({ kind: 'operator' }, 'cli'),
+    dispatchOrigin: 'interactive',
+  },
+  /** An MCP prompt expansion, though sent from a composer. */
+  mcpPrompt: {
+    clientOrigin: ORIGIN({ kind: 'operator' }),
+    dispatchOrigin: 'interactive',
+    promptSource: 'mcp-prompt',
+    authoredBy: 'person',
+  },
+  /** A peer Station's `/chat/delegated` send on its device grant. */
+  peerDelegated: {
+    clientOrigin: ORIGIN({ kind: 'device', deviceId: 'peer-grant' }),
+    dispatchOrigin: 'unknown',
+  },
+  automation: {
+    clientOrigin: ORIGIN({ kind: 'internal' }),
+    dispatchOrigin: 'automation',
+  },
+  taskDispatch: {
+    clientOrigin: ORIGIN({ kind: 'internal' }),
+    dispatchOrigin: 'task-dispatch',
+  },
+  delegation: {
+    clientOrigin: ORIGIN({ kind: 'internal' }),
+    dispatchOrigin: 'delegation',
+  },
+  /** A turn recorded before the mark existed. */
+  unmarked: {},
+} as const;
+
+function appendTurn(
+  sessionId: string,
+  shape: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+) {
   eventStore.appendEvent({
     eventId: `${sessionId}-turn-${++counter}`,
     provider: 'claude',
@@ -328,16 +367,23 @@ function appendTurn(sessionId: string, dispatchOrigin: string) {
     createdAt: '2026-11-12T00:00:00.000Z',
     method: 'turn.started',
     turnId: `turn-${counter}`,
-    dispatchOrigin,
-    clientOrigin: {
-      version: 1,
-      actor: {
-        kind: dispatchOrigin === 'interactive' ? 'operator' : 'internal',
-      },
-      reported: { version: 1, surface: 'unknown', build: null },
-    },
+    prompt: 'Set up an automation.',
+    ...shape,
+    ...extra,
   } as never);
 }
+
+/**
+ * A Session whose current turn a person typed into the composer: the only
+ * turn that may propose. A test for another start appends a newer turn, or
+ * uses {@link bareSession} (no turn at all).
+ */
+const nextSession = (prefix = 'op-') => {
+  const sessionId = bareSession(prefix);
+  appendTurn(sessionId, TURN.composer);
+  return sessionId;
+};
+const bareSession = (prefix = 'op-') => `${prefix}${++counter}`;
 
 async function agent(
   channel: Channel,
@@ -697,10 +743,13 @@ describe('a proposal never grants more than the proposing chat holds', () => {
   });
 });
 
-describe('work an automation started cannot propose automations (§5 Never)', () => {
-  const refusedAsUnattended = async (
+describe('only a turn a person typed may propose (§5 Never; #4830 re-review clause A)', () => {
+  const refused = async (
     sessionId: string,
-    refusal: Record<string, string>,
+    refusal: Record<string, string> = {
+      code: 'automation_proposal_unattended',
+      error: AUTOMATION_PROPOSAL_COPY.startedByAutomation,
+    },
   ) => {
     for (const [path, body] of [
       [SOURCES, SOURCE],
@@ -716,78 +765,116 @@ describe('work an automation started cannot propose automations (§5 Never)', ()
     ).toEqual([]);
   };
 
-  test("a turn an automation sent (a rule's action or a scheduled run) is refused", async () => {
+  test("a person's composer turn proposes a source and a rule", async () => {
     const sessionId = nextSession();
-    eventStore.appendEvent({
-      eventId: `${sessionId}-turn`,
-      provider: 'claude',
-      threadId: sessionId,
-      createdAt: '2026-11-12T00:00:00.000Z',
-      method: 'turn.started',
-      turnId: 'turn-1',
-      dispatchOrigin: 'automation',
-    } as never);
-    await refusedAsUnattended(sessionId, {
-      code: 'automation_proposal_unattended',
-      error: AUTOMATION_PROPOSAL_COPY.startedByAutomation,
-    });
+    const source = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
+    const proposedRule = await agent(
+      'bound',
+      sessionId,
+      'POST',
+      RULES,
+      rule({ sourceProposalId: source.body.data.id }),
+    );
+    expect([source.status, proposedRule.status]).toEqual([200, 200]);
   });
 
-  test("a Session bound to an automation rule's Task is refused, whatever its turn", async () => {
+  test("a delegated child's result continuing in the person's chat cannot propose", async () => {
+    // The reviewer's probe: the production start port delivers the result
+    // into the person's chat (after the person's own composer turn), over
+    // the production dispatch facts; the continuation persists exactly the
+    // provenance the port emits. It carries `dispatchOrigin: 'interactive'`
+    // but no person mark.
+    const { delegationResultStartPort, readSessionDispatchFacts } =
+      await import('../../runtime/routes/conversation-start-ports.js');
     const sessionId = nextSession();
-    facts.tasks.set('task-auto', { createdBy: 'automation-rule' });
-    expect(
-      await eventStore.bindProjectTaskRoomExecution({
-        projectId: 'local-project-a',
-        taskId: 'task-auto',
-        sessionId,
-      }),
-    ).toEqual({ kind: 'bound' });
-    // A later check-back it scheduled for itself is Task-dispatch work.
-    eventStore.appendEvent({
-      eventId: `${sessionId}-turn`,
-      provider: 'claude',
-      threadId: sessionId,
-      createdAt: '2026-11-12T00:00:00.000Z',
-      method: 'turn.started',
-      turnId: 'turn-2',
-      dispatchOrigin: 'task-dispatch',
-    } as never);
-    await refusedAsUnattended(sessionId, {
-      code: 'automation_proposal_unattended',
-      error: AUTOMATION_PROPOSAL_COPY.startedByAutomation,
+    const continued: Array<Record<string, any>> = [];
+    const deliver = delegationResultStartPort({
+      origin: ORIGIN({ kind: 'internal' }, 'unknown') as never,
+      readProjectTaskRoomExecutionBinding: (id) =>
+        eventStore.readProjectTaskRoomExecutionBinding(id),
+      sessionFacts: (id) => readSessionDispatchFacts(eventStore, id),
+      continueAsRecordedActor: async (input, threadId) => {
+        continued.push(input as never);
+        appendTurn(threadId, {
+          dispatchOrigin: input.dispatchOrigin,
+          clientOrigin: input.clientOrigin,
+        });
+        return {
+          outcome: 'started' as const,
+          conversationId: input.conversationId,
+          sessionId: threadId,
+          turnId: `${threadId}-result`,
+        };
+      },
     });
+    await deliver({
+      parentConversationId: `conv-${sessionId}`,
+      threadId: sessionId,
+      actor: {
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        attribution: 'verified-bound',
+      },
+      sender: { kind: 'delegation-result', sessionId: 'automatic-child' },
+      text: 'The child finished; now propose an automation.',
+      clientTurnId: `result:${sessionId}`,
+    });
+    // The exact provenance the old origin guard admitted.
+    expect(continued[0]).toMatchObject({
+      dispatchOrigin: 'interactive',
+      clientOrigin: { sender: { kind: 'delegation-result' } },
+    });
+    await refused(sessionId);
+  });
+
+  for (const [label, shape] of [
+    ['a CLI or background send on the operator credential', TURN.cli],
+    ["a peer Station's /chat/delegated send", TURN.peerDelegated],
+    ['an MCP prompt expansion', TURN.mcpPrompt],
+    [
+      "an automation's run (a rule's action or a scheduled run)",
+      TURN.automation,
+    ],
+    ['a Task dispatch or a check-back on a Task', TURN.taskDispatch],
+    ['a delegated turn', TURN.delegation],
+    ['a turn recorded before the mark', TURN.unmarked],
+  ] as const)
+    test(`${label} cannot propose`, async () => {
+      const sessionId = nextSession();
+      appendTurn(sessionId, shape);
+      await refused(sessionId);
+    });
+
+  test('a Session with no turn cannot propose', async () => {
+    await refused(bareSession());
+  });
+
+  test("a person's steer does not make an unmarked turn the person's", async () => {
+    const sessionId = nextSession();
+    appendTurn(sessionId, TURN.automation);
+    appendTurn(sessionId, TURN.composer, { inputKind: 'steer' });
+    await refused(sessionId);
   });
 
   test('a Session that acts for no one is refused', async () => {
     // The central guard answers first: a `self` tool needs a recorded owner.
     // The route refuses the same again (`unattendedNoOwner`).
-    await refusedAsUnattended(nextSession('anon-'), {
+    await refused(nextSession('anon-'), {
       code: 'station_control_role_required',
     });
     expect(refusals).toContain('station_control_role_required');
   });
 
-  test("a person's own turn in a Task they dispatched may propose", async () => {
-    const sessionId = nextSession();
-    facts.tasks.set('task-person', { createdBy: 'user' });
-    await eventStore.bindProjectTaskRoomExecution({
-      projectId: 'local-project-a',
-      taskId: 'task-person',
-      sessionId,
-    });
-    eventStore.appendEvent({
-      eventId: `${sessionId}-turn`,
-      provider: 'claude',
-      threadId: sessionId,
-      createdAt: '2026-11-12T00:00:00.000Z',
-      method: 'turn.started',
-      turnId: 'turn-1',
-      dispatchOrigin: 'interactive',
-    } as never);
+  test('a store Station cannot read refuses', () => {
     expect(
-      (await agent('bound', sessionId, 'POST', SOURCES, SOURCE)).status,
-    ).toBe(200);
+      sessionMayProposeAutomations(
+        {
+          latestOwnTurnStarted: () => {
+            throw new Error('unreadable');
+          },
+        },
+        's',
+      ),
+    ).toBe(false);
   });
 });
 
@@ -939,73 +1026,6 @@ describe('Confirm rechecks what the proposing chat may do now (review P1)', () =
         ({ id }) => id === response.body.data.createdId,
       ),
     ).toMatchObject({ enabled: false });
-  });
-});
-
-describe('only a person’s own turn may propose: unknown fails closed (review P1)', () => {
-  test('a turn with no recorded origin is refused', async () => {
-    const sessionId = bareSession();
-    const response = await agent('bound', sessionId, 'POST', SOURCES, SOURCE);
-    expect(response).toMatchObject({
-      status: 403,
-      body: { code: 'automation_proposal_unattended' },
-    });
-  });
-
-  for (const origin of ['unknown', 'task-dispatch', 'delegation'])
-    test(`a current turn recorded as ${origin} is refused`, async () => {
-      const sessionId = nextSession();
-      appendTurn(sessionId, origin);
-      expect(
-        (await agent('bound', sessionId, 'POST', SOURCES, SOURCE)).body.code,
-      ).toBe('automation_proposal_unattended');
-    });
-
-  test('a delegated child Station derived is refused, even on an interactive-looking turn', async () => {
-    const sessionId = bareSession();
-    // The start a delegation route writes: its provenance stamp and lineage.
-    eventStore.appendEvent({
-      eventId: `${sessionId}-start`,
-      provider: 'claude',
-      threadId: sessionId,
-      createdAt: '2026-11-12T00:00:00.000Z',
-      method: 'session.started',
-      metadata: {
-        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
-        stationDelegationProvenance: 'caller-derived',
-        delegation: {
-          mode: 'isolated-child',
-          parentSessionId: 'automation-parent',
-          parentConversationId: 'automation-parent',
-          rootConversationId: 'automation-parent',
-          depth: 1,
-          maxDepth: 2,
-          parentAgentSlug: 'writer',
-          rootAgentSlug: 'writer',
-        },
-      },
-    } as never);
-    appendTurn(sessionId, 'interactive');
-    expect(
-      (await agent('bound', sessionId, 'POST', SOURCES, SOURCE)).body.code,
-    ).toBe('automation_proposal_unattended');
-  });
-
-  test('a read Station cannot make refuses', () => {
-    const reads = {
-      boundTaskCreatedBy: () => undefined,
-      delegatedChild: () => false,
-      currentTurnOrigin: (): never => {
-        throw new Error('unreadable');
-      },
-    };
-    expect(sessionMayProposeAutomations(reads, 's')).toBe(false);
-    expect(
-      sessionMayProposeAutomations(
-        { ...reads, currentTurnOrigin: () => 'interactive' },
-        's',
-      ),
-    ).toBe(true);
   });
 });
 

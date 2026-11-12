@@ -1917,10 +1917,10 @@ schedule with conversation read access; an agent may read its own.
 rules ([decision](../decisions/agent-proposed-automations.md)). The
 [routes](../../src-server/routes/orchestration/automation-proposals.ts) read
 the conversation from the verified caller. Only a Session that acts for a
-recorded owner, whose current turn's #4512 `dispatchOrigin` is
-`interactive`, may propose. A delegated child, a Session running for an
-`automation-rule` Task, and an `unknown` or missing origin refuse (fail
-closed).
+recorded owner, whose newest turn started with the shared person mark
+(`isCurrentTurnPersonAuthored`, #4848), may propose. Everything else
+refuses (fail closed), including a delegated result that continues in a
+person's chat with `dispatchOrigin: interactive`.
 [Validation](../../src-server/services/automation/automation-proposals.ts)
 refuses anything wider than the caller's dispatch scope: actions other than
 `dispatch-task`, `auto` approval, and authority-bearing keys. The proposal

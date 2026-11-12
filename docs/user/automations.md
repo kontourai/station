@@ -55,7 +55,9 @@ and refuses if an Agent it names has moved, changed or been removed. **Confirm**
 A confirmed source starts disabled and a confirmed rule starts observing: it
 records what it would do but starts nothing. Tick **Turn it on now** to
 enable the source, or set the rule live, in the same step. **Decline**
-creates nothing. Work that an automation started cannot propose these.
+creates nothing. Only a message you typed into Station's chat can lead to
+these proposals. Work that an automation, another agent's result, the CLI
+or another Station started cannot.
 
 ## Failures, missed runs and turning off
 

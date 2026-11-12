@@ -551,11 +551,11 @@ text. The agent fetches logs itself with `gh`.
   standing grant.
 - **Never.** Merge, arm auto-merge, push to main, edit protected paths (port
   the list from `qualification-repair.mjs`), or change automations or
-  grants. This includes proposing them. Only a turn Station recorded as a
-  person's own (#4512 `dispatchOrigin: interactive`) may propose. An
-  automation's turn, a delegation, a check-back, a Task dispatch, an
-  `unknown` or missing origin, a delegated child, and a Session running for
-  an `automation-rule` Task are refused (fail closed).
+  grants. This includes proposing them. Only a turn carrying the shared
+  person-authorship mark (#4848, `isCurrentTurnPersonAuthored`) may propose:
+  one a person typed into Station's composer. Everything else refuses,
+  including a delegated child's result that continues in the person's chat
+  with `dispatchOrigin: interactive` (fail closed).
 - **Honest limit.** Station cannot police an external engine's use of
   ambient host credentials. "Never merge" is real only if the Station OS
   user has no GitHub write credential. Publishing is therefore a
