@@ -266,12 +266,14 @@ test('a keyboard that grows after the first correction is followed, since the co
   const { browser, page, errors } = await open();
   try {
     await page.getByRole('textbox', { name: 'Message' }).focus();
-    await keyboard(page, 150);
+    // The composer lands at y=613 here, so a 250px keyboard (594 visible)
+    // already needs a correction.
+    await keyboard(page, 250);
     await settle(page);
     const first = await scrollTop(page);
     expect(first, 'the first correction scrolled').toBeGreaterThan(300);
     expect(await overhang(page)).toBeLessThanOrEqual(0);
-    // A suggestion bar appears: the keyboard grows by 150px.
+    // A suggestion bar appears: the keyboard grows by 50px.
     await keyboard(page, 300);
     await settle(page);
     expect(
