@@ -2233,7 +2233,13 @@ remote-server sign-in or tool call.
 Connections has one clear home for each relationship:
 
 - **Computers** combines saved Station and SSH relationships. Its rows distinguish
-  authorization from observed reachability. **Add computer** asks whether to
+  authorization from observed reachability. The saved connection to the
+  Station this window is using is labelled **This Station**, without its
+  address. A row shows when it was last reached when that was recorded: an SSH
+  computer's last connection, or a saved connection's last success. Rows show
+  only what this Station and this window observe; they read nothing from
+  another Station ([rows](../../src-ui/src/views/connections-hub/computer-rows.ts)).
+  **Add computer** asks whether to
   invite a device, connect another Station, or run work over SSH. Connecting a
   Station opens the same destination and independent-access journey as
   **Connect a Station** in the Station manager.

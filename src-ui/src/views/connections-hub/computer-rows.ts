@@ -22,7 +22,7 @@ import type {
 } from '@kontourai/station-sdk';
 
 /** What kind of relationship this Station has with the computer in the row. */
-type ComputerKind = 'Paired device' | 'Station' | 'SSH';
+type ComputerKind = 'This Station' | 'Paired device' | 'Station' | 'SSH';
 
 type ComputerStateTone = 'ready' | 'warn' | 'error' | 'disabled';
 
@@ -41,6 +41,11 @@ export interface ComputerRowModel {
   state: ComputerState;
   /** What this relationship does (or what is missing before it can). */
   relationship: string;
+  /**
+   * When this Station last reached it, as recorded (an SSH profile's last
+   * connection, a saved connection's last success). Absent when none is.
+   */
+  lastContactAt?: string;
   /** The SSH profile id, when this row is an SSH computer. */
   sshEnvironmentId?: string;
   /** Locally-registered manual entries are the only removable rows here. */
@@ -256,7 +261,18 @@ interface ComputerRowInput {
   hideEndpoint?: (endpointUrl: string, kind: string) => boolean;
   /** Ids the local manual registry owns, and can therefore remove. */
   isManualEntry: (environment: KnownEnvironment) => boolean;
+  /** True for the saved connection to the Station this window is using. */
+  isThisStation?: (environment: KnownEnvironment) => boolean;
+  /** When a saved connection last succeeded, in epoch ms, if recorded. */
+  lastContact?: (environment: KnownEnvironment) => number | undefined;
 }
+
+/**
+ * The row for the Station this window is using. Its address is how this
+ * window reaches it, not a fact about the Station, so the row names it and
+ * says only that.
+ */
+const THIS_STATION_STATE: ComputerState = { label: 'In use', tone: 'ready' };
 
 /**
  * One row per computer, whatever the mechanism. An SSH-backed row keeps the
@@ -282,9 +298,28 @@ export function buildComputerRows(input: ComputerRowInput): ComputerRowModel[] {
         detail: `${ssh.profile.hostAlias} · ${ssh.profile.remoteProjectPath}`,
         state: sshComputerState(ssh.state),
         relationship: sshRelationship(ssh.state, ssh.profile.name),
+        ...(ssh.profile.lastConnectedAt
+          ? { lastContactAt: ssh.profile.lastConnectedAt }
+          : {}),
         sshEnvironmentId: ssh.profile.id,
       };
     }
+    const contact = input.lastContact?.(environment);
+    const lastContact =
+      contact !== undefined
+        ? { lastContactAt: new Date(contact).toISOString() }
+        : {};
+    if (input.isThisStation?.(environment))
+      return {
+        id: environment.id,
+        name: environment.label,
+        kind: 'This Station' as const,
+        detail: 'The Station this window is using.',
+        state: THIS_STATION_STATE,
+        relationship:
+          'Its engines, models and tools are the ones on these pages.',
+        ...lastContact,
+      };
     const pairedAuthorized =
       kind === 'Paired device' ? input.isPairedAuthorized(environment) : false;
     return {
@@ -294,6 +329,7 @@ export function buildComputerRows(input: ComputerRowInput): ComputerRowModel[] {
       detail: endpointDetail(environment, hide),
       state: knownEnvironmentState(environment, pairedAuthorized),
       relationship: knownEnvironmentRelationship(environment, pairedAuthorized),
+      ...lastContact,
       ...(input.isManualEntry(environment)
         ? { removableManualEntryId: environment.id }
         : {}),

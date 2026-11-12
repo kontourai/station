@@ -62,7 +62,7 @@ export function useComputerRows(
     (onChange) => registry.subscribe(onChange),
     () => registry.getAll(),
   );
-  const { connections } = useConnections();
+  const { connections, activeConnection } = useConnections();
   const sshEnvironmentsQuery = useSshEnvironmentsQuery();
   const { hideEndpoint } = options;
 
@@ -87,12 +87,41 @@ export function useComputerRows(
     [connections],
   );
 
+  // The saved connection behind a row: its own `paired:` id, or the
+  // connection whose learned identity the folded row carries.
+  const connectionFor = useMemo(() => {
+    const byId = new Map(connections.map((entry) => [entry.id, entry]));
+    const byEnvironment = new Map(
+      connections.flatMap((entry) =>
+        entry.environmentId ? [[entry.environmentId, entry] as const] : [],
+      ),
+    );
+    return (environment: KnownEnvironment) =>
+      (environment.id.startsWith('paired:')
+        ? byId.get(environment.id.slice('paired:'.length))
+        : undefined) ??
+      (environment.environmentId
+        ? byEnvironment.get(environment.environmentId)
+        : undefined);
+  }, [connections]);
+
   const rows = useMemo(
     () =>
       buildComputerRows({
         environments,
         sshEnvironments,
         isManualEntry,
+        isThisStation: (environment) => {
+          const connection = connectionFor(environment);
+          return Boolean(
+            activeConnection &&
+              connection &&
+              (connection.id === activeConnection.id ||
+                (activeConnection.environmentId !== null &&
+                  connection.environmentId === activeConnection.environmentId)),
+          );
+        },
+        lastContact: (environment) => connectionFor(environment)?.lastSuccessAt,
         isPairedAuthorized: (environment) => {
           if (environment.environmentId) {
             const byEnv = pairedAuthorization.byEnvironmentId.get(
@@ -112,7 +141,14 @@ export function useComputerRows(
         },
         ...(hideEndpoint ? { hideEndpoint } : {}),
       }),
-    [environments, hideEndpoint, pairedAuthorization, sshEnvironments],
+    [
+      activeConnection,
+      connectionFor,
+      environments,
+      hideEndpoint,
+      pairedAuthorization,
+      sshEnvironments,
+    ],
   );
 
   return {
