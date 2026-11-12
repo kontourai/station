@@ -212,13 +212,48 @@ describe('BackgroundTasksSheet', () => {
     expect(screen.getAllByText('Investigate flaky test').length).toBe(2);
   });
 
-  test('a running entry with no detail renders a disabled (non-expandable) row', () => {
+  /**
+   * The collapsed row clips its title to one line and shows no times, so a
+   * row with no progress text and no transcript still opens onto its full
+   * title, status and timing. Restoring the old "no detail → disabled row"
+   * gate fails the click; dropping the facts list fails the reads.
+   */
+  test('a row with no detail still expands onto its full title, status and timing', () => {
+    const title =
+      'CI failures and merges for every open pull request in the release queue';
     renderSheet({
-      running: [runningEntry({ detail: undefined })],
-      finished: [],
+      running: [],
+      finished: [
+        finishedEntry({
+          title,
+          delegationTitle: 'Release queue sweep',
+          latestTool: 'local_bash',
+          detail: undefined,
+          state: 'failed',
+        }),
+      ],
     });
-    const row = screen.getByRole('button', { name: /Run tests/ });
-    expect(row.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Recent activity/ }));
+    const row = screen.getByRole('button', { name: new RegExp(title) });
+    expect(row.hasAttribute('disabled')).toBe(false);
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+
+    const facts = document.querySelector('.background-tasks-sheet__facts');
+    expect(facts).not.toBeNull();
+    const pairs = Object.fromEntries(
+      [...facts!.querySelectorAll('dt')].map((dt) => [
+        dt.textContent,
+        dt.nextElementSibling?.textContent,
+      ]),
+    );
+    expect(pairs.Task).toBe(title);
+    expect(pairs.Delegation).toBe('Release queue sweep');
+    expect(pairs.Status).toBe('Failed');
+    expect(pairs['Latest tool']).toBe('local_bash');
+    expect(pairs.Started).toMatch(/2026/);
+    expect(pairs.Ended).toMatch(/2026/);
   });
 
   test('a running entry with detail expands on click to reveal it', () => {
@@ -404,7 +439,11 @@ describe('BackgroundTasksSheet', () => {
     ).toBe(true);
     expect(screen.getByText('150 tokens · 1 tool use')).not.toBeNull();
     expect(screen.queryByText('Audit the release workflow')).toBeNull();
-    expect(screen.getByText('Run tests')).not.toBeNull();
+    expect(
+      screen.getByText('Run tests', {
+        selector: '.background-tasks-sheet__title',
+      }),
+    ).not.toBeNull();
   });
 
   // archive#4196: "N tokens" must not present a cache-exclusive figure as
@@ -576,3 +615,4 @@ test('a peer background sheet selects its Station partition and never invokes ho
     }),
   );
 });
+
