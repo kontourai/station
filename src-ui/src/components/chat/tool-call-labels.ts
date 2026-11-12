@@ -592,7 +592,7 @@ export interface ToolCallIdentity {
 }
 
 /** The Station tool a call is, by its name and the engine's server field. */
-export function stationToolOfCall(call: {
+function stationToolOfCall(call: {
   toolName?: unknown;
   server?: unknown;
 }) {
