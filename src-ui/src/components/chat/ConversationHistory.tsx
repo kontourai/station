@@ -238,7 +238,7 @@ export function ConversationHistory({
               className="conversation-history__load-more"
               onClick={() => void loadMore()}
             >
-              Try again
+              Retry
             </button>
           </>
         ) : hasMore ? (

@@ -222,7 +222,7 @@ describe('ConversationHistory', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       'Could not load older messages. Try again.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(loadMore).toHaveBeenCalled();
 
     pagingState.loadMoreError = false;

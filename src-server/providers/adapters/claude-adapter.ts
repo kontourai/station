@@ -48,7 +48,10 @@ import {
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
-import { CONFINED_FULL_ACCESS_UNAVAILABLE_CODE } from '@kontourai/station-contracts/provider-failure';
+import {
+  CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
+  CONFINED_NETWORK_DENIED_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
@@ -102,9 +105,15 @@ import {
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
 import {
+  type EgressBroker,
+  type EgressDecisionRecord,
+  type EgressHostRule,
+  parseEgressHostRule,
+  startEgressBroker,
+} from '../../security/confinement/egress-broker.js';
+import {
   canonicalPath,
   type SeatbeltEvidence,
-  seatbeltConfinementProvider,
 } from '../../security/confinement/seatbelt.js';
 import {
   assertEngineAllowedByManagedPolicy,
@@ -131,6 +140,7 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
+import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   childProcessEnvironment,
@@ -255,12 +265,17 @@ import {
   withdrawQueuedClaudeTurn,
 } from './claude-sdk-turns.js';
 import {
+  type ClaudeSpawnWrapMechanism,
   CONFINED_CLAUDE_CREDENTIAL_SETUP,
   type ConfinedClaudeLaunch,
+  claudeModelEndpoint,
+  claudeSpawnWrapLabel,
+  claudeSpawnWrapProvider,
   confinedClaudeConfigDir,
   confinedClaudeCredential,
   confinedClaudeDecision,
   confinedClaudeSpawn,
+  isClaudeSpawnWrapMechanism,
   prepareConfinedClaudeLaunch,
 } from './claude-seatbelt.js';
 import {
@@ -773,6 +788,8 @@ type ClaudeSessionRecord = {
   coordinatorControlGeneration?: number;
   coordinatorKnowledgeGeneration?: number;
   stationControlBuiltin: boolean;
+  /** #4769: the start's plan restricted the network. */
+  networkRestricted?: true;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
   activeTurnId?: string;
@@ -1194,8 +1211,9 @@ export interface ClaudeAdapterOptions {
    */
   engineExitStreamGraceMs?: number;
   /**
-   * #2494: the Seatbelt provider a start whose plan names `seatbelt` is
-   * confined through. Defaults to the server's own; injected by tests.
+   * #2494: the provider a start whose plan names a spawn-wrapped mechanism
+   * (`seatbelt`, or `bubblewrap` since #4770) is confined through. Defaults
+   * to the server's own for that mechanism; injected by tests.
    */
   seatbeltProvider?: ConfinementProvider<SeatbeltEvidence>;
   /** #2494: Station's runtime home for confined sessions; injected by tests. */
@@ -1205,18 +1223,60 @@ export interface ClaudeAdapterOptions {
    * handshake before it is refused as not observed. Default 60 s.
    */
   confinementHandshakeTimeoutMs?: number;
+  /**
+   * #4769: where a restricted session's distinct broker decisions are kept
+   * (the Station log in production). Absent, they are not kept.
+   */
+  logNetworkDecision?: (details: Record<string, unknown>) => void;
   logger?: ClaudeAdapterLogger;
 }
 
-/** #2494: a start confined by Seatbelt, prepared before its spawn. */
+/**
+ * #2494: a start confined by a spawn-wrapped mechanism (Seatbelt, or
+ * bubblewrap since #4770), prepared before its spawn.
+ */
 interface SeatbeltStart {
-  plan: ConfinementPlan;
+  plan: ConfinementPlan & { mechanism: ClaudeSpawnWrapMechanism };
   provider: ConfinementProvider<SeatbeltEvidence>;
   launch: ConfinedClaudeLaunch;
   /** The app-home layer pointing the engine at its Station-owned home. */
   appHomeEnv: Record<string, string>;
   /** Variables the operator configured for this engine; they pass as set. */
   configuredKeys: ReadonlySet<string>;
+  /**
+   * #4769: the session's egress broker, when its plan restricts the network.
+   * Closed by `launch.cleanup`, with the session's temp directory.
+   */
+  egress?: { broker: EgressBroker };
+}
+
+/** #4769: the distinct refused hosts a session reports, one warning each. */
+const MAX_REPORTED_NETWORK_DENIALS = 20;
+
+/** #4769: what each fallback to Auto means, in a restricted refusal. */
+const RESTRICTED_FALLBACK_REASONS: Record<ConfinementFallbackReason, string> = {
+  'confined-credential-unavailable':
+    'no credential a confined Claude session can use was found',
+  'config-root-pinned':
+    'it continues a conversation kept in your own Claude configuration, which a confined session may not write',
+  'resume-bound-elsewhere':
+    'it resumes a conversation recorded under another Claude configuration home',
+  'workspace-too-broad':
+    "its folder is or contains your home folder or Station's data (or, under bubblewrap, a secret store the sandbox hides)",
+};
+
+/**
+ * #4769: a start whose plan restricts the network but which would fall back
+ * to Auto with nothing engaged (and so with an open network) is refused,
+ * naming the fallback, rather than run open.
+ */
+function restrictedNetworkFallbackRefusal(
+  reason: ConfinementFallbackReason,
+): ConfinementRefusedError {
+  return new ConfinementRefusedError(
+    'confinement_mechanism_unavailable',
+    `This claude session requires a restricted network, which cannot be applied to this start: ${RESTRICTED_FALLBACK_REASONS[reason]} (${reason}). Nothing started.`,
+  );
 }
 
 /**
@@ -1277,7 +1337,7 @@ function withoutUnconfinedFullAccess<T extends ProviderSessionStartInput>(
   input: T,
 ): T {
   return (input.confinement ?? 'workspace') === 'workspace' &&
-    input.confinementPlan?.mechanism !== 'seatbelt' &&
+    !isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism) &&
     readApprovalMode(input.modelOptions) === 'never'
     ? {
         ...input,
@@ -1747,7 +1807,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // #2494: a plan that engages Seatbelt confines this start, or (for a
       // reason a check derives) runs it at Auto with nothing engaged. Every
       // other start takes the same synchronous path as before.
-      if (input.confinementPlan?.mechanism !== 'seatbelt')
+      if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism))
         return this.startTrackedSession(
           input,
           input.persistSession === true,
@@ -1788,7 +1848,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         artifactsEnv,
       );
       if (seatbelt.fallback)
-        this.publishConfinementFallback(input.threadId, seatbelt.fallback);
+        this.publishConfinementFallback(
+          input.threadId,
+          seatbelt.fallback,
+          input.confinementPlan?.mechanism,
+        );
       return session;
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
@@ -1819,7 +1883,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     fallback?: ConfinementFallbackReason;
   }> {
     const plan = input.confinementPlan;
-    if (plan?.mechanism !== 'seatbelt') return { input };
+    if (!plan || !isClaudeSpawnWrapMechanism(plan.mechanism)) return { input };
     const stationHome = canonicalPath(
       this.options.confinedStationHome ?? resolveHomeDir(),
     );
@@ -1833,6 +1897,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       },
       globalConfigPinned: context.globalConfigPinned,
       stationHome,
+      mechanism: plan.mechanism,
     });
     let fallback = 'fallback' in decision ? decision.fallback : undefined;
     if (
@@ -1847,6 +1912,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         )
     )
       fallback = 'resume-bound-elsewhere';
+    // #4769: under a restricted network a fallback would run the engine at
+    // Auto with nothing engaged, its network open, so it is refused.
+    if ((fallback || !('configDir' in decision)) && plan.network)
+      throw restrictedNetworkFallbackRefusal(fallback ?? 'workspace-too-broad');
     if (fallback || !('configDir' in decision))
       return {
         input: withConfinementFallback(
@@ -1856,19 +1925,54 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ),
         fallback: fallback ?? 'workspace-too-broad',
       };
-    const launch = await prepareConfinedClaudeLaunch({
+    // #4769: a restricted network is refused before anything is prepared
+    // when its policy or the model endpoint cannot be read.
+    const allowedHosts = plan.network
+      ? this.restrictedNetworkRules(plan, {
+          ...(context.augmentedEnv ?? process.env),
+          ...context.connectionEnv,
+          ...context.appHomeEnv,
+        })
+      : undefined;
+    const prepared = await prepareConfinedClaudeLaunch({
       workspace: decision.workspace,
       configDir: decision.configDir,
       stationHome,
+      mechanism: plan.mechanism,
     });
+    let launch = prepared;
+    let egress: SeatbeltStart['egress'];
+    if (allowedHosts) {
+      let broker: EgressBroker;
+      try {
+        broker = await startEgressBroker({
+          allowedHosts,
+          onDecision: this.networkDenialReporter(input.threadId),
+        });
+      } catch (error) {
+        prepared.cleanup();
+        throw error;
+      }
+      egress = { broker };
+      launch = {
+        ...prepared,
+        cleanup: () => {
+          prepared.cleanup();
+          void broker.close();
+        },
+      };
+    }
     // The secure-store override is dropped by the spawn wrapper, from
     // whichever layer it comes, not here.
     return {
       input,
       confined: {
-        plan,
-        provider: this.options.seatbeltProvider ?? seatbeltConfinementProvider,
+        plan: { ...plan, mechanism: plan.mechanism },
+        provider:
+          this.options.seatbeltProvider ??
+          claudeSpawnWrapProvider(plan.mechanism),
         launch,
+        ...(egress ? { egress } : {}),
         appHomeEnv: {
           ...context.appHomeEnv,
           CLAUDE_CONFIG_DIR: launch.configDir,
@@ -1879,6 +1983,113 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ]),
       },
     };
+  }
+
+  /**
+   * #4769: the allowed-host rules of a plan that restricts the network, or
+   * a refusal (nothing started) when the policy lists an entry the broker
+   * cannot read, or the model endpoint cannot be derived from the
+   * environment this start would spawn with.
+   */
+  private restrictedNetworkRules(
+    plan: ConfinementPlan,
+    env: Readonly<Record<string, string | undefined>>,
+  ): EgressHostRule[] {
+    const rules: EgressHostRule[] = [];
+    for (const entry of plan.network?.allowedHosts ?? []) {
+      const rule = parseEgressHostRule(entry);
+      if (!rule)
+        throw new ConfinementRefusedError(
+          'confinement_mechanism_unavailable',
+          `This claude session requires a restricted network, and this Station's confined network policy lists an allowed host Station cannot read (${JSON.stringify(entry.slice(0, 80))}). Nothing started.`,
+        );
+      rules.push(rule);
+    }
+    const model = claudeModelEndpoint(env);
+    if ('refusal' in model)
+      throw new ConfinementRefusedError(
+        'confinement_mechanism_unavailable',
+        `This claude session requires a restricted network. ${model.refusal} Nothing started.`,
+      );
+    return rules;
+  }
+
+  /**
+   * #4769: keeps a restricted session's broker decisions. Each distinct
+   * decision (allowed or denied) is written once to the Station log (host,
+   * port, verdict, reason, time; at most 80 per session). Each refused
+   * connection is also reported as a `runtime.warning` (host, port and
+   * reason; never a payload or path), stored with the session's events: the
+   * simplest existing path to the person until #2495 turns sandbox denials
+   * into approval cards. Each distinct refusal is reported once, and at most
+   * {@link MAX_REPORTED_NETWORK_DENIALS} per session.
+   */
+  private networkDenialReporter(
+    threadId: string,
+  ): (record: EgressDecisionRecord) => void {
+    const reported = new Set<string>();
+    const logged = new Set<string>();
+    let capped = false;
+    return (record) => {
+      // Each distinct decision once per session in the Station log: host,
+      // port, verdict, reason and time, never more.
+      const logKey = `${record.verdict}|${record.reason}|${record.host ?? ''}|${record.port ?? ''}`;
+      if (
+        !logged.has(logKey) &&
+        logged.size < 4 * MAX_REPORTED_NETWORK_DENIALS
+      ) {
+        logged.add(logKey);
+        this.options.logNetworkDecision?.({ threadId, ...record });
+      }
+      if (record.verdict !== 'denied') return;
+      const key = `${record.reason}|${record.host ?? ''}|${record.port ?? ''}`;
+      if (reported.has(key) || capped) return;
+      if (reported.size >= MAX_REPORTED_NETWORK_DENIALS) {
+        capped = true;
+        this.publishNetworkDenial(
+          threadId,
+          `Further blocked connections in this session are not reported one by one (the first ${MAX_REPORTED_NETWORK_DENIALS} were).`,
+          { reason: 'reporting-capped' },
+        );
+        return;
+      }
+      reported.add(key);
+      const target =
+        record.host !== undefined ? `${record.host}:${record.port}` : undefined;
+      const message =
+        record.reason === 'not-allowed' && target
+          ? `Blocked a connection to ${target}: it is not an allowed host for confined sessions on this Station.`
+          : record.reason === 'non-public-address' && target
+            ? `Blocked a connection to ${target}: it resolves to a private or local address.`
+            : record.reason === 'unresolved' && target
+              ? `Blocked a connection to ${target}: the name did not resolve.`
+              : record.reason === 'method-not-allowed'
+                ? `Blocked a plain HTTP request${target ? ` to ${target}` : ''}: a confined session reaches allowed hosts over HTTPS only.`
+                : 'Blocked a malformed or unfinished request to the network broker.';
+      this.publishNetworkDenial(threadId, message, {
+        reason: record.reason,
+        ...(record.host !== undefined ? { host: record.host } : {}),
+        ...(record.port !== undefined ? { port: record.port } : {}),
+      });
+    };
+  }
+
+  private publishNetworkDenial(
+    threadId: string,
+    message: string,
+    details: Record<string, unknown>,
+  ): void {
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      message,
+      code: CONFINED_NETWORK_DENIED_CODE,
+      details,
+    });
   }
 
   /**
@@ -1914,24 +2125,32 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     } finally {
       if (timer) clearTimeout(timer);
     }
-    const posture = pending
+    const observed = pending
       ? pending.observe({
           spawned: engineProcess.spawned(),
           handshake,
           bounds: seatbelt.launch.bounds,
         })
       : 'configured-but-failed';
+    // #4769: a plan that restricts the network is confined only when the
+    // profile spawned restricts it.
+    const network = pending?.network?.();
+    const posture =
+      seatbelt.plan.network && network !== 'restricted'
+        ? 'configured-but-failed'
+        : observed;
     const confinementRecord = observedConfinementRecord(
       seatbelt.plan,
       posture,
       seatbelt.launch.writeGrants,
+      network,
     );
     if (posture === 'confined') return confinementRecord;
     await this.abandonSeatbeltStart(record, sdkQuery, engineProcess, seatbelt);
     const stderr = engineProcess.stderrTail();
     throw new ConfinementRefusedError(
       'confinement_not_observed',
-      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its Seatbelt profile (${posture}). ${
+      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} (${posture}). ${
         handshake === 'failed'
           ? `The engine did not answer its startup handshake${stderr ? `: ${stderr}` : ''}.`
           : 'The engine was not spawned through the profile Station built.'
@@ -1965,7 +2184,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private publishConfinementFallback(
     threadId: string,
     reason: ConfinementFallbackReason,
+    mechanism?: ConfinementPlan['mechanism'],
   ): void {
+    // #4770: bubblewrap also refuses a folder holding a hidden secret.
+    const message =
+      reason === 'workspace-too-broad' && mechanism === 'bubblewrap'
+        ? `${CONFINEMENT_FALLBACK_MESSAGES[reason]} Under the bubblewrap sandbox this also covers a folder inside, or containing, a secret store the sandbox hides.`
+        : CONFINEMENT_FALLBACK_MESSAGES[reason];
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1973,7 +2198,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       createdAt: new Date().toISOString(),
       method: 'runtime.warning',
       severity: 'warning',
-      message: CONFINEMENT_FALLBACK_MESSAGES[reason],
+      message,
       code: CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
       details: { reason },
     });
@@ -1996,11 +2221,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error('Claude does not support a completed-turn fork cutoff.');
     // #2494: adoption deliberately pins the global configuration root
     // (archive#896 decision 2), which a confined engine may not write, so a
-    // plan for Seatbelt runs at Auto here instead.
-    const adoptionFallback =
-      input.confinementPlan?.mechanism === 'seatbelt'
-        ? ('config-root-pinned' as const)
-        : undefined;
+    // plan for a spawn-wrapped mechanism (Seatbelt, or bubblewrap since
+    // #4770) runs at Auto here instead.
+    const adoptionFallback = isClaudeSpawnWrapMechanism(
+      input.confinementPlan?.mechanism,
+    )
+      ? ('config-root-pinned' as const)
+      : undefined;
+    // #4769: and under a restricted network that Auto start would run open,
+    // so it is refused instead.
+    if (adoptionFallback && input.confinementPlan?.network)
+      throw restrictedNetworkFallbackRefusal(adoptionFallback);
     if (adoptionFallback && input.confinementPlan)
       input = withConfinementFallback(
         input,
@@ -2253,7 +2484,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       assertRequiredConfinementObserved(
         observedConfinementRecord(seatbelt.plan, 'configured-but-failed'),
         this.provider,
-        'Its Seatbelt profile would grant writes past the workspace, its git subset and the Station-owned directories.',
+        seatbelt.launch.buildError
+          ? `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} cannot be built: ${seatbelt.launch.buildError}`
+          : `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} would grant writes past the workspace, its git subset and the Station-owned directories.`,
       );
     }
     const seatbeltSpawn = seatbelt
@@ -2261,6 +2494,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           seatbelt.provider,
           seatbelt.launch,
           seatbelt.configuredKeys,
+          seatbelt.egress,
         )
       : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
@@ -2388,6 +2622,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (server) =>
           server.id === 'station-knowledge' && server.coordinatorDerived,
       )?.coordinatorGeneration,
+      ...(input.confinementPlan?.network
+        ? { networkRestricted: true as const }
+        : {}),
       stationControlBuiltin:
         input.agent?.toolServers?.some(
           (server) =>
@@ -2640,7 +2877,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           );
           throw new ConfinementRefusedError(
             'confinement_not_observed',
-            `This claude session was observed inside its Seatbelt profile, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
+            `This claude session was observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)}, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
           );
         }
         record.allowsBypassPermissions = true;
@@ -2757,11 +2994,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         !this.options.isCoordinatorSession?.(threadId)
       )
         throw refuse();
-      const selected = control.disabledTools?.length
+      const agentSelected = control.disabledTools?.length
         ? (control.allowedTools ?? control.toolNames ?? []).filter(
             (name) => !control.disabledTools!.includes(name),
           )
         : control.allowedTools;
+      // #4769: as at the start, a restricted session keeps its narrow set.
+      const selected = record.networkRestricted
+        ? restrictedNetworkStationControlTools(agentSelected)
+        : agentSelected;
       if (
         control.coordinatorDerived &&
         control.coordinatorGeneration === undefined
@@ -4097,11 +4338,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const control = toolServers.find(
       (server) => server.id === 'station-control',
     );
-    const selectedControlTools = control?.disabledTools?.length
+    const agentSelectedControlTools = control?.disabledTools?.length
       ? (control.allowedTools ?? control.toolNames ?? []).filter(
           (name) => !control.disabledTools!.includes(name),
         )
       : control?.allowedTools;
+    // #4769: a restricted session gets only the tools that keep Station from
+    // acting outside its sandbox for it (no device, preview or delegation).
+    const selectedControlTools = input.confinementPlan?.network
+      ? restrictedNetworkStationControlTools(agentSelectedControlTools)
+      : agentSelectedControlTools;
     const knowledge = toolServers.find(
       (server) => server.id === 'station-knowledge',
     );
@@ -4136,7 +4382,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 this.options.createInProcessStationKnowledge!(
                   input.threadId,
                   tenantExecutionContext,
-                  allowedTools,
+                  // #4769: the same allow-list as station-control, so a
+                  // knowledge tool withheld later is withheld here too.
+                  input.confinementPlan?.network
+                    ? restrictedNetworkStationControlTools(allowedTools)
+                    : allowedTools,
                   ...(knowledge?.coordinatorDerived
                     ? [knowledge.coordinatorGeneration]
                     : []),
@@ -4202,7 +4452,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   /**
    * #90 D14: the built-in `station-browser` server for a resolved agent,
-   * unless the agent switched it off or this runtime cannot serve it bound.
+   * unless the agent switched it off, this runtime cannot serve it bound, or
+   * (#4769) the start's network is restricted.
    * An authored tool server that reuses the id is replaced, never merged.
    */
   private resolveStationBrowser(
@@ -4211,6 +4462,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const create = this.options.createInProcessStationBrowser;
     if (!create || !input.agent || input.agent.browserTools === false)
       return undefined;
+    // #4769: Station's browser runs in Station's own process, outside the
+    // sandbox, and navigates wherever it is told: under a restricted network
+    // it would be a way out, so a restricted session does not get it.
+    if (input.confinementPlan?.network) return undefined;
     return {
       [STATION_BROWSER_MCP_SERVER_ID]: {
         type: 'sdk',

@@ -272,7 +272,7 @@ export function ChildWorkInstructionPanel({
               className="tap-target"
               onClick={() => void history.refetch()}
             >
-              Try again
+              Retry
             </Button>
           }
         />

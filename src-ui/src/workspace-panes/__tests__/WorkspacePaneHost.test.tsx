@@ -3158,10 +3158,10 @@ test('closing and reopening an occurrence discards its required-slot crash histo
         }
       />,
     );
-    await screen.findByRole('button', { name: 'Try again' });
+    await screen.findByRole('button', { name: 'Retry' });
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('button', { name: 'Try again' });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('button', { name: 'Retry' });
     expect(signal).not.toHaveBeenCalled();
     await act(async () => {
       await actions?.close?.(one.instanceId);
@@ -3172,13 +3172,13 @@ test('closing and reopening an occurrence discards its required-slot crash histo
       outcome = actions?.open(one);
     });
     expect(outcome).toEqual({ ok: true });
-    await screen.findByRole('button', { name: 'Try again' });
+    await screen.findByRole('button', { name: 'Retry' });
     // Reusing the identity must start at one catch, not diagnose the former occurrence's third.
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('button', { name: 'Try again' });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('button', { name: 'Retry' });
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
       expect(signal).toHaveBeenCalledExactlyOnceWith({
         slot: 'home',

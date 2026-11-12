@@ -107,7 +107,7 @@ export async function requestSystemStatus(
   // Honour the caller's signal too — react-query passes one per attempt. Without
   // this, cancelling a query only makes query-core stop listening: the fetch it
   // walked away from keeps running against the host until the timeout above
-  // fires, so every "Try again" left an orphaned request in flight.
+  // fires, so every "Retry" left an orphaned request in flight.
   const abortFromCaller = () => controller.abort();
   callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
   if (callerSignal?.aborted) controller.abort();

@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -309,6 +315,30 @@ describe('ProjectTasksSection', () => {
     const unplanned = screen.getByRole('link', { name: /Unplanned task/ });
     expect(unplanned.textContent).not.toContain('Agent plan');
     expect(unplanned.querySelector('.task-plan-progress')).toBeNull();
+  });
+
+  test('heads the section like other Project sections, with New Task beside Refresh', () => {
+    const listener = vi.fn();
+    window.addEventListener('station:shape-task', listener);
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Tasks' });
+    const header = heading.closest('.page-section__header') as HTMLElement;
+    expect(header).toBeTruthy();
+    fireEvent.click(within(header).getByRole('button', { name: 'New Task' }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(
+      within(header).getByRole('button', { name: 'Refresh Tasks' }),
+    ).toBeTruthy();
+    window.removeEventListener('station:shape-task', listener);
+  });
+
+  test('an empty board shows the shared empty title beside the list', () => {
+    tasks = [];
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+
+    expect(screen.getByText('Start a Task')).toBeTruthy();
+    expect(screen.getByText('Nothing selected')).toBeTruthy();
   });
 
   test('opens the selected board task and refreshes its canonical records without dispatching', () => {

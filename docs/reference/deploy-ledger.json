@@ -1,5 +1,317 @@
 [
   {
+    "timestampUtc": "2026-11-11T19:51:34Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261111.2",
+    "sha": "e5b5bd24e1ae4e588e3466e979188e014ddd0354",
+    "artifactBuiltAt": "2026-11-11T18:28:44.322Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43074100998",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43074100998)"
+    ],
+    "changelog": {
+      "previousSha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+      "groups": {
+        "feat": [
+          "[#4784](https://github.com/kontourai/station/pull/4784) feat(coordinator): put Houston behind the Coordinator chat Feature Preview and explain it on Home",
+          "[#4778](https://github.com/kontourai/station/pull/4778) feat!: retire the strands-runtime flag, show the Knowledge conversations setting, stop Flow links dead-ending"
+        ],
+        "fix": [
+          "[#4786](https://github.com/kontourai/station/pull/4786) fix(ui): shared status, empty state, dialog and section header across Connections, onboarding and Tasks"
+        ],
+        "ci": [
+          "[#4787](https://github.com/kontourai/station/pull/4787) ci(confinement): run the Seatbelt kernel legs on main pushes that touch confinement code (#4772)"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T19:51:31Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261111.2",
+    "sha": "e5b5bd24e1ae4e588e3466e979188e014ddd0354",
+    "artifactBuiltAt": "2026-11-11T18:42:08.017Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43074100998",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43074100998)"
+    ],
+    "changelog": {
+      "previousSha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+      "groups": {
+        "feat": [
+          "[#4784](https://github.com/kontourai/station/pull/4784) feat(coordinator): put Houston behind the Coordinator chat Feature Preview and explain it on Home",
+          "[#4778](https://github.com/kontourai/station/pull/4778) feat!: retire the strands-runtime flag, show the Knowledge conversations setting, stop Flow links dead-ending"
+        ],
+        "fix": [
+          "[#4786](https://github.com/kontourai/station/pull/4786) fix(ui): shared status, empty state, dialog and section header across Connections, onboarding and Tasks"
+        ],
+        "ci": [
+          "[#4787](https://github.com/kontourai/station/pull/4787) ci(confinement): run the Seatbelt kernel legs on main pushes that touch confinement code (#4772)"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T18:24:10Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261111.43074100998",
+    "sha": "e5b5bd24e1ae4e588e3466e979188e014ddd0354",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43074100998",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261111.43074100998 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+      "groups": {
+        "feat": [
+          "[#4784](https://github.com/kontourai/station/pull/4784) feat(coordinator): put Houston behind the Coordinator chat Feature Preview and explain it on Home",
+          "[#4778](https://github.com/kontourai/station/pull/4778) feat!: retire the strands-runtime flag, show the Knowledge conversations setting, stop Flow links dead-ending"
+        ],
+        "fix": [
+          "[#4786](https://github.com/kontourai/station/pull/4786) fix(ui): shared status, empty state, dialog and section header across Connections, onboarding and Tasks"
+        ],
+        "ci": [
+          "[#4787](https://github.com/kontourai/station/pull/4787) ci(confinement): run the Seatbelt kernel legs on main pushes that touch confinement code (#4772)"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T11:00:57Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261111.1",
+    "sha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+    "artifactBuiltAt": "2026-11-11T10:04:04.236Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42998652773",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42998652773)"
+    ],
+    "changelog": {
+      "previousSha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+      "groups": {
+        "feat": [
+          "[#4782](https://github.com/kontourai/station/pull/4782) feat(doctor): report confinement mechanism and confined credential per engine (#4774)"
+        ],
+        "fix": [
+          "[#4779](https://github.com/kontourai/station/pull/4779) fix(ui): label every plain retry button \"Retry\"; land the outbox hand-off fix missing from #4776"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4783](https://github.com/kontourai/station/pull/4783) refactor(ui): give the Project page the shared section navigation"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T11:00:54Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261111.1",
+    "sha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+    "artifactBuiltAt": "2026-11-11T10:03:35.623Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42998652773",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42998652773)"
+    ],
+    "changelog": {
+      "previousSha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+      "groups": {
+        "feat": [
+          "[#4782](https://github.com/kontourai/station/pull/4782) feat(doctor): report confinement mechanism and confined credential per engine (#4774)"
+        ],
+        "fix": [
+          "[#4779](https://github.com/kontourai/station/pull/4779) fix(ui): label every plain retry button \"Retry\"; land the outbox hand-off fix missing from #4776"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4783](https://github.com/kontourai/station/pull/4783) refactor(ui): give the Project page the shared section navigation"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T10:08:32Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261111.42998652773",
+    "sha": "d4292a6bd18d1d97b54b05df3019e715c492cb48",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42998652773",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261111.42998652773 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+      "groups": {
+        "feat": [
+          "[#4782](https://github.com/kontourai/station/pull/4782) feat(doctor): report confinement mechanism and confined credential per engine (#4774)"
+        ],
+        "fix": [
+          "[#4779](https://github.com/kontourai/station/pull/4779) fix(ui): label every plain retry button \"Retry\"; land the outbox hand-off fix missing from #4776"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4783](https://github.com/kontourai/station/pull/4783) refactor(ui): give the Project page the shared section navigation"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T03:33:26Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261111",
+    "sha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+    "artifactBuiltAt": "2026-11-11T02:28:13.503Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42944787833",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42944787833)"
+    ],
+    "changelog": {
+      "previousSha": "0d474001f59ed2b15668a5a63749ca4a05e048b7",
+      "groups": {
+        "feat": [
+          "[#4765](https://github.com/kontourai/station/pull/4765) feat(ui): General Undo for Board delete and move (#4688)",
+          "[#4723](https://github.com/kontourai/station/pull/4723) feat(ui): 13px Comfortable default, Compact density and Reduced motion on Appearance"
+        ],
+        "fix": [
+          "[#4776](https://github.com/kontourai/station/pull/4776) fix: offline sends, stream resume, restart recovery and pairing recover instead of sticking",
+          "[#4775](https://github.com/kontourai/station/pull/4775) fix(ui): keep pending messages through a missed read; steer natively by default",
+          "[#4763](https://github.com/kontourai/station/pull/4763) fix: repair defects, duplication and UI inconsistencies found in a repo-wide audit"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4781](https://github.com/kontourai/station/pull/4781) test(confinement): check that the pinned Seatbelt kernel legs actually ran (#4772)",
+          "[#4766](https://github.com/kontourai/station/pull/4766) test(ui): stop phone-layer suites stranding the dialog-history wait under load"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T03:33:23Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261111",
+    "sha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+    "artifactBuiltAt": "2026-11-11T02:31:19.725Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42944787833",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42944787833)"
+    ],
+    "changelog": {
+      "previousSha": "0d474001f59ed2b15668a5a63749ca4a05e048b7",
+      "groups": {
+        "feat": [
+          "[#4765](https://github.com/kontourai/station/pull/4765) feat(ui): General Undo for Board delete and move (#4688)",
+          "[#4723](https://github.com/kontourai/station/pull/4723) feat(ui): 13px Comfortable default, Compact density and Reduced motion on Appearance"
+        ],
+        "fix": [
+          "[#4776](https://github.com/kontourai/station/pull/4776) fix: offline sends, stream resume, restart recovery and pairing recover instead of sticking",
+          "[#4775](https://github.com/kontourai/station/pull/4775) fix(ui): keep pending messages through a missed read; steer natively by default",
+          "[#4763](https://github.com/kontourai/station/pull/4763) fix: repair defects, duplication and UI inconsistencies found in a repo-wide audit"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4781](https://github.com/kontourai/station/pull/4781) test(confinement): check that the pinned Seatbelt kernel legs actually ran (#4772)",
+          "[#4766](https://github.com/kontourai/station/pull/4766) test(ui): stop phone-layer suites stranding the dialog-history wait under load"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-11T02:30:09Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261111.42944787833",
+    "sha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42944787833",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261111.42944787833 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "0d474001f59ed2b15668a5a63749ca4a05e048b7",
+      "groups": {
+        "feat": [
+          "[#4765](https://github.com/kontourai/station/pull/4765) feat(ui): General Undo for Board delete and move (#4688)",
+          "[#4723](https://github.com/kontourai/station/pull/4723) feat(ui): 13px Comfortable default, Compact density and Reduced motion on Appearance"
+        ],
+        "fix": [
+          "[#4776](https://github.com/kontourai/station/pull/4776) fix: offline sends, stream resume, restart recovery and pairing recover instead of sticking",
+          "[#4775](https://github.com/kontourai/station/pull/4775) fix(ui): keep pending messages through a missed read; steer natively by default",
+          "[#4763](https://github.com/kontourai/station/pull/4763) fix: repair defects, duplication and UI inconsistencies found in a repo-wide audit"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4781](https://github.com/kontourai/station/pull/4781) test(confinement): check that the pinned Seatbelt kernel legs actually ran (#4772)",
+          "[#4766](https://github.com/kontourai/station/pull/4766) test(ui): stop phone-layer suites stranding the dialog-history wait under load"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-11-10T18:28:01Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261110.2",

@@ -512,12 +512,10 @@ describe('HomeView', () => {
         within(failure).getByRole('button', { name: 'Close Home' }),
       ).toBeTruthy();
       expect(signal).not.toHaveBeenCalled();
-      fireEvent.click(
-        within(failure).getByRole('button', { name: 'Try again' }),
-      );
+      fireEvent.click(within(failure).getByRole('button', { name: 'Retry' }));
       await waitFor(() => expect(lanes.mock.calls.length).toBeGreaterThan(2));
       expect(signal).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() =>
         expect(signal).toHaveBeenCalledExactlyOnceWith({
           slot: 'home',
@@ -596,7 +594,7 @@ describe('HomeView', () => {
     );
     expect(alert?.textContent).not.toContain('DOCTYPE');
     fireEvent.click(
-      within(alert as HTMLElement).getByRole('button', { name: 'Try again' }),
+      within(alert as HTMLElement).getByRole('button', { name: 'Retry' }),
     );
     expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1);
   });
@@ -614,14 +612,14 @@ describe('HomeView', () => {
         .getAllByRole('alert')
         .find((node) => node.classList.contains('start-composer__alert'));
     fireEvent.click(
-      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+      within(alert() as HTMLElement).getByRole('button', { name: 'Retry' }),
     );
     await waitFor(() => expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1));
     await Promise.resolve();
     await Promise.resolve();
     expect(alert()?.textContent).not.toContain('DOCTYPE');
     expect(
-      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+      within(alert() as HTMLElement).getByRole('button', { name: 'Retry' }),
     ).toBeTruthy();
   });
 

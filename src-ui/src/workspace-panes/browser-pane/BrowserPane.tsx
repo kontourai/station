@@ -455,7 +455,7 @@ export default function BrowserPane({
                 className="browser-pane__control"
                 onClick={() => void access.refetch()}
               >
-                Try again
+                Retry
               </Button>
             }
           />
@@ -468,7 +468,7 @@ export default function BrowserPane({
                 className="browser-pane__control"
                 onClick={() => void access.refetch()}
               >
-                Try again
+                Retry
               </Button>
             }
           />
@@ -621,7 +621,7 @@ function BrowserMigration({
             className="browser-pane__control"
             onClick={() => migrate.mutate()}
           >
-            Try again
+            Retry
           </Button>
         }
       />
@@ -729,7 +729,7 @@ function BrowserNewSession({
                   className="browser-pane__control"
                   onClick={() => void targets.refetch()}
                 >
-                  Try again
+                  Retry
                 </Button>
               }
             />
@@ -1544,7 +1544,7 @@ function BrowserSessionPane({
             className="browser-pane__control"
             onClick={() => void session.refetch()}
           >
-            Try again
+            Retry
           </Button>
         }
       />

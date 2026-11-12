@@ -300,7 +300,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
         .textContent(),
     ).toBe('Not loaded');
 
-    await page.getByRole('button', { name: 'Try again' }).click();
+    await page.getByRole('button', { name: 'Retry' }).click();
     await untilTheme(page, 'catppuccin');
     await alert.waitFor({ state: 'detached' });
     expect(await rootAttribute(page, 'data-color-theme-failed')).toBeNull();
@@ -372,7 +372,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       .getByRole('radio', { name: /^Catppuccin/ })
       .locator('xpath=ancestor::label[1]')
       .click();
-    const tryAgain = page.getByRole('button', { name: 'Try again' });
+    const tryAgain = page.getByRole('button', { name: 'Retry' });
     await tryAgain.waitFor({ timeout: 10_000 });
     await tryAgain.focus();
     await page.keyboard.press('Enter');

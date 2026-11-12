@@ -10,6 +10,10 @@
 import type { SessionStartResult } from '@kontourai/monument';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
+  type ChatAttachmentInput,
+  QUEUED_ATTACHMENT_UNAVAILABLE_CODE,
+} from '@kontourai/station-contracts/chat-attachment';
+import {
   type ClientOrigin,
   type ClientOriginSender,
   UNKNOWN_CLIENT_ORIGIN,
@@ -24,6 +28,7 @@ import { STATION_FRAMED_TURN_CLIENT_ORIGIN } from '../../services/orchestration/
 import {
   inboxTurnDispatchOrigin,
   type SessionDispatchFacts,
+  type ThreadInboxAttachment,
   type ThreadInboxPayload,
 } from '../../services/orchestration/thread-inbox.js';
 import type { ScheduledConversationRunsPorts } from '../../services/scheduling/scheduled-conversation-runs.js';
@@ -40,11 +45,31 @@ export interface RecordedActorContinuation {
   clientOrigin: ClientOrigin;
   ambientContext?: string;
   model?: ExecutionModelRequest;
+  /** Files read back from the attachment blob store for a queued follow-up. */
+  attachments?: ChatAttachmentInput[];
   inputDigest?: string;
   inboxPlacement?: true;
   automaticBackground?: true;
   dispatchOrigin?: TurnDispatchOrigin;
 }
+
+/**
+ * A queued follow-up whose file is no longer in the attachment blob store.
+ * Thrown before anything starts, so the inbox records a clean refusal with
+ * this code and the message is never sent without its file.
+ */
+class QueuedAttachmentUnavailableError extends Error {
+  readonly code = QUEUED_ATTACHMENT_UNAVAILABLE_CODE;
+  constructor() {
+    super('A file held with this queued message is no longer stored.');
+    this.name = 'QueuedAttachmentUnavailableError';
+  }
+}
+
+/** Reads one stored file back as a request attachment, or undefined if gone. */
+export type ReadQueuedAttachment = (
+  file: ThreadInboxAttachment,
+) => ChatAttachmentInput | undefined;
 
 export type ContinueAsRecordedActor = (
   input: RecordedActorContinuation,
@@ -61,6 +86,43 @@ interface StartPortDeps {
    */
   sessionFacts?(sessionId: string): SessionDispatchFacts;
   continueAsRecordedActor: ContinueAsRecordedActor;
+  /** Present on hosts that hold files with queued follow-ups. */
+  readQueuedAttachment?: ReadQueuedAttachment;
+}
+
+/** {@link ReadQueuedAttachment} over the event store's attachment blobs. */
+export function readQueuedAttachmentFrom(store: {
+  readAttachmentBlob(ref: string): Buffer | undefined;
+}): ReadQueuedAttachment {
+  return (file) => {
+    const bytes = store.readAttachmentBlob(file.blobRef);
+    if (!bytes || bytes.length !== file.size) return undefined;
+    return {
+      kind: file.kind,
+      name: file.name,
+      mimeType: file.mimeType,
+      size: file.size,
+      dataUrl: `data:${file.mimeType};base64,${bytes.toString('base64')}`,
+    };
+  };
+}
+
+/**
+ * A queued entry's files as request attachments, read back before its turn
+ * starts. Throws {@link QueuedAttachmentUnavailableError} when any is gone.
+ */
+export function queuedAttachmentsOf(
+  deps: Pick<StartPortDeps, 'readQueuedAttachment'>,
+  payload: ThreadInboxPayload,
+): ChatAttachmentInput[] | undefined {
+  if (!payload.attachments?.length) return undefined;
+  const read = deps.readQueuedAttachment;
+  if (!read) throw new QueuedAttachmentUnavailableError();
+  return payload.attachments.map((file) => {
+    const attachment = read(file);
+    if (!attachment) throw new QueuedAttachmentUnavailableError();
+    return attachment;
+  });
 }
 
 export { readSessionDispatchFacts } from '../../services/orchestration/session-dispatch-facts.js';
@@ -72,7 +134,7 @@ function taskBound(deps: StartPortDeps, threadId: string): boolean {
 
 /** The conversation inbox's placement: one queued entry, as its sender. */
 export function inboxPlacementStartPort(deps: StartPortDeps) {
-  return ({
+  return async ({
     conversationId,
     threadId,
     payload,
@@ -82,11 +144,14 @@ export function inboxPlacementStartPort(deps: StartPortDeps) {
     readonly threadId: string;
     readonly payload: ThreadInboxPayload;
     readonly clientTurnId: string;
-  }): Promise<SessionStartResult> =>
-    deps.continueAsRecordedActor(
+  }): Promise<SessionStartResult> => {
+    // Read before the start: a missing file refuses the entry cleanly.
+    const attachments = queuedAttachmentsOf(deps, payload);
+    return deps.continueAsRecordedActor(
       {
         conversationId,
         message: payload.message,
+        ...(attachments ? { attachments } : {}),
         automaticBackground: payload.automaticBackground,
         inputDigest: payload.inputDigest,
         inboxPlacement: true,
@@ -107,6 +172,7 @@ export function inboxPlacementStartPort(deps: StartPortDeps) {
       },
       threadId,
     );
+  };
 }
 
 /**

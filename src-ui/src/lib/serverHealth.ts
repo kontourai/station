@@ -280,14 +280,63 @@ export async function probeServerConnection(
   // Station. From then on, a deadline or a saturated native queue on the
   // identity read is a Station that is slow to give this device a turn — the
   // address demonstrably answers — not one that cannot be reached.
-  let handshakeAnswered = false;
+  const progress = { handshakeAnswered: false };
+  // The deadline has to end the probe itself, not only the requests that
+  // honour its signal. The route resolver (host IPC for a native relay route)
+  // and the lazily loaded compatibility check take no signal, and a probe that
+  // never settles leaves the health coordinator queueing every later trigger
+  // behind it.
+  const stopped = new Promise<ConnectionHealthCheckResult>((resolve) => {
+    const settle = () =>
+      resolve({
+        ok: false,
+        reason: stoppedProbeReason(controller.signal, progress),
+      });
+    if (controller.signal.aborted) settle();
+    else controller.signal.addEventListener('abort', settle, { once: true });
+  });
+  try {
+    return await Promise.race([
+      probeUntilAnswered(
+        url,
+        credential,
+        expectedEnvironmentId,
+        controller.signal,
+        progress,
+        brokerRoute,
+      ),
+      stopped,
+    ]);
+  } finally {
+    clearTimeout(timeout);
+    parentSignal.removeEventListener('abort', abort);
+  }
+}
+
+/** Why a probe that its deadline or its caller stopped did not answer. */
+function stoppedProbeReason(
+  signal: AbortSignal,
+  progress: { handshakeAnswered: boolean },
+): ConnectionFailureReason {
+  if (signal.reason !== 'timeout') return 'unreachable';
+  return progress.handshakeAnswered ? 'busy' : 'timeout';
+}
+
+async function probeUntilAnswered(
+  url: string,
+  credential: string | undefined,
+  expectedEnvironmentId: string | null,
+  signal: AbortSignal,
+  progress: { handshakeAnswered: boolean },
+  brokerRoute?: BrokerRoute,
+): Promise<ConnectionHealthCheckResult> {
   const observeProtocol = beginClientProtocolObservation(url);
   try {
     const handshakeResponse = await healthFetch(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
       {
         headers: { Accept: 'application/json' },
-        signal: controller.signal,
+        signal,
       },
       brokerRoute,
     );
@@ -346,7 +395,7 @@ export async function probeServerConnection(
     }
     // Only a verified handshake restores cross-origin header acceptance.
     observeProtocol(handshake.compatibility);
-    handshakeAnswered = true;
+    progress.handshakeAnswered = true;
     const identityResponse = await stationAuthenticatedFetch(
       new URL('/api/system/identity', url),
       credential,
@@ -357,7 +406,7 @@ export async function probeServerConnection(
       // It is carried as an untyped init field on purpose: the native
       // transport reads it (`authenticatedTransport.ts`), and nothing else is
       // meant to set it. Plain `fetch` ignores unknown init members.
-      { signal: controller.signal, livenessProbe: true } as RequestInit,
+      { signal, livenessProbe: true } as RequestInit,
       brokerRoute,
     );
     if (!identityResponse.ok) {
@@ -379,20 +428,9 @@ export async function probeServerConnection(
     // other transport failure here.
     const nativeRefusal = classifyNativeTransportRefusal(error);
     if (nativeRefusal) return { ok: false, reason: nativeRefusal };
-    if (
-      handshakeAnswered &&
-      (controller.signal.reason === 'timeout' ||
-        isNativeTransportSaturation(error))
-    ) {
+    if (progress.handshakeAnswered && isNativeTransportSaturation(error)) {
       return { ok: false, reason: 'busy' };
     }
-    return {
-      ok: false,
-      reason:
-        controller.signal.reason === 'timeout' ? 'timeout' : 'unreachable',
-    };
-  } finally {
-    clearTimeout(timeout);
-    parentSignal.removeEventListener('abort', abort);
+    return { ok: false, reason: stoppedProbeReason(signal, progress) };
   }
 }

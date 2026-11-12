@@ -1033,7 +1033,7 @@ test.describe('Connections CRUD', () => {
     );
     await expect(setup.getByText('Ready', { exact: true })).toHaveCount(0);
     await expect(
-      setup.getByRole('button', { name: 'Try again' }),
+      setup.getByRole('button', { name: 'Retry', exact: true }),
     ).toBeVisible();
     await setup.getByRole('button', { name: 'Edit setup' }).click();
     await expect(setup.getByLabel('Name')).toHaveValue('Gemini CLI');

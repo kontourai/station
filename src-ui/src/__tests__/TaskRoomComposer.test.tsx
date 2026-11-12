@@ -227,7 +227,7 @@ test('lost acknowledgement freezes intent and an explicit retry reuses the opera
   render(<TaskRoomComposer {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
   fireEvent.click(
-    screen.getByRole('option', { name: 'Researcher @researcher' }),
+    screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
   );
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   fireEvent.change(textbox, {
@@ -324,7 +324,7 @@ test('an authority change during latest-brief preflight retains the draft and in
   const view = render(<TaskRoomComposer {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
   fireEvent.click(
-    screen.getByRole('option', { name: 'Researcher @researcher' }),
+    screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
   );
   fireEvent.change(screen.getByRole('textbox'), {
     target: { value: 'Private draft' },
@@ -794,7 +794,7 @@ test.each([
     mocks.people = [name];
     render(<TaskRoomComposer {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
-    fireEvent.click(screen.getByRole('option', { name }));
+    fireEvent.click(screen.getByRole('option', { name: `${name} Here now` }));
     const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
     fireEvent.change(textbox, {
       target: { value: `@${name}${separator}Please review the brief.` },
@@ -849,7 +849,7 @@ test('a reload during dispatch retains its exact uncertain operation before the 
   const first = render(<TaskRoomComposer {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
   fireEvent.click(
-    screen.getByRole('option', { name: 'Researcher @researcher' }),
+    screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
   );
   fireEvent.change(screen.getByRole('textbox'), {
     target: { value: 'Explore exactly this' },
@@ -949,7 +949,7 @@ test('recovery storage failure refuses provider invocation and keeps the draft',
   const view = render(<TaskRoomComposer {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
   fireEvent.click(
-    screen.getByRole('option', { name: 'Researcher @researcher' }),
+    screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
   );
   fireEvent.change(screen.getByRole('textbox'), {
     target: { value: 'Keep me' },
@@ -1029,7 +1029,7 @@ test('restoring an ordinary mention of a person cannot turn it into an agent req
   mocks.people = ['Researcher'];
   const first = render(<TaskRoomComposer {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
-  fireEvent.click(screen.getByRole('option', { name: 'Researcher' }));
+  fireEvent.click(screen.getByRole('option', { name: 'Researcher Here now' }));
   fireEvent.change(screen.getByRole('textbox'), {
     target: { value: '@Researcher Please review' },
   });
@@ -1191,7 +1191,7 @@ test('an image-only agent request survives lost acknowledgement and reload with 
   const view = render(<TaskRoomComposer {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
   fireEvent.click(
-    screen.getByRole('option', { name: 'Researcher @researcher' }),
+    screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
   );
   attachScreenshot(
     screen.getByRole('textbox', { name: 'Message the Task' }),

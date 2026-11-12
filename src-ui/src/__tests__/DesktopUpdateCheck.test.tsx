@@ -209,7 +209,7 @@ describe('Desktop app updates settings card', () => {
         screen.queryByText('native update connection unavailable'),
       ).toBeNull();
       native.invoke.mockImplementation(answer);
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(await screen.findByText('Ready to restart')).not.toBeNull();
       expect(fake.listenerCount()).toBe(1);
       act(() => fake.emit(desktopUpdateFixture('available')));
@@ -242,7 +242,7 @@ describe('Desktop app updates settings card', () => {
     expect(screen.getByRole('dialog').textContent).toContain(
       'The update did not install, and Station did not restart.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
       expect(fake.commands()).toEqual([
         'desktop_update_install',

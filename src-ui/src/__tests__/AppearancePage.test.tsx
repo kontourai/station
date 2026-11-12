@@ -543,7 +543,7 @@ describe('Appearance page while a theme sheet loads', () => {
       'The colors you had stay until it loads.',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await act(async () => {
       await Promise.resolve();
     });
@@ -574,7 +574,7 @@ describe('Appearance page while a theme sheet loads', () => {
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
 
     // A retry that fails again goes back to failed, not to Loading forever.
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await act(async () => {
       await Promise.resolve();
     });

@@ -1,0 +1,23 @@
+.task-room-avatar {
+  width: var(--room-avatar-size, var(--k-space-6));
+  height: var(--room-avatar-size, var(--k-space-6));
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border: var(--k-border-thin) solid
+    color-mix(in oklab, var(--room-avatar-ink) 40%, var(--k-line));
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--room-avatar-ink) 22%, var(--k-panel));
+  color: var(--k-text);
+  font: 600 var(--k-text-xs) / 1 var(--k-font-ui);
+  letter-spacing: var(--k-tracking-wide);
+  user-select: none;
+}
+
+.task-room-avatar--agent {
+  border-radius: var(--k-radius-sm);
+  border-color: var(--k-brand);
+  background: var(--k-brand);
+  color: var(--k-brand-contrast);
+}

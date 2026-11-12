@@ -151,7 +151,7 @@ export function DesktopUpdateCheck({
           Station could not read the desktop app’s update state.
         </p>
         <TechnicalDetails detail={readError} />
-        <Button onClick={retry}>Try again</Button>
+        <Button onClick={retry}>Retry</Button>
       </div>
     );
   }

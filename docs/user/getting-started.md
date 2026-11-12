@@ -720,6 +720,8 @@ or search the inbox, find matching **Dismissed** results, and choose
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+A turn the engine opens on its own, such as its reply when background work
+finishes, does not bring it back unless that turn fails, stops or needs you.
 Hidden **Third-party** sessions stay hidden through external updates until you
 restore them or bring them into Station.
 
@@ -895,6 +897,10 @@ was not recorded. A summary or transcript handle alone does not establish a
 returned result. An existing completion notice is corrected when a later
 structured tool return arrives from the same Station and child.
 
+A background shell command an engine started (or a monitor watching one) is
+not a subagent: its card shows a terminal mark, the command line and, once it
+ends, its exit code, and a group counts it as a background command.
+
 Background-task **Recent activity** is a bounded cache. Older tool rows and
 closed-chat history can be omitted; counts marked **shown** describe retained
 rows. Closing a chat does not stop its child work. Use Activity to inspect the
@@ -918,16 +924,18 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
-the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
-native steering. Other engines hold steering until a safe boundary can be proven;
+Keep typing during a turn. With Claude Code and Codex, which take native
+steering, **Send** defaults to **Steer**; elsewhere it defaults to **Queue**,
+which delivers after the turn finishes. The dropdown switches between them. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
-Steer and Queue carry text only. You can still attach files or dictate during a
-turn: files wait in the draft, which says why, until you send it after the turn
-ends.
+You can attach files or dictate during a turn. Steer carries text only, so a
+message with files is queued: Station keeps the files with it and sends them
+when the turn ends, and the pending row names them. On a Station that cannot
+hold files yet, they wait in the draft, which says why, until you send it after
+the turn ends.
 
 The app attempts to save a text message on this device before sending it. If
 the write fails or times out, it sends without that saved row and keeps the
@@ -1071,7 +1079,7 @@ An existing chat can become a Task through **New Task from this** in its More me
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
 
-To keep one chat as your personal agent, choose **Make this Houston** in its More menu. Home then pins it with **Talk to Houston**, and Station tells it when your work needs you, fails or finishes. See [Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md).
+To keep one chat as your personal agent, turn on **Coordinator chat** in Settings → Advanced → Feature previews, then choose **Make this Houston** in the chat's More menu. Home then pins it with **Talk to Houston**, and Station tells it when your work needs you, fails or finishes. See [Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md).
 
 On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
 issue's description and latest comments into a new Task and links back to the
@@ -1080,9 +1088,14 @@ issue; if the issue already has an open Task, Station opens that Task instead.
 After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
 
 The Task opens as a chat room. Press Enter to send, or Shift+Enter for a new
-line. New messages follow the newest message while you are at the bottom; if
-you scroll up, **Jump to latest** returns you there. **Load earlier messages**
-appears above the visible history. A failed agent request stays in the room
+line; on a phone keyboard, Return adds a line and the round send button sends.
+An unsent draft is kept for each room and thread in this tab. Messages from one
+person within a few minutes share one name and avatar, a divider marks each day,
+and agents have square avatars where people have round ones. New messages
+follow the newest message while you are at the bottom; if you scroll up, the
+room keeps your place, marks where new messages start, and **N new messages**
+returns you to the latest. **Load earlier messages** appears above the visible
+history. A failed agent request stays in the room
 with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.

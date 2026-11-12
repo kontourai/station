@@ -651,7 +651,12 @@ export interface WorkloadReadResult {
   lastSeq: number;
   /** `fromSeq` is older than retained output; replace any replay with `records`. */
   reset: boolean;
-  records: { seq: number; data: string }[];
+  /** A record with `resize` is a size change (#4625); its `data` is empty. */
+  records: {
+    seq: number;
+    data: string;
+    resize?: { cols: number; rows: number };
+  }[];
 }
 
 export type WorkloadErrorCode =

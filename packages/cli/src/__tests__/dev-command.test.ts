@@ -237,6 +237,18 @@ describe('runDevCommand — wiring to the start path', () => {
     );
   });
 
+  test('refuses STATION_FEATURES=strands-runtime before touching the dev home', async () => {
+    const { start, clean, ensureDir, deps } = baseDeps({
+      env: { STATION_FEATURES: 'strands-runtime' } as NodeJS.ProcessEnv,
+    });
+    await expect(runDevCommand(['--clean', '--force'], deps)).rejects.toThrow(
+      /^STATION_FEATURES=strands-runtime no longer selects the Strands runtime/,
+    );
+    expect(ensureDir).not.toHaveBeenCalled();
+    expect(clean).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+
   test('an unknown option is rejected', async () => {
     const { deps } = baseDeps();
     await expect(runDevCommand(['--nope'], deps)).rejects.toThrow(

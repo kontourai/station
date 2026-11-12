@@ -179,7 +179,7 @@ function InputDetails({
         description={failure.description}
         retry={
           failure.retryable
-            ? { label: 'Try again', onRetry: () => void query.refetch() }
+            ? { label: 'Retry', onRetry: () => void query.refetch() }
             : undefined
         }
         fallback={fallback}
@@ -233,7 +233,7 @@ function ToolDetails({
         description={failure.description}
         retry={
           failure.retryable
-            ? { label: 'Try again', onRetry: () => void query.refetch() }
+            ? { label: 'Retry', onRetry: () => void query.refetch() }
             : undefined
         }
         fallback={fallback}

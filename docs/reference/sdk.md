@@ -58,7 +58,7 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
+resize, reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
 `restart({subdirectory?})`, `close()` and `detach()`. `restart` runs the
 session's program again under the same id (a shell, an agent tab, or a package
 script resolved again by name) and resolves with `{restartedAfterSeq}`; the new
@@ -71,7 +71,10 @@ a promise that settles once it has; the host is credited for that output only
 after every such listener settled it, oldest first, so a fast program waits
 for its slowest view instead of queueing unbounded output in front of it.
 Unsubscribing releases what a listener still owed; a reconnect starts its
-credit afresh.
+credit afresh. `resize(cols, rows, sequence)` reports, in order with output,
+the size the terminal had from that point on, as its host recorded it; it is
+retained for later subscribers like output. A host older than resize records
+sends none.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
@@ -158,7 +161,16 @@ renderer and input modules behind it are internal and may change.
 Pass a `session` implementing `TerminalViewSession`: `state`, `readOnly`,
 `subscribe(listener)`, `write(bytes)` and `resize(cols, rows)`. The listener's
 `output(bytes, kind)` receives PTY output in order; `kind: 'replay'` marks output
-from before this attachment. It returns a promise that settles once the view's
+from before this attachment. Optional `resize(cols, rows, kind)` gives a
+recorded size and `replayed()` says earlier output has all arrived: the view
+parses replayed output at the size it was written for, so a screen the
+program repainted after a resize does not land on lines that had scrolled,
+then returns to its own size. An incremental reconnect uses the last recorded
+size received before disconnect, even when the program exited or failed while
+offline. A reset, replacement session or full rebuild from retained history
+discards that cache and reconstructs it from the retained size records. Output
+before the first available size record uses the view's size.
+The output listener returns a promise that settles once the view's
 emulator parsed that output; a session should not hand the view more until it
 does (the SDK store's sessions wait). A view holds at most 4 MiB it has not
 parsed: past that it resets its screen and subscribes again, replaying what the
@@ -174,8 +186,9 @@ session. A view refits whenever its box changes (a window resize, a pane
 splitter, moving between dock regions, a phone keyboard or rotation, a
 devicePixelRatio change): the grid and renderer follow at once, and the
 latest size reaches the session at most every 100 ms. The scrollbar sits in
-the inset, so scrollback appearing never takes columns from the grid. Handing a mounted view a different session (a reconnect, a fresh
-attachment of the same terminal) first resets its emulator to a fresh terminal,
+the inset, so scrollback appearing never takes columns from the grid. Handing
+a mounted view a different session object (including a fresh attachment of the
+same terminal) first resets its emulator to a fresh terminal,
 because the new attachment replays its terminal from the oldest retained
 output; the history is drawn once. A session `reset` does the same.
 
@@ -776,9 +789,21 @@ invalidate queries, `presence` updates participants, and `revoked` or terminal
 include the API authority, local Project ID, and room ID for history.
 
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
-session storage before sending. A lost acknowledgement or reload offers an
-explicit retry of that exact payload and UUID; it never automatically resends.
-Changing authority, Project, or discovered actor retires the prior draft.
+session storage before sending. Until it is confirmed, the message waits in the
+conversation; a lost acknowledgement or reload offers an explicit retry of that
+exact payload and UUID and never resends automatically. The retained intent
+settles once room history shows a message with its intent ID. The unsent draft
+(text, reply target and Agent recipient) is kept per room in the same tab's
+session storage, keyed by the shell's reload partition rather than its
+per-reload authority epoch; a restored recipient must still be an available
+Agent, shown under its current catalog name. While an Agent request is
+unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
+messages still send. A new `@agent` ask never reuses a retained Agent intent,
+which only an explicit retry sends, and its acknowledgement clears the draft
+only if the draft is unchanged since that ask. A retained request that never got
+a handle can be abandoned after a confirmation; the current draft is kept and
+the original may already have run. Changing Project, discovered actor or reload partition
+retires the prior draft.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
@@ -5091,6 +5116,9 @@ job does not transfer its earlier conversation's history to the new target.
 Older runs without a recorded target require the creator and current-target
 read access, except creatorless, untargeted jobs remain readable by the local
 operator. An agent can read only its own conversation's runs.
+`readFollowUpAttachmentsCapability(apiBase)` (from `@kontourai/station-sdk/client`)
+reads `followUpAttachments`: `true` when the host holds a busy follow-up with
+its files, `false` otherwise, including an unreadable handshake.
 `readTroubleshootCapability(apiBase)` (from `@kontourai/station-sdk/client`)
 reads the host's public handshake the same way for `troubleshootPrepare`:
 `true`, `false`, or `null` when the handshake could not be read.

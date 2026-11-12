@@ -69,7 +69,7 @@ blocked or awaiting review), **Backlog**, and **History**. These views do not
 change status. A row or board card can also show its Session's agent-reported
 plan progress, which never changes status either; see
 [Getting started](../user/getting-started.md#start-your-first-task).
-**Refresh tasks** reads current Task records.
+**Refresh Tasks** reads current Task records.
 Status is not a percentage complete or proof that an Agent is running. A
 connected GitHub issue offers **Start Task**, which creates a Task with its
 description and latest comments in the shared document, or opens its existing
