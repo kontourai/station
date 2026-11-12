@@ -1320,10 +1320,16 @@ test.describe('Connections CRUD', () => {
     await nameField.fill('Team Ollama');
     await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-    // The create settles: the route moves to the persisted id and the primary
-    // action becomes Save.
+    // The create settles: the route moves to the persisted id, which opens
+    // the saved connection's detail. Its fields are the Settings tab, and
+    // Save appears there once something is edited.
     await expect(page).toHaveURL(/\/connections\/models\/[0-9a-f-]{36}$/);
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await expect(page).toHaveURL(
+      /\/connections\/models\/[0-9a-f-]{36}\/settings$/,
+    );
     await expect(nameField).toHaveValue('Team Ollama');
+    await nameField.fill('Team Ollama (edited)');
     await expect(
       page.getByRole('button', { name: 'Save', exact: true }),
     ).toBeVisible();
