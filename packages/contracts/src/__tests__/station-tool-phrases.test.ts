@@ -50,6 +50,17 @@ describe('stationToolPhrase', () => {
         args: { ref: '03271' },
       }),
     ).toBe('Declare a pull request');
+    // GitLab's own words: a merge request, numbered with `!`.
+    expect(
+      stationToolPhrase('declare_pull_request', 'done', {
+        args: { provider: 'gitlab', ref: '42' },
+      }),
+    ).toBe('Declared MR !42');
+    expect(
+      stationToolPhrase('declare_pull_request', 'pending', {
+        args: { provider: 'gitlab' },
+      }),
+    ).toBe('Declare a merge request');
     expect(
       stationToolPhrase('claim_work', 'done', {
         args: { workItemRef: '#3158' },

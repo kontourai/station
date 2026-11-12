@@ -599,8 +599,12 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Declaring',
     'Declare',
     ({ args }) => {
+      // GitLab calls them merge requests, numbered with `!`.
+      const gitlab = text(args, 'provider')?.toLowerCase() === 'gitlab';
       const ref = text(args, 'ref');
-      return ref && /^[1-9]\d*$/u.test(ref) ? `PR #${ref}` : 'a pull request';
+      if (ref && /^[1-9]\d*$/u.test(ref))
+        return gitlab ? `MR !${ref}` : `PR #${ref}`;
+      return gitlab ? 'a merge request' : 'a pull request';
     },
   ),
   get_task_brief: read(fixed('the Task brief')),
