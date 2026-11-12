@@ -71,7 +71,10 @@ function boot() {
     undefined,
     undefined,
     undefined,
-    { contentMigrationRecipients: () => readMarkerMigrationRecipients(dir) },
+    {
+      contentMigrationRecipients: () =>
+        readMarkerMigrationRecipients(dir, () => false),
+    },
   );
   const service = new OrchestrationService({
     adapterRegistry: { register() {}, get: () => undefined, list: () => [] },

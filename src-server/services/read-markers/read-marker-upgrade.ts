@@ -1,17 +1,35 @@
-import { FileConversationAcknowledgementStore } from '../orchestration/conversation-acknowledgement-store.js';
+import {
+  FileConversationAcknowledgementStore,
+  type IsOwnerDevice,
+} from '../orchestration/conversation-acknowledgement-store.js';
 import { FileReadMarkerStore } from './read-marker-store.js';
+
+/** A source file past this is refused, and the snapshot frozen missing. */
+export const READ_MARKER_MIGRATION_SOURCE_MAX_BYTES = 4 * 1024 * 1024;
 
 /**
  * #3075: the people who had a read record when the content migration
  * begins: each acknowledgement-store key and each person a first-format
- * marker store names. The event store reads this once, in the transaction
- * that writes the cutoff, and freezes it; it is never sampled again.
+ * marker store names. First-format acknowledgement keys are canonicalized
+ * with `isOwnerDevice`, the runtime's owner-device rule, so an owner device's
+ * record names the person the runtime resolves it to. The event store reads
+ * this once, while it writes the cutoff, and freezes it; it is never
+ * sampled again. A source past
+ * {@link READ_MARKER_MIGRATION_SOURCE_MAX_BYTES} throws.
  */
-export function readMarkerMigrationRecipients(homeDir: string): string[] {
+export function readMarkerMigrationRecipients(
+  homeDir: string,
+  isOwnerDevice: IsOwnerDevice,
+): string[] {
+  const options = { maxReadBytes: READ_MARKER_MIGRATION_SOURCE_MAX_BYTES };
   return [
     ...new Set([
-      ...new FileConversationAcknowledgementStore(homeDir).principals(),
-      ...new FileReadMarkerStore(homeDir).legacyRecipients(),
+      ...new FileConversationAcknowledgementStore(
+        homeDir,
+        isOwnerDevice,
+        options,
+      ).principals(),
+      ...new FileReadMarkerStore(homeDir, options).legacyRecipients(),
     ]),
   ].sort();
 }

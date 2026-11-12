@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import {
   JsonFileStore,
   JsonFileStoreCorruptionError,
+  JsonFileStoreReadLimitError,
 } from '../infra/json-store.js';
 
 const STORE_VERSION = 2 as const;
@@ -174,9 +175,13 @@ export class FileReadMarkerStore implements ReadMarkerStore {
   /**
    * A store that does not exist yet, like a first-format one, waits for
    * {@link completeUpgrade}: until then nobody has a baseline and every
-   * conversation reads unread, the safe direction.
+   * conversation reads unread, the safe direction. `maxReadBytes` refuses a
+   * larger file (`JsonFileStoreReadLimitError`).
    */
-  constructor(dataDir: string) {
+  constructor(
+    dataDir: string,
+    { maxReadBytes }: { maxReadBytes?: number } = {},
+  ) {
     const path = join(dataDir, READ_MARKER_STORE_FILE);
     this.path = path;
     // A torn write is never acceptable; losing the newest mark to a power cut
@@ -185,6 +190,7 @@ export class FileReadMarkerStore implements ReadMarkerStore {
       durableAtomicWrite: true,
       atomicWriteDurability: 'tear-safe',
       onCorruption: 'throw',
+      maxReadBytes,
     } as const;
     this.store = new JsonFileStore(
       path,
@@ -244,12 +250,14 @@ export class FileReadMarkerStore implements ReadMarkerStore {
 
   /**
    * The people a first-format store's markers name, for the recipient
-   * snapshot taken with the migration cutoff; none for a current store.
+   * snapshot taken with the migration cutoff; none for a current store. A
+   * file past `maxReadBytes` is refused, never read as naming nobody.
    */
   legacyRecipients(): string[] {
     try {
       return Object.keys(this.legacy.read(decodeLegacyReadMarkerStore).markers);
-    } catch {
+    } catch (error) {
+      if (error instanceof JsonFileStoreReadLimitError) throw error;
       return [];
     }
   }

@@ -4,6 +4,7 @@
  * start resumes where it stopped instead of from zero. Completion records the
  * upgrade fence (the store's contiguous sequence prefix) in the same write.
  */
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { beforeEach, expect, test } from 'vitest';
@@ -268,7 +269,7 @@ test('a person first recorded after the cutoff, before an interrupted migration 
     updatedAt: '2026-11-11T10:00:00.000Z',
   });
   // The runtime's recipients: everyone with a record, read with the cutoff.
-  const recipients = () => readMarkerMigrationRecipients(dir);
+  const recipients = () => readMarkerMigrationRecipients(dir, () => false);
   expect(
     () =>
       new EventStore(
@@ -361,5 +362,150 @@ test('a migration begun without a recipient snapshot gives the baseline to nobod
     });
   } finally {
     store.close();
+  }
+});
+
+test('an owner-device acknowledgement in a first-format store freezes the owner as the runtime resolves them', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  oldHome(path, 50);
+  // A v1 home whose only record is the owner's phone.
+  writeFileSync(
+    join(dir, 'conversation-acknowledgements.json'),
+    JSON.stringify({
+      version: 1,
+      acknowledgements: {
+        'human:device:owner-phone': {
+          'viewed-before': '2026-11-11T10:00:00.000Z',
+        },
+      },
+    }),
+  );
+  // The owner-device predicate the runtime gives its acknowledgement store.
+  const ownerDevice = (id: string) => id === 'owner-phone';
+  const runtime = new FileConversationAcknowledgementStore(dir, ownerDevice);
+  expect(runtime.principals()).toEqual(['personal:owner']);
+  const events = new EventStore(path, undefined, undefined, undefined, {
+    contentMigrationRecipients: () =>
+      readMarkerMigrationRecipients(dir, ownerDevice),
+  });
+  try {
+    expect(events.contentMigrationRecipients()).toEqual(['personal:owner']);
+    const markers = new FileReadMarkerStore(dir);
+    expect(
+      upgradeReadMarkerStore({
+        store: markers,
+        events,
+        now: new Date('2026-11-12T00:00:00.000Z'),
+      }),
+    ).toBe(true);
+    const state = new ReadMarkerService({
+      store: markers,
+      conversations: runtime,
+      personKeyFor: () => 'personal:owner',
+      agentConversations: {
+        latestVersions: async () => new Map(),
+        versionsOf: () =>
+          new Map([
+            [
+              'history',
+              {
+                version: projected(path, 'odd'),
+                space: 'content',
+                acknowledgeableUntil: 0,
+              },
+            ],
+          ]),
+      },
+    })
+      .conversationReadStates({} as never, [])
+      ?.get('history');
+    expect(state).toMatchObject({ unread: false });
+  } finally {
+    events.close();
+  }
+});
+
+/** Freezes `people` as the recipients of a fresh migration. */
+let freezes = 0;
+function freeze(people: () => readonly string[]) {
+  freezes += 1;
+  const path = join(dir, `orchestration-${freezes}.sqlite`);
+  oldHome(path, 5);
+  const diagnostics: string[] = [];
+  const events = new EventStore(path, undefined, undefined, undefined, {
+    contentMigrationRecipients: people,
+    onContentMigrationDiagnostic: (reason) => diagnostics.push(reason),
+  });
+  try {
+    return { recipients: events.contentMigrationRecipients(), diagnostics };
+  } finally {
+    events.close();
+  }
+}
+
+const people = (count: number, keyLength = 12) =>
+  Array.from({ length: count }, (_, index) =>
+    `human:${String(index).padStart(keyLength - 6, '0')}`.slice(0, keyLength),
+  );
+
+test('the recipient snapshot admits its bounds exactly and refuses one past each, never truncating', () => {
+  // Pinned beside the constants: 1,000 people, 512-character keys.
+  expect(freeze(() => people(1000)).recipients).toHaveLength(1000);
+  const tooMany = freeze(() => people(1001));
+  expect(tooMany.recipients).toBeUndefined();
+  expect(tooMany.diagnostics).toHaveLength(1);
+
+  expect(freeze(() => people(1, 512)).recipients?.[0]).toHaveLength(512);
+  const tooLong = freeze(() => people(1, 513));
+  expect(tooLong.recipients).toBeUndefined();
+  expect(tooLong.diagnostics).toHaveLength(1);
+
+  // Within the count and key bounds, but over 256 KiB serialized.
+  const tooBig = freeze(() => people(1000, 512));
+  expect(tooBig.recipients).toBeUndefined();
+  expect(tooBig.diagnostics).toHaveLength(1);
+});
+
+test('a recipient source over 4 MiB is refused unread, freezing a missing snapshot', () => {
+  writeFileSync(
+    join(dir, 'conversation-acknowledgements.json'),
+    JSON.stringify({
+      version: 2,
+      acknowledgements: {
+        'personal:owner': { pad: 'x'.repeat(4 * 1024 * 1024) },
+      },
+    }),
+  );
+  const refused = freeze(() => readMarkerMigrationRecipients(dir, () => false));
+  expect(refused.recipients).toBeUndefined();
+  expect(refused.diagnostics).toHaveLength(1);
+});
+
+test('a deferred migration keeps the construction cutoff and samples recipients only when it begins', () => {
+  const path = join(dir, 'orchestration.sqlite');
+  oldHome(path, 50);
+  let ready = false;
+  const sampled: boolean[] = [];
+  const events = new EventStore(path, undefined, undefined, undefined, {
+    contentMigrationRecipients: () => {
+      sampled.push(ready);
+      return ready ? ['personal:owner'] : ['human:device:owner-phone'];
+    },
+    deferContentMigration: true,
+  });
+  try {
+    expect(progress(path)).toBeUndefined();
+    expect(events.contentUpgradeFence()).toBeUndefined();
+    // Appended before the migration begins: after the cutoff, so unread.
+    appendContent(events, 'during-boot');
+    ready = true;
+    events.beginContentMigration();
+    events.beginContentMigration();
+    expect(sampled).toEqual([true]);
+    expect(events.contentUpgradeFence()).toBe(50);
+    expect(events.contentMigrationRecipients()).toEqual(['personal:owner']);
+    expect(projected(path, 'odd')).toBeGreaterThan(50);
+  } finally {
+    events.close();
   }
 });

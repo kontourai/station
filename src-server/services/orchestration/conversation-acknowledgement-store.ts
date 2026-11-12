@@ -206,14 +206,20 @@ export class FileConversationAcknowledgementStore
 {
   private readonly store: JsonFileStore<AcknowledgementStoreData>;
 
+  /** `maxReadBytes` refuses a larger file (`JsonFileStoreReadLimitError`). */
   constructor(
     dataDir: string,
     readonly isOwnerDevice?: IsOwnerDevice,
+    options: { maxReadBytes?: number } = {},
   ) {
     this.store = new JsonFileStore(
       join(dataDir, 'conversation-acknowledgements.json'),
       { version: STORE_VERSION, acknowledgements: {} },
-      { durableAtomicWrite: true, onCorruption: 'throw' },
+      {
+        durableAtomicWrite: true,
+        onCorruption: 'throw',
+        maxReadBytes: options.maxReadBytes,
+      },
     );
   }
 

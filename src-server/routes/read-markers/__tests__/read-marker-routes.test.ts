@@ -1062,7 +1062,8 @@ describe('the migration baseline belongs to established principals (#4813 fence 
       // The recipient snapshot the event store froze with its cutoff.
       events: {
         contentUpgradeFence: () => V1,
-        contentMigrationRecipients: () => readMarkerMigrationRecipients(dir),
+        contentMigrationRecipients: () =>
+          readMarkerMigrationRecipients(dir, () => false),
       },
       now: new Date(T2),
     });
