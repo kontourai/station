@@ -226,8 +226,10 @@ test.describe('Project channels on a phone (#4795)', () => {
       await expectNoHorizontalScroll(page);
 
       // The page's height settles once both sections have answered: a
-      // Tasks skeleton is taller than its "No Task rooms yet." line.
-      await expect(page.getByText('No Task rooms yet.')).toBeVisible();
+      // Tasks skeleton is taller than its empty line.
+      await expect(
+        page.getByText("A Task's room shows here once it is open."),
+      ).toBeVisible();
       // Scroll the Project page until the last channel is in reach.
       const target = list.getByRole('button', { name: 'team-12' });
       await target.scrollIntoViewIfNeeded();
@@ -260,7 +262,7 @@ test.describe('Project channels on a phone (#4795)', () => {
         exact: true,
       });
       await expect(
-        room.getByRole('heading', { level: 1, name: 'team-12' }),
+        room.getByRole('heading', { level: 2, name: 'team-12' }),
       ).toBeVisible();
       // Full screen: the Project's own header and sections are gone.
       await expect(
@@ -284,7 +286,7 @@ test.describe('Project channels on a phone (#4795)', () => {
         .poll(() => new URL(page.url()).searchParams.get('thread'))
         .not.toBeNull();
       await expect(
-        room.getByRole('heading', { level: 1, name: 'Thread' }),
+        room.getByRole('heading', { level: 2, name: 'Thread' }),
       ).toBeVisible();
       const reply = room.getByRole('textbox', { name: 'Reply in thread' });
       await reply.fill('A reply in the thread');
@@ -316,7 +318,7 @@ test.describe('Project channels on a phone (#4795)', () => {
       await expectNoHorizontalScroll(page);
       await list.getByRole('button', { name: 'general' }).click();
       await expect(
-        room.getByRole('heading', { level: 1, name: 'general' }),
+        room.getByRole('heading', { level: 2, name: 'general' }),
       ).toBeVisible();
       await expectNoHorizontalScroll(page);
     } finally {

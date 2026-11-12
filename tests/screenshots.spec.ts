@@ -3713,7 +3713,7 @@ function roomConversationScreens(): Screen[] {
               const expectChannel = (region: Locator, name: string) =>
                 expect(
                   phone
-                    ? region.getByRole('heading', { level: 1, name })
+                    ? region.getByRole('heading', { level: 2, name })
                     : region.getByRole('button', {
                         name: new RegExp(`^${name}\\b.*switch channel$`),
                       }),
@@ -4000,7 +4000,7 @@ function channelNavigationScreens(): Screen[] {
                   ).toBeVisible();
                   if (phone) {
                     await expect(
-                      room.getByRole('heading', { level: 1, name: 'design' }),
+                      room.getByRole('heading', { level: 2, name: 'design' }),
                     ).toBeVisible();
                     await expectTouchTarget(
                       room.getByRole('button', {

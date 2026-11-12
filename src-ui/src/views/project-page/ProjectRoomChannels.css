@@ -187,7 +187,7 @@
 .room-channel--screen .room-channel__topic {
   font-size: var(--k-text-xs);
 }
-.room-channel-list__item--danger {
+.room-channel-list__item[data-tone="danger"] {
   color: var(--k-negative);
 }
 .room-channel__notice {

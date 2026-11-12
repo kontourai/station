@@ -828,8 +828,9 @@
   width: min(100%, 28rem);
 }
 
-/* Task room on a phone: the one mobile breakpoint (`MOBILE_MEDIA_QUERY`,
-   #4795). The thread summary's floor lives with it (RoomThreadSummary.css). */
+/* The Task room and its workspace on a phone: the one mobile breakpoint
+   (`MOBILE_MEDIA_QUERY`, #4795). The thread summary's floor lives with it
+   (RoomThreadSummary.css). */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .task-room-message-actions > .button,
   .task-room-running__actions .button,
@@ -843,9 +844,7 @@
   .task-room-composer .task-room-brief-short {
     display: inline;
   }
-}
 
-@media (max-width: 640px) {
   .task-workspace__body {
     padding: 0.75rem;
   }

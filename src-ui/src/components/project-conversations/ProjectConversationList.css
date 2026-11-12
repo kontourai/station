@@ -147,30 +147,13 @@
   border-radius: 2px;
 }
 
-/* An agent in the room is running: a filled, softly breathing mark. */
+/* An agent in the room is running: the mark fills with the active color. */
 .conversation-list__task-mark--working {
   color: var(--k-active);
 }
 
 .conversation-list__task-mark--working::before {
   background: currentColor;
-  animation: conversation-list-working 1.6s var(--k-ease) infinite;
-}
-
-@keyframes conversation-list-working {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .conversation-list__task-mark--working::before {
-    animation: none;
-  }
 }
 
 .conversation-list__label {
@@ -200,13 +183,6 @@
 
 .conversation-list__more {
   color: var(--k-action);
-}
-
-.conversation-list__empty {
-  margin: 0;
-  padding: var(--k-space-1) var(--k-space-2);
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
 }
 
 .conversation-list__chevron::before {
@@ -267,15 +243,14 @@
   font-weight: 650;
 }
 
-/* Touch: every row and the add control reach the 44px floor. Same
-   condition as the sidebar's own touch rules (ProjectSidebar.css). */
-@media (pointer: coarse), (max-width: 768px) {
-  .conversation-list__row {
-    min-height: 44px;
-  }
+/* Touch: every row and the add control reach the 44px floor. The component
+   sets this class from `useIsMobile` (MOBILE_MEDIA_QUERY), the one phone
+   breakpoint, rather than a media query of its own. */
+.conversation-list--touch .conversation-list__row {
+  min-height: 44px;
+}
 
-  .conversation-list__add {
-    width: 44px;
-    height: 44px;
-  }
+.conversation-list--touch .conversation-list__add {
+  width: 44px;
+  height: 44px;
 }

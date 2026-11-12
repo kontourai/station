@@ -228,25 +228,25 @@ export function ProjectRoomChannelHeader({
           </button>
           {screen.heading ? (
             <div className="room-channel__bar-title">
-              <h1 className="room-channel__name">
+              <h2 className="room-channel__name">
                 <span className="room-channel__label">
                   {screen.heading.title}
                 </span>
-              </h1>
+              </h2>
               {screen.heading.subtitle && (
                 <p className="room-channel__topic">{screen.heading.subtitle}</p>
               )}
             </div>
           ) : (
             <div className="room-channel__bar-title">
-              <h1 className="room-channel__name">
+              <h2 className="room-channel__name">
                 <span className="room-channel__label" title={name}>
                   <span className="room-channel__hash" aria-hidden="true">
                     #
                   </span>
                   {name ?? 'Room'}
                 </span>
-              </h1>
+              </h2>
               {current?.topic ? (
                 <p className="room-channel__topic" title={current.topic}>
                   {current.topic}
@@ -430,7 +430,8 @@ function ChannelActions({
             <button
               ref={index === 0 ? firstRef : undefined}
               type="button"
-              className={`room-channel-list__item${row.tone === 'danger' ? ' room-channel-list__item--danger' : ''}`}
+              className="room-channel-list__item"
+              data-tone={row.tone}
               onClick={row.onSelect}
             >
               <span className="room-channel-list__name">{row.label}</span>

@@ -1,9 +1,10 @@
 import { PROJECT_ROOM_DEFAULT_CHANNEL_NAME } from '@kontourai/station-contracts/project-room';
 import type { ApiRequestScope } from '@kontourai/station-sdk/project-rooms';
 import { type KeyboardEvent, useRef, useState } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { Button } from '../Button';
 import { PlusGlyph } from '../icons/Glyph';
-import { ErrorState, SkeletonBlock } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 import {
   type ConversationEntry,
   type ConversationUnread,
@@ -79,6 +80,7 @@ export function ProjectConversationList({
   onNewChannel,
 }: ProjectConversationListProps) {
   const index = useProjectConversationIndex(project, requestScope, enabled);
+  const touch = useIsMobile();
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const [focusKey, setFocusKey] = useState<string>();
 
@@ -185,7 +187,7 @@ export function ProjectConversationList({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: arrow keys move between the rows' own buttons; the container only routes them.
     <div
-      className={`conversation-list conversation-list--${variant}`}
+      className={`conversation-list conversation-list--${variant}${touch ? ' conversation-list--touch' : ''}`}
       onKeyDown={onKeyDown}
     >
       <div className="conversation-list__section">
@@ -243,7 +245,10 @@ export function ProjectConversationList({
               }
             />
           ) : taskRows.length === 0 ? (
-            <p className="conversation-list__empty">No Task rooms yet.</p>
+            <Empty
+              variant="compact"
+              label="A Task's room shows here once it is open."
+            />
           ) : (
             <ul
               className="conversation-list__rows"
