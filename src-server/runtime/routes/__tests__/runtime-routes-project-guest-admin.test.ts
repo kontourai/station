@@ -564,6 +564,9 @@ describe('project guest administration over the production composition', () => {
       orchestrationEventStore: new Proxy(
         {
           createPackageMcpAdmissionJournal: () => undefined,
+          // The real EventStore answers a sequence number; a callable here
+          // would start read state with a baseline that never decodes.
+          contentUpgradeFence: () => 0,
           sessionTurnBoundaryAuthority: () => ({
             reconcile: () => ({ kind: 'available', interrupted: [] }),
           }),
