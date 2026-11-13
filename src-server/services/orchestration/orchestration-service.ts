@@ -42,6 +42,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import {
@@ -4090,6 +4091,34 @@ export class OrchestrationService {
     const result = await adapter.stopProviderTask(threadId, taskId);
     this.assertAdapterCurrentAfterCommand(adapter);
     return result;
+  }
+
+  /**
+   * Restart one of the session's engine-run MCP servers (and optionally
+   * start its sign-in), through the adapter's `reconnectMcpServer`. An
+   * adapter without it answers `unsupported`; the engine's own answer,
+   * including a refusal, is returned as it gave it.
+   */
+  async reconnectEngineMcpServer(
+    threadId: string,
+    serverName: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    const adapter = await resolveOrchestrationAdapterForThread({
+      threadId,
+      threadProviders: this.threadProviders,
+      requireAdapter: (provider) => this.requireAdapter(provider),
+      adapters: this.options.adapterRegistry.list(),
+    });
+    this.assertAdapterCurrent(adapter);
+    if (!adapter.reconnectMcpServer) return { kind: 'unsupported' };
+    const outcome = await adapter.reconnectMcpServer(
+      threadId,
+      serverName,
+      options,
+    );
+    this.assertAdapterCurrentAfterCommand(adapter);
+    return outcome;
   }
 
   /**

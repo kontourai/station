@@ -47,6 +47,13 @@
   font-size: var(--k-text-sm);
 }
 
+.engine-mcp-status__notice {
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
 .engine-mcp-status__error {
   grid-column: 1 / -1;
   margin: 0;

@@ -57,6 +57,10 @@ interface ConversationStatsModalProps {
   engineMcpServers?: readonly ChatEngineMcpServer[];
   /** Restart one of the engine's MCP servers; absent hides the action. */
   onReconnectMcpServer?: EngineMcpReconnect;
+  /** The server a reconnect is in flight for. */
+  mcpReconnectPendingServer?: string;
+  /** What the last reconnect came to, in words. */
+  mcpReconnectNotice?: string;
 }
 
 function SectionCard({
@@ -114,6 +118,8 @@ export function ConversationStatsModal({
   usageTreeError,
   engineMcpServers,
   onReconnectMcpServer,
+  mcpReconnectPendingServer,
+  mcpReconnectNotice,
 }: ConversationStatsModalProps) {
   const target = useOptionalConversationConnection();
   if (!isVisible) return null;
@@ -250,6 +256,8 @@ export function ConversationStatsModal({
             <EngineMcpStatusPanel
               servers={engineMcpServers}
               onReconnect={onReconnectMcpServer}
+              pendingServer={mcpReconnectPendingServer}
+              notice={mcpReconnectNotice}
             />
           )}
           {stats.contextWindowPercentage !== undefined && (

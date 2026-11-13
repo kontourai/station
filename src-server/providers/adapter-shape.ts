@@ -6,7 +6,10 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
-import type { EngineCommandRoute } from '@kontourai/station-contracts/engine-commands';
+import type {
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
 import type {
   InputRequestContent,
   SessionGrantScope,
@@ -532,6 +535,18 @@ export interface ProviderAdapterShape {
     threadId: string,
     taskId: string,
   ): Promise<ProviderTaskStopResult>;
+  /**
+   * Ask the session's engine to restart one MCP server it runs itself (one
+   * an `engine-mcp.status` event named), optionally starting that server's
+   * OAuth sign-in; the consent link then arrives as a URL input request.
+   * Present only where some engine the adapter runs has such a call; an
+   * engine of the adapter's without one answers `not-declared`.
+   */
+  reconnectMcpServer?(
+    threadId: string,
+    serverName: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome>;
   respondToRequest(
     threadId: string,
     requestId: string,

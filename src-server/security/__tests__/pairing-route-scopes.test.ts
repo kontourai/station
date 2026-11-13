@@ -499,6 +499,15 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
         '/api/orchestration',
         true,
       ],
+      // The person's restart or sign-in of one engine-run MCP server.
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
       // An agent's wake-up and proposal leaves, and the person's own.
       [
         'POST',

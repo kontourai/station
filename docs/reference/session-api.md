@@ -1906,6 +1906,28 @@ handle's `providerTurnId` when proving one turn, so an earlier answer cannot
 satisfy a later check. The shared projection assembles streamed text and handles
 aggregate `turn.completed.outputText` where appropriate.
 
+### Engine MCP servers (`/sessions/:threadId/mcp-servers`)
+
+Some engines run MCP servers of their own and report them as
+`engine-mcp.status` events (`EngineMcpServerStatus` in
+[contracts](contracts.md)).
+
+- `POST /sessions/:threadId/mcp-servers/:serverName/reconnect` asks the
+  Session's engine to restart one of them. With body `{ "startOAuth": true }`
+  it starts that server's sign-in instead; the consent link then arrives as a
+  URL input request, which the person opens from its card. The name is at most
+  128 characters (`ENGINE_MCP_SERVER_NAME_MAX_CHARS`); an empty or longer name
+  is refused `400`, and so is any other body key.
+
+The caller must be the current request principal and own the Session, as for
+the usage-limit actions below; anyone else gets `404`. A Session with no live
+engine answers `409`. Otherwise it answers the engine's
+`EngineCommandOutcome`: `answered` (with the engine's `success` and `text`
+where it gave them), `failed` (with a message), `not-declared` (this engine
+has no reconnect call), or `unsupported` (the Session's adapter has none).
+Station decides nothing from the answer; a later `engine-mcp.status` reports
+the server's new state.
+
 ### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
 
 When a Claude Code or Codex turn stops on a provider usage limit, Station

@@ -1180,7 +1180,11 @@ export type EngineMcpServerState =
   | 'disabled';
 
 /** One MCP server as the engine reports it. Engine-attributed, never Station's own view. */
+/** The longest MCP server name an engine status names; a longer one is dropped. */
+export const ENGINE_MCP_SERVER_NAME_MAX_CHARS = 128;
+
 export interface EngineMcpServerStatus {
+  /** At most {@link ENGINE_MCP_SERVER_NAME_MAX_CHARS} characters. */
   name: string;
   state: EngineMcpServerState;
   toolCount?: number;

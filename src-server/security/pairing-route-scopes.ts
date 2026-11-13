@@ -4650,6 +4650,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
     },
+    // Restart (or sign in to) one MCP server the Session's ENGINE runs, in
+    // a Session the caller already reaches through this family. Like the
+    // usage-limit actions below it is the person's act on their own Session
+    // (`canUserMutateSession`, the authority of sending the next turn). It
+    // returns only the engine's outcome; a sign-in link it starts arrives
+    // as an input request this family already reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
+    },
     // #3157: the usage-limit banner's recovery read and its two person-owned
     // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
     // the GET returns only the Session's recovery projection under the same

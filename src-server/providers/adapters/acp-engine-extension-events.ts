@@ -16,11 +16,12 @@
  * nothing rather than to a guessed fact.
  */
 import crypto from 'node:crypto';
-import type {
-  EngineMcpServerState,
-  EngineMcpServerStatus,
-  EngineReportedCost,
-  ModelReroutedEvent,
+import {
+  ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  type EngineMcpServerState,
+  type EngineMcpServerStatus,
+  type EngineReportedCost,
+  type ModelReroutedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { readInputRequestLink } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
@@ -73,7 +74,7 @@ export interface EngineExtensionState {
 export const ENGINE_EXTENSION_STATE_MAX_ENTRIES = 256;
 /** Bound on MCP servers one status report may carry; the rest are dropped. */
 export const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
-const MCP_SERVER_NAME_MAX_CHARS = 128;
+const MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
 const MCP_ERROR_MAX_CHARS = 512;
 /** A model id as engines spell one: one token, at most 200 characters. */
 const MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;

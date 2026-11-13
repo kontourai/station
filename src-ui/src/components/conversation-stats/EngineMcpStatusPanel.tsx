@@ -31,6 +31,8 @@ interface EngineMcpStatusPanelProps {
   onReconnect?: EngineMcpReconnect;
   /** The server a reconnect is in flight for; its button is disabled. */
   pendingServer?: string;
+  /** What the last reconnect came to, in words; absent before any. */
+  notice?: string;
 }
 
 /**
@@ -43,6 +45,7 @@ export function EngineMcpStatusPanel({
   servers,
   onReconnect,
   pendingServer,
+  notice,
 }: EngineMcpStatusPanelProps) {
   if (servers.length === 0) return null;
   return (
@@ -97,6 +100,11 @@ export function EngineMcpStatusPanel({
           );
         })}
       </ul>
+      {notice ? (
+        <p className="engine-mcp-status__notice" role="status">
+          {notice}
+        </p>
+      ) : null}
     </section>
   );
 }

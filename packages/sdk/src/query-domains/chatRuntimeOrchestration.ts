@@ -1,5 +1,6 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
@@ -32,6 +33,7 @@ import {
   type ProviderTaskStopResult,
   stopProviderTask as stopProviderTaskClient,
 } from '../client/delegations';
+import { reconnectEngineMcpServer as reconnectEngineMcpServerClient } from '../client/engine-mcp-servers';
 import {
   continueExecutionMessage,
   getConversationContextBoundaryStatus,
@@ -572,6 +574,37 @@ export function useStopProviderTaskMutation(apiBase?: string) {
   return useMutation({
     mutationFn: (input: StopProviderTaskInput) =>
       stopOrchestrationProviderTask({ ...input, apiBase }),
+  });
+}
+
+export interface ReconnectEngineMcpServerInput {
+  threadId: string;
+  serverName: string;
+  /** Begin the server's sign-in; its consent link arrives as a URL request. */
+  startOAuth: boolean;
+}
+
+/**
+ * Ask a Session's engine to restart one MCP server it runs itself (or begin
+ * its sign-in). Answers the engine's `EngineCommandOutcome`; a host without
+ * the route answers `unsupported`.
+ */
+export async function reconnectOrchestrationEngineMcpServer(
+  input: ReconnectEngineMcpServerInput & { apiBase?: string },
+): Promise<EngineCommandOutcome> {
+  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  return reconnectEngineMcpServerClient(
+    resolvedApiBase,
+    input.threadId,
+    input.serverName,
+    { startOAuth: input.startOAuth },
+  );
+}
+
+export function useReconnectEngineMcpServerMutation(apiBase?: string) {
+  return useMutation({
+    mutationFn: (input: ReconnectEngineMcpServerInput) =>
+      reconnectOrchestrationEngineMcpServer({ ...input, apiBase }),
   });
 }
 

@@ -1884,6 +1884,11 @@ function LiveConversationBody({
           onToggle={() => setShowStatsPanel(!showStatsPanel)}
           messageCount={activeSession.messages.length}
           engineMcpServers={activeSession.engineMcpServers}
+          executionThreadId={
+            activeSession.replay || connectionRecord?.readOnly
+              ? undefined
+              : (activeSession.currentSessionId ?? activeSession.id)
+          }
           key={`${activeSession.conversationId || activeSession.agentSlug}-${activeSession.orchestrationStatus || activeSession.status}`}
         />
       )}
