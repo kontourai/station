@@ -185,6 +185,7 @@ test.describe('project icons', () => {
           workspace: { kind: 'project', projectSlug },
         },
         message: 'Say hello for the project icon journey.',
+        clientTurnId: `project-icons-${stamp}`,
       },
     });
     expect(sent.ok(), await sent.text()).toBe(true);
