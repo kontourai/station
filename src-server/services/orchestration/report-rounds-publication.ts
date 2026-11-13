@@ -14,6 +14,7 @@ import {
   type HomeWriterOwner,
   HomeWriterUnavailableError,
 } from '../ssh/home-writer-owner.js';
+import { assertSynchronous } from './delegation-group-wire-intent-store.js';
 
 type ScopedFacades = Pick<
   DelegationRoundsTransactionScope,
@@ -142,7 +143,8 @@ export async function withReportRoundsPublication<T>(
       const held = lease;
       const check = <Value>(body: () => Value): Value =>
         owner.runWithLease(held, () => {
-          assertCurrent();
+          assertLifetimeCurrent();
+          assertSynchronous(sourceCurrent);
           const value = owner.runWithLease(held, body);
           assertCurrent();
           // The outer span must not inspect a caller-controlled then getter again.

@@ -28,11 +28,11 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
   const failure = new Error('controlled source withdrawal');
   let withdrawn = false;
   const checks: string[] = [];
-  const current = (): undefined => {
+  const current = vi.fn().mockImplementation((): undefined => {
     checks.push('current');
     if (withdrawn) throw failure;
     return undefined;
-  };
+  });
   await withReportRoundsPublication(
     { participant, home, signal: new AbortController().signal },
     async (publication) => {
@@ -89,8 +89,8 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
             'the real Home descriptor observer must run',
           );
           assert.ok(
-            inspections <= 5,
-            `one synchronous publication check inspected Home ${inspections} times; maximum 5`,
+            inspections <= 4,
+            `one synchronous publication check inspected Home ${inspections} times; maximum 4`,
           );
           assert.throws(
             () =>
@@ -114,6 +114,59 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
           assert.equal(protectedEntered, false);
           withdrawn = false;
           assert.throws(() => scope.check(async () => 42), TypeError);
+          current.mockReturnValueOnce(Promise.resolve(undefined));
+          let afterAsyncGuard = false;
+          assert.throws(() =>
+            scope.check(() => {
+              afterAsyncGuard = true;
+            }),
+          );
+          assert.equal(afterAsyncGuard, false);
+          const mutation = join(
+            owner.homeDir,
+            'security',
+            '.home-writer.mutation',
+          );
+          const movedMutation = `${mutation}.held-for-observation`;
+          for (const replaceAt of ['body', 'result'] as const) {
+            let replacementActive = false;
+            let sourceAfterReplacement = 0;
+            const implementation = current.getMockImplementation();
+            assert.ok(implementation);
+            current.mockImplementation(() => {
+              if (replacementActive) sourceAfterReplacement++;
+              return implementation();
+            });
+            const replace = () => {
+              fs.renameSync(mutation, movedMutation);
+              replacementActive = true;
+              fs.writeFileSync(mutation, 'foreign mutation token', {
+                mode: 0o600,
+                flag: 'wx',
+              });
+            };
+            try {
+              assert.throws(() =>
+                scope.check(() => {
+                  if (replaceAt === 'body') replace();
+                  return {
+                    // biome-ignore lint/suspicious/noThenProperty: The result accessor replaces custody before the post-source guard.
+                    get then() {
+                      if (replaceAt === 'result') replace();
+                      return undefined;
+                    },
+                  };
+                }),
+              );
+              assert.equal(sourceAfterReplacement, 0, replaceAt);
+            } finally {
+              if (replacementActive) {
+                fs.rmSync(mutation, { force: true });
+                fs.renameSync(movedMutation, mutation);
+              }
+              current.mockImplementation(implementation);
+            }
+          }
         });
         assert.ok(retiredLifetime);
         assert.throws(retiredLifetime, { reason: 'borrow-unavailable' });
