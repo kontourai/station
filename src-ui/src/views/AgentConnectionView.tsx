@@ -509,11 +509,26 @@ export function AgentConnectionView({
   // The row's verdict, read again for the selected engine: the header, its
   // one fix and the readiness instructions cannot say Ready where the row
   // (and dispatch) say otherwise.
-  const health = form
+  const derivedHealth = form
     ? deriveConnectionHealth(engineHealthInput(withListedEvidence(form)), {
         policyDisallowed: selectedManagedState?.disallowed === true,
       })
     : null;
+  // Usage-limit evidence comes only from the engine list. If that read failed
+  // and holds no row for this engine, "Ready" could hide a usage limit, so the
+  // header claims nothing; a not-ready verdict from the engine read stands.
+  const listUnread =
+    !!runtimesError &&
+    !runtimes.some((row) => row.id === selectedEngineConnectionId);
+  const health =
+    derivedHealth && listUnread && derivedHealth.verdict === 'ready'
+      ? {
+          ...derivedHealth,
+          label: 'Not loaded',
+          reason: 'The engine list could not be loaded.',
+          action: undefined,
+        }
+      : derivedHealth;
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const devicePresentation = useDevicePresentation();
   const blocker = form ? blockingPrerequisite(form.prerequisites) : undefined;

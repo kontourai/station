@@ -2773,6 +2773,22 @@ describe('AgentConnectionView', () => {
     expect(route).not.toContain('Route unknown');
   });
 
+  test('with the engine list unread, the header does not claim Ready', async () => {
+    // Usage-limit evidence comes only from the list; without it Ready could
+    // hide a limit.
+    agentConnections = [];
+    agentConnectionsQueryError = new Error('engines unavailable');
+    connectionQueryData = readyEngine();
+    await render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+    expect(
+      screen.getByText('The engine list could not be loaded.'),
+    ).toBeTruthy();
+    expect(screen.getAllByText('Not loaded').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Ready')).toBeNull();
+  });
+
   test('a recorded usage-limit refusal reads in the header and on Overview, with no check to retry', async () => {
     acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
     servedFromList(

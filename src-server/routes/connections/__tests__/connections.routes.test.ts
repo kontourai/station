@@ -272,6 +272,25 @@ describe('Connection Routes', () => {
       kind: 'ambient',
       source: 'station',
     });
+    // So is a create's.
+    const created = await presenting('orchestration:read').request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'claude',
+        kind: 'agent',
+        type: 'claude',
+        name: 'Claude Code',
+        enabled: true,
+        config: {},
+        capabilities: ['agent-runtime'],
+      }),
+    });
+    expect(created.status).toBeLessThan(300);
+    expect((await json(created)).data.routeObservation).toEqual({
+      kind: 'ambient',
+      source: 'station',
+    });
   });
 
   test('a refusal reads below access:manage without naming its account', async () => {
