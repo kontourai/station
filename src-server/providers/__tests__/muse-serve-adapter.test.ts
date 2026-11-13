@@ -4027,3 +4027,191 @@ describe('Muse parity: subagents and background tasks are child work', () => {
     expect(host.sent.slice(sent)).toEqual([]);
   });
 });
+
+describe('Muse parity: /compact is session/compact', () => {
+  const compactAt = () =>
+    captureIndex(
+      'background-task-stop',
+      (msg) => msg.method === 'session/compact',
+    );
+
+  /** The capture up to its idle `session/compact`, both turns driven. */
+  async function idleSession(h: Harness) {
+    const host = await startServe(h);
+    await replayMuseServeCapture(
+      host,
+      loadMuseServeCapture('background-task-stop'),
+      {
+        stopAt: compactAt(),
+        onDrivenRequest: (method, _occurrence, captured) => {
+          if (method === 'turn/start')
+            return h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+          if (method === 'task/stop')
+            return h.adapter.stopProviderTask(THREAD, String(captured.taskId));
+          return undefined;
+        },
+      },
+    );
+    await settle();
+    return host;
+  }
+
+  test('a serve adapter lists /compact as its own action', async () => {
+    const h = harness();
+    await expect(h.adapter.getCommands?.()).resolves.toEqual([
+      expect.objectContaining({
+        name: 'compact',
+        passthrough: true,
+        route: { kind: 'adapter-action', action: 'compact' },
+      }),
+    ]);
+  });
+
+  test("compaction muse says is unavailable for the session's model refuses the send, with nothing shown as done", async () => {
+    const h = harness();
+    const host = await startServe(h);
+    let compacting: Promise<unknown> | undefined;
+    const driven = await replayMuseServeCapture(
+      host,
+      loadMuseServeCapture('background-task-stop'),
+      {
+        onDrivenRequest: (method, _occurrence, captured) => {
+          if (method === 'turn/start')
+            return h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+          if (method === 'task/stop')
+            return h.adapter.stopProviderTask(THREAD, String(captured.taskId));
+          if (method === 'session/compact') {
+            compacting = h.adapter.sendTurn({
+              threadId: THREAD,
+              input: ' /compact ',
+            });
+            return compacting;
+          }
+          return undefined;
+        },
+      },
+    );
+    await settle();
+    const refusal = await (compacting as Promise<unknown>).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect(refusal).toMatchObject({
+      kind: 'input_unsupported',
+      message:
+        "Muse can't compact this session: compaction isn't available for its model.",
+    });
+    expect(
+      driven.find((frame) => frame.method === 'session/compact')?.params,
+    ).toEqual({ commandId: expect.any(String), sessionId: SESSION_1418 });
+    expect(driven.some((frame) => frame.method === 'turn/start')).toBe(true);
+    expect(
+      of(h.events, 'turn.started').some(
+        (event) => event.prompt === ' /compact ',
+      ),
+    ).toBe(false);
+  });
+
+  test("muse's own run_active refusal is a retryable busy refusal", async () => {
+    const h = harness();
+    const host = await idleSession(h);
+    const compacting = h.adapter.sendTurn({
+      threadId: THREAD,
+      input: '/compact',
+    });
+    const request = await host.nextRequest('session/compact', new Set());
+    // Muse 1.4.18's own refusal, captured live while a workflow ran.
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      error: {
+        code: -32030,
+        message: `session/compact command ${String(request.params?.commandId)} rejected: run_active`,
+        data: {
+          kind: 'commandRejected',
+          retryable: false,
+          commandId: request.params?.commandId,
+          reason: 'run_active',
+        },
+      },
+    });
+    await expect(compacting).rejects.toMatchObject({
+      name: 'SendTurnRefusedError',
+      kind: 'busy',
+      retryable: true,
+    });
+  });
+
+  test('an admitted compaction is a turn that says it started, never that it finished', async () => {
+    const h = harness();
+    const host = await idleSession(h);
+    const compacting = h.adapter.sendTurn({
+      threadId: THREAD,
+      input: '/compact',
+      invocationId: 'invocation-compact',
+    });
+    const request = await host.nextRequest('session/compact', new Set());
+    // The schema's admission ack (`SessionCompactResult`); no live capture
+    // admitted one (the account's model had no summarizer).
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: { commandId: request.params?.commandId, status: 'accepted' },
+    });
+    const { turnId } = await compacting;
+    await settle();
+    const forTurn = h.events.filter(
+      (event) => (event as { turnId?: string }).turnId === turnId,
+    );
+    expect(forTurn.map((event) => event.method)).toEqual([
+      'turn.started',
+      'content.text-delta',
+      'turn.completed',
+    ]);
+    expect(forTurn[0]).toMatchObject({
+      prompt: '/compact',
+      invocationId: 'invocation-compact',
+    });
+    expect(forTurn[2]).toMatchObject({
+      finishReason: 'stop',
+      outputText: "Muse started compacting this session's context.",
+    });
+    expect(
+      host.sent.some(
+        (frame) =>
+          frame.method === 'turn/start' && frame.params?.input === '/compact',
+      ),
+    ).toBe(false);
+  });
+
+  test('/compact with instructions, or while a turn runs, is refused before anything reaches muse', async () => {
+    const idle = harness();
+    const idleHost = await idleSession(idle);
+    await expect(
+      idle.adapter.sendTurn({
+        threadId: THREAD,
+        input: '/compact keep the plan',
+      }),
+    ).rejects.toMatchObject({ kind: 'input_unsupported' });
+    expect(
+      idleHost.sent.some((frame) => frame.method === 'session/compact'),
+    ).toBe(false);
+
+    const h = harness();
+    const host = await startServe(h);
+    await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/steer'),
+      onDrivenRequest: (method) =>
+        method === 'turn/start'
+          ? h.adapter.sendTurn({ threadId: THREAD, input: 'go' })
+          : undefined,
+    });
+    await expect(
+      h.adapter.sendTurn({ threadId: THREAD, input: '/compact' }),
+    ).rejects.toMatchObject({ name: 'SendTurnRefusedError', kind: 'busy' });
+    expect(host.sent.some((frame) => frame.method === 'session/compact')).toBe(
+      false,
+    );
+  });
+});

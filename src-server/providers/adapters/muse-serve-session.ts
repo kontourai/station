@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type {
   InputRequestContent,
   InputRequestForm,
@@ -575,6 +576,36 @@ function mapResolvedDecision(
   }
 }
 
+/** A `session/compact` muse refused at admission, as the send's refusal. */
+function museCompactRefusal(error: MuseServeRpcError): SendTurnRefusedError {
+  const reason =
+    error.code === MSP_COMMAND_REJECTED && isRecord(error.data)
+      ? readString(error.data.reason)
+      : undefined;
+  switch (reason) {
+    case 'run_active':
+      return new SendTurnRefusedError(
+        'Muse compacts between turns, and this session has a turn running. Send /compact again when it finishes.',
+        'busy',
+      );
+    case 'compaction_unavailable':
+      return new SendTurnRefusedError(
+        "Muse can't compact this session: compaction isn't available for its model.",
+        'input_unsupported',
+      );
+    case 'missing_run':
+      return new SendTurnRefusedError(
+        'Muse has nothing to compact yet: this session has no turn.',
+        'input_unsupported',
+      );
+    default:
+      return new SendTurnRefusedError(
+        `Muse did not run /compact${reason ? ` (${reason})` : ''}.`,
+        'provider_error',
+      );
+  }
+}
+
 export class MuseServeSession {
   private host?: ServeHost;
   private hostEpoch = 0;
@@ -1027,6 +1058,69 @@ export class MuseServeSession {
       undefined,
       MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT,
     );
+  }
+
+  /**
+   * `session/compact` (muse's `/compact`). Compaction runs after the ack, so
+   * the outcome says it started, or that muse had nothing to compact. A
+   * command muse rejects at admission changed nothing and refuses the send:
+   * `run_active` while a turn runs (retryable), `compaction_unavailable`
+   * when the session's model has no summarizer.
+   */
+  async compact(): Promise<EngineCommandOutcome> {
+    if (this.stopped) {
+      throw new SendTurnRefusedError(
+        'This Muse session is stopped.',
+        'session_gone',
+      );
+    }
+    if (this.liveTurn() || this.sending) {
+      throw new SendTurnRefusedError(
+        'Muse compacts between turns, and this session has a turn running. Send /compact again when it finishes.',
+        'busy',
+      );
+    }
+    this.sending = true;
+    try {
+      await this.ensureHost({ disableSandbox: this.plan.disableSandbox });
+      const connection = this.requireConnection();
+      let result: unknown;
+      try {
+        result = await connection.request(
+          'session/compact',
+          {
+            commandId: this.deps.newCommandId(),
+            sessionId: this.requireMuseSessionId(),
+          },
+          { timeoutMs: this.deps.requestTimeoutMs },
+        );
+      } catch (error) {
+        if (error instanceof MuseServeRpcError) throw museCompactRefusal(error);
+        // A timeout or a vanished host is indeterminate: it may be running.
+        throw error;
+      }
+      const status = isRecord(result) ? readString(result.status) : undefined;
+      const reason = isRecord(result) ? readString(result.reason) : undefined;
+      if (status === 'noop') {
+        return {
+          kind: 'answered',
+          text: `Muse had nothing to compact${reason ? ` (${reason})` : ''}.`,
+        };
+      }
+      if (status !== 'accepted') {
+        return {
+          kind: 'answered',
+          success: false,
+          text: `muse answered ${status ?? 'with no status'}`,
+        };
+      }
+      return {
+        kind: 'answered',
+        text: "Muse started compacting this session's context.",
+      };
+    } finally {
+      this.sending = false;
+    }
   }
 
   async stopChild(childId: string): Promise<ProviderTaskStopResult> {

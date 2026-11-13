@@ -14,6 +14,10 @@ import {
   EXTERNAL_ENGINE_DURABILITY,
   STEERING_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type {
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
 import {
   type ApprovalMode,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -92,6 +96,12 @@ import {
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
+import {
+  adapterActionFor,
+  engineCommandOutcomeText,
+  readSlashCommandInvocation,
+  type SlashCommandInvocation,
+} from './engine-command-dispatch.js';
 import {
   buildMuseExecArgs,
   museBackgroundTaskRowId,
@@ -392,6 +402,28 @@ export const MUSE_CANCELLED_TOOL_OUTPUT =
  * or the turn closed for another reason — before muse reported the task's
  * fate, which is then unknown.
  */
+/**
+ * Commands a `muse serve` session runs as Station's own action rather than
+ * as prompt text. `/compact` is MSP `session/compact` (muse's own `/compact`
+ * gesture); live against Muse Code 1.4.18 it is refused `run_active` while a
+ * turn runs and `compaction_unavailable` on a model without a summarizer
+ * (`muse-serve-1.4.18-background-task-stop.jsonl`).
+ */
+export const MUSE_SERVE_COMMANDS = [
+  {
+    name: 'compact',
+    description:
+      "Compact this session's conversation context (muse writes the summary).",
+    passthrough: true,
+    route: { kind: 'adapter-action', action: 'compact' },
+  },
+] as const satisfies ReadonlyArray<{
+  name: string;
+  description: string;
+  passthrough: boolean;
+  route: EngineCommandRoute;
+}>;
+
 export const MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT =
   'Muse reported this background task completed.';
 const MUSE_BACKGROUND_TASK_FAILED_OUTPUT =
@@ -996,6 +1028,11 @@ export class MuseAdapter implements ProviderAdapterShape {
   readonly listModelCatalog?: ProviderAdapterShape['listModelCatalog'];
   readonly listModels?: ProviderAdapterShape['listModels'];
   readonly readQuotaSnapshot?: ProviderAdapterShape['readQuotaSnapshot'];
+  /**
+   * The commands Station runs itself on a `muse serve` session
+   * ({@link MUSE_SERVE_COMMANDS}). Absent where no session can run serve.
+   */
+  readonly getCommands?: ProviderAdapterShape['getCommands'];
   private catalogCache?: {
     observedAt: number;
     catalog: ProviderAdapterModelCatalog;
@@ -1077,6 +1114,8 @@ export class MuseAdapter implements ProviderAdapterShape {
         (await this.readModelCatalog(discovery, request)).models;
       this.readQuotaSnapshot = async ({ connectionId }) =>
         this.readMuseQuota(discovery, connectionId);
+      this.getCommands = async () =>
+        MUSE_SERVE_COMMANDS.map((command) => ({ ...command }));
     }
   }
 
@@ -1877,6 +1916,17 @@ export class MuseAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     const decoded = decodeChatAttachments(input.attachments);
     rejectFileAttachments('Muse Code', decoded);
+    const invocation =
+      decoded.length === 0
+        ? readSlashCommandInvocation(input.input)
+        : undefined;
+    if (
+      invocation &&
+      this.getCommands &&
+      adapterActionFor(MUSE_SERVE_COMMANDS, invocation) === 'compact'
+    ) {
+      return this.compactServeSession(serve, input, invocation);
+    }
     const approvalMode: ApprovalMode | undefined = readApprovalMode(
       input.modelOptions,
     );
@@ -1921,6 +1971,78 @@ export class MuseAdapter implements ProviderAdapterShape {
     providerOps.add(1, {
       operation: 'adapter-turn-start',
       provider: this.provider,
+    });
+    return { threadId: input.threadId, turnId };
+  }
+
+  /**
+   * `/compact` on a serve session: `session/compact`, shown on a turn of its
+   * own. Muse admits compaction and runs it after the ack, so the line says
+   * it started (or that muse had nothing to compact), never that it
+   * finished. A refusal (a turn running, compaction unavailable for the
+   * session's model) refuses the send before anything happened.
+   */
+  private async compactServeSession(
+    serve: MuseServeSession,
+    input: ProviderSendTurnInput,
+    invocation: SlashCommandInvocation,
+  ): Promise<ProviderTurnStartResult> {
+    if (invocation.args) {
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError(
+          "Muse's /compact takes no instructions; send /compact on its own.",
+          'input_unsupported',
+        ),
+      );
+    }
+    let outcome: EngineCommandOutcome;
+    try {
+      outcome = await serve.compact();
+    } catch (error) {
+      if (error instanceof SendTurnRefusedError) {
+        throw this.refuseSend(input.threadId, error);
+      }
+      throw error;
+    }
+    const turnId = crypto.randomUUID();
+    const text = engineCommandOutcomeText(
+      'Muse Code',
+      invocation.name,
+      outcome,
+    );
+    const base = {
+      provider: this.provider,
+      threadId: input.threadId,
+      turnId,
+      ...(input.invocationId ? { invocationId: input.invocationId } : {}),
+    };
+    this.publish({
+      ...base,
+      eventId: crypto.randomUUID(),
+      createdAt: this.now().toISOString(),
+      method: 'turn.started',
+      prompt: input.displayInput ?? input.input,
+      metadata: { museTransport: 'serve' },
+    });
+    // After the send returns, as an engine's own output would arrive.
+    setImmediate(() => {
+      this.publish({
+        ...base,
+        eventId: crypto.randomUUID(),
+        createdAt: this.now().toISOString(),
+        itemId: `${turnId}:command`,
+        method: 'content.text-delta',
+        delta: text,
+      });
+      this.publish({
+        ...base,
+        eventId: crypto.randomUUID(),
+        createdAt: this.now().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+        outputText: text,
+      });
     });
     return { threadId: input.threadId, turnId };
   }

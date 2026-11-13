@@ -295,6 +295,7 @@ import {
   assertExecutionOverrideDelivery,
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
+import { engineCommandOutcomeText } from './engine-command-dispatch.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 
 /** Matches the `any`-typed logger threaded through the existing ACP substrate (acp-manager.ts, acp-connection.ts, ACPProcessOptions.logger). */
@@ -2858,15 +2859,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       if (acpCommandUnsupported(error)) return asPromptText();
       outcome = acpCommandFailure(error);
     }
-    const engine = record.engineName;
-    const text =
-      outcome.kind === 'answered'
-        ? outcome.success === false
-          ? `${engine} could not run /${name}${outcome.text ? `: ${outcome.text}` : '.'}`
-          : outcome.text || `${engine} ran /${name}.`
-        : outcome.kind === 'failed'
-          ? `${engine} refused /${name}: ${outcome.message}`
-          : `${engine} did not run /${name}.`;
+    const text = engineCommandOutcomeText(record.engineName, name, outcome);
     this.publishForTurn(record, {
       eventId: crypto.randomUUID(),
       provider: this.provider,
