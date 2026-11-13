@@ -143,7 +143,7 @@ export function ChildWorkRow({
   now: number;
   showProvenance: boolean;
   onOpenSession: (threadId: string) => void;
-  onOpenChild?: (item: ChildWorkItem) => void;
+  onOpenChild?: (item: ChildWorkItem, title: string) => void;
 }) {
   const target = useOptionalConversationConnection();
   const owningStationName = target?.station?.binding.stationName ?? stationName;
@@ -320,11 +320,14 @@ export function ChildWorkRow({
               className="tap-target"
               onClick={() => {
                 if (openChild && target) {
-                  openChild(childChatTarget(item, target));
+                  openChild({
+                    ...childChatTarget(item, target),
+                    title: row.title,
+                  });
                   return;
                 }
-                if (sessionHandle) onOpenSession(sessionHandle.threadId);
-                else onOpenChild?.(item);
+                if (onOpenChild) onOpenChild(item, row.title);
+                else if (sessionHandle) onOpenSession(sessionHandle.threadId);
               }}
             >
               Open chat

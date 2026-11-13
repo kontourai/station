@@ -32,22 +32,31 @@ export function parseSurfaceDeepLink(
       ? { focus: 'evidence' as const }
       : {}),
     ...(messageAnchor ? { messageAnchor } : {}),
-    ...(params.get('child')?.trim()
+    ...(params.get('childSession')?.trim()
       ? {
-          childId: params.get('child')!.trim(),
-          childTitle: params.get('childTitle')?.slice(0, 200) || 'Subagent',
+          childSessionId: params.get('childSession')!.trim(),
+          childTitle: params.get('childTitle')?.slice(0, 200) || 'Delegate',
         }
-      : {}),
+      : params.get('child')?.trim()
+        ? {
+            childId: params.get('child')!.trim(),
+            childTitle: params.get('childTitle')?.slice(0, 200) || 'Subagent',
+          }
+        : {}),
   };
 }
 
 export function clearSurfaceDeepLinkParams(): Record<
-  keyof typeof SURFACE_DEEP_LINK_QUERY_KEYS | 'child' | 'childTitle',
+  | keyof typeof SURFACE_DEEP_LINK_QUERY_KEYS
+  | 'child'
+  | 'childTitle'
+  | 'childSession',
   null
 > {
   return {
     child: null,
     childTitle: null,
+    childSession: null,
     [SURFACE_DEEP_LINK_QUERY_KEYS.surface]: null,
     [SURFACE_DEEP_LINK_QUERY_KEYS.session]: null,
     [SURFACE_DEEP_LINK_QUERY_KEYS.focus]: null,

@@ -16,6 +16,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import {
   ChildChatContext,
+  type ChildChatController,
   ChildChatCoveredContext,
   type ChildChatTarget,
 } from './ChildChatNavigationContext';
@@ -38,13 +39,17 @@ export function ChildChatNavigation({
   initialChild,
   controllerRef,
   onCoveredChange,
+  onBeforeChildOpen,
+  onInitialChildConsumed,
 }: {
   rootKey: string;
   title: string;
   children: ReactNode;
   initialChild?: ChildChatTarget;
   onCoveredChange?: (covered: boolean) => void;
-  controllerRef?: RefObject<((target: ChildChatTarget) => void) | null>;
+  onBeforeChildOpen?: () => void;
+  onInitialChildConsumed?: () => void;
+  controllerRef?: RefObject<ChildChatController | null>;
 }) {
   const [state, setState] = useState<{
     root: string;
@@ -57,18 +62,26 @@ export function ChildChatNavigation({
   }, [onCoveredChange, covered]);
   const root = useRef(rootKey);
   root.current = rootKey;
-  const initial = useRef(initialChild);
-  useEffect(() => {
+  const initial = useRef<ChildChatTarget | undefined>(undefined);
+  const consumeInitial = useRef(onInitialChildConsumed);
+  consumeInitial.current = onInitialChildConsumed;
+  useLayoutEffect(() => {
+    if (!initialChild) {
+      initial.current = undefined;
+      return;
+    }
     if (initial.current === initialChild) return;
     initial.current = initialChild;
-    setState({ root: rootKey, entries: initialChild ? [initialChild] : [] });
+    setState({ root: rootKey, entries: [initialChild] });
+    consumeInitial.current?.();
   }, [initialChild, rootKey]);
   const pop = (index: number) => {
     const focus = captureReturnFocus(entries[index]?.returnFocus ?? null);
     setState({ root: rootKey, entries: entries.slice(0, index) });
     requestAnimationFrame(() => applyReturnFocus(focus));
   };
-  const push = (target: ChildChatTarget) =>
+  const push = (target: ChildChatTarget) => {
+    onBeforeChildOpen?.();
     setState((current) => ({
       root: root.current,
       entries: [
@@ -82,9 +95,17 @@ export function ChildChatNavigation({
         },
       ],
     }));
+  };
   useLayoutEffect(() => {
     if (!controllerRef) return;
-    controllerRef.current = push;
+    controllerRef.current = {
+      open: push,
+      reset: () => {
+        initial.current = initialChild;
+        setState({ root: root.current, entries: [] });
+        if (initialChild) consumeInitial.current?.();
+      },
+    };
     return () => {
       controllerRef.current = null;
     };

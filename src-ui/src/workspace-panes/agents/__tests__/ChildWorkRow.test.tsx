@@ -591,7 +591,7 @@ test('an engine transcript opens in Chat without mounting an inline reader', () 
     </ul>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
-  expect(onOpenChild).toHaveBeenCalledWith(model.item);
+  expect(onOpenChild).toHaveBeenCalledWith(model.item, model.title);
   expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
 });
 

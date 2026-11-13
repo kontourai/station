@@ -40,3 +40,16 @@ describe('Activity surface deep links', () => {
     );
   });
 });
+
+test('a delegated child URL preserves both parent and child session identity', () => {
+  expect(
+    surfaceDeepLink({
+      surfaceId: 'chat',
+      sessionId: 'parent',
+      childSessionId: 'child/one',
+      childTitle: 'Review',
+    }),
+  ).toBe(
+    '/?surface=chat&session=parent&childSession=child%2Fone&childTitle=Review',
+  );
+});

@@ -21,6 +21,19 @@ describe('surface deep-link URL handling', () => {
       { surfaceId: 'chat', sessionId: 'thread/alpha' },
     ],
     [{ sessionId: 'a b' }, { surfaceId: 'chat', sessionId: 'a b' }],
+    [
+      {
+        sessionId: 'parent',
+        childSessionId: 'delegate / 1',
+        childTitle: 'Research',
+      },
+      {
+        surfaceId: 'chat',
+        sessionId: 'parent',
+        childSessionId: 'delegate / 1',
+        childTitle: 'Research',
+      },
+    ],
     [{ sessionId: 'x&y=z' }, { surfaceId: 'chat', sessionId: 'x&y=z' }],
     [
       {
@@ -52,6 +65,7 @@ describe('surface deep-link URL handling', () => {
     expect(clearSurfaceDeepLinkParams()).toEqual({
       child: null,
       childTitle: null,
+      childSession: null,
       surface: null,
       session: null,
       focus: null,

@@ -8,6 +8,7 @@ import type {
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,6 +16,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { createRef } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createUiModuleGraph } from '../../../scripts/lib/ui-module-graph.mjs';
 import {
@@ -24,6 +26,7 @@ import {
 import { SubagentTranscriptCard } from '../components/chat/SubagentTranscriptCard';
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { ChildChatNavigation } from '../components/chat-dock/ChildChatNavigation';
+import type { ChildChatController } from '../components/chat-dock/ChildChatNavigationContext';
 import {
   childChatTarget,
   useChildChatNavigation,
@@ -318,4 +321,42 @@ test('a failed refresh keeps recorded messages visible with a recovery action', 
   expect(screen.getByText('Inspect the child files')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(history.refetch).toHaveBeenCalledOnce();
+});
+
+test('a consumed external child intent stays open, then the pane controller returns to the exact parent draft', async () => {
+  const controller = createRef<ChildChatController>();
+  const consumed = vi.fn();
+  const child = childChatTarget(item, connection);
+  const paint = (initialChild: typeof child | undefined) => (
+    <QueryClientProvider client={new QueryClient()}>
+      <PreviewProvider>
+        <ConversationConnectionProvider value={connection}>
+          <ChildChatNavigation
+            rootKey="parent"
+            title="Parent chat"
+            initialChild={initialChild}
+            controllerRef={controller}
+            onInitialChildConsumed={consumed}
+          >
+            <Parent />
+          </ChildChatNavigation>
+        </ConversationConnectionProvider>
+      </PreviewProvider>
+    </QueryClientProvider>
+  );
+  const view = render(paint(child));
+  await screen.findByRole('heading', { name: 'Child answer' });
+  expect(consumed).toHaveBeenCalledOnce();
+  view.rerender(paint(undefined));
+  expect(
+    screen.getByRole('navigation', { name: 'Chat breadcrumb' }),
+  ).toBeTruthy();
+  act(() => controller.current?.reset());
+  expect(
+    screen.queryByRole('navigation', { name: 'Chat breadcrumb' }),
+  ).toBeNull();
+  expect(screen.getByRole('textbox', { name: 'Parent draft' })).toHaveProperty(
+    'value',
+    'Keep this draft',
+  );
 });

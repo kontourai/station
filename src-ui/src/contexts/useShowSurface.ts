@@ -59,6 +59,7 @@ export function useShowSurface(): (
           focus: intent?.focus,
           messageAnchor: intent?.messageAnchor,
           childId: intent?.childId,
+          childSessionId: intent?.childSessionId,
           childTitle: intent?.childTitle,
         }),
       );

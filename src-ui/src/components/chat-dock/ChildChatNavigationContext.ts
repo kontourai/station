@@ -43,3 +43,8 @@ export const ChildChatCoveredContext = createContext(false);
 export function useIsChildChatCovered() {
   return useContext(ChildChatCoveredContext);
 }
+
+export interface ChildChatController {
+  open: (target: ChildChatTarget) => void;
+  reset: () => void;
+}

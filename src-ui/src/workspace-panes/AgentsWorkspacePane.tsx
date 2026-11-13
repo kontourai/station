@@ -352,13 +352,28 @@ export function AgentsWorkspacePane() {
       }
       showProvenance={scope === 'all'}
       onOpenSession={openSession}
-      onOpenChild={(item) =>
-        showSurface('chat', {
-          session: item.reporterThreadId,
-          childId: item.childId,
-          childTitle: item.title,
-        })
-      }
+      onOpenChild={(item, title) => {
+        if (item.producer === 'station-delegate') {
+          const handle = item.result?.handle;
+          const sessionId =
+            handle?.kind === 'session' ? handle.threadId : item.childId;
+          showSurface(
+            'chat',
+            item.reporterThreadId === sessionId
+              ? { session: sessionId }
+              : {
+                  session: item.reporterThreadId,
+                  childSessionId: sessionId,
+                  childTitle: title,
+                },
+          );
+        } else
+          showSurface('chat', {
+            session: item.reporterThreadId,
+            childId: item.childId,
+            childTitle: title,
+          });
+      }}
     />
   );
 

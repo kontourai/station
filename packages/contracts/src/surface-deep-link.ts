@@ -36,6 +36,7 @@ export interface ActivityDeepLinkIntent {
   focus?: ActivityFocusHint;
   messageAnchor?: SessionMessageAnchor;
   childId?: string;
+  childSessionId?: string;
   childTitle?: string;
 }
 
@@ -45,6 +46,7 @@ export interface SurfaceDeepLinkIntent {
   focus?: ActivityFocusHint;
   messageAnchor?: SessionMessageAnchor;
   childId?: string;
+  childSessionId?: string;
   childTitle?: string;
 }
 
@@ -54,6 +56,7 @@ export interface SurfaceDeepLinkInput {
   focus?: ActivityFocusHint;
   messageAnchor?: SessionMessageAnchor;
   childId?: string;
+  childSessionId?: string;
   childTitle?: string;
 }
 
@@ -74,9 +77,11 @@ export function surfaceDeepLink(input: SurfaceDeepLinkInput): string {
     input.sessionId.length <= 512 && isSessionMessageAnchor(input.messageAnchor)
       ? `&${new URLSearchParams({ messageSession: input.sessionId, messageDirection: input.messageAnchor.direction, messageRequest: input.messageAnchor.requestKey })}`
       : '';
-  const child = input.childId
-    ? `&${new URLSearchParams({ child: input.childId, childTitle: input.childTitle ?? 'Subagent' })}`
-    : '';
+  const child = input.childSessionId
+    ? `&${new URLSearchParams({ childSession: input.childSessionId, childTitle: input.childTitle ?? 'Delegate' })}`
+    : input.childId
+      ? `&${new URLSearchParams({ child: input.childId, childTitle: input.childTitle ?? 'Subagent' })}`
+      : '';
   return `/?surface=${surface}&session=${session}${focus}${message}${child}`;
 }
 

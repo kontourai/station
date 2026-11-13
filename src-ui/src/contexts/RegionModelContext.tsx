@@ -79,6 +79,7 @@ export interface SurfaceIntent {
   focus?: 'evidence';
   messageAnchor?: SessionMessageAnchor;
   childId?: string;
+  childSessionId?: string;
   childTitle?: string;
 }
 
@@ -1834,6 +1835,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         surfaceIntent.sessionId,
         surfaceIntent.focus,
         surfaceIntent.childId,
+        surfaceIntent.childSessionId,
         surfaceIntent.childTitle,
         surfaceIntent.messageAnchor?.direction,
         surfaceIntent.messageAnchor?.requestKey,
@@ -1862,6 +1864,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
               focus: surfaceIntent.focus,
               messageAnchor: surfaceIntent.messageAnchor,
               childId: surfaceIntent.childId,
+              childSessionId: surfaceIntent.childSessionId,
               childTitle: surfaceIntent.childTitle,
             }
           : undefined,

@@ -5,7 +5,10 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import { SessionReaderBindingProvider } from '../conversation/SessionReaderBinding';
 import { ChildChatNavigation } from './ChildChatNavigation';
-import type { ChildChatTarget } from './ChildChatNavigationContext';
+import type {
+  ChildChatController,
+  ChildChatTarget,
+} from './ChildChatNavigationContext';
 import '../chat/TaskShaping.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
@@ -951,6 +954,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [isDockMaximized, isFullscreenPlacement, restoreDockToDocked]);
   const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
+  const childChatController = useRef<ChildChatController | null>(null);
+  const hostSessionRef = useRef<Pick<
+    ChatSession,
+    'id' | 'conversationId' | 'currentSessionId'
+  > | null>(null);
   const readerIntent = useRef(0);
   const pendingReaderOpen = useRef<{ accepted: boolean } | null>(null);
   const cancelReaderOpen = useCallback(() => {
@@ -964,9 +972,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [cancelReaderOpen],
   );
+  const cancelReaderOpenAndChildren = useCallback(() => {
+    cancelReaderOpen();
+    childChatController.current?.reset();
+  }, [cancelReaderOpen]);
   const beginReaderOpen = useCallback(
     (callerCurrent?: () => boolean) => {
-      cancelReaderOpen();
+      cancelReaderOpenAndChildren();
       const intent = readerIntent.current;
       const navigation = navigationStore.getSnapshot();
       const generation = workObservation?.streamEpochGeneration();
@@ -999,12 +1011,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         },
       };
     },
-    [cancelReaderOpen, requestAuthority, workObservation],
+    [cancelReaderOpenAndChildren, requestAuthority, workObservation],
   );
   const { setDeviceSetting } = useDeviceSettingsActions();
   const {
     importedSessionId,
     readerSurfaceIntent,
+    consumeChildIntent,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
@@ -1041,7 +1054,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   } = useChatDockOverlays({
     isMobile,
     hasConversationIntent: Boolean(activeChat),
-    onReaderIntent: cancelReaderOpen,
+    onReaderIntent: cancelReaderOpenAndChildren,
+    hostSessionRef,
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
@@ -1677,23 +1691,53 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionModel: activeSession?.model,
     agentDefaultModel: agentDefaultModelId,
   });
-  const childChatController = useRef<
-    ((target: ChildChatTarget) => void) | null
-  >(null);
-  const initialChildChat = useMemo<ChildChatTarget | undefined>(
-    () =>
-      readerSurfaceIntent?.session === importedSessionId &&
-      readerSurfaceIntent.childId
-        ? {
-            title: readerSurfaceIntent.childTitle ?? 'Subagent',
-            threadId: importedSessionId,
-            childId: readerSurfaceIntent.childId,
-            running: true,
-            connection: { apiBase, requestScope: requestAuthority },
-          }
-        : undefined,
-    [readerSurfaceIntent, importedSessionId, apiBase, requestAuthority],
-  );
+  hostSessionRef.current =
+    conversationConnection?.routeKind === 'host' ? activeSession : null;
+  const initialChildChat = useMemo<ChildChatTarget | undefined>(() => {
+    if (
+      !readerSurfaceIntent?.session ||
+      !(readerSurfaceIntent.childId || readerSurfaceIntent.childSessionId)
+    )
+      return;
+    const workingParent =
+      importedSessionId === null &&
+      readerSurfaceIntent.workingSessionId === activeSessionId &&
+      conversationConnection?.routeKind === 'host';
+    if (!workingParent && readerSurfaceIntent.session !== importedSessionId)
+      return;
+    return {
+      title:
+        readerSurfaceIntent.childTitle ??
+        (readerSurfaceIntent.childSessionId ? 'Delegate' : 'Subagent'),
+      threadId:
+        readerSurfaceIntent.childSessionId ?? readerSurfaceIntent.session,
+      childId: readerSurfaceIntent.childSessionId
+        ? undefined
+        : readerSurfaceIntent.childId,
+      running: true,
+      connection:
+        workingParent && conversationConnection
+          ? {
+              apiBase: conversationConnection.targetApiBase,
+              requestScope: {
+                ...conversationConnection.requestScope,
+                isCurrent: conversationConnection.isCurrent,
+              },
+              station: conversationConnection,
+            }
+          : { apiBase, requestScope: requestAuthority },
+    };
+  }, [
+    readerSurfaceIntent,
+    importedSessionId,
+    activeSessionId,
+    conversationConnection,
+    apiBase,
+    requestAuthority,
+  ]);
+  const consumeInitialChild = useCallback(() => {
+    if (readerSurfaceIntent) consumeChildIntent(readerSurfaceIntent.token);
+  }, [readerSurfaceIntent, consumeChildIntent]);
   const importedSession = orchestrationSessions.find(
     (session) => session.threadId === importedSessionId,
   );
@@ -2640,7 +2684,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // through to `openConversation` (rehydrate) and finally Activity
     // (a session Station cannot rehydrate) instead of no-oping.
     const focusChat = (detail: ChatFocusTarget) => {
-      cancelReaderOpen();
+      cancelReaderOpenAndChildren();
       const {
         sessionId,
         conversationId,
@@ -2742,6 +2786,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         );
       },
       openCollection: () => {
+        cancelReaderOpenAndChildren();
         // The open-chats collection has a DIFFERENT home in each chrome, and
         // only the dock knows which one is mounted. Routing lives here so a
         // caller (the sidebar's "Open chats" heading, its "N more") cannot
@@ -2772,7 +2817,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
   }, [
     hasImmutableProjectScope,
-    cancelReaderOpen,
+    cancelReaderOpenAndChildren,
     applyDockSnap,
     collapseDockForNavigation,
     focusSessionInPane,
@@ -3545,6 +3590,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       initialChild={initialChildChat}
       controllerRef={childChatController}
       onCoveredChange={setIsChildReaderOpen}
+      onBeforeChildOpen={cancelReaderOpen}
+      onInitialChildConsumed={consumeInitialChild}
     >
       <SessionReaderBindingProvider
         binding={{
@@ -4639,10 +4686,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 station: conversationConnection,
                 anchorRef: backgroundTasksTriggerRef,
                 returnFocusTarget: backgroundTasksTriggerRef.current,
-                onOpenTranscript: (threadId) => {
+                onOpenTranscript: (threadId, title) => {
                   setIsBackgroundTasksOpen(false);
-                  childChatController.current?.({
-                    title: 'Delegate',
+                  childChatController.current?.open({
+                    title: title ?? 'Delegate',
                     threadId,
                     connection: {
                       apiBase: conversationConnection?.targetApiBase ?? apiBase,
