@@ -102,6 +102,7 @@ import {
   runCliCommand,
 } from '../auth/cli-auth.js';
 import {
+  MUSE_API_KEY_ENV,
   MUSE_UNATTENDED_LAUNCHER_ENV,
   museCredentialPath,
   museCredentialState,
@@ -884,9 +885,16 @@ export function museChildEnv(
     ...launchEnv,
     TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
   });
-  return profileEnv?.XDG_CONFIG_HOME !== undefined
+  return museProfileOmitsApiKey(profileEnv)
     ? withoutAmbientMuseApiKey(env)
     : env;
+}
+
+/** #1942: whether a muse run under `profileEnv` must drop the ambient key. */
+function museProfileOmitsApiKey(
+  profileEnv: Record<string, string> | undefined,
+): boolean {
+  return profileEnv?.XDG_CONFIG_HOME !== undefined;
 }
 
 /** Exported for the #4520 spawn-level test; the adapter is its caller. */
@@ -1528,7 +1536,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         const profileEnv = await this.peekReadinessAppHomeEnv();
         const env = { ...this.env, ...profileEnv };
         return museCredentialState(
-          profileEnv.XDG_CONFIG_HOME !== undefined
+          museProfileOmitsApiKey(profileEnv)
             ? withoutAmbientMuseApiKey(env)
             : env,
           this.credentialFileExists,
@@ -1586,6 +1594,25 @@ export class MuseAdapter implements ProviderAdapterShape {
       return undefined;
     }
     return new MuseExecSandboxUnavailableError(this.sandboxUnavailable.reason);
+  }
+
+  /**
+   * Records what a serve host explicitly said about this machine's sandbox.
+   * Only an explicit `available` clears a learned `unavailable`: a host that
+   * omits the field (or sends a value Station does not know) claims nothing,
+   * and must not re-open an unsandboxed, unprompted exec fallback.
+   */
+  private learnSandbox(session: MuseServeSession): void {
+    const reported = session.reportedSandbox;
+    if (!reported) return;
+    if (reported.availability === 'available') {
+      this.sandboxUnavailable = undefined;
+      return;
+    }
+    this.sandboxUnavailable = {
+      unavailable: true,
+      ...(reported.reason ? { reason: reported.reason } : {}),
+    };
   }
 
   /**
@@ -1665,14 +1692,11 @@ export class MuseAdapter implements ProviderAdapterShape {
           ...(resume ? { resumeSessionId: resume.museSessionId } : {}),
         });
         serve = candidate;
-        this.sandboxUnavailable = serveStarted.sandbox.unavailable
-          ? serveStarted.sandbox
-          : undefined;
+        this.learnSandbox(candidate);
       } catch (error) {
         // A host that answered before failing still said whether this
         // machine has a sandbox; the exec fallback below depends on it.
-        if (candidate.sandbox.unavailable)
-          this.sandboxUnavailable = candidate.sandbox;
+        this.learnSandbox(candidate);
         if (error instanceof MuseSandboxUnavailableError) {
           // Settled: the host was closed before any session existed, and
           // exec would run the same posture in the same missing sandbox.
@@ -1892,6 +1916,9 @@ export class MuseAdapter implements ProviderAdapterShape {
         command,
         ...(record.cwd ? { cwd: record.cwd } : {}),
         env: { ...MUSE_UNATTENDED_LAUNCHER_ENV, ...record.appHomeEnv },
+        ...(museProfileOmitsApiKey(record.appHomeEnv)
+          ? { omitEnv: [MUSE_API_KEY_ENV] }
+          : {}),
       });
       if (!result || result.code !== 0) return;
       const servers = museMcpStatusFromList(result.stdout);

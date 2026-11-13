@@ -1835,7 +1835,8 @@ On a serve session:
   [muse-auth.ts](../../src-server/providers/auth/muse-auth.ts)), so the `muse`
   launcher neither downloads nor prompts during a probe. Sessions do not set
   them. A run under a credential profile or app home (sessions, hosts,
-  discovery reads, readiness, sign-in checks and the device login) drops an
+  discovery reads, the session-start MCP server listing, readiness, sign-in
+  checks and the device login) drops an
   ambient `META_API_KEY`, which Muse honours under any config home: the key
   signs in only the default account.
 

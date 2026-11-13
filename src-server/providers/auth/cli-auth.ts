@@ -405,6 +405,11 @@ export async function runCliCommand(
     killSignal?: NodeJS.Signals;
     /** The folder to run in, for a CLI whose answer depends on it. */
     cwd?: string;
+    /**
+     * Inherited variables the child must not see at all (an overlay can only
+     * mask one with an empty value), e.g. an ambient key a profile run drops.
+     */
+    omitEnv?: readonly string[];
   },
 ): Promise<CliCommandResult | null> {
   try {
@@ -415,7 +420,8 @@ export async function runCliCommand(
           ...envOverlay,
           TMPDIR: augmented.TMPDIR,
         })
-      : augmented;
+      : { ...augmented };
+    for (const key of bounds?.omitEnv ?? []) delete env[key];
     const invocation = cliInvocation(command, args);
     const { stdout, stderr } = await execFile(
       invocation.command,

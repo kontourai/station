@@ -36,13 +36,21 @@ export type MuseMcpListRunner = (input: {
   command: string;
   cwd?: string;
   env: Record<string, string>;
+  /** Inherited variables removed from the run (see `runCliCommand`). */
+  omitEnv?: readonly string[];
 }) => Promise<CliCommandResult | null>;
 
-export const runMuseMcpList: MuseMcpListRunner = ({ command, cwd, env }) =>
+export const runMuseMcpList: MuseMcpListRunner = ({
+  command,
+  cwd,
+  env,
+  omitEnv,
+}) =>
   runCliCommand(command, [...MUSE_MCP_LIST_ARGS], undefined, env, {
     timeoutMs: MUSE_MCP_LIST_TIMEOUT_MS,
     maxBuffer: MUSE_MCP_LIST_MAX_BUFFER,
     ...(cwd ? { cwd } : {}),
+    ...(omitEnv?.length ? { omitEnv } : {}),
   });
 
 // Control, bidi-override and zero-width characters: a name is rendered.

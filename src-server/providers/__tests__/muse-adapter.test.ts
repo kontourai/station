@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -95,6 +102,7 @@ vi.mock('../../telemetry/metrics.js', () => ({
   providerOps: { add: mockProviderOpsAdd },
 }));
 
+import { runMuseMcpList } from '../adapters/muse-mcp-status.js';
 import { FakeMuseProcess } from './fake-muse-process.js';
 import { MUSE_MCP_LIST_JSON } from './muse-mcp-list-output.js';
 
@@ -4549,6 +4557,7 @@ describe("muse's own MCP servers at session start", () => {
         MUSE_LOGIN: '0',
         XDG_CONFIG_HOME: '/station/app-homes/credential-profile-z',
       },
+      omitEnv: ['META_API_KEY'],
     });
     const status = events.filter((e) => e.method === 'engine-mcp.status');
     expect(status).toHaveLength(1);
@@ -4565,6 +4574,68 @@ describe("muse's own MCP servers at session start", () => {
     expect(JSON.stringify(events)).not.toContain('canary-arg-secret');
     await harness.adapter.stopAll();
   });
+
+  test.each([
+    ['under a credential profile, drops', true, 'key-absent'],
+    ['with no profile, keeps', false, 'key-present'],
+  ])(
+    'the real listing run %s the ambient META_API_KEY',
+    async (_label, profile, expected) => {
+      // A stand-in `muse` that names a server after what its env carried.
+      const dir = makeSessionHome('muse-mcp-env-');
+      const muse = join(dir, 'muse');
+      writeFileSync(
+        muse,
+        [
+          '#!/bin/sh',
+          'if [ -n "$META_API_KEY" ]; then n=key-present; else n=key-absent; fi',
+          'printf \'{"servers":[{"name":"%s","status":"enabled","enabled":true}]}\\n\' "$n"',
+        ].join('\n'),
+      );
+      chmodSync(muse, 0o755);
+      vi.stubEnv('META_API_KEY', 'ambient-key');
+      try {
+        const harness = createHarness({
+          listMcpServers: runMuseMcpList,
+          findBinary: () => muse,
+          ...(profile
+            ? {
+                getAppHomeEnv: async () => ({
+                  profileRef: 'work',
+                  env: { XDG_CONFIG_HOME: join(dir, 'profile') },
+                }),
+              }
+            : {}),
+        });
+        await harness.adapter.startSession({
+          provider: 'muse',
+          threadId: 'mcp-env',
+          ...(profile ? { credentialProfileRef: 'work' } : {}),
+        });
+        // One reader: a real child (and its PATH lookup) can take a while.
+        let status: any;
+        let next = harness.iterator.next();
+        for (let waited = 0; !status && waited < 10_000; waited += 100) {
+          const event: any = await Promise.race([
+            next,
+            new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), 100),
+            ),
+          ]);
+          if (!event) continue;
+          if (event.done) break;
+          if (event.value.method === 'engine-mcp.status') status = event.value;
+          next = harness.iterator.next();
+        }
+        expect(status?.servers).toEqual([
+          { name: expected, state: 'configured', scope: 'engine-config' },
+        ]);
+        await harness.adapter.stopAll();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   test('a failed read publishes nothing', async () => {
     const harness = createHarness({

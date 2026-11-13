@@ -293,6 +293,11 @@ export interface MuseServeSandboxReport {
   reason?: string;
 }
 
+/** An explicit `initialize.sandboxAvailability`; unknown values are absent. */
+export type MuseServeReportedSandbox =
+  | { availability: 'available' }
+  | { availability: 'unavailable'; reason?: string };
+
 /** Whether `plan` relies on muse's sandbox as its only containment. */
 function planReliesOnSandbox(plan: MuseServeApprovalPlan): boolean {
   return !plan.disableSandbox && plan.museMode === 'allowAll';
@@ -682,6 +687,7 @@ export class MuseServeSession {
   private model?: string;
   private stopped = false;
   private stopHost?: ServeHost;
+  private reportedSandboxValue?: MuseServeReportedSandbox;
   private stopTask?: Promise<{ terminationConfirmed: boolean }>;
   private stopConfirmed = false;
   private sending = false;
@@ -741,6 +747,15 @@ export class MuseServeSession {
   /** The latest host's sandbox report (none before a host answered). */
   get sandbox(): MuseServeSandboxReport {
     return (this.host ?? this.stopHost)?.sandbox ?? { unavailable: false };
+  }
+
+  /**
+   * The last explicit `sandboxAvailability` any host of this session
+   * answered, kept after that host is closed (a start that fails after the
+   * handshake has closed it). Absent while no host said either way.
+   */
+  get reportedSandbox(): MuseServeReportedSandbox | undefined {
+    return this.reportedSandboxValue;
   }
 
   /**
@@ -1101,14 +1116,19 @@ export class MuseServeSession {
       // A timeout or a vanished host is indeterminate: the input may be in.
       throw error;
     }
-    if (isRecord(result) && readString(result.turnId) !== turnId) {
-      throw new Error('Muse reported the steer joined a different turn.');
+    // The steer `turn.started` below is attributed to `turnId`, so muse must
+    // name that turn as the one that took the input.
+    if (readString(isRecord(result) ? result.turnId : undefined) !== turnId) {
+      throw new Error(
+        'Muse did not report the steer joining the steered turn.',
+      );
     }
     // Muse can write the turn's terminal before this reply. A steer
     // `turn.started` after that terminal would reopen a turn that never ends
     // again. Muse accepted the input, so whether the ended turn used it is
-    // unknown: a plain (indeterminate) error, not a no-effect refusal.
-    if (turn.settled || this.liveTurn() !== turn) {
+    // unknown: a plain (indeterminate) error, not a no-effect refusal. A turn
+    // muse opened meanwhile does not matter: muse confirmed this one took it.
+    if (turn.settled) {
       throw new Error(
         'The Muse turn ended as it accepted the steer; whether it used the input is unknown.',
       );
@@ -1538,6 +1558,12 @@ export class MuseServeSession {
         unavailable: true,
         ...(reason ? { reason: truncate(reason, 80) } : {}),
       };
+      this.reportedSandboxValue = {
+        availability: 'unavailable',
+        ...(host.sandbox.reason ? { reason: host.sandbox.reason } : {}),
+      };
+    } else if (isRecord(result) && result.sandboxAvailability === 'available') {
+      this.reportedSandboxValue = { availability: 'available' };
     }
     host.connection.notify('initialized');
     return host;

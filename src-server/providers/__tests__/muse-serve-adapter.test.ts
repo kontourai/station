@@ -2482,6 +2482,85 @@ describe('#1952 Muse Code 1.4.18: steering a running serve turn', () => {
     expect(activeTurnIdForEvents(h.events)).toBeUndefined();
   });
 
+  test('a steer muse confirms into the running turn is shown even when muse opened its own turn meanwhile', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    const frames = loadMuseServeCapture('steer');
+    let sent: Promise<{ turnId: string }> | undefined;
+    await replayMuseServeCapture(host, frames, {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/steer'),
+      onDrivenRequest: (method) => {
+        if (method !== 'turn/start') return undefined;
+        sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+        return sent;
+      },
+    });
+    const { turnId } = await sent!;
+    const steering = h.adapter.steerTurn(THREAD, STEER_TEXT, turnId);
+    const request = await host.nextRequest('turn/steer', new Set());
+    // Muse opens a turn of its own before it answers the steer.
+    const started = frames[
+      captureIndex('steer', (msg) => msg.method === 'turn/started')
+    ].msg as { params: Record<string, unknown> };
+    const MUSE_TURN = '00000000-0000-7000-8000-0000000000f1';
+    host.writeFrame({
+      ...started,
+      params: { ...started.params, turnId: MUSE_TURN, commandId: undefined },
+    });
+    await settle();
+    expect(
+      of(h.events, 'turn.started').some((event) => event.turnId === MUSE_TURN),
+    ).toBe(true);
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        commandId: request.params?.commandId,
+        status: 'accepted',
+        turnId,
+      },
+    });
+    await expect(steering).resolves.toBeUndefined();
+    expect(
+      of(h.events, 'turn.started').filter(
+        (event) => event.inputKind === 'steer',
+      ),
+    ).toMatchObject([{ turnId, prompt: STEER_TEXT }]);
+  });
+
+  test('a steer muse says joined another turn is indeterminate and shows nothing', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    let sent: Promise<{ turnId: string }> | undefined;
+    await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/steer'),
+      onDrivenRequest: (method) => {
+        if (method !== 'turn/start') return undefined;
+        sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+        return sent;
+      },
+    });
+    const { turnId } = await sent!;
+    const steering = h.adapter.steerTurn(THREAD, STEER_TEXT, turnId);
+    const request = await host.nextRequest('turn/steer', new Set());
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: { commandId: request.params?.commandId, status: 'accepted' },
+    });
+    const outcome = await steering.then(
+      () => 'resolved',
+      (error: unknown) => error,
+    );
+    expect(outcome).toBeInstanceOf(Error);
+    expect(outcome).not.toBeInstanceOf(ProviderTurnEndedError);
+    expect(
+      of(h.events, 'turn.started').filter(
+        (event) => event.inputKind === 'steer',
+      ),
+    ).toEqual([]);
+  });
+
   test('a steer naming a turn that is not running is refused before anything reaches muse', async () => {
     const h = harness();
     const host = await startServe(h);
@@ -3574,6 +3653,95 @@ describe('Muse parity: a host that cannot enforce its sandbox', () => {
       h.adapter.sendTurn({ threadId: THREAD, input: 'go' }),
     ).rejects.toThrow('this test drives serve; exec must not spawn');
     expect(h.execSpawns).toHaveLength(1);
+  });
+
+  for (const approvalMode of ['ask', undefined] as const) {
+    test(`a first ${approvalMode ?? 'default'} start whose host says there is no sandbox, then fails session/start, is refused rather than falling back to exec`, async () => {
+      const h = harness();
+      const starting = h.adapter.startSession({
+        provider: 'muse',
+        threadId: THREAD,
+        cwd: '/workspace/probe/repo',
+        ...(approvalMode ? { modelOptions: { approvalMode } } : {}),
+      });
+      starting.catch(() => {});
+      const host = await firstHost(h, () => starting);
+      await replayMuseServeCapture(host, sandboxlessFrames(), {
+        stopAt: captureIndex(
+          'steer',
+          (msg, dir) => dir === 'c2s' && msg.method === 'session/start',
+        ),
+      });
+      // The host answered without a sandbox; its session start then fails
+      // for an unrelated reason.
+      const request = await host.nextRequest('session/start', new Set());
+      reject(host, request, -32603);
+      await expect(starting).rejects.toMatchObject({
+        code: 'sandbox_unavailable',
+      });
+      expect(h.execSpawns).toEqual([]);
+      expect(await h.adapter.hasSession(THREAD)).toBe(false);
+      expect(of(h.events, 'session.started')).toEqual([]);
+    });
+  }
+
+  test('a later host that does not report sandbox availability keeps the learned "no sandbox", so a failed serve start still refuses exec', async () => {
+    const h = harness({
+      // Host 2 dies before its handshake, so its start falls back to exec.
+      spawnHost: (args, index) => {
+        const host = new FakeMuseServeHost(args, 6100 + index);
+        if (index === 2) setImmediate(() => host.exit(2));
+        return host;
+      },
+    });
+    const nthHost = async (index: number) => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if (h.hosts[index]) return h.hosts[index];
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      throw new Error(`host ${index} was never spawned`);
+    };
+    const beforeTurn = captureIndex(
+      'steer',
+      (msg) => msg.method === 'turn/start',
+    );
+    // Host 0 says this machine has no sandbox.
+    const learning = h.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-learn',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    await replayMuseServeCapture(await nthHost(0), sandboxlessFrames(), {
+      stopAt: beforeTurn,
+    });
+    await learning;
+    // Host 1 answers without `sandboxAvailability` (unknown) and starts.
+    const unknownFrames = structuredClone(loadMuseServeCapture('steer'));
+    const init = unknownFrames.find(
+      (frame) =>
+        frame.dir === 's2c' &&
+        (frame.msg.result as { schema?: unknown } | undefined)?.schema,
+    );
+    delete (init!.msg.result as Record<string, unknown>).sandboxAvailability;
+    const silent = h.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-silent',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    await replayMuseServeCapture(await nthHost(1), unknownFrames, {
+      stopAt: beforeTurn,
+    });
+    await silent;
+    // Host 2 fails: exec would run unsandboxed and unprompted.
+    await expect(
+      h.adapter.startSession({
+        provider: 'muse',
+        threadId: THREAD,
+        modelOptions: { approvalMode: 'ask' },
+      }),
+    ).rejects.toMatchObject({ code: 'sandbox_unavailable' });
+    expect(await h.adapter.hasSession(THREAD)).toBe(false);
+    expect(h.execSpawns).toEqual([]);
   });
 
   test('a host that reports its sandbox available labels turns enabled and warns nothing', async () => {
