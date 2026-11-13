@@ -125,6 +125,8 @@ const agentRegistry = vi.hoisted(() => ({
 }));
 vi.mock('../../../providers/registries/registry.js', () => ({
   getAgentRegistryProvider: () => agentRegistry.provider,
+  // The mocked agent catalog offers nothing, so no plain id is refused.
+  assertRegisteredAgentOwnership: async () => undefined,
   getIntegrationRegistryProvider: vi.fn().mockReturnValue({
     getToolDef: vi.fn().mockResolvedValue(null),
     install: vi.fn(),

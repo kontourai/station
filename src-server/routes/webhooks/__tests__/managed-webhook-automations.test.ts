@@ -67,14 +67,15 @@ function route(homeDir: string) {
     homeDir,
     () => now,
   );
-  const authorizeHeaders = vi.spyOn(authorization, 'authorizeHeaders');
+  // The credential lookup is the first configuration read Telltale makes.
+  const lookup = vi.spyOn(authorization, 'lookup');
   const app = createInboundWebhookRoutes({
     homeDir,
     authorization,
     logger: { warn: vi.fn() },
     startTurn,
   });
-  return { app, startTurn, authorizeHeaders };
+  return { app, startTurn, lookup };
 }
 
 /** A correctly signed request for the token's granted Agent. */
@@ -107,7 +108,7 @@ test('the route refuses a signed request before reading anything and starts noth
   const homeDir = enabledHome();
   const configPath = join(homeDir, 'security', 'inbound-webhooks.json');
   const before = readFileSync(configPath, 'utf8');
-  const { app, startTurn, authorizeHeaders } = route(homeDir);
+  const { app, startTurn, lookup } = route(homeDir);
 
   const response = await signed(app);
 
@@ -120,7 +121,7 @@ test('the route refuses a signed request before reading anything and starts noth
     retryable: false,
   });
   expect(startTurn).not.toHaveBeenCalled();
-  expect(authorizeHeaders).not.toHaveBeenCalled();
+  expect(lookup).not.toHaveBeenCalled();
   // Kept as it was: the policy disables, it does not delete.
   expect(readFileSync(configPath, 'utf8')).toBe(before);
 });

@@ -55,6 +55,7 @@ import type {
   IPluginRegistryProvider,
 } from '../provider-interfaces.js';
 import { readBoundedJson } from './catalog-http.js';
+import { assertNoLinksBelow, readConfinedFile } from './confined-local-read.js';
 import { fetchRegistryResource, managedRegistryHop } from './registry-fetch.js';
 import {
   type RegistryInstallAliases,
@@ -337,6 +338,9 @@ function isGitSource(source: string): boolean {
  */
 const MANIFEST_FETCH_TIMEOUT_MS = 20_000;
 
+/** Bytes of a folder source's `registry.json`, the source read bound. */
+const REGISTRY_SOURCE_MANIFEST_MAX_BYTES = 1024 * 1024;
+
 export class JsonManifestRegistryProvider
   implements
     IAgentRegistryProvider,
@@ -360,9 +364,12 @@ export class JsonManifestRegistryProvider
     private readonly logger?: Pick<Logger, 'warn'>,
     /**
      * #4521: whether this is the starter manifest that ships with Station,
-     * which `limits.registries.allowedUrls` never refuses.
+     * which `limits.registries.allowedUrls` never refuses. `root` confines a
+     * local manifest's sources to a folder other than the default (the
+     * parent of the manifest's folder): a folder added as a source sets it
+     * to that folder, so its index cannot name files beside it.
      */
-    readonly origin: { bundled?: boolean } = {},
+    readonly origin: { bundled?: boolean; root?: string } = {},
   ) {}
 
   /**
@@ -416,7 +423,19 @@ export class JsonManifestRegistryProvider
     // substitute its catalog between this source and claim observation.
     let manifest: Manifest;
     // Support both URLs and local file paths
-    if (this.isLocalManifest()) {
+    if (this.isLocalManifest() && this.origin.root !== undefined) {
+      // A folder added as a source: its manifest is read confined to the
+      // folder, so a link or a hard link cannot stand in for an outside file.
+      manifest = JSON.parse(
+        (
+          await readConfinedFile(
+            this.origin.root,
+            resolve(this.manifestUrl),
+            REGISTRY_SOURCE_MANIFEST_MAX_BYTES,
+          )
+        ).toString('utf8'),
+      ) as Manifest;
+    } else if (this.isLocalManifest()) {
       const bounded = readPluginManifestBytesBounded(this.manifestUrl);
       if (!bounded.ok)
         throw new Error(
@@ -446,8 +465,14 @@ export class JsonManifestRegistryProvider
   }
 
   async getCatalogSnapshot(): Promise<PluginRegistryCatalogSnapshot> {
+    return this.catalogSnapshotOfKind('plugin');
+  }
+
+  private async catalogSnapshotOfKind(
+    kind: 'agent' | 'plugin',
+  ): Promise<PluginRegistryCatalogSnapshot> {
     const manifest = await this.fetchManifest(true);
-    const entries = this.manifestEntriesOfKind(manifest, 'plugin');
+    const entries = this.manifestEntriesOfKind(manifest, kind);
     return {
       revision: createHash('sha256')
         .update(JSON.stringify(manifest))
@@ -492,6 +517,7 @@ export class JsonManifestRegistryProvider
       throw new Error('Registry package identity is ambiguous');
     const plugin = matches[0];
     if (!plugin) return null;
+    await this.assertConfinedPackage(plugin.source);
     return {
       source: this.resolveManifestSource(plugin.source).location,
       ...(plugin.claim === undefined
@@ -522,6 +548,7 @@ export class JsonManifestRegistryProvider
    * their plugins as `../<example>` siblings of the `registry/` directory.
    */
   private getLocalRegistryRoot(): string {
+    if (this.origin.root !== undefined) return resolve(this.origin.root);
     return resolve(dirname(resolve(this.manifestUrl)), '..');
   }
 
@@ -641,7 +668,19 @@ export class JsonManifestRegistryProvider
     writeRegistryInstallAliases(this.projectHomeDir, aliases);
   }
 
+  /**
+   * For a folder added as a source, refuses a local package that holds a
+   * link or a multiply linked file, before anything resolves or copies it.
+   */
+  private async assertConfinedPackage(source: string): Promise<void> {
+    if (this.origin.root === undefined) return;
+    const resolved = this.resolveManifestSource(source);
+    if (resolved.kind === 'local')
+      await assertNoLinksBelow(this.origin.root, resolved.location);
+  }
+
   private async materializeSource(source: string): Promise<string> {
+    await this.assertConfinedPackage(source);
     const resolved = this.resolveManifestSource(source);
     // Copy or clone from the path the containment check validated, so a
     // symlink swapped into the manifest's spelling of it after the check is
@@ -962,6 +1001,28 @@ export class JsonManifestRegistryProvider
           : [],
       install: (id: string) => this.install(id),
       uninstall: (id: string) => this.uninstall(id),
+    };
+  }
+
+  /**
+   * The agent entries as a catalog of their own, for a source that lists
+   * agents beside plugins. It is the same manifest and the same installer:
+   * an agent entry is a package installed through the plugin pipeline, so
+   * install, removal and package resolution are this provider's.
+   */
+  agentCatalog(): IPluginRegistryProvider {
+    return {
+      registryKey: this.registryKey,
+      getCatalogSnapshot: () => this.catalogSnapshotOfKind(AGENT_MANIFEST_KIND),
+      refresh: () => this.refresh(),
+      getCatalogRevision: () => this.getCatalogRevision(),
+      resolvePackage: (id) => this.resolvePackage(id),
+      resolveSource: (id) => this.resolveSource(id),
+      listAvailable: () => this.listAvailableOfKind(AGENT_MANIFEST_KIND),
+      listInstalled: () => this.listInstalledOfKind(AGENT_MANIFEST_KIND),
+      install: (id, options) => this.install(id, options),
+      uninstall: (id) => this.uninstall(id),
+      update: (id) => this.update(id),
     };
   }
 

@@ -253,3 +253,57 @@
   min-height: 44px;
   min-width: 44px;
 }
+
+/* A thread on the conversation's own surface (#4795): a quiet bar naming it
+   and the way back to the channel. */
+.project-room__thread-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  padding: var(--k-space-1) var(--k-space-3);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-panel);
+}
+
+.project-room__thread-bar .button {
+  color: var(--k-text-muted);
+}
+
+.project-room__thread-bar svg {
+  width: 14px;
+  height: 14px;
+}
+
+.project-room__thread-title {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  font-weight: 650;
+  color: var(--k-text);
+}
+
+/* A phone's full-screen conversation (#4795): the room is the screen, edge
+   to edge, with one bar on top and the composer pinned below. */
+.project-room--screen.project-room--full {
+  border: 0;
+  border-radius: 0;
+}
+
+.project-room--screen > .project-room__header--screen {
+  display: block;
+  padding: var(--k-space-1) var(--k-space-2);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-panel);
+}
+
+.project-room__header--screen > .project-room__title {
+  width: 100%;
+}
+
+.project-room__header--screen .project-room__faces {
+  flex: none;
+}
+
+.project-room--screen > .project-room__title {
+  padding: var(--k-space-1) var(--k-space-2);
+}

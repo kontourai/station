@@ -1,0 +1,91 @@
+{
+  "revision": "8e33704c44980061aeae979e9ef3fd7a9a513eca",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added Channel navigation (#4794, #4795) under ProjectRoom and checked it against ProjectRoom.tsx (routeChannel, thread, screen, useMarkRoomRead), ProjectNavigation.tsx, project-room-navigation.ts, useListScrollMemory.ts and ProjectConversationList. The read-markers row now names channels (#4792 version source). The useInboxPanelController line still holds: the #4814 change narrows the selection key only. TaskWorkspaceView.css moving its Task-room phone rules to MOBILE_MEDIA_QUERY contradicts no claim here.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ProjectPage now leads a phone's Overview with the channel list and opens channels full screen; the Overview-first and separate-Project-Room claims still hold. The useInboxPanelController change is the selection key (#4814); no composer claim depends on it.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts gained channel-navigation scenes and a tall phone frame for the Project list; no motion scene or reduced-motion claim changed. The new working mark is static, so it adds no animation.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"SplitPaneCompanion gained an opt-in page presentation for a companion on a phone (the Task room's thread); the default selection-inspector sheet and the beside/child-screen rules described here are unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Added the expanded project's channel and Task-room list to the quiet tree refinement, checked against ProjectSidebarRow (lazy ProjectSidebarConversations under the views) and ProjectConversationList (one tab stop, Up/Down/Home/End, reads only while expanded, New channel). The drawer's places-only rule holds: channels are places, not a recent-chat list.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"SplitPaneLayout only gained SplitPaneCompanion's opt-in phone page mode; the skeleton, frame and loading claims here are unaffected.","inputs":["docs/design/shell-skeletons.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"useInboxPanelController's selection key now omits chatSessionId and the chat binding's affinity (#4814); activation still checks lease currency, authority and Station as described. TaskWorkspaceView.css changes are presentation only.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/views/TaskWorkspaceView.css"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"ProjectTaskRoomConversation now marks the room read through its history checkpoint, renders the thread summary through the shared RoomThreadSummary, and fills the screen with an open thread on a phone; the request, thread reply and publication claims here are unchanged. The test file gained a mark-read case and a useMarkReadMutation mock.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/ProjectTaskRoomConversation.test.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md's read-marker paragraph now says Project room targets name any channel; nothing here depends on it.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"MemberProjectPage gained the room's route-owned channel, thread and phone screen; the Project Room Agent request and member execution claims here are unchanged.","inputs":["docs/guides/agent-configuration.md","src-ui/src/views/project-page/MemberProjectPage.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/connections.md","note":"SplitPaneLayout(.css) gained an opt-in page presentation for a companion on a phone; the connection surfaces described here do not use it.","inputs":["docs/guides/connections.md","src-ui/src/components/SplitPaneLayout.css","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Added a Project channels row for project-channel-navigation and chat-dock-inbox-open, checked against the specs and their tests/e2e-manifest.mjs entries (product bucket; the channel spec is shared-instance-exclusive, the inbox spec parallel-safe).","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md (read markers: channel room ids, never-opened Task rooms unavailable) and sdk.md (route-owned room channel and thread, mark read on screen) changed; this guide's integration claims do not depend on either.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"ProjectPage reorders a phone's Overview (channels first, then New Task and Add files); the Starter Task entry points and handoff described here are unchanged. Task room changes (mark read, shared thread summary, MOBILE_MEDIA_QUERY rules) do not affect Starter Work.","inputs":["docs/guides/starter-work.md","src-ui/src/views/ProjectPage.tsx","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"screenshots.spec.ts gained the channel-navigation scenes (a 390x1200 phone frame for the list) and room fixtures for read markers; the gallery capture, diff and findings procedures described here are unchanged.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the Project and Task room capture descriptions against the changed ProjectPage, ProjectTaskRoomConversation, TaskWorkspaceView.css and SplitPaneLayout; the walkthrough captures are desktop and their descriptions still hold.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/SplitPaneLayout.css","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/ProjectPage.tsx","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"tests/e2e-manifest.mjs gained two product specs and the coverage matrix a Project channels row; the campaign's lanes and status claims are unchanged.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"SplitPaneLayout gained an opt-in phone page mode for a companion; nothing in the agent smoke confidence reference depends on it.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/components/SplitPaneLayout.css","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ProjectRoom.tsx now marks a full room read through POST /api/read-markers/mark with the discovered checkpoint; the read-marker section (edited here to name channel room ids) and the Shared Project Room routes match.","inputs":["docs/reference/api.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"ProjectRoom.tsx changes are UI (route-owned channel, threads from replyTo, mark read); no contract shape described here changed.","inputs":["docs/reference/contracts.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"The Task room now marks itself read and fills the screen with an open thread on a phone; the collaboration acceptance claims (presence, live work, revisions) are unaffected.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added the route-owned channel and thread, the phone screen bar and mark-on-screen to the Shared Project room section, checked against ProjectRoom.tsx props (routeChannel, onRouteChannel, thread, screen), its useMarkRoomRead call and the ProjectPage and MemberProjectPage callers.","inputs":["docs/reference/sdk.md","src-ui/src/views/ProjectPage.tsx","src-ui/src/views/project-page/MemberProjectPage.tsx","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped documentation (npm run docs:mcp:generate) after the module map and API edits; the topic inventory described here is unchanged.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts changes are channel-navigation scenes and fixtures; the telemetry consent scenes referenced here are unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Dated review record (2026-10-15). ProjectSidebarRow now mounts the expanded project's channel list; the record describes the state reviewed then and is left as history.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"tests/e2e-manifest.mjs gained two product-bucket specs; the PR browser smoke selection described here is unchanged.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/user/concepts.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the Project and chat steps against ProjectPage (a phone's Overview leads with channels), ProjectTaskRoomConversation and the inbox fix (#4814: a stored conversation now opens from the dock inbox); the getting-started steps remain accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/views/ProjectPage.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"docs/reference/sdk.md gained a paragraph on route-owned room channels; this file's routing to the SDK reference is unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Module map change checked: a Channel navigation paragraph under ProjectRoom (route-owned channel and thread, ProjectConversationList, useMarkRoomRead, list scroll memory) and the read-markers row naming every channel. This document's references to the module map remain accurate; no claim here depends on the new text.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"useInboxPanelController remains the Desktop and mobile Inbox owner in the table; #4814 changed only its selection key.","inputs":["src-ui/AGENTS.md","src-ui/src/components/chat-dock/useInboxPanelController.ts"]}
+  ]
+}

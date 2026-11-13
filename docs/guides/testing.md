@@ -1463,8 +1463,8 @@ Two consequences worth stating plainly:
 - **Bump the container in lockstep with `@playwright/test`** and review renderer
   differences separately. Baseline changes need a reviewed commit of their own.
   A rebuilt base image published under the same tag is a different renderer
-  wearing the same name, which is why the pin is a digest rather than
-  `v1.64.1-noble`.
+  wearing the same name, which is why the pin is a digest rather than a
+  `vX.Y.Z-noble` tag alone.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version
