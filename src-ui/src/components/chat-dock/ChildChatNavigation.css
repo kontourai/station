@@ -64,10 +64,8 @@
 .child-chat-trail__segment:last-child {
   flex: 1 1 auto;
 }
-@media (max-width: 600px) {
-  .child-chat-trail__segment:not(:last-child) {
-    flex: 0 1 44px;
-  }
+.chat-dock__mobile-header--child .child-chat-trail__segment:not(:last-child) {
+  flex: 0 1 44px;
 }
 
 .chat-dock__active-identity--child .chat-dock__active-identity-text {
