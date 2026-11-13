@@ -337,9 +337,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     );
     const artifacts = resolve(REPO_ROOT, '.surface/mobile-inbox-review');
     await mkdir(artifacts, { recursive: true });
-    for (const width of [390, 1440]) {
+    for (const width of [390, 412, 1440]) {
       for (const theme of ['dark', 'light']) {
-        const pg = await browser.newPage({ viewport: { width, height: 500 } });
+        const pg = await browser.newPage({ viewport: { width, height: 915 } });
         try {
           await pg.setContent(
             `<html data-theme="${theme}"><style>${css}\n${resolveCssImports(resolve(import.meta.dirname, '../../chat/SubagentTranscriptCard.css'))}</style><body><div style="max-width:560px;padding:16px">${container.innerHTML}</div></body></html>`,
