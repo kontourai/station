@@ -134,11 +134,17 @@ export class FakeAcpProcess {
    * no-retry proof `newSessionError` gives `session/new`. */
   loadSessionError?: unknown;
 
+  /**
+   * What `session/load` and `session/resume` answer with (`ACPProcess`
+   * returns `{}` for an engine that answers with nothing).
+   */
+  reattachResult: Record<string, unknown> = {};
+
   async loadSession(
     sessionId: string,
     cwd: string,
     mcpServers?: unknown[],
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     this.loadSessionCalls += 1;
     this.loadSessionArgs = { sessionId, cwd, mcpServers };
     if (this.loadSessionError) throw this.loadSessionError;
@@ -147,6 +153,7 @@ export class FakeAcpProcess {
     // notifications before it answers `session/load`.
     this.loadSessionReplay?.(this.client);
     await this.loadSessionPromise;
+    return structuredClone(this.reattachResult);
   }
   loadSessionReplay?: (client: ACPClientCallbacks) => void;
 
@@ -162,11 +169,12 @@ export class FakeAcpProcess {
     sessionId: string,
     cwd: string,
     mcpServers?: unknown[],
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     this.resumeSessionCalls += 1;
     this.resumeSessionArgs = { sessionId, cwd, mcpServers };
     if (this.resumeSessionError) throw this.resumeSessionError;
     this.sessionId = sessionId;
+    return structuredClone(this.reattachResult);
   }
 
   readonly setConfigOptionCalls: Array<{ configId: string; value: string }> =
