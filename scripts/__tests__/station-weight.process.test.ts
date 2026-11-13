@@ -92,17 +92,17 @@ describe.skipIf(!posix)('station-weight end to end', () => {
       expect(result.outcome).toBe('completed');
       for (const id of [
         'serverReadyMs',
-        'restRssBytes',
-        'idleSessionsRssBytes',
+        'restMemoryBytes',
+        'idleSessionsMemoryBytes',
         'idleCpuPercent',
-        'leftoverAfterStopRssBytes',
+        'leftoverAfterStopMemoryBytes',
         'request.stationAddedTextBytes',
         'request.stationAddedToolCount',
         'request.stationAddedToolDefinitionBytes',
         'request.sideCallCount',
       ])
         expect(result.metrics[id], id).toMatchObject({ status: 'measured' });
-      expect(result.metrics.leftoverAfterStopRssBytes.value).toBe(0);
+      expect(result.metrics.leftoverAfterStopMemoryBytes.value).toBe(0);
       expect(result.repoRules).toMatchObject({ claudeMd: true });
       // The comparison the per-PR check makes: Station's additions to the
       // first model request must stay inside the committed request budgets.

@@ -20,11 +20,16 @@ export const BASELINE_SCHEMA_VERSION = 1;
  */
 export const STATION_WEIGHT_BUDGETS = Object.freeze([
   { id: 'serverReadyMs', scope: 'host', ratio: 0.5, floor: 0 },
-  { id: 'restRssBytes', scope: 'host', ratio: 0.25, floor: 0 },
-  { id: 'idleSessionsRssBytes', scope: 'host', ratio: 0.25, floor: 0 },
+  { id: 'restMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
+  { id: 'idleSessionsMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
   // Percentage points: a near-idle tree must not fail on scheduler noise.
   { id: 'idleCpuPercent', scope: 'host', ratio: 1, floor: 1 },
-  { id: 'leftoverAfterStopRssBytes', scope: 'host', ratio: 0.25, floor: 0 },
+  {
+    id: 'leftoverAfterStopMemoryBytes',
+    scope: 'host',
+    ratio: 0.25,
+    floor: 0,
+  },
   {
     id: 'request.stationAddedTextBytes',
     scope: 'request',

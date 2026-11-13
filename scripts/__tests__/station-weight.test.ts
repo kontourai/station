@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, test } from 'vitest';
+import { parseFootprint, withMemory } from '../bench/station-weight.mjs';
 import {
   evaluateBudgets,
   recordBaseline,
@@ -282,7 +283,7 @@ describe('station-weight budgets against the committed baseline', () => {
 
   test('a process left alive after stop fails a zero leftover baseline', () => {
     const result = resultAtBaseline();
-    const id = 'leftoverAfterStopRssBytes';
+    const id = 'leftoverAfterStopMemoryBytes';
     const klass = `${result.host.platform}-${result.host.arch}`;
     expect(BASELINE.hosts[klass].values[id]).toBe(0);
     result.metrics[id].value = 4096;
@@ -305,19 +306,19 @@ describe('station-weight budgets against the committed baseline', () => {
 
   test('a gap is NOT_MEASURED with its reason, never PASS', () => {
     const result = resultAtBaseline();
-    result.metrics.restRssBytes = {
+    result.metrics.restMemoryBytes = {
       status: 'not_measured',
       unit: 'bytes',
       reason: 'probe unavailable',
     };
     delete (result.metrics as Record<string, unknown>).serverReadyMs;
     const verdicts = evaluateBudgets(result, BASELINE);
-    expect(verdicts.find((entry) => entry.id === 'restRssBytes')).toMatchObject(
-      {
-        verdict: 'NOT_MEASURED',
-        reason: 'probe unavailable',
-      },
-    );
+    expect(
+      verdicts.find((entry) => entry.id === 'restMemoryBytes'),
+    ).toMatchObject({
+      verdict: 'NOT_MEASURED',
+      reason: 'probe unavailable',
+    });
     expect(verdictOf(verdicts, 'serverReadyMs')).toBe('NOT_MEASURED');
   });
 
@@ -340,7 +341,7 @@ describe('station-weight budgets against the committed baseline', () => {
       sourceRevision: 'abc',
       startedAt: '2026-01-01T00:00:00.000Z',
     };
-    result.metrics.restRssBytes = {
+    result.metrics.restMemoryBytes = {
       status: 'not_measured',
       unit: 'bytes',
       reason: 'x',
@@ -348,7 +349,57 @@ describe('station-weight budgets against the committed baseline', () => {
     const next = recordBaseline(result, BASELINE);
     for (const klass of Object.keys(BASELINE.hosts))
       expect(next.hosts[klass]).toEqual(BASELINE.hosts[klass]);
-    expect(next.hosts['plan9-mips'].values).not.toHaveProperty('restRssBytes');
+    expect(next.hosts['plan9-mips'].values).not.toHaveProperty(
+      'restMemoryBytes',
+    );
     expect(next.hosts['plan9-mips'].values).toHaveProperty('serverReadyMs');
   });
+});
+
+// Output shape of macOS `footprint -f bytes --noCategories <pid> <pid>`.
+const FOOTPRINT_OUTPUT = `======================================================================
+node [7432]: 64-bit    Footprint: 968088040 B (16384 bytes per page)
+======================================================================
+
+Auxiliary data:
+    phys_footprint: 968120808 B
+    phys_footprint_peak: 969022024 B
+
+======================================================================
+claude [96243]: 64-bit    Footprint: 91501560 B (16384 bytes per page)
+======================================================================
+
+Auxiliary data:
+    phys_footprint: 91534328 B
+    phys_footprint_peak: 242522176 B
+
+======================================================================
+Summary Footprint: 1059556832 B
+======================================================================
+`;
+
+describe('station-weight memory reading', () => {
+  test('reads phys_footprint per pid, not the peak or the summary', () => {
+    expect([...parseFootprint(FOOTPRINT_OUTPUT)]).toEqual([
+      [7432, 968120808],
+      [96243, 91534328],
+    ]);
+  });
+
+  test.skipIf(process.platform !== 'darwin')(
+    'a live process the reader omitted is an error, never zero',
+    () => {
+      const row = {
+        pid: process.pid,
+        ppid: 1,
+        rssBytes: 1,
+        cpuSeconds: 0,
+        started: 'x',
+        command: 'node',
+      };
+      expect(() => withMemory([row], () => FOOTPRINT_OUTPUT)).toThrow(
+        `footprint did not report live pid ${process.pid}`,
+      );
+    },
+  );
 });

@@ -144,12 +144,90 @@ export function survivors(before, after) {
 
 const sum = (rows, key) => rows.reduce((total, row) => total + row[key], 0);
 const processRows = (rows) =>
-  rows.map(({ pid, ppid, rssBytes, command }) => ({
+  rows.map(({ pid, ppid, rssBytes, memoryBytes, command }) => ({
     pid,
     ppid,
     rssBytes,
+    memoryBytes,
     command,
   }));
+
+/**
+ * What a process's memory is measured as. macOS compresses idle pages out of
+ * RSS (a busy host showed one process at 4 MiB RSS and 87 MiB footprint), so
+ * there the kernel's phys_footprint, compressed pages included, is the
+ * measure. Elsewhere it is RSS. Baselines are per host class, so a value is
+ * only ever compared with one of the same basis.
+ */
+export const MEMORY_BASIS =
+  process.platform === 'darwin' ? 'phys_footprint' : 'rss';
+
+/** pid -> phys_footprint bytes from `footprint -f bytes --noCategories`. */
+export function parseFootprint(text) {
+  const footprints = new Map();
+  let pid;
+  for (const line of text.split('\n')) {
+    const header = line.match(/\[(\d+)\]:\s.*Footprint:/);
+    if (header) {
+      pid = Number(header[1]);
+      continue;
+    }
+    const value = line.match(/^\s*phys_footprint:\s+(\d+) B$/);
+    if (value && pid !== undefined) {
+      footprints.set(pid, Number(value[1]));
+      pid = undefined;
+    }
+  }
+  return footprints;
+}
+
+const isAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+};
+
+/**
+ * Attaches `memoryBytes` to each row. A process that exited before it could
+ * be read is dropped; a live one the reader did not report is an error, not
+ * a zero.
+ */
+export function withMemory(rows, run = execFileSyncBounded) {
+  if (MEMORY_BASIS === 'rss' || !rows.length)
+    return rows.map((row) => ({ ...row, memoryBytes: row.rssBytes }));
+  let footprints;
+  try {
+    footprints = parseFootprint(
+      run(
+        'footprint',
+        [
+          '-f',
+          'bytes',
+          '--noCategories',
+          ...rows.map((row) => String(row.pid)),
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      ),
+    );
+  } catch (error) {
+    // `footprint` refuses the whole call when one pid has already exited.
+    const live = rows.filter((row) => isAlive(row.pid));
+    if (live.length === rows.length) throw error;
+    return withMemory(live, run);
+  }
+  return rows
+    .filter((row) => footprints.has(row.pid) || isAlive(row.pid))
+    .map((row) => {
+      if (!footprints.has(row.pid))
+        throw new Error(`footprint did not report live pid ${row.pid}`);
+      return { ...row, memoryBytes: footprints.get(row.pid) };
+    });
+}
+
+const memorySnapshot = (roots) => withMemory(ownedTree(processTable(), roots));
 
 /** Linux only: voluntary + involuntary context switches across the tree. */
 function contextSwitches(rows) {
@@ -485,24 +563,24 @@ async function allocatePorts() {
   throw new Error('could not allocate a port band clear of reserved ports');
 }
 
-/** Two consecutive tree RSS samples within this fraction count as settled. */
+/** Two consecutive tree memory samples within this fraction count as settled. */
 const SETTLE_TOLERANCE = 0.05;
 
 /**
  * Waits `settleMs`, then samples the tree every `settleIntervalMs` until two
- * consecutive RSS totals agree within SETTLE_TOLERANCE. A tree still moving
+ * consecutive memory totals agree within SETTLE_TOLERANCE. A tree still moving
  * at `settleMaxMs` is not at rest, so the caller reports it as not measured.
  */
 async function settleTree(roots, settings) {
   const begin = performance.now();
   await wait(settings.settleMs);
-  let previous = ownedTree(processTable(), roots);
-  const samples = [sum(previous, 'rssBytes')];
+  let previous = memorySnapshot(roots);
+  const samples = [sum(previous, 'memoryBytes')];
   while (performance.now() - begin < settings.settleMaxMs) {
     await wait(settings.settleIntervalMs);
-    const current = ownedTree(processTable(), roots);
-    const before = sum(previous, 'rssBytes');
-    const now = sum(current, 'rssBytes');
+    const current = memorySnapshot(roots);
+    const before = sum(previous, 'memoryBytes');
+    const now = sum(current, 'memoryBytes');
     samples.push(now);
     if (Math.abs(now - before) <= SETTLE_TOLERANCE * before)
       return {
@@ -523,6 +601,7 @@ async function settleTree(roots, settings) {
 
 function restMetric(settled, extra = {}) {
   const detail = {
+    basis: MEMORY_BASIS,
     processCount: settled.rows.length,
     processes: processRows(settled.rows),
     settledAfterMs: settled.settledAfterMs,
@@ -530,10 +609,10 @@ function restMetric(settled, extra = {}) {
     ...extra,
   };
   if (settled.stable)
-    return measured(sum(settled.rows, 'rssBytes'), 'bytes', detail);
+    return measured(sum(settled.rows, 'memoryBytes'), 'bytes', detail);
   return {
     ...notMeasured(
-      `tree RSS did not settle within ${SETTLE_TOLERANCE * 100}% in ${Math.round(settled.settledAfterMs / 1000)}s`,
+      `tree memory did not settle within ${SETTLE_TOLERANCE * 100}% in ${Math.round(settled.settledAfterMs / 1000)}s`,
       'bytes',
     ),
     ...detail,
@@ -714,7 +793,9 @@ export async function runStationWeight({
     await api.pair(instanceRecord.baseDir);
 
     progress('paired; settling');
-    result.metrics.restRssBytes = restMetric(await settleTree(roots, settings));
+    result.metrics.restMemoryBytes = restMetric(
+      await settleTree(roots, settings),
+    );
 
     const cpuStart = ownedTree(processTable(), roots);
     const switchesStart =
@@ -789,7 +870,7 @@ export async function runStationWeight({
       for (let index = 1; index < settings.idleSessions; index += 1)
         sessionIds.push(await sendHi(api, repo));
       progress('sessions created; settling');
-      result.metrics.idleSessionsRssBytes = restMetric(
+      result.metrics.idleSessionsMemoryBytes = restMetric(
         await settleTree(roots, settings),
         {
           sessions: sessionIds.length,
@@ -849,7 +930,7 @@ export async function runStationWeight({
       'request.stationAddedToolCount',
       'request.stationAddedToolDefinitionBytes',
       'request.sideCallCount',
-      'idleSessionsRssBytes',
+      'idleSessionsMemoryBytes',
     ])
       result.metrics[id] ??= notMeasured(requestGap);
     result.repoRules ??= { status: 'not_measured', reason: requestGap };
@@ -865,11 +946,12 @@ export async function runStationWeight({
     started = false;
     result.stopMs = performance.now() - stopStart;
     await wait(settings.stopGraceMs);
-    const left = survivors(beforeStop, processTable());
-    result.metrics.leftoverAfterStopRssBytes = measured(
-      sum(left, 'rssBytes'),
+    const left = withMemory(survivors(beforeStop, processTable()));
+    result.metrics.leftoverAfterStopMemoryBytes = measured(
+      sum(left, 'memoryBytes'),
       'bytes',
       {
+        basis: MEMORY_BASIS,
         processCount: left.length,
         processes: processRows(left),
         afterSeconds: settings.stopGraceMs / 1000,
