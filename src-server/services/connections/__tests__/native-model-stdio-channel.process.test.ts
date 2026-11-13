@@ -21,6 +21,7 @@ async function fixture(
     input: NativeModelRequest,
     signal: AbortSignal,
   ) => NativeModelChannelRequest,
+  retirement: Promise<void> = Promise.resolve(),
 ) {
   const home = temporary('native-model-stdio-');
   const registry = join(home, 'registry');
@@ -71,7 +72,15 @@ async function fixture(
     return stopping;
   };
   const channel = new NativeModelStdioChannel(
-    { input: stdin, output: stdout, settled: closed, stop },
+    {
+      input: stdin,
+      output: stdout,
+      settled: closed,
+      stop: async () => {
+        await retirement;
+        await stop();
+      },
+    },
     request,
   );
   onTestFinished(async () => {
@@ -305,6 +314,51 @@ test('complete provider bytes do not release a still-pending host terminal/accou
     expect(f.channel.inspect().pending).toBe(0);
   } finally {
     release();
+    await f.channel.settled.catch(() => {});
+  }
+});
+
+test('unexpected worker loss cancels the host request before slow worker retirement settles', async () => {
+  let releaseRetirement!: () => void;
+  const retirement = new Promise<void>((resolve) => {
+    releaseRetirement = resolve;
+  });
+  let entered!: (signal: AbortSignal) => void;
+  const started = new Promise<AbortSignal>((resolve) => {
+    entered = resolve;
+  });
+  let releaseResponse!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  const f = await fixture((_input, signal) => {
+    entered(signal);
+    return {
+      response: pending.then(() => new Response('late')),
+      settled: pending,
+      invokeDelivery: delivery,
+    };
+  }, retirement);
+  const fetching = fetch(`${f.url}/v1/responses`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${f.channel.token}` },
+    body: '{}',
+  });
+  void fetching.catch(() => {});
+  try {
+    const signal = await started;
+    await f.stop();
+    await expect(fetching).rejects.toThrow();
+    await vi.waitFor(() => expect(signal.aborted).toBe(true), {
+      timeout: 1000,
+    });
+    expect(f.channel.inspect()).toMatchObject({
+      admissionClosed: true,
+      pending: 1,
+    });
+  } finally {
+    releaseRetirement();
+    releaseResponse();
     await f.channel.settled.catch(() => {});
   }
 });

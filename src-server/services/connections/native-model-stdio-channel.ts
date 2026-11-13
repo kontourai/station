@@ -113,6 +113,8 @@ export class NativeModelStdioChannel {
       } catch (error) {
         this.#failure ??= error;
         this.#rejectReady(error);
+        this.#closed = true;
+        for (const item of this.#active.values()) item.controller.abort();
         try {
           await this.#stop();
         } catch (stopError) {
