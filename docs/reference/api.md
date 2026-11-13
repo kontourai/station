@@ -5103,7 +5103,7 @@ scan bound, or `unavailable`), `kinds` (each with `count`, the detector `via`,
 `checkedAt` and `changedAt`, the last read that found a new revision. `kind`
 is the primary catalog kind, kept for older clients. Refresh reads the source
 again before its catalogs. Station's default sources are named by engine, owner and scope
-(`Codex skills · user`, `Claude skills · Station profile`,
+(`Codex skills · user`, `Claude skills · Station app home`,
 `anthropics/skills (default)`), never by one shared name; the location stays on
 the row.
 

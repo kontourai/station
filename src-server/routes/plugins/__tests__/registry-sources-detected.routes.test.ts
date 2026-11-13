@@ -1217,8 +1217,8 @@ describe('default sources have names that tell them apart', () => {
     expect(defaults.map((source) => source.displayName)).toEqual([
       'Codex skills · user',
       'Claude skills · user',
-      'Codex skills · Station profile',
-      'Claude skills · Station profile',
+      'Codex skills · Station app home',
+      'Claude skills · Station app home',
       'anthropics/skills (default)',
     ]);
     const keys = defaults.map((source) => normalized(source.displayName));

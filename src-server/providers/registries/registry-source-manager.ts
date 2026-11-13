@@ -163,7 +163,7 @@ export function registrySourceSupplies(
 /**
  * A name for a local skill folder that tells the default folders apart: the
  * engine whose folder it is, and whose (`· user` for one in the person's
- * home, `· Station profile` for an app-home profile Station manages). Any
+ * home, `· Station app home` for an app home Station manages). Any
  * other folder is named by its parent folder.
  */
 export function localSkillFolderName(path: string): string {
@@ -172,7 +172,7 @@ export function localSkillFolderName(path: string): string {
     word.charAt(0).toLocaleUpperCase() + word.slice(1);
   const appHome = parts.lastIndexOf('app-homes');
   if (appHome >= 0 && parts[appHome + 1])
-    return `${title(parts[appHome + 1]!)} skills · Station profile`;
+    return `${title(parts[appHome + 1]!)} skills · Station app home`;
   const engine = parts.find(
     (part) => part.startsWith('.') && part !== '.agents',
   );
