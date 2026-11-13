@@ -106,4 +106,39 @@ describe('ContextPercentage live ACP usage', () => {
     view.rerender(<ContextPercentage {...props} messageCount={1} />);
     expect(harness.refetch).toHaveBeenCalledTimes(1);
   });
+
+  test("falls back to the engine's own context reading and names its cost in the engine's unit", () => {
+    harness.stats = {};
+    render(
+      <ContextPercentage
+        {...props}
+        liveUsage={{
+          contextPercent: 12.5,
+          reportedCost: { amount: 0.0745, unit: 'credit', scope: 'turn' },
+        }}
+      />,
+    );
+    const button = screen.getByRole('button', {
+      name: 'Context 12.5% used · 0.0745 credits last turn',
+    });
+    expect(button).toBeTruthy();
+    expect(button.getAttribute('aria-label')).not.toMatch(/\$/);
+    expect(screen.getByText('13%')).toBeTruthy();
+  });
+
+  test('a token-pair observation outranks the engine reading', () => {
+    render(
+      <ContextPercentage
+        {...props}
+        liveUsage={{
+          contextTokens: 50_000,
+          contextWindowTokens: 200_000,
+          contextPercent: 90,
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Context 25.0% used' }),
+    ).toBeTruthy();
+  });
 });

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { ChatLiveUsage } from '../../contexts/active-chats-state';
 import { useStats } from '../../contexts/StatsContext';
 import { Button } from '../Button';
-import { getContextWindowColor } from './utils';
+import { formatReportedCost, getContextWindowColor } from './utils';
 import './ContextPercentage.css';
 
 /** What the context share of one conversation is derived from. */
@@ -12,7 +12,10 @@ export interface ContextPercentageSource {
   apiBase: string;
   messageCount?: number;
   /** A current provider observation can update the meter before refetch. */
-  liveUsage?: Pick<ChatLiveUsage, 'contextTokens' | 'contextWindowTokens'>;
+  liveUsage?: Pick<
+    ChatLiveUsage,
+    'contextTokens' | 'contextWindowTokens' | 'contextPercent' | 'reportedCost'
+  >;
 }
 
 interface ContextPercentageProps extends ContextPercentageSource {
@@ -62,9 +65,19 @@ export function useContextPercentage({
       liveUsage?.contextTokens,
       liveUsage?.contextWindowTokens,
     ) ??
+    // An engine that reports its own reading rather than the token pair.
+    contextPercentage(liveUsage?.contextPercent, 100) ??
     contextPercentage(stats?.contextWindowPercentage, 100) ??
     null
   );
+}
+
+/** The live engine-reported cost, in the engine's unit, for the meter's label. */
+function reportedCostLabel(
+  cost: ChatLiveUsage['reportedCost'] | undefined,
+): string {
+  if (!cost) return '';
+  return ` · ${formatReportedCost(cost)} ${cost.scope === 'turn' ? 'last turn' : 'this session'}`;
 }
 
 /**
@@ -90,7 +103,7 @@ export function ContextPercentage({
 
   if (percentage === null) return null;
 
-  const label = `Context ${percentage.toFixed(1)}% used${compaction ? ` · Compaction ${compaction.state} at ${compaction.threshold}%` : ''}`;
+  const label = `Context ${percentage.toFixed(1)}% used${reportedCostLabel(liveUsage?.reportedCost)}${compaction ? ` · Compaction ${compaction.state} at ${compaction.threshold}%` : ''}`;
   return (
     <Button
       variant="ghost"

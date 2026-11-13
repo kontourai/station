@@ -189,21 +189,12 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
   // tuples reach the dock as extension.notification; they are host/session
   // chrome, not transcript facts. Binding them as host-chrome makes the
   // fold exhaustive without inventing chat semantics from vendor payloads.
+  // Kiro v2's `mcp/server_initialized` and `metadata` moved to their
+  // engine-extension rows below, which the ACP mapper turns into canonical
+  // events.
   {
-    namespace: '_kiro.dev',
-    type: 'mcp/server_initialized',
-    consumer: 'ui.engine.mcp-status',
-    observedAgainst: ['kiro-v2'],
-    evidence: 'station#1935-runtime-observation',
-  },
-  {
-    namespace: '_kiro.dev',
-    type: 'metadata',
-    consumer: 'acp.host-chrome',
-    observedAgainst: ['kiro-v2'],
-    evidence: 'station#1935-runtime-observation',
-  },
-  {
+    // Its engine row (consumer `child-work`) waits on the ACP subagent cell:
+    // see `ENGINE_EXTENSION_CONSUMERS['child-work']`.
     namespace: '_kiro.dev',
     type: 'subagent/list_update',
     consumer: 'acp.host-chrome',
@@ -300,6 +291,8 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
  *   `_meta.<namespace>.kind` is `kind`.
  * - `session-update-kind`: a vendor notification `method` whose
  *   `update.sessionUpdate` is `sessionUpdate`.
+ * - `tool-call-meta-kind`: a core `tool_call` / `tool_call_update` whose
+ *   `_meta.<namespace>.kind` is `kind`.
  */
 export type EngineExtensionWire =
   | { readonly kind: 'notification'; readonly method: string }
@@ -313,6 +306,11 @@ export type EngineExtensionWire =
       readonly kind: 'session-update-kind';
       readonly method: string;
       readonly sessionUpdate: string;
+    }
+  | {
+      readonly kind: 'tool-call-meta-kind';
+      readonly namespace: string;
+      readonly metaKind: string;
     };
 
 /**
@@ -386,19 +384,19 @@ export const ENGINE_EXTENSION_CONSUMERS: Readonly<
     lane: 'adapter',
     implemented: false,
   }),
-  'engine-mcp.status': Object.freeze({ lane: 'events-ui', implemented: false }),
-  'model.rerouted': Object.freeze({ lane: 'events-ui', implemented: false }),
+  'engine-mcp.status': Object.freeze({ lane: 'events-ui', implemented: true }),
+  'model.rerouted': Object.freeze({ lane: 'events-ui', implemented: true }),
   'usage.reported-cost': Object.freeze({
     lane: 'events-ui',
-    implemented: false,
+    implemented: true,
   }),
   'usage.context-percent': Object.freeze({
     lane: 'events-ui',
-    implemented: false,
+    implemented: true,
   }),
   'session.message-id': Object.freeze({
     lane: 'events-ui',
-    implemented: false,
+    implemented: true,
   }),
   'session.title-suggestion': Object.freeze({
     lane: 'events-ui',
@@ -420,6 +418,10 @@ export const ENGINE_EXTENSION_CONSUMERS: Readonly<
     lane: 'events-ui',
     implemented: false,
   }),
+  // Not yet: the ACP capability-matrix cell for subagents is `none`, and
+  // orchestration keeps a `none` engine's child work out of the session.
+  // Declaring it needs a per-session "not reported" for ACP engines that do
+  // not send these frames, which the adapter's handshake knows.
   'child-work': Object.freeze({ lane: 'events-ui', implemented: false }),
   'engine.policy-state': Object.freeze({
     lane: 'events-ui',
@@ -516,11 +518,13 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
     consumer: 'acp.host-chrome',
   },
   {
+    // Organization feature flags. Station has no engine-policy fact surface
+    // yet; its own policy governs tool calls regardless, so this is chrome.
     id: 'kiro-v3.governance-state',
     wire: note('_kiro/governance/state'),
     basis: 'undeclared-engine',
     observed: LIVE,
-    consumer: 'engine.policy-state',
+    consumer: 'acp.host-chrome',
   },
   {
     // Kiro's packaged capability bundles. No Station abstraction fits yet.
@@ -547,25 +551,29 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
     consumer: 'engine-mcp.status',
   },
   {
+    // The engine's tool-tag inventory, not a server status: server state and
+    // tool counts come from `_kiro/mcp/status`.
     id: 'kiro-v3.tools-did-change',
     wire: note('_kiro/tools/didChange'),
     basis: 'undeclared-engine',
     observed: LIVE,
-    consumer: 'engine-mcp.status',
+    consumer: 'acp.host-chrome',
   },
   {
+    // No read-only "engine-loaded context" surface exists yet.
     id: 'kiro-v3.progressive-context-items-changed',
     wire: note('_kiro/progressive_context/items_changed'),
     basis: 'undeclared-engine',
     observed: LIVE,
-    consumer: 'engine.loaded-context',
+    consumer: 'acp.host-chrome',
   },
   {
+    // No read-only "engine-loaded context" surface exists yet.
     id: 'kiro-v3.steering-documents-changed',
     wire: note('_kiro/steering/documents_changed'),
     basis: 'undeclared-engine',
     observed: LIVE,
-    consumer: 'engine.loaded-context',
+    consumer: 'acp.host-chrome',
   },
   // Kiro v3 `session_info_update._meta.kiro.kind`.
   {
@@ -583,25 +591,31 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
     consumer: 'session.message-id',
   },
   {
+    // A title suggestion and activity status. No canonical title-suggestion
+    // event exists, so this is chrome until one does.
     id: 'kiro-v3.info.focus-update',
     wire: info('focus_update'),
     basis: 'undeclared-engine',
     observed: LIVE,
-    consumer: 'session.title-suggestion',
+    consumer: 'acp.host-chrome',
   },
   {
+    // Station's turns already start on its own `session/prompt`. An
+    // engine-started turn needs the adapter to own provider-triggered turns
+    // (`PROVIDER_TURN_TRIGGER`); until it does, this is chrome.
     id: 'kiro-v3.info.turn-start',
     wire: info('turn_start'),
     basis: 'undeclared-engine',
     observed: LIVE,
-    consumer: 'session.turn-boundary',
+    consumer: 'acp.host-chrome',
   },
   {
+    // See `kiro-v3.info.turn-start`.
     id: 'kiro-v3.info.turn-end',
     wire: info('turn_end'),
     basis: 'undeclared-engine',
     observed: LIVE,
-    consumer: 'session.turn-boundary',
+    consumer: 'acp.host-chrome',
   },
   {
     // The engine-side mirror of a `session/request_permission` it also
@@ -664,8 +678,15 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
     consumer: 'model.rerouted',
   },
   {
-    id: 'kiro-v3.info.agent-subtask',
-    wire: info('agent-subtask'),
+    // On the subagent's own `tool_call` / `tool_call_update`, not on a
+    // `session_info_update` (kirocrew `session_handle_native_children.py`,
+    // `test_kas_subagent_progress.py`).
+    id: 'kiro-v3.tool.agent-subtask',
+    wire: {
+      kind: 'tool-call-meta-kind',
+      namespace: 'kiro',
+      metaKind: 'agent-subtask',
+    },
     basis: 'undeclared-engine',
     observed: crew('test/test_kas_wire.py'),
     consumer: 'child-work',
@@ -809,8 +830,12 @@ function engineNotificationBindings(
       namespace,
       type,
       consumer: row.consumer,
+      // A `_kiro.dev` method is kiro-cli's own (v2) engine wherever it was
+      // observed; a kirocrew fixture row says nothing about the variant.
       observedAgainst: [
-        row.observed.variant === 'kiro-v2' ? 'kiro-v2' : 'kiro-v3',
+        row.observed.variant === 'kiro-v2' || namespace === '_kiro.dev'
+          ? 'kiro-v2'
+          : 'kiro-v3',
       ],
       evidence: 'engine-extension-binding',
     });
@@ -828,10 +853,11 @@ export function engineExtensionBinding(
       case 'notification':
       case 'request':
         return (row.wire as { method: string }).method === wire.method;
-      case 'session-info-kind': {
+      case 'session-info-kind':
+      case 'tool-call-meta-kind': {
         const other = row.wire as Extract<
           EngineExtensionWire,
-          { kind: 'session-info-kind' }
+          { kind: 'session-info-kind' | 'tool-call-meta-kind' }
         >;
         return (
           other.namespace === wire.namespace && other.metaKind === wire.metaKind

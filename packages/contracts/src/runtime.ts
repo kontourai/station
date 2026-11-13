@@ -118,7 +118,17 @@ export interface ConversationStatsResponse {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   contextTokens?: number;
+  /**
+   * From the token pair when the engine reported one, else the engine's own
+   * context reading (`token-usage.updated.contextPercent`).
+   */
   contextWindowPercentage?: number;
+  /**
+   * Costs the engine reported in its own unit, one total per unit (`credit`,
+   * `EUR`, …), carried as reported and never converted to USD. Absent when
+   * the engine reported none. Separate from `estimatedCost`, which is USD.
+   */
+  reportedCosts?: ConversationReportedCost[];
   systemPromptTokens?: number;
   mcpServerTokens?: number;
   userMessageTokens?: number;
@@ -127,6 +137,29 @@ export interface ConversationStatsResponse {
   modelStats?: Record<string, ConversationModelStats>;
   notFound?: true;
   measurement?: ConversationStatsMeasurement;
+}
+
+export interface ConversationReportedCost {
+  unit: string;
+  amount: number;
+}
+
+/** Bound on a wire cost unit; engines spell one as a short token. */
+const REPORTED_COST_UNIT = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+
+function isConversationReportedCosts(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.length <= 16 &&
+      value.every(
+        (entry) =>
+          isRecord(entry) &&
+          typeof entry.unit === 'string' &&
+          REPORTED_COST_UNIT.test(entry.unit) &&
+          isFiniteNonnegative(entry.amount),
+      ))
+  );
 }
 
 const isFiniteNonnegative = (value: unknown): value is number =>
@@ -193,6 +226,7 @@ export function parseConversationStatsResponse(
       typeof candidate.conversationId !== 'string') ||
     (candidate.notFound !== undefined && candidate.notFound !== true) ||
     !isConversationStatsMeasurement(candidate.measurement) ||
+    !isConversationReportedCosts(candidate.reportedCosts) ||
     (candidate.modelStats !== undefined &&
       (!isRecord(candidate.modelStats) ||
         !Object.values(candidate.modelStats).every(isConversationModelStats)))

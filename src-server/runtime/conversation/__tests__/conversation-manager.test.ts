@@ -655,3 +655,74 @@ describe('getConversationStats — bedrock reported usage renders as reported (s
     expect(classes).toEqual(['cost', 'context usage']);
   });
 });
+
+describe('getConversationStats — engine-reported cost and context reading', () => {
+  test('a folded ACP session carries credits in their unit and its own context reading, through the wire validator', async () => {
+    const events = [
+      { method: 'turn.started', turnId: 't1' },
+      {
+        method: 'token-usage.updated',
+        turnId: 't1',
+        contextPercent: 1.2,
+      },
+      {
+        method: 'token-usage.updated',
+        turnId: 't1',
+        reportedCost: { amount: 0.0745, unit: 'credit', scope: 'turn' },
+      },
+      { method: 'turn.completed', turnId: 't1' },
+    ].map(
+      (event, index) =>
+        ({
+          eventId: `e${index}`,
+          provider: 'acp',
+          threadId: 'thread-1',
+          createdAt: '2026-11-13T00:00:00.000Z',
+          ...event,
+        }) as unknown as CanonicalRuntimeEvent,
+    );
+    const data = await getConversationStats(
+      'kiro',
+      'thread-1',
+      new Map(),
+      new Map(),
+      new Map(),
+      createConfigLoader(),
+      appConfig,
+      undefined,
+      mockLogger,
+      () => foldUsageEvents(events),
+    );
+    const parsed = parseConversationStatsResponse(
+      JSON.parse(JSON.stringify(data)),
+    );
+    expect(parsed).toBeDefined();
+    expect(parsed?.reportedCosts).toEqual([{ unit: 'credit', amount: 0.0745 }]);
+    expect(parsed?.contextWindowPercentage).toBe(1.2);
+    // Credits are never a USD cost.
+    expect(parsed?.estimatedCost).toBeUndefined();
+    expect(parsed).not.toHaveProperty('contextPercent');
+  });
+
+  test('the wire validator refuses a malformed engine cost', () => {
+    const base = { modelId: 'm', turns: 0, toolCalls: 0 };
+    expect(
+      parseConversationStatsResponse({
+        ...base,
+        reportedCosts: [{ unit: 'credit', amount: -1 }],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseConversationStatsResponse({
+        ...base,
+        reportedCosts: [{ unit: '<b>', amount: 1 }],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseConversationStatsResponse({
+        ...base,
+        reportedCosts: [{ unit: 'credit', amount: 1 }],
+      })?.reportedCosts,
+    ).toEqual([{ unit: 'credit', amount: 1 }]);
+  });
+});

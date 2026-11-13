@@ -1,4 +1,7 @@
-import type { ConversationStatsMeasurement } from '@kontourai/station-contracts/runtime';
+import type {
+  ConversationReportedCost,
+  ConversationStatsMeasurement,
+} from '@kontourai/station-contracts/runtime';
 import {
   calculateContextWindowPercentage,
   getMessageTextContent,
@@ -22,6 +25,10 @@ export interface ConversationStats {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   contextTokens?: number;
+  /** The engine's own context reading, 0-100, when it reports one. */
+  contextPercent?: number;
+  /** Engine-reported costs in their own units; never converted. */
+  reportedCosts?: ConversationReportedCost[];
   turns: number;
   toolCalls: number;
   estimatedCost?: number;
@@ -145,8 +152,9 @@ export function buildConversationStatsView({
     ? (stats.contextTokens ?? stats.totalTokens)
     : stats.contextTokens;
 
+  const { contextPercent, ...reported } = stats;
   return {
-    ...stats,
+    ...reported,
     // A cost figure survives only if it is usable; an absent one stays
     // absent instead of collapsing to a `$0.0000` nobody measured.
     estimatedCost:
@@ -156,10 +164,10 @@ export function buildConversationStatsView({
         ? stats.estimatedCost
         : undefined,
     contextTokens,
-    contextWindowPercentage: calculateContextWindowPercentage(
-      contextTokens,
-      contextWindowTokens,
-    ),
+    // The token pair when there is one; otherwise the engine's own reading.
+    contextWindowPercentage:
+      calculateContextWindowPercentage(contextTokens, contextWindowTokens) ??
+      contextPercent,
     conversationId,
     modelId,
     modelStats: modelStatsForWire(modelStats),

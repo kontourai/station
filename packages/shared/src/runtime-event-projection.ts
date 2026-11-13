@@ -29,8 +29,8 @@ import {
 import {
   EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
   EXTENSION_TRANSCRIPT_MARKER_TEXT,
-  type ExtensionTranscriptMarkerKind,
   extensionTranscriptMarker,
+  modelReroutedMarkerText,
 } from './extension-transcript-markers.js';
 import {
   inputRequestFromRequestEvent,
@@ -594,8 +594,8 @@ export function projectRuntimeEventsToMessages(
 
   /** station#3415: markers that arrived during the open turn. */
   let heldMarkers: Array<{
-    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>;
-    marker: ExtensionTranscriptMarkerKind;
+    ev: { eventId?: string; createdAt?: string };
+    text: { betweenTurns: string; duringTurn: string };
   }> = [];
 
   /**
@@ -690,8 +690,8 @@ export function projectRuntimeEventsToMessages(
     heldMarkers = [];
     openTurnSessionExited = false;
     if (releaseMarkers)
-      for (const { ev, marker } of held)
-        pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
+      for (const { ev, text } of held)
+        pushTranscriptMarker(ev, text, true, closedTurnTimestamp);
   };
 
   const stamp = (createdAt?: string) => {
@@ -756,8 +756,8 @@ export function projectRuntimeEventsToMessages(
    * nothing, so a live marker never moves or remounts the open turn's row.
    */
   const pushTranscriptMarker = (
-    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
-    marker: ExtensionTranscriptMarkerKind,
+    ev: { eventId?: string; createdAt?: string },
+    text: { betweenTurns: string; duringTurn: string },
     duringTurn: boolean,
     /**
      * For a held marker, the closed turn's row timestamp: readers that merge
@@ -769,7 +769,6 @@ export function projectRuntimeEventsToMessages(
     const timestamp =
       turnRowTimestamp ??
       (ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN);
-    const text = EXTENSION_TRANSCRIPT_MARKER_TEXT[marker];
     messages.push({
       id:
         options.stableIds && ev.eventId
@@ -790,8 +789,14 @@ export function projectRuntimeEventsToMessages(
   ) => {
     const marker = extensionTranscriptMarker(ev.namespace, ev.type);
     if (!marker) return;
-    if (turnOpen) heldMarkers.push({ ev, marker });
-    else pushTranscriptMarker(ev, marker, false);
+    holdOrPushMarker(ev, EXTENSION_TRANSCRIPT_MARKER_TEXT[marker]);
+  };
+  const holdOrPushMarker = (
+    ev: { eventId?: string; createdAt?: string },
+    text: { betweenTurns: string; duringTurn: string },
+  ) => {
+    if (turnOpen) heldMarkers.push({ ev, text });
+    else pushTranscriptMarker(ev, text, false);
   };
 
   /**
@@ -1597,6 +1602,11 @@ export function projectRuntimeEventsToMessages(
       }
       case 'extension.notification':
         emitTranscriptMarker(ev);
+        break;
+      case 'model.rerouted':
+        // A quiet marker line, placed like an extension marker: after the
+        // turn it happened in.
+        holdOrPushMarker(ev, modelReroutedMarkerText(ev));
         break;
       case 'session.exited':
         // The turn row itself is unchanged (it is still emitted as it

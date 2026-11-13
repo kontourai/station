@@ -36,6 +36,7 @@ import type { ChatStationBindingV1 } from './connections/station-connection';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
+  ChatEngineMcpServer,
   ChatLiveUsage,
   FlowGateVerdictInfo,
   FlowRunBinding,
@@ -523,6 +524,8 @@ export interface ChatSession {
   backgroundTasks?: ChatBackgroundTask[];
   /** Latest provider-reported usage observation for the live context meter. */
   liveUsage?: ChatLiveUsage;
+  /** See ChatUIState.engineMcpServers — the engine's MCP servers. */
+  engineMcpServers?: ChatEngineMcpServer[];
   /** Synthetic event-replay chat; absent on ordinary sessions. */
   replay?: {
     mode?: 'timeline';

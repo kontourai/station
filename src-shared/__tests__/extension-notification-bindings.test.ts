@@ -108,20 +108,6 @@ describe('extension notification bindings', () => {
       },
       {
         namespace: '_kiro.dev',
-        type: 'mcp/server_initialized',
-        consumer: 'ui.engine.mcp-status',
-        observedAgainst: ['kiro-v2'],
-        evidence: 'station#1935-runtime-observation',
-      },
-      {
-        namespace: '_kiro.dev',
-        type: 'metadata',
-        consumer: 'acp.host-chrome',
-        observedAgainst: ['kiro-v2'],
-        evidence: 'station#1935-runtime-observation',
-      },
-      {
-        namespace: '_kiro.dev',
         type: 'subagent/list_update',
         consumer: 'acp.host-chrome',
         observedAgainst: ['kiro-v2'],
@@ -234,10 +220,39 @@ describe('extension notification bindings', () => {
         evidence: 'station-session-source-emitter',
       },
       // Engine-extension rows whose consumer is implemented today: the
-      // Kiro v3 notifications Station accepts as host chrome.
+      // canonical-event consumers the ACP mapper publishes, and the
+      // notifications Station accepts as host chrome.
+      {
+        namespace: '_kiro.dev',
+        type: 'mcp/server_initialized',
+        consumer: 'engine-mcp.status',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro.dev',
+        type: 'mcp/server_init_failure',
+        consumer: 'engine-mcp.status',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro.dev',
+        type: 'metadata',
+        consumer: 'usage.context-percent',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'engine-extension-binding',
+      },
       {
         namespace: '_kiro',
         type: 'memory/syncStatus',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'governance/state',
         consumer: 'acp.host-chrome',
         observedAgainst: ['kiro-v3'],
         evidence: 'engine-extension-binding',
@@ -252,6 +267,34 @@ describe('extension notification bindings', () => {
       {
         namespace: '_kiro',
         type: 'sessions/changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'mcp/status',
+        consumer: 'engine-mcp.status',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'tools/didChange',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'progressive_context/items_changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'steering/documents_changed',
         consumer: 'acp.host-chrome',
         observedAgainst: ['kiro-v3'],
         evidence: 'engine-extension-binding',
@@ -298,17 +341,35 @@ describe('engine extension bindings (Kiro parity)', () => {
   });
 
   test('a placeholder consumer binds no notification until it is implemented', () => {
-    for (const consumer of placeholders)
-      expect(ENGINE_EXTENSION_CONSUMERS[consumer].implemented).toBe(false);
+    const unimplemented = placeholders.filter(
+      (consumer) => !ENGINE_EXTENSION_CONSUMERS[consumer].implemented,
+    );
+    expect(unimplemented.length).toBeGreaterThan(0);
     expect(
       EXTENSION_NOTIFICATION_BINDINGS.filter(({ consumer }) =>
-        (placeholders as string[]).includes(consumer),
+        (unimplemented as string[]).includes(consumer),
       ),
     ).toEqual([]);
-    expect(extensionNotificationBinding('_kiro', 'mcp/status')).toBeUndefined();
+    // `child-work` is a placeholder: its v2 tuple keeps the host-chrome row.
+    expect(ENGINE_EXTENSION_CONSUMERS['child-work'].implemented).toBe(false);
     expect(
-      extensionNotificationBinding('_kiro', 'steering/documents_changed'),
-    ).toBeUndefined();
+      extensionNotificationBinding('_kiro.dev', 'subagent/list_update')
+        ?.consumer,
+    ).toBe('acp.host-chrome');
+  });
+
+  test('the events-and-UI consumers are implemented, so their rows bind', () => {
+    for (const consumer of [
+      'engine-mcp.status',
+      'model.rerouted',
+      'usage.reported-cost',
+      'usage.context-percent',
+      'session.message-id',
+    ] as const)
+      expect(ENGINE_EXTENSION_CONSUMERS[consumer].implemented).toBe(true);
+    expect(extensionNotificationBinding('_kiro', 'mcp/status')?.consumer).toBe(
+      'engine-mcp.status',
+    );
   });
 
   test('a re-routed v2 tuple keeps its current binding until that row is removed', () => {

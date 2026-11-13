@@ -330,3 +330,53 @@ describe('extension transcript markers (station#3415)', () => {
     ).toBeUndefined();
   });
 });
+
+describe('model.rerouted transcript marker', () => {
+  const reroute = (eventId: string, extra: Record<string, unknown> = {}) =>
+    ev(eventId, {
+      method: 'model.rerouted',
+      provider: 'acp',
+      createdAt: '2026-10-05T00:00:05.000Z',
+      fromModel: 'claude-opus-4.6',
+      toModel: 'claude-sonnet-4.6',
+      trigger: 'refusal',
+      scope: 'turn',
+      ...extra,
+    });
+
+  it('a reroute during a turn follows that turn as one quiet line', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        ev('e0', { method: 'turn.started', turnId: 't1', prompt: 'question' }),
+        reroute('e1', { turnId: 't1' }),
+        ev('e2', { method: 'content.text-delta', turnId: 't1', delta: 'ok' }),
+        ev('e3', { method: 'turn.completed', turnId: 't1' }),
+      ],
+      { stableIds: true },
+    );
+    expect(shape(messages).slice(-2)).toEqual([
+      expect.objectContaining({ role: 'assistant', answerEligible: true }),
+      {
+        id: 'e1:transcript-marker',
+        role: 'system',
+        text: 'transcript-marker:Model switched from claude-opus-4.6 to claude-sonnet-4.6 after a refusal during this turn',
+      },
+    ]);
+  });
+
+  it('a session-scope reroute says it holds for the session; a subagent one names the subagent', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        reroute('e1', { scope: 'session', trigger: 'availability' }),
+        reroute('e2', { childWorkId: 'sub-1', scope: 'session' }),
+        reroute('e3', { toModel: undefined, trigger: 'availability' }),
+      ],
+      { stableIds: true },
+    );
+    expect(shape(messages).map((row) => row.text)).toEqual([
+      'transcript-marker:Model switched from claude-opus-4.6 to claude-sonnet-4.6 (unavailable) for the rest of this session',
+      'transcript-marker:A subagent’s model switched from claude-opus-4.6 to claude-sonnet-4.6 after a refusal',
+      'transcript-marker:Model claude-opus-4.6 could not be used (unavailable); no fallback was available',
+    ]);
+  });
+});

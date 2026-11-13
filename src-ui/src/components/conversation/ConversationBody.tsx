@@ -1883,6 +1883,7 @@ function LiveConversationBody({
           isVisible={showStatsPanel}
           onToggle={() => setShowStatsPanel(!showStatsPanel)}
           messageCount={activeSession.messages.length}
+          engineMcpServers={activeSession.engineMcpServers}
           key={`${activeSession.conversationId || activeSession.agentSlug}-${activeSession.orchestrationStatus || activeSession.status}`}
         />
       )}

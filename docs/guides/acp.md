@@ -199,6 +199,9 @@ There is no bespoke ACP SSE-chunk vocabulary anymore. The adapter emits the same
 | `tool.started` / `tool.progress` / `tool.completed` | Tool execution |
 | `request.opened` / `request.resolved` | Tool approval / permission requests |
 | `plan.updated` | The agent's current ordered plan, as a full replace (see Plan Rendering below) |
+| `token-usage.updated` | Context occupancy; an engine's own context reading (`contextPercent`) and cost in its own unit (`reportedCost`) |
+| `model.rerouted` | The engine moved work to another model (see Kiro extensions below) |
+| `engine-mcp.status` | The engine's own MCP servers and their state |
 | `extension.notification` | Namespaced, app-specific payload (see Extension Rendering below) |
 | `runtime.error` / `runtime.warning` | Unrecoverable or recoverable error/warning |
 
@@ -449,15 +452,20 @@ Every engine-to-client Kiro extension Station binds is a row of
 names:
 
 - the wire shape: a notification, a request, a
-  `session_info_update._meta.kiro.kind`, or a `_kiro.dev/session/update`
-  `sessionUpdate`;
+  `session_info_update._meta.kiro.kind`, a `_kiro.dev/session/update`
+  `sessionUpdate`, or a `tool_call` / `tool_call_update` `_meta.kiro.kind`;
 - its basis: `declared`, `client-announced` or `undeclared-engine`;
 - what it was observed against: the scrubbed kiro-cli 2.35.0 capture, or a
   kirodotdev/kirocrew fixture path;
 - its consumer.
 
 A notification row binds only once its consumer is marked implemented in
-`ENGINE_EXTENSION_CONSUMERS`.
+`ENGINE_EXTENSION_CONSUMERS`. The ACP mapper
+([acp-engine-extension-events.ts](../../src-server/providers/adapters/acp-engine-extension-events.ts))
+reads each bound row through one reader per row id and publishes the
+generic event; the opaque `extension.notification` envelope is still
+published beside it. A `session_info_update` kind no row names is logged once
+per process and otherwise ignored, like an unbound notification.
 
 Each consumer is a generic Station mechanism any engine can feed:
 
@@ -465,13 +473,50 @@ Each consumer is a generic Station mechanism any engine can feed:
 |---|---|---|
 | URL input request | `station.input-request/v1` body `{ kind: 'url', url, purpose, elicitationId? }`, answered `{ action: 'opened' \| 'cancel' }`; https only, no user info, at most 2,048 characters, never opened automatically | `_kiro.dev/mcp/oauth_request`, `_kiro/openExternalUrl` |
 | Form and choice input requests | existing `form` body | `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/userInput` (always answered `answered`, with explicit text for decline or no person) |
-| Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` and `_kiro/tools/didChange` (full) |
-| Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope` | v2 `_kiro.dev/session/update` `model_fallback`; v3 `model_fallback` kind (declared by `modelFallbackReporting`) |
-| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`, assigned, not summed across reports), `session_usage` (scope `session`), `context_usage` |
+| Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` (full; `failedAuthorization` reads `needs-auth`, `_meta.kiro.resource.source.origin: client` reads scope `session`); Codex `mcpServer/startupStatus/updated` (partial) |
+| Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope`, `childWorkId?` | v2 `_kiro.dev/session/update` `model_fallback` (the hop is scope `turn`; the `promoted: true` notice is scope `session`); v3 `model_fallback` kind (declared by `modelFallbackReporting`); Codex `model/rerouted` (scope `turn`, trigger `other`) |
+| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`), `session_usage` (scope `session`), `context_usage`; v2 `_kiro.dev/metadata` `contextUsagePercentage`; core ACP `usage_update.cost` (scope `session`, unit = its `currency`) |
 | Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
 | Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused | the Kiro agent-service bundle |
 | Declared features | `declaredHandshake.engineVariant`, `declaredFeatures`, `logChannels` (names only; paths stay server-side) | `agentCapabilities._meta.kiro` |
 | Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises | none on 2.35; see below |
+
+How the events behave:
+
+- **Model reroute.** A session-scope reroute sets the session's model to
+  `toModel`. A reroute inside an engine subagent (Kiro `agentSubtaskId`, or a
+  Codex thread other than the session's) carries `childWorkId` and never
+  moves the session's model. A model id outside one bounded token
+  (`[A-Za-z0-9._:/@-]`, at most 200 characters) drops the notice. The
+  transcript shows a reroute as a quiet marker line after the turn it
+  happened in.
+- **Cost.** A turn-scope cost is that turn's whole cost: a repeat of the
+  same figure for the same engine turn is not published again, and the
+  usage fold assigns per turn rather than adding reports. A session-scope
+  figure is a running total; when a unit has one, it is the total for that
+  unit and turn figures are not added on top. A subagent's
+  `turn_completion` is not the turn's cost. Costs are folded per unit and
+  never added to the USD `reportedCostUsd`; the context meter's label and the
+  conversation statistics show them in the engine's unit (`0.0745 credits`).
+- **Context reading.** `contextPercent` feeds the context meter and the
+  statistics when the engine reports no token pair; a token pair outranks it.
+- **MCP servers.** The conversation statistics list the engine's servers.
+  A `needs-auth` server offers Sign in and a `failed` one Reconnect, when the
+  session has a reconnect action; the engine's own sign-in link is never
+  shown, because its callback listener has already closed.
+- **Replayed history.** An update marked `_meta.kiro.replay: true` (Kiro's
+  `replayMarking`) is dropped whole, so a `session/load` replay never
+  republishes a cost, a reroute or a tool call.
+- **Host chrome.** `focus_update`, `turn_start`, `turn_end`,
+  `pending_interaction`, `interaction_resolved`, `_kiro/tools/didChange`,
+  `_kiro/governance/state`, `_kiro/steering/documents_changed` and
+  `_kiro/progressive_context/items_changed` publish nothing: Station has no
+  title-suggestion event, its turns start on its own `session/prompt`
+  (an engine-started turn needs the adapter to own provider-triggered
+  turns), and there is no engine-policy or engine-loaded-context surface yet.
+- **Subagents.** Not mapped yet. The ACP capability-matrix subagent cell is
+  `none`, and orchestration keeps a `none` engine's child work out of the
+  session; `_kiro.dev/subagent/list_update` stays host chrome.
 
 Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 

@@ -12,6 +12,7 @@ import {
   formatMeasuredTokens,
   UNREPORTED_MEASUREMENT_TEXT,
 } from '@kontourai/station-shared/usage-measurement';
+import type { ChatEngineMcpServer } from '../../contexts/active-chats-state';
 import { Button } from '../Button';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import {
@@ -20,10 +21,15 @@ import {
 } from '../ResponsiveDialogSurface';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
 import { ContextCompactionControl } from './ContextCompactionControl';
+import {
+  type EngineMcpReconnect,
+  EngineMcpStatusPanel,
+} from './EngineMcpStatusPanel';
 import { ThreadUsageBreakdown } from './ThreadUsageBreakdown';
 import type { ConversationStatsSnapshot } from './types';
 import {
   formatAverageTokens,
+  formatReportedCost,
   getContextBreakdownEntries,
   getContextWindowColor,
   getModelStatsEntries,
@@ -47,6 +53,10 @@ interface ConversationStatsModalProps {
   usageTree?: ThreadUsageTree;
   usageTreeLoading?: boolean;
   usageTreeError?: unknown;
+  /** The engine's MCP servers as it last reported them (`engine-mcp.status`). */
+  engineMcpServers?: readonly ChatEngineMcpServer[];
+  /** Restart one of the engine's MCP servers; absent hides the action. */
+  onReconnectMcpServer?: EngineMcpReconnect;
 }
 
 function SectionCard({
@@ -102,6 +112,8 @@ export function ConversationStatsModal({
   usageTree,
   usageTreeLoading,
   usageTreeError,
+  engineMcpServers,
+  onReconnectMcpServer,
 }: ConversationStatsModalProps) {
   const target = useOptionalConversationConnection();
   if (!isVisible) return null;
@@ -234,6 +246,12 @@ export function ConversationStatsModal({
         />
       ) : stats ? (
         <div>
+          {engineMcpServers && engineMcpServers.length > 0 && (
+            <EngineMcpStatusPanel
+              servers={engineMcpServers}
+              onReconnect={onReconnectMcpServer}
+            />
+          )}
           {stats.contextWindowPercentage !== undefined && (
             <div
               style={{
@@ -259,8 +277,9 @@ export function ConversationStatsModal({
                   marginBottom: '8px',
                 }}
               >
-                {stats.contextTokens?.toLocaleString() || 'N/A'} tokens (all
-                messages + system instructions + tools)
+                {stats.contextTokens !== undefined
+                  ? `${stats.contextTokens.toLocaleString()} tokens (all messages + system instructions + tools)`
+                  : 'As the engine reported it'}
               </div>
               <div
                 style={{
@@ -451,6 +470,18 @@ export function ConversationStatsModal({
                     )}
                   </div>
                 )}
+              </SectionCard>
+            )}
+            {stats.reportedCosts && stats.reportedCosts.length > 0 && (
+              <SectionCard
+                title="Engine-reported usage"
+                subtitle="In the engine's own units"
+              >
+                {stats.reportedCosts.map((cost) => (
+                  <div key={cost.unit} style={{ marginBottom: '4px' }}>
+                    {formatReportedCost(cost)}
+                  </div>
+                ))}
               </SectionCard>
             )}
           </div>

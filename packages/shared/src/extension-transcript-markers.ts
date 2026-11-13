@@ -120,3 +120,46 @@ export function extensionTranscriptMarker(
     (entry) => entry.namespace === namespace && entry.type === type,
   )?.marker;
 }
+
+/** The longest model id a reroute marker shows; longer ones are cut. */
+const REROUTE_MARKER_MODEL_CHARS = 64;
+
+function markerModel(id: string): string {
+  return id.length > REROUTE_MARKER_MODEL_CHARS
+    ? `${id.slice(0, REROUTE_MARKER_MODEL_CHARS - 1)}…`
+    : id;
+}
+
+/**
+ * The transcript marker text for a `model.rerouted` event: the engine moved
+ * work onto another model than the one asked for. Built only from the
+ * event's model ids, which the adapter bounded to one model-id token, and
+ * fixed wording; nothing else from the engine reaches the line.
+ */
+export function modelReroutedMarkerText(event: {
+  fromModel: string;
+  toModel?: string;
+  trigger: 'refusal' | 'availability' | 'other';
+  scope: 'turn' | 'session';
+  childWorkId?: string;
+}): { betweenTurns: string; duringTurn: string } {
+  const from = markerModel(event.fromModel);
+  const why =
+    event.trigger === 'refusal'
+      ? ' after a refusal'
+      : event.trigger === 'availability'
+        ? ' (unavailable)'
+        : '';
+  const who = event.childWorkId ? 'A subagent’s model' : 'Model';
+  if (!event.toModel) {
+    const text = `${who} ${from} could not be used${why}; no fallback was available`;
+    return { betweenTurns: text, duringTurn: `${text} during this turn` };
+  }
+  const to = markerModel(event.toModel);
+  const base = `${who} switched from ${from} to ${to}${why}`;
+  if (event.scope === 'session' && !event.childWorkId) {
+    const text = `${base} for the rest of this session`;
+    return { betweenTurns: text, duringTurn: text };
+  }
+  return { betweenTurns: base, duringTurn: `${base} during this turn` };
+}

@@ -3,6 +3,7 @@ import {
   useConversationUsageTreeQuery,
 } from '@kontourai/station-sdk';
 import { useEffect } from 'react';
+import type { ChatEngineMcpServer } from '../../contexts/active-chats-state';
 import { useStats } from '../../contexts/StatsContext';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { LazyBoundary } from '../LazyBoundary';
@@ -38,6 +39,8 @@ interface ConversationStatsProps {
   isVisible: boolean;
   onToggle: () => void;
   messageCount?: number;
+  /** The engine's MCP servers for this session, shown in the panel. */
+  engineMcpServers?: readonly ChatEngineMcpServer[];
 }
 
 export function ConversationStats({
@@ -47,6 +50,7 @@ export function ConversationStats({
   isVisible,
   onToggle,
   messageCount,
+  engineMcpServers,
 }: ConversationStatsProps) {
   // Same defect shape as SHELL-09's SkillsView: `useStats` already derives a
   // loading flag and this discarded it for a hardcoded `false`, so the modal's
@@ -110,6 +114,7 @@ export function ConversationStats({
         usageTreeLoading:
           usageTree.isPending && usageTree.fetchStatus !== 'idle',
         usageTreeError: usageTreeMissing ? undefined : usageTree.error,
+        engineMcpServers,
       }}
       pending={null}
     />

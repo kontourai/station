@@ -28,6 +28,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
 import { extensionNotificationBinding } from '../../../src-shared/extension-notification-bindings.js';
+import { createLogger } from '../../utils/logger.js';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderSession,
@@ -38,6 +39,13 @@ import {
   cursorTodosToPlanEntries,
   foldCursorTodos,
 } from './acp-cursor-extensions.js';
+import {
+  type EngineExtensionState,
+  isReplayMarkedUpdate,
+  mapEngineExtensionNotification,
+  mapEngineSessionInfo,
+  readAcpUsageCost,
+} from './acp-engine-extension-events.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
 import {
   type ParagraphBoundaryState,
@@ -56,7 +64,9 @@ import {
  * keeps typechecking; when omitted, the corresponding switch cases are
  * no-ops.
  */
-export interface AcpMapperState {
+const defaultMapperLogger = createLogger({ name: 'acp-adapter-events' });
+
+export interface AcpMapperState extends EngineExtensionState {
   /** Paragraph breaks between the agent's messages within a turn. */
   textBoundary?: ParagraphBoundaryState;
   currentModeId?: string;
@@ -164,6 +174,17 @@ export interface AcpMapperContext {
   state?: AcpMapperState;
   /** Required session-owned bounded authority for every ACP tool update. */
   toolUpdateSupervisor: AcpToolUpdateSupervisor;
+  /**
+   * Where a first-seen unbound extension tuple is reported (once per
+   * process). Defaults to this module's logger.
+   */
+  logger?: {
+    warn: (message: string, fields?: Record<string, unknown>) => void;
+  };
+}
+
+function mapperLogger(ctx: AcpMapperContext) {
+  return ctx.logger ?? defaultMapperLogger;
 }
 
 /**
@@ -209,6 +230,9 @@ export function mapAcpSessionUpdate(
 ): void {
   const createdAt = new Date().toISOString();
   const threadId = ctx.session.threadId;
+  // An update the engine marks as replayed history (`session/load`) repeats
+  // a fact Station already recorded when it happened.
+  if (isReplayMarkedUpdate(update)) return;
 
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
@@ -334,10 +358,13 @@ export function mapAcpSessionUpdate(
 
     case 'usage_update': {
       // ACP reports current context occupancy/window, not per-turn input or
-      // output token accounting. Preserve only that exact pair; ACP cost is
-      // deliberately excluded because arbitrary ISO currency has no pricing
-      // policy in Station yet.
-      if (!isValidContextObservation(update.used, update.size)) return;
+      // output token accounting. Preserve only that exact pair. Its `cost` is
+      // the session's cumulative cost in the agent's own unit (an ISO
+      // currency or a vendor unit): carried as `reportedCost`, scope
+      // `session`, never converted to USD.
+      const context = isValidContextObservation(update.used, update.size);
+      const reportedCost = readAcpUsageCost(update.cost);
+      if (!context && !reportedCost) return;
       ctx.publish({
         eventId: crypto.randomUUID(),
         provider: 'acp',
@@ -345,17 +372,26 @@ export function mapAcpSessionUpdate(
         createdAt,
         turnId: ctx.activeTurnId,
         method: 'token-usage.updated',
-        contextTokens: update.used,
-        contextWindowTokens: update.size,
+        ...(context
+          ? { contextTokens: update.used, contextWindowTokens: update.size }
+          : {}),
+        ...(reportedCost ? { reportedCost } : {}),
       });
       return;
     }
 
-    // 'user_message_chunk' (echo of the outbound prompt), 'plan_update'/
+    case 'session_info_update': {
+      // Vendor facts ride `_meta.<namespace>.kind`; the engine-extension
+      // binding table says which kinds map to which Station event.
+      mapEngineSessionInfo(update, { ...ctx, logger: mapperLogger(ctx) });
+      return;
+    }
+
+    // 'user_message_chunk' (echo of the outbound prompt) and 'plan_update'/
     // 'plan_removed' (unstable/experimental incremental plan variants —
     // 'plan' above already carries the full-replace shape the canonical
-    // PlanUpdatedEvent models), and 'session_info_update' are not part of
-    // the Lifecycle Mapping Table's Track B scope.
+    // PlanUpdatedEvent models) are not part of the Lifecycle Mapping
+    // Table's Track B scope.
     default:
       return;
   }
@@ -394,6 +430,7 @@ export function mapAcpExtensionNotification(
     provider: ctx.provider,
     namespace,
     type,
+    logger: mapperLogger(ctx),
   });
   const binding = extensionNotificationBinding(namespace, type);
   const suppressed = ctx.state?.turnErrorNotificationsSuppressed === true;
@@ -447,6 +484,9 @@ export function mapAcpExtensionNotification(
       argumentHint: command.input?.hint,
     }));
   }
+  // Engine-extension rows (`ENGINE_EXTENSION_BINDINGS`) whose consumer is a
+  // canonical event: published beside the opaque envelope below.
+  mapEngineExtensionNotification(method, params, ctx);
 
   ctx.publish({
     eventId: crypto.randomUUID(),

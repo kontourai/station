@@ -818,3 +818,81 @@ describe('foldUsageEvents: durable rows written before the birth-site guards', (
     expect(dropped).toEqual([]);
   });
 });
+
+describe('foldUsageEvents: engine-reported cost and context reading', () => {
+  const cost = (
+    amount: number,
+    scope: 'turn' | 'session',
+    extra: Record<string, unknown> = {},
+    unit = 'credit',
+  ) =>
+    ev({
+      method: 'token-usage.updated',
+      provider: 'acp',
+      reportedCost: { amount, unit, scope },
+      ...extra,
+    } as never);
+
+  it('turn scope assigns per turn, so a repeated report does not double-count', () => {
+    const usage = foldUsageEvents([
+      cost(0.25, 'turn', { turnId: 'a' }),
+      cost(0.25, 'turn', { turnId: 'a' }),
+      cost(0.4, 'turn', { turnId: 'b' }),
+      cost(0.5, 'turn', { turnId: 'b' }),
+    ]);
+    expect(usage.reportedCosts).toEqual([{ unit: 'credit', amount: 0.75 }]);
+    // Never folded into the USD figure.
+    expect(usage.reportedCostUsd).toBeUndefined();
+  });
+
+  it('a session total is the authority for its unit, so turn and session never add up', () => {
+    const usage = foldUsageEvents([
+      cost(0.2, 'turn', { turnId: 'a' }),
+      cost(0.2, 'session'),
+      cost(0.3, 'turn', { turnId: 'b' }),
+      cost(0.5, 'session'),
+    ]);
+    expect(usage.reportedCosts).toEqual([{ unit: 'credit', amount: 0.5 }]);
+  });
+
+  it('a new engine process banks the previous session total; units stay apart', () => {
+    const usage = foldUsageEvents([
+      cost(1, 'session'),
+      ev({ method: 'session.started', provider: 'acp' } as never),
+      cost(0.5, 'session'),
+      cost(2, 'session', {}, 'EUR'),
+    ]);
+    expect(usage.reportedCosts).toEqual([
+      { unit: 'credit', amount: 1.5 },
+      { unit: 'EUR', amount: 2 },
+    ]);
+  });
+
+  it('drops unusable figures and keeps the latest context reading', () => {
+    const usage = foldUsageEvents([
+      cost(-1, 'turn', { turnId: 'a' }),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        reportedCost: { amount: 1, unit: 'credit', scope: 'forever' },
+      } as never),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        contextPercent: 12,
+      } as never),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        contextPercent: 340,
+      } as never),
+      ev({
+        method: 'token-usage.updated',
+        provider: 'acp',
+        contextPercent: 30.5,
+      } as never),
+    ]);
+    expect(usage.reportedCosts).toBeUndefined();
+    expect(usage.contextPercent).toBe(30.5);
+  });
+});

@@ -394,6 +394,25 @@ export type ChatLiveUsage = {
   cacheWriteTokens?: number;
   contextTokens?: number;
   contextWindowTokens?: number;
+  /** The engine's own context reading, 0-100 (`token-usage.updated.contextPercent`). */
+  contextPercent?: number;
+  /**
+   * The latest cost the engine reported in its own unit, with its scope.
+   * Shown as reported (`0.07 credits`), never as USD.
+   */
+  reportedCost?: { amount: number; unit: string; scope: 'turn' | 'session' };
+};
+
+/**
+ * The engine's MCP servers as it last reported them (`engine-mcp.status`).
+ * Engine-attributed: Station's own MCP view is elsewhere.
+ */
+export type ChatEngineMcpServer = {
+  name: string;
+  state: 'starting' | 'ready' | 'failed' | 'needs-auth' | 'disabled';
+  toolCount?: number;
+  error?: string;
+  scope: 'session' | 'engine-config';
 };
 
 export type ChatUIState = {
@@ -805,6 +824,8 @@ export type ChatUIState = {
   activityHint?: ChatActivityHint;
   backgroundTasks?: ChatBackgroundTask[];
   liveUsage?: ChatLiveUsage;
+  /** The engine's MCP servers (`engine-mcp.status`), in the engine's order. */
+  engineMcpServers?: ChatEngineMcpServer[];
   /**
    * Synthetic event-replay occupant of this store key. Lineage ids stay
    * unset so live SSE cannot fuzzy-match the source thread into it.
