@@ -2239,6 +2239,7 @@ export function createOrchestrationRoutes(
       | 'deliveryOutcome'
       | 'heldByOther'
       | 'inFlight'
+      | 'nudge'
     >;
     /**
      * Continuing a conversation whose engine was killed for memory
@@ -5683,6 +5684,10 @@ export function createOrchestrationRoutes(
       });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 409);
+    } finally {
+      // Sends refused busy while the engine rewound may go now, whatever
+      // the rewind's outcome; no turn event says the Session is free.
+      deps.threadInbox?.nudge(threadId);
     }
   });
 

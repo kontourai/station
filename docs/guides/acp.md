@@ -668,10 +668,19 @@ session's own continuity, which
   is refused retryably with `provider_turn_in_progress` ("Station is
   rewinding this conversation; send again when it finishes."), which the
   inbox holds and resends, and a second rewind is refused `turn-running`.
-  The wait is bounded at 30 seconds: an engine that has not answered by then
-  gets `failed` ("did not answer the rewind in time"), no turn is marked
-  rewound, and sends are accepted again. The engine may still apply that
-  rewind later. The marker names only turns whose prompt id the engine
+  A rewind is also refused `turn-running` while a send is still preparing
+  its turn (a mode or effort change, or an approval relaunch of the engine
+  process). The wait is bounded at 30 seconds: an engine that has not
+  answered by then gets `failed` ("did not answer the rewind in time"), no
+  turn is marked rewound yet, and sends are accepted again. The request stays
+  open, and no other rewind starts until it settles. If the engine then
+  applies it and no turn has started since, it is recorded as if on time
+  (the turns are marked rewound). If a turn has started since, the
+  transcript cannot say which turns the engine now hides: a
+  `runtime.warning` (`acp.session-rewound-late`,
+  `ACP_SESSION_REWOUND_LATE_CODE`) says so in the chat and nothing is marked.
+  A late refusal or error is logged. Held follow-ups are looked at again as
+  soon as the rewind ends, whatever its outcome. The marker names only turns whose prompt id the engine
   reported; a later turn with none (an engine that skipped the report) is
   still hidden by the engine but is not marked rewound in the transcript.
   The transcript keeps every turn. A `runtime.warning`

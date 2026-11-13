@@ -528,6 +528,42 @@ describe('engine extension events: kirocrew golden frames', () => {
     );
   });
 
+  test('an agent-subtask past the bound is logged once while over, and again after a child ends', () => {
+    const { feed, warn } = harness();
+    const subtask = (id: string, status: string) => ({
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate:
+            status === 'in_progress' ? 'tool_call' : 'tool_call_update',
+          toolCallId: `tc-${id}`,
+          title: `Sub-agent: ${id}`,
+          status,
+          _meta: { kiro: { kind: 'agent-subtask', agentSubtaskId: id } },
+        },
+      },
+    });
+    const overBound = () =>
+      warn.mock.calls.filter(
+        ([message]) =>
+          message ===
+          'ACP agent-subtask past the child-work bound is not tracked',
+      ).length;
+    // CHILD_WORK_ITEMS_MAX_PER_REPORTER is 64.
+    for (let index = 0; index < 64; index += 1)
+      feed(subtask(`sa-${index}`, 'in_progress'));
+    expect(overBound()).toBe(0);
+    feed(subtask('sa-64', 'in_progress'));
+    feed(subtask('sa-65', 'in_progress'));
+    expect(overBound()).toBe(1);
+    // One ends: back under, so the next refusal is logged again.
+    feed(subtask('sa-0', 'completed'));
+    feed(subtask('sa-66', 'in_progress'));
+    expect(overBound()).toBe(1);
+    feed(subtask('sa-67', 'in_progress'));
+    expect(overBound()).toBe(2);
+  });
+
   test('a subagent frame with no usable id, or an unknown status word, maps fail-closed', () => {
     const { feed, of } = harness();
     feed({

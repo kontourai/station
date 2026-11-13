@@ -3,6 +3,7 @@ import {
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -827,8 +828,10 @@ const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
   MUSE_SERVE_UNAVAILABLE_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   // The engine runs its own default agent rather than the one this chat was
-  // started with: part of the conversation, not a passing toast.
+  // started with, or applied a rewind late and may hide turns the transcript
+  // cannot mark: part of the conversation, not a passing toast.
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
 ]);
 
 /**

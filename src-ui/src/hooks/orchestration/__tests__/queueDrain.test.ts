@@ -468,6 +468,44 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     ]);
   });
 
+  test('a send refused busy (an engine turn or a rewind) keeps retrying past 30 s before it asks for a retry', async () => {
+    sendExecutionMessageMock.mockRejectedValue(
+      new ChatHttpError(
+        409,
+        'Station is rewinding this conversation; send again when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    activeChatsStore.updateChat(threadId, { queuedMessages: ['after rewind'] });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    // A rewind may hold the engine for its whole 30 s deadline.
+    for (let second = 0; second < 32; second += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.dynamicImportSettled();
+    }
+    // Past the old ten one-second tries, and still not given up.
+    expect(sendExecutionMessageMock.mock.calls.length).toBeGreaterThanOrEqual(
+      30,
+    );
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.queuedMessageFailure,
+    ).toBeUndefined();
+    for (let second = 0; second < 10; second += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.dynamicImportSettled();
+    }
+    expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
+      queuedMessages: ['after rewind'],
+      queuedMessageFailure: {
+        message:
+          'The conversation is still busy. Your message is still queued; retry to send it.',
+        code: 'provider_turn_in_progress',
+      },
+    });
+    sendExecutionMessageMock.mockReset();
+    sendExecutionMessageMock.mockResolvedValue(undefined);
+  });
+
   test('a terminal event before dispatch acknowledgement still releases the next queued message', async () => {
     let acknowledge!: (receipt: unknown) => void;
     sendExecutionMessageMock.mockImplementationOnce(

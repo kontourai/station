@@ -63,6 +63,7 @@ import {
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
   ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -809,6 +810,12 @@ export interface AcpSessionRecord {
   acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
   /** An in-place rewind is waiting on the engine; no turn may start. */
   rewinding?: boolean;
+  /** A rewind past its deadline is still with the engine; no rewind may start. */
+  rewindPendingLate?: boolean;
+  /** Sends still preparing their turn (mode, effort, a relaunch); no rewind may start. */
+  sendsPreparing?: number;
+  /** Turns this record has started, so a late rewind can tell one began since. */
+  turnsStarted?: number;
   turnMessages?: Array<{
     turnId: string;
     firstMessageId: string;
@@ -2553,6 +2560,21 @@ export class AcpAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    // Counted from entry until the turn is active or refused: its
+    // preparation (mode, effort, an approval relaunch of the engine process)
+    // must not overlap a rewind, which refuses while this is above zero.
+    const record = this.sessions.get(input.threadId);
+    if (record) record.sendsPreparing = (record.sendsPreparing ?? 0) + 1;
+    try {
+      return await this.startPreparedTurn(input);
+    } finally {
+      if (record) record.sendsPreparing = (record.sendsPreparing ?? 1) - 1;
+    }
+  }
+
+  private async startPreparedTurn(
+    input: ProviderSendTurnInput,
+  ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
     // Orchestration waits in `whenSessionReady` before claiming the turn; a
     // caller that did not (or a start that began since) is refused
@@ -2733,16 +2755,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       if (applied.configOptions) record.configOptions = applied.configOptions;
     }
-    // A rewind that began while this send prepared the engine owns the
-    // session until it answers; the send is refused retryably, before its
-    // prompt reached the engine.
-    if (record.rewinding) throw new SessionRewindingError();
+    // No rewind can have begun meanwhile: it refuses while a send prepares.
     if (record.activeTurnId)
       throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
         'busy',
       );
     record.activeTurnId = turnId;
+    record.turnsStarted = (record.turnsStarted ?? 0) + 1;
     record.activeTurnOrigin =
       input.invocationId === undefined
         ? undefined
@@ -3456,7 +3476,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       return { kind: 'refused', reason: 'not-live' };
     const binding = resolveAcpRewind(record.process.initResult);
     if (!binding) return { kind: 'refused', reason: 'unsupported' };
-    if (record.activeTurnId || record.rewinding)
+    // Busy: a turn runs, a send is still preparing it (it may relaunch the
+    // engine process), or an earlier rewind is still with the engine.
+    if (
+      record.activeTurnId ||
+      record.rewinding ||
+      record.rewindPendingLate ||
+      (record.sendsPreparing ?? 0) > 0
+    )
       return { kind: 'refused', reason: 'turn-running' };
     // A snapshot: the ledger the engine is rewound against, whatever the
     // live record holds when its answer arrives.
@@ -3476,7 +3503,6 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
       // The request has no timeout of its own, and every send waits on this
       // one: an engine that never answers must not hold the session busy.
-      answered.catch(() => {});
       const timedOut = new Promise<typeof ACP_REWIND_TIMED_OUT>((resolve) => {
         deadline = setTimeout(
           () => resolve(ACP_REWIND_TIMED_OUT),
@@ -3484,11 +3510,13 @@ export class AcpAdapter implements ProviderAdapterShape {
         );
       });
       const result = await Promise.race([answered, timedOut]);
-      if (result === ACP_REWIND_TIMED_OUT)
+      if (result === ACP_REWIND_TIMED_OUT) {
+        this.followLateRewind(record, threadId, turnId, turns, answered);
         return {
           kind: 'failed',
-          message: `${record.engineName} did not answer the rewind in time. Nothing is marked rewound, but the engine may still apply it.`,
+          message: `${record.engineName} did not answer the rewind in time. Nothing is marked rewound yet; if the engine applies it later, the conversation says so.`,
         };
+      }
       answer = readAcpRewindAnswer(result, SESSION_REWIND_AFFECTED_PATHS_MAX);
     } catch (error) {
       const failure = acpCommandFailure(error);
@@ -3509,6 +3537,18 @@ export class AcpAdapter implements ProviderAdapterShape {
         message:
           answer.message ?? `${record.engineName} did not rewind the session.`,
       };
+    return this.applyRewind(record, threadId, turnId, turns, answer);
+  }
+
+  /** Cut the ledger to before `turnId` and publish the rewind marker. */
+  private applyRewind(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    answer: { affectedFiles?: { count: number; paths: string[] } },
+  ): Extract<SessionRewindOutcome, { kind: 'rewound' }> {
+    const index = turns.findIndex((entry) => entry.turnId === turnId);
     const hiddenTurnIds = turns.slice(index).map((entry) => entry.turnId);
     record.turnMessages = turns.slice(0, index);
     const files = answer.affectedFiles;
@@ -3533,6 +3573,72 @@ export class AcpAdapter implements ProviderAdapterShape {
       hiddenTurnIds,
       ...(files ? { affectedFiles: files } : {}),
     };
+  }
+
+  /**
+   * A rewind whose answer outlived its deadline is still with the engine,
+   * which may yet apply it. Until it settles no other rewind starts. A late
+   * success with no turn started since is applied as if on time (ledger cut,
+   * marker published); one after a turn started cannot say which turns the
+   * engine now hides, so it is published as a warning and the ledger is
+   * left as it is. A late refusal or error is logged.
+   */
+  private followLateRewind(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    answered: Promise<unknown>,
+  ): void {
+    const turnsStartedAtDeadline = record.turnsStarted ?? 0;
+    record.rewindPendingLate = true;
+    const logger = this.options.logger ?? console;
+    const current = () =>
+      !record.stopping && this.sessions.get(threadId) === record;
+    void answered.then(
+      (late) => {
+        record.rewindPendingLate = false;
+        if (!current()) return;
+        const answer = readAcpRewindAnswer(
+          late,
+          SESSION_REWIND_AFFECTED_PATHS_MAX,
+        );
+        if (!answer.success) {
+          logger.warn?.(
+            { threadId, message: answer.message },
+            'ACP rewind refused by the engine after its deadline',
+          );
+          return;
+        }
+        if ((record.turnsStarted ?? 0) === turnsStartedAtDeadline) {
+          this.applyRewind(record, threadId, turnId, turns, answer);
+          return;
+        }
+        logger.warn?.(
+          { threadId, beforeTurnId: turnId },
+          'ACP rewind applied by the engine after its deadline and after a later turn',
+        );
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code: ACP_SESSION_REWOUND_LATE_CODE,
+          message: `${record.engineName} applied an earlier rewind late, after a later turn started. That turn and everything after it may now be hidden from the engine.`,
+          details: { beforeTurnId: turnId },
+        });
+      },
+      (error: unknown) => {
+        record.rewindPendingLate = false;
+        if (!current()) return;
+        logger.warn?.(
+          { threadId, error: errorMessage(error) },
+          'ACP rewind failed after its deadline',
+        );
+      },
+    );
   }
 
   /**

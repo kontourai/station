@@ -677,7 +677,7 @@ describe.skipIf(process.platform === 'win32')(
       await engine.completed(await engine.send('rewind-race', 'three'));
     });
 
-    test('a send whose preparation is still with the engine when a rewind starts is refused before its prompt', async () => {
+    test('a rewind asked while a send is still preparing its turn is refused, and the send goes on', async () => {
       const engine = launch(
         {
           ...profileOf('kiro-v3'),
@@ -685,23 +685,14 @@ describe.skipIf(process.platform === 'win32')(
             'session/set_mode': 800,
             'session/set_config_option': 800,
           },
-          extMethodAnswers: {
-            ...(profileOf('kiro-v3').extMethodAnswers as Record<
-              string,
-              unknown
-            >),
-            '_kiro/checkpoint/revertMultiple': {
-              delayMs: 1200,
-              result: { success: true, affectedFiles: [], totalFiles: 0 },
-            },
-          },
         },
         [{ kind: 'user-message-id' }, { kind: 'text', text: 'ok' }],
       );
       await engine.start('rewind-prep');
       const first = await engine.send('rewind-prep', 'one');
       await engine.completed(first);
-      // The send passes its entry check, then waits on the mode change.
+      // The send waits on its mode change (a preparation that may as well
+      // be an engine relaunch) when the rewind is asked.
       const sending = engine.send('rewind-prep', 'two', { mode: 'spec' });
       await waitFor(
         () =>
@@ -716,18 +707,18 @@ describe.skipIf(process.platform === 'win32')(
             : undefined,
         'mode change reached the engine',
       );
-      const rewinding = engine.adapter.rewindSession('rewind-prep', first);
-      await expect(sending).rejects.toMatchObject({
-        name: 'SessionRewindingError',
-        kind: 'busy',
+      expect(await engine.adapter.rewindSession('rewind-prep', first)).toEqual({
+        kind: 'refused',
+        reason: 'turn-running',
       });
-      expect(await rewinding).toMatchObject({
-        kind: 'rewound',
-        hiddenTurnIds: [first],
-      });
+      await engine.completed(await sending);
       expect(
-        engine.record().filter((entry) => entry.method === 'session/prompt'),
-      ).toHaveLength(1);
+        engine
+          .record()
+          .some(
+            (entry) => entry.extMethod === '_kiro/checkpoint/revertMultiple',
+          ),
+      ).toBe(false);
     });
 
     test('a rewind the engine never answers fails in time, marks nothing, and frees the session', async () => {
@@ -756,7 +747,7 @@ describe.skipIf(process.platform === 'win32')(
       ).toEqual({
         kind: 'failed',
         message:
-          'Kiro did not answer the rewind in time. Nothing is marked rewound, but the engine may still apply it.',
+          'Kiro did not answer the rewind in time. Nothing is marked rewound yet; if the engine applies it later, the conversation says so.',
       });
       expect(
         engine.events.some(
@@ -770,6 +761,101 @@ describe.skipIf(process.platform === 'win32')(
         live: true,
         rewind: 'in-place',
       });
+    });
+
+    // The engine answers the revert after the rewind's deadline.
+    const lateRewindProfile = () => ({
+      ...profileOf('kiro-v3'),
+      extMethodAnswers: {
+        ...(profileOf('kiro-v3').extMethodAnswers as Record<string, unknown>),
+        '_kiro/checkpoint/revertMultiple': {
+          delayMs: 1500,
+          result: { success: true, affectedFiles: ['src/a.ts'], totalFiles: 1 },
+        },
+      },
+    });
+    const rewoundEvents = (engine: Engine, code: string) =>
+      engine.events.filter(
+        (event) => (event as { code?: string }).code === code,
+      );
+
+    test('a late rewind with no turn since is applied as on time, and no second rewind starts while it is pending', async () => {
+      const engine = launch(
+        lateRewindProfile(),
+        [{ kind: 'user-message-id' }, { kind: 'text', text: 'ok' }],
+        { rewindAnswerTimeoutMs: 200 },
+      );
+      await engine.start('late-quiet');
+      const first = await engine.send('late-quiet', 'one');
+      await engine.completed(first);
+      expect(
+        await engine.adapter.rewindSession('late-quiet', first),
+      ).toMatchObject({ kind: 'failed' });
+      // Still with the engine: a second rewind is refused, not sent.
+      expect(await engine.adapter.rewindSession('late-quiet', first)).toEqual({
+        kind: 'refused',
+        reason: 'turn-running',
+      });
+      expect(
+        engine
+          .record()
+          .filter(
+            (entry) => entry.extMethod === '_kiro/checkpoint/revertMultiple',
+          ),
+      ).toHaveLength(1);
+      expect(
+        await waitFor(
+          () => rewoundEvents(engine, 'acp.session-rewound')[0],
+          'late rewind marker',
+        ),
+      ).toMatchObject({
+        details: {
+          beforeTurnId: first,
+          hiddenTurnIds: [first],
+          affectedFileCount: 1,
+        },
+      });
+      // The ledger was cut: the hidden turn is no longer a rewind point.
+      expect(await engine.adapter.rewindSession('late-quiet', first)).toEqual({
+        kind: 'refused',
+        reason: 'unknown-turn',
+      });
+    });
+
+    test('a late rewind after a later turn is a warning, logged, and leaves the ledger as it was', async () => {
+      const warn = vi.fn();
+      const engine = launch(
+        lateRewindProfile(),
+        [{ kind: 'user-message-id' }, { kind: 'text', text: 'ok' }],
+        { rewindAnswerTimeoutMs: 200, logger: { ...quietLogger, warn } },
+      );
+      await engine.start('late-turn');
+      const first = await engine.send('late-turn', 'one');
+      await engine.completed(first);
+      expect(
+        await engine.adapter.rewindSession('late-turn', first),
+      ).toMatchObject({ kind: 'failed' });
+      const second = await engine.send('late-turn', 'two');
+      await engine.completed(second);
+      expect(
+        await waitFor(
+          () => rewoundEvents(engine, 'acp.session-rewound-late')[0],
+          'late rewind warning',
+        ),
+      ).toMatchObject({
+        method: 'runtime.warning',
+        details: { beforeTurnId: first },
+      });
+      expect(rewoundEvents(engine, 'acp.session-rewound')).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        { threadId: 'late-turn', beforeTurnId: first },
+        'ACP rewind applied by the engine after its deadline and after a later turn',
+      );
+      // The ledger still holds both turns: the second is still a rewind
+      // point (this request times out too, so nothing else changes).
+      expect(
+        await engine.adapter.rewindSession('late-turn', second),
+      ).toMatchObject({ kind: 'failed' });
     });
 
     test('a roster past the child-work bound is logged through the adapter logger, once while it stays over', async () => {

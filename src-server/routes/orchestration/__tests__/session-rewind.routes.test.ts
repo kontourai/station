@@ -86,11 +86,14 @@ async function fixture(options: { rewind?: boolean; live?: boolean } = {}) {
   });
   let user = 'owner';
   let principalCurrent = true;
+  const nudge = vi.fn();
   const app = createOrchestrationRoutes(service, {
     eventBus: new EventBus(),
     logger: { debug: vi.fn() },
     getUserId: () => user,
     isRequestPrincipalCurrent: () => principalCurrent,
+    // Only the rewind route's own call is modelled here.
+    threadInbox: { nudge } as never,
   });
   cleanups.push(async () => {
     await service.shutdown();
@@ -99,6 +102,7 @@ async function fixture(options: { rewind?: boolean; live?: boolean } = {}) {
   return {
     app,
     rewind,
+    nudge,
     setUser: (value: string) => {
       user = value;
     },
@@ -179,6 +183,17 @@ describe('session rewind route', () => {
       success: true,
       data: { kind: 'refused', reason: 'turn-running' },
     });
+  });
+
+  test('every rewind end looks at the inbox again: applied, refused, failed or thrown', async () => {
+    const f = await fixture();
+    await post(f, { turnId: 'turn-2' });
+    expect(f.nudge).toHaveBeenLastCalledWith(THREAD);
+    f.rewind.mockResolvedValueOnce({ kind: 'failed', message: 'late' });
+    await post(f, { turnId: 'turn-2' });
+    f.rewind.mockRejectedValueOnce(new Error('adapter replaced'));
+    expect((await post(f, { turnId: 'turn-2' })).status).toBe(409);
+    expect(f.nudge).toHaveBeenCalledTimes(3);
   });
 
   test('anyone but the current owner gets 404 and nothing reaches the engine', async () => {

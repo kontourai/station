@@ -844,6 +844,15 @@ export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
  */
 export const ACP_SESSION_REWOUND_CODE = 'acp.session-rewound';
 
+/**
+ * `RuntimeWarningEvent.code` an engine session publishes when a rewind that
+ * outlived its deadline was applied by the engine after a later turn started:
+ * the transcript cannot say which turns the engine now hides, so none is
+ * marked rewound. `details.beforeTurnId` names the rewind's chosen turn. (A
+ * late rewind with no turn since is published as `ACP_SESSION_REWOUND_CODE`.)
+ */
+export const ACP_SESSION_REWOUND_LATE_CODE = 'acp.session-rewound-late';
+
 /** Bound on the restored paths a rewind outcome carries; the count is exact. */
 export const SESSION_REWIND_AFFECTED_PATHS_MAX = 50;
 
