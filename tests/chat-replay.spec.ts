@@ -10,7 +10,7 @@ import {
   partialHistoryReplayTape,
 } from './fixtures/chat-replay-scenarios';
 import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { inspectReplayStep } from './helpers/replay-inspector';
 
@@ -19,12 +19,58 @@ const json = (body: unknown) => ({
   contentType: 'application/json',
   body: JSON.stringify(body),
 });
+// Replay needs the account-scoped developer opt-in and declares its idle shell reads.
+async function seedReplayShell(page: Page) {
+  await seedMobileTaskSwitcher(page);
+  await page.route('**/api/me/preferences*', async (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    await route.fulfill(
+      json({
+        success: true,
+        data: {
+          schemaVersion: 1,
+          revision: 'replay-fixture',
+          values: { developerToolsEnabled: true },
+        },
+      }),
+    );
+  });
+  await page.route(
+    /\/api\/(?:orchestration\/agent-schedule\/conv-running|orchestration\/sessions\/(?:conv-running|conv-review|delegated-review)\/event-window|projects\/default\/chat-defaults|terminal\/runs)(?:\?.*)?$/,
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/chat-defaults'))
+        return route.fulfill({
+          status: 404,
+          json: {
+            success: false,
+            error: 'No Project defaults in replay fixture',
+          },
+        });
+      const data = path.endsWith('/event-window')
+        ? {
+            protocolVersion: 1,
+            session: { model: 'model-selected' },
+            events: [],
+            nextSequence: 0,
+            hasMore: false,
+          }
+        : path.endsWith('/terminal/runs')
+          ? { runs: [] }
+          : { wakeUps: [], jobProposals: [], jobs: [] };
+      await route.fulfill(json({ success: true, data }));
+    },
+  );
+}
 test.use({ video: 'on' });
 test('replay correlates each event with the real mobile transcript and a screenshot', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await seedMobileTaskSwitcher(page);
+  await seedReplayShell(page);
   await page.addInitScript(() => {
     localStorage.setItem(
       'station-device-settings-v1',
@@ -132,7 +178,7 @@ test('replay correlates each event with the real mobile transcript and a screens
 
 async function openReplayScenario(page: Page, tape: SessionTape) {
   await page.setViewportSize({ width: 390, height: 844 });
-  await seedMobileTaskSwitcher(page);
+  await seedReplayShell(page);
   await page.addInitScript(() =>
     localStorage.setItem(
       'station-device-settings-v1',

@@ -311,7 +311,7 @@ test.describe('subagent transcript cards', () => {
         const box = (await card.locator(selector).first().boundingBox())!;
         return box.y + box.height / 2;
       };
-      const row = await centre('.subagent-card__headline');
+      const row = await centre('.subagent-card__title');
       for (const selector of [
         '.subagent-card__glyph',
         '.subagent-card__elapsed',
@@ -400,7 +400,7 @@ test.describe('subagent transcript cards', () => {
         ).toBe(true);
       }
       await expect(card.getByRole('img', { name: 'Codex' })).toBeVisible();
-      await expect(card.getByText('Completed')).toBeVisible();
+      await expect(card.getByText('Run finished')).toBeVisible();
       await expect(card.getByText('gpt-5.5')).toHaveCount(0);
       await expect(card.getByText('done', { exact: true })).toBeVisible();
       await expect(card.locator('.subagent-card__elapsed')).toHaveText('5s');
@@ -581,7 +581,7 @@ test.describe('subagent transcript cards', () => {
 
     await expect(page.getByText(/Background task finished/)).toHaveCount(0);
     await expect(card.locator('.child-work-activity')).toHaveCount(0);
-    await expect(card.getByText('Completed')).toBeVisible();
+    await expect(card.getByText('Run finished')).toBeVisible();
     await expect(card.getByText('17m 4s')).toBeVisible();
     await expect(
       card.getByText(/^Verdict: merge as-is\. I found no blockers/),
