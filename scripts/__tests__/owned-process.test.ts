@@ -1187,10 +1187,14 @@ describe('terminating a POSIX process tree', () => {
   function posixExecution(input: {
     childKill: () => boolean;
     kill: (pid: number, signal: string | number) => void;
+    exitCode?: number | null;
+    signalCode?: string | null;
   }) {
     const child = Object.assign(mockChild(), {
       pid: 4242,
       kill: input.childKill,
+      exitCode: input.exitCode ?? null,
+      signalCode: input.signalCode ?? null,
     });
     return executeOwnedProcess(
       'lab',
@@ -1268,6 +1272,42 @@ describe('terminating a POSIX process tree', () => {
     await expect(execution.terminate()).resolves.toBeUndefined();
     expect(attempts).toEqual([[-4242, 'SIGTERM']]);
     expect(childKills).toBe(0);
+  });
+
+  test('only while the leader is unreaped does a strict force signal reach the group', async () => {
+    const attempts: Array<[number, string | number]> = [];
+    const kill = (pid: number, signal: string | number) => {
+      attempts.push([pid, signal]);
+    };
+    const unreaped = posixExecution({ childKill: () => true, kill });
+    await expect(
+      unreaped.forceTerminate({ onlyWhileLeaderUnreaped: true }),
+    ).resolves.toEqual({ signalled: true });
+    expect(attempts).toEqual([[-4242, 'SIGKILL']]);
+    attempts.length = 0;
+    // Reaped, by exit status or by signal: the group id may have been
+    // reused, so neither the group nor the pid is signalled.
+    let childKills = 0;
+    for (const reaped of [{ exitCode: 0 }, { signalCode: 'SIGTERM' }]) {
+      const execution = posixExecution({
+        childKill: () => {
+          childKills += 1;
+          return true;
+        },
+        kill,
+        ...reaped,
+      });
+      await expect(
+        execution.forceTerminate({ onlyWhileLeaderUnreaped: true }),
+      ).resolves.toEqual({ signalled: false, reason: 'leader-reaped' });
+    }
+    expect(attempts).toEqual([]);
+    expect(childKills).toBe(0);
+    // Without the option a tree kill still reaches descendants that outlive
+    // the leader, as other callers rely on.
+    const legacy = posixExecution({ childKill: () => true, kill, exitCode: 0 });
+    await expect(legacy.forceTerminate()).resolves.toBeUndefined();
+    expect(attempts).toEqual([[-4242, 'SIGKILL']]);
   });
 
   test('a settled teardown of an exited child reports no errors', async () => {
