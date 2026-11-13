@@ -774,7 +774,6 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       await openChat(page, RESEND_CONVERSATION);
       const textarea = page.locator('textarea[placeholder*="Type a message"]');
       const transcript = transcriptLocator(page);
-      await closeRunSetup(page);
       await textarea.fill('First prompt.');
       await textarea.press('Enter');
       await expect.poll(() => shell.executionRequests.length).toBe(1);
@@ -787,7 +786,6 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       });
       await expectSettled(page);
       await shell.markCurrentSessionTerminal(RESEND_CONVERSATION);
-      await closeRunSetup(page);
       await textarea.fill('Second prompt.');
       await textarea.press('Enter');
       await expect.poll(() => shell.executionRequests.length).toBe(2);
