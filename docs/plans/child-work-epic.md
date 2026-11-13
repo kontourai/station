@@ -19,6 +19,80 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Current native wrong-ACK/retry checkpoint (2026-11-13)
+
+Main through `ce3f22639a3d` is merged normally at `5b9e52de11d0`.
+Committed readiness at `3ad4f81f57d0` terminates with one required failure and
+two warnings: documentation truth still needs semantic reviews/captures.
+Session-transition and all 1,664 connected-agent cases pass. That receipt does
+not establish a causal repair or stability for the earlier projection timeout.
+The independently useful review-inspection fix has its own current-main
+[PR #4909](https://github.com/kontourai/station/pull/4909), local readiness and
+normal-hook receipt; auto-merge is armed, but no merged receipt is claimed here.
+
+The current SDK 0.3.322 / CLI 2.1.322 native prerequisite now includes actual
+Agent-child Write. Ordinary and resumed effects join the real SDK
+`parent_tool_use_id`; restricted admission produces no child request or marker.
+The unchanged original cohort plus Agent cases uses 22 synthetic model requests.
+Removing only the Agent restriction executes the actual restricted child Write
+and fails the marker assertion; byte-exact restoration passes. Plugin-owned
+MCP effects also execute ordinarily, remain denied after `setMcpServers({})`,
+and execute on exact native resume. Removing only that plugin wildcard writes
+its restricted marker; byte-exact restoration passes. The first plugin fixture
+run remains FAIL because it did not answer optional `server/discover`; adding
+the standard JSON-RPC method-not-found reply changes no product guard or bound.
+
+At `f77ad8fe38b0`, ten managed-only/settings cases pass with actual CLI
+`list_permission_rules` responses. Every phase reports `managedOnly: true`;
+restricted phases retain effective `cliArg deny '*'`, including after flag
+permission replacement/clearing and mode changes. Twenty synthetic model
+requests and ten normal code-zero closures remain within the original bounds.
+The earlier untyped protocol-frame observer failed lint; validated response
+parsing fixes it. Neither that failed source revision nor requested settings
+alone qualifies effective policy.
+
+At `7bc02808f1a6`, both preflight and actual initialization admit only the
+qualified exact versions, now including 2.1.322. Unknown 2.1.323 and missing
+versions refuse before SDK launch. The new 2.1.322 control fails before the
+change and after removing only that version; byte-exact restoration passes the
+322 admission and 323 refusal controls. The combined adapter/confinement
+selection passes 477 cases, server-test types and read-only lint pass, and a
+fresh source/evidence review finds no actionable bounded issue. This is
+native model-tool effect conformance, not universal internal-effect suppression.
+
+At `c02c1eb95607`, the opt-in
+[`child-work-native-group-sync-lab.ts`](../../scripts/child-work-native-group-sync-lab.ts)
+exercises the public SDK over real HTTP, authenticated local group routes,
+actual delegated Tasks, durable claims, orchestration and ClaudeAdapter.
+Synthetic loopback replies force the first wrong ACK, followed by the one
+allowed retry and the other member's first exact ACK. Both native UUIDs and
+durable bindings remain unchanged. The five actual model requests join five
+canonical starts/completions: two initial results, one wrong ACK and two exact
+ACKs. Sync reports zero tools. Replay adds no request or turn. An independent
+read-only review joins all request hashes, 40 canonical event IDs, ownership
+rows, terminal receipts and the two private native transcripts; the retry's
+actual request includes the prior wrong ACK in native history.
+
+Removing only the production second attempt yields an incomplete group, one
+failed member and four model turns; the actual caller fails as intended.
+Byte-exact restoration passes the complete caller again. Private evidence is
+under `/var/folders/zz/8n7yx67d751dfk33tz367rxm0000gn/T/` in
+`child-work-native-group-sync-opwnKT` (independently reviewed),
+`child-work-native-group-sync-lUdSJp` (retry mutation), and
+`child-work-native-group-sync-qRuesw` (restored pass). Orchestration shutdown is
+awaited, EventStore reports closed, HTTP work is settled and the private owned
+registry is empty. No independent complete OS descendant census is claimed.
+Earlier fixture failures remain retained: `oZKoCL` omitted durable create
+claims and dispatched no model call; `dC5NkH` completed initial native Tasks but
+read a not-yet-persisted cursor instead of the actual live binding.
+
+This closes the deterministic native wrong-ACK/retry caller gap for the pinned
+Claude combination. It does not qualify live billing, restart recovery,
+portable authority, a second engine family, local/peer/SSH enforcement, or the
+full epic. The original frozen native witness remains unchanged. Both epic
+qualification flags stay false; topology/continuity, semantic documentation,
+combined readiness/review and protected delivery remain open.
+
 ### Current native-effect and review-tool checkpoint (2026-11-13)
 
 Committed readiness at `0564212760f2`, explicitly compared with
