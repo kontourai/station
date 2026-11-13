@@ -2162,11 +2162,13 @@ carrier rebind cannot borrow that acknowledgement. A failed witness projection
 rolls back only that derived update; the observed canonical terminal remains
 independently persistable. These private projections remain in the existing EventStore. A consumed start
 boundary is not a delivery acknowledgement; uncertain or failed seed delivery
-refuses ordinary reuse. A handoff (not a native return) whose seed-bearing turn
-definitively failed or was stopped does not strand the conversation: the next
-ordinary turn starts a successor Session with a freshly pinned transcript seed
-of the whole conversation, never the failed Session's native cursor. An open or
-uncertain seed turn stays refused. These refusals carry the closed
+refuses ordinary reuse. A handoff (not a native return) or a plain continuation
+(no deliberate context boundary) whose seed-bearing turn definitively failed or
+was stopped does not strand the conversation: the next ordinary turn starts a
+successor Session with a freshly pinned transcript seed of the whole
+conversation, never the failed Session's native cursor, and a stopped
+redelivery is redelivered the same way. An open or uncertain seed turn, a
+failed boundary seed and a failed fork seed stay refused. These refusals carry the closed
 `conversation-context-unavailable` code. Deliberate empty context and the
 framework's native memory companion retain their separate contracts.
 

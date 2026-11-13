@@ -662,7 +662,18 @@ describe('scripted fork delivery and canonical history qualification', () => {
           )?.session.hasActiveTurn,
         ).toBe(false),
       );
-      if (outcome === 'failed') {
+      if (outcome === 'failed' && mode === 'continuation') {
+        // A plain continuation seed that definitively failed is redelivered:
+        // a fresh successor carries a new seed, never the failed native
+        // thread, instead of every later send being refused.
+        const failedSessionId = f.receiver.turns[1]!.threadId;
+        await f.execute('codex', 'Ordinary follow-up after that failure.');
+        await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(3));
+        expect(f.receiver.turns[2]?.threadId).not.toBe(failedSessionId);
+        expect(f.receiver.turns[2]?.ambientContext).toContain(PARENT_ONLY);
+      } else if (outcome === 'failed') {
+        // A deliberate context boundary's seed stays refused: a plain
+        // successor would not reproduce the boundary's policy.
         await expect(
           f.execute('codex', 'Ordinary follow-up after that failure.'),
         ).rejects.toThrow('Continuation context delivery has not completed.');
