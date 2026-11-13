@@ -220,10 +220,9 @@ test.describe('replay state coverage', () => {
         );
       if ('tools' in scenario) {
         expect(observation?.streaming.toolCallCount).toBe(scenario.tools);
-        // The summary stays an inventory; each running call (up to two,
-        // then "+N more") has its own highlighted row under it.
+        // The summary names the active inventory; up to two calls have rows.
         await expect(transcript.locator('.tool-call-batch__label')).toHaveText(
-          `${scenario.tools} file reads`,
+          `${scenario.tools} file reads · ${scenario.tools} running`,
         );
         await expect(
           transcript.locator(
@@ -232,8 +231,12 @@ test.describe('replay state coverage', () => {
         ).toHaveCount(Math.min(scenario.tools!, 2));
         await expect(transcript.locator('.streaming-activity')).toHaveCount(0);
       }
-      if (scenario.name === 'partial answer still running')
-        await expect(transcript.locator('.streaming-activity')).toHaveCount(0);
+      if (scenario.name === 'partial answer still running') {
+        await expect(transcript.locator('.streaming-activity')).toHaveCount(1);
+        await expect(transcript.locator('.streaming-activity')).toContainText(
+          'Working for 42s',
+        );
+      }
       expect(
         await transcript.evaluate(
           (element) => element.scrollWidth <= element.clientWidth + 1,

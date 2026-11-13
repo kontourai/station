@@ -109,7 +109,7 @@ export const chatReplayScenarios = [
       ),
       { kind: 'clock', atMs: 28_000 },
     ]),
-    text: 'Thinking for',
+    text: 'Working for',
     timer: '28s',
     streaming: true,
   },
