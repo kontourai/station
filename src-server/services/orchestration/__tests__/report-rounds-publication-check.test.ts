@@ -153,7 +153,14 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
               thenInvocations++;
             },
           });
-          assert.throws(() => scope.check(() => 42), TypeError);
+          let afterThenableGuard = false;
+          assert.throws(() =>
+            scope.check(() => {
+              afterThenableGuard = true;
+              return 42;
+            }),
+          );
+          assert.equal(afterThenableGuard, false);
           await Promise.resolve();
           assert.equal(thenInvocations, 0);
           const mutation = join(
