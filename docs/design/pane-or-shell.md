@@ -56,10 +56,10 @@ pane.
   its path joins the retirement table (`getLegacyPathRedirect`) and redirects
   to the surface's canonical placement, carrying its payload. `/activity`
   and `/activity?session=…&focus=evidence` are permanent compatibility links to
-  the inbox and Chat respectively —
-  station#928 removed the standalone placement and both spellings now land on
-  `/?surface=activity[&session=…][&focus=evidence]`, minted by the one builder
-  (`activityDeepLink`) every producer of those links already uses. What the
+  the inbox and Chat respectively. The compatibility builder
+  (`activityDeepLink`) now mints Chat links with `surface=chat`; collection links
+  use `/notifications`. Legacy redirects preserve other query parameters and an
+  existing Project path. What the
   invariant forbids is a 404 or a silently discarded payload: if converting a
   surface would break a URL, the conversion is wrong, not the URL.
 - **Panes consume declared data surfaces.** A pane — first-party or not —

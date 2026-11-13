@@ -543,14 +543,14 @@ Session by its `sessionId`, without creating a task.
   carries a sent/received direction and a 1–128 character request key, with
   a 1–512 character Session id. The parser refuses a mismatched or absent
   Session and drops an invalid anchor without treating it as an exact target.
-  Activity takes the anchor through its ordinary one-shot surface intent;
+  Chat takes the anchor through its ordinary one-shot surface intent;
   remounting cannot replay it, while a new intent token can reveal it again.
   Sender accents use the canonical sending Session id, so a changed display
   name or engine does not recolor that Session.
   On phones, a muted cause row expands to the sender details, message and link.
   Engine-opened replies retain a provider cause on the assistant row after
   settlement and reload; origin is never inferred from prompt text.
-  Inbox and Activity mark the latest agent-delivered input without changing
+  The inbox and Chat mark the latest agent-delivered input without changing
   the status ladder. Settled delegated-result delivery remains dependent on
   #3158; a declared provenance kind alone does not deliver a result.
   The engine's own tool-call id is not visible to Station's tool server, so

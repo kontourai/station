@@ -2526,6 +2526,10 @@ The runtime-event-content hooks accept `apiBase` and `requestScope` in their
 input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
 and the target API base as its second argument. Its optional `running` input
 refreshes a visible engine transcript every two seconds through React Query.
+The caller supplies current child-work state and stops polling after settlement;
+a changed revision can request the final read. The shell refreshes the parent
+inventory when opening a child reader and derives delegate streaming state from
+the current Session's child-work facts.
 Chat opens engine children with a parent `session` and `child` selector;
 delegates use `childSession` for their own Session thread. `childTitle` labels
 the breadcrumb. These selectors choose a read-only child view and grant no
