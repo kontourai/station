@@ -792,7 +792,7 @@ async function openComposerModelPicker(page: Page, composer: Locator) {
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   await expect(agents).toBeVisible();
   await agents
-    .getByRole('button', { name: /^Model: / })
+    .getByRole('button', { name: /^(?:Model:|Engine & model:) / })
     .first()
     .click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
@@ -980,7 +980,9 @@ async function expectStartedChatRuns(
   await expect(
     await runSetupControl(chat, (panel) =>
       panel.getByRole('button', {
-        name: new RegExp(`^Model: (?:.+ — )?${literal(model)}(?: \\(|$)`),
+        name: new RegExp(
+          `^(?:Model:|Engine & model:).*${literal(model)}(?: \\(|$)`,
+        ),
       }),
     ),
   ).toBeVisible();
@@ -1297,7 +1299,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       await runSetupControl(page, (panel) =>
         panel.getByRole('button', {
-          name: /Model: Bedrock · Prod — Shared model/,
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
         }),
       ),
     ).toBeVisible();
@@ -1314,7 +1316,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const modelButton = await runSetupControl(page, (panel) =>
       panel.getByRole('button', {
-        name: /Model: Codex · Work — Shared model/,
+        name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
       }),
     );
     await modelButton.click();
@@ -1333,14 +1335,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       await runSetupControl(page, (panel) =>
         panel.getByRole('button', {
-          name: /Model: Bedrock · Prod — Shared model/,
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
         }),
       ),
     ).toBeFocused();
     await (
       await runSetupControl(page, (panel) =>
         panel.getByRole('button', {
-          name: /Model: Bedrock · Prod — Shared model/,
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
         }),
       )
     ).click();
@@ -1351,7 +1353,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       await runSetupControl(page, (panel) =>
         panel.getByRole('button', {
-          name: /Model: Codex · Work — Shared model/,
+          name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
         }),
       ),
     ).toBeVisible();
@@ -1963,7 +1965,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await completeStartedTurn(page, 'Start the project task.');
       const modelButton = await runSetupControl(page, (panel) =>
         panel.getByRole('button', {
-          name: /Model: Codex · Work — Shared model/,
+          name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
         }),
       );
       await modelButton.click();

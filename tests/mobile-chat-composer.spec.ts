@@ -4246,7 +4246,7 @@ for (const width of [320, 390, 1280]) {
       );
       const model = await runSetupControl(activeComposer, (panel) =>
         panel.getByRole('button', {
-          name: /^Model: Claude — Selected Test Model/,
+          name: /^Engine & model: Claude Selected Test Model/,
         }),
       );
       await expect(agent.locator('.chat-input__agent-name')).toHaveText(
@@ -4260,7 +4260,7 @@ for (const width of [320, 390, 1280]) {
       ).toHaveText('Selected Test Model');
       await expect(model).toHaveAttribute(
         'title',
-        /^Model: Claude — Selected Test Model/,
+        /^Engine & model: Claude Selected Test Model/,
       );
       const bounds = (await page
         .getByRole('dialog', { name: 'Run setup', exact: true })

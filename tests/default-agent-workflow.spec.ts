@@ -514,7 +514,9 @@ async function openDefaultAgentSession(
   // The dock now holds the chat the draft started, bound to the same identity.
   await expect(
     await runSetupControl(page, (panel) =>
-      panel.getByRole('button', { name: /^Model: \S+ — llama3\.2/ }),
+      panel.getByRole('button', {
+        name: /^(?:Model:|Engine & model:) \S+ — llama3\.2/,
+      }),
     ),
   ).toBeVisible({ timeout: 10_000 });
   await waitForMockOrchestrationSse(page);

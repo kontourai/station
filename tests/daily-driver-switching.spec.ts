@@ -149,7 +149,7 @@ async function expectCardReportsModel(
 /** Picks a model through the composer's real picker. */
 async function selectComposerModel(page: Page, optionName: RegExp) {
   const modelButton = await runSetupControl(page, (panel) =>
-    panel.getByRole('button', { name: /^Model:/ }),
+    panel.getByRole('button', { name: /^(?:Model:|Engine & model:)/ }),
   );
   await expect(modelButton).toBeEnabled({ timeout: 10_000 });
   await modelButton.click();
@@ -244,7 +244,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     // state rather than a silent per-turn side effect.
     await expect(
       await runSetupControl(page, (panel) =>
-        panel.getByRole('button', { name: /^Model:/ }),
+        panel.getByRole('button', { name: /^(?:Model:|Engine & model:)/ }),
       ),
       'the composer must name the model the next turn will ask for',
     ).toHaveAccessibleName(/Claude Haiku Mid Switch/, { timeout: 5_000 });
