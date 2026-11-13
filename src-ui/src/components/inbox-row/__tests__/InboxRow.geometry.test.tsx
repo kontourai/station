@@ -325,6 +325,10 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           expect(order.actions).toBeLessThan(order.extent);
           expect(order.sameLine).toBe(true);
           expect(order.overflow).toBe(false);
+          const stationBorder = await pg
+            .locator('.inbox-row__chip--remote')
+            .evaluate((mark) => getComputedStyle(mark).borderTopWidth);
+          expect(stationBorder).toBe('1px');
           await pg.screenshot({
             path: resolve(artifacts, `identity-header-${width}-${theme}.png`),
           });
