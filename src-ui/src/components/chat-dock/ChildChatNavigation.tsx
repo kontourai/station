@@ -1,3 +1,4 @@
+import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import {
   applyReturnFocus,
   captureReturnFocus,
@@ -5,19 +6,25 @@ import {
 import {
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { Button } from '../Button';
 import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
+import { registerDialogHistory } from '../dialog-history';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import {
   ChildChatContext,
   type ChildChatController,
   ChildChatCoveredContext,
+  ChildChatPresentationContext,
   type ChildChatTarget,
 } from './ChildChatNavigationContext';
 import './ChildChatNavigation.css';
@@ -41,7 +48,9 @@ export function ChildChatNavigation({
   onCoveredChange,
   onBeforeChildOpen,
   onInitialChildConsumed,
+  dockOutlet = false,
 }: {
+  dockOutlet?: boolean;
   rootKey: string;
   title: string;
   children: ReactNode;
@@ -127,105 +136,193 @@ export function ChildChatNavigation({
     return () => element.removeEventListener('keydown', onEscape);
   }, [entries.length]);
   const touch = useRef<{ x: number; y: number } | null>(null);
+  const trail = covered ? (
+    <nav
+      data-no-dock-drag=""
+      className="child-chat-trail"
+      aria-label="Chat breadcrumb"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          pop(entries.length - 1);
+        }
+      }}
+    >
+      <Button
+        variant="ghost"
+        onClick={() => pop(entries.length - 1)}
+        aria-label="Back to parent chat"
+      >
+        ‹
+      </Button>
+      {[{ title }, ...entries].map((entry, index) => (
+        <span className="child-chat-trail__segment" key={index}>
+          {index > 0 && <span aria-hidden="true"> › </span>}
+          {index < entries.length ? (
+            <Button variant="ghost" onClick={() => pop(index)}>
+              {entry.title}
+            </Button>
+          ) : (
+            <span aria-current="page">{entry.title}</span>
+          )}
+        </span>
+      ))}
+    </nav>
+  ) : null;
+  const pane =
+    entries.length > 0 ? (
+      <div
+        className="child-chat-pane"
+        ref={shell}
+        tabIndex={-1}
+        onTouchStart={(event) => {
+          const point = event.touches[0];
+          touch.current =
+            point && point.clientX < 44
+              ? { x: point.clientX, y: point.clientY }
+              : null;
+        }}
+        onTouchEnd={(event) => {
+          const point = event.changedTouches[0];
+          const start = touch.current;
+          touch.current = null;
+          if (
+            point &&
+            start &&
+            point.clientX - start.x > 80 &&
+            Math.abs(point.clientY - start.y) < 60
+          )
+            pop(entries.length - 1);
+        }}
+      >
+        {entries.map((entry, index) => (
+          <div
+            className="child-chat-pane__reader"
+            hidden={index !== entries.length - 1}
+            inert={index !== entries.length - 1}
+            key={`${index}:${entry.threadId}:${entry.childId ?? ''}`}
+          >
+            <ChildHistoryLayer close={() => popRef.current(index)} />
+            <ConversationConnectionProvider
+              value={{ ...entry.connection, record: { readOnly: true } }}
+            >
+              <LiveChildReader entry={entry} index={index} />
+            </ConversationConnectionProvider>
+          </div>
+        ))}
+      </div>
+    ) : null;
   return (
     <ChildChatContext.Provider value={push}>
-      <div
-        className="child-chat-root"
-        hidden={entries.length > 0}
-        inert={entries.length > 0}
-      >
-        <ChildChatCoveredContext.Provider value={covered}>
-          {children}
-        </ChildChatCoveredContext.Provider>
-      </div>
-      {entries.length > 0 && (
-        <div
-          className="child-chat-pane"
-          ref={shell}
-          tabIndex={-1}
-          onTouchStart={(event) => {
-            const point = event.touches[0];
-            touch.current =
-              point && point.clientX < 44
-                ? { x: point.clientX, y: point.clientY }
-                : null;
-          }}
-          onTouchEnd={(event) => {
-            const point = event.changedTouches[0];
-            const start = touch.current;
-            touch.current = null;
-            if (
-              point &&
-              start &&
-              point.clientX - start.x > 80 &&
-              Math.abs(point.clientY - start.y) < 60
-            )
-              pop(entries.length - 1);
-          }}
-        >
-          <nav className="child-chat-trail" aria-label="Chat breadcrumb">
-            <Button
-              variant="ghost"
-              onClick={() => pop(entries.length - 1)}
-              aria-label="Back to parent chat"
-            >
-              ‹
-            </Button>
-            {[{ title }, ...entries].map((entry, index) => (
-              <span className="child-chat-trail__segment" key={index}>
-                {index > 0 && <span aria-hidden="true"> › </span>}
-                {index < entries.length ? (
-                  <Button variant="ghost" onClick={() => pop(index)}>
-                    {entry.title}
-                  </Button>
-                ) : (
-                  <span aria-current="page">{entry.title}</span>
-                )}
-              </span>
-            ))}
-          </nav>
-          {entries.map((entry, index) => (
-            <div
-              className="child-chat-pane__reader"
-              hidden={index !== entries.length - 1}
-              inert={index !== entries.length - 1}
-              key={`${index}:${entry.threadId}:${entry.childId ?? ''}`}
-            >
-              <ConversationConnectionProvider
-                value={{ ...entry.connection, record: { readOnly: true } }}
-              >
-                {entry.childId ? (
-                  <LazyBoundary
-                    load={loadEngineTranscript}
-                    componentProps={{
-                      id: `child-chat-${index}`,
-                      threadId: entry.threadId,
-                      childId: entry.childId,
-                      running: entry.running ?? false,
-                      revision: entry.revision ?? '',
-                    }}
-                    pending={
-                      <SkeletonBlock count={2} label="Reading subagent" />
-                    }
-                  />
-                ) : (
-                  <LazyBoundary
-                    load={loadSessionTranscript}
-                    componentProps={{
-                      session: { threadId: entry.threadId },
-                      agentLabel: entry.title,
-                      isStreaming: entry.running ?? true,
-                    }}
-                    pending={
-                      <SkeletonBlock count={2} label="Reading delegate" />
-                    }
-                  />
-                )}
-              </ConversationConnectionProvider>
-            </div>
-          ))}
-        </div>
-      )}
+      <ChildChatCoveredContext.Provider value={covered}>
+        <ChildChatPresentationContext.Provider value={{ trail, pane }}>
+          <div
+            className="child-chat-root"
+            hidden={!dockOutlet && covered}
+            inert={!dockOutlet && covered}
+          >
+            {children}
+          </div>
+          {!dockOutlet && (
+            <>
+              {trail}
+              {pane}
+            </>
+          )}
+        </ChildChatPresentationContext.Provider>
+      </ChildChatCoveredContext.Provider>
     </ChildChatContext.Provider>
+  );
+}
+
+function ChildHistoryLayer({ close }: { close: () => void }) {
+  const id = useId();
+  const latest = useRef(close);
+  latest.current = close;
+  useEffect(
+    () => registerDialogHistory(`child-chat-${id}`, () => latest.current()),
+    [id],
+  );
+  return null;
+}
+
+function LiveChildReader({
+  entry,
+  index,
+}: {
+  entry: ChildChatTarget;
+  index: number;
+}) {
+  const read = useCallback(
+    () => childWorkGlobalStore.getPartition(entry.connection.apiBase),
+    [entry.connection.apiBase],
+  );
+  const global = useSyncExternalStore(
+    childWorkGlobalStore.subscribe,
+    read,
+    read,
+  );
+  const observed = Object.values(global.registry.items).find(
+    (item) =>
+      item.reporterThreadId === entry.threadId &&
+      item.childId === entry.childId,
+  );
+  const [observe, setObserve] = useState(true);
+  const sessions = useOrchestrationSessionsQuery(
+    {
+      readTarget: entry.connection.station,
+      enabled: observe,
+      retry: false,
+    },
+    entry.connection.requestScope,
+  );
+  const parent = sessions.data?.find(
+    (session) => session.threadId === entry.threadId,
+  );
+  const reported = parent?.childWork?.children;
+  const reportedItem =
+    reported?.observability === 'reported'
+      ? [...reported.running, ...(reported.settled ?? [])].find(
+          (item) => item.childId === entry.childId,
+        )
+      : undefined;
+  const item =
+    observed?.status !== 'running' && observed
+      ? observed
+      : reportedItem?.status !== 'running' && reportedItem
+        ? reportedItem
+        : (observed ?? reportedItem);
+  const running = entry.childId
+    ? item?.status === 'running'
+    : parent?.childWork?.asChild?.status === 'running';
+  useEffect(() => {
+    if (sessions.isSuccess || observed) setObserve(running);
+  }, [running, sessions.isSuccess, observed]);
+  const revision = JSON.stringify(item ?? parent?.childWork?.asChild ?? null);
+  return entry.childId ? (
+    <LazyBoundary
+      load={loadEngineTranscript}
+      componentProps={{
+        id: `child-chat-${index}`,
+        threadId: entry.threadId,
+        childId: entry.childId,
+        title: item?.title ?? entry.title,
+        engineId: entry.engineId ?? parent?.provider,
+        running,
+        revision,
+      }}
+      pending={<SkeletonBlock count={2} label="Reading subagent" />}
+    />
+  ) : (
+    <LazyBoundary
+      load={loadSessionTranscript}
+      componentProps={{
+        session: { threadId: entry.threadId },
+        agentLabel: entry.title,
+        isStreaming: running,
+      }}
+      pending={<SkeletonBlock count={2} label="Reading delegate" />}
+    />
   );
 }

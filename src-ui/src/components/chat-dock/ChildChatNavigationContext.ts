@@ -1,10 +1,11 @@
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
-import { createContext, useContext } from 'react';
+import { createContext, type ReactNode, useContext } from 'react';
 import type { ConversationConnection } from '../conversation/ConversationConnectionContext';
 export interface ChildChatTarget {
   title: string;
   threadId: string;
   childId?: string;
+  engineId?: string;
   running?: boolean;
   revision?: string;
   connection: ConversationConnection;
@@ -26,6 +27,12 @@ export function childChatTarget(
     title: item.title || (sessionId ? 'Delegate' : 'Subagent'),
     threadId: sessionId ?? item.reporterThreadId,
     ...(sessionId ? {} : { childId: item.childId }),
+    engineId:
+      item.transcript?.kind === 'codex-thread'
+        ? 'codex'
+        : item.transcript?.kind === 'claude-subagent'
+          ? 'claude'
+          : undefined,
     running: item.status === 'running',
     revision: JSON.stringify([item.status, item.progress, item.usage]),
     connection,
@@ -47,4 +54,15 @@ export function useIsChildChatCovered() {
 export interface ChildChatController {
   open: (target: ChildChatTarget) => void;
   reset: () => void;
+}
+
+export const ChildChatPresentationContext = createContext<{
+  trail: ReactNode;
+  pane: ReactNode;
+} | null>(null);
+export function useChildChatTrail() {
+  return useContext(ChildChatPresentationContext)?.trail;
+}
+export function ChildChatOutlet() {
+  return useContext(ChildChatPresentationContext)?.pane;
 }

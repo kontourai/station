@@ -372,7 +372,20 @@ function OpenerUp({
 }) {
   switch (opener.source.kind) {
     case 'activity':
-      return null; // Legacy relation record; Activity no longer exists.
+      return (
+        <ConversationUp
+          instanceId={instanceId}
+          opener={{
+            ...opener,
+            source: {
+              kind: 'conversation',
+              conversationId: null,
+              threadId: opener.source.selectedThreadId,
+              projectSlug: null,
+            },
+          }}
+        />
+      );
     case 'conversation':
       return <ConversationUp instanceId={instanceId} opener={opener} />;
     case 'files':

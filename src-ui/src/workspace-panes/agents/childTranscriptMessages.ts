@@ -1,11 +1,35 @@
 import type { ChildWorkTranscriptEntry } from '@kontourai/station-contracts/child-work';
 import type { ChatMessage } from '../../types';
 
-/** Provider records carry no call/result join key: preserve their order without inventing a pairing. */
+/** Join only engine-issued call identities; legacy unkeyed results remain readable. */
 export function childTranscriptMessages(
   entries: readonly ChildWorkTranscriptEntry[],
 ): ChatMessage[] {
-  return entries.map((entry, index) => {
+  const results = new Map(
+    entries.flatMap((entry) =>
+      entry.kind === 'tool-result' && entry.toolCallId
+        ? [[entry.toolCallId, entry] as const]
+        : [],
+    ),
+  );
+  const calls = new Set(
+    entries.flatMap((entry) =>
+      entry.kind === 'tool-call' && entry.toolCallId ? [entry.toolCallId] : [],
+    ),
+  );
+  return entries.flatMap((entry, index): ChatMessage[] => {
+    if (
+      entry.kind === 'tool-result' &&
+      entry.toolCallId &&
+      calls.has(entry.toolCallId)
+    )
+      return [];
+    return [message(entry, index)];
+  });
+  function message(
+    entry: ChildWorkTranscriptEntry,
+    index: number,
+  ): ChatMessage {
     const id = `child:${entry.message}:${index}`;
     const cut = entry.truncated
       ? '\n\n[Text truncated by the engine transcript reader]'
@@ -13,7 +37,10 @@ export function childTranscriptMessages(
     switch (entry.kind) {
       case 'text':
         return { id, role: entry.role, content: entry.text + cut };
-      case 'tool-call':
+      case 'tool-call': {
+        const result = entry.toolCallId
+          ? results.get(entry.toolCallId)
+          : undefined;
         return {
           id,
           role: 'assistant',
@@ -21,10 +48,27 @@ export function childTranscriptMessages(
           contentParts: [
             {
               type: 'tool-invocation',
-              toolCallId: id,
+              toolCallId: entry.toolCallId ?? id,
               toolName: entry.name,
               input: entry.input,
-              state: 'input-available',
+              state: result
+                ? result.isError
+                  ? 'output-error'
+                  : 'output-available'
+                : 'input-available',
+              ...(result
+                ? {
+                    output:
+                      (result.text ?? 'No text output.') +
+                      (result.truncated
+                        ? '\n\n[Text truncated by the engine transcript reader]'
+                        : ''),
+                    isError: result.isError === true,
+                    ...(result.isError
+                      ? { errorText: result.text ?? 'Tool failed' }
+                      : {}),
+                  }
+                : {}),
             },
             ...(entry.truncated
               ? [
@@ -36,6 +80,7 @@ export function childTranscriptMessages(
               : []),
           ],
         };
+      }
       case 'tool-result':
         return {
           id,
@@ -55,5 +100,5 @@ export function childTranscriptMessages(
           content: 'An entry too large to show was left out.',
         };
     }
-  });
+  }
 }

@@ -196,13 +196,13 @@ afterEach(() => {
 describe('related file previews', () => {
   test('a second file from the same conversation reuses the one preview tab in place', async () => {
     await mount();
-    act(() => probe.model?.placeSurface('activity', 'right'));
+    act(() => probe.model?.placeSurface('device', 'right'));
     expect(await open('src/a.ts')).toMatchObject({
       ok: true,
       disposition: 'opened',
     });
     const firstId = previewsInRight()[0] as string;
-    expect(right().panes).toEqual(['activity', firstId]);
+    expect(right().panes).toEqual(['device', firstId]);
     expect(readPaneFence(localStorage, firstId)).toEqual({
       status: 'fenced',
       stationId: 'station-a',
@@ -214,7 +214,7 @@ describe('related file previews', () => {
     });
     const [secondId] = previewsInRight();
     expect(secondId).not.toBe(firstId);
-    expect(right().panes).toEqual(['activity', secondId]);
+    expect(right().panes).toEqual(['device', secondId]);
     expect(right().occupant).toBe(secondId);
     // The replaced occurrence is gone: its state, its fence, its relation.
     expect(readFilePreviewPaneState(localStorage, firstId)).toBe(null);
@@ -858,16 +858,16 @@ describe('on a phone, what a related preview folds over is what it asks', () => 
 });
 
 describe('what a guard was asked about is what a preview commits over', () => {
-  /** A kept preview of src/a.ts in Related, with Activity in front of it. */
-  async function keptPreviewUnderActivity() {
+  /** A kept preview of src/a.ts in Related, with Device in front of it. */
+  async function keptPreviewUnderDevice() {
     await mount();
     await open('src/a.ts');
     const [kept] = previewsInRight();
     await act(async () => {
       await probe.relations?.keep(kept as string);
     });
-    act(() => probe.model?.placeSurface('activity', 'right'));
-    expect(right().occupant).toBe('activity');
+    act(() => probe.model?.placeSurface('device', 'right'));
+    expect(right().occupant).toBe('device');
   }
 
   const requests: Array<[string, string]> = [
@@ -878,7 +878,7 @@ describe('what a guard was asked about is what a preview commits over', () => {
   test.each(requests)(
     'opening %s over a guard that moves other unsaved work in before it answers opens nothing',
     async (_name, path) => {
-      await keptPreviewUnderActivity();
+      await keptPreviewUnderDevice();
       const agentsAsked = vi.fn();
       const unregisterAgents = navigationStore.registerNavigationGuard(
         Symbol('agents draft'),
@@ -896,7 +896,7 @@ describe('what a guard was asked about is what a preview commits over', () => {
           probe.model?.placeSurface('workspace-agents', 'right');
           proceed();
         },
-        'activity',
+        'device',
       );
       try {
         const relations = localStorage.getItem(PANE_RELATIONS_STORAGE_KEY);
@@ -924,7 +924,7 @@ describe('what a guard was asked about is what a preview commits over', () => {
   test.each(requests)(
     'opening %s while more unsaved work is registered for the asked pane opens nothing',
     async (_name, path) => {
-      await keptPreviewUnderActivity();
+      await keptPreviewUnderDevice();
       const firstAsked = vi.fn();
       let answerFirst: (() => void) | null = null;
       const unregisterFirst = navigationStore.registerNavigationGuard(
@@ -933,7 +933,7 @@ describe('what a guard was asked about is what a preview commits over', () => {
           firstAsked();
           answerFirst = proceed;
         },
-        'activity',
+        'device',
       );
       const secondAsked = vi.fn();
       let unregisterSecond: (() => void) | null = null;
@@ -953,7 +953,7 @@ describe('what a guard was asked about is what a preview commits over', () => {
             secondAsked();
             cancel?.();
           },
-          'activity',
+          'device',
         );
         act(() => answerFirst?.());
         let outcome!: RelatedOpenOutcome;
@@ -970,4 +970,17 @@ describe('what a guard was asked about is what a preview commits over', () => {
       }
     },
   );
+});
+
+test('mounting the migrated region owner removes retired review state only', async () => {
+  localStorage.setItem(
+    'station:activity-review:v1:activity-review:legacy',
+    '{"threadId":"old"}',
+  );
+  localStorage.setItem('station:unrelated', 'keep');
+  await mount();
+  expect(
+    localStorage.getItem('station:activity-review:v1:activity-review:legacy'),
+  ).toBeNull();
+  expect(localStorage.getItem('station:unrelated')).toBe('keep');
 });

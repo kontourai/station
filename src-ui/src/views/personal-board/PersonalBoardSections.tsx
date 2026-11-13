@@ -153,7 +153,7 @@ function AttentionSection({
       </ReadState>
       {query.data?.unavailableSources?.length ? (
         <p role="status">
-          Some attention sources are unavailable. Open Activity to inspect the
+          Some attention sources are unavailable. Open the inbox to inspect the
           remaining work.
         </p>
       ) : null}

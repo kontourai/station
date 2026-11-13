@@ -1,3 +1,9 @@
+vi.mock('../AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => (
+    <p data-testid="region-workspace-agents-occupant" />
+  ),
+}));
+
 /** @vitest-environment jsdom */
 
 /**
@@ -562,7 +568,7 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
   // all of `ChatWorkspacePane`. What it CAN prove for Chat, with the mock,
   // is `DockShell`'s own always-present piece: the resize handle. The rest
   // of the control set is covered where the real `ChatDockHeader` (the SAME
-  // shared component the Activity region shell uses) is unit-tested with
+  // shared component the Agents region shell uses) is unit-tested with
   // `chatControls` supplied: `ChatDockHeaderCollapse.test.tsx`
   // (maximize/collapse/placement and the header's accessible-name pin).
   test('Chat, docked by default, gets the shell resize handle', async () => {
@@ -674,7 +680,7 @@ describe('the region bar is a header drag surface (real chrome)', () => {
     // A coarse pointer folds every placement to bottom and renders no tab
     // strip. The AMBIENT mount is chat-locked (its selection never leaves
     // chat, so there the bar yields to ChatDockMobileHeader), so the coarse
-    // bar drives a regional mount holding Activity.
+    // bar drives a regional mount holding Agents.
     vi.stubGlobal(
       'matchMedia',
       vi.fn((query: string) => ({
@@ -693,7 +699,7 @@ describe('the region bar is a header drag surface (real chrome)', () => {
               <RegionPaneHost
                 regionId="bottom"
                 // Bottom's default occupant is chat (and its pane set keeps
-                // it beside Activity), so both renderers need a stub; only
+                // it beside Agents), so both renderers need a stub; only
                 // the SELECTED pane's is on this test's path.
                 renderChatPane={() => <p data-testid="region-chat-occupant" />}
               />
@@ -701,9 +707,13 @@ describe('the region bar is a header drag surface (real chrome)', () => {
           </NavigationProvider>
         </KeyboardShortcutsProvider>,
       );
-      act(() => currentRegionModel().placeSurface('activity', 'bottom'));
+      act(() =>
+        currentRegionModel().placeSurface('workspace-agents', 'bottom'),
+      );
       await waitFor(() =>
-        expect(screen.queryByTestId('region-activity-occupant')).not.toBeNull(),
+        expect(
+          screen.queryByTestId('region-workspace-agents-occupant'),
+        ).not.toBeNull(),
       );
       const shell = document.querySelector('.chat-dock--bottom') as HTMLElement;
       const bar = shell.querySelector('.region-chrome') as HTMLElement;

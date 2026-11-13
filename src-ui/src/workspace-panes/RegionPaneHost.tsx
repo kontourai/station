@@ -497,12 +497,8 @@ function ownedByPane(instance: WorkspacePaneInstance, pane: ReactNode) {
  * writes the ARRANGEMENT (`selectPane`), never the controller, so selection
  * runs one way through this seam: model → host.
  *
- * The renderers are supplied by the caller, not imported: Chat's lives in
- * `ChatDock.tsx` and Activity's behind `RegionShells`' lazy boundary, and
- * this module must import neither surface's render graph. `renderActivityPane`
- * is optional only for the model-less mount, whose host holds Chat alone; a
- * region host that is handed an Activity pane without its renderer throws,
- * which the lazy boundary reports, rather than rendering nothing.
+ * Chat's renderer is supplied by its controller to preserve the conversation
+ * boundary. Other panes resolve through the canonical renderer registry.
  */
 export function RegionPaneHost({
   regionId,

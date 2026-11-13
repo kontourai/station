@@ -16,6 +16,7 @@ import {
   RestoreGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { useChildChatTrail } from './ChildChatNavigationContext';
 import '../NewChatAction.css';
 import './ChatDockHeader.css';
 import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
@@ -182,6 +183,7 @@ export function ChatDockMobileHeader({
   onNewChat,
   overflow,
 }: ChatDockMobileHeaderProps) {
+  const childTrail = useChildChatTrail();
   const hostLeading = useContext(MobileDockHeaderLeadingContext);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const [isProjectOpen, setIsProjectOpen] = useState(false);
@@ -204,14 +206,14 @@ export function ChatDockMobileHeader({
     .join(', ');
   return (
     <div
-      className="chat-dock__header chat-dock__mobile-header"
+      className={`chat-dock__header chat-dock__mobile-header${childTrail ? ' chat-dock__mobile-header--child' : ''}`}
       onPointerDown={onDragPointerDown}
       onClickCapture={onDragClickCapture}
       data-dock-drag-surface=""
       data-testid="chat-dock-mobile-header"
     >
       <div className="chat-dock__mobile-leading">
-        {hostLeading}
+        {!childTrail && hostLeading}
         {showDrawerToggle ? (
           <button
             type="button"
@@ -262,7 +264,7 @@ export function ChatDockMobileHeader({
             {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
           </button>
         )}
-        {projectSwitcher && !agentIdentity && (
+        {projectSwitcher && !agentIdentity && !childTrail && (
           <button
             ref={projectTriggerRef}
             type="button"
@@ -329,7 +331,7 @@ export function ChatDockMobileHeader({
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
             title={inboxActive ? undefined : sessionTitle}
           >
-            {inboxActive ? 'Inbox' : sessionTitle}
+            {childTrail ?? (inboxActive ? 'Inbox' : sessionTitle)}
           </span>
           {!inboxActive && agentIdentity && ' '}
           {!inboxActive && (agentIdentity || stationName) && (
@@ -345,7 +347,7 @@ export function ChatDockMobileHeader({
         </span>
       </div>
       <div className="chat-dock__mobile-actions">
-        {hasConversation || showConnection ? (
+        {hasConversation || childTrail || showConnection ? (
           <button
             ref={chatActionsTriggerRef}
             type="button"

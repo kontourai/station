@@ -418,7 +418,8 @@ export function ChatDockHeader({
   const leading = (
     <>
       {slots?.start === undefined ? inboxToggle : null}
-      {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
+      {chatIdentity &&
+      (!slots?.namesPane || retainIdentityInNamedPane || childCovered) ? (
         <div
           className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
         >
@@ -505,7 +506,6 @@ export function ChatDockHeader({
   // A full-screen placement has no region bar and ignores a region's slots —
   // except a bar that names the pane itself (the Coding layout's
   // breadcrumb, #3046), which it joins: its own bar would repeat the title.
-  if (childCovered) return null;
 
   if (slots && (!fullscreen || slots.namesPane)) {
     return (

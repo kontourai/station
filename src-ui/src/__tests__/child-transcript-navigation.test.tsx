@@ -5,6 +5,7 @@ import type {
   ChildWorkItem,
   ChildWorkTranscriptEntry,
 } from '@kontourai/station-contracts/child-work';
+import { useChildWorkTranscriptQuery } from '@kontourai/station-sdk';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -32,6 +33,7 @@ import {
   useChildChatNavigation,
 } from '../components/chat-dock/ChildChatNavigationContext';
 import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
+import { childWorkGlobalStore } from '../contexts/child-work-global-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
@@ -63,6 +65,7 @@ const history = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
   useChildWorkTranscriptQuery: vi.fn(() => ({
     data: { pages: [{ entries: history.entries }] },
     isSuccess: !history.error,
@@ -76,6 +79,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 const initialEntries = history.entries;
 afterEach(() => {
   cleanup();
+  childWorkGlobalStore.reset();
   history.entries = initialEntries;
   history.error = undefined;
   history.refetch.mockClear();
@@ -247,7 +251,7 @@ test('the mounted child transcript fits desktop and phone panes in both themes',
   }
 });
 
-test('a child hides the real parent header portals and restores them on return', async () => {
+test('a child keeps the parent header controls mounted in their portals', async () => {
   const leading = document.createElement('span');
   const trailing = document.createElement('span');
   document.body.append(leading, trailing);
@@ -289,7 +293,7 @@ test('a child hides the real parent header portals and restores them on return',
     const trail = await screen.findByRole('navigation', {
       name: 'Chat breadcrumb',
     });
-    expect(within(leading).queryByText('Parent toolbar')).toBeNull();
+    expect(within(leading).getByText('Parent toolbar')).toBeTruthy();
     expect(coverage).toHaveBeenLastCalledWith(true);
     expect(release).toHaveBeenCalledOnce();
     fireEvent.click(within(trail).getByRole('button', { name: 'Parent chat' }));
@@ -358,5 +362,47 @@ test('a consumed external child intent stays open, then the pane controller retu
   expect(screen.getByRole('textbox', { name: 'Parent draft' })).toHaveProperty(
     'value',
     'Keep this draft',
+  );
+});
+
+test('a mounted child consumes live settlement instead of retaining its open-time running flag', async () => {
+  const running = { ...item, childId: 'nested', status: 'running' as const };
+  childWorkGlobalStore.reconcileSnapshot(connection.apiBase, [
+    {
+      threadId: 'parent',
+      childWork: {
+        children: {
+          observability: 'reported',
+          running: [running],
+          observedAt: '2026-11-13T00:00:00Z',
+        },
+      },
+    },
+  ]);
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  await screen.findByRole('heading', { name: 'Child answer' });
+  expect(
+    vi.mocked(useChildWorkTranscriptQuery).mock.calls.at(-1)?.[0].running,
+  ).toBe(true);
+  act(() =>
+    childWorkGlobalStore.reconcileSnapshot(connection.apiBase, [
+      {
+        threadId: 'parent',
+        childWork: {
+          children: {
+            observability: 'reported',
+            running: [],
+            settled: [{ ...running, status: 'completed' }],
+            observedAt: '2026-11-13T00:01:00Z',
+          },
+        },
+      },
+    ]),
+  );
+  await waitFor(() =>
+    expect(
+      vi.mocked(useChildWorkTranscriptQuery).mock.calls.at(-1)?.[0].running,
+    ).toBe(false),
   );
 });

@@ -7,7 +7,8 @@ export interface SessionReaderBinding {
   /** Deep-linked session id of whichever placement supplied it, if any. */
   sessionId?: string;
   messageAnchor?: SessionMessageAnchor;
-  /** Routed focus target, forwarded to the sessions surface untouched. */
+  /** Reveal the selected record's evidence for this activation. */
+  focus?: 'evidence';
   /**
    * Monotonic activation identity, including repeated intents for the same
    * session. Supplied by the region placement, which is the only one that

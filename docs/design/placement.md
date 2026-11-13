@@ -267,7 +267,7 @@ every other route. These rules make it a region rather than a special case
   `?surface=home` deep link. Home is `hiddenFromNav` and has no palette
   entry.
 - **A `main` occupant's toggle returns it to the dock.** A surface's chord
-  (⌘⇧A for Activity) and its row in the folded Regions menu are one model
+  (⌘D for Chat) and its row in the folded Regions menu are one model
   command, `toggleSurface` (#1523; the toolbar carries no placement rule of its
   own, #1420): a dock occupant's region is hidden or shown, and a surface
   occupying `main` is moved to its default dock region — visible, Home left in
@@ -1336,7 +1336,7 @@ one arrangement, and no control at all that said whether a region was open
   renders no `RegionChromeBar`, so a surface holding it (Activity) leaves
   through: a dock region's chooser, which lists it as "Move here from Main"
   (#2154; #2143's "Show Activity here" offer row); its chord
-  (⌘⇧A, `toggleSurface`: to its default dock region, Home back in `main`);
+  (retired Activity chord; Chat uses ⌘D and `toggleSurface`);
   or the sidebar's Home row (`showSurface('home')` places Home, and the
   displaced surface is unplaced — its chord places it afresh in its dock,
   and its sidebar row makes it the page again). With every dock region occupied there is no pointer route in the

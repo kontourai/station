@@ -16,7 +16,7 @@ import './ChildWorkTranscript.css';
 /**
  * #3163: an engine subagent's own transcript, read-only. The server resolves
  * it from the reporting session's persisted facts; this view names only the
- * session and the child. Pages load on request, never by polling.
+ * session and the child. Running children poll; settlement stops polling.
  */
 
 /** A reporting child's transcript re-reads at most this often. */
@@ -36,7 +36,11 @@ export function ChildWorkTranscript({
   childId,
   running,
   revision,
+  title = 'Subagent',
+  engineId,
 }: {
+  title?: string;
+  engineId?: string;
   id: string;
   threadId: string;
   childId: string;
@@ -85,9 +89,9 @@ export function ChildWorkTranscript({
       threadId,
       childId,
     ]),
-    agentSlug: agentId('record'),
-    agentName: 'Subagent',
-    title: 'Subagent',
+    agentSlug: agentId(engineId ?? 'record'),
+    agentName: title,
+    title,
     source: 'manual',
     messages: childTranscriptMessages(entries),
     input: '',

@@ -120,3 +120,46 @@ test('duplicate retired panes close their emptied dock after migration', () => {
   expect(migrated.right.occupant).toBeNull();
   expect(migrated.right.visible).toBe(false);
 });
+
+test('engine calls join their own results across page boundaries without extra assistant bubbles', () => {
+  const messages = childTranscriptMessages([
+    {
+      message: 0,
+      kind: 'tool-call',
+      toolCallId: 'a',
+      name: 'Read',
+      input: 'one.ts',
+    },
+    {
+      message: 0,
+      kind: 'tool-call',
+      toolCallId: 'b',
+      name: 'Read',
+      input: 'two.ts',
+    },
+    {
+      message: 1,
+      kind: 'tool-result',
+      toolCallId: 'b',
+      text: 'no access',
+      isError: true,
+    },
+    {
+      message: 2,
+      kind: 'tool-result',
+      toolCallId: 'a',
+      text: 'export const ok = true;',
+    },
+  ]);
+  expect(messages).toHaveLength(2);
+  expect(messages[0].contentParts?.[0]).toMatchObject({
+    toolCallId: 'a',
+    state: 'output-available',
+    output: 'export const ok = true;',
+  });
+  expect(messages[1].contentParts?.[0]).toMatchObject({
+    toolCallId: 'b',
+    state: 'output-error',
+    errorText: 'no access',
+  });
+});

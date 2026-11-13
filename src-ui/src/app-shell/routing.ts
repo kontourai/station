@@ -1,11 +1,9 @@
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import {
   parseResourceDetailPath,
   resourceDetailPath,
 } from '../components/resource-hub/resource-detail-route';
-import { parseSurfaceDeepLink } from '../contexts/surface-deep-link';
 import type { DeveloperTab, NavigationView } from '../types';
 import {
   CONNECTION_SECTIONS,
@@ -163,16 +161,22 @@ export function getLegacyPathRedirect(path: string): string | null {
     if (redirect) return redirect;
   }
 
-  // Permanent compatibility for saved notification and browser URLs.
-  if (new URLSearchParams(search).get('surface') === 'activity') {
-    const intent = parseSurfaceDeepLink(new URLSearchParams(search));
-    return activityDeepLink(intent ?? undefined);
-  }
-  if (RETIRED_ACTIVITY_PATHS.has(pathname)) {
-    const params = new URLSearchParams(search);
-    params.set('surface', 'chat');
-    const intent = parseSurfaceDeepLink(params);
-    return activityDeepLink(intent ?? undefined);
+  // Preserve notification/read and dock state when translating old links.
+  const legacyParams = new URLSearchParams(search);
+  if (
+    legacyParams.get('surface') === 'activity' ||
+    RETIRED_ACTIVITY_PATHS.has(pathname)
+  ) {
+    if (!legacyParams.get('session')) {
+      legacyParams.delete('surface');
+      const query = legacyParams.toString();
+      return `/notifications${query ? `?${query}` : ''}`;
+    }
+    const translated = new URLSearchParams({ surface: 'chat' });
+    for (const [key, value] of legacyParams)
+      if (key !== 'surface') translated.append(key, value);
+    const targetPath = RETIRED_ACTIVITY_PATHS.has(pathname) ? '/' : pathname;
+    return `${targetPath}?${translated.toString()}`;
   }
 
   // #2065: the global `/review-queue` is retired — Review is a layout kind a

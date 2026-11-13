@@ -860,7 +860,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-server/services/orchestration/__tests__/orchestration-service.scan.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
   'src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts',
-  'src-ui/src/__tests__/activity-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/board-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/connection-host-copy.test.ts',
   'src-ui/src/__tests__/copy-affordance-cascade.test.ts',

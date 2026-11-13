@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
   WORKSPACE_READINESS_PANE_DESCRIPTOR,
@@ -829,7 +829,7 @@ describe('direct plugin Pane occurrences (station#3543)', () => {
     });
 
     test('leaves a pane whose renderer DID resolve alone, however slow a sibling bundle is', () => {
-      const builtin = WORKSPACE_ACTIVITY_PANE_DESCRIPTOR;
+      const builtin = WORKSPACE_AGENTS_PANE_DESCRIPTOR;
       // Guard: this fixture only proves anything while the builtin's renderer
       // really does select. If that stops being true the assertion below
       // becomes vacuous.
@@ -869,7 +869,7 @@ test('pane discovery withdraws experimental panes by default and admits each dev
   hookInputs.catalog = {
     projectId: 'demo',
     descriptors: [
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      WORKSPACE_AGENTS_PANE_DESCRIPTOR,
       WORKSPACE_PLAN_PANE_DESCRIPTOR,
       WORKSPACE_READINESS_PANE_DESCRIPTOR,
       WORKSPACE_TRUST_PANE_DESCRIPTOR,
@@ -881,12 +881,12 @@ test('pane discovery withdraws experimental panes by default and admits each dev
   const ids = () =>
     hook.result.current.entries.map((entry) => entry.descriptor.id);
   try {
-    expect(ids()).toEqual([WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id]);
+    expect(ids()).toEqual([WORKSPACE_AGENTS_PANE_DESCRIPTOR.id]);
     act(() => deviceSettingsStore.set('developerToolsEnabled', true));
-    expect(ids()).toEqual([WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id]);
+    expect(ids()).toEqual([WORKSPACE_AGENTS_PANE_DESCRIPTOR.id]);
     act(() => deviceSettingsStore.set('experimentalTrustEnabled', true));
     expect(ids()).toEqual([
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
+      WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
       WORKSPACE_TRUST_PANE_DESCRIPTOR.id,
     ]);
     act(() => deviceSettingsStore.set('experimentalFlowEnabled', true));
@@ -895,7 +895,7 @@ test('pane discovery withdraws experimental panes by default and admits each dev
     act(() => deviceSettingsStore.set('experimentalReadinessEnabled', true));
     expect(ids()).toHaveLength(4);
     act(() => deviceSettingsStore.set('developerToolsEnabled', false));
-    expect(ids()).toEqual([WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id]);
+    expect(ids()).toEqual([WORKSPACE_AGENTS_PANE_DESCRIPTOR.id]);
   } finally {
     hook.unmount();
     hookInputs.catalog = undefined;

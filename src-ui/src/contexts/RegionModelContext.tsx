@@ -229,7 +229,7 @@ export interface RegionModelValue {
    *
    * `options.region` names the region instead of the surface's rule. Its one
    * caller is `useShowSurfacePage`, which asks for `main`: a place row (the
-   * sidebar's Activity, the palette's Activity, Home's "View Activity") goes
+   * palette's Home entry) goes
    * to the surface's page rather than revealing it where it last was. The
    * outbox is handled the same either way, so a page open with no intent
    * clears an undelivered record exactly as a plain reveal does.
@@ -658,6 +658,17 @@ function recordOf(value: unknown): RegionArrangementRecord | null {
 
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
+  useEffect(() => {
+    // Removed review readers must not retain their old session selection.
+    try {
+      for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith('station:activity-review:v1:'))
+          window.localStorage.removeItem(key);
+      }
+    } catch {
+      /* Storage can be unavailable; the retired pane is never mounted. */
+    }
+  }, []);
   const {
     isDockOpen,
     isDockMaximized,

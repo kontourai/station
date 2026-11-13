@@ -150,7 +150,14 @@ test.describe('subagent transcript cards', () => {
                   message: 1,
                   kind: 'tool-call',
                   name: 'Bash',
+                  toolCallId: 'child-tool-1',
                   input: 'gh pr view 3657 --repo kontourai/station',
+                },
+                {
+                  message: 2,
+                  kind: 'tool-result',
+                  toolCallId: 'child-tool-1',
+                  text: 'Checks passed',
                 },
               ],
             },
@@ -618,7 +625,7 @@ test.describe('subagent transcript cards', () => {
     expect(box?.width ?? 0).toBeLessThanOrEqual(390);
     // The card's one action keeps the 44px phone floor and stays on screen.
     const viewTranscript = card.getByRole('button', {
-      name: 'View transcript',
+      name: 'Open chat',
     });
     const actionBox = await viewTranscript.boundingBox();
     expect(actionBox?.height ?? 0).toBeGreaterThanOrEqual(44);
@@ -628,12 +635,14 @@ test.describe('subagent transcript cards', () => {
     );
     await viewTranscript.click();
     await expect(
-      card.getByText('gh pr view 3657 --repo kontourai/station'),
+      page
+        .locator('.child-work-transcript')
+        .getByText('gh pr view 3657 --repo kontourai/station'),
     ).toBeVisible();
-    await card.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: testInfo.outputPath('subagent-card-expanded-mobile-390.png'),
     });
+    await page.getByRole('button', { name: 'Back to parent chat' }).click();
     await card
       .getByRole('button', { name: /review station#3657 ADR freeze/ })
       .click();

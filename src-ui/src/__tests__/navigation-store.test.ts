@@ -565,7 +565,7 @@ describe('navigationStore legacy Activity canonicalization', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
 
     expect(window.location.pathname + window.location.search).toBe(
-      '/?surface=activity&session=x',
+      '/?surface=chat&session=x&anything=y',
     );
     expect(navigationStore.getSnapshot().pathname).toBe('/');
   });
@@ -576,19 +576,19 @@ describe('navigationStore shell surface intents', () => {
     window.history.replaceState(
       {},
       '',
-      '/?surface=activity&session=thread%2Falpha&focus=evidence',
+      '/?surface=chat&session=thread%2Falpha&focus=evidence',
     );
     window.dispatchEvent(new PopStateEvent('popstate'));
 
     expect(navigationStore.getSnapshot().surfaceIntent).toEqual({
-      surfaceId: 'activity',
+      surfaceId: 'chat',
       sessionId: 'thread/alpha',
       focus: 'evidence',
     });
 
     navigationStore.navigate('/registry');
     expect(window.location.pathname + window.location.search).toBe(
-      '/registry?surface=activity&session=thread%2Falpha&focus=evidence',
+      '/registry?surface=chat&session=thread%2Falpha&focus=evidence',
     );
   });
 });
@@ -983,16 +983,16 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     window.history.replaceState(
       {},
       '',
-      '/settings?surface=activity&session=x&focus=evidence',
+      '/settings?surface=chat&session=x&focus=evidence',
     );
     navigationStore.navigate('/projects');
     expect(window.location.pathname + window.location.search).toBe(
-      '/projects?surface=activity&session=x&focus=evidence',
+      '/projects?surface=chat&session=x&focus=evidence',
     );
   });
 
   test('does not retain a surface intent fragment when the caller clears its surface', () => {
-    window.history.replaceState({}, '', '/projects?surface=activity&session=x');
+    window.history.replaceState({}, '', '/projects?surface=chat&session=x');
     navigationStore.navigate('/settings', { surface: null });
     expect(window.location.pathname + window.location.search).toBe('/settings');
   });
@@ -1004,12 +1004,12 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     window.history.replaceState(
       {},
       '',
-      '/projects?surface=activity&session=x&focus=evidence',
+      '/projects?surface=chat&session=x&focus=evidence',
     );
-    navigationStore.navigate('/?surface=chat');
+    navigationStore.navigate('/?surface=home');
     const params = new URLSearchParams(window.location.search);
     expect(window.location.pathname).toBe('/');
-    expect(params.get('surface')).toBe('chat');
+    expect(params.get('surface')).toBe('home');
     expect(params.get('session')).toBeNull();
     expect(params.get('focus')).toBeNull();
   });
@@ -1018,12 +1018,12 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     window.history.replaceState(
       {},
       '',
-      '/projects?surface=activity&session=x&focus=evidence',
+      '/projects?surface=chat&session=x&focus=evidence',
     );
-    navigationStore.navigate('/settings', { surface: 'chat' });
+    navigationStore.navigate('/settings', { surface: 'home' });
     const params = new URLSearchParams(window.location.search);
     expect(window.location.pathname).toBe('/settings');
-    expect(params.get('surface')).toBe('chat');
+    expect(params.get('surface')).toBe('home');
     expect(params.get('session')).toBeNull();
     expect(params.get('focus')).toBeNull();
   });
@@ -1032,12 +1032,12 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     window.history.replaceState(
       {},
       '',
-      '/projects?surface=activity&session=x&focus=evidence',
+      '/projects?surface=chat&session=x&focus=evidence',
     );
-    navigationStore.navigate('/settings?surface=activity');
+    navigationStore.navigate('/settings?surface=chat');
     const params = new URLSearchParams(window.location.search);
     expect(window.location.pathname).toBe('/settings');
-    expect(params.get('surface')).toBe('activity');
+    expect(params.get('surface')).toBe('chat');
     expect(params.get('session')).toBe('x');
     expect(params.get('focus')).toBe('evidence');
   });

@@ -1,6 +1,5 @@
 import * as basisPane from '@kontourai/station-basis-pane/workspace-basis-pane';
 import * as contracts from '@kontourai/station-contracts';
-import { WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { createWorkspaceChatPaneInstance } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   createWorkspaceCodingDiffPaneInstance,
@@ -27,12 +26,11 @@ describe('known Workspace Pane declarations', () => {
 
     expect(catalog.instanceCount).toBe(0);
     expect(
-      catalog.getDescriptor(WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR.id),
+      catalog.getDescriptor('pane:builtin:activity-review'),
     ).toBeUndefined();
     expect(
       KNOWN_WORKSPACE_PANE_DECLARATIONS.find(
-        (item) =>
-          item.descriptor.id === WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR.id,
+        (item) => item.descriptor.id === 'pane:builtin:activity-review',
       )?.createInstance,
     ).toBeUndefined();
     expect(
