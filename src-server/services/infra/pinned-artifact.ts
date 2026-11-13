@@ -19,7 +19,6 @@ import {
   realpathSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 export type PinnedArtifactFailure =
@@ -54,6 +53,31 @@ export interface PinnedArtifactDownload {
   sourceName: string;
   /** Called with the running byte count after each chunk. */
   onProgress?: (receivedBytes: number) => void;
+}
+
+/**
+ * The chunks of a fetch body, read through its reader. Typed by the reader
+ * alone, so it holds under both the DOM and Node stream declarations; a
+ * consumer that stops early cancels the body.
+ */
+async function* webStreamChunks(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader();
+  let finished = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        finished = true;
+        return;
+      }
+      yield value;
+    }
+  } finally {
+    if (!finished) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
 }
 
 /**
@@ -112,7 +136,7 @@ export async function downloadPinnedArtifact(
   const file = createWriteStream(input.dest);
   const closed = new Promise<void>((resolve) => file.once('close', resolve));
   try {
-    await pipeline(Readable.fromWeb(response.body), checked, file);
+    await pipeline(webStreamChunks(response.body), checked, file);
   } catch (error) {
     // pipeline settles once the stream is destroyed, which can be before its
     // asynchronous open has finished: wait for the descriptor to close, or
