@@ -9,7 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page } from '@playwright/test';
 import { build, type Plugin } from 'esbuild';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SDK_ENTRY = createRequire(import.meta.url).resolve(
@@ -108,10 +108,12 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { UpdatesPanel } from './src-ui/src/components/updates/UpdatesPanel';
+import { WhatsNewDialog } from './src-ui/src/components/updates/WhatsNewDialog';
 import { ServerOlderLaunchCheck } from './src-ui/src/components/ServerOlderLaunchCheck';
 
 function Harness() {
   const [open, setOpen] = useState(false);
+  if (window.__scene === 'notes') return <WhatsNewDialog version="0.1.11-nightly.246303" nativeApp={false} serverKey="fixture" onClose={() => {}} />;
   return <>
     <ServerOlderLaunchCheck clientVersion="0.1.11-nightly.2465" />
     <button type="button" onClick={() => setOpen(true)}>Review updates</button>
@@ -162,6 +164,7 @@ async function mount(
   theme: 'light' | 'dark',
   viewport: keyof typeof VIEWPORTS,
   scenario: 'update' | 'manual',
+  scene = 'updates',
 ) {
   await page.setViewportSize(VIEWPORTS[viewport]);
   await page.setContent(
@@ -170,12 +173,16 @@ async function mount(
   );
   await page.addStyleTag({ content: harnessStyles });
 
-  await page.evaluate((value) => {
-    (window as typeof window & { __scenario: string }).__scenario = value;
-    try {
-      window.localStorage.clear();
-    } catch {}
-  }, scenario);
+  await page.evaluate(
+    ({ scenario, scene }) => {
+      (window as typeof window & { __scenario: string }).__scenario = scenario;
+      (window as typeof window & { __scene: string }).__scene = scene;
+      try {
+        window.localStorage.clear();
+      } catch {}
+    },
+    { scenario, scene },
+  );
   await page.addScriptTag({ content: harnessScript });
 }
 
@@ -318,4 +325,118 @@ for (const theme of ['light', 'dark'] as const) {
       );
     });
   }
+}
+
+for (const capture of [
+  {
+    name: 'updates-after-390-dark',
+    theme: 'dark',
+    viewport: 'phone',
+    scene: 'updates',
+  },
+  {
+    name: 'updates-after-1440-light',
+    theme: 'light',
+    viewport: 'desktop',
+    scene: 'updates',
+  },
+  {
+    name: 'updates-history-after-390-dark',
+    theme: 'dark',
+    viewport: 'phone',
+    scene: 'history',
+  },
+  {
+    name: 'updates-notes-after-390-light',
+    theme: 'light',
+    viewport: 'phone',
+    scene: 'notes',
+  },
+] as const) {
+  test(`learning media ${capture.name}`, async ({ page }, testInfo) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.route(
+      'https://api.github.com/repos/kontourai/station/releases**',
+      (route) => {
+        const history = [
+          {
+            tag_name: 'v0.1.11-nightly.246500',
+            name: 'Available server release',
+            draft: false,
+            body: '- Available server improvements.',
+          },
+          {
+            tag_name: 'v0.1.11-nightly.246303',
+            name: 'Installed server release',
+            draft: false,
+            body: '## Server changes\n- Restores connections after a server restart.\n- Shows the installed server changelog.',
+          },
+          {
+            tag_name: 'v0.1.10',
+            name: 'Earlier server release',
+            draft: false,
+            body: '- Earlier server changes.',
+          },
+        ];
+        if (new URL(route.request().url()).search)
+          return route.fulfill({ json: history });
+        const tag = decodeURIComponent(
+          new URL(route.request().url()).pathname.split('/').at(-1)!,
+        );
+        const release = history.find((entry) => entry.tag_name === tag);
+        if (!release) return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({ json: release });
+      },
+    );
+    await mount(page, capture.theme, capture.viewport, 'update', capture.scene);
+    if (capture.scene !== 'notes') {
+      await page
+        .getByRole('button', { name: 'Review updates', exact: true })
+        .click();
+      await expect(
+        page.getByText('Available server improvements.'),
+      ).toBeVisible();
+    }
+    await expect(
+      page.getByText('Shows the installed server changelog.'),
+    ).toBeVisible();
+    if (capture.scene === 'history') {
+      await page
+        .getByRole('button', {
+          name: 'Previous versions and changelogs',
+          exact: true,
+        })
+        .click();
+      const release = page.getByRole('combobox', {
+        name: 'Release',
+        exact: true,
+      });
+      await release.selectOption('v0.1.10');
+      await expect(page.getByText('Earlier server changes.')).toBeVisible();
+      await release.scrollIntoViewIfNeeded();
+      const box = await release.boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+      await release.focus();
+      await expect(release).toBeFocused();
+      await page.keyboard.press('Tab');
+    }
+    await page.evaluate(async () => {
+      await Promise.all(
+        document
+          .getAnimations()
+          .map((animation) => animation.finished.catch(() => {})),
+      );
+    });
+    await expectNoHorizontalScroll(page);
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath(`${capture.name}.png`) });
+    const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e/media');
+    mkdirSync(retained, { recursive: true });
+    copyFileSync(
+      testInfo.outputPath(`${capture.name}.png`),
+      resolve(retained, `${capture.name}.png`),
+    );
+  });
 }
