@@ -99,6 +99,10 @@ export type ManagedInstallState =
       readonly kind: 'installing';
       /** ISO 8601. */
       readonly startedAt: string;
+      /** Bytes fetched so far, across every artifact of this install. */
+      readonly receivedBytes?: number;
+      /** Bytes the pinned artifacts for this host add up to. */
+      readonly totalBytes?: number;
     }
   | {
       readonly kind: 'installed';
@@ -114,6 +118,32 @@ export type ManagedInstallState =
 
 /** The argv token a descriptor's `managedRuntime.argv` uses for the entry script. */
 export const MANAGED_RUNTIME_SCRIPT_TOKEN = '{script}' as const;
+
+/**
+ * The `command` a built-in managed-runtime entry (and a connection saved from
+ * it) carries: `station-managed:<installId>`. It names no program on PATH;
+ * Station resolves it at launch to the install's runtime and the
+ * descriptor's argv. It is how a connection is keyed to its install rather
+ * than to the runtime's executable name, which two engines can share.
+ */
+export const MANAGED_RUNTIME_COMMAND_PREFIX = 'station-managed:' as const;
+
+export function managedRuntimeCommand(installId: string): string {
+  if (!isManagedInstallId(installId))
+    throw new Error('installId is not a managed install id');
+  return `${MANAGED_RUNTIME_COMMAND_PREFIX}${installId}`;
+}
+
+/** The install id a managed-runtime command names, or undefined for any other command. */
+export function managedRuntimeInstallIdOf(command: unknown): string | undefined {
+  if (
+    typeof command !== 'string' ||
+    !command.startsWith(MANAGED_RUNTIME_COMMAND_PREFIX)
+  )
+    return undefined;
+  const id = command.slice(MANAGED_RUNTIME_COMMAND_PREFIX.length);
+  return isManagedInstallId(id) ? id : undefined;
+}
 
 const INSTALL_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
