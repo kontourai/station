@@ -428,8 +428,16 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
 
   test('recording an incomplete run is refused and leaves the baseline untouched', () => {
     const result = complete();
-    delete result.metrics.idleCpuPercent;
+    // The shape a run writes for a gap: present, with a reason, no value.
+    result.metrics.idleCpuPercent = {
+      status: 'not_measured',
+      unit: 'percent of one core',
+      reason: "the instance's process tree was empty",
+    };
     const run = gate(result, '--record-baseline');
+    expect(run.stdout).toContain(
+      'refusing to record an incomplete baseline; not measured: idleCpuPercent',
+    );
     expect(run.stdout).toContain('baseline NOT recorded');
     expect(run.status).toBe(1);
     expect(JSON.parse(readFileSync(run.baselinePath, 'utf8'))).toEqual(
