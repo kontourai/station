@@ -1723,8 +1723,9 @@ decides which hosts are used:
   private temporary folder, and `muse --version` again. These run under the
   host's own profile environment with `MUSE_NO_AUTO_UPDATE=1` and
   `MUSE_LOGIN=0`, bounded at 15 seconds. The export counts only when both
-  version runs name the version the host reported in `serverInfo.version`;
-  otherwise the launcher may have swapped binaries in between. The export
+  version runs name the version the host reported in `serverInfo.version`,
+  and print the same full line (which also names the build), otherwise the
+  launcher may have swapped binaries in between. The export
   must still declare every method, notification and server request Station
   uses, and for each schema definition Station builds or reads: the
   properties it sends, the required properties it relies on, the optional
