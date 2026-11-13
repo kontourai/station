@@ -14,6 +14,7 @@ import {
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
 import {
+  ENGINE_SESSION_BINDING_DEAD_CODE,
   MUSE_APPROVAL_DECIDE_FAILED_CODE,
   MUSE_APPROVAL_EXPIRED_CODE,
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
@@ -60,6 +61,7 @@ import { museServeApprovalPlan } from '../adapters/muse-serve-session.js';
 import {
   FakeMuseServeHost,
   loadMuseServeCapture,
+  type MuseServeCaptureFrame,
   type MuseServeCaptureName,
   replayMuseServeCapture,
   type SentFrame,
@@ -4272,5 +4274,318 @@ describe('Muse parity: /compact is session/compact', () => {
     expect(host.sent.some((frame) => frame.method === 'session/compact')).toBe(
       false,
     );
+  });
+});
+
+// Muse parity, slice 4. `muse-serve-1.4.18-resume-goal-fork` is a SECOND
+// `muse serve` process re-attaching the session the first one started;
+// `muse-serve-1.4.18-goal-set-pause` is one session's goal set and paused.
+const RESUMED_SESSION = '00000000-0000-7000-8000-000000000002';
+const GOAL_OBJECTIVE = 'Reply with exactly the word DONE.';
+
+/** Index of the first frame of `frames` matching, from `from`. */
+function frameIndex(
+  frames: MuseServeCaptureFrame[],
+  predicate: (msg: Record<string, unknown>, dir: string) => boolean,
+  from = 0,
+): number {
+  const index = frames.findIndex(
+    (frame, at) => at >= from && predicate(frame.msg, frame.dir),
+  );
+  if (index < 0) throw new Error('no such frame');
+  return index;
+}
+
+/**
+ * The resume capture without the probe's own second `session/resume` (of
+ * an unknown id) and its refusal, which the adapter never sends.
+ */
+function resumeFrames(): MuseServeCaptureFrame[] {
+  const frames = loadMuseServeCapture('resume-goal-fork');
+  const probeOnly = frames.filter(
+    (frame) =>
+      frame.dir === 'c2s' &&
+      frame.msg.method === 'session/resume' &&
+      (frame.msg.params as { sessionId?: string }).sessionId !==
+        RESUMED_SESSION,
+  );
+  const ids = new Set(probeOnly.map((frame) => frame.msg.id));
+  return frames.filter(
+    (frame) =>
+      !probeOnly.includes(frame) &&
+      !(
+        frame.dir === 's2c' &&
+        ids.has(frame.msg.id) &&
+        frame.msg.method === undefined
+      ),
+  );
+}
+
+/** Answers the re-attach's `approval/listPending` (the probe sent none). */
+function answerListPending(host: FakeMuseServeHost) {
+  void host
+    .nextRequest('approval/listPending', new Set())
+    .then((request) => reply(host, request, { approvals: [], userInputs: [] }))
+    .catch(() => {});
+}
+
+function resumeSession(h: Harness, museSessionId = RESUMED_SESSION) {
+  return h.adapter.startSession({
+    provider: 'muse',
+    threadId: THREAD,
+    cwd: '/workspace/probe/repo',
+    // The resumed session reports `allowAll`, which `auto` applies.
+    modelOptions: { approvalMode: 'auto' },
+    resumeCursor: { museSessionId },
+  });
+}
+
+/** A resumed session, idle, up to the probe's `goal/resume`. */
+async function resumedSession(h: Harness) {
+  const frames = resumeFrames();
+  const starting = resumeSession(h);
+  const host = await firstHost(h, () => starting);
+  answerListPending(host);
+  const goalResumeAt = frameIndex(
+    frames,
+    (msg, dir) => dir === 'c2s' && msg.method === 'goal/resume',
+  );
+  await replayMuseServeCapture(host, frames, { stopAt: goalResumeAt });
+  const session = await starting;
+  return { host, session, frames, goalResumeAt };
+}
+
+describe('Muse parity: a serve session resumes after a Station restart', () => {
+  test('a fresh serve session carries its muse session id as the resume cursor; the adapter declares same-session resume', async () => {
+    const h = harness();
+    expect(h.adapter.metadata.continuity?.resume).toBe('same-session');
+    const starting = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      cwd: '/workspace/probe/repo',
+    });
+    const host = await firstHost(h, () => starting);
+    await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/start'),
+    });
+    const session = await starting;
+    expect(session.resumeCursor).toEqual({ museSessionId: SESSION_1418 });
+    expect(h.adapter.nativeSessionIdentity(session.resumeCursor)).toEqual({
+      sessionId: SESSION_1418,
+    });
+  });
+
+  test('an exec-fallback session has no resume cursor, and an exec-only adapter declares no resume', async () => {
+    const h = harness({
+      spawnHost: (args) => {
+        const host = new FakeMuseServeHost(args);
+        setImmediate(() => host.exit(2));
+        return host;
+      },
+    });
+    const session = await h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+    });
+    expect(session.resumeCursor).toBeUndefined();
+    expect(new MuseAdapter({}).metadata.continuity?.resume).toBe('none');
+  });
+
+  test('a resume re-attaches the durable session on a fresh host with session/resume, never session/start', async () => {
+    const h = harness();
+    const { host, session } = await resumedSession(h);
+    const resume = host.sent.find((frame) => frame.method === 'session/resume');
+    expect(resume?.params).toEqual({
+      commandId: expect.any(String),
+      sessionId: RESUMED_SESSION,
+      excludeItems: true,
+    });
+    expect(host.sent.some((frame) => frame.method === 'session/start')).toBe(
+      false,
+    );
+    expect(h.execSpawns).toEqual([]);
+    expect(session.resumeCursor).toEqual({ museSessionId: RESUMED_SESSION });
+    expect(session.model).toBe('muse-spark-1.3-contributor');
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museTransport: 'serve',
+      museSessionId: RESUMED_SESSION,
+    });
+  });
+
+  test('muse no longer having the session ends the binding: refused, published binding-dead, and no session (serve or exec) stands in', async () => {
+    const h = harness();
+    const notFound = loadMuseServeCapture('resume-goal-fork').find(
+      (frame) =>
+        (frame.msg.error as { code?: number } | undefined)?.code === -32020,
+    );
+    const starting = resumeSession(h, '00000000-0000-7000-8000-000000000006');
+    const host = await firstHost(h, () => starting);
+    const consumed = new Set<SentFrame>();
+    const initialize = await host.nextRequest('initialize', consumed);
+    consumed.add(initialize);
+    reply(host, initialize, liveInitializeResult());
+    const resume = await host.nextRequest('session/resume', consumed);
+    // Muse 1.4.18's own answer to a resume of an unknown id.
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: resume.id,
+      error: notFound?.msg.error,
+    });
+    await expect(starting).rejects.toThrow(/no longer has the session/);
+    expect(of(h.events, 'runtime.error').map((event) => event.code)).toEqual([
+      ENGINE_SESSION_BINDING_DEAD_CODE,
+    ]);
+    expect(host.sent.some((frame) => frame.method === 'session/start')).toBe(
+      false,
+    );
+    expect(h.execSpawns).toEqual([]);
+    expect(await h.adapter.hasSession(THREAD)).toBe(false);
+    expect(of(h.events, 'session.started')).toEqual([]);
+  });
+
+  test('a host that cannot be used refuses the resume as retryable, with no exec fallback and no binding-dead claim', async () => {
+    const h = harness({
+      spawnHost: (args) => {
+        const host = new FakeMuseServeHost(args);
+        setImmediate(() => host.exit(2));
+        return host;
+      },
+    });
+    await expect(resumeSession(h)).rejects.toThrow(
+      /could not resume this conversation's session/,
+    );
+    expect(h.execSpawns).toEqual([]);
+    expect(of(h.events, 'runtime.error')).toEqual([]);
+    expect(of(h.events, 'session.started')).toEqual([]);
+  });
+});
+
+describe("Muse parity: a serve session's goal", () => {
+  test('a fresh session has no goal; a goal muse set and the pause Station sends read through, with no token figures', async () => {
+    const h = harness();
+    const frames = loadMuseServeCapture('goal-set-pause');
+    const starting = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      cwd: '/workspace/probe/repo',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    const host = await firstHost(h, () => starting);
+    const turnAt = frameIndex(
+      frames,
+      (msg, dir) => dir === 'c2s' && msg.method === 'turn/start',
+    );
+    await replayMuseServeCapture(host, frames, { stopAt: turnAt });
+    await starting;
+    const fresh = await h.adapter.goals!.read(THREAD);
+    expect(fresh).toMatchObject({ state: 'available', goal: null });
+    // The rest: one turn, then the probe's own `goal/set` (Station offers
+    // none) starts a goal turn, and Station pauses the goal.
+    const setAt = frameIndex(
+      frames,
+      (msg, dir) => dir === 'c2s' && msg.method === 'goal/set',
+    );
+    const emptySetAt = frameIndex(
+      frames,
+      (msg, dir) => dir === 'c2s' && msg.method === 'goal/set',
+      setAt + 1,
+    );
+    let active: unknown;
+    let paused: Promise<unknown> | undefined;
+    await replayMuseServeCapture(host, frames.slice(turnAt, emptySetAt), {
+      onDrivenRequest: (method) => {
+        if (method === 'turn/start')
+          return h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+        if (method !== 'goal/pause') return undefined;
+        return (async () => {
+          active = await h.adapter.goals!.read(THREAD);
+          paused = h.adapter.goals!.control(THREAD, { operation: 'pause' });
+          return paused;
+        })();
+      },
+    });
+    await settle();
+    expect(active).toEqual({
+      state: 'available',
+      capability: {
+        implementation: 'engine',
+        operations: ['read', 'pause', 'clear'],
+        maxObjectiveChars: 4000,
+        tokenBudget: 'unsupported',
+        completion: 'implementation-reported',
+        saveState: 'paused',
+      },
+      goal: { objective: GOAL_OBJECTIVE, status: 'active' },
+    });
+    await expect(paused).resolves.toEqual({
+      state: 'applied',
+      goal: { objective: GOAL_OBJECTIVE, status: 'paused' },
+    });
+    expect(
+      host.sent.find((frame) => frame.method === 'goal/pause')?.params,
+    ).toEqual({ commandId: expect.any(String), sessionId: expect.any(String) });
+  });
+
+  test('set and resume are unsupported (each would start a goal turn) and nothing reaches muse', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    const sent = host.sent.length;
+    await expect(
+      h.adapter.goals!.control(THREAD, {
+        operation: 'set',
+        objective: 'Ship it',
+        tokenBudget: null,
+      }),
+    ).resolves.toEqual({ state: 'unsupported' });
+    await expect(
+      h.adapter.goals!.control(THREAD, { operation: 'resume' }),
+    ).resolves.toEqual({ state: 'unsupported' });
+    expect(host.sent.slice(sent)).toEqual([]);
+  });
+
+  test('after a resume the goal is unknown until muse reports it; clear applies, and a clear or pause muse rejects missing_goal is refused', async () => {
+    const h = harness();
+    const { host, frames, goalResumeAt } = await resumedSession(h);
+    await expect(h.adapter.goals!.read(THREAD)).resolves.toEqual({
+      state: 'unavailable',
+      reason: 'provider-unavailable',
+    });
+    const closedAt = frameIndex(
+      frames,
+      (msg) => msg.method === 'session/closed',
+    );
+    const results: unknown[] = [];
+    let before: unknown;
+    await replayMuseServeCapture(host, frames.slice(goalResumeAt, closedAt), {
+      onDrivenRequest: (method, occurrence) => {
+        if (method !== 'goal/clear' && method !== 'goal/pause')
+          return undefined;
+        return (async () => {
+          if (method === 'goal/clear' && occurrence === 0)
+            before = await h.adapter.goals!.read(THREAD);
+          const outcome = await h.adapter.goals!.control(THREAD, {
+            operation: method === 'goal/clear' ? 'clear' : 'pause',
+          });
+          results.push(outcome);
+          return outcome;
+        })();
+      },
+    });
+    await settle();
+    // muse's goal turn (the probe's `goal/resume`) restated the goal; the
+    // fork's own `goalChanged` (another session) did not move it.
+    expect(before).toMatchObject({
+      state: 'available',
+      goal: { objective: GOAL_OBJECTIVE, status: 'active' },
+    });
+    expect(results).toEqual([
+      { state: 'applied', goal: null },
+      { state: 'refused', reason: 'invalid-command' },
+      { state: 'refused', reason: 'invalid-command' },
+    ]);
+    await expect(h.adapter.goals!.read(THREAD)).resolves.toMatchObject({
+      state: 'available',
+      goal: null,
+    });
   });
 });

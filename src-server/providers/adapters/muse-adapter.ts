@@ -20,6 +20,7 @@ import type {
 } from '@kontourai/station-contracts/engine-commands';
 import {
   type ApprovalMode,
+  ENGINE_SESSION_BINDING_DEAD_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MUSE_HELD_TURN_UNFINISHED_CODE,
   MUSE_LINGERING_CHILD_REAPED_CODE,
@@ -35,6 +36,14 @@ import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  parseSessionGoalCommand,
+  SESSION_GOAL_OBJECTIVE_MAX_CHARS,
+  type SessionGoalCapability,
+  type SessionGoalCommand,
+  type SessionGoalControlResult,
+  type SessionGoalRead,
+} from '@kontourai/station-contracts/session-goal';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
@@ -71,6 +80,7 @@ import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
   type ProviderChildSteerResult,
+  type ProviderNativeSessionIdentity,
   type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderSessionStartInput,
@@ -86,7 +96,10 @@ import {
   findCliBinary,
   resolveAugmentedPathSync,
 } from '../auth/cli-auth.js';
-import { providerFailureForCode } from '../provider-failure.js';
+import {
+  providerFailure,
+  providerFailureForCode,
+} from '../provider-failure.js';
 import {
   AsyncEventQueue,
   type AsyncEventStreamOptions,
@@ -147,6 +160,7 @@ import {
   MUSE_SERVE_REQUEST_TIMEOUT_MS,
   MuseSandboxUnavailableError,
   type MuseServeHostPosture,
+  MuseServeResumeRefusedError,
   type MuseServeSandboxReport,
   MuseServeSession,
   museSandboxLabel,
@@ -423,6 +437,41 @@ export const MUSE_SERVE_COMMANDS = [
   passthrough: boolean;
   route: EngineCommandRoute;
 }>;
+
+/**
+ * The resume cursor of a `muse serve` session: the durable muse session id,
+ * re-attached on a fresh host with `session/resume`. An exec-fallback
+ * session has none (exec turns are not resumed across Station restarts).
+ */
+interface MuseResumeCursor {
+  museSessionId: string;
+}
+
+function readMuseResumeCursor(value: unknown): MuseResumeCursor | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const id = (value as Record<string, unknown>).museSessionId;
+  return typeof id === 'string' && id.length > 0 && id.length <= 200
+    ? { museSessionId: id }
+    : undefined;
+}
+
+/**
+ * What a serve session offers of muse's goal (MSP `goal/*`). Read, pause and
+ * clear only: `goal/set` and `goal/resume` wake a goal turn at once on an
+ * idle session (live 1.4.18: `goal/set` answered with the new turn's id and
+ * that turn started), which would run work outside Station's turn
+ * admission, the same reason Codex's goal resume is unsupported. Muse
+ * reports no token budget, token use or elapsed time for a goal.
+ */
+const MUSE_GOAL_CAPABILITY: SessionGoalCapability = {
+  implementation: 'engine',
+  operations: ['read', 'pause', 'clear'],
+  maxObjectiveChars: SESSION_GOAL_OBJECTIVE_MAX_CHARS,
+  tokenBudget: 'unsupported',
+  completion: 'implementation-reported',
+  saveState: 'paused',
+};
 
 export const MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT =
   'Muse reported this background task completed.';
@@ -957,10 +1006,11 @@ export class MuseAdapter implements ProviderAdapterShape {
   private static readonly baseMetadata = {
     displayName: 'Muse Code',
     durability: EXTERNAL_ENGINE_DURABILITY,
-    // `muse serve` has `session/fork` (live 1.4.18: a new session with
-    // `forkedFrom`), but Station opens no session from a muse session id:
-    // this adapter neither resumes nor adopts one, so a forked session
-    // would be unreachable. `rewind` is experimental-only in MSP.
+    // `resume` is declared per instance (constructor): only a serve adapter
+    // resumes. `muse serve` has `session/fork` (live 1.4.18: a new session
+    // with `forkedFrom`), but Station's conversation fork is replay-only and
+    // no route activates a native fork, so none is claimed. `rewind` is
+    // experimental-only in MSP.
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),
@@ -1044,6 +1094,8 @@ export class MuseAdapter implements ProviderAdapterShape {
    * Absent on an exec-only adapter, whose sessions name no child.
    */
   readonly childSteerOutlivesParentTurn?: true;
+  /** Muse's goal on a serve session ({@link MUSE_GOAL_CAPABILITY}). */
+  readonly goals?: ProviderAdapterShape['goals'];
   private catalogCache?: {
     observedAt: number;
     catalog: ProviderAdapterModelCatalog;
@@ -1071,6 +1123,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       durability: options.serve
         ? STEERING_ENGINE_DURABILITY
         : EXTERNAL_ENGINE_DURABILITY,
+
       description: options.serve
         ? 'Muse Code runtime over the local muse CLI: one `muse serve` host per session, `muse exec` per turn as the fallback.'
         : 'Muse Code runtime over the local muse CLI, one `muse exec` per turn.',
@@ -1119,7 +1172,19 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (options.serve) this.childSteerOutlivesParentTurn = true;
     if (options.serve && this.providerOverride !== 'echo') {
       const discovery = this.discoveryDeps(options.serve);
-      this.metadata = { ...this.metadata, abortSettlement: 'await' };
+      this.metadata = {
+        ...this.metadata,
+        abortSettlement: 'await',
+        // A serve session resumes after a Station restart: `session/resume`
+        // of its durable id (live 1.4.18, across two `muse serve`
+        // processes). Exec sessions, and every session under `echo`, run on
+        // `muse exec` and do not; a serve adapter's exec-fallback session
+        // reports no resume cursor.
+        continuity: {
+          ...MuseAdapter.baseMetadata.continuity,
+          resume: 'same-session',
+        },
+      };
       this.listModelCatalog = (request) =>
         this.readModelCatalog(discovery, request);
       this.listModels = async (request) =>
@@ -1128,6 +1193,11 @@ export class MuseAdapter implements ProviderAdapterShape {
         this.readMuseQuota(discovery, connectionId);
       this.getCommands = async () =>
         MUSE_SERVE_COMMANDS.map((command) => ({ ...command }));
+      this.goals = {
+        read: async (threadId) => this.readGoal(threadId),
+        control: async (threadId, command) =>
+          this.controlGoal(threadId, command),
+      };
     }
   }
 
@@ -1370,6 +1440,23 @@ export class MuseAdapter implements ProviderAdapterShape {
     const startedAt = Date.now();
     const requestedApprovalMode = readApprovalMode(input.modelOptions);
     const reasoningEffort = readMuseReasoningEffort(input.modelOptions);
+    // A resume continues the durable muse session the cursor names, through
+    // `muse serve` only. Any failure refuses the start: never a new session
+    // (or an exec one) standing in for the conversation's.
+    const resume =
+      input.resumeCursor === undefined || input.resumeCursor === null
+        ? undefined
+        : readMuseResumeCursor(input.resumeCursor);
+    if (input.resumeCursor != null && !resume) {
+      throw new Error(
+        'This conversation carries a resume cursor Muse Code cannot read, so its session cannot be continued.',
+      );
+    }
+    if (resume && (!this.options.serve || this.providerOverride === 'echo')) {
+      throw new Error(
+        "This conversation's Muse session can only be continued through `muse serve`, which this Station does not run for Muse.",
+      );
+    }
     // chat-host-images: prepared once, here; the serve host and every exec
     // turn get this one folder, and none is created later in the session.
     const sessionTmpDir = engineSessionTmpDir(input.threadId);
@@ -1393,6 +1480,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           ...(input.cwd ? { cwd: input.cwd } : {}),
           ...(input.modelId ? { modelId: input.modelId } : {}),
           approvalMode: requestedApprovalMode,
+          ...(resume ? { resumeSessionId: resume.museSessionId } : {}),
         });
         serve = candidate;
         this.sandboxUnavailable = serveStarted.sandbox.unavailable
@@ -1411,6 +1499,7 @@ export class MuseAdapter implements ProviderAdapterShape {
             'sandbox_unavailable',
           );
         }
+        if (resume) throw this.resumeFailure(input.threadId, error);
         serveUnavailable = errorMessage(error);
         this.options.logger?.warn?.(
           'Muse serve unavailable; this session falls back to muse exec.',
@@ -1451,6 +1540,13 @@ export class MuseAdapter implements ProviderAdapterShape {
       status: 'ready',
       model: appliedModelId,
       ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(serveStarted
+        ? {
+            resumeCursor: {
+              museSessionId,
+            } satisfies MuseResumeCursor,
+          }
+        : {}),
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -1573,6 +1669,43 @@ export class MuseAdapter implements ProviderAdapterShape {
       provider: this.provider,
     });
     return record.session;
+  }
+
+  /** The durable muse session id a resume cursor names. */
+  nativeSessionIdentity(
+    resumeCursor: unknown,
+  ): ProviderNativeSessionIdentity | undefined {
+    const cursor = readMuseResumeCursor(resumeCursor);
+    return cursor ? { sessionId: cursor.museSessionId } : undefined;
+  }
+
+  /**
+   * A resume that did not happen. Muse no longer having the session (or
+   * answering with another) ends that binding: published as
+   * `engine-session-binding-dead`, which recovery does not retry. Anything
+   * else (no host, a failed handshake) leaves the cursor to retry.
+   */
+  private resumeFailure(threadId: string, error: unknown): Error {
+    if (error instanceof MuseServeResumeRefusedError) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.error',
+        ...providerFailure('session_gone'),
+        severity: 'error',
+        code: ENGINE_SESSION_BINDING_DEAD_CODE,
+        retriable: false,
+        message: error.message,
+      } satisfies ProviderRuntimeErrorEvent);
+      return new Error(error.message);
+    }
+    return new Error(
+      `Muse Code could not resume this conversation's session: ${redactSecrets(
+        errorMessage(error),
+      ).slice(0, MUSE_REFUSED_VALUE_MAX_CHARS * 2)}`,
+    );
   }
 
   /**
@@ -2074,6 +2207,42 @@ export class MuseAdapter implements ProviderAdapterShape {
       });
     });
     return { threadId: input.threadId, turnId };
+  }
+
+  /**
+   * The session's goal as muse last reported it. Never starts or re-hosts
+   * anything. Unknown (`provider-unavailable`) after a resume until muse
+   * reports a change, or when muse reports a status Station cannot name.
+   */
+  private readGoal(threadId: string): SessionGoalRead {
+    const record = this.sessions.get(threadId);
+    if (!record || record.stopped)
+      return { state: 'unavailable', reason: 'session-not-live' };
+    if (!record.serve) return { state: 'unsupported' };
+    const state = record.serve.goalState;
+    if (!state?.known)
+      return { state: 'unavailable', reason: 'provider-unavailable' };
+    return {
+      state: 'available',
+      capability: { ...MUSE_GOAL_CAPABILITY },
+      goal: state.goal,
+    };
+  }
+
+  private async controlGoal(
+    threadId: string,
+    input: SessionGoalCommand,
+  ): Promise<SessionGoalControlResult> {
+    const command = parseSessionGoalCommand(input);
+    if (!command) return { state: 'refused', reason: 'invalid-command' };
+    const record = this.sessions.get(threadId);
+    if (!record || record.stopped)
+      return { state: 'refused', reason: 'session-not-live' };
+    if (!record.serve) return { state: 'unsupported' };
+    // See MUSE_GOAL_CAPABILITY: both would start a goal turn.
+    if (command.operation === 'set' || command.operation === 'resume')
+      return { state: 'unsupported' };
+    return record.serve.controlGoal(command.operation);
   }
 
   /**

@@ -44,6 +44,15 @@ const MUSE_SERVE_CAPTURE_VERSIONS = {
   // with `task/stop`; `task/list` lists each while it runs; then an idle
   // `session/compact` refused `compaction_unavailable`.
   'background-task-stop': '1.4.18',
+  // A second `muse serve` process re-attaching the first one's idle session
+  // with `session/resume`, then `session/resume` of an unknown id refused
+  // `sessionNotFound`; `goal/resume` waking a goal turn; `session/fork`;
+  // `goal/clear` (`goalChanged` null) and `goal/clear`/`goal/pause` refused
+  // `missing_goal`.
+  'resume-goal-fork': '1.4.18',
+  // One turn, then `goal/set` on the idle session (a goal turn starts at
+  // once) and `goal/pause` (`goalChanged` paused, before the ack).
+  'goal-set-pause': '1.4.18',
 } as const;
 
 export type MuseServeCaptureName = keyof typeof MUSE_SERVE_CAPTURE_VERSIONS;
@@ -83,6 +92,9 @@ const DRIVEN_METHODS = new Set([
   'subagent/sendMessage',
   'task/stop',
   'session/compact',
+  'session/resume',
+  'goal/pause',
+  'goal/clear',
 ]);
 
 export interface SentFrame {

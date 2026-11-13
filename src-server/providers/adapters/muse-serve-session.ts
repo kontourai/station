@@ -27,6 +27,11 @@ import {
   type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  SESSION_GOAL_OBJECTIVE_MAX_CHARS,
+  type SessionGoal,
+  type SessionGoalControlResult,
+} from '@kontourai/station-contracts/session-goal';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { errorMessage } from '../../utils/error-message.js';
@@ -181,6 +186,8 @@ const TITLE_COMMAND_MAX_CHARS = 160;
 const SETTLED_USER_INPUTS_MAX = 256;
 /** MSP command refusal (`commandRejected`): the command had no effect. */
 const MSP_COMMAND_REJECTED = -32030;
+/** MSP `sessionNotFound` (live 1.4.18: `session/resume` of an unknown id). */
+const MSP_SESSION_NOT_FOUND = -32020;
 /** MSP `userInputNotFound` / `userInputAlreadySettled`. */
 const MSP_USER_INPUT_GONE = new Set([-32055, -32056]);
 const TURN_ERROR_MESSAGE_MAX_CHARS = 500;
@@ -312,6 +319,19 @@ class MuseServeUnavailableError extends Error {
   }
 }
 
+/**
+ * `session/resume` cannot bring back the session a resume names: muse has
+ * no such session (`sessionNotFound`), or it answered with another one. No
+ * retry recovers that binding, and a blank session in its place would claim
+ * a continuity it does not have.
+ */
+export class MuseServeResumeRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MuseServeResumeRefusedError';
+  }
+}
+
 export interface MuseServeHostPosture {
   disableSandbox: boolean;
 }
@@ -341,6 +361,11 @@ export interface MuseServeStartInput {
   cwd?: string;
   modelId?: string;
   approvalMode?: ApprovalMode;
+  /**
+   * Re-attach this durable muse session (`session/resume`) instead of
+   * starting one. A failure never starts a new session in its place.
+   */
+  resumeSessionId?: string;
 }
 
 export interface MuseServeStarted {
@@ -606,6 +631,45 @@ function museCompactRefusal(error: MuseServeRpcError): SendTurnRefusedError {
   }
 }
 
+/**
+ * What Station knows of the session's goal: nothing yet (`undefined`), a
+ * goal (or none) muse reported, or a goal whose status Station cannot name.
+ */
+export type MuseServeGoalState =
+  | undefined
+  | { known: true; goal: SessionGoal | null }
+  | { known: false; reason: 'unmapped-status' };
+
+/**
+ * MSP goal `status` (wire-open) → `SessionGoalStatus`. Only what 1.4.18 was
+ * seen reporting (`goal/set` → `active`, `goal/pause` → `paused`); any other
+ * value is a status Station cannot name, never guessed at.
+ */
+const MUSE_GOAL_STATUS: Readonly<Record<string, SessionGoal['status']>> = {
+  active: 'active',
+  paused: 'paused',
+};
+
+/** `session/goalChanged.goal` → what Station knows of the goal. */
+function museGoalState(value: unknown): MuseServeGoalState {
+  if (value === null) return { known: true, goal: null };
+  if (!isRecord(value)) return { known: false, reason: 'unmapped-status' };
+  const objective = readString(value.objective);
+  const status =
+    typeof value.status === 'string'
+      ? MUSE_GOAL_STATUS[value.status]
+      : undefined;
+  if (
+    !objective?.trim() ||
+    objective.length > SESSION_GOAL_OBJECTIVE_MAX_CHARS ||
+    !status
+  )
+    return { known: false, reason: 'unmapped-status' };
+  // Muse reports no token budget, token use or elapsed time for a goal:
+  // those fields stay absent, never zero.
+  return { known: true, goal: { objective, status } };
+}
+
 export class MuseServeSession {
   private host?: ServeHost;
   private hostEpoch = 0;
@@ -641,6 +705,9 @@ export class MuseServeSession {
   /** Prompts whose request Station resolved once (a re-issue gets a new id). */
   private readonly resolvedUserInputIds = new Set<string>();
   private readonly childWork: MuseServeChildWorkContext;
+  /** The session's goal as muse last reported it (`session/goalChanged`). */
+  private goal: MuseServeGoalState;
+  private goalCommandPending = false;
 
   constructor(private readonly deps: MuseServeSessionDeps) {
     this.childWork = {
@@ -684,6 +751,8 @@ export class MuseServeSession {
       await this.closeHost();
       throw new MuseSandboxUnavailableError(host.sandbox.reason);
     }
+    if (input.resumeSessionId !== undefined)
+      return this.resumeOnHost(host, plan, input, input.resumeSessionId);
     let result: unknown;
     try {
       result = await host.connection.request(
@@ -725,8 +794,83 @@ export class MuseServeSession {
     this.museSessionIdValue = museSessionId;
     this.plan = plan;
     this.model = readString(session.modelId) ?? input.modelId;
+    // A session muse just started has no goal.
+    this.goal = { known: true, goal: null };
     return {
       museSessionId,
+      ...(this.model ? { modelId: this.model } : {}),
+      plan,
+      sandbox: host.sandbox,
+    };
+  }
+
+  /**
+   * `session/resume` of a session an earlier host (an earlier Station
+   * process) started. Live 1.4.18: a fresh `muse serve` re-attaches an idle
+   * session by id with its context, and refuses an unknown id
+   * `sessionNotFound` (-32020). The approval mode is re-applied when the
+   * resumed session reports another, and open approvals and questions are
+   * put to the user again, as on a re-host.
+   */
+  private async resumeOnHost(
+    host: ServeHost,
+    plan: MuseServeApprovalPlan,
+    input: MuseServeStartInput,
+    sessionId: string,
+  ): Promise<MuseServeStarted> {
+    let result: unknown;
+    try {
+      result = await host.connection.request(
+        'session/resume',
+        {
+          commandId: this.deps.newCommandId(),
+          sessionId,
+          excludeItems: true,
+          ...(input.modelId ? { modelId: input.modelId } : {}),
+        },
+        { timeoutMs: this.deps.handshakeTimeoutMs },
+      );
+    } catch (error) {
+      await this.closeHost();
+      if (
+        error instanceof MuseServeRpcError &&
+        error.code === MSP_SESSION_NOT_FOUND
+      ) {
+        throw new MuseServeResumeRefusedError(
+          'Muse no longer has the session this conversation ran in, so it cannot be continued there.',
+        );
+      }
+      throw new MuseServeUnavailableError(
+        `session/resume failed: ${errorMessage(error)}`,
+      );
+    }
+    const session =
+      isRecord(result) && isRecord(result.session) ? result.session : {};
+    if (readString(session.sessionId) !== sessionId) {
+      await this.closeHost();
+      throw new MuseServeResumeRefusedError(
+        'Muse resumed a different session than the one this conversation ran in.',
+      );
+    }
+    this.museSessionIdValue = sessionId;
+    this.plan = plan;
+    try {
+      const mode = isRecord(session.approvalMode)
+        ? readString(session.approvalMode.mode)
+        : undefined;
+      if (mode !== plan.museMode)
+        await this.applyApprovalMode(host.connection, sessionId, plan);
+      await this.reseedPendingApprovals();
+    } catch (error) {
+      await this.closeHost();
+      throw error;
+    }
+    // The session's goal predates this host, and resuming does not restate
+    // it (live 1.4.18): unknown until muse reports a change.
+    this.goal = undefined;
+    this.model = readString(session.modelId) ?? input.modelId;
+    return {
+      museSessionId: sessionId,
       ...(this.model ? { modelId: this.model } : {}),
       plan,
       sandbox: host.sandbox,
@@ -1123,6 +1267,67 @@ export class MuseServeSession {
     }
   }
 
+  /** The session's goal as muse last reported it; see {@link MuseServeGoalState}. */
+  get goalState(): MuseServeGoalState {
+    return this.goal;
+  }
+
+  /**
+   * `goal/pause` or `goal/clear` on the live host. Neither wakes a turn
+   * (MSP: only `set`/`edit`/`resume` carry one). Applied only when muse's
+   * own `session/goalChanged` (live 1.4.18: sent before the ack) shows the
+   * result; an ack without it is indeterminate. A command muse rejected had
+   * no effect; `missing_goal` also says the session has no goal.
+   */
+  async controlGoal(
+    operation: 'pause' | 'clear',
+  ): Promise<SessionGoalControlResult> {
+    const connection = this.host?.connection;
+    if (
+      this.stopped ||
+      !connection ||
+      connection.isClosed ||
+      !this.museSessionIdValue
+    )
+      return { state: 'refused', reason: 'session-not-live' };
+    if (this.goalCommandPending) return { state: 'refused', reason: 'busy' };
+    this.goalCommandPending = true;
+    try {
+      await connection.request(
+        `goal/${operation}`,
+        {
+          commandId: this.deps.newCommandId(),
+          sessionId: this.museSessionIdValue,
+        },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    } catch (error) {
+      if (
+        error instanceof MuseServeRpcError &&
+        error.code === MSP_COMMAND_REJECTED
+      ) {
+        if (
+          isRecord(error.data) &&
+          readString(error.data.reason) === 'missing_goal'
+        )
+          this.goal = { known: true, goal: null };
+        return { state: 'refused', reason: 'invalid-command' };
+      }
+      return { state: 'indeterminate' };
+    } finally {
+      this.goalCommandPending = false;
+    }
+    const goal = this.goal;
+    if (
+      goal?.known &&
+      (operation === 'clear'
+        ? goal.goal === null
+        : goal.goal?.status === 'paused')
+    )
+      return { state: 'applied', goal: goal.goal };
+    return { state: 'indeterminate' };
+  }
+
   async stopChild(childId: string): Promise<ProviderTaskStopResult> {
     if (!museServeChildIsRunning(this.childWork, childId)) {
       return { outcome: 'no-active-task', taskId: childId };
@@ -1505,6 +1710,10 @@ export class MuseServeSession {
       return;
     }
     switch (method) {
+      case 'session/goalChanged':
+        // Replace wholesale; `null` clears (MSP `SessionGoalChangedParams`).
+        this.goal = museGoalState(params.goal);
+        return;
       case 'turn/started':
         this.onTurnStarted(params);
         return;
