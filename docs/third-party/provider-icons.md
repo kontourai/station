@@ -42,3 +42,7 @@ The output-only `/integrations/:id/icon` route is same-origin, privately cached,
 and serves `X-Content-Type-Options: nosniff`. Missing or rejected assets return
 no image and the shared renderer deterministically uses a bundled mark or
 initials instead.
+
+The composer Run setup trigger requests the generic Agent glyph instead of
+initials when Agent artwork and a bundled mark are unavailable. Other callers
+retain their existing fallback. Matching Agent and engine marks appear once.

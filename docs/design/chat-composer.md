@@ -829,16 +829,19 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 ### 3.1 Provider and model picker
 
 - Chat replies, Home and dock starts share one **Run setup** button, with the
-  Agent and engine marks and a compact Agent/model label. Its accessible name starts with the visible Agent/model label and adds only
+  Agent and engine marks and a compact Agent/model label. Identical marks appear
+  once; different marks overlap with the smaller engine mark underneath. A missing
+  Agent mark uses the generic Agent glyph. Its accessible name starts with the visible Agent/model label and adds only
   available approval and mode values. The trigger has no setup caption. Full access,
-  pending or refused approval changes add a visible warning glyph with matching
+  pending or refused approval changes add a corner warning badge with matching
   accessible text. Conversation overrides use a neutral dot, announced as
   "changed for this conversation". ACP uses the connection engine mark when its
   command resolves a known engine; unknown engines omit the engine mark. It opens a sheet on phones
   and a popover on desktop containing the existing Agent, Model, Approval and
   advertised Mode controls. Picker ownership, unavailable reasons, pending
   approval states and engine-owned approval disclosures are preserved.
-  Long labels truncate inside the button; the full values remain accessible.
+  The Agent name truncates first to keep the model visible inside the button;
+  the full values remain accessible.
   Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
