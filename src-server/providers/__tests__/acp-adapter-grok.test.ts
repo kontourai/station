@@ -490,6 +490,29 @@ describe('Grok wake turns are provider turns', () => {
     await session.stop();
   });
 
+  test("a late restatement of Station's own prompt never opens a provider turn", async () => {
+    const session = await startGrokSession();
+    const turn = await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: 'hi',
+    });
+    const running = {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'station-prompt',
+    };
+    await session.agent.notify('_x.ai/queue/changed', running);
+    await settle();
+    session.proc.resolvePrompt('end_turn');
+    await settle();
+    await session.agent.notify('_x.ai/queue/changed', running);
+    await settle();
+    expect(session.of('turn.started').map((event) => event.turnId)).toEqual([
+      turn.turnId,
+    ]);
+    await session.stop();
+  });
+
   test('a send while a wake turn runs is refused busy, and interrupting the wake ends it as a provider turn', async () => {
     const session = await startGrokSession();
     await session.agent.notify('_x.ai/queue/changed', {
