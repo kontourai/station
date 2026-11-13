@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"ToolServerProbeResult gained an optional toolsDigest field; no glossary term names or defines probe fields, so entries remain accurate.","inputs":["docs/glossary.md","packages/contracts/src/tool.ts"]}
+  ]
+}

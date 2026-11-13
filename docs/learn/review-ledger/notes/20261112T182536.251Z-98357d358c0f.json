@@ -1,0 +1,37 @@
+{
+  "revision": "0ecbe2e5d707940e2a4e3aec86b080eb8a5f6aa8",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Slice 5: model page tabs, used-by, Tools rows/Check all/guard and Knowledge semantic search label match the committed UI and route.","inputs":["docs/guides/connections.md","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Captures predate the model connection tabs; the disclosure now says so. No claim about Check all or used-by.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Not recaptured (no Station run in this lane). The image shows the pre-tab model form; walkthroughs.md discloses it.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Not recaptured (no Station run in this lane). The tour predates the model tabs; walkthroughs.md discloses it.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Its Check connection claims are about engines; the model page keeps Test Connection with its cost on Settings, so nothing here changed.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/engine-detail/EngineSettingsTab.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connections-crud still covers model/tool setup; the create flow now follows the Settings tab.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped topics after the guide changes; no claim here about used-by or the model tabs.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"KnowledgeConnectionView keeps the single-page layout; the readiness line and metric tiles do not change the skeleton claims.","inputs":["docs/design/shell-skeletons.md","src-ui/src/views/KnowledgeConnectionView.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"connection-sections.ts gains model detail tabs; the readiness labels and explicit-Add rules here are unchanged.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/EngineProxySettings.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/engine-detail/EngineModelsTab.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"workspaceConnections.ts gains useConnectionUsedByQuery through useApiQuery; the Tools guard follows the route-guard rule (route changes ask by themselves).","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","packages/sdk/src/query-domains/workspaceConnections.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/hooks/useUnsavedGuard.tsx","scripts/unsaved-guard-gate.mjs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"GET /api/connections/used-by is read tier like GET /integrations, which already lists Agents per server, and is withheld from Project members; it runs nothing. The /api/connections line here stays accurate.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/contracts/README.md","note":"New connection-used-by subpath; this README does not enumerate subpaths, contracts.md does.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"The new module is a pure projection over its own shapes, as these rules allow.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"New hook and error are barrel exports documented in sdk.md; nothing here enumerates them.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md documents the new hook; rules unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md, sdk.md and contracts.md gained the used-by read; nothing here is contradicted.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]}
+  ]
+}

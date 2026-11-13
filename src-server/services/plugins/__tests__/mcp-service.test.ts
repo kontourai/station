@@ -539,6 +539,52 @@ describe('MCPService', () => {
     });
   });
 
+  test('a saved probe digests each tool, so a schema change under the same name changes it', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'station-probe-digest-'));
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    try {
+      await loader.saveIntegration('digest', {
+        id: 'digest',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'node',
+      });
+      const svc = new MCPService(
+        loader,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        mockLogger,
+      );
+      const offering = (type: string) => ({
+        tools: [
+          {
+            name: 'digest_read',
+            originalName: 'read',
+            description: 'Read a file',
+            inputSchema: { type: 'object', properties: { path: { type } } },
+          },
+        ],
+        disconnect: vi.fn(),
+      });
+      connectMCPMock.mockReset();
+      connectMCPMock.mockResolvedValueOnce(offering('string') as any);
+      await svc.probeIntegration('digest');
+      const first = (await loader.loadIntegration('digest')).probe;
+      connectMCPMock.mockResolvedValueOnce(offering('number') as any);
+      await svc.probeIntegration('digest');
+      const second = (await loader.loadIntegration('digest')).probe;
+      expect(first?.toolsDigest).toMatch(/^[0-9a-f]{64}$/);
+      expect(second?.toolNames).toEqual(first?.toolNames);
+      expect(second?.toolsDigest).not.toBe(first?.toolsDigest);
+    } finally {
+      await loader.dispose();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('retains every legacy value when a multi-env cleanup fails and allows an exact retry', async () => {
     const home = await mkdtemp(join(tmpdir(), 'station-stored-env-rollback-'));
     const loader = new ConfigLoader({ projectHomeDir: home });

@@ -11,6 +11,7 @@ import { _getApiBase } from '../api';
 import {
   captureConnectionReadTarget,
   connectionQueryKey,
+  invalidateConnectionUsedBy,
 } from '../connection-read-target';
 
 export {
@@ -174,6 +175,7 @@ export function useCreateAgentMutation(
     mutationFn: async (agent: Record<string, unknown>) => createAgent(agent),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
+      void invalidateConnectionUsedBy(queryClient);
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
@@ -192,6 +194,7 @@ export function useCreateAgentDetailedMutation(
       createAgentDetailed(agent),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
+      void invalidateConnectionUsedBy(queryClient);
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
@@ -215,6 +218,7 @@ export function useMaterializeEngineAgentMutation(
     mutationFn: async (engineId: string) => materializeEngineAgent(engineId),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
+      void invalidateConnectionUsedBy(queryClient);
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
@@ -235,6 +239,7 @@ export function useConnectAndMaterializeEngineMutation(
     mutationFn: connectAndMaterializeACPRegistryEngine,
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
+      void invalidateConnectionUsedBy(queryClient);
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
       queryClient.invalidateQueries({ queryKey: ['system-status'] });
       options?.onSuccess?.(data, variables);
@@ -261,6 +266,7 @@ export function useUpdateAgentMutation(
     }) => updateAgent(slug, agent),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
+      void invalidateConnectionUsedBy(queryClient);
       queryClient.invalidateQueries({ queryKey: ['agent', variables.slug] });
       queryClient.invalidateQueries({
         queryKey: ['agent-tools', variables.slug],
@@ -281,6 +287,7 @@ export function useDeleteAgentMutation(
     mutationFn: async (slug: string) => deleteAgent(slug),
     onSuccess: (data, slug) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
+      void invalidateConnectionUsedBy(queryClient);
       queryClient.invalidateQueries({ queryKey: ['agent', slug] });
       queryClient.invalidateQueries({ queryKey: ['agent-tools', slug] });
       options?.onSuccess?.(data, slug);

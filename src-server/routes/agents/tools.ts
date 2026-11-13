@@ -3,7 +3,11 @@
  */
 
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
-import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type {
+  ToolDef,
+  ToolServerCheckAll,
+  ToolServerCheckResult,
+} from '@kontourai/station-contracts/tool';
 import { LegacyTrustReviewRequiredError } from '@kontourai/station-shared/integration-trust-overlay';
 import {
   canonicalDisabledMcpTools,
@@ -48,6 +52,10 @@ import {
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 import { stationDocsToolCatalog } from '../../tools/station-docs-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
+import {
+  awaitSettlementWithin,
+  mapWithConcurrency,
+} from '../../utils/bounded-async.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { normalizeToolName } from '../../utils/tool-name-normalizer.js';
 import {
@@ -232,6 +240,101 @@ function integrationReadProjection(
   };
 }
 
+/** At most this many tool servers are probed at once by Check all. */
+export const CHECK_ALL_CONCURRENCY = 3;
+
+/** No one Check all probe is waited on longer than this. The listing carries
+ *  no startup timeout, and a server's own startup timeout bounds only its
+ *  version negotiation, so this is the bound. */
+export const CHECK_ALL_PROBE_TIMEOUT_MS = 20_000;
+
+/** The whole batch finishes within this: a probe that would start after it,
+ *  or run past it, reports timed out instead. */
+export const CHECK_ALL_DEADLINE_MS = 60_000;
+
+const CHECK_ALL_TIMED_OUT =
+  'The check timed out before the tool server answered.';
+
+type ProbeRecord = ToolDef['probe'];
+
+/** What a probe says a server offers: whether it is reachable, and each tool's
+ *  name, description and input schema (through the digest). */
+function sameOffer(next: ProbeRecord, previous: ProbeRecord): boolean {
+  if (next?.ok !== previous?.ok) return false;
+  if ((next?.toolCount ?? 0) !== (previous?.toolCount ?? 0)) return false;
+  // A probe recorded before the digest existed compares by name only.
+  if (next?.toolsDigest !== undefined && previous?.toolsDigest !== undefined)
+    return next.toolsDigest === previous.toolsDigest;
+  return (
+    (next?.toolNames ?? []).join('\n') ===
+    (previous?.toolNames ?? []).join('\n')
+  );
+}
+
+/**
+ * Check all: probes each configured tool server Station does not run itself,
+ * without beginning a sign-in. A server signed in per person is skipped. The
+ * Agents reload once at the end, and only when a probe changed whether a
+ * server is reachable or what tools it offers. A server whose probe is never
+ * saved (one a package supplies) is compared with its result in the previous
+ * batch, kept in `lastProbes`.
+ */
+export async function checkAllToolServers(
+  mcpService: Pick<MCPService, 'listIntegrations' | 'probeIntegration'>,
+  reinitialize: () => Promise<void>,
+  lastProbes: Map<string, ProbeRecord> = new Map(),
+  limits: { probeTimeoutMs?: number; deadlineMs?: number } = {},
+): Promise<ToolServerCheckAll> {
+  const probeTimeoutMs = limits.probeTimeoutMs ?? CHECK_ALL_PROBE_TIMEOUT_MS;
+  const deadline = Date.now() + (limits.deadlineMs ?? CHECK_ALL_DEADLINE_MS);
+  const servers = (await mcpService.listIntegrations()).filter(
+    (server) =>
+      !isRuntimeManagedIntegrationId(server.id) && server.enabled !== false,
+  );
+  let changed = false;
+  const results = await mapWithConcurrency(
+    servers,
+    CHECK_ALL_CONCURRENCY,
+    async (server): Promise<ToolServerCheckResult> => {
+      if (server.credentialOwnership)
+        return { id: server.id, outcome: 'skipped' };
+      const budget = Math.min(probeTimeoutMs, deadline - Date.now());
+      if (budget <= 0)
+        return { id: server.id, outcome: 'failed', error: CHECK_ALL_TIMED_OUT };
+      try {
+        const probed = mcpService.probeIntegration(server.id, undefined, {
+          startSignIn: false,
+        });
+        // A probe still running at its timeout is reported, not awaited: it
+        // keeps its claim and saves its own result when it ends, and this
+        // batch records nothing for it.
+        if (!(await awaitSettlementWithin(probed, budget)))
+          return {
+            id: server.id,
+            outcome: 'failed',
+            error: CHECK_ALL_TIMED_OUT,
+          };
+        const { probe } = await probed;
+        const previous = server.probe ?? lastProbes.get(server.id);
+        lastProbes.set(server.id, probe);
+        if (!sameOffer(probe, previous)) changed = true;
+        if (probe?.ok) return { id: server.id, outcome: 'ready' };
+        if (probe?.authorization && probe.authorization.state !== 'authorized')
+          return { id: server.id, outcome: 'sign-in-required' };
+        return {
+          id: server.id,
+          outcome: 'failed',
+          ...(probe?.error ? { error: probe.error } : {}),
+        };
+      } catch (error: unknown) {
+        return { id: server.id, outcome: 'failed', error: errorMessage(error) };
+      }
+    },
+  );
+  if (changed) await reinitialize();
+  return { results, reloaded: changed };
+}
+
 /** The fields whose values reach a launched tool server's environment. */
 const ENV_FIELDS = ['env', 'secretEnv'] as const;
 
@@ -264,7 +367,7 @@ export function createToolRoutes(
   app.use('*', async (c, next) => {
     const path = c.req.path.replace(/^\/integrations/, '') || '/';
     const management =
-      (c.req.method === 'POST' && path === '/') ||
+      (c.req.method === 'POST' && (path === '/' || path === '/check-all')) ||
       (['PUT', 'DELETE'].includes(c.req.method) && /^\/[^/]+$/.test(path)) ||
       (c.req.method === 'POST' &&
         /^\/[^/]+\/(?:enabled|tools\/apply|reconnect|trust-review)$/.test(
@@ -1033,6 +1136,26 @@ export function createToolRoutes(
       }
       await mcpService.deleteIntegration(id);
       return c.json({ success: true });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  // Check all (POST /integrations/check-all): one batch, joined by any
+  // request that arrives while it runs, and at most one reload.
+  let checkAllInFlight: Promise<ToolServerCheckAll> | undefined;
+  const checkAllLastProbes = new Map<string, ToolDef['probe']>();
+  app.post('/check-all', async (c) => {
+    try {
+      toolDefinitionOps.add(1, { op: 'check-all' });
+      checkAllInFlight ??= checkAllToolServers(
+        mcpService,
+        reinitialize,
+        checkAllLastProbes,
+      ).finally(() => {
+        checkAllInFlight = undefined;
+      });
+      return c.json({ success: true, data: await checkAllInFlight });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

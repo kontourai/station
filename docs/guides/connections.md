@@ -64,7 +64,7 @@ at most one fix. A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix or reads **Usage limit reached**, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
-failed; or Knowledge has no vector store. Engines the managed policy refuses,
+failed; or Knowledge has no vector store turned on. Engines the managed policy refuses,
 saved-but-untested model connections, Knowledge without an embedding model, and
 computers that are not connected carry no mark. The rows, the engine page and
 the marks share one [readiness
@@ -157,6 +157,33 @@ model; that request may be billable. A successful catalog check alone does not
 prove chat, tool calling, images, or other model features. See the
 [readiness projection](../../src-ui/src/views/provider-settings/providerCatalog.tsx)
 and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectionForm.tsx).
+
+## Read a model connection's page
+
+A saved model connection's page has tabs, each with its own address
+(`/connections/models/<id>/<tab>`). As on an engine's page, switching tabs
+keeps unsaved settings, edits show **Save** and **Discard**, and leaving asks.
+The header shows the row's status, the reason and at most one fix; what a
+check reported shows under it.
+
+- **Overview** — the service, what it is used for, the default model, how many
+  models are listed, the last check, and what uses it.
+- **Usage** — Station-observed usage by this model connection over 7 or 30
+  days, on this Station only, on a Station that supports the filter. Runs from
+  before Station recorded each run's model connection are not counted. Usage
+  needs `access:manage`; without it the tab says so.
+- **Models** — the listed models, with favorites, order and visibility for this
+  device, or **Load models** when none are listed.
+- **Settings** — the connection's fields, **Test Connection** with its cost,
+  and **Delete** last.
+
+**Used by** lists the Agents and Projects whose saved settings choose the
+connection: an Agent's engine, model connection or tool servers, and a
+Project's chat default, embeddings or tool defaults. Each opens its page. A
+name that merely looks like the connection's is not a dependent. Scheduled
+jobs choose an Agent, so they depend on a connection through it. Someone who
+is only a Project member sees **Not shown**
+([projection](../../packages/contracts/src/connection-used-by.ts)).
 
 ---
 
@@ -2271,13 +2298,30 @@ remote-server sign-in or tool call.
 Connections has one clear home for each relationship:
 
 - **Computers** combines saved Station and SSH relationships. Its rows distinguish
-  authorization from observed reachability. **Add computer** asks whether to
+  authorization from observed reachability. The saved connection to the
+  Station this window is using is labelled **This Station**, without its
+  address. A row shows when it was last reached when that was recorded: an SSH
+  computer's last connection, or a saved connection's last success. Rows show
+  only what this Station and this window observe; they read nothing from
+  another Station ([rows](../../src-ui/src/views/connections-hub/computer-rows.ts)).
+  **Add computer** asks whether to
   invite a device, connect another Station, or run work over SSH. Connecting a
   Station opens the same destination and independent-access journey as
   **Connect a Station** in the Station manager.
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
-  or tool availability.
+  or tool availability. Each row shows its status, the tool count and date of
+  its last check, and how many Agents and Projects use it; a server's page
+  lists them under **Used by**. **Check all** checks the saved servers on the
+  server, three at a time, and reloads Agents once afterwards only if a check
+  changed what a server offers. It never begins a sign-in: a server that wants
+  one is named as needing you to sign in, and a refused key is a failed check.
+  A server that does not answer within 20 seconds is named as failed. It leaves out Station's own servers,
+  turned-off servers, and servers signed in per person, and names the last.
+  One check runs at a time; pressing it again while it runs, here or from
+  another window, waits for the same check
+  ([batch](../../src-server/routes/agents/tools.ts)).
+  Leaving a server with unsaved edits asks first.
   For a saved integration configured to use personal accounts, **Your account**
   shows whether tools use your account, a Project-specific account, an explicitly
   allowed shared account, or no account. Choose **Connect your account**, then
@@ -2290,6 +2334,11 @@ Connections has one clear home for each relationship:
   These controls expose the existing remote manual OAuth flow; they do not add
   hosted, unattended or membership-revocation support to personal credentials.
 - **Knowledge** manages Knowledge sources; see the [Knowledge guide](knowledge.md).
+  Its page opens with one label, **Semantic search on** or **Semantic search
+  off**, the reason when it is off (no vector store, no embedding model, or
+  one turned off) and one fix, then the index's documents, chunks and Projects
+  as the knowledge status route counts them
+  ([readiness](../../src-ui/src/views/connections-hub/knowledge-readiness.ts)).
 - When an agent tool depends on a disconnected tool server, **Repair
   connection** opens that exact server. Station does not label the tool
   available or ask the user to add it first.

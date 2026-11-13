@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"examples/registry/integrations/README.md","note":"tool.schema.json gains an optional probe.toolsDigest (64 hex chars); registry integration examples carry no probe, so their documented shape stays valid.","inputs":["examples/registry/integrations/README.md","schemas/tool.schema.json"]}
+  ]
+}

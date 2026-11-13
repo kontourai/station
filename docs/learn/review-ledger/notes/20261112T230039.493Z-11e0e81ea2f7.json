@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"tools.ts Check all and mcp-service probe classification changes do not touch MCP-UI resource reads or tool calls this design describes; verified the design's claims reference unchanged code paths.","inputs":["docs/design/mcp-ui-host.md","src-server/routes/agents/tools.ts","src-server/services/plugins/__tests__/mcp-service.test.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"SplitPaneLayout change only exports the SplitPaneItem type; pane relationships and layout behaviour described here are unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}

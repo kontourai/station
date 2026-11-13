@@ -10,6 +10,7 @@ import {
   CONNECTION_SECTIONS,
   canonicalConnectionPath,
   ENGINE_DETAIL_TABS,
+  MODEL_DETAIL_TABS,
 } from '../views/connections-hub/connection-sections';
 import { boardPath, parseBoardPath } from './board-route';
 import { APP_DESTINATION_REGISTRY } from './destination-registry';
@@ -300,7 +301,8 @@ function isRegistryCatalogTab(value: string): value is RegistryCatalogTab {
 
 /**
  * Whether moving from `from` to `to` changes only a route tab inside one
- * mounted record: the engine detail's tabs (`/connections/engines/<id>/<tab>`).
+ * mounted record: the engine and model connection details' tabs
+ * (`/connections/engines/<id>/<tab>`, `/connections/models/<id>/<tab>`).
  * `routeIdentity` leaves that tab out for the same reason, so the record, its
  * editor and its unsaved settings stay mounted across the move, and an
  * unsaved-changes guard has nothing to protect. Clicks and Back/Forward both
@@ -311,8 +313,9 @@ export function isSameRecordTabTraversal(from: string, to: string): boolean {
   const a = resolveViewFromPath(from);
   const b = resolveViewFromPath(to);
   return (
-    a.type === 'connections-engine-edit' &&
-    b.type === 'connections-engine-edit' &&
+    (a.type === 'connections-engine-edit' ||
+      a.type === 'connections-model-edit') &&
+    b.type === a.type &&
     a.id === b.id
   );
 }
@@ -378,9 +381,18 @@ export function resolveViewFromPath(
     return { type: 'connections-models' };
   }
   if (path.startsWith('/connections/models/')) {
-    const id = path.split('/')[3];
-    if (id) {
-      return { type: 'connections-model-edit', id };
+    const detail = parseResourceDetailPath(
+      path,
+      '/connections/models',
+      MODEL_DETAIL_TABS,
+    );
+    if (detail && 'notFound' in detail) return { type: 'not-found', path };
+    if (detail) {
+      return {
+        type: 'connections-model-edit',
+        id: detail.id,
+        ...(detail.tab ? { tab: detail.tab } : {}),
+      };
     }
   }
   // `new/<providerId>` is the command-backed provider setup, not an engine
@@ -618,7 +630,7 @@ export function getPathForView(view: NavigationView): string | null {
     case 'connections-models':
       return '/connections/models';
     case 'connections-model-edit':
-      return `/connections/models/${view.id}`;
+      return resourceDetailPath('/connections/models', view.id, view.tab);
     case 'connections-engines':
       return '/connections/engines';
     case 'connections-engine-edit':

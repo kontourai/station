@@ -73,3 +73,13 @@ export const ENGINE_DETAIL_TABS = [
 ] as const;
 
 export type EngineDetailTab = (typeof ENGINE_DETAIL_TABS)[number];
+
+/** The model connection detail's route tabs (`/connections/models/<id>/<tab>`). */
+export const MODEL_DETAIL_TABS = [
+  'overview',
+  'usage',
+  'models',
+  'settings',
+] as const;
+
+export type ModelDetailTab = (typeof MODEL_DETAIL_TABS)[number];

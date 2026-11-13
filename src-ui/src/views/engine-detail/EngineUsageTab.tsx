@@ -99,7 +99,10 @@ export function EngineUsageTab({
     );
   return (
     <ConnectionUsage
-      connection={connection}
+      filter={{ connectionId: connection.id }}
+      label={connection.name}
+      scope="This Station · this engine"
+      unattributed="Runs recorded before Station tracked each run's engine are not counted here."
       access={access}
       days={days}
       onDaysChange={setDays}
@@ -107,13 +110,24 @@ export function EngineUsageTab({
   );
 }
 
-function ConnectionUsage({
-  connection,
+/**
+ * Station-observed usage of one engine or model connection, read from this
+ * Station only (connection ids are local), on a host that applies the
+ * connection filter; usage needs `access:manage`.
+ */
+export function ConnectionUsage({
+  filter,
+  label,
+  scope,
+  unattributed,
   access,
   days,
   onDaysChange,
 }: {
-  connection: AgentConnectionView;
+  filter: { connectionId: string } | { modelConnectionId: string };
+  label: string;
+  scope: string;
+  unattributed: string;
   access: Access;
   days: UsageDays;
   onDaysChange: (days: UsageDays) => void;
@@ -132,7 +146,7 @@ function ConnectionUsage({
   const rollup = useUsageRollupQuery(
     {
       days,
-      connectionId: connection.id,
+      ...filter,
       localOnly: true,
       groupBy: 'day',
       pageSize: 100,
@@ -161,9 +175,9 @@ function ConnectionUsage({
       state={state}
       days={days}
       onDaysChange={onDaysChange}
-      scope="This Station · this engine"
-      unattributed="Runs recorded before Station tracked each run's engine are not counted here."
-      label={connection.name}
+      scope={scope}
+      unattributed={unattributed}
+      label={label}
     />
   );
 }

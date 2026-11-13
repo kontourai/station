@@ -250,7 +250,7 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     ),
     // A store with no embedding model is a resting state (semantic search
     // off), like an unconnected computer: the Knowledge page says so. No
-    // store at all is not.
+    // store at all, or the only one turned off, is not.
     ...(knowledge && !knowledge.vectorDb
       ? [
           {
@@ -266,7 +266,22 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
             actionLabel: 'Set up',
           },
         ]
-      : []),
+      : knowledge?.vectorDb && knowledge.vectorDb.enabled === false
+        ? [
+            {
+              id: 'knowledge:vector-store',
+              section: 'knowledge' as const,
+              title: 'Knowledge store',
+              status: {
+                label: 'Disabled',
+                tone: connectionVerdictTone('off'),
+              },
+              sentence: 'The vector store is turned off.',
+              path: '/connections/knowledge',
+              actionLabel: 'Open it',
+            },
+          ]
+        : []),
     // Computers claims nothing: this client holds no liveness evidence for
     // a paired device or a manual entry, and an SSH profile's phase is "not
     // connected" for every computer nobody has connected yet — which is a

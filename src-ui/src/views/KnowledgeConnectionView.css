@@ -100,30 +100,6 @@
   color: var(--error-text);
 }
 
-/* ── Stats ──────────────────────────────────────────────────────── */
-
-.knowledge-view__stats {
-  display: flex;
-  gap: 32px;
-}
-
-.knowledge-view__stat {
-  display: flex;
-  flex-direction: column;
-}
-
-.knowledge-view__stat-value {
-  font-size: var(--text-3xl);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.knowledge-view__stat-label {
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
 /* ── Link ───────────────────────────────────────────────────────── */
 
 .knowledge-view__link {
@@ -174,9 +150,17 @@
     align-items: center;
     min-height: 44px;
   }
+}
 
-  .knowledge-view__stats {
-    flex-wrap: wrap;
-    gap: 16px;
-  }
+/* Semantic search: one label, why, and at most one fix. */
+.knowledge-view__readiness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.knowledge-view__readiness p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }

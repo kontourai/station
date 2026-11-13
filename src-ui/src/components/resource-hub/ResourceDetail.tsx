@@ -46,7 +46,13 @@ export function ResourceDetail<Tab extends string>({
   /** What the fix (or a check) reported, and what it costs. */
   fixNotice?: ReactNode;
   /** Present while the editor holds unsaved edits. */
-  unsaved?: { saving: boolean; onSave: () => void; onDiscard: () => void };
+  unsaved?: {
+    saving: boolean;
+    onSave: () => void;
+    onDiscard: () => void;
+    /** The edits cannot be saved as they stand (a required field is empty). */
+    saveBlocked?: boolean;
+  };
   tabs: ReadonlyArray<ResourceDetailTab<Tab>>;
   activeTab: Tab;
   onSelectTab: (tab: Tab) => void;
@@ -99,7 +105,7 @@ export function ResourceDetail<Tab extends string>({
               <Button
                 variant="primary"
                 onClick={unsaved.onSave}
-                disabled={unsaved.saving}
+                disabled={unsaved.saving || unsaved.saveBlocked}
               >
                 {unsaved.saving ? 'Saving…' : 'Save'}
               </Button>

@@ -2740,8 +2740,16 @@ it is disclosure, so it never invalidates a recorded check. The `/agents` and
 `station` or `policy` origin from viewers who are neither the operator in person
 nor holders of `access:manage` (`routeObservationForViewer`). The engine page reads
 it with the [resource-hub kit](../../src-ui/src/components/resource-hub/ResourceDetail.tsx)
-and the [engine detail tabs](../../src-ui/src/views/engine-detail/EngineOverviewTab.tsx).
-Last, it attaches `allowanceEvidence`: one bounded read of recorded quota
+and the [engine detail tabs](../../src-ui/src/views/engine-detail/EngineOverviewTab.tsx);
+model connections use the same kit through the
+[model detail tabs](../../src-ui/src/views/model-detail/ModelOverviewTab.tsx).
+What depends on a connection is a separate read, not part of the inspection:
+`GET /api/connections/used-by`
+([reader](../../src-server/services/connections/connection-used-by-reader.ts))
+projects saved Agent and Project bindings through the pure
+[used-by contract](../../packages/contracts/src/connection-used-by.ts), and the kit's
+[used-by list](../../src-ui/src/components/resource-hub/UsedByList.tsx) presents it.
+Last, the inspection attaches `allowanceEvidence`: one bounded read of recorded quota
 refusals from the orchestration `EventStore` (wired by
 `setAllowanceEvidenceSource`), scoped per account by each run's process epoch,
 then one bounded check per candidate refusal for a later accepted turn on the

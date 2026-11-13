@@ -1,0 +1,7 @@
+{
+  "revision": "ebbc34dfd1e8b65da8f7e3322a4f7bfe1fcac6a5",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Updated POST /integrations/check-all: sign-in recorded only with a saved sign-in or a 401 naming OAuth resource_metadata; API-key 401 and 403 are ordinary failures; 20s per-probe and 60s batch timeouts; reload compares ok, toolCount and probe.toolsDigest; package-owned servers compare with the previous batch. Checked against checkAllToolServers and MCPService.probeIntegration.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

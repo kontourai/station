@@ -1081,6 +1081,21 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   /** Existing accounts use Station's coordinator, never the SDK's independent refresh. */
   async forTransport(): Promise<AuthProvider | OAuthClientProvider> {
     if (!(await this.tokens())) return this.forAuthorization();
+    return this.storedAccount();
+  }
+
+  /**
+   * For a check that never begins a sign-in: the stored account when there is
+   * one (refreshed as usual), and otherwise no credential, so a server that
+   * wants one answers 401 rather than this starting authorization. Nothing is
+   * registered, no authorization URL is made and no flow is left pending.
+   */
+  async forCheck(): Promise<AuthProvider> {
+    if (!(await this.tokens())) return { token: async () => undefined };
+    return this.storedAccount();
+  }
+
+  private storedAccount(): AuthProvider {
     let presented: string | undefined;
     return {
       token: async () => {

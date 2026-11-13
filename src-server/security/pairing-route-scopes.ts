@@ -4222,6 +4222,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/connections/:id' },
     { method: 'POST', path: '/api/connections/:id/smoke' },
     { method: 'POST', path: '/api/connections/:id/test' },
+    // Agent and Project slugs that name each connection. Ordinary read tier,
+    // like `GET /integrations`, which already lists the Agents per server;
+    // the handler withholds it from a Project member.
+    { method: 'GET', path: '/api/connections/used-by' },
     { method: 'DELETE', path: '/api/connections/agent/:id/app-home' },
     { method: 'GET', path: '/api/connections/agent/:id/app-home' },
     { method: 'POST', path: '/api/connections/agent/:id/app-home/import' },
@@ -4332,6 +4336,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/integrations/:id/oauth/authorize' },
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
+    // Check all: the same probe as reconnect, for every configured server.
+    { method: 'POST', path: '/integrations/check-all' },
     // #3483: keeps or resets an integration's legacy trust settings in this
     // Station, like an integration edit; the handler requires the operator in
     // person and records a receipt.

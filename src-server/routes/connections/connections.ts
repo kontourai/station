@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { ConnectionUsedBy } from '@kontourai/station-contracts/connection-used-by';
 import type { EngineAllowanceEvidence } from '@kontourai/station-contracts/engine-accounts';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import type {
@@ -46,6 +47,12 @@ export function createConnectionRoutes(
   connectionService: ConnectionService,
   options: {
     applyConfigurationMutation?: AgentConfigurationMutationRunner;
+    /**
+     * What names each connection (`GET /used-by`), as this caller may see
+     * it. `'withheld'` for a caller that receives no operator Agent catalog:
+     * the answer lists Agents and Projects by slug.
+     */
+    readUsedBy?: (c: Context) => Promise<ConnectionUsedBy | 'withheld'>;
   } = {},
 ) {
   const app = new Hono();
@@ -176,6 +183,30 @@ export function createConnectionRoutes(
         },
         500,
       );
+    }
+  });
+
+  // Registered before `/:id`, which would otherwise read `used-by` as an id.
+  app.get('/used-by', async (c) => {
+    if (!options.readUsedBy)
+      return c.json(
+        { success: false, error: 'Used-by is not available on this Station' },
+        501,
+      );
+    try {
+      const usedBy = await options.readUsedBy(c);
+      c.header('Cache-Control', 'no-store');
+      if (usedBy === 'withheld')
+        return c.json(
+          {
+            success: false,
+            error: 'What uses a connection is shown to the operator only',
+          },
+          403,
+        );
+      return c.json({ success: true, data: usedBy });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
     }
   });
 

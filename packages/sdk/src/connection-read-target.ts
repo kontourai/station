@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import type { ApiRequestScope } from './client/http';
 
 /** The fetch destination is distinct from the credential authority for a relay. */
@@ -33,4 +34,15 @@ export function captureConnectionReadTarget(
         requestScope: Object.freeze({ ...target.requestScope }),
       })
     : undefined;
+}
+
+/**
+ * Refetches what names each connection (`useConnectionUsedByQuery`) on every
+ * read target. Saving or removing an Agent or a Project changes it.
+ */
+export function invalidateConnectionUsedBy(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: ({ queryKey }) =>
+      queryKey[0] === 'connections' && queryKey.at(-1) === 'used-by',
+  });
 }

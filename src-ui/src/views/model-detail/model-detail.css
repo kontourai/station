@@ -1,0 +1,13 @@
+/* Model connection detail: what the kit does not own. Tokens only. */
+.model-detail__error {
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}
+/* Delete sits last on Settings, apart from the fields. */
+.model-detail__danger {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: var(--k-space-3);
+  border-top: 1px solid var(--k-line);
+}

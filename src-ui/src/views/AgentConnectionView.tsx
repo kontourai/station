@@ -344,7 +344,7 @@ export function AgentConnectionView({
     [externalEngines],
   );
   /**
-   * Engines Station found on this computer that nobody has added, by the
+   * Engines Station found where it runs that nobody has added, by the
    * server's setup placement (detected, not added). Add may label one
    * differently when a prerequisite blocks it. Listing one configures
    * nothing; its Connect opens that entry's Add result in place.
@@ -864,7 +864,7 @@ export function AgentConnectionView({
          a bespoke "No engines yet" — the state-primitives ratchet exists to
          stop every view minting its own "No X" restatement of its noun. */
       listEmptyTitle="Add an engine to get started"
-      listEmptyDescription="Engines Station finds on this computer appear here too."
+      listEmptyDescription="Engines Station finds where it runs appear here too."
       emptyDescription="Select an engine to review its status and setup."
       emptyContent={
         isAddRoute ? (

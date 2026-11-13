@@ -303,6 +303,15 @@ export function ComputersSection() {
                 <span className="connections-computers__note">
                   {row.relationship}
                 </span>
+                {row.lastContactAt && (
+                  <span className="connections-computers__note">
+                    Last reached{' '}
+                    {new Date(row.lastContactAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
+                )}
                 {row.state.detail && (
                   <span className="connections-computers__note">
                     {row.state.detail}

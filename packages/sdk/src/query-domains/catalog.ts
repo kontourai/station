@@ -7,6 +7,7 @@ import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
 import type {
   IntegrationTrustReviewDecision,
   ToolDef,
+  ToolServerCheckAll,
 } from '@kontourai/station-contracts/tool';
 import type { ApiRequestScope } from '../client/http';
 import {
@@ -377,6 +378,29 @@ export function useReconnectIntegrationMutation(
         },
       );
     },
+    {
+      invalidateKeys: [['integrations']],
+      onSuccess: options?.onSuccess,
+      onError: options?.onError,
+    },
+  );
+}
+
+/**
+ * Check all (`POST /integrations/check-all`): one server batch that probes
+ * every configured tool server without beginning a sign-in. A request made
+ * while a batch runs joins it. `signal` stops waiting for the answer; the
+ * batch itself finishes on the server.
+ */
+export function useCheckAllIntegrationsMutation(
+  options?: MutationOptions<ToolServerCheckAll, { signal?: AbortSignal }>,
+) {
+  return useApiMutation(
+    async ({ signal }: { signal?: AbortSignal } = {}) =>
+      requestIntegration<ToolServerCheckAll>('/check-all', {
+        method: 'POST',
+        ...(signal ? { signal } : {}),
+      }),
     {
       invalidateKeys: [['integrations']],
       onSuccess: options?.onSuccess,

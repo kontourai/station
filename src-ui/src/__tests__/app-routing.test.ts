@@ -8,7 +8,10 @@ import {
   resolveViewFromPath,
 } from '../app-shell/routing';
 import type { NavigationView } from '../types';
-import { ENGINE_DETAIL_TABS } from '../views/connections-hub/connection-sections';
+import {
+  ENGINE_DETAIL_TABS,
+  MODEL_DETAIL_TABS,
+} from '../views/connections-hub/connection-sections';
 
 const LEGACY_PATH_CASES = [
   // #928: Activity's standalone placement is gone, so both retired spellings
@@ -830,6 +833,45 @@ describe('app-shell routing', () => {
       ['/connections/engines/claude', '/connections/engines/claude/bogus'],
     ];
     for (const [from, to] of different)
+      expect(isSameRecordTabTraversal(from!, to!)).toBe(false);
+  });
+
+  test('a model connection detail takes an allow-listed tab segment; any other is not found', () => {
+    for (const tab of MODEL_DETAIL_TABS) {
+      const view = {
+        type: 'connections-model-edit',
+        id: 'ollama-local',
+        tab,
+      } as const;
+      expect(resolveViewFromPath(getPathForView(view)!)).toEqual(view);
+    }
+    expect(
+      getPathForView({
+        type: 'connections-model-edit',
+        id: 'ollama-local',
+        tab: 'usage',
+      }),
+    ).toBe('/connections/models/ollama-local/usage');
+    for (const path of [
+      '/connections/models/ollama-local/accounts',
+      '/connections/models/ollama-local/usage/extra',
+    ])
+      expect(resolveViewFromPath(path)).toEqual({ type: 'not-found', path });
+    expect(resolveViewFromPath('/connections/models/new')).toEqual({
+      type: 'connections-model-edit',
+      id: 'new',
+    });
+    // Moving between one record's tabs keeps its unsaved edits mounted.
+    expect(
+      isSameRecordTabTraversal(
+        '/connections/models/a/settings',
+        '/connections/models/a/usage',
+      ),
+    ).toBe(true);
+    for (const [from, to] of [
+      ['/connections/models/a/settings', '/connections/models/b/settings'],
+      ['/connections/models/a', '/connections/engines/a'],
+    ])
       expect(isSameRecordTabTraversal(from!, to!)).toBe(false);
   });
 

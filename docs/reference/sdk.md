@@ -409,6 +409,15 @@ and category labels. The returned discovery is useful even when plugin-owned or
 personal-account state is not persisted in the ordinary integration listing.
 Metadata is for browsing; it grants no execution or credential authority.
 
+`useCheckAllIntegrationsMutation` runs Check all as one server batch: every
+configured tool server Station does not run itself is probed, three at a time,
+without beginning a sign-in. It resolves to `ToolServerCheckAll`, one
+`ToolServerCheckResult` per server (`ready`, `failed`, `sign-in-required`, or
+`skipped` for a server signed in per person), and `reloaded`. A call made while
+a batch runs joins it. Pass `{ signal }` to stop waiting; the batch still
+finishes on the server. Station's Tools page passes none, so leaving it still
+refreshes the integration list when the batch answers.
+
 Integration metadata also carries `origin` (`station`, `registry`, `plugin`,
 `manual`, or `unavailable`), with source/version/location where recorded. This
 identifies installation provenance, not a trust or approval verdict. Local
@@ -1335,6 +1344,16 @@ Returns the merged Connections list used by the Connections hub. The result incl
 Returns model/provider-backed connections from `GET /api/connections/models`.
 
 Use this when you need provider readiness, editable provider config, or provider-scoped `config.modelOptions`.
+
+#### `useConnectionUsedByQuery()`
+
+Returns what names each connection from `GET /api/connections/used-by`, under
+`['connections', 'used-by']`. A caller the server withholds it from gets
+`ConnectionUsedByWithheldError`; render that as an access state, not as
+"nothing uses it". Filter one connection with `dependentsOfConnection` from
+`@kontourai/station-contracts/connection-used-by`. The SDK's Agent create, update
+and remove mutations (engine Agents included) and its Project update and remove
+mutations refetch it.
 
 <a id="useruntimeconnectionsquery"></a>
 

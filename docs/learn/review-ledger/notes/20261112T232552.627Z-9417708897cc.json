@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"api.md and sdk.md edits only describe Check all sign-in classification, timeouts, tool digest and the Tools page not passing a signal; the integration guidance here does not depend on them.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]}
+  ]
+}

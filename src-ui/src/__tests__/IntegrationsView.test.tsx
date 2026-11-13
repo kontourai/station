@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let integrations: unknown[] = [];
@@ -10,6 +16,15 @@ const refetchIntegrations = vi.fn();
 let pathname = '/connections/tools';
 let detail: any;
 let trustPreview = false;
+const navigateMock = vi.fn();
+let reconnectAsync = vi.fn();
+let checkAllAsync = vi.fn();
+let usedByQuery: {
+  data?: unknown;
+  error: unknown;
+  isError: boolean;
+  refetch: () => void;
+} = { data: undefined, error: null, isError: false, refetch: vi.fn() };
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   // The REAL save and trust-review hooks, so requests travel the real
@@ -33,7 +48,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
       : [],
   }),
   useDeleteIntegrationMutation: () => ({ mutate: vi.fn() }),
-  useReconnectIntegrationMutation: () => ({ mutate: vi.fn() }),
+  useReconnectIntegrationMutation: () => ({
+    mutate: vi.fn(),
+    mutateAsync: reconnectAsync,
+  }),
+  useCheckAllIntegrationsMutation: () => ({ mutateAsync: checkAllAsync }),
+  useConnectionUsedByQuery: () => usedByQuery,
   useSetIntegrationRenderPermissionMutation: () => ({ mutate: vi.fn() }),
   useSetIntegrationEnabledMutation: () => ({ mutate: vi.fn() }),
   useApplyIntegrationToolsMutation: () => ({ mutate: vi.fn() }),
@@ -45,7 +65,7 @@ vi.mock('../contexts/NavigationContext', () => {
   // memoized actions, no subscription). This mock answers both from one value.
   const navigation = () => ({
     pathname,
-    navigate: vi.fn(),
+    navigate: navigateMock,
   });
   return {
     useNavigation: (
@@ -305,7 +325,156 @@ describe('IntegrationsView (#771)', () => {
       tool.compareDocumentPosition(bindings) & Node.DOCUMENT_POSITION_FOLLOWING,
       'expected the tools list to render before advanced secret bindings',
     ).toBeTruthy();
-    expect(screen.getByText('Not checked yet')).toBeTruthy();
+    expect(screen.getByText('Saved — not verified')).toBeTruthy();
     expect(screen.queryByText('Never probed')).toBeNull();
+  });
+});
+
+describe('IntegrationsView: rows, Check all and the unsaved guard', () => {
+  const stdio = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    kind: 'mcp',
+    transport: 'stdio',
+    command: 'node',
+    displayName: id,
+    enabled: true,
+    probe: { ok: true, toolCount: 2, checkedAt: '2026-11-01T00:00:00Z' },
+    ...extra,
+  });
+
+  beforeEach(() => {
+    integrations = [];
+    integrationsError = null;
+    pathname = '/connections/tools';
+    detail = undefined;
+    navigateMock.mockReset();
+    reconnectAsync = vi.fn();
+    checkAllAsync = vi.fn();
+    usedByQuery = {
+      data: undefined,
+      error: null,
+      isError: false,
+      refetch: vi.fn(),
+    };
+  });
+
+  test('rows count the Agents and Projects the server projection names', () => {
+    integrations = [stdio('docs')];
+    usedByQuery = {
+      ...usedByQuery,
+      data: {
+        dependents: [
+          {
+            connectionId: 'docs',
+            kind: 'agent',
+            slug: 'a',
+            name: 'A',
+            via: 'tool-server',
+          },
+          {
+            connectionId: 'docs',
+            kind: 'project',
+            slug: 'p',
+            name: 'P',
+            via: 'project-tools',
+          },
+          {
+            connectionId: 'other',
+            kind: 'agent',
+            slug: 'b',
+            name: 'B',
+            via: 'tool-server',
+          },
+        ],
+      },
+    };
+    renderView();
+    expect(screen.getByText(/Used by 2$/)).toBeTruthy();
+  });
+
+  test('Check all runs one server batch and names each outcome', async () => {
+    integrations = [
+      stdio('one'),
+      stdio('two', { displayName: 'Two' }),
+      stdio('remote', {
+        transport: 'streamable-http',
+        endpoint: 'https://example.test/mcp',
+      }),
+      stdio('mine', { credentialOwnership: { owner: 'principal' } }),
+    ];
+    let answer!: (value: unknown) => void;
+    checkAllAsync = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    renderView();
+    const button = screen.getByRole('button', { name: 'Check all' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Checking…' })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Checking…' }));
+    // One batch while one runs; the server bounds and orders the probes.
+    expect(checkAllAsync).toHaveBeenCalledTimes(1);
+    expect(reconnectAsync).not.toHaveBeenCalled();
+    answer({
+      reloaded: true,
+      results: [
+        { id: 'one', outcome: 'ready' },
+        { id: 'two', outcome: 'failed', error: 'down' },
+        { id: 'remote', outcome: 'sign-in-required' },
+        { id: 'mine', outcome: 'skipped' },
+      ],
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Checked 3; 1 failed: Two.')).toBeTruthy(),
+    );
+    expect(screen.getByText('1 need you to sign in: remote.')).toBeTruthy();
+    expect(
+      screen.getByText('Skipped 1 signed in per person: mine.'),
+    ).toBeTruthy();
+  });
+
+  test('leaving while Check all runs does not cancel it', async () => {
+    integrations = [stdio('one')];
+    let signal: AbortSignal | undefined;
+    let answer!: (value: unknown) => void;
+    checkAllAsync = vi.fn((variables: { signal?: AbortSignal }) => {
+      signal = variables.signal;
+      return new Promise((resolve) => {
+        answer = resolve;
+      });
+    });
+    const view = renderView();
+    fireEvent.click(screen.getByRole('button', { name: 'Check all' }));
+    await waitFor(() => expect(checkAllAsync).toHaveBeenCalledTimes(1));
+    view.unmount();
+    // The batch's answer still refreshes the list (the hook's own test runs
+    // the real mutation); the request is never aborted.
+    expect(signal?.aborted ?? false).toBe(false);
+    answer({ reloaded: false, results: [{ id: 'one', outcome: 'ready' }] });
+  });
+
+  test('leaving a server with unsaved edits asks first; Discard continues', async () => {
+    const { navigationStore } = await import('../contexts/navigation-store');
+    window.history.replaceState({}, '', '/connections/tools/docs');
+    pathname = '/connections/tools/docs';
+    navigateMock.mockImplementation((path: string) =>
+      navigationStore.navigate(path),
+    );
+    integrations = [stdio('docs'), stdio('other')];
+    detail = stdio('docs');
+    renderView();
+    fireEvent.change(screen.getByLabelText('Display Name'), {
+      target: { value: 'Docs (edited)' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^other/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Unsaved Changes' });
+    expect(window.location.pathname).toBe('/connections/tools/docs');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+    expect(window.location.pathname).toBe('/connections/tools/other');
   });
 });

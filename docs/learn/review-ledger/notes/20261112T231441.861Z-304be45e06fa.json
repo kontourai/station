@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Index entry for connections-overhaul.md matches the design file present in docs/design; other entries unchanged.","inputs":["docs/design/README.md"]}
+  ]
+}

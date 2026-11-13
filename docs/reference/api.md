@@ -1773,6 +1773,24 @@ includes up to 200 `probe.tools` entries with raw `name`, optional `description`
 can return this metadata without persisting it to a local integration definition.
 Discovery metadata is a browsing snapshot, not execution authority.
 
+`POST /integrations/check-all` (operator; integration operate tier) probes every
+enabled tool server Station does not run itself, three at a time, and returns
+`{success: true, data: {results, reloaded}}`
+([`ToolServerCheckAll`](../../packages/contracts/src/tool.ts)). Each result is
+`ready`, `failed` (with `error`), `sign-in-required` or `skipped` (a server
+signed in per person). The probe never begins a sign-in. A server answering
+401 with a saved sign-in is recorded with `probe.authorization`
+`token-expired-refresh-failed`; one with no saved sign-in whose 401 names its
+OAuth `resource_metadata` is recorded `never-authorized`. Any other 401 (such
+as a refused API key) or 403 is an ordinary `failed` probe. No authorization URL
+or pending sign-in is created. Each probe is waited on for at most 20 seconds,
+and the batch for at most 60: a probe past either reports `failed` as timed out
+and records nothing. A request that arrives while a batch runs joins it. Agents
+reload once at the end, and only when a probe changed a server's reachability,
+tool count or tools (`probe.toolsDigest` covers each tool's name, description
+and input schema); a package-owned server, whose probe is not persisted, is
+compared with the previous batch. No Station agent tool reaches it.
+
 ### Discover transcript App tools
 
 `GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`
@@ -2694,6 +2712,23 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents` returns `{success: true, data, failures}`. The old
 `/api/connections/runtimes` spelling is not registered here.
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
+
+### What uses a connection
+
+`GET /api/connections/used-by` returns `{success: true, data: {dependents}}`:
+one entry per Agent or Project whose saved configuration names an engine
+connection, model connection or tool server, with `connectionId`, `kind`,
+`slug`, `name` and `via` (`engine`, `model`, `tool-server`,
+`project-default-model`, `project-embedding`, `project-tools`). Only explicit
+bindings count; nothing is matched by slug or name. A Project's default
+provider counts only with its default model. Access: the `/api/connections`
+family's read tier. A caller that receives only admitted Agents from
+`GET /api/agents` (a Project member) gets 403, and no Station agent tool
+reaches it (`station_control_route_unmapped`). Agents come from their stored
+definitions only: registry default Agents and the Station Agent's per-boot
+engine are not saved configuration and are not listed. `Cache-Control: no-store`.
+The [contract](../../packages/contracts/src/connection-used-by.ts) holds the
+projection; `GET /integrations` still returns its older `usedBy` display names.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
 Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
