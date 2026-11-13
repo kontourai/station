@@ -2480,7 +2480,7 @@ Session summaries include `openRequestKinds`, keyed by unresolved request ID,
 with `input` for questions, elicitation forms and plan review, and `approval`
 for tool permissions. `blockingOpenRequestIds` remains the authoritative set
 that suspends progress. The fields are additive: an older host without kind
-metadata is conservatively displayed as approval. Older persisted forms are
+metadata uses conservative approval display until a validated form is read. Older persisted forms are
 classified from their validated input-request payload when the host projects
 its summary.
 

@@ -277,6 +277,8 @@ export interface ChatMessage {
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.
      */
+    /** Semantic kind retained even before a form body is loaded. */
+    requestKind?: 'input' | 'approval';
     inputRequest?: InputRequestForm;
     /** #3390: an `input-request` part's record; see `MessagePart`. */
     inputRequestRecord?: InputRequestRecord;

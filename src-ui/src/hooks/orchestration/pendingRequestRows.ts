@@ -34,7 +34,7 @@ const requestKey = (threadId: string, requestId: string) =>
   `${threadId}\u0000${requestId}`;
 
 /**
- * Approval requests in this window that are still open: no `request.resolved`
+ * Requests in this window that are still open: no `request.resolved`
  * for them, and nothing since has retired them (`approvalRetiredBy`: a session
  * exit, or — for a main-thread request — the end of its turn). This is the
  * same rule the projection uses to retire a bound card. Keyed by thread AND
@@ -48,7 +48,8 @@ function openApprovalRequests(
     if (event.method === 'request.opened') {
       if (
         event.requestType === 'approval' ||
-        event.requestType === 'permission'
+        event.requestType === 'permission' ||
+        event.requestType === 'input'
       )
         open.set(requestKey(event.threadId, event.requestId), event);
     } else if (event.method === 'request.resolved') {
@@ -184,6 +185,8 @@ export function unansweredApprovalRequests(
       state: 'awaiting-approval',
       needsApproval: true,
       approvalId: request.requestId,
+      requestKind:
+        request.requestType === 'input' || inputRequest ? 'input' : 'approval',
       ...(inputRequest ? { inputRequest } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
@@ -196,4 +199,11 @@ export function unansweredApprovalRequests(
       approvalRuleGrant: toolRequestRuleGrantFromPayload(request.payload),
     };
   });
+}
+
+/** The event kind wins; old in-memory rows still carry validated form bodies. */
+export function pendingRequestKind(
+  request: PendingApprovalRequest,
+): 'input' | 'approval' {
+  return request.requestKind ?? (request.inputRequest ? 'input' : 'approval');
 }

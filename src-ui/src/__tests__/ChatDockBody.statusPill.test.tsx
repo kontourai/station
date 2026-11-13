@@ -1,3 +1,4 @@
+import { useChatStatusPill } from '../components/chat-dock/useChatStatusPill';
 /**
  * @vitest-environment jsdom
  *
@@ -399,4 +400,30 @@ test('mixed-request pill routes to permission first even when the question arriv
   expect(revealRequest).toHaveBeenCalledWith(
     expect.objectContaining({ requestId: 'permission' }),
   );
+});
+
+function WindowQuestionPill() {
+  const { pill } = useChatStatusPill({
+    activeSession: buildSession(),
+    streamStatus: undefined,
+    turnLive: false,
+    enabled: true,
+    windowRequests: [
+      {
+        requestId: 'window-question',
+        threadId: 'question-thread',
+        requestKind: 'input',
+      },
+    ],
+  });
+  return <>{pill}</>;
+}
+
+test('a question found only in the event window renders Needs answer without snapshot metadata', async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <WindowQuestionPill />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs answer'));
 });

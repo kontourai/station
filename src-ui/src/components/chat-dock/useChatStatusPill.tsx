@@ -62,7 +62,9 @@ export function useChatStatusPill({
   streamStatus: ChatStreamStatus | undefined;
   turnLive: boolean;
   enabled: boolean;
-  windowRequests?: readonly RevealApprovalDetail[];
+  windowRequests?: readonly (RevealApprovalDetail & {
+    requestKind?: 'input' | 'approval';
+  })[];
   observationUnavailable?: boolean;
   resyncPending?: boolean;
   /** Re-reads this conversation when its status could not be observed. */
@@ -77,6 +79,18 @@ export function useChatStatusPill({
   const onUnavailable = useCallback(() => setView('unavailable'), []);
   // Requests still waiting on the user: open on the server and not yet
   // answered here (an answered one stays open until `request.resolved`).
+  const pendingRequestKinds = useMemo(
+    () => ({
+      ...Object.fromEntries(
+        (windowRequests ?? []).map((request) => [
+          request.requestId,
+          request.requestKind,
+        ]),
+      ),
+      ...activeSession.pendingRequestKinds,
+    }),
+    [windowRequests, activeSession.pendingRequestKinds],
+  );
   const pendingApprovals = useMemo(
     () =>
       requestsWaitingOnUser({
@@ -89,18 +103,18 @@ export function useChatStatusPill({
         answeredApprovals: activeSession.answeredApprovals,
       }).sort(
         (left, right) =>
-          Number(activeSession.pendingRequestKinds?.[left] === 'input') -
-          Number(activeSession.pendingRequestKinds?.[right] === 'input'),
+          Number(pendingRequestKinds[left] === 'input') -
+          Number(pendingRequestKinds[right] === 'input'),
       ),
     [
       activeSession.pendingApprovals,
-      activeSession.pendingRequestKinds,
+      pendingRequestKinds,
       activeSession.answeredApprovals,
       windowRequests,
     ],
   );
   const inputCount = pendingApprovals.filter(
-    (id) => activeSession.pendingRequestKinds?.[id] === 'input',
+    (id) => pendingRequestKinds[id] === 'input',
   ).length;
   const approvalCount = pendingApprovals.length - inputCount;
   const stationOutlivesApp = useStationOutlivesApp();
