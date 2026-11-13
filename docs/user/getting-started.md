@@ -648,6 +648,15 @@ of the answer's sheet. For the message that started a chat, both start a new
 chat with the same Agent and Project. When earlier messages have no completed
 answer to fork from, neither is offered; **New chat from this message** remains.
 
+Some engines can also forget part of a chat in place. Where the running engine
+says it can (Kiro's agent service), your message's actions include **Rewind
+conversation to here**. After you confirm, the agent no longer sees that message
+or anything after it. The messages stay in the chat, dimmed and marked
+**Rewound**, and a line says how many files the engine restored, when it says.
+This is not a checkpoint restore; only files the engine restores itself change.
+It is refused while a turn runs, and for a message from before the engine last
+restarted; the dialog says why.
+
 The usage disclosure ends after your usage decision. **Personalize Station**
 opens optional preferences after the work entry; it is not a prerequisite for a
 chat.

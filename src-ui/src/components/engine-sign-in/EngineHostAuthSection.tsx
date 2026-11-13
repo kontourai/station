@@ -103,6 +103,23 @@ function InstallBlock({
   );
 }
 
+type HostAuthIdentityChoice = EngineHostAuthView['identities'][number];
+
+const SOCIAL_PROVIDER_LABEL: Record<string, string> = {
+  google: 'Google',
+  github: 'GitHub',
+};
+
+function signedInLabel(
+  identity: NonNullable<NonNullable<EngineHostAuthView['status']>['identity']>,
+): string {
+  if (identity.kind === 'identity-center')
+    return `Signed in with IAM Identity Center (${identity.startUrl ?? ''}, ${identity.region ?? ''}).`;
+  if (identity.kind === 'social')
+    return `Signed in with ${SOCIAL_PROVIDER_LABEL[identity.provider ?? ''] ?? 'Google or GitHub'}.`;
+  return 'Signed in with AWS Builder ID.';
+}
+
 function LoginProgress({
   login,
   onCancel,
@@ -152,6 +169,23 @@ function LoginProgress({
             </span>
           )}
         </>
+      ) : login.phase === 'awaiting-approval' && login.authorizationUrl ? (
+        <>
+          <span>
+            Finish signing in to Kiro in the browser on this computer.
+          </span>
+          <span className="engine-sign-in__link">
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() =>
+                void openExternalLink(login.authorizationUrl as string)
+              }
+            >
+              Open sign-in page
+            </Button>
+          </span>
+        </>
       ) : (
         <span>
           {login.phase === 'verifying'
@@ -195,9 +229,8 @@ export function EngineHostAuthSection({
   );
   const loginMutation = useEngineHostAuthLoginMutation(connectionId, scope);
   const signOut = useEngineHostAuthSignOutMutation(connectionId, scope);
-  const [identity, setIdentity] = useState<'builder-id' | 'identity-center'>(
-    'builder-id',
-  );
+  const [identity, setIdentity] =
+    useState<HostAuthIdentityChoice>('builder-id');
   const [startUrl, setStartUrl] = useState('');
   const [region, setRegion] = useState('us-east-1');
 
@@ -220,7 +253,8 @@ export function EngineHostAuthSection({
     signInAllowed &&
     !running &&
     hostAuth.policy === 'allowed' &&
-    (identity === 'builder-id' ||
+    hostAuth.identities.includes(identity) &&
+    (identity !== 'identity-center' ||
       (startUrl.trim() !== '' && region.trim() !== ''));
 
   return (
@@ -244,11 +278,7 @@ export function EngineHostAuthSection({
           )}
           {status.state === 'signed-in' && status.identity && (
             <div className="engine-sign-in__key">
-              <span>
-                {status.identity.kind === 'identity-center'
-                  ? `Signed in with IAM Identity Center (${status.identity.startUrl ?? ''}, ${status.identity.region ?? ''}).`
-                  : 'Signed in with AWS Builder ID.'}
-              </span>
+              <span>{signedInLabel(status.identity)}</span>
               <Button
                 size="sm"
                 variant="danger"
@@ -284,13 +314,13 @@ export function EngineHostAuthSection({
                 loginMutation.mutate({
                   kind: 'start',
                   request:
-                    identity === 'builder-id'
-                      ? { identity: 'builder-id' }
-                      : {
+                    identity === 'identity-center'
+                      ? {
                           identity: 'identity-center',
                           startUrl: startUrl.trim(),
                           region: region.trim(),
-                        },
+                        }
+                      : { identity },
                 });
               }}
             >
@@ -302,13 +332,14 @@ export function EngineHostAuthSection({
                 value={identity}
                 disabled={!signInAllowed || running}
                 onChange={(event) =>
-                  setIdentity(
-                    event.target.value as 'builder-id' | 'identity-center',
-                  )
+                  setIdentity(event.target.value as HostAuthIdentityChoice)
                 }
               >
                 <option value="builder-id">AWS Builder ID</option>
                 <option value="identity-center">IAM Identity Center</option>
+                {hostAuth.identities.includes('social') && (
+                  <option value="social">Google or GitHub</option>
+                )}
               </select>
               {identity === 'identity-center' && (
                 <>
@@ -342,6 +373,13 @@ export function EngineHostAuthSection({
               </Button>
             </form>
           )}
+          {status.state !== 'signed-in' &&
+            hostAuth.socialSignIn === 'needs-browser-on-host' && (
+              <small>
+                Google and GitHub sign-in needs a browser on the computer
+                Station runs on.
+              </small>
+            )}
           <small>
             For this engine only: {engineName} gets short-lived access tokens,
             never the refresh token.

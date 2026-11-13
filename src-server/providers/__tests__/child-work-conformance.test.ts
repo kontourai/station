@@ -36,7 +36,12 @@ import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
-import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
+import {
+  type AcpMapperContext,
+  mapAcpExtensionNotification,
+  mapAcpSessionUpdate,
+} from '../adapters/acp-adapter-events.js';
+import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
 import {
@@ -285,7 +290,10 @@ function replayGrokCapture(capture: string): CanonicalRuntimeEvent[] {
     provider: 'acp',
     session: { threadId: `thread-acp-${capture}` },
     publish: (event: CanonicalRuntimeEvent) => events.push(event),
-    state: {},
+    // A Grok session: its handshake (`grokShell`) names both Grok wires.
+    state: {
+      acpSubagentWires: new Set(['background-task', 'subagent-lifecycle']),
+    },
   } as unknown as Parameters<typeof mapAcpExtensionNotification>[2];
   for (const msg of frames) {
     if (!msg.method || msg.id !== undefined || msg.method === 'session/update')
@@ -302,19 +310,88 @@ async function replayAcpGrokCaptures(): Promise<CanonicalRuntimeEvent[]> {
 }
 
 /**
- * `_kiro.dev/subagent/list_update` is the one subagent-shaped tuple a Kiro
- * ACP agent was observed sending (station#1935, bound as host chrome; its
- * engine row is pending). Only the TUPLE was observed, so the params here are
- * an empty object and the claim is the routing: it never becomes child work.
+ * ACP sessions report different signals by engine, so the cell's signals are
+ * the union. The per-format test (each format alone delivers every declared
+ * signal) runs on Grok's captures, the one reporter that delivers them all;
+ * Kiro's formats are held to the lifecycle they carry by their own test.
  */
-async function replayAcpKiroSubagentTuple(): Promise<CanonicalRuntimeEvent[]> {
+const ACP_FORMATS = {
+  'grok 1.0.77 background tasks and subagents': replayAcpGrokCaptures,
+};
+
+/**
+ * ACP: Kiro's two subagent wires, replayed through the ACP mapper exactly as
+ * the adapter routes them. The frames are the kirocrew test vectors in
+ * `kiro-extension-golden-frames.jsonl` (no live subagent capture exists: the
+ * kirocrew live captures omit the roster because it names the host's agents).
+ * Each format runs one child from running to an end.
+ */
+function acpGoldenFrames(): Array<{ method: string; params: any }> {
+  return readFileSync(
+    new URL(
+      '../../services/acp/__tests__/fixtures/kiro-extension-golden-frames.jsonl',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line).msg);
+}
+
+function replayAcpFrames(
+  frames: Array<{ method: string; params: any }>,
+): CanonicalRuntimeEvent[] {
   const events: CanonicalRuntimeEvent[] = [];
-  mapAcpExtensionNotification('_kiro.dev/subagent/list_update', {}, {
+  const session = {
     provider: 'acp',
-    session: { threadId: 'thread-acp' },
-    publish: (event: CanonicalRuntimeEvent) => events.push(event),
-  } as unknown as Parameters<typeof mapAcpExtensionNotification>[2]);
+    threadId: 'thread-acp',
+    status: 'running',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as const;
+  const ctx: AcpMapperContext = {
+    provider: 'acp',
+    session,
+    activeTurnId: 'turn-acp',
+    publish: (event) => events.push(event),
+    // A Kiro session: its handshake names both subagent wires.
+    state: { acpSubagentWires: new Set(['roster', 'agent-subtask']) },
+    toolUpdateSupervisor: new AcpToolUpdateSupervisor(session, (event) =>
+      events.push(event),
+    ),
+  };
+  for (const frame of frames) {
+    if (frame.method === 'session/update')
+      mapAcpSessionUpdate(frame.params.update, ctx);
+    else mapAcpExtensionNotification(frame.method, frame.params, ctx);
+  }
   return events;
+}
+
+const ACP_KIRO_FORMATS = {
+  'kiro-cli subagent/list_update': async () => {
+    const [roster] = acpGoldenFrames().filter(
+      (frame) => frame.method === '_kiro.dev/subagent/list_update',
+    );
+    // The same roster once its running child has finished.
+    const finished = structuredClone(roster!);
+    finished.params.subagents[0].status = { type: 'completed', message: '' };
+    return replayAcpFrames([roster!, finished]);
+  },
+  'Kiro agent service agent-subtask': async () =>
+    replayAcpFrames(
+      acpGoldenFrames().filter(
+        (frame) => frame.params?.update?._meta?.kiro?.kind === 'agent-subtask',
+      ),
+    ),
+};
+
+async function replayAcpKiroSubagents(): Promise<CanonicalRuntimeEvent[]> {
+  return [
+    ...(await ACP_KIRO_FORMATS['kiro-cli subagent/list_update']()),
+    ...(await ACP_KIRO_FORMATS['Kiro agent service agent-subtask']()),
+  ];
 }
 
 /**
@@ -369,7 +446,13 @@ const DRIVERS: Record<string, Driver> = {
   muse: {
     run: replayMuseServeCaptures,
   },
-  acp: { run: replayAcpGrokCaptures },
+  acp: {
+    run: async () => [
+      ...(await replayAcpKiroSubagents()),
+      ...(await replayAcpGrokCaptures()),
+    ],
+    formats: ACP_FORMATS,
+  },
 };
 
 /**
@@ -655,13 +738,12 @@ describe('#2456 child-work conformance tripwire', () => {
     }
   }
 
-  test('acp: the Kiro subagent tuple, whose row is pending, emits no child work', async () => {
-    const events = await replayAcpKiroSubagentTuple();
-    expect(events.map((event) => event.method)).toEqual([
-      'extension.notification',
-    ]);
-    expect(childWorkDeltas(events)).toEqual([]);
-  });
+  for (const [format, run] of Object.entries(ACP_KIRO_FORMATS)) {
+    test(`acp (${format}): this Kiro format alone delivers lifecycle`, async () => {
+      const observed = observedSignals(childWorkDeltas(await run()));
+      expect([...observed]).toEqual(['lifecycle']);
+    });
+  }
 
   test('#2452 muse exec fallback: real exec output emits no child work, only its not-reported view', async () => {
     const events = await replayMuseCaptures();

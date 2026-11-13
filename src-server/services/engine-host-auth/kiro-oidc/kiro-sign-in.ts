@@ -1,6 +1,8 @@
 /**
- * Station-run Kiro sign-in: one device-code attempt per scope, polled on
- * Station's side, written to the engine host-auth vault when it completes.
+ * Station-run Kiro sign-in: one attempt per scope, written to the engine
+ * host-auth vault when it completes. Builder ID and IAM Identity Center use
+ * the device-code flow, polled on Station's side; Google and GitHub use
+ * Kiro's portal and a loopback callback (social.ts).
  * The phases are device-code-login.ts's (`HostAuthLoginPhase`): `verifying`
  * is the step where Station resolves the profile and reads the credential
  * back from the vault, so `completed` means a credential actually landed.
@@ -29,6 +31,24 @@ import {
   reusableClient,
   startDeviceAuthorization,
 } from './oidc.js';
+import {
+  exchangeSocialCode,
+  KIRO_SOCIAL_CALLBACK_PORTS,
+  KIRO_SOCIAL_CALLBACK_TIMEOUT_MS,
+  KIRO_SOCIAL_ENDPOINTS,
+  KIRO_SOCIAL_PROVIDER_ATTRIBUTE,
+  KiroSignInRefusedError,
+  KiroSocialCallbackError,
+  type KiroSocialEndpoints,
+  type KiroSocialListener,
+  kiroSocialProvider,
+  openSocialCallbackListener,
+  pkcePair,
+  portalSignInUrl,
+  refreshSocialToken,
+  socialRedirectUri,
+  socialState,
+} from './social.js';
 
 export const KIRO_CREDENTIAL_KIND = 'kiro.oidc-access-token' as const;
 const SLOW_DOWN_EXTRA_MS = 5_000;
@@ -43,10 +63,20 @@ export interface KiroSignInDeps {
   schedule: (run: () => void, delayMs: number) => () => void;
   vault: EngineHostAuthVault;
   onSignedIn?: (scope: EngineCredentialScope) => void;
+  /** Kiro's portal and social service; defaults to {@link KIRO_SOCIAL_ENDPOINTS}. */
+  social?: KiroSocialEndpoints;
+  /** Defaults to the ports Kiro allowlists; tests pass free ones. */
+  socialCallbackPorts?: readonly number[];
+  /** Defaults to {@link KIRO_SOCIAL_CALLBACK_TIMEOUT_MS}. */
+  socialCallbackTimeoutMs?: number;
 }
 
 /** Why a sign-in request was refused before anything was sent. */
-export type HostAuthLoginRefusal = 'start-url' | 'region' | 'identity';
+export type HostAuthLoginRefusal =
+  | 'start-url'
+  | 'region'
+  | 'identity'
+  | 'browser-not-on-host';
 
 /** The fixed text a refusal shows; the request's own values never appear in it. */
 export const HOST_AUTH_LOGIN_REFUSAL_TEXT: Record<
@@ -57,7 +87,9 @@ export const HOST_AUTH_LOGIN_REFUSAL_TEXT: Record<
     "Enter your company's AWS access portal URL, like https://your-company.awsapps.com/start.",
   region: 'Enter an AWS region, like us-east-1.',
   identity:
-    'Station signs in to Kiro with AWS Builder ID or IAM Identity Center.',
+    'Station signs in to Kiro with AWS Builder ID, IAM Identity Center, Google or GitHub.',
+  'browser-not-on-host':
+    'Google and GitHub sign-in needs the browser on the computer Station runs on. Use AWS Builder ID or IAM Identity Center.',
 };
 
 export class HostAuthLoginRefusedError extends Error {
@@ -145,6 +177,10 @@ export class KiroSignIn {
     for (const [key, attempt] of this.#attempts) {
       if (key.startsWith(`${connectionId}:`)) {
         attempt.cancel?.();
+        // A step already in flight (a token poll, a code exchange) checks
+        // the phase before it writes: a removed connection gets nothing.
+        if (!isFinished(attempt.record))
+          attempt.record = { ...attempt.record, phase: 'cancelled' };
         this.#attempts.delete(key);
       }
     }
@@ -161,6 +197,7 @@ export class KiroSignIn {
     const key = bucketOf(scope);
     const running = this.#attempts.get(key);
     if (running && !isFinished(running.record)) return running.record;
+    if (request.identity === 'social') return this.#startSocial(scope, key);
 
     let region: string;
     let startUrl: string;
@@ -293,7 +330,12 @@ export class KiroSignIn {
       attempt.record = { ...attempt.record, phase: 'failed', reason };
     };
     if (this.deps.now() >= auth.expiresAt) {
-      fail('The sign-in code expired before it was approved.');
+      attempt.record = {
+        ...attempt.record,
+        phase: 'failed',
+        reason: 'The sign-in code expired before it was approved.',
+        failure: 'expired',
+      };
       return;
     }
     let result: Awaited<ReturnType<typeof pollDeviceToken>>;
@@ -352,6 +394,7 @@ export class KiroSignIn {
         signedInAt: new Date(this.deps.now()).toISOString(),
       };
       await this.deps.vault.write(KIRO_CREDENTIAL_KIND, scope, credential);
+      if (await this.#cancelledDuringWrite(attempt, scope, credential)) return;
       // Completed only once the vault gives the credential back.
       const landed = this.deps.vault.read(KIRO_CREDENTIAL_KIND, scope);
       if (landed?.credential.accessToken !== credential.accessToken) {
@@ -361,10 +404,194 @@ export class KiroSignIn {
       attempt.record = { ...attempt.record, phase: 'completed' };
       this.deps.onSignedIn?.(scope);
     } catch (error) {
+      // A cancel mid-step stays cancelled, whatever the step then threw.
+      if (attempt.record.phase !== 'verifying') return;
       fail(
         error instanceof KiroOidcError
           ? error.message
           : 'The sign-in finished but Station could not keep the credential.',
+      );
+    }
+  }
+
+  /**
+   * The attempt was cancelled (sign-out, or the connection was removed) while
+   * its credential was being written: the attempt neither completes nor
+   * reports a sign-in, and its credential is taken back out if the bucket
+   * still holds exactly what it wrote (compare-and-remove against the read
+   * revision), so a credential another sign-in writes in between is kept.
+   */
+  async #cancelledDuringWrite(
+    attempt: Attempt,
+    scope: EngineCredentialScope,
+    credential: StoredEngineCredential,
+  ): Promise<boolean> {
+    if (attempt.record.phase === 'verifying') return false;
+    const stored = this.deps.vault.read(KIRO_CREDENTIAL_KIND, scope);
+    if (stored?.credential.accessToken === credential.accessToken)
+      await this.deps.vault.compareAndRemove(
+        KIRO_CREDENTIAL_KIND,
+        scope,
+        stored.revision,
+      );
+    return true;
+  }
+
+  /**
+   * Start a Google or GitHub sign-in: bind the callback listener, then hand
+   * back Kiro's portal link for the person to open in a browser on this
+   * computer. The rest runs when the browser comes back.
+   */
+  async #startSocial(
+    scope: EngineCredentialScope,
+    key: string,
+  ): Promise<HostAuthLoginStart> {
+    const startedAt = this.deps.now();
+    const timeoutMs =
+      this.deps.socialCallbackTimeoutMs ?? KIRO_SOCIAL_CALLBACK_TIMEOUT_MS;
+    const attempt: Attempt = {
+      record: {
+        kind: KIRO_CREDENTIAL_KIND,
+        phase: 'starting',
+        startedAt: new Date(startedAt).toISOString(),
+        expiresAt: new Date(startedAt + timeoutMs).toISOString(),
+      },
+      intervalMs: 0,
+    };
+    this.#attempts.set(key, attempt);
+    const { verifier, challenge } = pkcePair();
+    const state = socialState();
+    let listener: KiroSocialListener;
+    try {
+      listener = await openSocialCallbackListener({
+        ports: this.deps.socialCallbackPorts ?? KIRO_SOCIAL_CALLBACK_PORTS,
+        state,
+        timeoutMs,
+      });
+    } catch (error) {
+      // Cancelled while the listener was opening: it stays cancelled.
+      if (attempt.record.phase !== 'starting') return attempt.record;
+      attempt.record = {
+        ...attempt.record,
+        phase: 'failed',
+        reason: `${
+          error instanceof KiroSocialCallbackError
+            ? error.message
+            : 'Station could not listen for the sign-in on this computer.'
+        } Use AWS Builder ID or IAM Identity Center instead.`,
+        failure: 'unavailable',
+      };
+      return attempt.record;
+    }
+    if (attempt.record.phase === 'cancelled') {
+      listener.cancel();
+      return attempt.record;
+    }
+    attempt.cancel = () => listener.cancel();
+    attempt.record = {
+      ...attempt.record,
+      phase: 'awaiting-approval',
+      authorizationUrl: portalSignInUrl(
+        this.#social.portalUrl,
+        listener.port,
+        state,
+        challenge,
+      ),
+    };
+    void this.#finishSocial(scope, attempt, listener, verifier);
+    return attempt.record;
+  }
+
+  get #social(): KiroSocialEndpoints {
+    return this.deps.social ?? KIRO_SOCIAL_ENDPOINTS;
+  }
+
+  async #finishSocial(
+    scope: EngineCredentialScope,
+    attempt: Attempt,
+    listener: KiroSocialListener,
+    verifier: string,
+  ): Promise<void> {
+    const fail = (
+      reason: string,
+      failure?: 'refused' | 'expired' | 'unavailable',
+    ) => {
+      attempt.record = {
+        ...attempt.record,
+        phase: 'failed',
+        reason,
+        ...(failure ? { failure } : {}),
+      };
+    };
+    let callback: Awaited<KiroSocialListener['result']>;
+    try {
+      callback = await listener.result;
+    } catch (error) {
+      if (attempt.record.phase !== 'awaiting-approval') return;
+      if (error instanceof KiroSocialCallbackError)
+        fail(
+          error.message,
+          error.code === 'timeout'
+            ? 'expired'
+            : error.code === 'listener-error'
+              ? 'unavailable'
+              : 'refused',
+        );
+      else fail('The sign-in could not be completed.');
+      return;
+    }
+    if (attempt.record.phase !== 'awaiting-approval') return;
+    attempt.record = { ...attempt.record, phase: 'verifying' };
+    const provider = kiroSocialProvider(callback.loginOption);
+    if (!provider) {
+      fail(
+        "Kiro's sign-in page returned a sign-in other than Google or GitHub, which Station does not keep here.",
+        'refused',
+      );
+      return;
+    }
+    try {
+      const tokens = await exchangeSocialCode(
+        this.#http,
+        this.#social.serviceUrl,
+        {
+          code: callback.code,
+          verifier,
+          redirectUri: socialRedirectUri(
+            listener.port,
+            callback.path,
+            callback.loginOption,
+          ),
+        },
+      );
+      if (attempt.record.phase !== 'verifying') return;
+      const credential: StoredEngineCredential = {
+        identity: { kind: 'social', provider },
+        accessToken: tokens.accessToken,
+        expiresAt: new Date(tokens.expiresAt).toISOString(),
+        ...(tokens.refreshToken ? { refreshToken: tokens.refreshToken } : {}),
+        attributes: {
+          profileArn: tokens.profileArn,
+          provider: KIRO_SOCIAL_PROVIDER_ATTRIBUTE[provider],
+        },
+        signedInAt: new Date(this.deps.now()).toISOString(),
+      };
+      await this.deps.vault.write(KIRO_CREDENTIAL_KIND, scope, credential);
+      if (await this.#cancelledDuringWrite(attempt, scope, credential)) return;
+      const landed = this.deps.vault.read(KIRO_CREDENTIAL_KIND, scope);
+      if (landed?.credential.accessToken !== credential.accessToken) {
+        fail('The sign-in finished but Station could not keep the credential.');
+        return;
+      }
+      attempt.record = { ...attempt.record, phase: 'completed' };
+      this.deps.onSignedIn?.(scope);
+    } catch (error) {
+      if (attempt.record.phase !== 'verifying') return;
+      fail(
+        error instanceof KiroOidcError
+          ? error.message
+          : 'The sign-in finished but Station could not keep the credential.',
+        error instanceof KiroSignInRefusedError ? 'refused' : undefined,
       );
     }
   }
@@ -378,14 +605,41 @@ function isFinished(record: HostAuthLoginStart): boolean {
   );
 }
 
-/** The issuer's refresher for `kiro.oidc-access-token` (SSO-OIDC refresh grant). */
+/**
+ * The issuer's refresher for `kiro.oidc-access-token`: Kiro's social service
+ * for a Google or GitHub sign-in, else the SSO-OIDC refresh grant.
+ */
 export function kiroCredentialRefresher(deps: {
   fetch: typeof fetch;
   endpoints: KiroOidcEndpoints;
   now: () => number;
   requestTimeoutMs?: number;
+  social?: KiroSocialEndpoints;
 }): (credential: StoredEngineCredential) => Promise<StoredEngineCredential> {
   return async (credential) => {
+    if (credential.identity.kind === 'social') {
+      if (!credential.refreshToken)
+        throw new KiroOidcError('The stored sign-in cannot be refreshed.');
+      const tokens = await refreshSocialToken(
+        deps,
+        (deps.social ?? KIRO_SOCIAL_ENDPOINTS).serviceUrl,
+        credential.refreshToken,
+      );
+      return {
+        ...credential,
+        accessToken: tokens.accessToken,
+        expiresAt: new Date(tokens.expiresAt).toISOString(),
+        refreshToken: tokens.refreshToken ?? credential.refreshToken,
+        ...(tokens.profileArn
+          ? {
+              attributes: {
+                ...credential.attributes,
+                profileArn: tokens.profileArn,
+              },
+            }
+          : {}),
+      };
+    }
     const region = credential.identity.region ?? BUILDER_ID_REGION;
     if (
       !credential.refreshToken ||

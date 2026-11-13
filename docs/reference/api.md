@@ -63,6 +63,18 @@ mutation. Refresh is observation, not permission to retry an uncertain write.
 Goal completion never mutates Task or workflow status. Turning the preview off
 refuses all subsequent Goal requests; ordinary Session controls remain available.
 
+## Engine continuity and rewind
+
+`GET /api/orchestration/sessions/:threadId/continuity` reads what the live
+Session's engine declared it can do natively (`{ live, rewind, fork }`), under
+Session read authority and the orchestration read scope; it never starts an
+engine. `POST /api/orchestration/sessions/:threadId/rewind` with
+`{ turnId }` rewinds that engine's context in place to before the turn. It
+requires the current request principal with Session mutation authority and
+the orchestration operate scope, and answers a typed `SessionRewindOutcome`.
+The transcript is never edited. See
+[session API](session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind).
+
 ## Worktree output settlement
 
 `GET /api/orchestration/sessions/:threadId/worktree-settlement` returns
@@ -2434,6 +2446,10 @@ cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
 records, and context occupancy comes from the newest one. Without a stored
 record, the orchestration usage fold runs over every authorized Session's
 events in lineage order.
+
+`engineMcp`, present when the engine reported its MCP servers, is the latest
+`engine-mcp.status` reports folded per Session of the lineage (a later
+Session starts a new list) with the latest report's `reconnect` bit.
 
 `contextWindowPercentage` comes from context tokens and the model's context
 window; when the window cannot be resolved it is the engine's own context

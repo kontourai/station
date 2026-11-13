@@ -25,7 +25,9 @@ import {
   isReportableChildWorkToolName,
 } from '@kontourai/station-contracts/child-work';
 import {
+  ENGINE_MCP_ERROR_MAX_CHARS,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  ENGINE_MCP_STATUS_MAX_SERVERS,
   type EngineMcpServerState,
   type EngineMcpServerStatus,
   type EngineReportedCost,
@@ -49,6 +51,8 @@ import {
   type AcpChildStart,
   type AcpChildWorkState,
   acpChild,
+  publishAcpAgentSubtask,
+  publishAcpSubagentRoster,
   settleAcpChild,
   startAcpChild,
   updateAcpChild,
@@ -105,10 +109,8 @@ export interface EngineExtensionState extends AcpChildWorkState {
 
 /** Bound on the per-session maps above; the oldest entry goes first. */
 const ENGINE_EXTENSION_STATE_MAX_ENTRIES = 256;
-/** Bound on MCP servers one status report may carry; the rest are dropped. */
-const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
 const MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
-const MCP_ERROR_MAX_CHARS = 512;
+const MCP_ERROR_MAX_CHARS = ENGINE_MCP_ERROR_MAX_CHARS;
 /** A model id as engines spell one: one token, at most 200 characters. */
 const MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
 /** A cost unit as engines spell one (`USD`, `EUR`, `credit`). */
@@ -522,7 +524,7 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
   'grok.task-backgrounded': (params, ctx) => {
     const update = grokUpdate(params);
     const start = update && grokTaskStart(update, ctx);
-    if (start) startAcpChild(ctx, start);
+    if (start) startAcpChild(ctx, 'background-task', start);
   },
   'grok.background-tasks': (params, ctx) => {
     const tasks = grokUpdate(params)?.tasks;
@@ -532,16 +534,22 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
       const start = grokTaskStart(entry, ctx);
       if (!start) continue;
       if (entry.status === 'running') {
-        startAcpChild(ctx, start);
+        startAcpChild(ctx, 'background-task', start);
       } else if (
         typeof entry.status === 'string' &&
         GROK_TASK_ENDED_STATUSES.has(entry.status) &&
         acpChild(ctx, start.childId)?.status === 'running'
       ) {
         const endedAt = isoTime(entry.ended_at);
-        settleAcpChild(ctx, start.childId, grokTaskStatus(entry), {
-          ...(endedAt ? { endedAt } : {}),
-        });
+        settleAcpChild(
+          ctx,
+          'background-task',
+          start.childId,
+          grokTaskStatus(entry),
+          {
+            ...(endedAt ? { endedAt } : {}),
+          },
+        );
       }
     }
   },
@@ -552,17 +560,24 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
     if (!start) return;
     const result = childSummary(task.output, 'tool-return');
     const endedAt = epochTime(task.end_time);
-    settleAcpChild(ctx, start.childId, grokTaskStatus(task), {
-      ...(result ? { result } : {}),
-      ...(endedAt ? { endedAt } : {}),
-      identity: start,
-    });
+    settleAcpChild(
+      ctx,
+      'background-task',
+      start.childId,
+      grokTaskStatus(task),
+      {
+        ...(result ? { result } : {}),
+        ...(endedAt ? { endedAt } : {}),
+        identity: start,
+      },
+    );
   },
   'grok.monitor-event': (params, ctx) => {
     const update = grokUpdate(params);
     const childId = engineId(update?.task_id);
     const line = engineText(update?.event_text, CHILD_PROGRESS_MAX_CHARS);
-    if (childId && line) updateAcpChild(ctx, childId, { progress: line });
+    if (childId && line)
+      updateAcpChild(ctx, 'background-task', childId, { progress: line });
   },
   'grok.subagent-spawned': (params, ctx) => {
     const update = grokUpdate(params);
@@ -578,7 +593,7 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
     const kindLabel = childTitle(update.subagent_type);
     // No depth: a subagent's own spawns stream on its session, which the
     // adapter drops, so Station cannot tell a child from a grandchild.
-    return startAcpChild(ctx, {
+    return startAcpChild(ctx, 'subagent-lifecycle', {
       childId,
       workKind: 'agent',
       ...(kindLabel ? { kindLabel } : {}),
@@ -604,7 +619,7 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
       typeof last === 'string' && isReportableChildWorkToolName(last)
         ? last.trim()
         : undefined;
-    updateAcpChild(ctx, childId, {
+    updateAcpChild(ctx, 'subagent-lifecycle', childId, {
       ...(usage ? { usage } : {}),
       ...(latestTool ? { latestTool } : {}),
     });
@@ -626,7 +641,7 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
       tools: update.tool_calls,
       durationMs: update.duration_ms,
     });
-    settleAcpChild(ctx, childId, status, {
+    settleAcpChild(ctx, 'subagent-lifecycle', childId, status, {
       ...(result ? { result } : {}),
       ...(usage ? { usage } : {}),
       identity: { workKind: 'agent' },
@@ -729,6 +744,14 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
       trigger,
       scope: update.promoted === true && toModel ? 'session' : 'turn',
     });
+  },
+  // --- child-work
+  'kiro-v2.subagent-list-update': (params, ctx) =>
+    publishAcpSubagentRoster(params, ctx),
+  // The payload is the whole `tool_call` / `tool_call_update`.
+  'kiro-v3.tool.agent-subtask': (update, ctx) => {
+    const meta = isRecord(update._meta) ? update._meta.kiro : undefined;
+    if (isRecord(meta)) publishAcpAgentSubtask(update, meta, ctx);
   },
   // --- engine-mcp.status
   'kiro-v3.mcp-status': (params, ctx) => {
@@ -888,6 +911,37 @@ export function mapEngineSessionInfo(
     // the engine's prompt ids; nothing is published for this frame.
     if (row.consumer === 'session.message-id') continue;
     runReader(row, meta, ctx);
+  }
+}
+
+/** Every `_meta` namespace a tool-call row names, from the table itself. */
+const TOOL_CALL_META_NAMESPACES: readonly string[] = [
+  ...new Set(
+    ENGINE_EXTENSION_BINDINGS.flatMap(({ wire }) =>
+      wire.kind === 'tool-call-meta-kind' ? [wire.namespace] : [],
+    ),
+  ),
+];
+
+/**
+ * A core `tool_call` / `tool_call_update` whose vendor `_meta.<namespace>.kind`
+ * a table row binds: that row's reader gets the whole update. Ordinary tool
+ * calls carry no bound kind and are untouched; the tool call itself is still
+ * mapped as one by the caller.
+ */
+export function mapEngineToolCallMeta(
+  update: { _meta?: Record<string, unknown> | null },
+  ctx: EngineExtensionContext,
+): void {
+  for (const namespace of TOOL_CALL_META_NAMESPACES) {
+    const meta = update._meta?.[namespace];
+    if (!isRecord(meta) || typeof meta.kind !== 'string') continue;
+    const row = engineExtensionBinding({
+      kind: 'tool-call-meta-kind',
+      namespace,
+      metaKind: meta.kind,
+    });
+    if (row) runReader(row, update as Record<string, unknown>, ctx);
   }
 }
 

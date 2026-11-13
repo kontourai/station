@@ -49,6 +49,7 @@ import {
   isReplayMarkedUpdate,
   mapEngineExtensionNotification,
   mapEngineSessionInfo,
+  mapEngineToolCallMeta,
   readAcpUsageCost,
 } from './acp-engine-extension-events.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
@@ -304,6 +305,8 @@ export function mapAcpSessionUpdate(
         hasRawInput: Object.hasOwn(update, 'rawInput'),
         hasRawOutput: Object.hasOwn(update, 'rawOutput'),
       });
+      // A vendor kind on the call (Kiro's `agent-subtask`) is also child work.
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       return;
     }
 
@@ -326,6 +329,7 @@ export function mapAcpSessionUpdate(
         hasContent: Object.hasOwn(update, 'content'),
         hasStatus: Object.hasOwn(update, 'status'),
       });
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       return;
     }
 
@@ -497,7 +501,10 @@ export function mapAcpExtensionNotification(
   }
   // Engine-extension rows (`ENGINE_EXTENSION_BINDINGS`) whose consumer is a
   // canonical event: published beside the opaque envelope below.
-  mapEngineExtensionNotification(method, params, ctx);
+  mapEngineExtensionNotification(method, params, {
+    ...ctx,
+    logger: mapperLogger(ctx),
+  });
 
   ctx.publish({
     eventId: crypto.randomUUID(),

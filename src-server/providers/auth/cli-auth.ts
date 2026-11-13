@@ -548,16 +548,38 @@ export async function buildCliRuntimePrerequisites(input: {
    * sign-in is unverified, and is optional so it never gates a chat.
    */
   unverifiedAuthDescription?: string;
+  /**
+   * `managed`: Station installs and runs this engine's runtime, so it is not
+   * a CLI the person installs. Absent: a command-line program.
+   */
+  runtime?: 'managed';
+  /**
+   * `station`: Station keeps this engine's sign-in (its host-auth vault), so
+   * the row names Station's sign-in, not the program's own login.
+   */
+  signIn?: 'station';
   signal?: AbortSignal;
 }): Promise<Prerequisite[]> {
   throwIfAborted(input.signal);
   const binary = (input.findBinary ?? findCliBinary)(input.command);
   const installStatus = binary ? 'installed' : 'missing';
+  const program =
+    input.runtime === 'managed'
+      ? `${input.displayName} runtime`
+      : `${input.displayName} CLI`;
+  const signedInDescription =
+    input.signIn === 'station'
+      ? `Station holds a sign-in for ${input.displayName}.`
+      : `${input.displayName} CLI credentials are present on this Station.`;
+  const signedOutDescription =
+    input.signIn === 'station'
+      ? `Sign in to ${input.displayName} from its sign-in panel in Connections.`
+      : `${input.displayName} CLI is not authenticated.`;
 
   const prerequisites: Prerequisite[] = [
     {
       id: `${input.command}-cli`,
-      name: `${input.displayName} CLI`,
+      name: program,
       description: `Required to launch the ${input.displayName} runtime.`,
       status: installStatus,
       category: 'required',
@@ -571,7 +593,7 @@ export async function buildCliRuntimePrerequisites(input: {
     prerequisites.push({
       id: `${input.command}-auth`,
       name: `${input.displayName} login`,
-      description: `${input.displayName} CLI must be installed before authentication can be verified.`,
+      description: `${program} must be installed before authentication can be verified.`,
       status: 'missing',
       category: 'required',
       installGuide: {
@@ -603,7 +625,7 @@ export async function buildCliRuntimePrerequisites(input: {
     prerequisites.push({
       id: `${input.command}-auth`,
       name: `${input.displayName} login`,
-      description: `${input.displayName} CLI readiness could not be verified safely.`,
+      description: `${program} readiness could not be verified safely.`,
       status: 'error',
       category: 'required',
       installGuide: {
@@ -619,7 +641,7 @@ export async function buildCliRuntimePrerequisites(input: {
     // observation only when this probe produced no information.
     prerequisites[0] = {
       ...prerequisites[0],
-      description: `${input.displayName} CLI is installed but failed to run cleanly.`,
+      description: `${program} is installed but failed to run cleanly.`,
       status: 'error',
     };
     return prerequisites;
@@ -650,10 +672,10 @@ export async function buildCliRuntimePrerequisites(input: {
     name: `${input.displayName} login`,
     description:
       authState === 'authenticated'
-        ? `${input.displayName} CLI credentials are present on this Station.`
+        ? signedInDescription
         : authState === 'unauthenticated'
-          ? `${input.displayName} CLI is not authenticated.`
-          : `${input.displayName} CLI authentication could not be verified safely.`,
+          ? signedOutDescription
+          : `${program} authentication could not be verified safely.`,
     status:
       authState === 'authenticated'
         ? 'installed'

@@ -193,8 +193,8 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
   // engine-extension rows below, which the ACP mapper turns into canonical
   // events.
   {
-    // Its engine row (consumer `child-work`) waits on the ACP subagent cell:
-    // see `ENGINE_EXTENSION_CONSUMERS['child-work']`.
+    // Its engine row (consumer `child-work`, `acp-child-work.ts`) publishes
+    // the roster as child work; the opaque envelope itself stays chrome.
     namespace: '_kiro.dev',
     type: 'subagent/list_update',
     consumer: 'acp.host-chrome',
@@ -366,12 +366,6 @@ export interface EngineExtensionBinding {
    * Each must be implemented for the row to run.
    */
   readonly also?: readonly EngineExtensionConsumerId[];
-  /**
-   * Why this row's reader is still missing although its consumer is
-   * implemented: the row neither binds nor runs until the reason is resolved
-   * and removed. Never set on a row whose consumer is unimplemented.
-   */
-  readonly pending?: string;
 }
 
 /**
@@ -437,9 +431,8 @@ export const ENGINE_EXTENSION_CONSUMERS: Readonly<
     lane: 'events-ui',
     implemented: false,
   }),
-  // The ACP cell is `declared`; a session whose engine is not listed in
-  // `ACP_CHILD_WORK_REPORTERS` (acp-child-work.ts) states `not-reported` at
-  // start instead, from its own handshake.
+  // `acp-child-work.ts`: the ACP subagent cell is declared, and an engine
+  // whose handshake names no subagent reporter says `not-reported` at start.
   'child-work': Object.freeze({ lane: 'events-ui', implemented: true }),
   'engine.policy-state': Object.freeze({
     lane: 'events-ui',
@@ -526,8 +519,6 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
     basis: 'undeclared-engine',
     observed: crew('test/fixtures/acp_frames/kiro/notifications.jsonl'),
     consumer: 'child-work',
-    pending:
-      'Only a kirocrew entry shape backs this payload; no Kiro list_update was captured live.',
   },
   {
     id: 'kiro-v2.model-fallback',
@@ -721,8 +712,6 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
     basis: 'undeclared-engine',
     observed: crew('test/test_kas_wire.py'),
     consumer: 'child-work',
-    pending:
-      'Only kirocrew test vectors back this shape, and the ACP mapper does not dispatch tool-call `_meta` kinds yet.',
   },
   {
     id: 'kiro-v3.info.steering-queued',
@@ -937,10 +926,9 @@ function engineConsumerImplemented(
     : true;
 }
 
-/** Whether a row runs: every consumer it feeds is implemented and it is not pending. */
+/** Whether a row runs: every consumer it feeds is implemented. */
 export function engineExtensionRowLive(row: EngineExtensionBinding): boolean {
   return (
-    !row.pending &&
     engineConsumerImplemented(row.consumer) &&
     (row.also ?? []).every(engineConsumerImplemented)
   );

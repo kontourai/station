@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
 import {
   ENGINE_EXTENSION_BINDINGS,
+  engineExtensionRowLive,
   extensionNotificationBinding,
   GROK_LIVE_CAPTURE,
 } from '../../../src-shared/extension-notification-bindings.js';
@@ -20,7 +21,7 @@ import {
   type AcpMapperState,
   mapAcpExtensionNotification,
 } from '../adapters/acp-adapter-events.js';
-import { ACP_CHILD_WORK_REPORTERS } from '../adapters/acp-child-work.js';
+import { acpSubagentWires } from '../adapters/acp-child-work.js';
 import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 
 type Frame = { method?: string; id?: unknown; params?: any; result?: any };
@@ -37,7 +38,12 @@ function capture(name: string, dir: 'E->C' | 'C->E' = 'E->C'): Frame[] {
     .map((entry) => entry.msg as Frame);
 }
 
-function harness(state: AcpMapperState = {}) {
+/** A Grok session's store: its `grokShell` handshake names both Grok child-work wires. */
+const grokSessionState = (): AcpMapperState => ({
+  acpSubagentWires: new Set(['background-task', 'subagent-lifecycle']),
+});
+
+function harness(state: AcpMapperState = grokSessionState()) {
   const events: CanonicalRuntimeEvent[] = [];
   const session: ProviderSession = {
     provider: 'acp',
@@ -116,22 +122,23 @@ describe('Grok handshake identity', () => {
     expect(unbound).toEqual([]);
   });
 
-  test('the child-work reporter list names only live, non-pending child-work rows', () => {
-    for (const ids of Object.values(ACP_CHILD_WORK_REPORTERS))
-      for (const id of ids ?? []) {
-        const row = ENGINE_EXTENSION_BINDINGS.find((entry) => entry.id === id);
-        expect(row, id).toBeDefined();
-        expect(row?.consumer).toBe('child-work');
-        expect(row?.pending).toBeUndefined();
-      }
-    // And every Grok child-work row is listed: none is bound but unclaimed.
-    expect(
-      ENGINE_EXTENSION_BINDINGS.filter(
-        (row) => row.id.startsWith('grok.') && row.consumer === 'child-work',
-      )
-        .map(({ id }) => id)
-        .sort(),
-    ).toEqual([...(ACP_CHILD_WORK_REPORTERS['grok-build'] ?? [])].sort());
+  test('a grokShell handshake names both Grok child-work wires, and every Grok child-work row reads through one', () => {
+    const handshake = capture('handshake').find(
+      (msg) => msg.result?.agentCapabilities,
+    )?.result;
+    expect(handshake).toBeDefined();
+    expect([...acpSubagentWires(handshake)].sort()).toEqual([
+      'background-task',
+      'subagent-lifecycle',
+    ]);
+    // Another engine's handshake names neither.
+    expect(acpSubagentWires({ ...handshake, _meta: {} }).size).toBe(0);
+    const rows = ENGINE_EXTENSION_BINDINGS.filter(
+      (row) => row.id.startsWith('grok.') && row.consumer === 'child-work',
+    );
+    expect(rows.length).toBe(7);
+    for (const row of rows)
+      expect(engineExtensionRowLive(row), row.id).toBe(true);
   });
 });
 
@@ -282,6 +289,23 @@ describe('Grok turn cost', () => {
 });
 
 describe('Grok background task verdicts', () => {
+  test('a session whose handshake names no Grok wire maps no Grok frame to child work', () => {
+    const { notify, of } = harness({});
+    for (const msg of [
+      ...capture('background-bash-interject'),
+      ...capture('background-subagent'),
+    ])
+      if (msg.method && msg.method !== 'session/update')
+        notify(msg.method, msg.params ?? {});
+    expect(of('child-work.updated')).toEqual([]);
+    // The same frames on a Grok session do report children.
+    const grok = harness();
+    for (const msg of capture('background-subagent'))
+      if (msg.method && msg.method !== 'session/update')
+        grok.notify(msg.method, msg.params ?? {});
+    expect(grok.of('child-work.updated').length).toBeGreaterThan(0);
+  });
+
   const completed = (snapshot: Record<string, unknown>) => ({
     sessionId: 's',
     update: {

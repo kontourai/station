@@ -67,6 +67,7 @@ import {
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
   ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -75,7 +76,10 @@ import {
   modelSelectionReceipt,
   readApprovalMode,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
+  SESSION_REWIND_AFFECTED_PATHS_MAX,
   type SessionCapabilityDeliveryMetadata,
+  type SessionLiveContinuity,
+  type SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
@@ -97,13 +101,13 @@ import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
 import {
   registryLaunchEnvFor,
+  resolveManagedRuntimeLaunch,
   stationOwnsEngineSignIn,
 } from '../../services/acp/acp-engine-descriptors.js';
 import {
   acpAdvertisedModelCatalog,
   findAcpModelConfigOption,
   parseAcpSessionModelState,
-  resolveAcpEngineVariant,
 } from '../../services/acp/acp-handshake-facts.js';
 import {
   type AcpInboundExtensionHandler,
@@ -188,6 +192,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionRewindingError,
   SessionStartRefusedError,
 } from '../adapter-shape.js';
 import {
@@ -233,8 +238,9 @@ import {
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
 import {
+  type AcpSubagentWire,
   acpChildWorkNotReportedEvent,
-  acpEngineReportsChildWork,
+  acpSubagentWires,
 } from './acp-child-work.js';
 import {
   acpCommandAnswer,
@@ -272,8 +278,8 @@ import {
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
-  acpDeclaresSessionDelete,
   acpSessionContinuity,
+  readAcpRewindAnswer,
   readAcpUserMessageId,
   resolveAcpForkAtMessage,
   resolveAcpMcpReconnect,
@@ -597,6 +603,10 @@ export interface AcpAdapterOptions {
   }) => OpenCodeAgentReader;
   /** Overrides {@link DEFAULT_SEND_TURN_START_WAIT_MS} (tests). */
   sendTurnStartWaitMs?: number;
+  /** Bound on a rewind's engine answer (default 30 s); a test seam. */
+  rewindAnswerTimeoutMs?: number;
+  /** Bound on a timed-out rewind's late answer (default 5 min); a test seam. */
+  rewindLateAnswerTimeoutMs?: number;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -905,6 +915,16 @@ export interface AcpSessionRecord {
    * option the engine sends after answering `session/new`.
    */
   configOptionWaiters?: Set<() => void>;
+  /** The subagent wires the handshake identified (`acp-child-work.ts`). */
+  acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
+  /** An in-place rewind is waiting on the engine; no turn may start. */
+  rewinding?: boolean;
+  /** A rewind past its deadline is still with the engine; no rewind may start. */
+  rewindPendingLate?: boolean;
+  /** Sends still preparing their turn (mode, effort, a relaunch); no rewind may start. */
+  sendsPreparing?: number;
+  /** Turns this record has started, so a late rewind can tell one began since. */
+  turnsStarted?: number;
   turnMessages?: Array<{
     turnId: string;
     firstMessageId: string;
@@ -1074,6 +1094,55 @@ function mergeAcpConfigOption(
 
 /** Turns whose engine prompt ids one ACP session keeps for rewind and fork. */
 export const ACP_TURN_MESSAGES_MAX = 500;
+
+/**
+ * For a managed-runtime connection, the installed runtime readiness should
+ * run (`null` when it is not installed or cannot launch); undefined for any
+ * other connection.
+ */
+function managedRuntimeReadiness(config: {
+  command: string;
+  args?: readonly string[];
+}): { runtime: string | null } | undefined {
+  try {
+    const launch = resolveManagedRuntimeLaunch(config);
+    return launch ? { runtime: launch.command } : undefined;
+  } catch {
+    return { runtime: null };
+  }
+}
+
+/**
+ * How long a rewind waits for the engine's answer before it is reported
+ * failed and the session takes turns again (the live revert answered in well
+ * under a second; this is the bound, not the expectation).
+ */
+const ACP_REWIND_ANSWER_TIMEOUT_MS = 30_000;
+/** How long a rejected request waits to learn whether its process ended. */
+const ACP_PROCESS_EXIT_GRACE_MS = 2_000;
+
+/** Whether `process` has ended, or ends within `graceMs`. */
+function acpProcessEndsSoon(
+  process: ACPProcess,
+  graceMs: number,
+): Promise<boolean> {
+  if (!process.isAlive) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      process.off('exit', onExit);
+      resolve(!process.isAlive);
+    }, graceMs);
+    process.once('exit', onExit);
+  });
+}
+
+/** How long a timed-out rewind's answer is still waited for (5 min). */
+const ACP_REWIND_LATE_ANSWER_TIMEOUT_MS = 5 * 60_000;
+const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
 
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
@@ -1647,6 +1716,9 @@ export class AcpAdapter implements ProviderAdapterShape {
 
     try {
       await acpProcess.start();
+      // Known from `initialize` on, so a subagent frame during session start
+      // is read under the same identity.
+      record.acpSubagentWires = acpSubagentWires(acpProcess.initResult);
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.startedPublished = true;
       this.publish({
@@ -1659,16 +1731,6 @@ export class AcpAdapter implements ProviderAdapterShape {
         initialState: 'created',
         metadata: { ...input.metadata, cwd, connectionId: config.id },
       });
-      // Whether this session's children can be reported is the engine's, by
-      // its own handshake; one that reports none says so once.
-      if (
-        !acpEngineReportsChildWork(
-          resolveAcpEngineVariant(acpProcess.initResult),
-        )
-      )
-        this.publish(
-          acpChildWorkNotReportedEvent({ threadId: input.threadId }),
-        );
 
       // archive#895: an authored input.agent.toolServers (including an
       // authored empty array) wins over the connection's provideToolServers
@@ -2464,6 +2526,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           };
         })(),
       });
+      // ACP has no subagent concept: an engine whose handshake names no
+      // subagent reporter cannot say what runs under it, which is not the
+      // same as nothing running.
+      if (!record.acpSubagentWires?.size)
+        this.publish(acpChildWorkNotReportedEvent(input.threadId));
 
       return session;
     } catch (caught) {
@@ -2651,6 +2718,21 @@ export class AcpAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    // Counted from entry until the turn is active or refused: its
+    // preparation (mode, effort, an approval relaunch of the engine process)
+    // must not overlap a rewind, which refuses while this is above zero.
+    const record = this.sessions.get(input.threadId);
+    if (record) record.sendsPreparing = (record.sendsPreparing ?? 0) + 1;
+    try {
+      return await this.startPreparedTurn(input);
+    } finally {
+      if (record) record.sendsPreparing = (record.sendsPreparing ?? 1) - 1;
+    }
+  }
+
+  private async startPreparedTurn(
+    input: ProviderSendTurnInput,
+  ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
     // Orchestration waits in `whenSessionReady` before claiming the turn; a
     // caller that did not (or a start that began since) is refused
@@ -2668,6 +2750,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // send that provably never started. The turn-start coordinator does not
     // refuse this case first: it serializes turn STARTS, and an accepted
     // turn that is still running does not block its claim.
+    if (record.rewinding) throw new SessionRewindingError();
     if (record.activeTurnId) {
       throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
@@ -2830,7 +2913,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       if (applied.configOptions) record.configOptions = applied.configOptions;
     }
+    // No rewind can have begun meanwhile: it refuses while a send prepares.
+    if (record.activeTurnId)
+      throw new SendTurnRefusedError(
+        `ACP session '${input.threadId}' already has an active turn.`,
+        'busy',
+      );
     record.activeTurnId = turnId;
+    record.turnsStarted = (record.turnsStarted ?? 0) + 1;
     record.activeTurnOrigin =
       input.invocationId === undefined
         ? undefined
@@ -3376,11 +3466,20 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     const results = await Promise.all(
-      scoped.map((config) =>
-        buildCliRuntimePrerequisites({
+      scoped.map((config) => {
+        // A managed engine is not a program on PATH: its runtime is the
+        // install's, or there is none until it is installed.
+        const managed = managedRuntimeReadiness(config);
+        const ownsSignIn = stationOwnsEngineSignIn(config);
+        return buildCliRuntimePrerequisites({
           command: config.command,
           displayName: config.name,
           versionArgs: ['--version'],
+          ...(managed
+            ? { findBinary: () => managed.runtime, runtime: 'managed' as const }
+            : {}),
+          ...(ownsSignIn ? { signIn: 'station' as const } : {}),
+          ...(options?.signal ? { signal: options.signal } : {}),
           // #1940: no generic engine command proves sign-in (a `--version`
           // exit 0 used to read as signed in), and a handshake does not
           // either: some engines refuse only at the first prompt. Only the
@@ -3391,10 +3490,14 @@ export class AcpAdapter implements ProviderAdapterShape {
           unverifiedAuthDescription: engineStatusCheckable(config)
             ? `Station could not tell whether ${config.name} is signed in.`
             : `Station has no way to check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in from this engine's page.`,
-          installStep: `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
-          authStep: `Sign in with ${config.name} itself if it asks you to.`,
-        }),
-      ),
+          installStep: managed
+            ? `Install ${config.name} from its sign-in panel in Connections.`
+            : `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
+          authStep: ownsSignIn
+            ? `Sign in to ${config.name} from its sign-in panel in Connections.`
+            : `Sign in with ${config.name} itself if it asks you to.`,
+        });
+      }),
     );
 
     return results.flat();
@@ -3449,13 +3552,11 @@ export class AcpAdapter implements ProviderAdapterShape {
    * (`acp-session-actions.ts`). The adapter's `metadata.continuity` stays
    * `none`: it speaks for every ACP engine, and most declare neither.
    */
-  sessionContinuity(threadId: string): {
-    fork: 'native' | 'none';
-    rewind: 'in-place' | 'none';
-  } {
-    return acpSessionContinuity(
-      this.requireSession(threadId).process.initResult,
-    );
+  sessionContinuity(threadId: string): SessionLiveContinuity {
+    const record = this.sessions.get(threadId);
+    if (!record || record.stopping || !record.process.sessionId)
+      return { live: false, fork: 'none', rewind: 'none' };
+    return { live: true, ...acpSessionContinuity(record.process.initResult) };
   }
 
   /**
@@ -3541,50 +3642,105 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Move the engine's session back to the end of `toTurnId`: every later
-   * turn is hidden from the model, and files their write tools changed are
-   * restored by the engine. Refused while a turn runs, for a turn whose
-   * prompt id this process did not see, and on an engine without a declared
-   * rewind. The transcript keeps every turn; an append-only marker records
-   * the rewind.
+   * Rewind the engine's context to before `turnId`: that turn and every
+   * later one are hidden from the model, and the engine restores files its
+   * write tools changed in them. Refused, before anything reaches the
+   * engine, on an engine without a declared rewind, while a turn runs, and
+   * for a turn whose prompt id this process did not see. The transcript keeps
+   * every turn; an append-only `runtime.warning` marker records the rewind.
    */
   async rewindSession(
     threadId: string,
-    toTurnId: string,
-  ): Promise<EngineCommandOutcome> {
-    const record = this.requireSession(threadId);
+    turnId: string,
+  ): Promise<SessionRewindOutcome> {
+    const record = this.sessions.get(threadId);
+    const sessionId = record?.process.sessionId;
+    if (!record || record.stopping || !sessionId)
+      return { kind: 'refused', reason: 'not-live' };
     const binding = resolveAcpRewind(record.process.initResult);
-    const sessionId = record.process.sessionId;
-    if (!binding || !sessionId) return { kind: 'not-declared' };
-    if (record.activeTurnId)
-      return {
-        kind: 'failed',
-        message: 'A turn is running; stop it before rewinding.',
-      };
-    const turns = record.turnMessages ?? [];
-    const index = turns.findIndex((entry) => entry.turnId === toTurnId);
-    if (index < 0)
+    if (!binding) return { kind: 'refused', reason: 'unsupported' };
+    // Busy: a turn runs, a send is still preparing it (it may relaunch the
+    // engine process), or an earlier rewind is still with the engine.
+    if (record.activeTurnId) return { kind: 'refused', reason: 'turn-running' };
+    if ((record.sendsPreparing ?? 0) > 0)
+      return { kind: 'refused', reason: 'send-preparing' };
+    if (record.rewinding || record.rewindPendingLate)
+      return { kind: 'refused', reason: 'rewind-pending' };
+    // A snapshot: the ledger the engine is rewound against, whatever the
+    // live record holds when its answer arrives.
+    const turns = [...(record.turnMessages ?? [])];
+    const index = turns.findIndex((entry) => entry.turnId === turnId);
+    const point = turns[index];
+    if (!point) return { kind: 'refused', reason: 'unknown-turn' };
+    // `sendTurn` refuses to start a turn while this is set, so no turn can
+    // reach the engine (or this ledger) between the request and its answer.
+    record.rewinding = true;
+    let answer: ReturnType<typeof readAcpRewindAnswer>;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const sentTo = record.process;
+      const answered = sentTo.extMethod(binding.method, {
+        sessionId,
+        messageId: point.firstMessageId,
+      });
+      // The request has no timeout of its own, and every send waits on this
+      // one: an engine that never answers must not hold the session busy.
+      const timedOut = new Promise<typeof ACP_REWIND_TIMED_OUT>((resolve) => {
+        deadline = setTimeout(
+          () => resolve(ACP_REWIND_TIMED_OUT),
+          this.options.rewindAnswerTimeoutMs ?? ACP_REWIND_ANSWER_TIMEOUT_MS,
+        );
+      });
+      const result = await Promise.race([answered, timedOut]);
+      if (result === ACP_REWIND_TIMED_OUT) {
+        this.followLateRewind(
+          record,
+          threadId,
+          turnId,
+          turns,
+          answered,
+          sentTo,
+        );
+        return {
+          kind: 'failed',
+          message: `${record.engineName} did not answer the rewind in time. Nothing is marked rewound yet; if the engine applies it later, the conversation says so.`,
+        };
+      }
+      answer = readAcpRewindAnswer(result, SESSION_REWIND_AFFECTED_PATHS_MAX);
+    } catch (error) {
+      const failure = acpCommandFailure(error);
       return {
         kind: 'failed',
         message:
-          'That turn has no engine message id on this session, so it cannot be a rewind point.',
+          failure.kind === 'failed'
+            ? failure.message
+            : `${record.engineName} has no rewind on this session.`,
       };
-    const dropped = turns.slice(index + 1);
-    const first = dropped[0];
-    if (!first) return { kind: 'answered', text: 'Nothing to rewind.' };
-    let outcome: EngineCommandOutcome;
-    try {
-      outcome = acpCommandAnswer(
-        await record.process.extMethod(binding.method, {
-          sessionId,
-          messageId: first.firstMessageId,
-        }),
-      );
-    } catch (error) {
-      return acpCommandFailure(error);
+    } finally {
+      if (deadline) clearTimeout(deadline);
+      record.rewinding = false;
     }
-    if (outcome.kind !== 'answered' || outcome.success !== true) return outcome;
-    record.turnMessages = turns.slice(0, index + 1);
+    if (!answer.success)
+      return {
+        kind: 'failed',
+        message:
+          answer.message ?? `${record.engineName} did not rewind the session.`,
+      };
+    return this.applyRewind(record, threadId, turnId, turns, answer);
+  }
+
+  /** Cut the ledger to before `turnId` and publish the rewind marker. */
+  private applyRewind(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    answer: { affectedFiles?: { count: number; paths: string[] } },
+  ): Extract<SessionRewindOutcome, { kind: 'rewound' }> {
+    const index = turns.findIndex((entry) => entry.turnId === turnId);
+    const hiddenTurnIds = turns.slice(index).map((entry) => entry.turnId);
+    record.turnMessages = turns.slice(0, index);
+    const files = answer.affectedFiles;
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -3593,13 +3749,139 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'runtime.warning',
       severity: 'warning',
       code: ACP_SESSION_REWOUND_CODE,
-      message: `${record.engineName} rewound this session to an earlier turn; the ${dropped.length === 1 ? 'later turn is' : `${dropped.length} later turns are`} hidden from the engine.`,
+      message: `${record.engineName} rewound this conversation; ${hiddenTurnIds.length === 1 ? 'one turn is' : `${hiddenTurnIds.length} turns are`} hidden from it${files ? ` and it restored ${files.count === 1 ? 'one file' : `${files.count} files`}` : ''}.`,
       details: {
-        toTurnId,
-        hiddenTurnIds: dropped.map((entry) => entry.turnId),
+        beforeTurnId: turnId,
+        hiddenTurnIds,
+        ...(files ? { affectedFileCount: files.count } : {}),
       },
     });
-    return outcome;
+    return {
+      kind: 'rewound',
+      beforeTurnId: turnId,
+      hiddenTurnIds,
+      ...(files ? { affectedFiles: files } : {}),
+    };
+  }
+
+  /**
+   * A rewind whose answer outlived its deadline is still with the engine,
+   * which may yet apply it. Until it settles no other rewind starts. A late
+   * success with no turn started since is applied as if on time (ledger cut,
+   * marker published); one after a turn started cannot say which turns the
+   * engine now hides, so it is published as a warning and the ledger is
+   * left as it is. A late refusal or error is logged.
+   */
+  private followLateRewind(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    answered: Promise<unknown>,
+    sentTo: ACPProcess,
+  ): void {
+    const turnsStartedAtDeadline = record.turnsStarted ?? 0;
+    record.rewindPendingLate = true;
+    const logger = this.options.logger ?? console;
+    const current = () =>
+      !record.stopping && this.sessions.get(threadId) === record;
+    // A second, longer bound: past it the session stops waiting for this
+    // answer and takes rewinds again. An answer after that is treated as
+    // one after a later turn: the transcript can no longer say what it hid.
+    let abandoned = false;
+    const giveUp = setTimeout(() => {
+      abandoned = true;
+      record.rewindPendingLate = false;
+      logger.warn?.(
+        { threadId, beforeTurnId: turnId },
+        'ACP rewind still unanswered at its late deadline; rewinds are taken again',
+      );
+    }, this.options.rewindLateAnswerTimeoutMs ??
+      ACP_REWIND_LATE_ANSWER_TIMEOUT_MS);
+    giveUp.unref?.();
+    const settle = () => {
+      clearTimeout(giveUp);
+      // Only this rewind's hold: after the late deadline it is no longer
+      // the one pending.
+      if (!abandoned) record.rewindPendingLate = false;
+    };
+    const publishLate = (message: string) =>
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: ACP_SESSION_REWOUND_LATE_CODE,
+        message,
+        details: { beforeTurnId: turnId },
+      });
+    void answered.then(
+      (late) => {
+        settle();
+        if (!current()) return;
+        const answer = readAcpRewindAnswer(
+          late,
+          SESSION_REWIND_AFFECTED_PATHS_MAX,
+        );
+        if (!answer.success) {
+          logger.warn?.(
+            { threadId, message: answer.message },
+            'ACP rewind refused by the engine after its deadline',
+          );
+          return;
+        }
+        if (
+          !abandoned &&
+          (record.turnsStarted ?? 0) === turnsStartedAtDeadline
+        ) {
+          this.applyRewind(record, threadId, turnId, turns, answer);
+          return;
+        }
+        logger.warn?.(
+          { threadId, beforeTurnId: turnId },
+          'ACP rewind applied by the engine after its deadline and after a later turn',
+        );
+        publishLate(
+          `${record.engineName} applied an earlier rewind late, after a later turn started. That turn and everything after it may now be hidden from the engine.`,
+        );
+      },
+      async (error: unknown) => {
+        settle();
+        // A stop someone asked for ends the process on purpose: the session
+        // is going away, so there is no later conversation to warn.
+        if (record.stopping) {
+          logger.warn?.(
+            { threadId, beforeTurnId: turnId, error: errorMessage(error) },
+            'ACP rewind unanswered when its session stopped',
+          );
+          return;
+        }
+        // The connection closed under the request (the engine exited or
+        // was relaunched): the old process may have applied it first, and
+        // nothing can confirm either way. The request is rejected as its
+        // output closes, a moment before the process reports its exit.
+        if (
+          record.process !== sentTo ||
+          (await acpProcessEndsSoon(sentTo, ACP_PROCESS_EXIT_GRACE_MS))
+        ) {
+          logger.warn?.(
+            { threadId, beforeTurnId: turnId, error: errorMessage(error) },
+            'ACP rewind unanswered when its engine process ended',
+          );
+          publishLate(
+            `${record.engineName} may have applied a rewind before it restarted. Turns from the chosen one on may be hidden from the engine.`,
+          );
+          return;
+        }
+        if (!current()) return;
+        logger.warn?.(
+          { threadId, error: errorMessage(error) },
+          'ACP rewind failed after its deadline',
+        );
+      },
+    );
   }
 
   /**
@@ -3657,33 +3939,6 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       return acpCommandFailure(error);
     }
-  }
-
-  /**
-   * Discard this conversation's engine session: delete the engine's stored
-   * copy where it declared core `session/delete`, then stop. A delete the
-   * engine refuses is logged; the stop still happens.
-   */
-  async discardSession(threadId: string): Promise<void> {
-    const record = this.sessions.get(threadId);
-    const sessionId = record?.process.sessionId;
-    if (
-      record &&
-      !record.stopping &&
-      sessionId &&
-      acpDeclaresSessionDelete(record.process.initResult)
-    ) {
-      try {
-        await record.process.deleteSession(sessionId);
-      } catch (error) {
-        (this.options.logger ?? console).warn?.(
-          { threadId, connectionId: record.connectionId },
-          'ACP session/delete failed while discarding the session',
-          error,
-        );
-      }
-    }
-    await this.stopSession(threadId);
   }
 
   private publishAgentProjectionWarning(
@@ -4281,6 +4536,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
+      ...this.mapperLogger(),
     };
     mapAcpSessionUpdate(update, ctx);
   }
@@ -5006,6 +5262,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         ended: (enginePromptId, stopReason, failure) =>
           this.engineTurnEnded(record, enginePromptId, stopReason, failure),
       },
+      ...this.mapperLogger(),
     };
     mapAcpExtensionNotification(method, params, ctx);
   }
@@ -5137,6 +5394,21 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
     record.session.updatedAt = new Date().toISOString();
     record.activeTurnId = undefined;
+  }
+
+  /**
+   * The adapter's logger in the mapper's `warn(message, fields)` shape, when
+   * one was given; otherwise the mapper keeps its own module logger.
+   */
+  private mapperLogger(): Pick<AcpMapperContext, 'logger'> {
+    const logger = this.options.logger;
+    if (!logger?.warn) return {};
+    return {
+      logger: {
+        warn: (message: string, fields?: Record<string, unknown>) =>
+          logger.warn(fields ?? {}, message),
+      },
+    };
   }
 
   private publish(event: CanonicalRuntimeEvent): void {

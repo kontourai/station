@@ -3003,17 +3003,37 @@ tuple the table above already binds. Today eleven bind: Kiro v2's
 and `metadata` (`usage.context-percent`), v3's `_kiro/mcp/status`
 (`engine-mcp.status`), and seven v3 notifications bound as `acp.host-chrome`. The notification table carries no promotion
 metadata: a tuple's binding says nothing about which canonical event, if any,
-should replace it.
+should replace it. The `child-work` consumer is implemented in
+[`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
+kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
+its engine row reads the roster into `child-work.updated`, and a `tool_call`
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
+engine whose handshake names neither reporter publishes `not-reported` at
+session start.
+
+The transcript projection also draws an in-place engine rewind (a
+`runtime.warning` with `ACP_SESSION_REWOUND_CODE`) as a marker row and marks
+the turns it hid `rewound`, and a rewind the engine applied late
+(`ACP_SESSION_REWOUND_LATE_CODE`) as a marker row that marks no turn; the UI
+handler neither toasts them nor adds a notice. [`SessionRewind`](../../src-ui/src/components/chat/SessionRewind.tsx)
+offers "Rewind conversation to here" on a user turn of the live session only
+while `GET /api/orchestration/sessions/:threadId/continuity` says its engine
+rewinds in place.
 
 Engines Station installs and signs in itself have two owners.
 [`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts)
 installs a reviewed pin with consent (the manifest digest first, then each
 artifact, entry names and the unpacked tree) under
 `<STATION_HOME>/engines/<installId>/<version>/`, and `ACPProcess` resolves a
-`station-managed:<installId>` command to it at launch.
+`station-managed:<installId>` command to it at launch (the ACP adapter's
+readiness reads the same install, and the connection inspector takes an
+engine Station signs in as ready only when that readiness has no required
+row missing).
 [`services/engine-host-auth/`](../../src-server/services/engine-host-auth/service.ts)
 holds the vault (`security/engine-host-auth.json`), the issuer, the
-`_kiro/secret/*` store and the Kiro device sign-in, and
+`_kiro/secret/*` store and the Kiro sign-ins (the device-code flow, and the
+Google/GitHub portal flow with its loopback callback in
+[`kiro-oidc/social.ts`](../../src-server/services/engine-host-auth/kiro-oidc/social.ts)), and
 `installEngineHostAuthResponders` registers the reviewed responders on a
 session or probe registry. Its import graph never reaches Station's own
 principals; launch facts are injected at bootstrap.

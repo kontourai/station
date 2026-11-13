@@ -10,6 +10,10 @@ const exclusions = {
     'acp.session-rewound',
     'Runtime warning marking a completed in-place rewind in the transcript; the rewind succeeded, so no turn, start or engine failure.',
   ],
+  'packages/contracts/src/provider.ts:ACP_SESSION_REWOUND_LATE_CODE': [
+    'acp.session-rewound-late',
+    'Runtime warning that a timed-out rewind was applied by the engine after a later turn; the session runs on, so no turn, start or engine failure.',
+  ],
   'packages/contracts/src/provider.ts:ACP_AGENT_PROJECTION_UNAPPLIED_CODE': [
     'acp.agent-projection-unapplied',
     'Runtime warning that the engine runs its own default agent; the session started and runs, so no turn, start or engine failure.',

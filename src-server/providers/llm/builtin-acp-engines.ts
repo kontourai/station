@@ -121,7 +121,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     },
     auth: {
       signInHint:
-        'Install it, then sign in to Kiro here with AWS Builder ID or IAM Identity Center. Station keeps the credential and gives the engine only a short-lived access token.',
+        'Install it, then sign in to Kiro here with AWS Builder ID, IAM Identity Center, or Google or GitHub. Station keeps the credential and gives the engine only a short-lived access token.',
     },
   },
   {

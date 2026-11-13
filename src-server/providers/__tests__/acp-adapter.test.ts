@@ -194,35 +194,44 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
 ];
 
 /**
- * The once-per-session `not-reported` child-work fact a session whose engine
- * reports no children publishes at start. These sequential readers skip it:
- * its own tests (`child work is the engine's to report`) read it directly.
+ * The next event, past the `child-work.updated` `not-reported` this mock
+ * engine's session publishes at start (its handshake names no subagent
+ * reporter). That event has its own test below; the positional reads here
+ * are about the turn and request lifecycle around it.
  */
-function isChildWorkNotReported(event: CanonicalRuntimeEvent): boolean {
-  return (
-    event.method === 'child-work.updated' && event.delta.kind === 'not-reported'
-  );
+async function nextLifecycle(
+  iterator: AsyncIterator<CanonicalRuntimeEvent>,
+): Promise<IteratorResult<CanonicalRuntimeEvent>> {
+  for (;;) {
+    const result = await iterator.next();
+    const event = result.value as CanonicalRuntimeEvent | undefined;
+    if (
+      !result.done &&
+      event?.method === 'child-work.updated' &&
+      event.delta.kind === 'not-reported'
+    )
+      continue;
+    return result;
+  }
 }
 
 async function nextEvent(
   iterator: AsyncIterator<CanonicalRuntimeEvent>,
   label: string,
 ): Promise<CanonicalRuntimeEvent> {
-  for (;;) {
-    const result = await Promise.race([
-      iterator.next(),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`Timed out waiting for ${label}`)),
-          750,
-        ),
+  const result = await Promise.race([
+    nextLifecycle(iterator),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Timed out waiting for ${label}`)),
+        750,
       ),
-    ]);
-    if (result.done || !result.value) {
-      throw new Error(`Iterator closed while waiting for ${label}`);
-    }
-    if (!isChildWorkNotReported(result.value)) return result.value;
+    ),
+  ]);
+  if (result.done || !result.value) {
+    throw new Error(`Iterator closed while waiting for ${label}`);
   }
+  return result.value;
 }
 
 async function requestPermission(
@@ -244,24 +253,18 @@ async function requestPermission(
 }
 
 /** Rejects after `ms` instead of hanging, for asserting an event never arrives. */
-async function nextEventOrTimeout(
+function nextEventOrTimeout(
   iterator: AsyncIterator<CanonicalRuntimeEvent>,
   ms: number,
 ): Promise<CanonicalRuntimeEvent | 'TIMED_OUT'> {
-  const deadline = Date.now() + ms;
-  for (;;) {
-    const event = await Promise.race([
-      iterator.next().then((result) => result.value as CanonicalRuntimeEvent),
-      new Promise<'TIMED_OUT'>((resolve) =>
-        setTimeout(
-          () => resolve('TIMED_OUT'),
-          Math.max(0, deadline - Date.now()),
-        ),
-      ),
-    ]);
-    if (event === 'TIMED_OUT' || !event || !isChildWorkNotReported(event))
-      return event;
-  }
+  return Promise.race([
+    nextLifecycle(iterator).then(
+      (result) => result.value as CanonicalRuntimeEvent,
+    ),
+    new Promise<'TIMED_OUT'>((resolve) =>
+      setTimeout(() => resolve('TIMED_OUT'), ms),
+    ),
+  ]);
 }
 
 /**
@@ -385,6 +388,27 @@ describe('AcpAdapter', () => {
     expect(auth?.description).toContain('has no way to check whether OpenCode');
     expect(auth?.description).not.toMatch(/credentials are present/i);
     expect(requiredMissingPrerequisites(prerequisites)).toEqual([]);
+  });
+
+  test('a session whose engine names no subagent reporter says its child work is not reported, right after it is configured', async () => {
+    const { adapter } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-not-reported',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    const methods: string[] = [];
+    for (let step = 0; step < 3; step += 1)
+      methods.push(
+        ((await iterator.next()).value as CanonicalRuntimeEvent).method,
+      );
+    expect(methods).toEqual([
+      'session.started',
+      'session.configured',
+      'child-work.updated',
+    ]);
   });
 
   test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {
@@ -4674,7 +4698,7 @@ describe('AcpAdapter', () => {
     finishDestroy();
     await stopping;
 
-    expect((await iterator.next()).value.method).toBe('session.exited');
+    expect((await nextLifecycle(iterator)).value.method).toBe('session.exited');
   });
 
   test('does not publish completion from a superseded ACP turn', async () => {
@@ -6185,7 +6209,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     const drain = (async () => {
       for (let step = 0; step < 8; step += 1) {
         const next = await Promise.race([
-          iterator.next().then((result) => result.value),
+          nextLifecycle(iterator).then((result) => result.value),
           new Promise((resolve) => setTimeout(() => resolve(null), 60)),
         ]);
         // `stopAll` closes the queue, so an exhausted iterator yields

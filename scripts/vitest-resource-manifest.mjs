@@ -1357,6 +1357,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Installs a fake Kiro agent service with the real installer and launches
   // it through the real ACPProcess, managed and as a custom command.
   'src-server/services/engine-host-auth/__tests__/engine-host-auth-launch.process.test.ts',
+  // Runs a managed runtime's `--version` (Node, and a slow shell stand-in
+  // killed by an abort) through the ACP adapter's readiness.
+  'src-server/providers/__tests__/acp-managed-runtime-readiness.test.ts',
   // Two real processes race one expiring credential through the vault's
   // cross-process refresh lock against a local stub issuer.
   'src-server/services/engine-host-auth/__tests__/engine-host-auth-refresh-lock.process.test.ts',
