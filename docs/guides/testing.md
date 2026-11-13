@@ -2202,7 +2202,11 @@ changing fleet labels or adding a capacity-leased workflow.
 
 The `PR: CI` workflow owns the legacy required context
 `Merge-queue regression` for ruleset compatibility. It checks the combined
-candidate diff and the incident-owner integration pause. The separately required
+candidate diff (`git diff --check`) and the incident-owner integration pause.
+`ci:fast` runs the same whitespace check on a pull request through
+[`diff-whitespace-gate.mjs`](../../scripts/diff-whitespace-gate.mjs), judging
+only the lines the change adds since `STATION_CI_FAST_BASE`, so whitespace
+already on the base cannot fail it. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 
