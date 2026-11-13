@@ -734,7 +734,7 @@ test('Updates shows the installed server changelog alongside an offered release'
     }),
   );
   render(<UpdatesControl onNavigate={vi.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Updates', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: /^Updates$/ }));
   expect(await screen.findByText('Installed server fixes')).toBeTruthy();
   expect(await screen.findByText('Available server fixes')).toBeTruthy();
 });
@@ -770,7 +770,7 @@ test('simultaneous app and server upgrades mount one changelog dialog at a time'
     screen.queryByRole('dialog', { name: 'Updated server 0.8.0-preview.1' }),
   ).toBeNull();
   fireEvent.click(
-    await within(appDialog).findByRole('button', { name: 'Done', exact: true }),
+    await within(appDialog).findByRole('button', { name: /^Done$/ }),
   );
   await screen.findByText('Queued server changes');
   const serverDialog = screen.getByRole('dialog', {
@@ -818,7 +818,7 @@ test.each(['version', 'origin'])(
           screen.getByRole('dialog', {
             name: 'Updated to Station 0.1.11-nightly.20261105.1',
           }),
-        ).getByRole('button', { name: 'Done', exact: true }),
+        ).getByRole('button', { name: /^Done$/ }),
       );
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     } finally {

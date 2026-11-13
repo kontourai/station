@@ -237,7 +237,6 @@ export function ConnectionBannerSource() {
       !showCompat &&
       !credentialOwned &&
       !pendingApproval &&
-      reason !== 'awaiting-approval' &&
       status === 'error' &&
       failureStreak >= 3 &&
       notice.connected
