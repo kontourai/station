@@ -5136,6 +5136,40 @@ const SCREENS: Screen[] = [
       }),
     ),
   ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        name: `run-setup-${theme}-${viewport.width}`,
+        title: `Run setup — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        ...withGalleryProjectsList(
+          [{ slug: 'demo-project', name: 'Demo Project' }],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByRole('button', { name: /^Run setup:/ });
+            await expect(trigger).toBeInViewport();
+            const bounds = await trigger.boundingBox();
+            expect(bounds!.width).toBeLessThan(viewport.width);
+            await trigger.click();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup' }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Agent:/ }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Model:/ }),
+            ).toBeVisible();
+          },
+        ),
+      }),
+    ),
+  ),
   {
     name: 'overlay-dock-project-bound',
     title: 'New chat — Project chosen before starting',

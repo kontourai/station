@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import type { STTState } from '@kontourai/station-sdk';
 import {
@@ -23,8 +24,9 @@ import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ComposerChoice } from '../ComposerChoice';
-import { ClipboardImagePasteButton } from '../chat/ClipboardImagePasteButton';
+import { ComposerRunControl } from '../ComposerRunControl';
 import { AgentIcon } from '../icons/AgentIcon';
+import { BrandIcon } from '../icons/BrandIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
@@ -517,63 +519,92 @@ export function StartComposer({
             className="composer-choices start-composer__chips"
             aria-label="Chat setup"
           >
-            {agent.status === 'loading' ? (
-              <span
-                className="start-composer__chip start-composer__chip--loading"
-                role="status"
-                aria-label="Checking which Agent will start"
-              >
-                <Skeleton variant="line" width="9rem" />
-              </span>
-            ) : (
-              <ComposerChoice
-                className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
-                aria-haspopup="dialog"
-                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
-                title={
-                  !onOpenModel && agent.status === 'ready'
-                    ? agent.modelNote
-                    : undefined
-                }
-                onClick={(event) => onOpenAgents(event.currentTarget)}
-                caption="Agent"
-                value={agentText}
-                icon={
-                  agent.agent && <AgentIcon agent={agent.agent} size="small" />
-                }
-              />
-            )}
-            {onOpenModel && agent.status === 'ready' && (
-              <ComposerChoice
-                className="start-composer__chip start-composer__chip--model"
-                aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
-                title={agent.modelNote}
-                disabled={!agent.agent}
-                onClick={(event) => onOpenModel(event.currentTarget)}
-                caption="Model"
-                valueClassName="chat-input__model-name"
-                value={
-                  agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
-                    ? agent.modelLabel
-                    : 'Model'
-                }
-              />
-            )}
-            {agent.status === 'ready' &&
-              (!agent.environmentId || agent.environmentId === 'current') &&
-              agent.agent && (
-                <StartApprovalSummary
-                  agent={agent.agent}
-                  executionAgentId={agent.executionAgentId}
-                  projectDefault={agent.approvalProjectDefault}
-                  projectDefaultUnavailable={
-                    agent.approvalProjectDefaultUnavailable
+            <ComposerRunControl
+              loadingLabel={
+                agent.status === 'loading'
+                  ? 'Checking which Agent will start'
+                  : undefined
+              }
+              label={agentText || 'Checking setup'}
+              icon={
+                agent.status === 'ready' && (
+                  <>
+                    {agent.agent && (
+                      <AgentIcon agent={agent.agent} size="small" />
+                    )}
+                    <BrandIcon
+                      name="Engine"
+                      engineId={
+                        parseEngineId(
+                          agent.agent?.execution?.agentConnectionId,
+                        ) ?? undefined
+                      }
+                      size={20}
+                    />
+                  </>
+                )
+              }
+            >
+              {agent.status === 'loading' ? (
+                <span
+                  className="start-composer__chip start-composer__chip--loading"
+                  role="status"
+                  aria-label="Checking which Agent will start"
+                >
+                  <Skeleton variant="line" width="9rem" />
+                </span>
+              ) : (
+                <ComposerChoice
+                  className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
+                  aria-haspopup="dialog"
+                  aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                  title={
+                    !onOpenModel && agent.status === 'ready'
+                      ? agent.modelNote
+                      : undefined
                   }
-                  pick={agent.approvalPick}
-                  onPick={agent.onApprovalPick}
+                  onClick={(event) => onOpenAgents(event.currentTarget)}
+                  caption="Agent"
+                  value={agentText}
+                  icon={
+                    agent.agent && (
+                      <AgentIcon agent={agent.agent} size="small" />
+                    )
+                  }
                 />
               )}
+              {onOpenModel && agent.status === 'ready' && (
+                <ComposerChoice
+                  className="start-composer__chip start-composer__chip--model"
+                  aria-haspopup="dialog"
+                  aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                  title={agent.modelNote}
+                  disabled={!agent.agent}
+                  onClick={(event) => onOpenModel(event.currentTarget)}
+                  caption="Model"
+                  valueClassName="chat-input__model-name"
+                  value={
+                    agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
+                      ? agent.modelLabel
+                      : 'Model'
+                  }
+                />
+              )}
+              {agent.status === 'ready' &&
+                (!agent.environmentId || agent.environmentId === 'current') &&
+                agent.agent && (
+                  <StartApprovalSummary
+                    agent={agent.agent}
+                    executionAgentId={agent.executionAgentId}
+                    projectDefault={agent.approvalProjectDefault}
+                    projectDefaultUnavailable={
+                      agent.approvalProjectDefaultUnavailable
+                    }
+                    pick={agent.approvalPick}
+                    onPick={agent.onApprovalPick}
+                  />
+                )}
+            </ComposerRunControl>
             {skill && (
               <span className="start-composer__chip start-composer__chip--skill">
                 <span className="start-composer__chip-text">{skill.title}</span>
@@ -593,16 +624,6 @@ export function StartComposer({
           <div className="start-composer__actions">
             <span className="start-composer__tools">
               {files && <StartAttachButton onAdd={files.onAdd} />}
-              {files && (
-                <ClipboardImagePasteButton
-                  className="start-composer__tool"
-                  onFiles={(pasted) => {
-                    setFileError(null);
-                    files.onAdd(pasted);
-                  }}
-                  onMessage={setFileError}
-                />
-              )}
               {voice && (
                 <VoiceOrb
                   state={voice.state}

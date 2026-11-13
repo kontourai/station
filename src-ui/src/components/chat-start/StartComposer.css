@@ -157,7 +157,7 @@
 }
 .start-composer__bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
@@ -170,16 +170,14 @@
   border: 0;
 }
 .start-composer__chips {
-  /* Grows far more than the actions, so on a shared line the actions keep
-     their own width and sit together at the end. */
-  flex: 1000 1 auto;
+  /* Setup truncates so attachment tools and Start stay on the same row. */
+  flex: 1 1 0;
 }
 .start-composer__actions {
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
-  /* Alone on row two it takes the width: ⋯ at the start, Start at the end. */
-  flex: 1 0 auto;
+  flex: 0 0 auto;
 }
 .start-composer__actions > :first-child {
   margin-right: auto;

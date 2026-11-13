@@ -1,4 +1,11 @@
-import type { ComponentProps, ReactNode } from 'react';
+import {
+  type ComponentProps,
+  type ReactNode,
+  useContext,
+  useId,
+  useLayoutEffect,
+} from 'react';
+import { ComposerChoiceSummary } from './ComposerChoiceSummary';
 import { ArrowDownGlyph } from './icons/Glyph';
 import './ComposerChoice.css';
 
@@ -22,6 +29,13 @@ export function ComposerChoice({
   className = '',
   ...props
 }: ComposerChoiceProps) {
+  const publish = useContext(ComposerChoiceSummary);
+  const id = useId();
+  const label = props['aria-label'];
+  useLayoutEffect(() => {
+    publish?.(id, label);
+    return () => publish?.(id, undefined);
+  }, [publish, id, label]);
   return (
     <button
       type="button"

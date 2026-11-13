@@ -461,6 +461,30 @@
     "room-channels-light-mobile": [
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "run-setup-dark-1440": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-dark-390": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-dark-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-light-1440": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-light-390": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "run-setup-light-412": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
     ]
   }
 }

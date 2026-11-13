@@ -128,6 +128,8 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
   };
 
   render(<ChatInputArea {...props} />);
+  if (props.modelQuery === null)
+    fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
   return props;
 }
 
@@ -885,7 +887,7 @@ describe('ChatInputArea', () => {
     });
 
     const model = screen.getByRole('button', {
-      name: /Unavailable: This Agent reports no selectable models\./,
+      name: /^Engine & model:.*Unavailable: This Agent reports no selectable models\./,
     });
     expect(model.getAttribute('aria-disabled')).toBe('true');
     model.focus();
@@ -1138,6 +1140,7 @@ describe('ChatInputArea', () => {
     }
 
     render(<OfflineComposer />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
@@ -1225,7 +1228,7 @@ describe('ChatInputArea', () => {
     // (docs/design/chat-composer.md §3.3) — the visible identity spans are
     // aria-hidden, so the name has to carry the selection itself.
     const modelButton = screen.getByRole('button', {
-      name: /OpenCode.*Big Pickle/,
+      name: /^Engine & model:.*OpenCode.*Big Pickle/,
     });
     expect(modelButton.getAttribute('aria-label')).toContain('OpenCode');
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
@@ -1601,6 +1604,8 @@ describe('ChatInputArea', () => {
 
     // Start an escalation on session A — opens the mode sheet and picks full
     // access, which must land on the confirm step rather than applying.
+    if (!screen.queryByRole('dialog', { name: 'Run setup' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
     await screen.findByRole('radiogroup', { name: 'Approval mode' });

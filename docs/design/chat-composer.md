@@ -828,14 +828,14 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### 3.1 Provider and model picker
 
-- Agent and Model selectors show their selected values without repeating the field labels.
-  Their accessible names and tooltips retain the field name, exact Provider/model identity,
-  selection source, and any unavailable reason. A long value ends in an ellipsis inside
-  its chip. The Agent chip keeps its name whole up to half the row; the chips beside it
-  give way first. With no model reported the Model chip reads **Model**, and its
-  accessible name keeps "Model & effort". When the Agent is reached through a model route ("via model-proxy
-  (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
-  chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
+- Chat replies, Home and dock starts share one **Run setup** button, with the
+  Agent and engine marks and a compact Agent/model label. Its accessible name
+  includes Agent, Model, Approval and Mode values. It opens a sheet on phones
+  and a popover on desktop containing the existing Agent, Model, Approval and
+  advertised Mode controls. Picker ownership, unavailable reasons, pending
+  approval states and engine-owned approval disclosures are preserved.
+  Long labels truncate inside the button; the full values remain accessible.
+  Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
   open Session, and only a successor Session starts on the new engine. A
@@ -1104,15 +1104,11 @@ simple per-device preference rather than claiming to detect an attached keyboard
   dictation and takes the transcript with it. An unavailable mic stays focusable;
   tapping or activating it opens its reason, including when the composer cannot
   accept dictation.
-  Paste requires the browser to deliver clipboard files. Mobile WebViews
-  often offer no Paste for an image-only clipboard, so the reply, start and
-  Task composers show **Paste image** beside Attach in the Android and iOS
-  apps (`clipboard-image`) and on a touch browser with
-  `navigator.clipboard.read()`. It reads the clipboard's images
-  (`useClipboardImagePaste`) into that composer's own Attach path and says so
-  when the clipboard has no image. Desktop pointers paste into the field and
-  do not show it. Real-device clipboard behavior is not qualified by these
-  tests; see [native capabilities](native-capabilities.md#clipboard-images-and-the-share-target).
+  Reply and start composers accept images delivered by the browser's paste
+  event into the textarea, including Ctrl/Cmd+V on desktop. They do not offer
+  a separate clipboard-reading button. The room composer retains its existing
+  clipboard action and hook. Real-device keyboard image insertion remains
+  separately qualified; see [native capabilities](native-capabilities.md#clipboard-images-and-the-share-target).
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the

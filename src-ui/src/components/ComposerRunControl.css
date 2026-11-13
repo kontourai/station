@@ -1,0 +1,25 @@
+.composer-choices
+  > .choice-trigger.composer-run-control:has(.composer-choice__icon) {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+.composer-run-control .composer-choice__icon {
+  gap: var(--k-space-1);
+}
+.composer-run-panel {
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+.composer-run-panel__choices {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+}
+.composer-run-panel__choices .composer-choice {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+}

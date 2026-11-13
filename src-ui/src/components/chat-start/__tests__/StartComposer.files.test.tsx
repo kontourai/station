@@ -211,3 +211,32 @@ describe('StartComposer file drops', () => {
     expect(revoke).toHaveBeenCalledWith('blob:screenshot');
   });
 });
+
+test('a touch browser with clipboard image support has Attach but no paste button', () => {
+  const priorClipboard = Object.getOwnPropertyDescriptor(
+    navigator,
+    'clipboard',
+  );
+  const priorMedia = window.matchMedia;
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { read: vi.fn() },
+  });
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: query === '(pointer: coarse)',
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  try {
+    renderComposer({ list: [], onAdd: vi.fn(), onRemove: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Attach files' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
+  } finally {
+    cleanup();
+    window.matchMedia = priorMedia;
+    if (priorClipboard)
+      Object.defineProperty(navigator, 'clipboard', priorClipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
