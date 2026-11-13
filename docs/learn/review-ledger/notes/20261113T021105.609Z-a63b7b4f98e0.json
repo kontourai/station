@@ -1,0 +1,7 @@
+{
+  "revision": "4bff9ac7a3b42c5c963f84fe90d4baa9182d3ecb",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Bridge rule changed again after delta review: a later ACP tool.started input supersedes the start's (OpenCode {} and Grok partial backfill), while for Claude a known input is kept because its task_started re-publish carries a task descriptor. Paragraph updated to say exactly that.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/orchestration-monitoring-bridge.ts"]}
+  ]
+}
