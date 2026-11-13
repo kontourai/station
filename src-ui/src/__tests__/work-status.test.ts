@@ -854,7 +854,7 @@ describe('blocking forms from server summaries across work surfaces', () => {
         blockingOpenRequestIds: ['form'],
         openRequestKinds: { form: 'input' },
       });
-      const chats = withChat
+      const chats: Record<string, ChatUIState> = withChat
         ? {
             c1: {
               ...createDefaultChatState(),
