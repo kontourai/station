@@ -311,10 +311,7 @@ test.describe('project icons', () => {
       exact: true,
     });
     await expect(switcher).toBeVisible();
-    const switcherRow = switcher.getByRole('button', {
-      name: projectName,
-      exact: true,
-    });
+    const switcherRow = switcher.locator(`[data-context-value="${projectSlug}"]`);
     await expect(switcherRow.locator('img')).toHaveAttribute(
       'src',
       expectedIcon,
