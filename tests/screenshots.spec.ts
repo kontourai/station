@@ -3852,7 +3852,8 @@ function roomConversationScreens(): Screen[] {
                 const menu = page.getByRole('menu');
                 await expect(menu.getByRole('menuitem')).toHaveText([
                   'React',
-                  'Reply',
+                  // In the channel, Reply opens the message's thread (#4795).
+                  'Reply in thread',
                   'Edit',
                   'Who reacted',
                   'Delete',
