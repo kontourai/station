@@ -36,11 +36,10 @@ if (!process.argv.includes('--run-real-local-lab'))
     'Pass --run-real-local-lab to start isolated native CLI processes.',
   );
 assert.ok(
-  !(
-    process.argv.includes('--exercise-plugin') &&
-    process.argv.includes('--exercise-settings')
-  ),
-  'Run plugin and settings cohorts separately within the existing request cap.',
+  ['--exercise-plugin', '--exercise-settings', '--exercise-agent'].filter(
+    (flag) => process.argv.includes(flag),
+  ).length <= 1,
+  'Run additional cohorts separately within the existing request cap.',
 );
 if (process.platform !== 'darwin' || process.arch !== 'arm64')
   throw new Error(
@@ -70,10 +69,13 @@ for (const directory of [workspace, home, registry])
   mkdirSync(directory, { recursive: true, mode: 0o700 });
 
 type Phase = {
-  kind: 'write' | 'sdk-mcp' | 'plugin-mcp';
+  kind: 'write' | 'sdk-mcp' | 'plugin-mcp' | 'agent-write';
   restricted: boolean;
   marker: string;
   requests: number;
+  childRequests?: number;
+  agentToolUseId?: string;
+  childToolUseId?: string;
   change?:
     | 'replace-permissions'
     | 'clear-permissions'
@@ -229,16 +231,47 @@ const server = createServer(async (request, response) => {
     });
     writeFileSync(join(artifacts, `request-${requests.length}.json`), body);
     const first = phase.requests++ === 0;
-    const content = first
+    const childPrompt = `CHILD_PROBE_${phase.marker}: use Write once to create the conformance marker, then finish.`;
+    const lastUser = [...(value.messages ?? [])]
+      .reverse()
+      .find((message: { role?: string }) => message.role === 'user');
+    const childStart =
+      phase.kind === 'agent-write' &&
+      !first &&
+      (typeof lastUser?.content === 'string'
+        ? lastUser.content.startsWith(childPrompt)
+        : Array.isArray(lastUser?.content) &&
+          lastUser.content.some(
+            (part: { type?: string; text?: string }) =>
+              part.type === 'text' && part.text?.startsWith(childPrompt),
+          ));
+    const childResult =
+      phase.kind === 'agent-write' &&
+      phase.childToolUseId !== undefined &&
+      Array.isArray(lastUser?.content) &&
+      lastUser.content.some(
+        (part: { type?: string; tool_use_id?: string }) =>
+          part.type === 'tool_result' &&
+          part.tool_use_id === phase?.childToolUseId,
+      );
+    if (childStart || childResult)
+      phase.childRequests = (phase.childRequests ?? 0) + 1;
+    const invoke = first || childStart;
+    const toolUseId = `tool-${randomUUID()}`;
+    if (phase.kind === 'agent-write' && first) phase.agentToolUseId = toolUseId;
+    if (childStart) phase.childToolUseId = toolUseId;
+    const content = invoke
       ? {
           type: 'tool_use',
-          id: `tool-${randomUUID()}`,
+          id: toolUseId,
           name:
-            phase.kind === 'write'
+            childStart || phase.kind === 'write'
               ? 'Write'
-              : phase.kind === 'plugin-mcp'
-                ? pluginToolName
-                : 'mcp__probe__mark',
+              : phase.kind === 'agent-write'
+                ? 'Agent'
+                : phase.kind === 'plugin-mcp'
+                  ? pluginToolName
+                  : 'mcp__probe__mark',
           input: {},
         }
       : { type: 'text', text: '' };
@@ -262,13 +295,20 @@ const server = createServer(async (request, response) => {
     emit('content_block_start', { index: 0, content_block: content });
     emit('content_block_delta', {
       index: 0,
-      delta: first
+      delta: invoke
         ? {
             type: 'input_json_delta',
             partial_json: JSON.stringify(
-              phase.kind === 'write'
+              childStart || phase.kind === 'write'
                 ? { file_path: phase.marker, content: 'native effect\n' }
-                : {},
+                : phase.kind === 'agent-write'
+                  ? {
+                      description: 'Isolated native marker control',
+                      subagent_type: 'general-purpose',
+                      run_in_background: false,
+                      prompt: childPrompt,
+                    }
+                  : {},
             ),
           }
         : { type: 'text_delta', text: 'DONE' },
@@ -276,7 +316,7 @@ const server = createServer(async (request, response) => {
     emit('content_block_stop', { index: 0 });
     emit('message_delta', {
       delta: {
-        stop_reason: first ? 'tool_use' : 'end_turn',
+        stop_reason: invoke ? 'tool_use' : 'end_turn',
         stop_sequence: null,
       },
       usage: { output_tokens: 1 },
@@ -457,7 +497,26 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
     assert.equal(result.subtype, 'success');
     if (resume) assert.equal(result.session_id, resume);
     assert.equal(existsSync(input.marker), !input.restricted);
-    assert.equal(input.requests, 2);
+    assert.equal(
+      input.requests,
+      input.kind === 'agent-write' && !input.restricted ? 4 : 2,
+    );
+    if (input.kind === 'agent-write') {
+      assert.equal(input.childRequests ?? 0, input.restricted ? 0 : 2);
+      if (!input.restricted) {
+        assert.ok(
+          messages.some(
+            (message) =>
+              message.type === 'assistant' &&
+              message.parent_tool_use_id === input.agentToolUseId &&
+              message.message.content.some(
+                (block) => block.type === 'tool_use' && block.name === 'Write',
+              ),
+          ),
+          'the observed Write belongs to the actual native child',
+        );
+      }
+    }
     observations.push({ ...input, nativeSessionId: result.session_id, result });
     return result.session_id;
   } finally {
@@ -534,6 +593,7 @@ try {
   const nativeSessions = new Map<Phase['kind'], string>();
   const kinds: Phase['kind'][] = ['write', 'sdk-mcp'];
   if (process.argv.includes('--exercise-plugin')) kinds.push('plugin-mcp');
+  if (process.argv.includes('--exercise-agent')) kinds.push('agent-write');
   for (const kind of kinds) {
     const native = await runPhase({
       kind,
