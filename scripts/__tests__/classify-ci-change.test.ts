@@ -23,6 +23,9 @@ import {
   classifyGitRange,
   classifyIosChangedPaths,
   classifyIosGitRange,
+  classifyIosPostMergeChangedPaths,
+  classifyIosPostMergeGitRange,
+  IOS_POST_MERGE_PREFIXES,
   renderGithubOutputs,
 } from '../classify-ci-change.mjs';
 import { runWorkflowShell } from './fixtures/workflow-shell.js';
@@ -137,7 +140,7 @@ describe('exact CI change classification', () => {
       git(root, ['init', '--initial-branch=main']);
       git(root, ['config', 'user.email', 'fixture@example.test']);
       git(root, ['config', 'user.name', 'Fixture']);
-      commitFile(
+      const legacyBase = commitFile(
         root,
         'scripts/classify-ci-change.mjs',
         `console.log(['heavy=true', 'container=true', 'dependencies=false', 'classification=runtime-or-workflow', 'changed-files=1'].join('\\n'));\n`,
@@ -145,9 +148,9 @@ describe('exact CI change classification', () => {
       );
       const divergenceBase = commitFile(
         root,
-        'src-ui/inherited.ts',
+        'src-ui/src/platform/inherited.ts',
         'export {};\n',
-        'inherited UI',
+        'inherited native shell',
       );
 
       git(root, ['checkout', '-b', 'candidate']);
@@ -203,8 +206,12 @@ describe('exact CI change classification', () => {
 
       git(root, ['checkout', '-b', 'rename-candidate', divergenceBase]);
       mkdirSync(join(root, 'docs'), { recursive: true });
-      git(root, ['mv', 'src-ui/inherited.ts', 'docs/inherited.ts']);
-      git(root, ['commit', '-m', 'move UI source into docs']);
+      git(root, [
+        'mv',
+        'src-ui/src/platform/inherited.ts',
+        'docs/inherited.ts',
+      ]);
+      git(root, ['commit', '-m', 'move native shell source into docs']);
       const renamedHead = git(root, ['rev-parse', 'HEAD']);
       expect(
         classifyIosGitRange({
@@ -223,9 +230,10 @@ describe('exact CI change classification', () => {
       ).toMatchObject({ heavy: true, classification: 'runtime-or-workflow' });
 
       git(root, ['checkout', 'candidate']);
+      // A UI-only candidate no longer builds before landing, on either event.
       const candidateUiHead = commitFile(
         root,
-        'src-ui/candidate-only.ts',
+        'src-ui/src/components/candidate-only.tsx',
         'export {};\n',
         'candidate UI',
       );
@@ -236,10 +244,29 @@ describe('exact CI change classification', () => {
           mode: 'candidate',
           cwd: root,
         }),
-      ).toMatchObject({ relevant: true, changedFiles: 2 });
+      ).toMatchObject({ relevant: false, changedFiles: 2 });
+      for (const event of ['pull_request_target', 'merge_group'])
+        expect(
+          runIosRelevanceShell(root, event, currentBase, candidateUiHead),
+        ).toBe('relevant=false');
+      const candidateNativeHead = commitFile(
+        root,
+        'src-desktop/src/candidate-only.rs',
+        'fn main() {}\n',
+        'candidate native',
+      );
       expect(
-        runIosRelevanceShell(root, 'merge_group', currentBase, candidateUiHead),
-      ).toBe('relevant=true');
+        classifyIosGitRange({
+          before: currentBase,
+          after: candidateNativeHead,
+          mode: 'candidate',
+          cwd: root,
+        }),
+      ).toMatchObject({ relevant: true, changedFiles: 3 });
+      for (const event of ['pull_request_target', 'merge_group'])
+        expect(
+          runIosRelevanceShell(root, event, currentBase, candidateNativeHead),
+        ).toBe('relevant=true');
 
       git(root, ['checkout', 'main']);
       const pushScript = commitFile(
@@ -256,12 +283,23 @@ describe('exact CI change classification', () => {
           cwd: root,
         }),
       ).toMatchObject({ relevant: false, changedFiles: 1 });
+      // A main push answers the post-merge question over exactly what it
+      // added: a script-only push builds nothing.
       expect(runIosRelevanceShell(root, 'push', currentBase, pushScript)).toBe(
-        'relevant=true',
+        'relevant=false',
       );
+      // Dispatch always builds.
+      expect(
+        runIosRelevanceShell(
+          root,
+          'workflow_dispatch',
+          currentBase,
+          pushScript,
+        ),
+      ).toBe('relevant=true');
       const pushUi = commitFile(
         root,
-        'src-ui/push-only.ts',
+        'src-ui/src/components/push-only.tsx',
         'export {};\n',
         'push UI',
       );
@@ -272,7 +310,52 @@ describe('exact CI change classification', () => {
           mode: 'direct',
           cwd: root,
         }),
+      ).toMatchObject({ relevant: false, changedFiles: 1 });
+      // The merge group skipped this UI-only tree, so main builds it.
+      expect(
+        classifyIosPostMergeGitRange({
+          before: pushScript,
+          after: pushUi,
+          mode: 'direct',
+          cwd: root,
+        }),
       ).toMatchObject({ relevant: true, changedFiles: 1 });
+      expect(runIosRelevanceShell(root, 'push', pushScript, pushUi)).toBe(
+        'relevant=true',
+      );
+      // One push can carry several squashed PRs. If any of them is native,
+      // the merge group already built this exact tree, so main does not.
+      const pushNative = commitFile(
+        root,
+        'src-desktop/src/push-only.rs',
+        'fn main() {}\n',
+        'push native',
+      );
+      expect(runIosRelevanceShell(root, 'push', pushScript, pushNative)).toBe(
+        'relevant=false',
+      );
+      expect(runIosRelevanceShell(root, 'push', pushUi, pushNative)).toBe(
+        'relevant=false',
+      );
+      // Fail closed on push too: a previous main without the post-merge
+      // scope (this change's own first push) and an unknown `before` build.
+      expect(runIosRelevanceShell(root, 'push', legacyBase, pushScript)).toBe(
+        'relevant=true',
+      );
+      expect(
+        runIosRelevanceShell(root, 'push', 'a'.repeat(40), pushScript),
+      ).toBe('relevant=true');
+      expect(
+        classifyIosPostMergeGitRange({
+          before: 'a'.repeat(40),
+          after: pushScript,
+          mode: 'direct',
+          cwd: root,
+        }),
+      ).toMatchObject({
+        relevant: true,
+        classification: 'classifier-error-fail-closed',
+      });
 
       expect(
         classifyIosGitRange({
@@ -618,20 +701,113 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
   });
 });
 
-describe('iOS relevance ignores test-only JavaScript sources', () => {
+/**
+ * Where a change gets its iOS build: `before` (the PR and merge-group build,
+ * `--scope ios`), `after` (only the coalesced main push build,
+ * `--scope ios-post-merge`), or `never`. The two scopes are disjoint by
+ * construction, and asserting both answers catches a revert of either.
+ */
+function iosBuildPoint(paths: string[]) {
+  const before = classifyIosChangedPaths(paths).relevant;
+  const after = classifyIosPostMergeChangedPaths(paths).relevant;
+  if (before && after) throw new Error(`both scopes claim ${paths.join(', ')}`);
+  return before ? 'before' : after ? 'after' : 'never';
+}
+
+describe('iOS builds native inputs before landing and the rest of the UI after', () => {
   test.each([
+    // The workflow, its router, the smoke and its fixtures.
+    '.github/workflows/build-ios.yml',
+    'scripts/classify-ci-change.mjs',
+    'scripts/ios-simulator-runtime-smoke.mjs',
+    'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+    'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
+    'tests/ios-runtime-smoke/project.yml',
+    // The native crate, iOS project/config, Rust and Cargo anywhere.
+    'src-desktop/src/lib.rs',
+    'src-desktop/tauri.ios.conf.json',
+    'src-desktop/gen/apple/project.yml',
+    'src-desktop/Info.ios.plist',
+    'src-desktop/Cargo.lock',
+    'src-desktop/src/__tests__/lib.test.ts',
+    'rust-toolchain.toml',
+    'experiments/mobile-device/tauri-host/Cargo.toml',
+    '.cargo/config.toml',
+    'patches/android-native-keyring-store/src/lib.rs',
+    'patches/some-npm-package.patch',
+    // Dependency/toolchain manifests and native-client build inputs.
+    'package.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    '.nvmrc',
+    'vite.config.ts',
+    'scripts/write-native-client-build-manifest.mjs',
+    'scripts/lib/desktop-build-manifest.mjs',
+    'scripts/write-ios-build-manifest.mjs',
+    'scripts/lib/ios-launch-screen.mjs',
+    'scripts/ios-channel-icons.mjs',
+    // The src-ui slice that is the native shell and its boot path.
+    'src-ui/src/platform/native/tauri.ts',
+    'src-ui/src/platform/native/pluginBundleCapability.js',
+    'src-ui/src/platform/PlatformSessionGate.tsx',
+    'src-ui/public/favicon.png',
+    'src-ui/public/startup-theme.js',
+    'src-ui/index.html',
+    'src-ui/src/main.tsx',
+    'src-ui/src/boot.ts',
+    'src-ui/src/build-info.ts',
+    'src-ui/tsconfig.json',
+  ])('builds %s before landing', (changedPath) => {
+    expect(iosBuildPoint([changedPath])).toBe('before');
+  });
+
+  test.each([
+    // Ordinary product UI, including the pairing screens the smoke drives:
+    // every Linux lane builds and renders them, so iOS builds them on main.
+    'src-ui/src/App.tsx',
+    'src-ui/src/components/MobileWelcomeBoundary.tsx',
+    'src-ui/src/views/connections-hub/ConnectStationDialog.tsx',
+    'src-ui/src/index.css',
+    'src-ui/src/i18n/en.ts',
+    // Production sources whose names merely resemble tests.
+    'src-ui/src/lib/test-utils.ts',
+    'src-ui/src/testing/harness.tsx',
+    'src-ui/src/contest.ts',
+    'packages/sdk/src/attest.ts',
+    // The packages the bundle compiles. Package builds (`tsc` in
+    // build:sdk/build:connect) exclude only the top-level src/__tests__, so
+    // these test-named files are compiled and still count.
+    'packages/connect/src/pairing.ts',
+    'packages/contracts/src/plugin.ts',
+    'packages/sdk/src/client/index.ts',
+    'packages/connect/src/pairing.test.ts',
+    'packages/sdk/src/client/__tests__/client.test.ts',
+    'packages/contracts/src/schema.spec.tsx',
+  ])('builds %s only after landing', (changedPath) => {
+    expect(iosBuildPoint([changedPath])).toBe('after');
+  });
+
+  test.each([
+    // Test-only sources no build compiles.
     'src-ui/src/components/__tests__/Button.test.tsx',
     'src-ui/src/components/Button.test.tsx',
     'src-ui/src/lib/format.spec.ts',
     'src-ui/src/__tests__/fixtures/session.json',
+    'src-ui/src/platform/__tests__/installedAppZoom.test.ts',
     'packages/sdk/src/__tests__/client.test.ts',
     'packages/connect/src/__tests__/pairing.test.ts',
     'packages/contracts/src/__tests__/fixtures/schema.json',
-  ])('skips the macOS build for %s', (changedPath) => {
-    expect(classifyIosChangedPaths([changedPath]).relevant).toBe(false);
+    // Outside both scopes.
+    'docs/guides/testing.md',
+    'src-server/routes/foo.ts',
+    'packages/cli/src/commands/other.ts',
+    'scripts/run-ci-fast.mjs',
+    '.github/workflows/windows-pr-verification.yml',
+  ])('never builds iOS for %s', (changedPath) => {
+    expect(iosBuildPoint([changedPath])).toBe('never');
   });
 
-  test('a test-only change across several packages stays irrelevant', () => {
+  test('a test-only change across several packages builds nothing', () => {
     expect(
       classifyIosChangedPaths([
         'src-ui/src/components/__tests__/Button.test.tsx',
@@ -639,34 +815,40 @@ describe('iOS relevance ignores test-only JavaScript sources', () => {
         'docs/guides/testing.md',
       ]),
     ).toMatchObject({ relevant: false, changedFiles: 3 });
+    expect(
+      classifyIosPostMergeChangedPaths([
+        'src-ui/src/components/__tests__/Button.test.tsx',
+        'packages/sdk/src/__tests__/client.test.ts',
+        'docs/guides/testing.md',
+      ]),
+    ).toMatchObject({ relevant: false, changedFiles: 3 });
   });
 
-  test('a test change beside a source change is still relevant', () => {
+  test('a test change beside a UI source change builds after landing', () => {
     expect(
-      classifyIosChangedPaths([
+      iosBuildPoint([
         'src-ui/src/components/__tests__/Button.test.tsx',
         'src-ui/src/components/Button.tsx',
-      ]).relevant,
-    ).toBe(true);
+      ]),
+    ).toBe('after');
   });
 
-  test.each([
-    // Production sources whose names merely resemble tests.
-    'src-ui/src/lib/test-utils.ts',
-    'src-ui/src/testing/harness.tsx',
-    'src-ui/src/contest.ts',
-    'packages/sdk/src/attest.ts',
-    // Native and smoke inputs are never exempt, whatever they are called.
-    'src-desktop/src/__tests__/lib.test.ts',
-    'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
-    'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
-    // Package builds (`tsc` in build:sdk/build:connect) exclude only the
-    // top-level src/__tests__, so these are compiled into the iOS build.
-    'packages/connect/src/pairing.test.ts',
-    'packages/sdk/src/client/__tests__/client.test.ts',
-    'packages/contracts/src/schema.spec.tsx',
-  ])('keeps %s relevant', (changedPath) => {
-    expect(classifyIosChangedPaths([changedPath]).relevant).toBe(true);
+  // The rule that keeps main from rebuilding a merge-group tree: one native
+  // path anywhere in the range means the candidate was built before landing.
+  test('one native input moves a whole UI range to the merge-group build', () => {
+    expect(
+      iosBuildPoint([
+        'src-ui/src/App.tsx',
+        'packages/sdk/src/client/index.ts',
+        'src-desktop/src/lib.rs',
+      ]),
+    ).toBe('before');
+    expect(
+      iosBuildPoint([
+        'src-ui/src/App.tsx',
+        'src-ui/src/platform/native/tauri.ts',
+      ]),
+    ).toBe('before');
   });
 
   test('changes only the iOS answer, not the shared heavy/container classification', () => {
@@ -677,6 +859,65 @@ describe('iOS relevance ignores test-only JavaScript sources', () => {
       classification: 'runtime-or-workflow',
     });
     expect(classifyIosChangedPaths(testOnly).relevant).toBe(false);
+  });
+
+  // The push trigger's paths filter decides whether the post-merge
+  // classifier even runs, so it must cover every post-merge prefix. Read the
+  // workflow rather than trust the comment that says so.
+  test('the push paths filter names every post-merge prefix', () => {
+    const workflow = parse(
+      readFileSync(join(repoRoot, '.github/workflows/build-ios.yml'), 'utf8'),
+    ) as { on: { push?: { branches?: string[]; paths?: string[] } } };
+    expect(workflow.on.push?.branches).toEqual(['main']);
+    expect(IOS_POST_MERGE_PREFIXES).toEqual([
+      'src-ui/',
+      'packages/connect/',
+      'packages/contracts/',
+      'packages/sdk/',
+    ]);
+    expect([...(workflow.on.push?.paths ?? [])].sort()).toEqual(
+      IOS_POST_MERGE_PREFIXES.map((prefix) => `${prefix}**`).sort(),
+    );
+  });
+
+  // Every script the macOS job runs on its default (non-dispatch) path is a
+  // native-client build input: a change to one must build before landing.
+  test('every script the iOS build job runs is a pre-landing input', () => {
+    const workflow = parse(
+      readFileSync(join(repoRoot, '.github/workflows/build-ios.yml'), 'utf8'),
+    ) as {
+      jobs: Record<string, { steps: Array<{ if?: string; run?: string }> }>;
+    };
+    const scripts = new Set<string>();
+    for (const step of workflow.jobs['build-ios-verification'].steps) {
+      if (
+        String(step.if ?? '').startsWith(
+          "github.event_name == 'workflow_dispatch'",
+        )
+      )
+        continue;
+      for (const match of String(step.run ?? '').matchAll(
+        /\bscripts\/[\w./-]+\.mjs\b/g,
+      ))
+        scripts.add(match[0]);
+    }
+    const packageScripts = (
+      JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+    for (const match of packageScripts['build:native-client'].matchAll(
+      /\bscripts\/[\w./-]+\.mjs\b/g,
+    ))
+      scripts.add(match[0]);
+    expect([...scripts].sort()).toEqual([
+      'scripts/ios-channel-icons.mjs',
+      'scripts/ios-simulator-runtime-smoke.mjs',
+      'scripts/write-ios-build-manifest.mjs',
+      'scripts/write-native-client-build-manifest.mjs',
+    ]);
+    for (const script of scripts)
+      expect(iosBuildPoint([script]), script).toBe('before');
   });
 });
 
@@ -699,13 +940,10 @@ describe('package test exemptions match what the package builds exclude', () => 
           ['src/__tests__', 'src/__tests__/**'].includes(pattern),
         ),
       ).toBe(true);
-      expect(
-        classifyIosChangedPaths([`packages/${name}/src/__tests__/x.test.ts`])
-          .relevant,
-      ).toBe(false);
-      expect(
-        classifyIosChangedPaths([`packages/${name}/src/x.test.ts`]).relevant,
-      ).toBe(true);
+      expect(iosBuildPoint([`packages/${name}/src/__tests__/x.test.ts`])).toBe(
+        'never',
+      );
+      expect(iosBuildPoint([`packages/${name}/src/x.test.ts`])).toBe('after');
     },
   );
 });

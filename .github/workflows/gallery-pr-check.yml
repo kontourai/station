@@ -27,10 +27,15 @@ name: "PR: Gallery"
 # PRs compare their exact head with its own baseline. Merge groups compare
 # the synthesized candidate with that candidate's baseline, so independently
 # accepted visual changes must also work together before landing.
+#
+# The capture skips on PR events while a PR is a draft, and for the
+# automation app's same-repository release PR; `ready_for_review` and later
+# pushes to a non-draft PR capture, and the merge group always does. The
+# classifier and allowlist ceiling are cheap and keep running.
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -148,7 +153,9 @@ jobs:
   gallery-diff:
     name: Gallery product assertions and pixel report
     needs: classify
-    if: always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
+    # The draft and release-PR guard is identical in build-ios.yml and
+    # windows-pr-verification.yml (scripts/__tests__/ci-workflow-contract.test.ts).
+    if: always() && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]'))) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
     runs-on: ubuntu-22.04
     container:
       image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe
