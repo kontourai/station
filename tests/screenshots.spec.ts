@@ -5447,6 +5447,9 @@ const SCREENS: Screen[] = [
             await expect(
               composer.getByRole('textbox', { name: 'Message', exact: true }),
             ).toBeVisible();
+            await composer
+              .getByRole('textbox', { name: 'Message', exact: true })
+              .fill('Follow up on this');
             const trigger = composer.getByTestId('run-setup-trigger');
             await expect(trigger).toHaveAccessibleName(new RegExp(agent));
             await expect(trigger).toHaveAttribute('title', new RegExp(model));
