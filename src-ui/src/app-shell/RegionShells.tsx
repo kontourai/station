@@ -72,21 +72,6 @@ function AmbientChatPane(props: AmbientChatPaneProps) {
   );
 }
 
-const loadActivityRegionShell = () =>
-  import('./ActivityRegionShell').then(({ ActivityRegionShell }) => ({
-    default: ActivityRegionShell,
-  }));
-
-function ActivitySurfaceShell({ regionId }: { regionId: 'main' }) {
-  return (
-    <LazyBoundary
-      load={loadActivityRegionShell}
-      componentProps={{ regionId }}
-      pending={<SkeletonBlock count={3} label="Loading Activity" />}
-    />
-  );
-}
-
 /**
  * What `App.tsx` renders at `/` for Home. Home's only placement is `main`,
  * and `main` at `/` is App's route outlet: the pending skeleton, the
@@ -115,7 +100,6 @@ export const REGION_SURFACE_SHELLS: ReadonlyMap<
   string,
   ComponentType<{ regionId: 'main' }>
 > = new Map<string, ComponentType<{ regionId: 'main' }>>([
-  ['activity', ActivitySurfaceShell],
   ['home', HomeSurfaceShell],
 ]);
 
@@ -162,30 +146,6 @@ void loadRegionPaneHost().catch(() => {
   // The mounted boundary owns import failures and retry.
 });
 
-const loadActivityDockPane = () =>
-  import('./ActivityRegionShell').then(({ ActivityDockPane }) => ({
-    default: ActivityDockPane,
-  }));
-
-/**
- * Activity as a region pane: the pane (body, sessions surface) stays behind
- * its own lazy boundary so the sessions import graph is not in the host's
- * chunk. The region's chrome is the host's bar (#2046 2b), so the pane takes
- * none of it.
- */
-function renderActivityDockPane(
-  _instance: WorkspacePaneInstance,
-  _chrome: DockShellChrome,
-) {
-  return (
-    <LazyBoundary
-      load={loadActivityDockPane}
-      componentProps={{}}
-      pending={<SkeletonBlock count={3} label="Loading Activity" />}
-    />
-  );
-}
-
 /**
  * One region's host (#2045): `RegionPaneHost` in its own chunk, given Chat's
  * renderer (from `ChatDock.tsx`, where the chat stack lives) and Activity's.
@@ -201,7 +161,6 @@ function DockRegionHost({ regionId }: { regionId: DockRegionId }) {
         regionId,
         renderChatPane: renderAmbientChatPane,
         chatPaneFailureContext: ambientChatPaneFailureContext,
-        renderActivityPane: renderActivityDockPane,
       }}
       pending={null}
     />

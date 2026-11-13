@@ -158,10 +158,40 @@ describe('FlowRunService', () => {
           value: 'pass',
           createdAt: now,
           updatedAt: now,
+          currentIntegrityRef: 'commit:fixture',
+          verificationPolicyId: 'policy.readiness',
         },
       ],
-      evidence: [],
-      policies: [],
+      evidence: [
+        {
+          id: 'evidence.readiness',
+          claimId: 'claim.readiness',
+          evidenceType: 'test_output',
+          method: 'validation',
+          sourceRef: 'fixture:readiness',
+          excerptOrSummary: 'Readiness checks passed for the fixture commit.',
+          observedAt: now,
+          collectedBy: producerId,
+          integrityRef: 'commit:fixture',
+          supportStrength: 'entails',
+          passing: true,
+        },
+      ],
+      policies: [
+        {
+          id: 'policy.readiness',
+          claimType: 'governance.merge-readiness',
+          requiredEvidence: ['test_output'],
+          requiredMethods: ['validation'],
+          requiresCorroboration: false,
+          acceptanceCriteria: ['readiness checks pass for this commit'],
+          reviewAuthority: 'veritas',
+          validityRule: { kind: 'commit' },
+          stalenessTriggers: ['commit changes'],
+          conflictRules: [],
+          impactLevel: 'high',
+        },
+      ],
       events: [
         {
           id: 'event.readiness',
@@ -169,7 +199,7 @@ describe('FlowRunService', () => {
           status: 'verified',
           actor: 'veritas',
           method: 'review',
-          evidenceIds: [],
+          evidenceIds: ['evidence.readiness'],
           createdAt: now,
           verifiedAt: now,
         },
@@ -1104,6 +1134,41 @@ describe('FlowRunService', () => {
       });
       expect(result.state.status).toBe('completed');
     });
+
+    test.each(['policy', 'passing'] as const)(
+      'rejects stored verified evidence missing %s when an in-flight run resumes',
+      async (missing) => {
+        const cwd = createPinnedWorkspace();
+        const svc = new FlowRunService();
+        await svc.startRun(cwd, {
+          definition: 'pinned-readiness',
+          runId: 'r1',
+        });
+        const bundle = readinessBundle('veritas');
+        if (missing === 'policy') {
+          bundle.policies = [];
+          Reflect.deleteProperty(bundle.claims[0], 'verificationPolicyId');
+        } else {
+          Reflect.deleteProperty(bundle.evidence[0], 'passing');
+        }
+        await svc.attachEvidence(cwd, 'r1', {
+          gate: 'readiness-gate',
+          file: writeEvidenceFile(cwd, 'old-bundle.json', bundle),
+          kind: 'trust.bundle',
+          producer: 'veritas',
+        });
+        const resumed = new FlowRunService();
+        expect((await resumed.getRun(cwd, 'r1')).state.status).not.toBe(
+          'completed',
+        );
+        const result = await resumed.evaluate(cwd, 'r1');
+        expect(result.outcomes[0]).toMatchObject({
+          status: 'route-back',
+          missing: ['merge-readiness'],
+        });
+        expect(result.state.status).not.toBe('completed');
+      },
+    );
 
     test('an attachment producer that disagrees with its bundle producer routes back', async () => {
       const cwd = createPinnedWorkspace();

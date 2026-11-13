@@ -1,13 +1,12 @@
-import {
-  createWorkspaceActivityReviewPaneInstance,
-  WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
-} from '@kontourai/station-contracts/workspace-activity-review-pane';
 /** @vitest-environment jsdom */
 
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { WORKSPACE_BOARD_PANE_DESCRIPTOR } from '@kontourai/station-board-pane/workspace-board-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
-import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
+import {
+  createWorkspaceChatPaneInstance,
+  WORKSPACE_CHAT_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
@@ -18,7 +17,10 @@ import {
   WORKSPACE_READINESS_PANE_DESCRIPTOR,
   WORKSPACE_TRUST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
-import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import {
+  parseWorkspacePaneInstance,
+  type WorkspacePaneDescriptor,
+} from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR,
@@ -272,14 +274,17 @@ test('registers only the package-declared lazy Basis descriptor', () => {
 });
 
 test('Activity review renderer refuses forged declarations and mismatched occurrence state', () => {
-  const descriptor = WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR;
-  const instance = createWorkspaceActivityReviewPaneInstance(
-    `activity-review:${'b'.repeat(32)}`,
-  );
+  const descriptor = {
+    ...WORKSPACE_CHAT_PANE_DESCRIPTOR,
+    id: 'pane:builtin:activity-review' as typeof WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
+  };
+  const instance = parseWorkspacePaneInstance({
+    ...createWorkspaceChatPaneInstance()!,
+    descriptorId: descriptor.id,
+    instanceId: `activity-review:${'b'.repeat(32)}`,
+  });
   if (!instance) throw new Error('Canonical review occurrence missing');
-  expect(getBuiltinWorkspacePaneRenderer(descriptor, instance)).toBeTypeOf(
-    'function',
-  );
+  expect(getBuiltinWorkspacePaneRenderer(descriptor, instance)).toBeNull();
   expect(
     getBuiltinWorkspacePaneRenderer(
       { ...descriptor, provenance: { origin: 'plugin', pluginId: 'decoy' } },

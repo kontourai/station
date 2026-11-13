@@ -106,11 +106,9 @@ describe('the folded Regions menu and catalog-only surfaces (#2047)', () => {
     ).toEqual([
       ['Hide Chat from the dock', true],
       ['Show Terminal in the dock', false],
-      ['Show Activity in the dock', false],
     ]);
     expect(result.current.surfaceList.map((surface) => surface.id)).toEqual([
       'chat',
-      'activity',
     ]);
   });
 });

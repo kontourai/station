@@ -72,7 +72,7 @@ function activityRightRecord(
       right: {
         visible: true,
         size: 517,
-        occupant: { kind: 'surface', id: 'activity' },
+        occupant: { kind: 'surface', id: 'workspace-agents' },
         maximized: false,
       },
       bottom: {
@@ -179,8 +179,8 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.right).toEqual({
       visible: true,
       size: 517,
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       maximized: false,
     });
     expect(model?.regions.bottom.occupant).toBe('chat');
@@ -213,7 +213,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
         right: {
           visible: false,
           size: 517,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: false,
         },
       }),
@@ -234,8 +234,8 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     expect(model?.regions.right).toEqual({
       visible: false,
       size: 517,
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       maximized: false,
     });
     // The initializer did this, not a mount-time correction that then
@@ -259,7 +259,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
     // — a placement link that landed Chat behind another pane's tab named
     // a pane the reader could not see.
     expect(model?.regions.right).toMatchObject({
-      panes: ['activity', 'chat'],
+      panes: ['workspace-agents', 'chat'],
       occupant: 'chat',
       visible: true,
     });
@@ -279,7 +279,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
         left: {
           visible: false,
           size: 400,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: false,
         },
         right: {
@@ -306,7 +306,7 @@ describe('RegionModelProvider reads the regionArrangement record at mount', () =
       occupant: 'chat',
       maximized: false,
     });
-    expect(model?.regions.left.occupant).toBe('activity');
+    expect(model?.regions.left.occupant).toBe('workspace-agents');
   });
 
   test('a record naming a retired surface in right mounts with right empty', async () => {
@@ -352,7 +352,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
     expect(regionArrangementWrites(setSpy)).toHaveLength(0);
 
     act(() => {
-      model?.placeSurface('activity', 'left');
+      model?.placeSurface('workspace-agents', 'left');
       model?.setRegion('left', { size: 333 });
     });
     // Trailing edge: nothing has been written in the same tick.
@@ -367,7 +367,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
             left: {
               visible: true,
               size: 333,
-              occupant: { kind: 'surface', id: 'activity' },
+              occupant: { kind: 'surface', id: 'workspace-agents' },
               maximized: false,
             },
           }),
@@ -380,13 +380,13 @@ describe('RegionModelProvider persists every arrangement write as the record', (
     expect(deviceSettingsStore.get('regionArrangement').regions.left).toEqual({
       visible: true,
       size: 333,
-      occupant: { kind: 'surface', id: 'activity' },
+      occupant: { kind: 'surface', id: 'workspace-agents' },
       maximized: false,
     });
     // The store's echo of this tab's own write is not adopted as a change.
     await settle();
     expect(regionArrangementWrites(setSpy)).toHaveLength(1);
-    expect(model?.regions.left.occupant).toBe('activity');
+    expect(model?.regions.left.occupant).toBe('workspace-agents');
   });
 
   test('a mount is not a write: no setter is reached until the user changes something', async () => {
@@ -414,7 +414,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
         left: {
           visible: false,
           size: 400,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: false,
         },
         right: {
@@ -435,7 +435,7 @@ describe('RegionModelProvider persists every arrangement write as the record', (
     await settle();
 
     expect(model?.regions.right.occupant).toBe('chat');
-    expect(model?.regions.left.occupant).toBe('activity');
+    expect(model?.regions.left.occupant).toBe('workspace-agents');
     expectNoWrites(spies);
     expect(deviceSettingsStore.get('dockSlotPlacement')).toBe('left');
     expect(window.location.search).toBe('');
@@ -465,7 +465,9 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
     });
     act(() => writeFromAnotherTab(incoming));
 
-    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
     expect(model?.regions.right.size).toBe(517);
     // Adoption is a read. Its only writes are the Chat mirror's: the other
     // tab's Chat is open, so this tab's navigation now says so too.
@@ -489,7 +491,9 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
 
     act(() => writeFromAnotherTab(activityRightRecord()));
 
-    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
     expect(model?.regions.bottom.visible).toBe(false);
     expect(model?.lastShownRegion).toBe('right');
   });
@@ -542,7 +546,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
         right: {
           visible: true,
           size: 517,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: true,
         },
       }),
@@ -556,8 +560,8 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expect(model?.regions.right).toEqual({
       visible: true,
       size: 517,
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       maximized: true,
     });
     expect(model?.regions.bottom.maximized).toBe(false);
@@ -572,7 +576,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
         right: {
           visible: true,
           size: 517,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
           maximized: true,
         },
       }),
@@ -596,7 +600,9 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     seedEnvelope({ regionArrangement: activityRightRecord() });
     setUrl('/');
     render(<Harness />);
-    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
     const spies = spyOnEverySetter();
     // The store's memory is a module singleton an earlier test may have
     // raised; lower it so "untouched" below is observable.
@@ -610,7 +616,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
       ).toEqual({
         visible: true,
         size: 517,
-        occupant: { kind: 'surface', id: 'activity' },
+        occupant: { kind: 'surface', id: 'workspace-agents' },
         maximized: true,
       }),
     );

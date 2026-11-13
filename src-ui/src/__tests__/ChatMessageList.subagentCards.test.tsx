@@ -1,3 +1,5 @@
+import { ChildChatContext } from '../components/chat-dock/ChildChatNavigationContext';
+import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
 /**
  * @vitest-environment jsdom
  *
@@ -385,29 +387,34 @@ function stubFetch(): void {
   );
 }
 
+const openChild = vi.fn();
 function renderTranscript(session = chatSession(), streamingShell = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const tree = () => (
     <QueryClientProvider client={client}>
-      <ActiveChatsProvider>
-        {streamingShell ? (
-          <ChatMessageList
-            activeSession={session}
-            approvalEvents={
-              windowEvents.current as Parameters<
-                typeof ChatMessageList
-              >[0]['approvalEvents']
-            }
-            fontSize={13}
-            showReasoning={false}
-            showToolDetails={false}
-          />
-        ) : (
-          <TranscriptHarness session={session} />
-        )}
-      </ActiveChatsProvider>
+      <ConversationConnectionProvider value={{ apiBase: API_BASE }}>
+        <ChildChatContext.Provider value={openChild}>
+          <ActiveChatsProvider>
+            {streamingShell ? (
+              <ChatMessageList
+                activeSession={session}
+                approvalEvents={
+                  windowEvents.current as Parameters<
+                    typeof ChatMessageList
+                  >[0]['approvalEvents']
+                }
+                fontSize={13}
+                showReasoning={false}
+                showToolDetails={false}
+              />
+            ) : (
+              <TranscriptHarness session={session} />
+            )}
+          </ActiveChatsProvider>
+        </ChildChatContext.Provider>
+      </ConversationConnectionProvider>
     </QueryClientProvider>
   );
   const rendered = render(tree());
@@ -426,6 +433,7 @@ async function findCard(): Promise<HTMLElement> {
 describe('subagent transcript cards', () => {
   beforeEach(() => {
     _setApiBase(API_BASE);
+    openChild.mockClear();
     sequence = 0;
     unexpectedRequests.length = 0;
     stubFetch();
@@ -1252,14 +1260,13 @@ describe('subagent transcript cards', () => {
     expect(
       within(card).getByText('48,210 tokens · 37 tool uses · ran 17:04'),
     ).toBeTruthy();
-    fireEvent.click(
-      within(card).getByRole('button', { name: 'View transcript' }),
-    );
-    expect(
-      await within(card).findByText('Review the ADR freeze PR.', {
-        selector: '.child-work-transcript__text',
+    fireEvent.click(within(card).getByRole('button', { name: 'Open chat' }));
+    expect(openChild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: THREAD,
+        childId: expect.any(String),
       }),
-    ).toBeTruthy();
+    );
     expect(unexpectedRequests).toEqual([]);
   });
 

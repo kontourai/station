@@ -7,7 +7,6 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLayoutChatPlacement } from '../app-shell/chat-placement';
 import { Button } from '../components/Button';
 import { Empty } from '../components/state';
-import { useActivityReview } from '../contexts/ActivityReviewContext';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import { describeRelatedOpenRefusal } from '../contexts/openRelatedFilePreview';
@@ -364,44 +363,6 @@ function RouteUp({ opener }: { opener: PaneOpener }) {
   return <UpButton label={opener.label} onUp={up} />;
 }
 
-function ActivityUp({
-  instanceId,
-  opener,
-}: {
-  instanceId: string;
-  opener: PaneOpener;
-}) {
-  const showSurface = useShowSurface();
-  const review = useActivityReview();
-  const relations = usePaneRelations();
-  const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  const up = () => {
-    if (opener.source.kind !== 'activity') return;
-    const selected = opener.source.selectedThreadId;
-    void review.reveal(
-      instanceId,
-      'activity',
-      (current) => {
-        if (!current()) return;
-        const unchanged =
-          relations.currentSelection('activity') ===
-          `activity:${selected ?? ''}`;
-        if (!unchanged)
-          showSurface('activity', selected ? { session: selected } : {});
-        else showSurface('activity');
-      },
-      () => mounted.current,
-    );
-  };
-  return <UpButton label={opener.label} onUp={up} />;
-}
-
 function OpenerUp({
   instanceId,
   opener,
@@ -411,7 +372,29 @@ function OpenerUp({
 }) {
   switch (opener.source.kind) {
     case 'activity':
-      return <ActivityUp instanceId={instanceId} opener={opener} />;
+      if (opener.source.selectedThreadId === null)
+        return (
+          <RouteUp
+            opener={{
+              ...opener,
+              source: { kind: 'route', pathname: '/notifications', search: '' },
+            }}
+          />
+        );
+      return (
+        <ConversationUp
+          instanceId={instanceId}
+          opener={{
+            ...opener,
+            source: {
+              kind: 'conversation',
+              conversationId: null,
+              threadId: opener.source.selectedThreadId,
+              projectSlug: null,
+            },
+          }}
+        />
+      );
     case 'conversation':
       return <ConversationUp instanceId={instanceId} opener={opener} />;
     case 'files':

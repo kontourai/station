@@ -88,7 +88,7 @@ export function TaskRow({
   /** Absent when no start was reported: the meta line then shows no time. */
   elapsedMs: number | undefined;
   outcomeChip?: BackgroundTaskState;
-  onOpenTranscript: (threadId: string) => void;
+  onOpenTranscript: (threadId: string, title?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const readTarget = station;
@@ -314,9 +314,9 @@ export function TaskRow({
                   ? `Open on ${station.stationName} to view this transcript`
                   : undefined
               }
-              onClick={() => onOpenTranscript(delegateThreadId)}
+              onClick={() => onOpenTranscript(delegateThreadId, entry.title)}
             >
-              View transcript
+              Open chat
             </button>
             {isRunningDelegate && (
               <button

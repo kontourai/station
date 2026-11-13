@@ -282,7 +282,7 @@ export function SessionInventoryItemDetails({
   const detailsRef = useRef<HTMLElement>(null);
   const openSession = (session: string) => {
     onDismiss?.();
-    showSurface('activity', { session });
+    showSurface('chat', { session });
   };
   const row = item.row;
   if (!row)

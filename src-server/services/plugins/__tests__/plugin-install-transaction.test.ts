@@ -150,6 +150,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 });
 
 vi.mock('../../../providers/registries/registry.js', () => ({
+  // The mocked agent catalog offers nothing, so no plain id is refused.
+  assertRegisteredAgentOwnership: vi.fn().mockResolvedValue(undefined),
   getAgentRegistryProvider: vi.fn().mockReturnValue({
     listAvailable: vi.fn().mockResolvedValue([]),
   }),
