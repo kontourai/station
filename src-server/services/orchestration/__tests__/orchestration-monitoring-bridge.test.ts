@@ -661,4 +661,62 @@ describe('OrchestrationMonitoringBridge', () => {
         .map((event) => event[K.SPAN_KIND]),
     ).toEqual([SPAN.START, SPAN.END, SPAN.START, SPAN.END]);
   });
+
+  test('a re-published start with a task descriptor keeps the call input', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, context);
+    bridge.onTurnDispatched({
+      provider: 'claude',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    // Claude's tool_use carries the Agent call's real input; its later
+    // task_started re-publishes the same call id with a task descriptor.
+    const input = { subagent_type: 'general-purpose', prompt: 'do it' };
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        method: 'tool.started',
+        itemId: 'task-1',
+        toolCallId: 'task-1',
+        toolName: 'Agent',
+        arguments: input,
+      }),
+    );
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        method: 'tool.started',
+        itemId: 'task-1',
+        toolCallId: 'task-1',
+        toolName: 'Task (general-purpose)',
+        arguments: {
+          description: 'd',
+          task_type: 'local_agent',
+          prompt: 'do it',
+        },
+      }),
+    );
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        method: 'tool.completed',
+        itemId: 'task-1',
+        toolCallId: 'task-1',
+        toolName: 'Agent',
+        status: 'success',
+      }),
+    );
+    await emitter.flush();
+    const rows = persisted.filter(
+      (event) => event[K.OP_NAME] === OP.EXECUTE_TOOL,
+    );
+    expect(rows.map((event) => event[K.SPAN_KIND])).toEqual([
+      SPAN.START,
+      SPAN.END,
+    ]);
+    expect(rows[0]![K.TOOL_CALL_ARGS]).toEqual(input);
+    expect(K.TOOL_CALL_ARGS in rows[1]!).toBe(false);
+  });
 });

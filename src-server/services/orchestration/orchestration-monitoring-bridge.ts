@@ -41,6 +41,17 @@ type OpenTool = {
   latestArguments: unknown;
 };
 
+/** No input yet: absent, or the empty object an ACP agent reports first. */
+function isUnknownInput(input: unknown): boolean {
+  return (
+    input === undefined ||
+    (typeof input === 'object' &&
+      input !== null &&
+      !Array.isArray(input) &&
+      Object.keys(input).length === 0)
+  );
+}
+
 /** An adapter that knows no name yet labels the call with its own id. */
 function realToolName(
   name: string | undefined,
@@ -139,8 +150,14 @@ export class OrchestrationMonitoringBridge {
         // tool-update supervisor re-publishes it whenever a call's title,
         // kind or input changes. The start span is already written, and the
         // clock keeps running; what arrived later is carried to the result.
-        // OpenCode first reports `{}` and only then the real input.
-        if (event.arguments !== undefined)
+        // OpenCode first reports `{}` and only then the real input. Only an
+        // input that was not yet known is filled in: Claude re-publishes a
+        // started Agent call with its task descriptor, which is not the
+        // tool's input and must not replace it.
+        if (
+          event.arguments !== undefined &&
+          isUnknownInput(open.startArguments)
+        )
           open.latestArguments = event.arguments;
         return;
       }
