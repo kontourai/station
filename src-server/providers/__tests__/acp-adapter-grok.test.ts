@@ -1099,7 +1099,102 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
-  test('a points answer that is not 0..n-1 in order rewinds nothing', async () => {
+  test('a wake takes an index but lists no point; later turns resolve to their own index', async () => {
+    const wakeCapture = 'rewind-points-after-wake';
+    const [wakePoints] = liveAnswers(wakeCapture, '_x.ai/rewind/points');
+    // The engine's own replay of the session: each prompt with its index.
+    const replayed = captureFrames(wakeCapture)
+      .map((msg) => msg.params?.update)
+      .filter((update) => update?.sessionUpdate === 'user_message_chunk')
+      .map((update) => ({
+        index: update._meta.promptIndex as number,
+        text: update.content.text as string,
+      }));
+    const listed = (
+      wakePoints as { rewind_points: Array<{ prompt_index: number }> }
+    ).rewind_points.map(({ prompt_index }) => prompt_index);
+    expect(listed).toEqual([0, 1, 2, 4]);
+    expect(replayed.find(({ index }) => index === 3)?.text).toMatch(
+      /^<system-reminder>/,
+    );
+    const clientPrompts = replayed.filter(({ index }) =>
+      listed.includes(index),
+    );
+    const session = await startGrokSession();
+    const turns: string[] = [];
+    for (const [position, { text }] of clientPrompts.entries()) {
+      turns.push(await grokTurn(session, text, `prompt-${position}`));
+      if (position === 2) {
+        await session.agent.notify('_x.ai/queue/changed', {
+          sessionId: session.sessionId,
+          entries: [],
+          runningPromptId: 'task-completed-1',
+        });
+        await settle();
+        await session.agent.notify('_x.ai/session_notification', {
+          sessionId: session.sessionId,
+          update: {
+            sessionUpdate: 'turn_completed',
+            prompt_id: 'task-completed-1',
+            stop_reason: 'end_turn',
+          },
+        });
+        await settle();
+      }
+    }
+    answerLive(session, {
+      '_x.ai/rewind/points': [wakePoints],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[3]!),
+    ).toMatchObject({ kind: 'rewound', hiddenTurnIds: [turns[3]] });
+    expect(
+      session.proc.extMethodCalls
+        .filter(({ method }) => method === '_x.ai/rewind/execute')
+        .map(({ params }) => params.targetPromptIndex),
+    ).toEqual([4, 4]);
+    await session.stop();
+  });
+
+  test('a turn after the chosen one that lists no point (a slash command Grok ran itself) refuses the rewind', async () => {
+    const { session, turns } = await threeTurns();
+    turns.push(await grokTurn(session, '/compact', 'prompt-3'));
+    answerLive(session, { '_x.ai/rewind/points': [points] });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[1]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls.map(({ method }) => method)).toEqual([
+      '_x.ai/rewind/points',
+    ]);
+    await session.stop();
+  });
+
+  test("a point whose preview is only the start of the turn's text is not that turn", async () => {
+    const session = await startGrokSession();
+    const turn = await grokTurn(session, 'yes, apply the migration', 'p-0');
+    const [live] = (points as { rewind_points: Record<string, unknown>[] })
+      .rewind_points;
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        {
+          rewind_points: [{ ...live, prompt_index: 0, prompt_preview: 'yes' }],
+        },
+      ],
+    });
+    expect(await session.adapter.rewindSession(session.threadId, turn)).toEqual(
+      {
+        kind: 'failed',
+        message: expect.stringContaining('do not line up'),
+      },
+    );
+    await session.stop();
+  });
+
+  test('a points answer whose indexes do not rise rewinds nothing', async () => {
     const { session, turns } = await threeTurns();
     const listed = (points as { rewind_points: unknown[] }).rewind_points;
     answerLive(session, {
@@ -1226,6 +1321,27 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
         (params.mcpServers as Array<{ name: string }>).map(({ name }) => name),
       ),
     ).toEqual([[], ['docs'], ['docs']]);
+    await session.stop();
+  });
+
+  test('when passing the list again fails too, the outcome says the server may be gone', async () => {
+    const session = await startGrokSession({
+      toolServers: [{ id: 'docs', command: process.execPath }],
+    });
+    let sends = 0;
+    session.proc.extMethodHandler = () => {
+      sends += 1;
+      if (sends >= 2) throw new Error('session closed');
+      return { result: { ok: true } };
+    };
+    expect(
+      await session.adapter.reconnectMcpServer(session.threadId, 'docs', {
+        startOAuth: false,
+      }),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining("without 'docs'"),
+    });
     await session.stop();
   });
 });

@@ -722,14 +722,20 @@ session's own continuity, which
   with a Rewound badge, never as a toast. Checkpoint restore stays the
   file-level action; the two are separate.
 
-  Grok Build names its rewind points by prompt index, not message id: one
-  point per prompt a client sent, 0-based (a wake turn and a steer get none,
-  live). The ledger holds a Grok turn once Grok reports starting its prompt
-  (`_x.ai/queue/changed` `runningPromptId` during that Station turn), with
-  the start of its prompt text. A rewind reads `_x.ai/rewind/points`, takes
-  the ledger's last turn as the last point and counts back to the chosen
-  turn, and goes on only if that point's `prompt_preview` is the start of the
-  turn's own prompt. It then sends `_x.ai/rewind/execute { sessionId,
+  Grok Build names its rewind points by its own prompt index, not a message
+  id. Every prompt Grok runs takes an index, a wake included, but it lists a
+  point only for a prompt a client sent (live: points 0, 1, 2 and 4, the
+  wake having run as 3); a mid-turn steer takes neither. The ledger holds a
+  Grok turn once Grok reports starting its prompt (`_x.ai/queue/changed`
+  `runningPromptId` during that Station turn), with the start of its prompt
+  text. A rewind reads `_x.ai/rewind/points` and lines the ledger's turns up
+  with the last points listed, the last turn with the last point. It goes on
+  only if every turn from the chosen one to the last has exactly the preview
+  Grok lists for it (its first non-empty line, cut to 57 characters plus
+  `...` when longer than 60), so a prompt Grok ran without a point (a slash
+  command it handled itself) or listed without Station sending it puts them
+  out of step and the rewind fails. The chosen turn's point gives the
+  `prompt_index` sent. It then sends `_x.ai/rewind/execute { sessionId,
   targetPromptIndex, force: false, mode: 'all' }`, Grok's dry run. When that
   names `conflicts` (files changed outside Grok since the turn, which
   applying would overwrite), the rewind fails, naming them, and nothing is
@@ -764,7 +770,8 @@ session's own continuity, which
   `config_added`). Only a server Station passed can be reconnected that way;
   one from Grok's own configuration, or a reconnect with `startOAuth`, fails
   before anything is sent. When the second send fails, the list is sent once
-  more and the failure is reported.
+  more and the failure is reported; if that fails too, the outcome says Grok
+  may be running the conversation without the server until it restarts.
 - **Steer retract** (`retractPendingSteers`) sends `_session/steer/clear`.
   Only kiro-cli's own engine gets it: its drop report names exactly the
   unread steers. The agent service's report also names steers the turn
@@ -834,7 +841,7 @@ notification the engine sent there is bound.
 | `_x.ai/session_notification` `turn_completed` | Ends that prompt's provider turn (`end_turn` completes it, `cancelled` aborts it, `error` fails it with the engine's `agent_result`, and a request the wake opened is settled), and states its cost once: `costUsdTicks`, 10^10 ticks to the dollar, scope `turn`; 0 means the price is unknown, not free. The figure includes its subagents' calls; two engine prompts in one Station turn publish their sum |
 | `_x.ai/mcp/server_status` | `engine-mcp.status` for that server: `initializing` as `starting`, `ready`, `unavailable` as `failed` with Grok's `detail`, and `unavailable` with reason `config_removed` (a server taken out of the client's list, as a reconnect does) as `disabled`. Grok calls every server `local`, so a server Station passed on `session/new` is scope `session` by name |
 | `_x.ai/session/setup`, `_x.ai/session/interjection`, `_x.ai/models/update`, `_x.ai/settings/update`, `_x.ai/announcements/update`, `_x.ai/sessions/changed`, `_x.ai/session/prompt_complete`, the other `_x.ai/session_notification` kinds | Host chrome: forwarded as `extension.notification`, no fact derived |
-| `_x.ai/mcp/init_progress`, `_x.ai/mcp_initialized`, `_x.ai/mcp/servers_updated` | Host chrome for the MCP status display (counts only; no per-server state). `servers_updated` lists each server's launch shape; for every engine, an `env` or `headers` value in a published extension payload's `mcpServers` is replaced by `[redacted]` (names kept), since the envelope is durable |
+| `_x.ai/mcp/init_progress`, `_x.ai/mcp_initialized`, `_x.ai/mcp/servers_updated` | Host chrome for the MCP status display (counts only; no per-server state). `servers_updated` lists each server's launch shape; for every engine, a published extension payload's `mcpServers` keep each server's name, command and transport, while `env` and `headers` values and every `args` entry read `[redacted]` and a `url` loses its user info and query, since the envelope is durable |
 | `_x.ai/ask_user_question` (request) `{ toolCallId, questions[{ question, options[{ label, description }], multiSelect }], mode }` | The harness-question form (source `harness:grok`), one choice or multi-choice field per question. Answered `{ outcome: 'accepted', answers: { <question>: [<label>, ...] } }`; a decline, a cancel, a question Station cannot show (two with the same text, one without options) or one no person may answer goes back `{ outcome: 'cancelled' }`, which Grok tells its model is a decline. Before this binding Station's `-32601` failed the tool and the model asked in plain text instead |
 
 | Station to Grok | Use |

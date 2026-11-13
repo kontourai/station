@@ -3711,8 +3711,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     try {
       await send(servers);
     } catch (error) {
-      await send(servers).catch(() => undefined);
-      return acpCommandFailure(error);
+      const restored = await send(servers).then(
+        () => true,
+        () => false,
+      );
+      const failure = acpCommandFailure(error);
+      if (restored || failure.kind !== 'failed') return failure;
+      return {
+        kind: 'failed',
+        message: `${failure.message} ${binding.vendor} may now be running this conversation without '${name}' until it restarts.`,
+      };
     }
     return {
       kind: 'answered',
@@ -3725,10 +3733,13 @@ export class AcpAdapter implements ProviderAdapterShape {
    * Resolve a Station turn to the engine's prompt index, on an engine that
    * names rewind and fork points by index. The ledger holds, in order, every
    * prompt the engine started for this process's Station turns, and the
-   * engine lists one point per prompt a client sent (a wake or a steer gets
-   * none), so the ledger's last turn is the engine's last point and the rest
-   * count back from it. The turn's own prompt text must start as the point's
-   * preview does, or nothing is resolved.
+   * engine lists a point for each prompt a client sent (a wake takes an index
+   * but lists none), so the ledger's turns are the last points listed: its
+   * last turn the last point, and the rest counting back from it. Every turn
+   * from the chosen one to the last must have exactly its point's preview,
+   * or nothing is resolved: a prompt the engine ran without listing a point
+   * (a slash command it handled itself), or one it listed that Station never
+   * sent, puts them out of step, and they would no longer agree.
    */
   private async promptIndexForTurn(
     record: AcpSessionRecord,
@@ -3749,13 +3760,23 @@ export class AcpAdapter implements ProviderAdapterShape {
       return {
         failed: `${record.engineName} listed its rewind points in a shape Station cannot read. Nothing was changed.`,
       };
-    const index = points.length - (turns.length - position);
-    const point = points[index];
-    if (!point || !acpRewindPointMatches(point, turns[position]?.promptText))
+    const offset = points.length - turns.length;
+    const aligned =
+      offset + position >= 0 &&
+      turns
+        .slice(position)
+        .every((turn, k) =>
+          acpRewindPointMatches(
+            points[offset + position + k] ?? {},
+            turn.promptText,
+          ),
+        );
+    const point = points[offset + position];
+    if (!aligned || !point)
       return {
         failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
       };
-    return { index };
+    return { index: point.index };
   }
 
   /** Race `answer` against the rewind deadline; read-only steps only. */

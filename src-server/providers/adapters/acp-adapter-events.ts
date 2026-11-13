@@ -537,12 +537,25 @@ function redactedValues(value: unknown): unknown {
   return value === undefined ? undefined : MCP_SECRET_REDACTED;
 }
 
+/** A server URL without its user info or query, where a token can ride. */
+function urlWithoutCredentials(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}${url.pathname}`;
+  } catch {
+    return MCP_SECRET_REDACTED;
+  }
+}
+
 /**
  * An extension payload as it is published: every MCP server it lists keeps
- * its names but not its `env` or `headers` values, which carry credentials.
- * The opaque envelope is durable and reaches every surface; an engine that
- * echoes its MCP configuration (Grok's `mcp/servers_updated` lists each
- * server's launch shape) must not put a token there.
+ * its name, command and transport, but not what can carry a credential: its
+ * `env` and `headers` values, its `args` (a token is often passed as one) and
+ * its URL's user info and query. The opaque envelope is durable and reaches
+ * every surface; an engine that echoes its MCP configuration (Grok's
+ * `mcp/servers_updated` lists each server's launch shape) must not put a
+ * token there.
  */
 function withoutMcpServerSecrets(params: Record<string, unknown>): unknown {
   // A vendor may send no params at all; the envelope carries what came.
@@ -564,6 +577,10 @@ function withoutMcpServerSecrets(params: Record<string, unknown>): unknown {
         ...('headers' in entry
           ? { headers: redactedValues(entry.headers) }
           : {}),
+        ...(Array.isArray(entry.args)
+          ? { args: entry.args.map(() => MCP_SECRET_REDACTED) }
+          : {}),
+        ...('url' in entry ? { url: urlWithoutCredentials(entry.url) } : {}),
       };
     }),
   };

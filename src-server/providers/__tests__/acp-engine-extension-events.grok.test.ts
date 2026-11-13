@@ -197,7 +197,7 @@ describe('Grok MCP server status', () => {
 });
 
 describe('MCP server secrets in a published extension payload', () => {
-  test('env and header values are redacted; names, and a list without them, are kept', () => {
+  test('env, header, argument and URL credentials are redacted; names and commands are kept', () => {
     const { notify, of } = harness();
     notify('_x.ai/mcp/servers_updated', {
       sessionId: 's',
@@ -209,6 +209,12 @@ describe('MCP server secrets in a published extension payload', () => {
           headers: [{ name: 'Authorization', value: 'Bearer secret-header' }],
         },
         { name: 'map', env: { MAP_KEY: 'secret-map-value' } },
+        {
+          name: 'remote',
+          type: 'http',
+          url: 'https://user:secret-pass@mcp.example.com/v1?token=secret-q',
+          args: ['--api-key', 'secret-arg'],
+        },
       ],
     });
     const [published] = of('extension.notification');
@@ -223,9 +229,15 @@ describe('MCP server secrets in a published extension payload', () => {
           headers: [{ name: 'Authorization', value: '[redacted]' }],
         },
         { name: 'map', env: { MAP_KEY: '[redacted]' } },
+        {
+          name: 'remote',
+          type: 'http',
+          url: 'https://mcp.example.com/v1',
+          args: ['[redacted]', '[redacted]'],
+        },
       ],
     });
-    // The live list (no env) is published as the engine sent it.
+    // The live list keeps each server's name, source and command.
     const live = capture('fork-at-prompt').find(
       (msg) => msg.method === '_x.ai/mcp/servers_updated',
     );
@@ -234,7 +246,16 @@ describe('MCP server secrets in a published extension payload', () => {
     other.notify(live!.method!, live!.params);
     const forwarded = other.of('extension.notification');
     expect(forwarded).toHaveLength(1);
-    expect(forwarded[0]?.payload).toEqual(live!.params);
+    const liveServers = live!.params.mcpServers as Array<
+      Record<string, unknown>
+    >;
+    expect(forwarded[0]?.payload).toEqual({
+      ...live!.params,
+      mcpServers: liveServers.map((server) => ({
+        ...server,
+        args: (server.args as unknown[]).map(() => '[redacted]'),
+      })),
+    });
   });
 });
 
