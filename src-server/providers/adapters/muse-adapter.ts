@@ -957,6 +957,10 @@ export class MuseAdapter implements ProviderAdapterShape {
   private static readonly baseMetadata = {
     displayName: 'Muse Code',
     durability: EXTERNAL_ENGINE_DURABILITY,
+    // `muse serve` has `session/fork` (live 1.4.18: a new session with
+    // `forkedFrom`), but Station opens no session from a muse session id:
+    // this adapter neither resumes nor adopts one, so a forked session
+    // would be unreachable. `rewind` is experimental-only in MSP.
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),

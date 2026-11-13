@@ -1120,6 +1120,16 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // nothing resembling a system-prompt field.
     instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
     toolServers: { state: 'unsupported' },
+    // These two cells are about delivering Station-authored skills and
+    // commands, which muse has no channel for. Muse's OWN commands are a
+    // separate surface: `getCommands` lists `/compact` on serve as an
+    // `adapter-action` route that `MuseAdapter` sends as MSP
+    // `session/compact` (live 1.4.18: refused `run_active` mid-turn and
+    // `compaction_unavailable` on the account's default model;
+    // `muse-serve-1.4.18-background-task-stop`). Muse's skills
+    // (`skill/list`, per session) are not listed: `getCommands` is
+    // adapter-wide and has no session to ask, and a short-lived discovery
+    // host would have to start (and persist) a muse session to read them.
     skills: { state: 'unsupported' },
     commands: { state: 'unsupported' },
     // The one positively evidenced channel: `muse exec --model <ID>` is
@@ -1177,11 +1187,22 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // progress line or output; no depth either. Declared for serve: a
     // session on the `muse exec` fallback names no subagent and reports its
     // child work `not-reported`.
+    //
+    // Muse Code 1.4.18 (`muse-serve-1.4.18-workflow-child-steer`) also
+    // emits a `subagent` item per workflow child (same id as its
+    // `childId`), whose `result.summary` is the child's own reply; Station
+    // takes the child's result from it. A native `subagent` item (no
+    // `workflowRunId`) is mapped from the same fields, but no live native
+    // spawn was capturable (the agent offered no spawn tool outside
+    // workflows), so that path rests on the schema plus the workflow
+    // child's live item shape. A tool call muse keeps running past its
+    // completed turn (`task/list`: `executionMode: background`) is child
+    // work too (`workKind: command`, `muse-serve-1.4.18-background-task-stop`).
     subagentObservability: {
       state: 'declared',
       signals: ['lifecycle', 'usage', 'result'],
       evidence:
-        'workflow item children[] (scheduled/started/usage/completed/terminal) and its workflow-launch-reconciled final_summary',
+        'workflow item children[] (scheduled/started/usage/completed/terminal), the 1.4.18 subagent item result.summary, and the workflow-launch-reconciled final_summary',
       adapterModule: 'muse-serve-child-work.ts',
     },
     subagentControl: {
@@ -1189,7 +1210,17 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       // `subagent/stop {subagentId}` (a client request) cancelled the child
       // within ~35 ms in the capture `muse-serve-1.3.0-workflow-child-stop`;
       // `MuseAdapter.stopProviderTask` sends it and the child reads
-      // stopped-unconfirmed until its own `terminal: cancelled`.
+      // stopped-unconfirmed until its own `terminal: cancelled`. A
+      // background task is stopped with `task/stop {taskId}` instead (live
+      // 1.4.18: the task's item completed `cancelled`; muse refuses
+      // `task/stop` on a subagent id, `invalid_target`).
+      //
+      // Not a matrix cell, but wired: `steerChildWork` sends
+      // `subagent/sendMessage` (live 1.4.18: queued, delivered, and the
+      // child's reply carried it). It is offered only while the launching
+      // turn runs, which is when orchestration admits a child steer; a
+      // workflow's turn ends at launch, so its children are not offered one.
+      // `subagent/interrupt` maps to no adapter seam and is not sent.
       stop: {
         state: 'available',
         invocation: 'client-request',
@@ -1197,6 +1228,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
         evidence:
           'subagent/stop → workflow child terminal cancelled (muse-serve-1.3.0-workflow-child-stop)',
       },
+      // MSP has `subagent/resume`, but no adapter seam or caller resumes a
+      // provider subagent, so wiring it would add a method nothing calls.
       resume: {
         state: 'unsupported',
         reason: 'No subagent resume is wired.',
