@@ -599,7 +599,7 @@ export function SkillsView({
           )
         }
         emptyIcon={<EngineGlyph />}
-        emptyTitle="No skill selected"
+        emptyTitle="Select a skill to see what it does"
         emptyDescription="Choose a skill to see what it does and use it in a new chat."
         listIntro={
           <>

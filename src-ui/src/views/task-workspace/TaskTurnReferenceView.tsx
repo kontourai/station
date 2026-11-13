@@ -138,7 +138,7 @@ export function TaskTurnReferenceView({
       ) : references.length === 0 ? (
         <Empty
           variant="compact"
-          label="No kept answers yet"
+          label="Nothing kept yet"
           description="Add a completed assistant answer to this Task to reopen it here."
         />
       ) : (
@@ -833,7 +833,7 @@ function SupportSelector({
             <code>{bundle.id}</code>
           </button>
         ))}
-        {(bundles.data ?? []).length === 0 && <p>No bundles available.</p>}
+        {(bundles.data ?? []).length === 0 && <p>Nothing to link yet.</p>}
       </fieldset>
       {selectedBundleId && (
         <fieldset>

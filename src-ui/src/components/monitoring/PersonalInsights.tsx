@@ -145,9 +145,7 @@ function OutcomeWindowResult({
             Observed turns (denominator): {data.observedTurns.toLocaleString()}{' '}
             · retained for {data.coverage.retentionDays} days
           </p>
-          {!data.rows.length ? (
-            <p>No outcomes reported for this period.</p>
-          ) : null}
+          {!data.rows.length ? <p>Nothing reported for this period.</p> : null}
           <table>
             <thead>
               <tr>
@@ -253,7 +251,7 @@ function UsageWindowResult({
               : 'Snapshot matched the source when checked.'}
           </p>
           {!data.summary?.rows.length ? (
-            <p>No usage reported for this period.</p>
+            <p>Nothing reported for this period.</p>
           ) : (
             <div className="personal-insights-table">
               <table>

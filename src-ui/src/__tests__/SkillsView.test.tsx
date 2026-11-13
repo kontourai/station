@@ -321,7 +321,7 @@ describe('SkillsView', () => {
 
     expect(screen.getByRole('heading', { name: 'New skill' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
-    expect(screen.queryByText('No skill selected')).toBeNull();
+    expect(screen.queryByText('Select a skill to see what it does')).toBeNull();
   });
 
   test('requests the new-skill route when the add button is clicked', () => {
