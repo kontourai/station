@@ -65,7 +65,7 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "fbdcbaef2daed74a15fc1eab36708257ad7defc51bf9009057b650c07330e14d"
+      "sha256": "944d2b91579724df0fd073a684cadf137e98e54af6803767f6d78769c6d62822"
     },
     {
       "name": "developer-telemetry",
@@ -77,7 +77,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "5dc31e54bf488d0c5cdd3cfd7bbb612c8c9c0345c642c7ba1bc3da7107122e30"
+      "sha256": "b9f15bd304e347c53458eb6fc06b08300cb6a388c10ee6c9f0330f80fab5e57a"
     },
     {
       "name": "mobile-access-request-error-320",
@@ -137,13 +137,13 @@
       "name": "mobile-conversation-resync",
       "width": 390,
       "height": 844,
-      "sha256": "39042d292636251b0da38c8688f427a67b06e8b714adb25b30546ab93196d263"
+      "sha256": "5bc5522327ef5074ff59196f306e492b1c54d89bbe0ba2239290d423a3c48a1f"
     },
     {
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "b6fe3097a445985fde7cdb4f02fd938162f5fe4cbf43e90f445c1826a4e407a6"
+      "sha256": "a01b634ea942388f6f035956711abe41077dc0805b58d1f098dbc0eff0921a45"
     },
     {
       "name": "mobile-http-consent-320",
@@ -198,6 +198,30 @@
       "width": 1440,
       "height": 900,
       "sha256": "b9007a7acc59a6341405140adf524cb88007a59284b8f74e8538fbb529af0b99"
+    },
+    {
+      "name": "new-chat-dark-desktop",
+      "width": 1440,
+      "height": 900,
+      "sha256": "02a7b2fbb96ae93bd9bb1aa4c10b229a44ad4899e1d61d45bb94d869c5fafadd"
+    },
+    {
+      "name": "new-chat-dark-mobile",
+      "width": 390,
+      "height": 844,
+      "sha256": "40594fce6613486af1f88df1bd62c02c44e74680938f163c24203d7fa44943a9"
+    },
+    {
+      "name": "new-chat-light-desktop",
+      "width": 1440,
+      "height": 900,
+      "sha256": "88c3c961f2a023ad14892c6c5d2281698c0cd1ad73da49ac7330c14d7badf276"
+    },
+    {
+      "name": "new-chat-light-mobile",
+      "width": 390,
+      "height": 844,
+      "sha256": "029a06602a776b8df4f2be489c5d3f3b120ee3005038ccc0f339d9c43b35f02d"
     },
     {
       "name": "overlay-add-job-modal",
@@ -300,6 +324,42 @@
       "width": 1440,
       "height": 900,
       "sha256": "618b170c82edfe852aa5d4f9fe63414dc9044167a47e75ed1384a7cf06d08607"
+    },
+    {
+      "name": "run-setup-dark-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "7d41a27ad9e62adef71a262aa4d1c11d2b4aad8848172c6f49e152776d795f15"
+    },
+    {
+      "name": "run-setup-dark-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "ba457139a35fa019dd8c4203ff59536c8ab1aa3efa514946fa9c1e35fe19f1b5"
+    },
+    {
+      "name": "run-setup-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "5aaa1e65f3216fbb1933762c8b11048de2563b197a0ae8dfdefa327da3ec3558"
+    },
+    {
+      "name": "run-setup-light-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "28793736d179f1e32820134b1db3de21a7960139b2488f83ad81b59a64853d09"
+    },
+    {
+      "name": "run-setup-light-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "3b59ee6973f8ace018447d8d807fb088c70847094694cb3b3bdff6ef41ac6249"
+    },
+    {
+      "name": "run-setup-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "813a86a1387925e5efcb5faf547cb14fc1b786497d9c12cd6cbf075d85f2fa4c"
     },
     {
       "name": "schedule",
