@@ -3451,7 +3451,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // policy pin replaced: the connection no longer describes that process.
     // The scope is the connection's default profile, as for sign-in, status
     // and the probe; a start asking for another profile on such a connection
-    // was refused before launch (hostAuthProfileRefusal).
+    // was refused before launch, in startReservedSession.
     const registry = this.reviewedInboundRequests(record, context.logger);
     if (!context.spawned.launchReplacedByPolicy)
       installEngineHostAuthResponders(registry, {
