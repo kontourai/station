@@ -13,11 +13,18 @@ import {
   withDiscoveredProjectIcon,
 } from '../project-icon-discovery.js';
 
-const { reads } = vi.hoisted(() => ({ reads: [] as string[] }));
+const { reads, probes } = vi.hoisted(() => ({
+  reads: [] as string[],
+  probes: [] as string[],
+}));
 vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
   return {
     ...fs,
+    realpath: (...args: Parameters<typeof fs.realpath>) => {
+      probes.push(String(args[0]));
+      return fs.realpath(...args);
+    },
     readFile: (...args: Parameters<typeof fs.readFile>) => {
       reads.push(String(args[0]));
       return fs.readFile(...args);
@@ -134,6 +141,19 @@ describe('project icon discovery', () => {
       'derivedIcon',
     );
     expect(await discoverProjectIconCandidates(root)).toHaveLength(1);
+  });
+
+  test('caches absent artwork probes and discovers newly added nested artwork', async () => {
+    const root = workspace();
+    mkdirSync(join(root, 'apps', 'web', 'public'), { recursive: true });
+    await expect(discoverProjectIconCandidates(root)).resolves.toEqual([]);
+    probes.length = 0;
+    await expect(discoverProjectIconCandidates(root)).resolves.toEqual([]);
+    expect(probes).toEqual([root]);
+    writeFileSync(join(root, 'apps', 'web', 'public', 'favicon.png'), PNG);
+    expect((await discoverProjectIconCandidates(root))[0].relativePath).toBe(
+      'apps/web/public/favicon.png',
+    );
   });
 
   test('fails without leaking filesystem details for inaccessible paths', async () => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { statSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BUILTIN_KNOWLEDGE_NAMESPACES } from '@kontourai/station-contracts/knowledge';
@@ -376,7 +377,7 @@ export class ProjectService {
   constructor(
     private storageAdapter: IStorageAdapter,
     private manifests?: Pick<ProjectManifestStore, 'ensureProjectManifest'> &
-      Partial<Pick<ProjectManifestStore, 'readRecord'>>,
+      Partial<Pick<ProjectManifestStore, 'readRecord' | 'manifestPath'>>,
     private stationDefaultWorkspaceIsolation?: () => Promise<
       WorkspaceIsolationMode | undefined
     >,
@@ -423,20 +424,68 @@ export class ProjectService {
     return this.withRepositoryDisplay(this.storageAdapter.getProject(slug));
   }
 
+  private readonly repositoryDisplays = new Map<
+    string,
+    { stamp: string; remote?: string }
+  >();
+
   private withRepositoryDisplay<
     T extends { slug: string; repositorySource?: { canonicalRemote: string } },
   >(project: T): T {
-    const manifest = this.manifests?.readRecord?.(project.slug);
-    const primary = manifest
-      ? selectPrimaryResource(parseProjectPortableIdentity(manifest).repos)
-      : undefined;
-    const remote =
-      primary?.ok && primary.resource.kind === 'git'
-        ? primary.resource.canonicalRemote
-        : manifest
-          ? undefined
-          : project.repositorySource?.canonicalRemote;
-    return remote ? { ...project, repositoryDisplay: remote } : project;
+    let stamp = 'absent';
+    let key = project.slug;
+    try {
+      const path = this.manifests?.manifestPath?.(project.slug);
+      if (path) {
+        key = path;
+        try {
+          const info = statSync(path);
+          stamp = `${info.mtimeMs}:${info.ctimeMs}:${info.size}:${info.ino}`;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+        const cached = this.repositoryDisplays.get(key);
+        if (cached?.stamp === stamp) {
+          const remote =
+            stamp === 'absent'
+              ? project.repositorySource?.canonicalRemote
+              : cached.remote;
+          return remote ? { ...project, repositoryDisplay: remote } : project;
+        }
+      }
+      const manifest = this.manifests?.readRecord?.(project.slug);
+      const primary = manifest
+        ? selectPrimaryResource(parseProjectPortableIdentity(manifest).repos)
+        : undefined;
+      const remote =
+        primary?.ok && primary.resource.kind === 'git'
+          ? primary.resource.canonicalRemote
+          : manifest
+            ? undefined
+            : project.repositorySource?.canonicalRemote;
+      this.rememberRepositoryDisplay(key, stamp, remote);
+      return remote ? { ...project, repositoryDisplay: remote } : project;
+    } catch {
+      if (this.repositoryDisplays.get(key)?.stamp !== stamp) {
+        logger.debug('Project repository display unavailable', {
+          projectSlug: project.slug,
+        });
+        this.rememberRepositoryDisplay(key, stamp);
+      }
+      return project;
+    }
+  }
+
+  private rememberRepositoryDisplay(
+    key: string,
+    stamp: string,
+    remote?: string,
+  ): void {
+    if (this.repositoryDisplays.size >= 256)
+      this.repositoryDisplays.delete(
+        this.repositoryDisplays.keys().next().value!,
+      );
+    this.repositoryDisplays.set(key, { stamp, remote });
   }
 
   async createProject(
@@ -629,7 +678,9 @@ export class ProjectService {
     const updated: ProjectConfig = withoutClearedIcon({
       ...existing,
       ...updates,
-      ...(updates.icon !== undefined ? { iconDisabled: !updates.icon } : {}),
+      ...(updates.icon !== undefined
+        ? { iconDisabled: updates.iconDisabled ?? !updates.icon }
+        : {}),
       updatedAt: new Date().toISOString(),
     }) as ProjectConfig;
     // #2144 slice 2: `null` on a settings-override field DROPS the override

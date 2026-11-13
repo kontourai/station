@@ -345,23 +345,17 @@ export function RequestInspectionDialog({
               </dl>
             </details>
             {result.requiresAnswers ? (
-              <p>Open the session to answer the agent’s questions.</p>
+              <p>Answer the agent’s questions in the chat.</p>
             ) : !result.canRespond ? (
-              <p role="status">
-                This session cannot currently answer the request. Open the
-                session for its current status.
-              </p>
+              <p role="status">This chat can’t answer the request right now.</p>
             ) : capacityReached ? (
               <p role="status">
-                This Station has too many unconfirmed decisions. Open the
-                session to confirm their outcomes before sending another
-                decision here.
+                Too many decisions are still unconfirmed. Check them in their
+                chats first.
               </p>
             ) : attempted ? (
               <p role="status">
-                A decision was already attempted for this request. Open the
-                session to confirm its outcome; this inspector will not send it
-                again.
+                A decision was already tried. Check its outcome in the chat.
               </p>
             ) : (
               <ResponsiveSurfaceActions className="request-inspection-actions">
@@ -401,7 +395,7 @@ export function RequestInspectionDialog({
       <ResponsiveSurfaceActions className="request-inspection-actions">
         {openHref ? (
           <a className="request-inspection-session" href={openHref}>
-            Open session
+            Open chat
           </a>
         ) : null}
         <Button variant="secondary" onClick={onClose}>

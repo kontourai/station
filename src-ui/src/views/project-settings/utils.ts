@@ -41,7 +41,7 @@ export function buildProjectSavePayload(
     icon === savedForm.icon &&
     iconDisabled === savedForm.iconDisabled
       ? {}
-      : { icon }),
+      : { icon, iconDisabled: iconDisabled ?? false }),
     // `'inherit'` is the form's spelling of "this project makes no choice";
     // `null` is the route's, which drops the override rather than storing it
     // (#2144 slice 2). Sent explicitly rather than omitted: `JSON.stringify`
@@ -70,7 +70,7 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
   return {
     name: project.name,
     icon: project.icon ?? '',
-    iconDisabled: project.iconDisabled,
+    iconDisabled: project.iconDisabled ?? false,
     description: project.description ?? '',
     defaultAgent: project.defaultAgent,
     defaultModel: project.defaultModel ?? '',

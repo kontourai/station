@@ -1,0 +1,7 @@
+{
+  "revision": "ac20c7ab12362c17583e00e664c68bb19632a8af",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Regenerated gallery baselines (#4692) from hosted Nightly Gallery run 43319358068 with screenshot:baseline (full replace, volatile entry and .reference.png preserved). Manifest format, replace/volatile semantics and the CI-renderer rule are unchanged; updated the companion PNG set size to about 14MB at 166 screens.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-bound.png","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

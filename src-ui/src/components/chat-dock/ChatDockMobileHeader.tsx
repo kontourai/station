@@ -279,7 +279,7 @@ export function ChatDockMobileHeader({
             // The name repeats the words on screen, caption included, so a
             // spoken command matching the visible label reaches this control
             // (WCAG 2.5.3); the icon-only width keeps the same name.
-            aria-label={`Switch project — ${inboxActive ? 'Inbox' : 'New chats'}, ${projectSwitcher.projectName}`}
+            aria-label={`Switch project — ${inboxActive ? 'Project' : 'New chats'}, ${projectSwitcher.projectName}`}
             aria-haspopup="dialog"
             aria-expanded={isProjectOpen}
             data-dock-drag-passthrough=""
@@ -299,7 +299,7 @@ export function ChatDockMobileHeader({
                 className="chat-dock__mobile-project-caption"
                 aria-hidden="true"
               >
-                {inboxActive ? 'Inbox' : 'New chats'}
+                {inboxActive ? 'Project' : 'New chats'}
               </span>{' '}
               <span className="chat-dock__mobile-project-name">
                 {projectSwitcher.projectName}
@@ -336,7 +336,7 @@ export function ChatDockMobileHeader({
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
-            title={inboxActive ? 'Inbox' : sessionTitle}
+            title={inboxActive ? undefined : sessionTitle}
           >
             {inboxActive ? 'Inbox' : sessionTitle}
           </span>

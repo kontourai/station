@@ -44,15 +44,17 @@ export function useInboxScope(
       [
         INBOX_SCOPE_CURRENT_PROJECT,
         routeProject
-          ? (items.find(
-              (item) =>
-                !item.environmentId &&
-                !facts?.get(item.id)?.station &&
-                item.projectSlug === routeProject,
-            )?.projectLabel ??
-            projects.find((project) => project.slug === routeProject)?.name ??
-            'Current project')
-          : 'Follow project page',
+          ? `This project: ${
+              items.find(
+                (item) =>
+                  !item.environmentId &&
+                  !facts?.get(item.id)?.station &&
+                  item.projectSlug === routeProject,
+              )?.projectLabel ??
+              projects.find((project) => project.slug === routeProject)?.name ??
+              'Current project'
+            }`
+          : 'Follow page',
       ],
       ['all', 'All work'],
       ['station:local', 'This Station'],
@@ -83,7 +85,7 @@ export function useInboxScope(
       if (key)
         options.set(
           key,
-          `Project: ${item.projectLabel} · ${options.get(stationById.get(item.id)!)}`,
+          `Keep ${item.projectLabel} · ${options.get(stationById.get(item.id)!)}`,
         );
     }
     // A saved scope absent from this snapshot stays selected: an outage must

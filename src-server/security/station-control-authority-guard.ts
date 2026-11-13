@@ -46,6 +46,7 @@
  */
 import type { MiddlewareHandler } from 'hono';
 import { PrincipalUnresolvedError } from '../services/identity/principal-resolver.js';
+import { DELEGATED_RESULT_TOOLS } from '../services/plugins/untrusted-content-policy.js';
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
@@ -153,6 +154,13 @@ export interface StationControlAuthorityGuardOptions {
     conversationIds: readonly (string | undefined)[];
     toolNames: readonly string[];
   }): Promise<string | undefined>;
+  /**
+   * #4828: an admitted call by a tool that returns a delegated child's
+   * output (`DELEGATED_RESULT_TOOLS`), with every id the caller's
+   * conversation is known by. A child that read untrusted content marks the
+   * caller then. Absent: nothing is carried. A throw is ignored.
+   */
+  delegatedResultRead?(conversationIds: readonly (string | undefined)[]): void;
   /**
    * #4769: whether a session's latest start ran with a restricted network.
    * Such a caller is refused every route whose tools are all withheld from
@@ -519,6 +527,18 @@ export function createStationControlAuthorityGuard(
             403,
           );
       }
+    }
+    if (!refusal && caller && options.delegatedResultRead) {
+      const owners = matchStationControlRoute(method, path)?.owners ?? [];
+      if (owners.some((owner) => DELEGATED_RESULT_TOOLS.has(owner)))
+        try {
+          options.delegatedResultRead([
+            caller.conversationId,
+            caller.sessionId,
+          ]);
+        } catch {
+          // Carrying the mark is best effort; the call itself is unaffected.
+        }
     }
     if (!refusal) {
       if (

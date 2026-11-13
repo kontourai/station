@@ -27,6 +27,29 @@ import {
 import type { AgentData } from '../contexts/AgentsContext';
 
 describe('new-chat-modal-utils', () => {
+  test('older servers retain repository labels from acquisition provenance in both projections', () => {
+    const project = {
+      slug: 'demo',
+      name: 'Demo',
+      workingDirectory: '/work/demo',
+      repositorySource: {
+        canonicalRemote: 'https://github.com/example/demo.git',
+      },
+    } as any;
+    expect(
+      buildContextOptions([project]).find((option) => option.value === 'demo'),
+    ).toMatchObject({
+      repository: 'example/demo',
+      repositoryRemote: 'https://github.com/example/demo.git',
+    });
+    expect(
+      resolveNewChatWorkspaceHint({ project, acpConnections: [] }),
+    ).toMatchObject({
+      repository: 'example/demo',
+      repositoryRemote: 'https://github.com/example/demo.git',
+    });
+  });
+
   test('scopes pre-session model overrides to context and provider binding', () => {
     const agent = {
       slug: agentId('station'),

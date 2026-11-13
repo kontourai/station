@@ -14,6 +14,8 @@
  * with a code the agent can act on.
  */
 
+import type { AutomationProposal } from './automation.js';
+
 /** The furthest ahead a wake-up may be scheduled: one day. */
 export const AGENT_WAKE_UP_MAX_HORIZON_MS = 24 * 60 * 60 * 1000;
 /**
@@ -179,6 +181,11 @@ export interface ConversationAgentSchedule {
    * predates conversation targets.
    */
   readonly automations?: readonly ConversationAutomation[];
+  /**
+   * #4830: Automation sources and rules this chat's agent proposed that wait
+   * for a person. Absent from a Station that predates them.
+   */
+  readonly automationProposals?: readonly AutomationProposal[];
   readonly usageLimitResume?: ConversationUsageLimitResume;
 }
 

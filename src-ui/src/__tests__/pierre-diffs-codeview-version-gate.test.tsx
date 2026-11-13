@@ -86,7 +86,9 @@ const PATCH = `diff --git a/foo.ts b/foo.ts
 type MarkedItem = CodeViewDiffItem<never> & { marker: string };
 
 function buildItem(version: number, marker: string): MarkedItem {
-  const [fileDiff] = parsePatchFiles(PATCH, 'test').flatMap((p) => p.files);
+  const [fileDiff] = parsePatchFiles(PATCH, { cacheKeyPrefix: 'test' }).flatMap(
+    (p) => p.files,
+  );
   return {
     id: 'foo.ts',
     type: 'diff',

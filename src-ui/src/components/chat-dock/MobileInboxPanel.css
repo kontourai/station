@@ -27,9 +27,15 @@
 }
 .mobile-inbox__toolbar .chat-dock-inbox__scope label {
   font-size: var(--k-text-sm);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
 }
 .mobile-inbox__toolbar .chat-dock-inbox__scope select {
   max-width: 100%;
+  min-width: 0;
+  flex: 1;
 }
 .mobile-inbox__search-toggle {
   flex: none;
@@ -166,6 +172,10 @@
   min-width: 0;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
 }
 .mobile-inbox .inbox-row__project-context > svg,
 .mobile-inbox .inbox-row__project-context > .inbox-row__project-accent {
@@ -194,6 +204,10 @@
   flex-wrap: wrap;
   white-space: normal;
   font-size: var(--k-text-sm);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
 }
 .mobile-inbox .inbox-row__chips {
   grid-column: 1 / -1;

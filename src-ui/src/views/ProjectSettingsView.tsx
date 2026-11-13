@@ -583,10 +583,21 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                       idPrefix="project-settings-icon"
                       name={form.name}
                       value={legacyIcon ? '' : (form.icon ?? '')}
-                      onChange={(icon) => {
+                      onUseDetected={() =>
                         setForm((current) =>
                           current
-                            ? { ...current, icon, iconDisabled: !icon }
+                            ? { ...current, icon: '', iconDisabled: false }
+                            : current,
+                        )
+                      }
+                      onChange={(icon, disabled) => {
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                icon,
+                                iconDisabled: disabled ?? false,
+                              }
                             : current,
                         );
                       }}

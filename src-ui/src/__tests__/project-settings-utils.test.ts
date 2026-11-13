@@ -21,6 +21,7 @@ describe('project-settings utils', () => {
     ).toEqual({
       name: 'Demo',
       icon: '',
+      iconDisabled: false,
       description: '',
       defaultModel: '',
       defaultAgent: undefined,
@@ -41,6 +42,15 @@ describe('project-settings utils', () => {
       workingDirectory: '',
       agents: undefined,
     });
+  });
+
+  test('reselecting the saved custom icon normalizes the dirty-state inputs', () => {
+    const saved = buildProjectForm({ name: 'Demo', icon: '🧭' } as any);
+    const repicked = { ...saved, icon: '🧭', iconDisabled: false };
+    expect(JSON.stringify(repicked)).toBe(JSON.stringify(saved));
+    expect(
+      buildProjectSavePayload(repicked, undefined, saved),
+    ).not.toHaveProperty('icon');
   });
 
   test('choosing No icon for detected artwork sends an explicit clear while rename leaves it alone', () => {
@@ -85,6 +95,7 @@ describe('project-settings utils', () => {
     ).toEqual({
       name: 'Demo',
       icon: '',
+      iconDisabled: false,
       description: '',
       defaultModel: '',
       // `null`, not absent: the route drops the override on null, and

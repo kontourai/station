@@ -435,7 +435,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         id: 'alpha-chat',
         title: 'Alpha project work',
         projectSlug: 'alpha',
-        projectLabel: 'Alpha',
+        projectLabel: undefined as any,
         chatSessionId: 'alpha-chat',
       }),
       workItem({
@@ -466,7 +466,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         }) as HTMLSelectElement;
       // With no stored setting a project route scopes the inbox.
       expect(scope().value).toBe('current-project');
-      expect(scope().selectedOptions[0].textContent).toBe('Alpha');
+      expect(scope().selectedOptions[0].textContent).toBe(
+        'This project: Alpha',
+      );
       expect(screen.getByText('Alpha project work')).toBeTruthy();
       expect(screen.queryByText('No project chat')).toBeNull();
       act(() => navigationStore.navigate('/'));

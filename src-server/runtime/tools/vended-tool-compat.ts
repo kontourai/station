@@ -118,6 +118,14 @@ function getBuiltinEntry(toolDef: ToolDef): BuiltinRegistryEntry | undefined {
   return builtinEntryById.get(toolDef.id);
 }
 
+/**
+ * #4828: whether a stored definition is Station's HTTP request built-in, by
+ * the same lookup that builds the tool.
+ */
+export function isBuiltinHttpRequestDefinition(toolDef: ToolDef): boolean {
+  return getBuiltinEntry(toolDef)?.policyName === 'station_http_request';
+}
+
 export function listBuiltinVendedRegistryItems(): RegistryItem[] {
   return BUILTIN_VENDED_TOOL_ENTRIES.map((entry) => ({
     id: entry.id,

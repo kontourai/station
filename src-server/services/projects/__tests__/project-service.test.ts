@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -284,6 +290,51 @@ describe('ProjectService', () => {
         role: 'primary',
       },
     ]);
+  });
+
+  test('repository display isolates corrupt and invalid manifests and caches unchanged records', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-display-'));
+    tmpHomes.push(home);
+    const adapter = new FileStorageAdapter(home);
+    const manifests = new ProjectManifestStore(home, adapter, {
+      readRemotes: async () => ({
+        ok: true,
+        remotes: [
+          { name: 'origin', url: 'https://github.com/example/good.git' },
+        ],
+      }),
+    });
+    const svc = new ProjectService(adapter, manifests);
+    for (const slug of ['good', 'corrupt', 'invalid', 'empty']) {
+      await svc.createProject({
+        name: slug,
+        slug,
+        workingDirectory: home,
+      } as any);
+    }
+    writeFileSync(manifests.manifestPath('corrupt'), '{');
+    writeFileSync(
+      manifests.manifestPath('invalid'),
+      JSON.stringify({ schemaVersion: 1, repos: 'invalid' }),
+    );
+    writeFileSync(manifests.manifestPath('empty'), '');
+    const read = vi.spyOn(manifests, 'readRecord');
+    const list = svc.listProjects();
+    expect(list).toHaveLength(4);
+    expect(list.find((p) => p.slug === 'good')?.repositoryDisplay).toBe(
+      'github.com/example/good',
+    );
+    for (const slug of ['corrupt', 'invalid', 'empty'])
+      expect(svc.getProject(slug)).not.toHaveProperty('repositoryDisplay');
+    const calls = read.mock.calls.length;
+    svc.listProjects();
+    expect(read.mock.calls.length).toBe(calls);
+    const good = readFileSync(manifests.manifestPath('good'), 'utf8');
+    writeFileSync(manifests.manifestPath('corrupt'), good);
+    expect(svc.getProject('corrupt').repositoryDisplay).toBe(
+      'github.com/example/good',
+    );
+    expect(read.mock.calls.length).toBe(calls + 1);
   });
 
   test('a manifest backfill that THROWS does not fail the creation it followed', async () => {

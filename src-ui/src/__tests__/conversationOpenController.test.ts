@@ -468,7 +468,7 @@ test('same-child deliberate model intent waits for capability evidence and survi
     validModelIds: [],
   });
   expect(invalid.requestedModel).toBeNull();
-  expect(invalid.error).toContain('saved model choice');
+  expect(invalid.error).toContain("The saved model isn't available");
 });
 
 test('a changed child from an older server cannot retain writable predecessor identity', () => {

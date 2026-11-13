@@ -1,3 +1,10 @@
+function repositoryLabel(remote: string): string {
+  return remote
+    .replace(/^https?:\/\//, '')
+    .replace(/\.git$/, '')
+    .replace(/^github\.com\//, '');
+}
+
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
 import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
@@ -271,11 +278,9 @@ export function resolveNewChatWorkspaceHint({
   }
   const projectDirectory = project ? projectRunDirectory(project) : undefined;
   if (projectDirectory) {
-    const remote = project?.repositoryDisplay;
-    const repository = remote
-      ?.replace(/^https?:\/\//, '')
-      .replace(/\.git$/, '')
-      .replace(/^github\.com\//, '');
+    const remote =
+      project?.repositoryDisplay ?? project?.repositorySource?.canonicalRemote;
+    const repository = remote ? repositoryLabel(remote) : undefined;
     return {
       kind: 'project',
       path: projectDirectory,
@@ -555,6 +560,8 @@ export function buildContextOptions(
     const icon = displayableProjectIcon(
       project.icon ?? (project.iconDisabled ? undefined : project.derivedIcon),
     );
+    const remote =
+      project.repositoryDisplay ?? project.repositorySource?.canonicalRemote;
     options.push({
       value: project.slug,
       label: project.name,
@@ -562,13 +569,10 @@ export function buildContextOptions(
       // or path as an <img>, and a legacy stored link must not load here.
       ...(icon ? { icon } : { glyph: 'folder' as const }),
       workingDirectory: projectRunDirectory(project),
-      ...(project.repositoryDisplay
+      ...(remote
         ? {
-            repository: project.repositoryDisplay
-              .replace(/^https?:\/\//, '')
-              .replace(/\.git$/, '')
-              .replace(/^github\.com\//, ''),
-            repositoryRemote: project.repositoryDisplay,
+            repository: repositoryLabel(remote),
+            repositoryRemote: remote,
           }
         : {}),
       ...(project.runsAt?.kind === 'unavailable'

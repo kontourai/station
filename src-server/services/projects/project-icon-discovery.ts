@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import {
@@ -55,13 +56,48 @@ function safeRelativePath(root: string, candidate: string): string | null {
   return rel.replaceAll('\\', '/');
 }
 
+// Missing paths are rechecked only when their nearest existing directory changes.
+// Request-local directory stamps coalesce hundreds of sibling candidate probes.
+const missingPaths = new Map<string, { directory: string; stamp: string }>();
+async function directoryStamp(path: string): Promise<string> {
+  const info = await stat(path);
+  return `${info.mtimeMs}:${info.ctimeMs}:${info.ino}`;
+}
+async function rememberMissing(path: string): Promise<void> {
+  let directory = dirname(path);
+  while (true) {
+    try {
+      const stamp = await directoryStamp(directory);
+      if (missingPaths.size >= 4096)
+        missingPaths.delete(missingPaths.keys().next().value!);
+      missingPaths.set(path, { directory, stamp });
+      return;
+    } catch {
+      const parent = dirname(directory);
+      if (parent === directory) return;
+      directory = parent;
+    }
+  }
+}
+
 async function readCandidate(
   root: string,
   candidatePath: string,
   source: ProjectIconCandidate['source'],
   maxBytes: number,
+  stamps: Map<string, Promise<string>>,
 ): Promise<ProjectIconCandidate | null> {
   try {
+    const missing = missingPaths.get(candidatePath);
+    if (missing) {
+      if (!stamps.has(missing.directory))
+        stamps.set(
+          missing.directory,
+          directoryStamp(missing.directory).catch(() => 'unavailable'),
+        );
+      if ((await stamps.get(missing.directory)) === missing.stamp) return null;
+      missingPaths.delete(candidatePath);
+    }
     const canonicalPath = await realpath(candidatePath);
     const mediaType = MEDIA_TYPES[extname(canonicalPath).toLowerCase()];
     if (!mediaType) return null;
@@ -84,8 +120,29 @@ async function readCandidate(
       imageCache.delete(imageCache.keys().next().value!);
     imageCache.set(canonicalPath, { stamp, candidate });
     return candidate;
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+      await rememberMissing(candidatePath);
     return null;
+  }
+}
+
+const directoryEntries = new Map<
+  string,
+  { stamp: string; entries: Dirent[] }
+>();
+async function cachedEntries(path: string): Promise<Dirent[]> {
+  try {
+    const stamp = await directoryStamp(path);
+    const cached = directoryEntries.get(path);
+    if (cached?.stamp === stamp) return cached.entries;
+    const entries = await readdir(path, { withFileTypes: true });
+    if (directoryEntries.size >= 256)
+      directoryEntries.delete(directoryEntries.keys().next().value!);
+    directoryEntries.set(path, { stamp, entries });
+    return entries;
+  } catch {
+    return [];
   }
 }
 
@@ -135,9 +192,7 @@ export async function discoverProjectIconCandidates(
   // Bounded, shallow monorepo scan; readCandidate confines every real path.
   const publicPaths: Array<[string, ProjectIconCandidate['source']]> = [];
   for (const parent of ['', 'apps', 'packages']) {
-    const entries = await readdir(resolve(root, parent), {
-      withFileTypes: true,
-    }).catch(() => []);
+    const entries = await cachedEntries(resolve(root, parent));
     for (const entry of entries
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -168,6 +223,7 @@ export async function discoverProjectIconCandidates(
     ),
   ];
   ranked.push(...publicPaths);
+  const stamps = new Map<string, Promise<string>>();
   const seen = new Set<string>();
   const candidates: ProjectIconCandidate[] = [];
   for (const [candidatePath, source] of ranked) {
@@ -179,6 +235,7 @@ export async function discoverProjectIconCandidates(
       candidatePath,
       source,
       maxBytes,
+      stamps,
     );
     if (
       candidate &&

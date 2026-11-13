@@ -198,5 +198,10 @@ describe('GET / derives repository artwork', () => {
     expect(
       (await json(await app.request('/demo'))).data.derivedIcon,
     ).toBeUndefined();
+    await put({ icon: '', iconDisabled: false });
+    expect(stored().iconDisabled).toBe(false);
+    expect((await json(await app.request('/demo'))).data.derivedIcon).toBe(
+      pngDataUrl(8),
+    );
   });
 });
