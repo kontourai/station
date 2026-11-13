@@ -228,13 +228,16 @@ describe.skipIf(process.platform === 'win32')(
 
     test('a reopen whose effort the resumed session does not offer is skipped, not refused', async () => {
       const engine = launch(PROFILE, TEXT_TURN);
+      // The model is the resumed default, so only the effort is in question.
       const first = await engine.start('skip', undefined, {
+        modelId: 'gemini-4-argon',
         modelOptions: { effort: 'low' },
       });
       await engine.adapter.stopSession('skip');
       const before = engine.record().length;
       // `max` is not among the recorded options (low, medium, high).
       await engine.start('skip', first.resumeCursor, {
+        modelId: 'gemini-4-argon',
         modelOptions: { effort: 'max' },
       });
       expect(
@@ -251,9 +254,35 @@ describe.skipIf(process.platform === 'win32')(
           )[1],
         'the reopen session.configured',
       )) as { metadata?: Record<string, unknown> };
+      expect(configured.metadata?.effectiveModel).toBe('gemini-4-argon');
       expect(
         configured.metadata?.effectiveModelOptions ?? {},
       ).not.toHaveProperty('effort');
+    });
+
+    test('a reopen applies an effort to an option that lists no values', async () => {
+      // An effort option with no listed values takes any value.
+      const freeForm = structuredClone(PROFILE) as {
+        sessionNew: { configOptions: Array<Record<string, unknown>> };
+      };
+      for (const option of freeForm.sessionNew.configOptions)
+        if (option.id === 'thought_level') option.options = [];
+      const engine = launch(freeForm, TEXT_TURN);
+      const first = await engine.start('free', undefined, {
+        modelOptions: { effort: 'turbo' },
+      });
+      await engine.adapter.stopSession('free');
+      const before = engine.record().length;
+      await engine.start('free', first.resumeCursor, {
+        modelOptions: { effort: 'turbo' },
+      });
+      expect(
+        engine
+          .record()
+          .slice(before)
+          .filter((entry) => entry.method === 'session/set_config_option')
+          .map((entry) => entry.configId),
+      ).toEqual(['thought_level']);
     });
 
     test('a reopened session that already has its model and effort is not set again', async () => {
