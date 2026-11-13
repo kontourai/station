@@ -51,7 +51,7 @@ export function PostUpdateChangelog({
         </Dialog>
       )}
       componentProps={{
-        version: version,
+        version,
         nativeApp,
         serverKey,
         onClose,

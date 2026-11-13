@@ -273,13 +273,14 @@ keeps two independent mechanisms and separately labelled actions:
 A machine's [managed policy](managed-policy.md#update-control) can turn both
 checks off, make the nightly channel unavailable, or send them to a mirror.
 
-The update proposal shows **What’s new** for the offered version. Release notes
+The update proposal shows **What’s new** for the offered version. The connected
+server section also shows the installed server version’s changelog. Release notes
 come from the exact version’s GitHub Release, with the native updater’s notes
 available as a fallback for desktop downloads. GitHub prose is informational;
 it never determines whether an update is available or safe to install. Missing
 archives remain an explicit, retryable state; notes from another version are
-never substituted. When no update is offered, **What’s new** stays folded until
-opened. The
+never substituted. Installed server notes remain available without an offered
+update; an app’s installed notes stay folded until opened. The
 sidebar icon shows a circular download indicator using the updater’s byte
 counts, or an indeterminate arc when the total size is unknown. An observed
 server download can also drive the ring while the panel stays closed.
@@ -308,7 +309,10 @@ popup; downgrades and repeated launches do not show one. **Show changelog after
 updates** is enabled by default and can be changed in that dialog, Updates, or
 Settings → System. It is a device preference. Automatic presentation requires
 working local storage and a release identity; an unstamped development UI
-never triggers it. Changing the connected server does not trigger it.
+never triggers the app prompt. A connected server version increase can open
+**Updated server …** separately, remembered per endpoint and instance. A newly
+observed server only establishes its baseline. App and server prompts share the
+preference; the app prompt appears first if both are pending.
 
 Nightly desktop planning generates GitHub release notes from the previous
 `nightly-desktop` source to the planned source. The generated notes travel
@@ -319,6 +323,14 @@ do not become GitHub’s Latest release. Historical comparison links use commit
 SHAs so advancing the rolling marker cannot change their range. Mobile Nightlies read the same cohort’s changelog. If desktop publication
 did not produce an archive for a partial cohort, the notes remain unavailable.
 Earlier Nightlies without a versioned changelog are not reconstructed.
+
+Portable server Nightly publication and stable/preview draft assembly generate
+notes against a previous published server `v*` tag, keeping install instructions.
+They prefer the same release channel and can use an older server release to
+establish a new channel’s baseline. Desktop and rolling tags are excluded. The
+generator refuses absent predecessors, moved tags and empty notes; comparison
+links retain commit bounds. This source wiring does not qualify an end-to-end
+publication, and existing release bodies are not rewritten.
 
 Archive publication checks the Git tag reference before resolving its commit:
 GitHub's commit endpoint returns HTTP 422 for a missing tag. An existing tag

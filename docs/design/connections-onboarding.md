@@ -29,7 +29,10 @@
 The Station control owns connection repair and pairing state. **Station details**
 keeps these facts and local-service recovery readable when the Station is offline;
 work-blocking restrictions also appear in the workspace. Routine reconnects use
-the connection indicator. Setup-return guidance is inline on the current page,
+the connection indicator. After three failed checks, a brief toast announces a
+previously connected server’s loss and known reason. Recovery is announced only
+after a loss notice and after any active event stream catches up. Blocking
+failures say that reconnect needs attention. Setup-return guidance is inline on the current page,
 and short action outcomes use toasts. No global banner stack is mounted.
 
 A fresh phone without a real saved Station instead shows the QR-first welcome

@@ -762,7 +762,8 @@ test('simultaneous app and server upgrades mount one changelog dialog at a time'
     }),
   );
   render(<UpdatesControl onNavigate={vi.fn()} />);
-  const appDialog = await screen.findByRole('dialog', {
+  await screen.findByText('App changes');
+  const appDialog = screen.getByRole('dialog', {
     name: `Updated to Station ${app.currentVersion}`,
   });
   expect(
@@ -771,11 +772,10 @@ test('simultaneous app and server upgrades mount one changelog dialog at a time'
   fireEvent.click(
     await within(appDialog).findByRole('button', { name: 'Done', exact: true }),
   );
-  const serverDialog = await screen.findByRole('dialog', {
+  await screen.findByText('Queued server changes');
+  const serverDialog = screen.getByRole('dialog', {
     name: 'Updated server 0.8.0-preview.1',
   });
-  expect(
-    await within(serverDialog).findByText('Queued server changes'),
-  ).toBeTruthy();
+  expect(within(serverDialog).getByText('Queued server changes')).toBeTruthy();
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
 });

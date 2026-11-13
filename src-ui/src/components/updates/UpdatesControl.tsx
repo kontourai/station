@@ -48,7 +48,9 @@ export function UpdatesControl({
     { enabled: serverReady, staleTime: 60_000 },
     {
       scopeKey: coreUpdateScopeFromContext(server),
-      assertCurrent: server.isCurrent,
+      assertCurrent: () => {
+        if (!server.isCurrent()) throw new Error('Connected server changed');
+      },
     },
   );
   const { state } = useDesktopUpdateState(profile.isDesktop);
