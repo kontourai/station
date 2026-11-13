@@ -77,7 +77,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "b9f15bd304e347c53458eb6fc06b08300cb6a388c10ee6c9f0330f80fab5e57a"
+      "sha256": "472a38ef5aef19768f547ab80dfe7212e2fcfa9419b103b4978c5c7a17f7b27e"
     },
     {
       "name": "mobile-access-request-error-320",
@@ -143,7 +143,7 @@
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "a01b634ea942388f6f035956711abe41077dc0805b58d1f098dbc0eff0921a45"
+      "sha256": "9c1c1958e759c94d9821fccf0eaa43030b86269b4964d9fa4462cd07a0185de5"
     },
     {
       "name": "mobile-http-consent-320",
@@ -203,25 +203,25 @@
       "name": "new-chat-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "02a7b2fbb96ae93bd9bb1aa4c10b229a44ad4899e1d61d45bb94d869c5fafadd"
+      "sha256": "66b81096b414f0ab5050516d32d31aabaefcd3e1b0c35b01f419050a878776e4"
     },
     {
       "name": "new-chat-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "40594fce6613486af1f88df1bd62c02c44e74680938f163c24203d7fa44943a9"
+      "sha256": "58193aa80d69e041e7952f0b1f46d50a0c522581c0cb36c779bbb3ba7a9ef3b1"
     },
     {
       "name": "new-chat-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "88c3c961f2a023ad14892c6c5d2281698c0cd1ad73da49ac7330c14d7badf276"
+      "sha256": "da866c9f6a6f9a25ee258a3015bee252e6ff1fc166037b67118a61664d65d750"
     },
     {
       "name": "new-chat-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "029a06602a776b8df4f2be489c5d3f3b120ee3005038ccc0f339d9c43b35f02d"
+      "sha256": "d6c25deaeed14797d30a18d571f316173f8a90a9a898960bf98cd7cab639390c"
     },
     {
       "name": "overlay-add-job-modal",
@@ -360,6 +360,18 @@
       "width": 412,
       "height": 915,
       "sha256": "288905d37ba08f33d334061fc5e93687b70679617afcb8df8c7f0b5294434f0a"
+    },
+    {
+      "name": "run-setup-model-stacked-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "046983867af4802700b85dcfe9cb1b5222c71403d1473f5dec75cb96b7bda626"
+    },
+    {
+      "name": "run-setup-model-stacked-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "ad1ffada58f24320a8cfd3717aab7131b25000799fff4815a798324d543205a2"
     },
     {
       "name": "schedule",

@@ -739,12 +739,22 @@ for (const [label, viewport] of [
         (element) => getComputedStyle(element).textOverflow,
       ),
     ).toBe('ellipsis');
-    if (label === 'phone')
+    if (label === 'phone') {
+      // Truncation belongs to the compact trigger; the open sheet has room for full choices.
+      await closeRunSetup(page);
+      const summary = page
+        .getByTestId('run-setup-trigger')
+        .locator('.composer-choice__value');
+      await expect(summary).toHaveCSS('text-overflow', 'ellipsis');
       expect(
-        await modelName.evaluate(
+        await summary.evaluate(
           (element) => element.scrollWidth > element.clientWidth,
         ),
       ).toBe(true);
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-name'),
+      );
+    }
     for (const control of [
       agentChip,
       await runSetupControl(page, (panel) =>
