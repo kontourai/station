@@ -137,10 +137,13 @@ async function startGrokSession(
     predicate: (event: CanonicalRuntimeEvent) => event is T,
     label: string,
   ): Promise<T> {
-    const deadline = Date.now() + 1000;
+    // A deadline-bounded wait for the event itself; the bound only decides
+    // how long a missing event takes to fail.
+    const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       const found = events.find(predicate);
       if (found) return found;
+      // real-time: polls for the awaited event under a wall-clock deadline.
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
     throw new Error(`Timed out waiting for ${label}`);
@@ -197,8 +200,15 @@ async function startGrokSession(
   };
 }
 
-/** Lets in-flight wire traffic land before asserting what arrived. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+/**
+ * Lets in-flight wire traffic land before asserting what arrived. The wire is
+ * an in-memory stream, so it drains in event-loop turns, not wall-clock time:
+ * this yields turns instead of sleeping, and holds on a saturated runner.
+ */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 50; turn += 1)
+    await new Promise<void>((resolve) => setImmediate(resolve));
+}
 
 type RequestOpened = Extract<
   CanonicalRuntimeEvent,
