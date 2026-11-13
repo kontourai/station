@@ -6,6 +6,7 @@ import {
   type EngineExtensionConsumerId,
   EXTENSION_NOTIFICATION_BINDINGS,
   engineExtensionBinding,
+  engineExtensionRowLive,
   extensionNotificationBinding,
   GROK_LIVE_CAPTURE,
   KIRO_V3_LIVE_CAPTURE,
@@ -406,6 +407,10 @@ describe('engine extension bindings (Kiro parity)', () => {
       'kiro-v3.tool.agent-subtask',
     ]);
     for (const row of pending) {
+      // The one predicate binding and dispatch both read: a pending row is
+      // not live though its consumer is implemented, and is without it.
+      expect(engineExtensionRowLive(row)).toBe(false);
+      expect(engineExtensionRowLive({ ...row, pending: undefined })).toBe(true);
       expect(
         ENGINE_EXTENSION_CONSUMERS[row.consumer as EngineExtensionConsumerId]
           ?.implemented,
