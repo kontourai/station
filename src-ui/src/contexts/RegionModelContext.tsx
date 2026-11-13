@@ -62,6 +62,7 @@ import {
   withSuspendedSurfaces,
 } from '../regions/region-model';
 import { normalizeDockMode } from '../types';
+import { purgeRetiredActivityStorage } from '../utils/retired-activity-storage';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -658,17 +659,7 @@ function recordOf(value: unknown): RegionArrangementRecord | null {
 
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
-  useEffect(() => {
-    // Removed review readers must not retain their old session selection.
-    try {
-      for (const key of Object.keys(window.localStorage)) {
-        if (key.startsWith('station:activity-review:v1:'))
-          window.localStorage.removeItem(key);
-      }
-    } catch {
-      /* Storage can be unavailable; the retired pane is never mounted. */
-    }
-  }, []);
+  useEffect(purgeRetiredActivityStorage, []);
   const {
     isDockOpen,
     isDockMaximized,

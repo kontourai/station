@@ -331,7 +331,7 @@ export function ChatDockMobileHeader({
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
             title={inboxActive ? undefined : sessionTitle}
           >
-            {childTrail ?? (inboxActive ? 'Inbox' : sessionTitle)}
+            {inboxActive ? 'Inbox' : (childTrail ?? sessionTitle)}
           </span>
           {!inboxActive && agentIdentity && ' '}
           {!inboxActive && (agentIdentity || stationName) && (

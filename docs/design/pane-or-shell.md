@@ -58,8 +58,9 @@ pane.
   and `/activity?session=…&focus=evidence` are permanent compatibility links to
   the inbox and Chat respectively. The compatibility builder
   (`activityDeepLink`) now mints Chat links with `surface=chat`; collection links
-  use `/notifications`. Legacy redirects preserve other query parameters and an
-  existing Project path. What the
+  use `/notifications`. Legacy redirects keep `session`, valid `focus=evidence`,
+  `openedNotification`, `dock`, `chat`, and an existing Project path. Unknown
+  parameters are dropped; values retain percent encoding for spaces. What the
   invariant forbids is a 404 or a silently discarded payload: if converting a
   surface would break a URL, the conversion is wrong, not the URL.
 - **Panes consume declared data surfaces.** A pane — first-party or not —

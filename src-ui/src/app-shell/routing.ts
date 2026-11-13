@@ -167,16 +167,28 @@ export function getLegacyPathRedirect(path: string): string | null {
     legacyParams.get('surface') === 'activity' ||
     RETIRED_ACTIVITY_PATHS.has(pathname)
   ) {
-    if (!legacyParams.get('session')) {
-      legacyParams.delete('surface');
-      const query = legacyParams.toString();
-      return `/notifications${query ? `?${query}` : ''}`;
+    const session = legacyParams.get('session');
+    const translated: [string, string][] = session
+      ? [
+          ['surface', 'chat'],
+          ['session', session],
+        ]
+      : [];
+    if (session && legacyParams.get('focus') === 'evidence')
+      translated.push(['focus', 'evidence']);
+    for (const key of ['openedNotification', 'dock', 'chat']) {
+      const value = legacyParams.get(key);
+      if (value !== null) translated.push([key, value]);
     }
-    const translated = new URLSearchParams({ surface: 'chat' });
-    for (const [key, value] of legacyParams)
-      if (key !== 'surface') translated.append(key, value);
-    const targetPath = RETIRED_ACTIVITY_PATHS.has(pathname) ? '/' : pathname;
-    return `${targetPath}?${translated.toString()}`;
+    const targetPath = !session
+      ? '/notifications'
+      : RETIRED_ACTIVITY_PATHS.has(pathname)
+        ? '/'
+        : pathname;
+    const query = translated
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join('&');
+    return `${targetPath}${query ? `?${query}` : ''}`;
   }
 
   // #2065: the global `/review-queue` is retired — Review is a layout kind a
