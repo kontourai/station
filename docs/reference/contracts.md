@@ -1742,8 +1742,10 @@ On a serve session:
   exec fallback answers `canSteerTurn` false, so its Session summary reports
   `steerPlacement` `none` (the composer defaults to Queue), and orchestration
   refuses its steer as `unsupported-engine` before the adapter is called. A
-  steer Muse accepts after it already ended the turn publishes no steer
-  `turn.started` and is indeterminate, not a no-effect refusal.
+  steer Muse accepts after it already ended the turn, or whose reply does not
+  name the steered turn, publishes no steer `turn.started` and is
+  indeterminate, not a no-effect refusal. A turn Muse opens on its own
+  meanwhile does not affect a steer it confirmed.
 - **Reasoning effort.** `modelOptions.effort` maps by identity to Muse's
   tiers (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`,
   `ultra`): `turn/start.reasoningEffort` on serve, `--reasoning-effort` on
@@ -1776,8 +1778,10 @@ On a serve session:
   `museSandbox: 'unavailable'`. Once a host has reported it, the exec
   fallback (always `--approval-mode never`, relying on that sandbox) is
   refused for every posture except Station's `never`: a start whose serve
-  host fails is refused `sandbox_unavailable`, and an exec turn under another
-  posture is refused `permission_denied`.
+  host fails is refused `sandbox_unavailable` (including the start whose host
+  reported it and then failed `session/start`), and an exec turn under
+  another posture is refused `permission_denied`. Only a later host's explicit
+  `available` clears it; one that omits the field changes nothing.
 - **Model catalog and allowance** (#2266). `listModelCatalog` and
   `readQuotaSnapshot` start a short-lived host (`initialize`, `initialized`,
   then `model/list` or `usage/read`) that starts no session, and terminate it
