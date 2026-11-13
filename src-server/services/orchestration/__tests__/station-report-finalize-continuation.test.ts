@@ -867,7 +867,7 @@ test('continuation publication binds exact operation parents and isolates transa
           .acquire(request),
         DelegationRoundsTransactionParentError,
       );
-      const releases: Array<() => Promise<void>> = [];
+      const releases: Array<() => void | Promise<void>> = [];
       try {
         const first = await transactions.acquire(request);
         releases.push(first.release);
