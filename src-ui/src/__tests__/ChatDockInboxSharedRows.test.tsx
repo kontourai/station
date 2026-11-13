@@ -475,9 +475,24 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       expect(screen.getByText('Alpha project work')).toBeTruthy();
       expect(scope().selectedOptions[0].textContent).toBe('All work');
       expect(
-        [...scope().options].filter((option) => option.text === 'All work'),
+        [...scope().options].filter(
+          (option) => !option.hidden && option.text === 'All work',
+        ),
       ).toHaveLength(1);
       expect(screen.queryByRole('option', { name: 'Follow page' })).toBeNull();
+      expect(
+        [...scope().options]
+          .filter((option) => !option.hidden)
+          .slice(0, 2)
+          .map((option) => option.text),
+      ).toEqual(['All work', 'This Station']);
+      expect(scope().value).toBe('current-project');
+      fireEvent.change(scope(), { target: { value: 'all' } });
+      act(() => navigationStore.navigate('/projects/alpha'));
+      mounted.rerender(panel());
+      expect(scope().value).toBe('all');
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      fireEvent.change(scope(), { target: { value: 'current-project' } });
 
       // Back on a project page the chosen scope filters again; "All work"
       // undoes it.
@@ -497,7 +512,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       expect(screen.getByText('No project chat')).toBeTruthy();
       expect(scope().selectedOptions[0].textContent).toBe('All work');
       expect(
-        [...scope().options].filter((option) => option.text === 'All work'),
+        [...scope().options].filter(
+          (option) => !option.hidden && option.text === 'All work',
+        ),
       ).toHaveLength(1);
     } finally {
       act(() => navigationStore.navigate('/'));

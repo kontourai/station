@@ -131,6 +131,7 @@ function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
           starter.resetForDirectory();
         }
         draft.setIcon('');
+        draft.setIconDisabled(false);
         draft.setShowIconChoices(false);
         draft.setDirectory(directory);
         draft.setRepositoryAcquisition(null);
@@ -154,6 +155,7 @@ function NewProjectIdentityInput({
       inputRef={inputRef}
       candidates={iconCandidates.data ?? []}
       icon={draft.icon}
+      iconDisabled={draft.iconDisabled}
       name={draft.name}
       derivedName={draft.derivedName}
       nameConflict={submission.slugError}
@@ -164,7 +166,10 @@ function NewProjectIdentityInput({
       }
       showIconChoices={draft.showIconChoices}
       iconCandidatesFetching={iconCandidates.isFetching}
-      onIconChange={draft.setIcon}
+      onIconChange={(icon, disabled) => {
+        draft.setIcon(icon);
+        draft.setIconDisabled(disabled === true);
+      }}
       onNameChange={(name) => {
         draft.setNameTouched(true);
         draft.setName(name);

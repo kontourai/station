@@ -56,7 +56,7 @@ export function useInboxScope(
             }`
           : 'All work',
       ],
-      ...(routeProject ? [['all', 'All work'] as [string, string]] : []),
+      ['all', 'All work'],
       ['station:local', 'This Station'],
     ]);
     const stationKey = (item: HomeWorkItem) => {
@@ -90,10 +90,6 @@ export function useInboxScope(
     }
     // A saved scope absent from this snapshot stays selected: an outage must
     // not silently change the user's filter or pretend another Station is it.
-    if (!routeProject) {
-      options.delete(INBOX_SCOPE_CURRENT_PROJECT);
-      options.set('all', 'All work');
-    }
     if (!options.has(inboxScope) && inboxScope !== INBOX_SCOPE_CURRENT_PROJECT)
       options.set(inboxScope, 'Saved scope (unavailable)');
     // The default follows the project page on screen; anywhere else it is
@@ -120,10 +116,10 @@ export function useInboxScope(
     return {
       items: filtered,
       options,
-      value:
-        inboxScope === INBOX_SCOPE_CURRENT_PROJECT && !routeProject
-          ? 'all'
-          : inboxScope,
+      value: inboxScope,
+      // Keep the unchosen default as a display-only option on Home. The
+      // selectable All work option must save an explicit scope across routes.
+      followPageHidden: !routeProject,
       effectiveValue: scope,
       hiddenAttention,
       onChange: (value: string) => setDeviceSetting('inboxScope', value),
@@ -158,7 +154,16 @@ export function InboxScopeFilter({
           onChange={(event) => scope.onChange(event.target.value)}
         >
           {[...scope.options].map(([value, label]) => (
-            <option key={value} value={value}>
+            <option
+              key={value}
+              value={value}
+              hidden={
+                scope.followPageHidden && value === INBOX_SCOPE_CURRENT_PROJECT
+              }
+              disabled={
+                scope.followPageHidden && value === INBOX_SCOPE_CURRENT_PROJECT
+              }
+            >
               {label}
             </option>
           ))}

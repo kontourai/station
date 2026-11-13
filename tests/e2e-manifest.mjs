@@ -957,6 +957,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/new-project-choices.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Render new-project icon choices and save the Home inbox scope on an isolated browser device.',
+    exceptions: [],
+  },
+  {
     path: 'tests/project-icons.spec.ts',
     bucket: 'product',
     surface: 'Projects',

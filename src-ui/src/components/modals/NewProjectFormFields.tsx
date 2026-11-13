@@ -70,6 +70,7 @@ interface IdentityFieldProps {
   inputRef?: RefObject<HTMLInputElement | null>;
   candidates: ProjectIconCandidate[];
   icon: string;
+  iconDisabled: boolean;
   name: string;
   derivedName: string;
   /** The duplicate-name sentence a REFRESHED project list supported. */
@@ -78,7 +79,7 @@ interface IdentityFieldProps {
   nameAdvisory?: string | undefined;
   showIconChoices: boolean;
   iconCandidatesFetching: boolean;
-  onIconChange: (icon: string) => void;
+  onIconChange: (icon: string, disabled?: boolean) => void;
   onNameChange: (name: string) => void;
   onToggleIconChoices: () => void;
   /** When the host path is hidden, name is the identity — not a folder leaf. */
@@ -88,6 +89,7 @@ interface IdentityFieldProps {
 export function NewProjectIdentityField({
   candidates,
   icon,
+  iconDisabled,
   name,
   derivedName,
   nameConflict,
@@ -160,8 +162,9 @@ export function NewProjectIdentityField({
           idPrefix="new-project-icon"
           name={name || derivedName || 'New Project'}
           value={icon}
-          iconDisabled={icon === ''}
+          iconDisabled={iconDisabled}
           onChange={onIconChange}
+          onUseDetected={() => onIconChange('', false)}
           candidates={candidates}
           fetching={iconCandidatesFetching}
         />

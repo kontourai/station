@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -97,6 +98,40 @@ afterEach(() => {
 });
 
 describe('ProjectService', () => {
+  test('createProject persists No icon and suppresses discovered repository artwork', async () => {
+    const root = makeTempDir('station-no-icon-');
+    mkdirSync(join(root, '.git'));
+    writeFileSync(
+      join(root, 'favicon.png'),
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]),
+    );
+    const adapter = createMockStorageAdapter();
+    const svc = new ProjectService(adapter as any);
+    const { withDiscoveredProjectIcon } = await import(
+      '../project-icon-discovery.js'
+    );
+    await svc.createProject({
+      name: 'Detected',
+      slug: 'detected',
+      workingDirectory: root,
+    });
+    expect(
+      (await withDiscoveredProjectIcon(adapter.getProject('detected')))
+        .derivedIcon,
+    ).toBeTruthy();
+    await svc.createProject({
+      name: 'Initials',
+      slug: 'initials',
+      workingDirectory: root,
+      iconDisabled: true,
+    });
+    const stored = adapter.getProject('initials');
+    expect(stored.iconDisabled).toBe(true);
+    expect(await withDiscoveredProjectIcon(stored)).not.toHaveProperty(
+      'derivedIcon',
+    );
+  });
+
   test('createProject generates id and timestamps', async () => {
     const adapter = createMockStorageAdapter();
     const svc = new ProjectService(adapter as any);
