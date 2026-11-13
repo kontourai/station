@@ -1758,6 +1758,8 @@ interface Screen {
   viewport: { width: number; height: number };
   /** Capture with the operating-system reduced-motion preference enabled. */
   reducedMotion?: boolean;
+  /** Apply after interactions, which may reapply the saved appearance. */
+  captureTheme?: 'dark' | 'light';
   /** Optional selector to await before shooting (beyond the splash gate). */
   waitFor?: string;
   /**
@@ -5103,6 +5105,7 @@ const SCREENS: Screen[] = [
   ...(['dark', 'light'] as const).flatMap((theme) =>
     [DESKTOP, MOBILE].map(
       (viewport): Screen => ({
+        captureTheme: theme,
         name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
         title: `New chat — ${theme}, ${viewport.width}px`,
         path: '/?dock=open',
@@ -5139,6 +5142,7 @@ const SCREENS: Screen[] = [
   ...(['dark', 'light'] as const).flatMap((theme) =>
     [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
       (viewport): Screen => ({
+        captureTheme: theme,
         name: `run-setup-${theme}-${viewport.width}`,
         title: `Run setup — ${theme}, ${viewport.width}px`,
         path: '/?dock=open',
@@ -5983,6 +5987,17 @@ test('build gallery — capture key screens', async ({ page }) => {
             }
             if (screen.name !== 'settings-info-tip') {
               await page.mouse.move(0, 0);
+            }
+            if (screen.captureTheme) {
+              await page.evaluate(
+                (theme) =>
+                  document.documentElement.setAttribute('data-theme', theme),
+                screen.captureTheme,
+              );
+              await expect(page.locator('html')).toHaveAttribute(
+                'data-theme',
+                screen.captureTheme,
+              );
             }
             await page.screenshot({
               path: join(GALLERY_DIR, file),
