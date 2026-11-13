@@ -143,6 +143,7 @@ async function openComposer(
       element.getAnimations().map((animation) => animation.finished),
     );
   });
+  await closeRunSetup(page);
   return textarea;
 }
 

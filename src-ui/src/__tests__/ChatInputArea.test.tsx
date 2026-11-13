@@ -2382,3 +2382,20 @@ describe('ChatInputArea queued-retry Discard', () => {
     },
   );
 });
+
+test.each([undefined, 'claude'])(
+  'reply setup uses provider identity %s without connection initials',
+  async (executionEngineId) => {
+    renderChatInputArea({
+      agentConnectionId: 'my-saved-connection',
+      executionEngineId,
+      executionEngineLabel: 'Engine',
+      agentLabel: 'Writer',
+      agentIcon: <span>Agent mark</span>,
+    });
+    const trigger = screen.getByTestId('run-setup-trigger');
+    expect(trigger.textContent).not.toContain('EN');
+    expect(trigger.textContent).toContain('Writer');
+    expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
+  },
+);
