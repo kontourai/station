@@ -300,6 +300,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
+  // Runs the main-push verdict step as one short Node child against a loopback Actions API.
+  'scripts/__tests__/ci-merge-group-verdict.test.ts',
   // Runs the signer diagnostic CLI against a loopback Actions API.
   'scripts/__tests__/pr-conflict-signer-diagnostic.test.ts',
   // #3101: runs the conflict-deferral CLI against a loopback GitHub API.

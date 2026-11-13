@@ -1538,6 +1538,71 @@ describe('persistent runner policy', () => {
     },
   );
 
+  describe('the classify job reads the token only in its push-only verdict step', () => {
+    const CREDENTIAL =
+      'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context';
+    type Step = Record<string, unknown> & { env?: Record<string, string> };
+    const verdictStep = (job: Record<string, unknown>) => {
+      const step = (job.steps as Step[]).find(
+        (candidate) => candidate.id === 'merge-group-verdict',
+      );
+      if (!step) throw new Error('Expected the merge-group-verdict step.');
+      return step;
+    };
+    const classifyFindings = (mutate: (job: Record<string, unknown>) => void) =>
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('classify', mutate),
+      ).filter((finding: { jobId: string }) => finding.jobId === 'classify');
+
+    test('admits the exact checked-in step', () => {
+      expect(classifyFindings(() => {})).toEqual([]);
+    });
+
+    test.each([
+      [
+        'the step also runs on merge_group',
+        (job: Record<string, unknown>) => {
+          delete verdictStep(job).if;
+        },
+      ],
+      [
+        'the step stops failing open',
+        (job: Record<string, unknown>) => {
+          delete verdictStep(job)['continue-on-error'];
+        },
+      ],
+      [
+        'the step runs another command',
+        (job: Record<string, unknown>) => {
+          verdictStep(job).run = 'node scripts/classify-ci-change.mjs';
+        },
+      ],
+      [
+        'another classify step reads the token',
+        (job: Record<string, unknown>) => {
+          const classify = (job.steps as Step[]).find(
+            (candidate) => candidate.id === 'classify',
+          );
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          if (classify)
+            classify.env = { ...classify.env, GH_TOKEN: '${{ github.token }}' };
+        },
+      ],
+      [
+        'classify also runs on pull_request_target',
+        (job: Record<string, unknown>) => {
+          job.if = '${{ always() }}';
+        },
+      ],
+    ])('rejects the token when %s', (_name, mutate) => {
+      expect(classifyFindings(mutate)).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'classify',
+        message: CREDENTIAL,
+      });
+    });
+  });
+
   test('classifies credential expressions without flagging ordinary github reads', () => {
     for (const expression of [
       ' secrets.NPM_TOKEN ',
@@ -5561,9 +5626,11 @@ describe('the org docs gate runs on pull requests through one exact reviewed cal
     const document = realDocsKitWorkflow();
     expect(DOCS_GATE_REUSABLE_WORKFLOW).toBe(REVIEWED_CALLEE);
     expect(Object.keys(document.on)).toEqual(
-      expect.arrayContaining(['pull_request_target', 'merge_group', 'push']),
+      expect.arrayContaining(['pull_request_target', 'merge_group']),
     );
     expect(document.on).not.toHaveProperty('pull_request');
+    // The queue's merge_group run already checked the SHA a push would.
+    expect(document.on).not.toHaveProperty('push');
     expect(document.jobs.gate.uses).toBe(REVIEWED_CALLEE);
     expect(document.jobs.gate.with.repository).toBe(HEAD_REPOSITORY);
     expect(document.jobs.gate.with.ref).toBe(HEAD_REF);

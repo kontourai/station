@@ -29,7 +29,13 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
-      heavy: ${{ steps.classify.outputs.heavy }}
+      # The merge queue fast-forwards main to the exact candidate it tested,
+      # so a queue landing's push would repeat that verdict on the same SHA.
+      # `heavy` drops to false only when merge-group-verdict proves that
+      # exact SHA and base already passed fast-checks and Merge-queue
+      # regression; direct pushes, batches and any lookup failure keep the
+      # classifier's answer.
+      heavy: ${{ steps.merge-group-verdict.outputs.verified == 'true' && 'false' || steps.classify.outputs.heavy }}
       container: ${{ steps.classify.outputs.container }}
       classification: ${{ steps.classify.outputs.classification }}
     steps:
@@ -49,6 +55,20 @@ jobs:
           BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}
           AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
+
+      # Push-only and fail-open: the step never fails the job, and anything
+      # short of a proven merge-queue verdict leaves verified unset or false
+      # (scripts/ci-merge-group-verdict.mjs). It reads public Actions data
+      # with the job's read-only token.
+      - id: merge-group-verdict
+        name: Reuse the merge queue verdict for this exact SHA
+        if: ${{ github.event_name == 'push' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci-merge-group-verdict.mjs
 
   # Defer a same-repository pull request with a confirmed merge conflict
   # before it spends the plan, shards and statics: it cannot merge, so that
