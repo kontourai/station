@@ -82,6 +82,8 @@ export function ChildChatNavigation({
       controllerRef.current = null;
     };
   });
+  const popRef = useRef(pop);
+  popRef.current = pop;
   const shell = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = shell.current;
@@ -91,10 +93,7 @@ export function ChildChatNavigation({
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       event.preventDefault();
       event.stopPropagation();
-      setState((current) => ({
-        ...current,
-        entries: current.entries.slice(0, -1),
-      }));
+      popRef.current(entries.length - 1);
     };
     element.addEventListener('keydown', onEscape);
     return () => element.removeEventListener('keydown', onEscape);

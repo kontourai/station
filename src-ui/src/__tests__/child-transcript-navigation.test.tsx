@@ -141,7 +141,9 @@ test('the real child card opens the normal message renderer in the chat pane and
 
 test('Escape pops one level and changing the root cannot show the previous chat child', async () => {
   const view = render(tree());
-  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  const opener = screen.getByRole('button', { name: 'Open nested' });
+  opener.focus();
+  fireEvent.click(opener);
   const trail = await screen.findByRole('navigation', {
     name: 'Chat breadcrumb',
   });
@@ -151,7 +153,8 @@ test('Escape pops one level and changing the root cannot show the previous chat 
       screen.queryByRole('navigation', { name: 'Chat breadcrumb' }),
     ).toBeNull(),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  await waitFor(() => expect(document.activeElement).toBe(opener));
+  fireEvent.click(opener);
   view.rerender(tree('different-parent'));
   expect(
     screen.queryByRole('navigation', { name: 'Chat breadcrumb' }),
