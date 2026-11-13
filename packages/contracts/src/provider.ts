@@ -696,6 +696,10 @@ export const PROVIDER_MUSE = 'muse';
  *   `session/request_permission` calls, and the server admits it there
  *   (`approvalKnobSupported`). Any other ACP engine decides which calls ask
  *   itself, so the option stays unsupported and the adapter refuses it too.
+ *   `modelOptions.effort` is applied through the session's config option
+ *   whose `category` is `thought_level`, and only when the fresh session
+ *   advertises one; a session without one (Kiro KAS 2.35 advertises none)
+ *   refuses it rather than dropping it.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
@@ -723,7 +727,7 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'fastMode',
       'serviceTier',
     ],
-    [PROVIDER_ACP]: ['mode'],
+    [PROVIDER_ACP]: ['mode', 'effort'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // #2452: `muse-adapter.ts` reads `approvalMode` (`readApprovalMode`) at

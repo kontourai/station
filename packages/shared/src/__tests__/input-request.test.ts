@@ -15,7 +15,10 @@ import {
   inputRequestOutcome,
   inputRequestSummary,
   readInputRequestForm,
+  readInputRequestLink,
   readInputRequestResponse,
+  readInputRequestUrl,
+  readInputRequestUrlResponse,
   readLegacyHarnessQuestions,
   validateInputRequestContent,
 } from '../input-request.js';
@@ -745,5 +748,85 @@ describe('inputRequestSummary', () => {
 
   test('a short single line is returned whole', () => {
     expect(inputRequestSummary('  Which mode?  ')).toBe('Which mode?');
+  });
+});
+
+describe('URL requests', () => {
+  const request = {
+    schema: 'station.input-request/v1',
+    source: 'mcp:github',
+    requester: 'github',
+    message: 'Sign in to github',
+    body: {
+      kind: 'url',
+      url: 'https://example.com/oauth/authorize?state=abc',
+      purpose: 'mcp-sign-in',
+    },
+  };
+
+  test('reads a URL request and keeps the link exactly as sent', () => {
+    expect(readInputRequestUrl(request)).toEqual(request);
+    expect(
+      readInputRequestUrl({
+        ...request,
+        body: { ...request.body, purpose: 'elicitation', elicitationId: 'e1' },
+      })?.body,
+    ).toEqual({ ...request.body, purpose: 'elicitation', elicitationId: 'e1' });
+  });
+
+  test.each([
+    ['plain http', 'http://example.com/a'],
+    ['user info', 'https://user:pass@example.com/a'],
+    ['a javascript URL', 'javascript:alert(1)'],
+    ['an unparseable value', 'not a url'],
+    [
+      'one character over the cap',
+      `https://example.com/${'a'.repeat(2048 - 19)}`,
+    ],
+  ])('refuses a link with %s', (_, url) => {
+    expect(readInputRequestLink(url)).toBeNull();
+    expect(
+      readInputRequestUrl({ ...request, body: { ...request.body, url } }),
+    ).toBeNull();
+  });
+
+  test('accepts a link at exactly the cap', () => {
+    const url = `https://example.com/${'a'.repeat(2048 - 20)}`;
+    expect(url.length).toBe(2048);
+    expect(readInputRequestLink(url)).toBe(url);
+  });
+
+  test('refuses an unknown purpose, an extra key and an approval source', () => {
+    expect(
+      readInputRequestUrl({
+        ...request,
+        body: { ...request.body, purpose: 'other' },
+      }),
+    ).toBeNull();
+    expect(
+      readInputRequestUrl({
+        ...request,
+        body: { ...request.body, open: true },
+      }),
+    ).toBeNull();
+    expect(readInputRequestUrl({ ...request, source: 'approval' })).toBeNull();
+  });
+
+  test('a URL answer is opened or cancel, nothing else', () => {
+    expect(readInputRequestUrlResponse({ action: 'opened' })).toEqual({
+      action: 'opened',
+    });
+    expect(readInputRequestUrlResponse({ action: 'cancel' })).toEqual({
+      action: 'cancel',
+    });
+    expect(readInputRequestUrlResponse({ action: 'accept' })).toBeNull();
+    expect(
+      readInputRequestUrlResponse({ action: 'opened', url: 'https://x' }),
+    ).toBeNull();
+  });
+
+  test('a resolved URL request records opened or cancelled', () => {
+    expect(inputRequestOutcome('url', 'approved')).toBe('opened');
+    expect(inputRequestOutcome('url', 'denied')).toBe('cancelled');
   });
 });

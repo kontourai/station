@@ -109,6 +109,10 @@ function refusalReasons(
   // that engine's name). It can still list engines under its own ids.
   if (entry.launchEnv !== undefined)
     errors.push('launchEnv is only accepted from built-in entries');
+  // A managed runtime is code Station downloaded and runs; only a reviewed
+  // built-in pin may name one.
+  if (entry.managedRuntime !== undefined)
+    errors.push('managedRuntime is only accepted from built-in entries');
   if (builtinIds.has(entry.id))
     errors.push(`id '${entry.id}' belongs to a built-in engine`);
   return errors;

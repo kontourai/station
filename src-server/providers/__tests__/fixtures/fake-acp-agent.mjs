@@ -13,7 +13,10 @@
 //                             answer that request with the SDK's
 //                             auth_required error (-32000)
 // `--record` appends one JSON line per request received and per permission
-// outcome, so a test can see what reached the engine.
+// outcome, so a test can see what reached the engine. The initialize line
+// carries any announced `clientCapabilities._meta` (`clientMeta`) and
+// `elicitation` (`clientElicitation`); a session/new line carries the
+// request's `_meta` (`meta`).
 //
 // Sign-in:
 //   --record-env <NAME>          record NAME's value in this process's
@@ -183,6 +186,12 @@ const app = acp
       ...(params?.clientCapabilities?.auth
         ? { clientAuth: params.clientCapabilities.auth }
         : {}),
+      ...(params?.clientCapabilities?._meta
+        ? { clientMeta: params.clientCapabilities._meta }
+        : {}),
+      ...(params?.clientCapabilities?.elicitation
+        ? { clientElicitation: params.clientCapabilities.elicitation }
+        : {}),
     });
     if (initializeDelayMs > 0)
       await new Promise((resolve) => setTimeout(resolve, initializeDelayMs));
@@ -199,8 +208,11 @@ const app = acp
       throw acp.RequestError.internalError(undefined, 'Pairing was declined');
     return {};
   })
-  .onRequest('session/new', () => {
-    record({ method: 'session/new' });
+  .onRequest('session/new', ({ params }) => {
+    record({
+      method: 'session/new',
+      ...(params?._meta ? { meta: params._meta } : {}),
+    });
     if (fail === 'auth-required-on-session-new') throw authRequired();
     const sessionId = `fake-${profile.engine}-${process.pid}-${++state.sessions}`;
     return { sessionId, ...sessionShape(sessionId) };

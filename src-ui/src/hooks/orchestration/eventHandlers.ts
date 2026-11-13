@@ -445,6 +445,12 @@ function dispatchProjectedOrchestrationEvent(
     case 'content.host-images':
       handleHostImagesEvent(event, station);
       return;
+    // Kiro parity placeholders: the canonical events exist, and the
+    // events-and-UI change that renders them replaces these returns (and
+    // adds them to `UI_FOLDED_ORCHESTRATION_METHODS` in replay/observe.ts).
+    case 'model.rerouted':
+    case 'engine-mcp.status':
+      return;
     default: {
       const _exhaustive: never = event;
       return _exhaustive;

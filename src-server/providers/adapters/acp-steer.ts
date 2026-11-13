@@ -1,5 +1,9 @@
-import { declaredAcpExtensionMethods } from '../../services/acp/acp-handshake-facts.js';
-import type { InitializeResult } from '../../services/acp/acp-process.js';
+import {
+  type AcpHandshakeIdentity,
+  type AcpIdentityHandshake,
+  declaredAcpExtensionMethods,
+  matchesAcpHandshakeIdentity,
+} from '../../services/acp/acp-handshake-facts.js';
 import { errorMessage } from '../../utils/error-message.js';
 
 /**
@@ -19,12 +23,6 @@ const NATIVE_STEER_METHODS: ReadonlyArray<{
   { channel: 'session-steer', method: '_session/steer' },
   { channel: 'interject', method: '_x.ai/interject' },
 ];
-
-/** One declared handshake fact, matched exactly. */
-type AcpHandshakeIdentity =
-  | { agentInfoName: string }
-  | { capabilityMetaNamespace: string }
-  | { initializeMetaFlag: string };
 
 /**
  * Engines that answer a native steer method without declaring it (ADR 0013
@@ -71,34 +69,7 @@ export interface AcpSteerSelection {
   basis: 'declared' | 'undeclared-engine' | 'none';
 }
 
-type SteerHandshake = Pick<
-  InitializeResult,
-  'agentInfo' | 'agentCapabilities' | '_meta'
->;
-
-function hasRecordKey(value: unknown, key: string): boolean {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    Object.hasOwn(value as object, key)
-  );
-}
-
-function matchesIdentity(
-  handshake: SteerHandshake,
-  identity: AcpHandshakeIdentity,
-): boolean {
-  if ('agentInfoName' in identity) {
-    return handshake.agentInfo?.name === identity.agentInfoName;
-  }
-  if ('capabilityMetaNamespace' in identity) {
-    return hasRecordKey(
-      handshake.agentCapabilities?._meta,
-      identity.capabilityMetaNamespace,
-    );
-  }
-  return handshake._meta?.[identity.initializeMetaFlag] === true;
-}
+type SteerHandshake = AcpIdentityHandshake;
 
 /**
  * Select the steer channel from the live session's own `initialize` answer:
@@ -125,7 +96,7 @@ export function resolveAcpSteerChannel(
     };
   }
   const engine = ACP_UNDECLARED_STEER_ENGINES.find(({ identity }) =>
-    matchesIdentity(handshake, identity),
+    matchesAcpHandshakeIdentity(handshake, identity),
   );
   if (engine) {
     return {

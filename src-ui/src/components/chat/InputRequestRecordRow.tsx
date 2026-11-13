@@ -11,6 +11,7 @@ const OUTCOME_LABEL: Record<InputRequestOutcome, string> = {
   cancelled: 'Cancelled',
   allowed: 'Allowed',
   denied: 'Denied',
+  opened: 'Opened',
   expired: 'Expired',
 };
 

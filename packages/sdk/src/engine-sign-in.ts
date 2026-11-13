@@ -22,7 +22,13 @@ const signInViewSchema = z
     status: z
       .object({
         state: z.enum(['authenticated', 'unauthenticated', 'unknown']),
-        source: z.enum(['status-command', 'refusal', 'sign-in', 'none']),
+        source: z.enum([
+          'status-command',
+          'refusal',
+          'sign-in',
+          'station-vault',
+          'none',
+        ]),
         observedAt: z.string().optional(),
         checkable: z.boolean(),
       })

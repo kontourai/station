@@ -1,9 +1,12 @@
 /**
  * Sign-in for engines Station launches as local commands: what Station knows
  * about whether one is signed in, and the ways it can sign one in. Station
- * never reads, copies or hands on an engine's own credentials; an API key a
- * person enters is kept in Station's engine credential store and only its
- * variable name is ever served back.
+ * never reads or copies an engine's own credentials; an API key a person
+ * enters is kept in Station's engine credential store and only its variable
+ * name is ever served back. Where an engine is launched to delegate its
+ * credential to the host, Station issues an access token from its own
+ * engine host-auth vault through a reviewed binding
+ * (`@kontourai/station-contracts/engine-credential-provider`).
  */
 
 export type EngineSignInState = 'authenticated' | 'unauthenticated' | 'unknown';
@@ -15,12 +18,15 @@ export type EngineSignInState = 'authenticated' | 'unauthenticated' | 'unknown';
  * - `refusal`: the engine refused a chat because it needs a sign-in.
  * - `sign-in`: a sign-in Station started finished as the protocol defines
  *   success (`authenticate` answered, or the terminal login exited 0).
+ * - `station-vault`: Station's engine host-auth vault holds (or lacks) the
+ *   credential this connection's engine delegates to the host.
  * - `none`: nothing has been observed (`unknown`).
  */
 export type EngineSignInSource =
   | 'status-command'
   | 'refusal'
   | 'sign-in'
+  | 'station-vault'
   | 'none';
 
 export interface EngineSignInStatus {

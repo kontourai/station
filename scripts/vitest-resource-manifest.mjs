@@ -1349,6 +1349,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // Launches the fake ACP agent through the real ACPProcess so the agent
+  // records the client capabilities `initialize` actually announced.
+  'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
   // Launches the profile-driven fake engine through the real ACPProcess,
   // adapter and probe; the process boundary is the qualification claim.
   'src-server/providers/__tests__/acp-engine-qualification.process.test.ts',

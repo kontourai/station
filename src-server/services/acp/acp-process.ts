@@ -40,6 +40,93 @@ import { errorMessage } from '../../utils/error-message.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 import { createACPClientApp } from './acp-bridge-client.js';
 import type { ACPClientCallbacks } from './acp-bridge-types.js';
+import { REVIEWED_ENGINE_SECRET_BINDINGS } from './acp-inbound-extension-policy.js';
+
+/**
+ * A client capability flag Station announces at `initialize` under
+ * `clientCapabilities._meta.<namespace>.<flag>`. An engine that sees one
+ * sends the requests it promises; if nothing answers them it may read the
+ * silence as consent (Kiro's agent service reads any unanswered
+ * `_kiro/userInput` as "yes"). So a flag is announced only while every
+ * method in `requires` has a handler.
+ */
+export interface AcpAnnouncedClientMetaFlag {
+  readonly namespace: string;
+  readonly flag: string;
+  readonly requires: readonly string[];
+  readonly evidence: string;
+}
+
+export const ACP_ANNOUNCED_CLIENT_META_FLAGS: readonly AcpAnnouncedClientMetaFlag[] =
+  Object.freeze([
+    Object.freeze({
+      namespace: 'kiro',
+      flag: 'userInput',
+      requires: Object.freeze(['_kiro/userInput']),
+      evidence:
+        'kirocrew acp/types.py KAS_CLIENT_CAPABILITIES and test/test_acp_user_input.py',
+    }),
+    Object.freeze({
+      namespace: 'kiro',
+      flag: 'openExternalUrl',
+      requires: Object.freeze(['_kiro/openExternalUrl']),
+      evidence:
+        'kirocrew acp/types.py KAS_CLIENT_CAPABILITIES and test/fixtures/acp_frames/kas/open-external-url-live.jsonl',
+    }),
+    ...REVIEWED_ENGINE_SECRET_BINDINGS.map((binding) =>
+      Object.freeze({
+        namespace: binding.announce.metaNamespace,
+        flag: binding.announce.flag,
+        requires: Object.freeze(Object.values(binding.methods)),
+        evidence: binding.evidence,
+      }),
+    ),
+  ]);
+
+type AcpBaseClientCapabilities = NonNullable<
+  ACPProcessOptions['clientCapabilities']
+>;
+
+/**
+ * What `initialize` announces: the base capabilities, plus each
+ * {@link ACP_ANNOUNCED_CLIENT_META_FLAGS} entry whose methods all answer, plus
+ * `elicitation` with the modes the client's handler takes. A `_meta` or
+ * `elicitation` with nothing in it is left out.
+ */
+export function announcedAcpClientCapabilities(
+  base: AcpBaseClientCapabilities,
+  client: Pick<
+    ACPClientCallbacks,
+    'answersExtensionMethod' | 'createElicitation'
+  >,
+): AcpBaseClientCapabilities & {
+  _meta?: Record<string, Record<string, true>>;
+  elicitation?: { form?: Record<string, never>; url?: Record<string, never> };
+} {
+  const meta: Record<string, Record<string, true>> = {};
+  const answers = client.answersExtensionMethod;
+  if (answers) {
+    for (const {
+      namespace,
+      flag,
+      requires,
+    } of ACP_ANNOUNCED_CLIENT_META_FLAGS) {
+      if (requires.length === 0 || !requires.every((method) => answers(method)))
+        continue;
+      meta[namespace] = { ...meta[namespace], [flag]: true };
+    }
+  }
+  const modes = client.createElicitation?.modes;
+  const elicitation = {
+    ...(modes?.form ? { form: {} } : {}),
+    ...(modes?.url ? { url: {} } : {}),
+  };
+  return {
+    ...base,
+    ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
+    ...(Object.keys(elicitation).length > 0 ? { elicitation } : {}),
+  };
+}
 
 /**
  * archive#3441 MEDIUM-2: the identity probe `survivesCleanup()` and
@@ -545,17 +632,19 @@ export class ACPProcess extends EventEmitter {
     ) as ReadableStream<Uint8Array>;
     const acpStream = ndJsonStream(input, output);
 
-    this.connection = createACPClientApp(this.opts.createClient()).connect(
-      acpStream,
-    ).agent;
+    const client = this.opts.createClient();
+    this.connection = createACPClientApp(client).connect(acpStream).agent;
 
     this._initResult = (await Promise.race([
       this.connection.request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: this.opts.clientCapabilities ?? {
-          fs: { readTextFile: true, writeTextFile: true },
-          terminal: true,
-        },
+        clientCapabilities: announcedAcpClientCapabilities(
+          this.opts.clientCapabilities ?? {
+            fs: { readTextFile: true, writeTextFile: true },
+            terminal: true,
+          },
+          client,
+        ),
         clientInfo: { name: 'station', version: '1.0.0' },
       }),
       spawnFailed,
@@ -622,15 +711,21 @@ export class ACPProcess extends EventEmitter {
     await this.connection.request(methods.agent.authenticate, { methodId });
   }
 
-  /** Create a new ACP session. */
+  /**
+   * Create a new ACP session. `meta` becomes the request's `_meta` (an
+   * engine's documented session options, such as Kiro's
+   * `{ kiro: { customAgents } }`); absent, no `_meta` is sent.
+   */
   async newSession(
     cwd: string,
     mcpServers: McpServer[] = [],
+    meta?: Record<string, unknown>,
   ): Promise<SessionResult> {
     if (!this.connection) throw new Error('ACPProcess not started');
     const result = (await this.connection.request(methods.agent.session.new, {
       cwd,
       mcpServers,
+      ...(meta ? { _meta: meta } : {}),
     })) as SessionResult;
     this._sessionId = result.sessionId;
     return result;
@@ -640,17 +735,21 @@ export class ACPProcess extends EventEmitter {
    * Load an existing session by ID. The response carries the same `modes`
    * and `configOptions` a `session/new` would, so a caller reattaching to a
    * session it created earlier observes the same capability evidence.
+   * `meta` is sent as `_meta`, as on {@link newSession}: an engine that reads
+   * session options there needs them again on load.
    */
   async loadSession(
     sessionId: string,
     cwd: string,
     mcpServers: McpServer[] = [],
+    meta?: Record<string, unknown>,
   ): Promise<Omit<SessionResult, 'sessionId'>> {
     if (!this.connection) throw new Error('ACPProcess not started');
     const result = (await this.connection.request(methods.agent.session.load, {
       sessionId,
       cwd,
       mcpServers,
+      ...(meta ? { _meta: meta } : {}),
     })) as Omit<SessionResult, 'sessionId'> | undefined;
     this._sessionId = sessionId;
     return result ?? {};

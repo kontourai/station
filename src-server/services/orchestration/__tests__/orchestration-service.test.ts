@@ -28276,6 +28276,8 @@ describe('OrchestrationService', () => {
       'extension.notification': 'non-fold',
       'conversation.forked': 'non-fold',
       'child-work.updated': 'non-fold',
+      'model.rerouted': 'non-fold',
+      'engine-mcp.status': 'non-fold',
     };
     const NON_FOLD_METHODS = (
       Object.keys(METHOD_ROLE) as CanonicalRuntimeEvent['method'][]

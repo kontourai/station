@@ -11,11 +11,15 @@ import type {
   InputRequestResponse,
   InputRequestSource,
   InputRequestStringFormat,
+  InputRequestUrl,
+  InputRequestUrlPurpose,
+  InputRequestUrlResponse,
   InputRequestValue,
 } from '@kontourai/station-contracts/input-request';
 import {
   INPUT_REQUEST_HEADER_MAX_CHARS,
   INPUT_REQUEST_SCHEMA,
+  INPUT_REQUEST_URL_MAX_CHARS,
 } from '@kontourai/station-contracts/input-request';
 import type { ApprovalStatus } from '@kontourai/station-contracts/runtime-events';
 
@@ -392,6 +396,80 @@ export function readInputRequestForm(input: unknown): InputRequestForm | null {
     message: value.message,
     body: { kind: 'form', fields },
   };
+}
+
+const URL_PURPOSES = new Set<InputRequestUrlPurpose>([
+  'mcp-sign-in',
+  'elicitation',
+  'engine-link',
+]);
+
+/**
+ * A link a URL request may carry: https, no user info, at most
+ * {@link INPUT_REQUEST_URL_MAX_CHARS} characters, and parseable. Returned as
+ * given, never normalized, so the person sees exactly what the source sent.
+ */
+export function readInputRequestLink(value: unknown): string | null {
+  if (!text(value, INPUT_REQUEST_URL_MAX_CHARS) || !value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) return null;
+  return value;
+}
+
+/**
+ * Read a stored URL request. Refuses an unknown key, a purpose this version
+ * does not define, and any link {@link readInputRequestLink} refuses. A URL
+ * request never comes from `approval`.
+ */
+export function readInputRequestUrl(input: unknown): InputRequestUrl | null {
+  const value = own(input);
+  const body = own(value?.body);
+  if (
+    !value ||
+    !onlyKeys(value, ['schema', 'source', 'requester', 'message', 'body']) ||
+    value.schema !== INPUT_REQUEST_SCHEMA ||
+    !text(value.requester, MAX_LABEL_CHARS) ||
+    !text(value.message, INPUT_REQUEST_MAX_MESSAGE_CHARS) ||
+    !body ||
+    !onlyKeys(body, ['kind', 'url', 'purpose', 'elicitationId']) ||
+    body.kind !== 'url' ||
+    !URL_PURPOSES.has(body.purpose as InputRequestUrlPurpose) ||
+    !optionalText(body.elicitationId, MAX_NAME_CHARS)
+  )
+    return null;
+  const url = readInputRequestLink(body.url);
+  const source = readSource(value.source);
+  if (!url || !source || source === 'approval') return null;
+  return {
+    schema: INPUT_REQUEST_SCHEMA,
+    source,
+    requester: value.requester,
+    message: value.message,
+    body: {
+      kind: 'url',
+      url,
+      purpose: body.purpose as InputRequestUrlPurpose,
+      ...(typeof body.elicitationId === 'string'
+        ? { elicitationId: body.elicitationId }
+        : {}),
+    },
+  };
+}
+
+/** Read a URL request's answer, or null. Shape only. */
+export function readInputRequestUrlResponse(
+  input: unknown,
+): InputRequestUrlResponse | null {
+  const value = own(input);
+  if (!value || Object.keys(value).length !== 1) return null;
+  return value.action === 'opened' || value.action === 'cancel'
+    ? { action: value.action }
+    : null;
 }
 
 // --- Legacy stored harness questions ------------------------------------
@@ -1011,9 +1089,17 @@ export function inputRequestOutcome(
 ): InputRequestOutcome {
   switch (status) {
     case 'approved':
-      return kind === 'form' ? 'accepted' : 'allowed';
+      return kind === 'form'
+        ? 'accepted'
+        : kind === 'url'
+          ? 'opened'
+          : 'allowed';
     case 'denied':
-      return kind === 'form' ? 'declined' : 'denied';
+      return kind === 'form'
+        ? 'declined'
+        : kind === 'url'
+          ? 'cancelled'
+          : 'denied';
     case 'expired':
       return 'expired';
     default:
