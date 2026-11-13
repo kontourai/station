@@ -2323,6 +2323,7 @@ Connections has one clear home for each relationship:
   one is named as needing you to sign in, and a refused key is a failed check.
   A server that does not answer within 20 seconds is named as failed. It leaves out Station's own servers,
   turned-off servers, and servers signed in per person, and names the last.
+  When every listed server is Station's own or turned off, it is not shown.
   One check runs at a time; pressing it again while it runs, here or from
   another window, waits for the same check
   ([batch](../../src-server/routes/agents/tools.ts)).

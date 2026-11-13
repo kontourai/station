@@ -438,6 +438,26 @@ describe('IntegrationsView: rows, Check all and the unsaved guard', () => {
     ).toBeTruthy();
   });
 
+  test('Check all is not offered when every listed server is one Station runs itself', () => {
+    integrations = [
+      stdio('station-docs', { builtin: true, probe: undefined }),
+      stdio('off', { enabled: false }),
+    ];
+    const { unmount } = renderView();
+    expect(screen.getByText('station-docs')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check all' })).toBeNull();
+    unmount();
+
+    // One server Station does not run brings it back, enabled.
+    integrations = [
+      stdio('station-docs', { builtin: true, probe: undefined }),
+      stdio('docs'),
+    ];
+    renderView();
+    const button = screen.getByRole('button', { name: 'Check all' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+
   test('leaving while Check all runs does not cancel it', async () => {
     integrations = [stdio('one')];
     let signal: AbortSignal | undefined;

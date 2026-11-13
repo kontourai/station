@@ -383,12 +383,16 @@ export function IntegrationsView({
           deselect();
         }}
         headerActions={
-          <Button
-            onClick={() => void checkAll.run()}
-            disabled={checkAll.running || checkAll.nothingToCheck}
-          >
-            {checkAll.running ? 'Checking…' : 'Check all'}
-          </Button>
+          // Hidden, not disabled with no reason, when every listed server is
+          // one Station runs itself (or none is on): there is nothing to check.
+          checkAll.nothingToCheck && !checkAll.running ? undefined : (
+            <Button
+              onClick={() => void checkAll.run()}
+              disabled={checkAll.running}
+            >
+              {checkAll.running ? 'Checking…' : 'Check all'}
+            </Button>
+          )
         }
         listIntro={
           <div className="integrations-check-all" aria-live="polite">
