@@ -3,6 +3,15 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { TRUST_ATTACHMENT_REDUCER_VERSION } from '@kontourai/flow';
 import { describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
+import viewerManifest from '../../examples/builder-delivery-viewer/package.json' with {
+  type: 'json',
+};
+import rootManifest from '../../package.json' with { type: 'json' };
+import contractsManifest from '../../packages/contracts/package.json' with {
+  type: 'json',
+};
+import sdkManifest from '../../packages/sdk/package.json' with { type: 'json' };
 
 const root = resolve(import.meta.dirname, '../..');
 const require = createRequire(import.meta.url);
@@ -10,17 +19,35 @@ const manifest = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
 
 describe('Flow major composition', () => {
   test('every direct consumer pins the qualified Flow and Flow Agents pair', () => {
-    for (const file of [
-      'package.json',
-      'packages/contracts/package.json',
-      'packages/sdk/package.json',
-      'examples/builder-delivery-viewer/package.json',
-    ]) {
-      const deps = manifest(resolve(root, file)).dependencies;
-      expect(deps['@kontourai/flow-agents'], file).toBe('11.0.0');
-      if (deps['@kontourai/flow']) {
-        expect(deps['@kontourai/flow'], file).toBe('6.0.0');
-      }
+    for (const [name, deps] of [
+      ['root', rootManifest.dependencies],
+      ['contracts', contractsManifest.dependencies],
+      ['sdk', sdkManifest.dependencies],
+    ] as const) {
+      expect(deps['@kontourai/flow-agents'], name).toBe('11.0.0');
+      expect(deps['@kontourai/flow'], name).toBe('6.0.0');
+    }
+    expect(viewerManifest.dependencies['@kontourai/flow-agents']).toBe(
+      '11.0.0',
+    );
+  });
+
+  test('the lockfile permits only Flow 6 and Console’s type-only Flow 1.4.1', () => {
+    const lock = parse(
+      readFileSync(new URL('../../pnpm-lock.yaml', import.meta.url), 'utf8'),
+    );
+    for (const section of ['packages', 'snapshots']) {
+      const versions = Object.keys(lock[section]).flatMap((key) => {
+        const match = /^@kontourai\/flow@([^ (]+)/.exec(key);
+        return match ? [match[1]] : [];
+      });
+      expect(versions.length, section).toBeGreaterThan(0);
+      expect(
+        versions.filter(
+          (version) => !/^6\./.test(version) && version !== '1.4.1',
+        ),
+        section,
+      ).toEqual([]);
     }
   });
 
