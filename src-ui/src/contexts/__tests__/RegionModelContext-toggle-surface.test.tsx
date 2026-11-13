@@ -18,7 +18,6 @@ import { registerDevicePanePromotion } from '../../float-over-chat/floatStore';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
-import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
 
 let model: ReturnType<typeof useRegionModel> | null = null;
@@ -88,11 +87,11 @@ describe('RegionModelProvider pane selection (#2046 2a)', () => {
    */
   test('showSurface selects the tab of a pane the region already holds', async () => {
     await mount();
-    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('workspace-agents', 'bottom'));
     act(() => model?.placeSurface('chat', 'bottom'));
     await waitFor(() =>
       expect(model?.regions.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
+        panes: ['chat', 'workspace-agents'],
         occupant: 'chat',
         visible: true,
       }),
@@ -100,12 +99,12 @@ describe('RegionModelProvider pane selection (#2046 2a)', () => {
     act(() => model?.setRegion('bottom', { visible: false }));
     await waitFor(() => expect(model?.regions.bottom.visible).toBe(false));
 
-    act(() => model?.showSurface('activity'));
+    act(() => model?.showSurface('workspace-agents'));
 
     await waitFor(() =>
       expect(model?.regions.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       }),
     );
@@ -116,14 +115,14 @@ describe('RegionModelProvider pane selection (#2046 2a)', () => {
 
   test('selectPane selects a held pane, ignores one the region does not hold, and shows nothing', async () => {
     await mount();
-    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('workspace-agents', 'bottom'));
     act(() => model?.placeSurface('chat', 'bottom'));
     act(() => model?.setRegion('bottom', { visible: false }));
     await waitFor(() => expect(model?.regions.bottom.visible).toBe(false));
 
-    act(() => model?.selectPane('bottom', 'activity'));
+    act(() => model?.selectPane('bottom', 'workspace-agents'));
     await waitFor(() =>
-      expect(model?.regions.bottom.occupant).toBe('activity'),
+      expect(model?.regions.bottom.occupant).toBe('workspace-agents'),
     );
     expect(model?.regions.bottom.visible).toBe(false);
 
@@ -131,80 +130,26 @@ describe('RegionModelProvider pane selection (#2046 2a)', () => {
     act(() => model?.selectPane('bottom', 'home'));
     await act(async () => undefined);
     expect(model?.regions.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
     });
     expect(model?.regions.right.panes).toEqual([]);
   });
 
   test('placeSurface into a region already holding the surface selects it', async () => {
     await mount();
-    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('workspace-agents', 'bottom'));
     await waitFor(() =>
-      expect(model?.regions.bottom.occupant).toBe('activity'),
+      expect(model?.regions.bottom.occupant).toBe('workspace-agents'),
     );
 
     act(() => model?.placeSurface('chat', 'bottom'));
     await waitFor(() => expect(model?.regions.bottom.occupant).toBe('chat'));
-    expect(model?.regions.bottom.panes).toEqual(['chat', 'activity']);
+    expect(model?.regions.bottom.panes).toEqual(['chat', 'workspace-agents']);
   });
 });
 
 describe('RegionModelProvider.toggleSurface', () => {
-  test('a surface occupying main returns to its default dock region, visible, and main empties to Home', async () => {
-    await mount();
-    act(() => model?.placeSurface('activity', 'main'));
-    await waitFor(() => expect(model?.regions.main.occupant).toBe('activity'));
-
-    act(() => model?.toggleSurface('activity'));
-
-    await waitFor(() =>
-      expect(model?.regions.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
-        visible: true,
-      }),
-    );
-    expect(model?.regions.main).toEqual({
-      visible: true,
-      size: 0,
-      maximized: false,
-      panes: [],
-      occupant: null,
-    });
-    // The fold follows the region that just became visible.
-    expect(model?.lastShownRegion).toBe('right');
-    expect(window.location.pathname).toBe('/');
-  });
-
-  /**
-   * Owner decision, review round 1 (#1523): the chord relocates a `main`
-   * occupant from ANY route, visible, WITHOUT navigating. Showing Activity
-   * beside the current view beats hijacking navigation to `/`; `main` empties
-   * to Home behind the routed view, for whenever the user returns to `/`.
-   */
-  test('from another route, a main occupant returns to its dock without navigating', async () => {
-    await mount();
-    act(() => model?.placeSurface('activity', 'main'));
-    await waitFor(() => expect(model?.regions.main.occupant).toBe('activity'));
-    setUrl('/settings');
-    await act(async () => undefined);
-    const navigateSpy = vi.spyOn(navigationStore, 'navigate');
-
-    act(() => model?.toggleSurface('activity'));
-
-    await waitFor(() =>
-      expect(model?.regions.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
-        visible: true,
-      }),
-    );
-    expect(model?.regions.main.occupant).toBeNull();
-    expect(navigateSpy).not.toHaveBeenCalled();
-    expect(window.location.pathname).toBe('/settings');
-  });
-
   test('a dock occupant is hidden and revealed in place', async () => {
     await mount();
     act(() => model?.setRegion('bottom', { visible: true }));
@@ -223,12 +168,12 @@ describe('RegionModelProvider.toggleSurface', () => {
     await mount();
     expect(model?.regions.right.occupant).toBeNull();
 
-    act(() => model?.toggleSurface('activity'));
+    act(() => model?.toggleSurface('workspace-agents'));
 
     await waitFor(() =>
       expect(model?.regions.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       }),
     );

@@ -1,4 +1,3 @@
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_AGENTS_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -86,7 +85,6 @@ import {
   BoardGlyph,
   BranchGlyph,
   CameraGlyph,
-  ChartGlyph,
   CheckGlyph,
   CloseGlyph,
   CodeGlyph,
@@ -2008,8 +2006,6 @@ function railGlyph(descriptorId: string, label: string): ReactNode {
       return <PhoneGlyph />;
     case WORKSPACE_AGENTS_PANE_DESCRIPTOR_ID:
       return <PeopleGlyph />;
-    case WORKSPACE_ACTIVITY_PANE_DESCRIPTOR_ID:
-      return <ChartGlyph />;
     case WORKSPACE_LAYOUT_PANE_DESCRIPTOR_ID:
       return <BoardGlyph />;
     case WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR_ID:

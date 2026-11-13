@@ -106,13 +106,13 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     expect(outcome).toEqual({
       ok: true,
       region: 'right',
-      surfaceId: 'activity',
+      surfaceId: 'workspace-agents',
       existing: false,
     });
     await waitFor(() =>
       expect(current().model.regions.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       }),
     );
@@ -134,8 +134,8 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     // `firstFreeDockRegion`: bottom is the first free once right is taken.
     expect(outcome).toMatchObject({ ok: true, region: 'bottom' });
     expect(current().model.regions.bottom).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
   });
@@ -155,12 +155,12 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     expect(outcome).toEqual({
       ok: true,
       region: 'bottom',
-      surfaceId: 'activity',
+      surfaceId: 'workspace-agents',
       existing: false,
     });
     expect(current().model.regions.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     expect(current().model.regions.right.panes).toEqual([]);
@@ -194,12 +194,12 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     expect(outcome).toEqual({
       ok: true,
       region: 'bottom',
-      surfaceId: 'activity',
+      surfaceId: 'workspace-agents',
       existing: true,
     });
     expect(current().model.regions.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
     // Not moved to its default region, not duplicated.
@@ -213,7 +213,10 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
       });
     });
     expect(outcome).toMatchObject({ ok: true, existing: true });
-    expect(current().model.regions.bottom.panes).toEqual(['chat', 'activity']);
+    expect(current().model.regions.bottom.panes).toEqual([
+      'chat',
+      'workspace-agents',
+    ]);
   });
 
   /**
@@ -231,7 +234,7 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     act(() =>
       current().open(WORKSPACE_AGENTS_PANE_INSTANCE, { region: 'right' }),
     );
-    expect(current().model.regions.right.panes).toEqual(['activity']);
+    expect(current().model.regions.right.panes).toEqual(['workspace-agents']);
 
     let outcome: unknown;
     act(() => {
@@ -242,13 +245,13 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     expect(outcome).toEqual({
       ok: true,
       region: 'bottom',
-      surfaceId: 'activity',
+      surfaceId: 'workspace-agents',
       existing: false,
     });
     expect(current().model.regions.right.panes).toEqual([]);
     expect(current().model.regions.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
   });
@@ -268,13 +271,13 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     expect(outcome).toEqual({
       ok: true,
       region: 'right',
-      surfaceId: 'activity',
+      surfaceId: 'workspace-agents',
       existing: false,
     });
     expect(current().model.regions.bottom.panes).toEqual(['chat']);
     expect(current().model.regions.right).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     });
   });
@@ -365,8 +368,8 @@ describe('openInRegion refusals change nothing (#2048)', () => {
     });
     expect(outcome).toMatchObject({ ok: true, region: 'bottom' });
     expect(current().model.regions.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
     });
     expect(current().model.regions.right.panes).toEqual([]);
 
@@ -375,7 +378,10 @@ describe('openInRegion refusals change nothing (#2048)', () => {
     });
     expect(outcome).toMatchObject({ ok: true, region: 'bottom' });
     expect(current().model.regions.right.panes).toEqual([]);
-    expect(current().model.regions.bottom.panes).toEqual(['chat', 'activity']);
+    expect(current().model.regions.bottom.panes).toEqual([
+      'chat',
+      'workspace-agents',
+    ]);
   });
 });
 
@@ -387,16 +393,18 @@ describe('showSurface over openSurfaceInRegion (#2048)', () => {
    */
   test('showSurface lands where openSurfaceInRegion lands and still carries an intent', async () => {
     await mount();
-    act(() => current().model.showSurface('activity', { session: 's1' }));
+    act(() =>
+      current().model.showSurface('workspace-agents', { session: 's1' }),
+    );
     await waitFor(() =>
       expect(current().model.regions.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
         visible: true,
       }),
     );
     expect(current().model.lastShownRegion).toBe('right');
-    expect(current().model.surfaceIntents.activity).toMatchObject({
+    expect(current().model.surfaceIntents['workspace-agents']).toMatchObject({
       session: 's1',
     });
     // An unregistered id is a no-op, as before: no write, no intent.
@@ -417,7 +425,7 @@ describe('showSurface over openSurfaceInRegion (#2048)', () => {
     await waitFor(() =>
       expect(current().model.regions.bottom.panes).toEqual([
         'chat',
-        'activity',
+        'workspace-agents',
       ]),
     );
   });

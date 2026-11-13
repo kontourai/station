@@ -21,6 +21,7 @@
   border-bottom: 1px solid var(--k-line);
 }
 .child-chat-trail__segment {
+  gap: var(--k-space-1);
   display: inline-flex;
   align-items: center;
   min-width: 0;

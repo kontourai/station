@@ -207,29 +207,29 @@ describe('RegionShells while the Coding centre owns Chat', () => {
     );
     await openBottom();
     act(() => model?.placeSurface('workspace-agents', 'bottom'));
-    act(() => model?.placeSurface('workspace-agents', 'bottom'));
+    act(() => model?.placeSurface('device', 'bottom'));
     await waitFor(() =>
       expect(model?.regions.bottom.panes).toEqual([
         'chat',
         'workspace-agents',
-        'workspace-agents',
+        'device',
       ]),
     );
     expect(suspendedModel?.regions.bottom.panes).toEqual([
       'workspace-agents',
-      'workspace-agents',
+      'device',
     ]);
 
     // The shape `RegionPaneHost`'s reorder writes: the visible order, moved.
     act(() =>
       suspendedModel?.setRegion('bottom', {
-        panes: ['workspace-agents', 'workspace-agents'],
+        panes: ['device', 'workspace-agents'],
       }),
     );
     await waitFor(() =>
       expect(model?.regions.bottom.panes).toEqual([
         'chat',
-        'workspace-agents',
+        'device',
         'workspace-agents',
       ]),
     );

@@ -199,7 +199,7 @@ export function useChatDockActiveChatSync({
         const inconclusive = !catalogWasLoadedForThisAttempt;
         if (opened === false && !(inconclusive && retryStillAvailable)) {
           // The lookup returned this conversation; only its owning agent is
-          // gone. There is a real session behind the id, so Activity has
+          // gone. There is a real session behind the id, so the Chat reader has
           // something to show (archive#801, station#1284).
           revealSessionInChat();
         }

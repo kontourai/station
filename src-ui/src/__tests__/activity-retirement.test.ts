@@ -96,3 +96,18 @@ describe('Activity retirement', () => {
     expect(result[4]?.content).toContain('truncated');
   });
 });
+
+test('duplicate retired panes close their emptied dock after migration', () => {
+  const record = toRegionArrangementRecord(DEFAULT_DEVICE_REGION_ARRANGEMENT);
+  record.regions.bottom.occupant = null;
+  for (const id of ['left', 'right'] as const)
+    record.regions[id] = {
+      ...record.regions[id],
+      visible: true,
+      occupant: { kind: 'surface', id: 'activity' },
+    };
+  const migrated = parseRegionArrangementRecord(record)!;
+  expect(migrated.left.occupant).toBe('chat');
+  expect(migrated.right.occupant).toBeNull();
+  expect(migrated.right.visible).toBe(false);
+});

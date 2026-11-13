@@ -55,7 +55,8 @@ pane.
   resolve to the same *placement*: when a pane's standalone host goes away,
   its path joins the retirement table (`getLegacyPathRedirect`) and redirects
   to the surface's canonical placement, carrying its payload. `/activity`
-  and `/activity?session=…&focus=evidence` are the worked example —
+  and `/activity?session=…&focus=evidence` are permanent compatibility links to
+  the inbox and Chat respectively —
   station#928 removed the standalone placement and both spellings now land on
   `/?surface=activity[&session=…][&focus=evidence]`, minted by the one builder
   (`activityDeepLink`) every producer of those links already uses. What the

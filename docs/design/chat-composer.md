@@ -76,8 +76,7 @@ the dock is maximized. Slash commands, `/model` and `@` file results all open
 through one anchored popup outside the composer, so no composer clipping can cut
 them off. The `@` list closes when the input loses focus (pressing inside the
 list does not take focus) and reopens when focus returns with the caret in an
-`@` query. A narrow Activity region shows its list or its selected
-detail, with a Back to list control, instead of squeezing both columns.
+`@` query. Child transcripts use the chat pane and its ancestor breadcrumb.
 
 The [working-chat focus owner](../../src-ui/src/hooks/useWorkingChatFocus.ts)
 requests composer focus once after selection, when the conversation
@@ -258,7 +257,7 @@ retaining portable Project/resource admission and the explicit no-fallback
 refusals; **Run task** starts a task and does not place or migrate a
 foreground chat on a peer. Once the task is accepted the composer closes
 and the dock shows **Task started on <Station>.** with **Open task** into
-Activity. **Connect a Station for this task** keeps the
+Chat. **Connect a Station for this task** keeps the
 task draft, chosen Station and Project resource while setup opens; returning
 refreshes discovery and still requires an explicit **Run task** action.
 Editing the task message updates the originating draft, so Cancel retains

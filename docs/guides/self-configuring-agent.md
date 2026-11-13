@@ -356,7 +356,7 @@ repeats the folder decision; tool approval does not bypass them.
 ### Reading a referenced conversation
 
 When a person references another conversation in a message (the composer's
-conversation picker, or a conversation dragged in from Activity or the inbox),
+conversation picker, or a conversation dragged in from the inbox),
 the message carries a link to it, its id, and a line telling the receiving
 Agent to read it with `read_conversation`. The read returns up to 50 messages
 per page, at most 64 KB serialized, oldest first, with a `nextCursor` for the
@@ -529,10 +529,10 @@ Session by its `sessionId`, without creating a task.
   `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
   title, Agent and engine as Station recorded them, and the call's `requestKey`)
   beside the unchanged `internal` actor. `read_conversation` and the Session
-  digest carry that provenance. Chat and Activity show the sender's own words
+  digest carry that provenance. Chat shows the sender's own words
   as that agent's message, with a link to the sending Session; the sender's transcript shows the call as
   "Sent to <Session>" with its outcome. Links open the exact sending call or
-  received input in Activity by its recorded request key. The transcript may
+  received input in Chat by its recorded request key. The transcript may
   read up to 20 older pages to establish a unique match, then focuses and
   announces it. A missing or repeated key is an explicit unavailable or
   ambiguous anchor; reaching the page limit selects nothing. The public

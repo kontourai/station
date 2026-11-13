@@ -1129,6 +1129,8 @@ Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
 
+<a id="review-activity-without-changing-your-place"></a>
+
 ## Read Child Conversations
 
 Choose **Open chat** on a subagent card or a background task to read its

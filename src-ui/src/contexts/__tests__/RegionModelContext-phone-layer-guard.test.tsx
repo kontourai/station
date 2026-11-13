@@ -211,7 +211,7 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
         await screen.findByRole('dialog', { name: /Unsaved Changes/ });
         act(() => {
           if (change === 'replacement layer')
-            current().openSurfaceInRegion('activity');
+            current().openSurfaceInRegion('workspace-agents');
           if (change === 'new owner guard')
             unregister = navigationStore.registerNavigationGuard(
               Symbol('new layer draft'),

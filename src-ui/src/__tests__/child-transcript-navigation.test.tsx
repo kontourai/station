@@ -1,8 +1,11 @@
+import { mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 // @vitest-environment jsdom
 import type {
   ChildWorkItem,
   ChildWorkTranscriptEntry,
 } from '@kontourai/station-contracts/child-work';
+import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
@@ -13,6 +16,11 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { createUiModuleGraph } from '../../../scripts/lib/ui-module-graph.mjs';
+import {
+  assertNoImportsSurvive,
+  resolveCssImports,
+} from '../../../tests/helpers/css-cascade-fixture';
 import { SubagentTranscriptCard } from '../components/chat/SubagentTranscriptCard';
 import { ChildChatNavigation } from '../components/chat-dock/ChildChatNavigation';
 import {
@@ -148,4 +156,70 @@ test('Escape pops one level and changing the root cannot show the previous chat 
   expect(
     screen.queryByRole('navigation', { name: 'Chat breadcrumb' }),
   ).toBeNull();
+});
+
+test('the mounted child transcript fits desktop and phone panes in both themes', async () => {
+  const view = render(tree());
+  fireEvent.click(screen.getByRole('button', { name: /Review files/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  await screen.findByRole('heading', { name: 'Child answer' });
+  const graph = createUiModuleGraph();
+  const stylesheets = [
+    ...graph.closure(
+      [
+        'src-ui/src/components/chat/ChatMessageList.tsx',
+        'src-ui/src/components/chat-dock/ChildChatNavigation.tsx',
+        'src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx',
+      ],
+      { followDynamic: false },
+    ),
+  ].filter((path) => path.endsWith('.css'));
+  const styles = ['src-ui/src/index.css', ...stylesheets]
+    .map((path) => resolveCssImports(resolve(path)))
+    .join('\n');
+  assertNoImportsSurvive(styles);
+  const output = resolve('test-results/ux-lane-C-render');
+  mkdirSync(output, { recursive: true });
+  const browser = await chromium.launch();
+  try {
+    for (const width of [1440, 412, 390]) {
+      for (const theme of ['dark', 'light']) {
+        const page = await browser.newPage({
+          viewport: { width, height: 915 },
+        });
+        await page.setContent(
+          `<!doctype html><html data-theme="${theme}"><head><style>${styles}</style></head><body style="margin:0"><main style="height:100dvh;display:flex;flex-direction:column">${view.container.innerHTML}</main></body></html>`,
+        );
+        await page.evaluate(async () => {
+          await Promise.all(
+            document
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  animation.effect?.getComputedTiming().iterations !== Infinity,
+              )
+              .map((animation) => animation.finished),
+          );
+        });
+        const transcript = page.getByRole('log', {
+          name: 'Conversation transcript',
+        });
+        await expect(transcript.isVisible()).resolves.toBe(true);
+        const geometry = await page.evaluate(() => ({
+          width: document.documentElement.scrollWidth,
+          controls: [
+            ...document.querySelectorAll('.child-chat-trail button'),
+          ].map((button) => button.getBoundingClientRect().height),
+        }));
+        expect(geometry.width).toBeLessThanOrEqual(width);
+        expect(geometry.controls.every((height) => height >= 44)).toBe(true);
+        await page.screenshot({
+          path: `${output}/child-chat-${width}-${theme}.png`,
+        });
+        await page.close();
+      }
+    }
+  } finally {
+    await browser.close();
+  }
 });

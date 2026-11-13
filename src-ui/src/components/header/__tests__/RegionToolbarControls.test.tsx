@@ -328,16 +328,9 @@ describe('RegionToolbarControls', () => {
       modifiers: ['cmd'],
       description: 'Toggle Chat region',
     });
-    expect(harness.shortcuts.get('activity.toggle')).toMatchObject({
-      key: 'a',
-      modifiers: ['cmd', 'shift'],
-      description: 'Toggle Activity region',
-    });
+    expect(harness.shortcuts.has('activity.toggle')).toBe(false);
     harness.shortcuts.get('dock.toggle')?.handler();
     expectOnlyToggle('chat');
-
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 2);
 
     // The same Hide the retired per-region button carried, then the retired
     // "Hide Chat" menu row, then #1552 D2's `Hidden` segment: on a fine
@@ -356,7 +349,7 @@ describe('RegionToolbarControls', () => {
     });
     // And it is not ALSO issuing the toggle: the chords above are the only
     // callers that did, so the count is still theirs.
-    expect(harness.toggleSurface).toHaveBeenCalledTimes(2);
+    expect(harness.toggleSurface).toHaveBeenCalledTimes(1);
   });
 
   /**
@@ -381,8 +374,7 @@ describe('RegionToolbarControls', () => {
       expect(harness.placeSurface).not.toHaveBeenCalled();
       expect(harness.showSurface).not.toHaveBeenCalled();
 
-      harness.shortcuts.get('activity.toggle')?.handler();
-      expectOnlyToggle('activity');
+      expect(harness.shortcuts.has('activity.toggle')).toBe(false);
       expect(requests).toHaveBeenCalledOnce();
     } finally {
       unsubscribe();
@@ -399,53 +391,6 @@ describe('RegionToolbarControls', () => {
     expect(harness.toggleSurface).not.toHaveBeenCalled();
     expect(harness.setRegion).not.toHaveBeenCalled();
     expect(harness.showSurface).not.toHaveBeenCalled();
-  });
-
-  /**
-   * #1420, then #1523: the chord issues ONE model command and decides nothing
-   * itself — not where an unplaced surface lands (Chat in Activity's preferred
-   * region with a free region beside it was the fixture where the toolbar's
-   * own copy of the rules used to pick the free region), not whether a placed
-   * one is hidden or shown, and not what happens to a `main` occupant. Each
-   * of those is `toggleSurface` in region-model.ts, tested there; a change to
-   * the rules cannot leave the toolbar holding a stale copy.
-   */
-  test('the Activity chord issues the model toggle whether Activity is unplaced, docked or in main', () => {
-    Object.assign(harness.regions.bottom, {
-      visible: false,
-      panes: [],
-      occupant: null,
-    });
-    Object.assign(harness.regions.right, {
-      visible: true,
-      panes: ['chat'],
-      occupant: 'chat',
-    });
-    const { rerender } = render(<RegionToolbarControls />);
-
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity');
-
-    Object.assign(harness.regions.right, {
-      visible: true,
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    rerender(<RegionToolbarControls />);
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 2);
-
-    // ⌘⇧A with Activity occupying `main` (#1523): the same command. The
-    // model relocates it to its dock region; the toolbar must not turn this
-    // into a `showSurface` that reveals it where it already is.
-    Object.assign(harness.regions.right, { panes: [], occupant: null });
-    Object.assign(harness.regions.main, {
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    rerender(<RegionToolbarControls />);
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 3);
   });
 
   /**
@@ -1477,8 +1422,6 @@ describe('RegionToolbarControls', () => {
     // The chords only issue the command.
     harness.shortcuts.get('dock.toggle')?.handler();
     expectOnlyToggle('chat');
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 2);
   });
 
   test('a coarse device too wide to be mobile keeps the folded Regions menu in the toolbar', () => {

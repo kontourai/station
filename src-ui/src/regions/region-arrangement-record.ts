@@ -228,8 +228,10 @@ export function parseRegionArrangementRecord(
       isPlainRecord(entry) && typeof entry.id === 'string' ? [entry.id] : [],
     );
   };
-  const originalChat = REGION_IDS.find((id) =>
-    storedEntries(storedRegions[id]).includes('chat'),
+  const originalChat = REGION_IDS.find(
+    (id) =>
+      resolveRegionSurface('chat', registry)?.regions.includes(id) &&
+      storedEntries(storedRegions[id]).includes('chat'),
   );
   const seen = new Set<string>();
   const arrangement = {} as RegionArrangement;
@@ -263,14 +265,6 @@ export function parseRegionArrangementRecord(
         ),
       );
     }
-    if (
-      id !== 'main' &&
-      legacyPanes.some(
-        (pane) => pane === 'activity' || pane.startsWith('activity-review:'),
-      ) &&
-      state.panes.length === 0
-    )
-      state.visible = false;
     if (state.panes.some((pane) => seen.has(pane))) {
       // A duplicate — a SHELL surface only, since `seen` no longer records
       // an instance-keyed id (#2159 slice A) — is dropped from the later
@@ -291,6 +285,15 @@ export function parseRegionArrangementRecord(
         ),
       );
     }
+    // Retiring a duplicate Activity tab must not leave a visible blank dock.
+    if (
+      id !== 'main' &&
+      legacyPanes.some(
+        (pane) => pane === 'activity' || pane.startsWith('activity-review:'),
+      ) &&
+      state.panes.length === 0
+    )
+      state.visible = false;
     // Only a SHELL surface is recorded as seen, so only a shell surface is
     // de-duped across regions (#2159 slice A): an instance-keyed id is left
     // out of `seen` and therefore survives in every region that names it.
