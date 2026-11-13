@@ -1008,7 +1008,7 @@ function MessageBubbleComponent({
               {msg.changedFiles.reason === 'checkpoint_failed'
                 ? 'Station failed to capture a checkpoint for this turn.'
                 : msg.changedFiles.reason === 'checkpoint_refused'
-                  ? 'Station does not take checkpoints in this repository: its own git configuration defines a filter or diff program that Station will not run for you.'
+                  ? "No checkpoint: this repository's git config runs a custom filter or diff program, which Station won't execute."
                   : msg.changedFiles.reason === 'checkpoint_pruned'
                     ? 'This turn’s checkpoint expired and was pruned.'
                     : msg.changedFiles.reason === 'checkpoint_missing'
@@ -1016,8 +1016,8 @@ function MessageBubbleComponent({
                       : msg.changedFiles.reason === 'diff_output_limit_exceeded'
                         ? 'This turn changed too many files to summarize.'
                         : msg.changedFiles.reason === 'repository_changed'
-                          ? 'The turn crossed repository boundaries and cannot be compared.'
-                          : 'The turn’s checkpoint pair could not be compared.'}
+                          ? "This turn spanned more than one repository, so it can't be compared."
+                          : 'Couldn’t compare this turn’s checkpoints.'}
             </p>
           )}
           {msg.changedFiles.status === 'available' &&

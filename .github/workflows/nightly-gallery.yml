@@ -57,12 +57,12 @@ jobs:
     #
     # Pinned by digest, not by tag: `v1.64.1-noble` can be republished, and a
     # rebuilt base image is a different renderer wearing the same name.
-    # Bump this in lockstep with lock-resolved `@playwright/test` (1.64.1).
+    # Bump this in lockstep with lock-resolved `@playwright/test` (1.65.0).
     # Review renderer differences separately; baseline changes need their own
     # reviewed commit.
     runs-on: ubuntu-22.04
     container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe
       # --ipc=host is Playwright's documented remedy for Chromium crashing on
       # the 64MB /dev/shm a container job gets by default.
       #

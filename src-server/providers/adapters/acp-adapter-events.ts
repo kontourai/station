@@ -28,6 +28,10 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
 import { extensionNotificationBinding } from '../../../src-shared/extension-notification-bindings.js';
+import {
+  ACP_FETCH_TOOL_KIND,
+  markNativeWebRead,
+} from '../../services/plugins/native-web-read-marks.js';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderSession,
@@ -257,6 +261,9 @@ export function mapAcpSessionUpdate(
     }
 
     case 'tool_call': {
+      // #4828: a tool the agent labels as fetching external data marks the
+      // conversation, from its first report on (failing toward asking).
+      if (update.kind === ACP_FETCH_TOOL_KIND) markNativeWebRead([threadId]);
       ctx.toolUpdateSupervisor.acceptStarted({
         toolCallId: update.toolCallId,
         title: update.title,
@@ -274,6 +281,7 @@ export function mapAcpSessionUpdate(
     }
 
     case 'tool_call_update': {
+      if (update.kind === ACP_FETCH_TOOL_KIND) markNativeWebRead([threadId]);
       ctx.toolUpdateSupervisor.acceptUpdate({
         toolCallId: update.toolCallId,
         title: update.title,

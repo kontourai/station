@@ -153,7 +153,7 @@ function ExactRequestDecisionRow({
     if (result.requiresAnswers)
       note = <>Answer the agent's questions in the chat. {openLink}</>;
     else if (!result.canRespond)
-      note = <>This chat can't answer the request right now. {openLink}</>;
+      note = <>This chat can’t answer the request right now. {openLink}</>;
     else if (decision.capacityReached)
       note = (
         <>
@@ -163,7 +163,10 @@ function ExactRequestDecisionRow({
       );
     else if (decision.attempted)
       note = (
-        <>A decision was already sent. Confirm it in the chat. {openLink}</>
+        <>
+          A decision was already tried. Check its outcome in the chat.{' '}
+          {openLink}
+        </>
       );
   }
 

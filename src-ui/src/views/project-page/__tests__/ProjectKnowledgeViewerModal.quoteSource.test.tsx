@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * "Open source conversation" from a quote OUTSIDE Chat: a knowledge document
+ * "Open original chat" from a quote OUTSIDE Chat: a knowledge document
  * rendered through `LazyMarkdown` → `MarkdownRenderer` → `QuoteSourceLink`,
  * the inspected source's enabled Open action, and the real region model and
  * navigation store behind it. The open must SHOW the conversation (Chat's
@@ -162,7 +162,7 @@ async function inspectAndOpen() {
     await screen.findByRole('button', { name: 'the reviewed answer' }),
   );
   const open = await screen.findByRole('button', {
-    name: 'Open source conversation',
+    name: 'Open original chat',
   });
   await waitFor(() => expect(model).not.toBeNull());
   act(() => fireEvent.click(open));
@@ -247,7 +247,7 @@ afterEach(() => {
   window.history.replaceState({}, '', '/');
 });
 
-describe('Open source conversation from a knowledge document', () => {
+describe('Open original chat from a knowledge document', () => {
   test('with the dock closed, it shows the conversation, not only names it', async () => {
     mount();
     await waitFor(() => expect(model?.regions.bottom.visible).toBe(false));
@@ -372,7 +372,7 @@ describe('Open source conversation from a knowledge document', () => {
       answer = 'continue';
       act(() =>
         fireEvent.click(
-          screen.getByRole('button', { name: 'Open source conversation' }),
+          screen.getByRole('button', { name: 'Open original chat' }),
         ),
       );
       await waitFor(() => expect(model?.regions.bottom.occupant).toBe('chat'));
@@ -419,7 +419,7 @@ describe('Open source conversation from a knowledge document', () => {
     );
     expect(await screen.findByText(/Select the original Station/)).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Open source conversation' }),
+      screen.queryByRole('button', { name: 'Open original chat' }),
     ).toBeNull();
     cleanup();
 
@@ -428,7 +428,7 @@ describe('Open source conversation from a knowledge document', () => {
       await screen.findByRole('button', { name: 'the reviewed answer' }),
     );
     const open = await screen.findByRole('button', {
-      name: 'Open source conversation',
+      name: 'Open original chat',
     });
     scope.current = false;
     act(() => fireEvent.click(open));

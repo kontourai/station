@@ -156,7 +156,7 @@ describe('ShareTargetPickerModal', () => {
 
     renderPicker();
 
-    await screen.findByText('No conversations yet');
+    await screen.findByText('No chats yet');
   });
 
   test('filters conversations by the search field', async () => {
@@ -172,7 +172,7 @@ describe('ShareTargetPickerModal', () => {
     renderPicker();
 
     await screen.findByText('Alpha');
-    fireEvent.change(screen.getByLabelText('Search conversations'), {
+    fireEvent.change(screen.getByLabelText('Search chats'), {
       target: { value: 'bet' },
     });
 

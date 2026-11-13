@@ -2395,7 +2395,7 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(within(detail).queryByLabelText('Message')).toBeNull();
-    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
+    expect(within(detail).queryByLabelText('Answer this request')).toBeNull();
     expect(
       within(detail).getByText('Open the session to answer this request.'),
     ).toBeTruthy();
@@ -2539,7 +2539,7 @@ describe('SessionsView', () => {
 
     expect(screen.queryByLabelText('Message')).toBeNull();
     expect(screen.queryByLabelText('Message')).toBeNull();
-    expect(screen.queryByLabelText('Answer this session')).toBeNull();
+    expect(screen.queryByLabelText('Answer this request')).toBeNull();
   });
 
   // (archive#1170): a genuine fetch failure used to
@@ -2772,7 +2772,7 @@ describe('SessionsView', () => {
     expect(
       within(detail).getByRole('link', { name: 'Open session' }),
     ).toBeTruthy();
-    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
+    expect(within(detail).queryByLabelText('Answer this request')).toBeNull();
 
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
@@ -2979,9 +2979,7 @@ describe('SessionsView', () => {
     streamFlags = { connectionInterrupted: true };
     renderView('external:claude:terminal-1');
     expect(
-      screen.getByText(
-        "Station isn't responding right now — retrying automatically.",
-      ),
+      screen.getByText("Station isn't responding. Retrying automatically."),
     ).toBeTruthy();
   });
 
@@ -3178,11 +3176,7 @@ describe('SessionsView', () => {
       'Station says this continuation cannot be retried safely from this state.',
     );
     expect(continueButton.getAttribute('disabled')).not.toBeNull();
-    expect(
-      screen.queryByText(
-        'Retry safely — Station will not duplicate the continuation.',
-      ),
-    ).toBeNull();
+    expect(screen.queryByText("Retrying won't continue it twice.")).toBeNull();
     expect(
       screen.queryByText(/Browser storage is unavailable or corrupt/),
     ).toBeNull();

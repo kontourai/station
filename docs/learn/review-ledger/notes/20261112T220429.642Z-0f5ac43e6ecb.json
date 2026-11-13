@@ -1,0 +1,11 @@
+{
+  "revision": "f1b232199d23221228ed627f3bde6d726538cd23",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"Reviewed mergef1b2321 composition with maind3d2753: inherited Conduit0.8 in-process factory narrows lifecycle decisions/modelContext and uses inert install probing, without adding installIO or a second hook authority. Owning generator/check passed; schema3 JSON exactly equals main except Strands hostVersion1.23->1.24. Existing probe classifications/limitations and inert-install evidence match main. Conduit adapter suite passed in the combined graph; no provider, device or full framework lifecycle claim. No prose change needed.","inputs":["docs/design/conduit-runtime-integration.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed combined runtime rules atf1b2321: preserve both reviewed semantic-conventions Node-only exports rule and main exact flow-agents harness-pack exclusion, canonical skills/licenses/native assets and536870912-byte/30000-file ceilings. Source diff and installed-node export controls retain all unknown/newNode conditions. Focused combined run72PASS/1FAIL: pruning controls and concurrent self-contained packaged starts passed; first self-contained test exceeded unchanged150000ms deadline with phase/causeUNKNOWN. No full portability or platformPASS claimed; no timeout/workload/budget reduction or rerun-to-green. No further prose change needed.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed mergef1b2321 manifest/lock union: retain all bot updates plus main Conduit0.8/Survey9/Thread0.7/Ferry0.8/Relay0.8/CorpusStore next.5. Main exact Survey9 optional-peer compatibility rule retained unchanged; no new exception, expiry or third-party1440-minute release-age change. Canonical lock policy1786entriesPASS, complete managedCI realPTY97ms and verify realPTY81ms PASS. AI6.0.330/Core2.11 unchanged and all8Volt format/strategy cases passed with original guards/assertions/deadlines. Independent desktop150s timeout remainsFAIL; no Windows/native/private/provider release acceptance inferred. No prose change needed.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

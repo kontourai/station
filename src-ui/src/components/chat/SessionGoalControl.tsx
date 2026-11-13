@@ -67,7 +67,7 @@ function GoalSurface({
     <section className="chat-settings-modal__section" aria-label="Session goal">
       <h4>Session goal</h4>
       {query.isFetching || query.isPending ? (
-        <SkeletonBlock count={1} label="Reading Goal" />
+        <SkeletonBlock count={1} label="Loading goal" />
       ) : query.error ? (
         <ErrorState
           variant="compact"

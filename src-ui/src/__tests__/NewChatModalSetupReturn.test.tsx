@@ -381,7 +381,7 @@ describe('New Chat repair and return', () => {
     expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
     expect(view.onSelect).not.toHaveBeenCalled();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).toHaveBeenCalledWith(
@@ -524,7 +524,7 @@ describe('New Chat repair and return', () => {
     expect(
       screen.getByRole('button', { name: 'Project: Select project' }),
     ).toBeTruthy();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).not.toHaveBeenCalled();
@@ -561,7 +561,7 @@ describe('New Chat retained context safeguards', () => {
     models = [{ id: 'default', name: 'Default' }];
     view.update({ agents: [READY] });
     await returnToChat();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).not.toHaveBeenCalled();
@@ -591,7 +591,7 @@ describe('New Chat retained context safeguards', () => {
       draftContext: { ...draftContext, items: [...draftContext.items] },
     });
     await returnToChat();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).toHaveBeenCalledTimes(1);
@@ -787,7 +787,7 @@ test('opening setup commits the destination before retiring dialog history and k
   const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
   try {
     const view = harness({ agents: [READY] });
-    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.change(screen.getByPlaceholderText('Search agents…'), {
       target: { value: '' },
     });
     view.update({ agents: [NEEDS_SETUP] });
@@ -795,7 +795,7 @@ test('opening setup commits the destination before retiring dialog history and k
     expect(back).not.toHaveBeenCalled();
     view.update({ agents: [READY] });
     await returnToChat();
-    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents…'), {
       key: 'Enter',
     });
     expect(view.onSelect).toHaveBeenCalledOnce();

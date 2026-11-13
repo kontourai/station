@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). event-store.ts changes are confined to the windowed usage-rollup receipt query (optional connection columns/filter) and do not touch what this document describes. Checked the CanonicalUsageExport section (EventStore reuses the canonical receipt SELECT for export pages; connection columns are joined only by the windowed rollup, so export is unchanged) and EventStore/OrchestrationService composition sections.","inputs":["docs/architecture/module-map.md","src-server/analytics/usage-export-reader.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

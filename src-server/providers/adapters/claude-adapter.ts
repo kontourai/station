@@ -133,6 +133,15 @@ import {
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
+  CLAUDE_NATIVE_WEB_READ_TOOLS,
+  markNativeWebRead,
+} from '../../services/plugins/native-web-read-marks.js';
+import {
+  DELEGATED_RESULT_TOOLS,
+  sharedUntrustedContentLedger,
+  type UntrustedContentLedger,
+} from '../../services/plugins/untrusted-content-policy.js';
+import {
   agentCapabilityUndelivered,
   agentSystemPromptSessions,
   appHomeSessions,
@@ -1183,6 +1192,8 @@ export interface ClaudeAdapterOptions {
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
   /** Testable bound for the in-process PreToolUse callback. */
   preToolPolicyTimeoutMs?: number;
+  /** #4828: where native web reads are marked; the shared ledger by default. */
+  untrustedContentLedger?: UntrustedContentLedger;
   /**
    * The two filesystem leaves `stopSession` calls to clean up this session's
    * materialized skills, injected so a test can observe WHETHER they ran.
@@ -1441,6 +1452,9 @@ function serverDelegation(
  * the oldest; one dropped early costs a prompt, never a grant.
  */
 const MAX_PENDING_POLICY_ALLOWS = 256;
+
+/** #4828: station-control tools as the engine names them. */
+const STATION_CONTROL_TOOL_PREFIX = 'mcp__station-control__';
 
 /** JSON with object keys sorted at every depth, so key order is no difference. */
 function stableJson(value: unknown): unknown {
@@ -4974,14 +4988,48 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
-      ...(input.agent &&
-      (preToolPolicy ||
-        input.agent.toolServers?.some(
-          (server) =>
-            server.allowedTools !== undefined || server.disabledTools?.length,
-        ))
-        ? {
-            hooks: {
+      hooks: {
+        // #4828: a completed WebFetch or WebSearch (in a subagent too) marks
+        // this conversation as having read content written by others, before
+        // the engine's next PreToolUse. The SDK awaits a synchronous hook's
+        // result before it continues, and the mark is recorded inside it.
+        PostToolUse: [
+          {
+            hooks: [
+              async (hookInput) => {
+                if (hookInput.hook_event_name !== 'PostToolUse')
+                  return { continue: true };
+                const ledger =
+                  this.options.untrustedContentLedger ??
+                  sharedUntrustedContentLedger;
+                if (CLAUDE_NATIVE_WEB_READ_TOOLS.has(hookInput.tool_name))
+                  markNativeWebRead([input.threadId], {
+                    ledger,
+                    delegation: serverDelegation(input.metadata),
+                  });
+                // A delegated child's result: when that child read
+                // untrusted content, this conversation has read it too.
+                const delegatedTool = hookInput.tool_name.startsWith(
+                  STATION_CONTROL_TOOL_PREFIX,
+                )
+                  ? hookInput.tool_name.slice(
+                      STATION_CONTROL_TOOL_PREFIX.length,
+                    )
+                  : undefined;
+                if (delegatedTool && DELEGATED_RESULT_TOOLS.has(delegatedTool))
+                  ledger.carryDescendantRead(input.threadId);
+                return { continue: true };
+              },
+            ],
+          },
+        ],
+        ...(input.agent &&
+        (preToolPolicy ||
+          input.agent.toolServers?.some(
+            (server) =>
+              server.allowedTools !== undefined || server.disabledTools?.length,
+          ))
+          ? {
               PreToolUse: [
                 {
                   timeout: sdkPreToolMatcherTimeoutSeconds(
@@ -5043,9 +5091,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                   ],
                 },
               ],
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       // NO `settingSources` — deliberately, and tested (#1545). Left unset, the
       // SDK loads the CLI's whole cascade: `~/.claude/settings.json`, then the
       // workspace's checked-in `.claude/settings.json`, then

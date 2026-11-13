@@ -16,7 +16,7 @@ A replay is a normal dock chat under a **synthetic store key**. Recorded
 canonical events are rewritten onto that id and folded through
 `handleOrchestrationEvent`. The live `ChatDockBody` / `ChatMessageList` /
 streaming row path is unchanged. Developer tools gates the **entry point**
-only (`ChatSettingsPanel` → “Step through this conversation”).
+only (`ChatSettingsPanel` → “Step through this chat”).
 
 ## Isolation
 

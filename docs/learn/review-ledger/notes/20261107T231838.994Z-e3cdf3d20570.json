@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). Checked the session-command table row and the dated baseline line counts (orchestration-service.ts 9,780 at the recorded baseline); historical, unaffected.","inputs":["docs/architecture/abstraction-review.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

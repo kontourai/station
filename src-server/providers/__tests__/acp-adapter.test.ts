@@ -7522,3 +7522,97 @@ describe('chat-host-images: which ACP engine exit ends its launch', () => {
     ).toBe(false);
   });
 });
+
+describe('after an untrusted read, ACP changes to instructions are declined (#4828)', () => {
+  /** An edit whose name the agent left out: the SDK makes `name` optional. */
+  const unnamedEdit = (toolCallId: string, kind: string) =>
+    ({
+      sessionId: 'ignored-by-adapter',
+      toolCall: {
+        toolCallId,
+        title: 'Edit file',
+        kind,
+        locations: [{ path: '/tmp/project/CLAUDE.md' }],
+        rawInput: {},
+      },
+      options: PERMISSION_OPTIONS,
+    }) as unknown as RequestPermissionRequest;
+
+  test('an unnamed edit of CLAUDE.md is declined after a mark and asks before one', async () => {
+    const { sharedUntrustedContentLedger } = await import(
+      '../../services/plugins/untrusted-content-policy.js'
+    );
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-persistence',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0]!;
+    await adapter.sendTurn({
+      threadId: 'thread-acp-persistence',
+      input: 'Edit it',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    // Before any untrusted read the request goes to a person as usual.
+    void proc.client.requestPermission(unnamedEdit('tool-before', 'edit'));
+    expect(await nextEvent(iterator, 'request.opened')).toMatchObject({
+      method: 'request.opened',
+    });
+
+    sharedUntrustedContentLedger.markConversation(
+      'thread-acp-persistence',
+      Promise.resolve(true),
+    );
+    // Declined at once; a request sent to a person would still be open.
+    for (const kind of ['edit', 'move', 'delete'])
+      expect(
+        await Promise.race([
+          proc.client.requestPermission(unnamedEdit(`tool-${kind}`, kind)),
+          new Promise((resolve) => setTimeout(() => resolve('PENDING'), 1_000)),
+        ]),
+      ).toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    // Verification probes: an input-only path behind a view command, a
+    // decoy location beside a protected move destination, a hooks delete.
+    for (const toolCall of [
+      {
+        toolCallId: 'verify-input-view',
+        kind: 'edit',
+        locations: [],
+        rawInput: { path: '/tmp/project/AGENTS.md', command: 'view' },
+      },
+      {
+        toolCallId: 'verify-input-move',
+        kind: 'move',
+        locations: [{ path: '/tmp/project/notes.md' }],
+        rawInput: {
+          src: '/tmp/project/payload.md',
+          dest: '/tmp/project/.claude/settings.json',
+        },
+      },
+      {
+        toolCallId: 'verify-delete-hooks',
+        kind: 'delete',
+        locations: [{ path: '/tmp/project/.githooks/pre-commit' }],
+        rawInput: {},
+      },
+    ])
+      expect(
+        await Promise.race([
+          proc.client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall,
+            options: PERMISSION_OPTIONS,
+          } as unknown as RequestPermissionRequest),
+          new Promise((resolve) => setTimeout(() => resolve('PENDING'), 1_000)),
+        ]),
+      ).toEqual({ outcome: { outcome: 'selected', optionId: 'reject-once' } });
+  });
+});

@@ -923,7 +923,7 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(Boolean(row!.querySelector('.message.agent-incoming'))).toBe(true);
     expect(within(row!).queryByText('You')).toBeNull();
     expect(row!.getAttribute('aria-label')).toBe(
-      'Non-person input: sender not recorded',
+      'Automated message: sender unknown',
     );
   });
 });

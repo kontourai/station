@@ -1409,6 +1409,15 @@ export interface StationCapabilityFlags {
    */
   troubleshootPrepare?: boolean;
   /**
+   * #4710: `GET /api/analytics/usage-rollup` honours local `connectionId`
+   * and `modelConnectionId` filters and groupings, and accepts every provider
+   * kind with declared usage semantics as `provider`. An older host silently
+   * ignores the connection filters (answering unfiltered totals) and refuses
+   * engines other than `claude` and `codex`, so a client sends those filters
+   * only on this flag.
+   */
+  usageConnectionFilters?: boolean;
+  /**
    * A `/chat` send with files to a busy conversation (`whenBusy: 'queue'`)
    * is held in its inbox with them: the bytes wait in the attachment blob
    * store and are sent when the entry is placed. Inbox entries list the

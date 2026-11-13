@@ -615,7 +615,7 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
 
   // Search, in the Agent chip's list.
   let agents = await openAgentList(page);
-  const search = agents.getByPlaceholder('Search agents...');
+  const search = agents.getByPlaceholder('Search agents…');
   await search.fill('Station');
   await expect(agents.locator('.new-chat-modal__agent')).toHaveCount(1);
   await expect(agents.getByText('Managed Runtime')).toHaveCount(0);
@@ -634,7 +634,7 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
   const rows = agents.locator('.new-chat-modal__agent');
   expect(await rows.count()).toBeGreaterThanOrEqual(2);
   await expect(rows.nth(0)).toHaveClass(/new-chat-modal__agent--selected/);
-  const listSearch = agents.getByPlaceholder('Search agents...');
+  const listSearch = agents.getByPlaceholder('Search agents…');
   await listSearch.press('ArrowDown');
   await expect(rows.nth(1)).toHaveClass(/new-chat-modal__agent--selected/);
   await expect(rows.nth(0)).not.toHaveClass(/new-chat-modal__agent--selected/);
@@ -723,7 +723,7 @@ test('new chat selected and hovered rows meet contrast in light and dark themes'
     const hovered = list.locator('.new-chat-modal__agent', {
       hasText: 'Codex',
     });
-    const search = list.getByPlaceholder('Search agents...');
+    const search = list.getByPlaceholder('Search agents…');
 
     // Select Station through the component's keyboard behavior, then move the
     // pointer away so this samples the selected rule without :hover.
@@ -905,7 +905,7 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   const firstAgent = agents.locator('.new-chat-modal__agent').first();
   const firstBox = await firstAgent.boundingBox();
   expect(firstBox!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-  await expect(agents.getByPlaceholder('Search agents...')).not.toBeFocused();
+  await expect(agents.getByPlaceholder('Search agents…')).not.toBeFocused();
   const before = await list.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -1010,7 +1010,7 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
   await openNewChatForViewport(page);
   await selectNoWorkspace(page);
   const agents = await openAgentList(page);
-  await agents.getByPlaceholder('Search agents...').fill('OpenCode');
+  await agents.getByPlaceholder('Search agents…').fill('OpenCode');
   await expect(agents).not.toContainText('Live catalog');
   await expect(agents).not.toContainText('unknown');
   // OpenCode chooses its model for a new chat, not inside an existing
@@ -1133,7 +1133,7 @@ test('new chat keeps engine diagnostics out of the mobile Agent chooser', async 
   await openNewChatForViewport(page);
   await selectNoWorkspace(page);
   const agents = await openAgentList(page);
-  await agents.getByPlaceholder('Search agents...').fill('Codex');
+  await agents.getByPlaceholder('Search agents…').fill('Codex');
 
   const runtime = agents.locator('.new-chat-modal__agent', {
     hasText: 'Codex',

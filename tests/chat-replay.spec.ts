@@ -107,9 +107,7 @@ test('replay correlates each event with the real mobile transcript and a screens
   await page
     .getByRole('menuitem', { name: 'Chat settings', exact: true })
     .click();
-  await page
-    .getByRole('button', { name: 'Step through this conversation' })
-    .click();
+  await page.getByRole('button', { name: 'Step through this chat' }).click();
   await expect(page.getByTestId('replay-transport')).toBeVisible();
   await expect(page.getByTestId('replay-transport')).toContainText('0 / 5');
   for (let index = 0; index < events.length; index += 1) {

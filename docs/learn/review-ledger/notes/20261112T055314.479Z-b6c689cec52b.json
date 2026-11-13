@@ -1,0 +1,7 @@
+{
+  "revision": "da8019dd8c576a6f7263e5ed605b1384ff1737d1",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the exact lock delta against a8813c1: Hono node-server 2.1.6->2.1.7, glob 14.0.3->14.0.4, minimatch 11.0.3->11.0.6 and nonrecursive-glob-match 1.0.3->1.1.0; every other package entry compares equal, with only the existing MCP SDK snapshot redirecting its Hono dependency. Reviewed the document purpose and changed-library references. Upstream Hono changes only serve-static second-decode rejection; Station source has no direct serveStatic import. Glob changes its matcher dependency and a JSDoc typo; Node 24 meets the new matcher floor. The 1440-minute release age, exact hook allowlist and installer guard lifecycle remain unchanged. Fresh baseline managed installation passed; candidate dependency verification correctly refuses the older installed Hono/glob. No partial-tree success or marker-only qualification is asserted. Limits: Hono 2.1.7 and glob 14.0.4 target runtime compatibility and full candidate setup remain NOT_VERIFIED until the unchanged release-age rule admits canonical installation; historical provider, native, deployment and completion evidence remains separate.","inputs":["docs/design/pnpm-workspace-installation.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

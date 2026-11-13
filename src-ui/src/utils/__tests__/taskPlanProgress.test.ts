@@ -1,6 +1,6 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
-import { HOME_LIFECYCLE_LABELS } from '../lifecycle-priority';
+import type { WorkLane } from '../../views/home/work-status';
 import {
   projectTaskPlanProgress,
   sessionPlanProgressRead,
@@ -190,24 +190,28 @@ describe('projectTaskPlanProgress', () => {
 });
 
 describe('sessionPlanProgressRead', () => {
-  test('reads every Session row but a Draft, refreshing those that are running or need someone', () => {
+  test('reads every lane the ladder files a Session in but Drafts, refreshing running and needs-you rows', () => {
+    const lanes: Record<WorkLane, true> = {
+      needsYou: true,
+      running: true,
+      idle: true,
+      finished: true,
+      drafts: true,
+      external: true,
+    };
     const reads = Object.fromEntries(
-      HOME_LIFECYCLE_LABELS.map((label) => [
-        label,
-        sessionPlanProgressRead(label),
+      (Object.keys(lanes) as WorkLane[]).map((lane) => [
+        lane,
+        sessionPlanProgressRead({ lane }),
       ]),
     );
     expect(reads).toEqual({
-      'Needs attention': 'live',
-      Failed: 'settled',
-      Stopped: 'settled',
-      Running: 'live',
-      Current: 'settled',
-      Ready: 'settled',
-      Recent: 'settled',
-      Draft: 'skip',
-      Unanswerable: 'settled',
-      Completed: 'settled',
+      needsYou: 'live',
+      running: 'live',
+      idle: 'settled',
+      finished: 'settled',
+      drafts: 'skip',
+      external: 'settled',
     });
   });
 });

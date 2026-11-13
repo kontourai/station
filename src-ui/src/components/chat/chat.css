@@ -12,20 +12,12 @@
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 8px;
-  transition:
-    transform var(--motion-base) var(--ease-standard),
-    box-shadow var(--motion-base) var(--ease-standard);
+  transition: background-color var(--motion-base) var(--ease-standard);
   position: relative;
 }
 
 .app-toolbar__brand:hover {
-  background: linear-gradient(
-    135deg,
-    var(--bg-hover) 0%,
-    var(--bg-tertiary) 100%
-  );
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-bg));
 }
 
 .app-toolbar__logo {
@@ -513,62 +505,6 @@
   margin-top: 4px;
   flex-shrink: 0;
   position: relative;
-}
-
-.message-row__avatar::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 50%;
-  background: linear-gradient(
-    135deg,
-    var(--accent-primary),
-    var(--accent-secondary, var(--accent-primary))
-  );
-  opacity: 0;
-  transition: opacity var(--motion-slow) var(--ease-standard);
-  z-index: -1;
-}
-
-.message-row:hover .message-row__avatar::after {
-  opacity: 0.2;
-}
-
-.message--from-prompt {
-  background: linear-gradient(
-    135deg,
-    var(--bg-tertiary) 0%,
-    var(--bg-secondary) 100%
-  );
-  border-left: 3px solid var(--accent-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  position: relative;
-  overflow: hidden;
-}
-
-.message--from-prompt::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: linear-gradient(
-    180deg,
-    var(--accent-primary),
-    var(--accent-secondary, var(--accent-primary))
-  );
-  animation: prompt-glow var(--motion-status-breathe) var(--ease-standard)
-    infinite alternate;
-}
-
-@keyframes prompt-glow {
-  from {
-    opacity: 0.6;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 .message__trace {

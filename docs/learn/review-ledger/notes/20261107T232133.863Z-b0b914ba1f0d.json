@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). event-store.ts changes are confined to the windowed usage-rollup receipt query (optional connection columns/filter) and do not touch what this document describes. Checked the telemetry paragraph stating usage accounting uses canonical usage receipts (line 67); still true, connection attribution is additive.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

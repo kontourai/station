@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"environment-security.ts gained only the optional boolean `usageConnectionFilters` on StationCapabilityFlags (additive). Checked D1/D2 claims that the host advertises protocolVersion/minClientProtocol from environment-security.ts and the rollout/minClientProtocol rules; the new capability flag does not change protocol versions.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/contracts/src/environment-security.ts"]}
+  ]
+}

@@ -4,6 +4,10 @@ import type {
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import {
+  isCodexWebSearchCompletion,
+  markNativeWebRead,
+} from '../../services/plugins/native-web-read-marks.js';
 import { adapterTurnDuration, providerOps } from '../../telemetry/metrics.js';
 import { providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
@@ -323,6 +327,10 @@ export function handleCodexNotification(
       return;
     }
     case 'item/completed': {
+      // #4828: a web search or page open marks the conversation as having
+      // read content written by others.
+      if (isCodexWebSearchCompletion(notification))
+        markNativeWebRead([record.externalThreadId]);
       return handleCodexItemCompleted(
         record,
         notification.params,
