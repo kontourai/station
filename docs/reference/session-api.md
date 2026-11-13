@@ -720,7 +720,7 @@ retry returns its retained entry even after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
 
-- **Steer:** text and head are durable before handoff. Native Claude/Codex
+- **Steer:** text and head are durable before handoff. Native Claude/Codex/Muse
   placement is engine-defined and disclosed. Where Station owns the loop,
   input waits for its next observed post-tool boundary; otherwise it waits
   for the next turn boundary. The current VoltAgent loop observes the boundary

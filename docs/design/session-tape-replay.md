@@ -156,7 +156,7 @@ the adapter mechanisms below do not by themselves establish the dock capability:
 
 Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
 `capabilities` string. The dock currently enables native steering for Claude
-Code and Codex, and holds Station-owned steering for an observed post-tool
+Code, Codex and Muse, and holds Station-owned steering for an observed post-tool
 boundary, otherwise a terminal. ACP uses a safe-waiting fallback because its
 capability matrix also admits interruptive cancel-and-reprompt. A steer fold appends a user row and
 **does not** reset `streamingMessage`. The event-log projection

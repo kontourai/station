@@ -211,7 +211,8 @@ and extra-usage shapes are live-observed as well as fixture-validated. Other pla
 older activity remains visible. **Activity for** switches
 between the selected credential profile and all accounts of this engine. New
 Claude and Codex sessions record an opaque account key from the profile actually
-resolved for the process. Raw profile references are not published in runtime
+resolved for the process; Muse sessions record none yet, so their receipts stay
+unattributed. Raw profile references are not published in runtime
 events. Source-home continuations and older events without this observation
 remain unattributed. A process restart does not inherit a previous process's
 account observation. Account filtering excludes unattributed receipts; it never
@@ -1474,8 +1475,9 @@ server's environment, the connection `env`, the profile overlay, the profile's
 own config-home key, then Station's engine temp directory
 ([resolver](../../src-server/providers/app-home/credential-profile-env.ts)). The profile is the
 one an Agent pins, the one credential recovery is trying, or else the
-connection's active profile. The overlay reaches Claude Code and Codex session
-starts and Codex quota reads for that profile. It is not applied to model
+connection's active profile. The overlay reaches Claude Code, Codex and Muse
+session starts and Codex quota reads for that profile. Muse has no connection
+`env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
 discovery, adopted sessions and source-home resumes, login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the
