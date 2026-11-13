@@ -6,11 +6,18 @@
  * reported "missing" with "ensure `station-managed:kiro-kas` is on PATH", and
  * its sign-in row was never evaluated.
  */
-import { rmSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { managedRuntimeCommand } from '@kontourai/station-contracts/managed-engine-install';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { requiredMissingPrerequisites } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { resetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
@@ -225,6 +232,8 @@ test('a readiness read that throws costs only that engine’s row: it reads coul
     }),
   );
   expect(outcome.kind).toBe('inspected');
+  // The unverified row makes the whole inventory partial.
+  expect(outcome).toMatchObject({ partial: true });
   const rows = outcome.connections.filter((row) => row.type === 'acp');
   expect(rows.map((row) => row.name).sort()).toEqual([
     'Custom engine',
@@ -232,6 +241,10 @@ test('a readiness read that throws costs only that engine’s row: it reads coul
   ]);
   const bundle = rows.find((row) => row.name === 'Kiro (KAS, no CLI)');
   expect(bundle?.status).toBe('missing_prerequisites');
+  expect(bundle?.config.inspectionPartial).toBe(true);
+  expect(
+    rows.find((row) => row.name === 'Custom engine')?.config.inspectionPartial,
+  ).toBeUndefined();
   expect(bundle?.prerequisites).toContainEqual(
     expect.objectContaining({ id: 'kiro-kas-bundle-inspection' }),
   );
@@ -252,15 +265,44 @@ test('a readiness read that never settles does not hold the inventory past an ab
   expect(Date.now() - started).toBeLessThan(5_000);
 });
 
-test('the readiness read passes its abort to the runtime probe', async () => {
+test('aborting the readiness read kills the runtime probe it started', async () => {
   signedOutVault();
-  installedBundle();
+  const dir = makeTempDir('managed-readiness-runtime-');
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const pidFile = join(dir, 'pid');
+  const runtime = join(dir, 'slow-runtime');
+  // A runtime whose `--version` never finishes on its own.
+  writeFileSync(runtime, `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`);
+  chmodSync(runtime, 0o755);
+  registerManagedRuntimeInstalls({
+    installed: (installId) =>
+      installId === 'kiro-kas'
+        ? { runtime, script: '/unused/acp-server.js' }
+        : undefined,
+  });
   const controller = new AbortController();
+  const read = adapterFor(BUNDLE).getPrerequisites({
+    connectionId: BUNDLE.id,
+    signal: controller.signal,
+  });
+  read.catch(() => {});
+  await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true), {
+    timeout: 10_000,
+  });
+  const pid = Number(readFileSync(pidFile, 'utf8').trim());
+  const alive = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  cleanups.push(() => {
+    if (alive()) process.kill(pid, 'SIGKILL');
+  });
+  expect(alive()).toBe(true);
   controller.abort(new Error('caller cancelled'));
-  await expect(
-    adapterFor(BUNDLE).getPrerequisites({
-      connectionId: BUNDLE.id,
-      signal: controller.signal,
-    }),
-  ).rejects.toThrow();
+  await expect(read).rejects.toThrow();
+  await vi.waitFor(() => expect(alive()).toBe(false), { timeout: 3_000 });
 });

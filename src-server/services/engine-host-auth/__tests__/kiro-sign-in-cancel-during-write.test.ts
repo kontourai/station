@@ -92,7 +92,6 @@ describe('a connection removed while its credential is being written', () => {
     });
     await signIn.start(SCOPE, { identity: 'builder-id' });
     await writing;
-    const attempt = signIn.attempt(SCOPE);
     signIn.forget(SCOPE.connectionId);
     release();
     // The credential did land; it must then be taken back out.
@@ -100,8 +99,57 @@ describe('a connection removed while its credential is being written', () => {
     await vi.waitFor(() =>
       expect(vault.read(KIRO_CREDENTIAL_KIND, SCOPE)).toBeUndefined(),
     );
-    expect(attempt?.phase).not.toBe('completed');
+    // forget() drops the record, so there is none to re-read: reaching
+    // `completed` is the same synchronous step as calling onSignedIn.
     expect(signIn.attempt(SCOPE)).toBeUndefined();
+    expect(onSignedIn).not.toHaveBeenCalled();
+  });
+
+  test('a newer credential written between the check and the removal is kept', async () => {
+    const oidc = await startOidcStub();
+    cleanups.push(() => oidc.close());
+    oidc.deviceAnswers.push({ accessToken: 'stale-access', refreshToken: 'r' });
+    const { vault, writing, release, written } = gatedVault();
+    // Another sign-in lands just before any removal this attempt makes.
+    const newer = {
+      identity: { kind: 'builder-id' as const, region: 'us-east-1' },
+      accessToken: 'newer-access',
+      refreshToken: 'newer-refresh',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      signedInAt: new Date().toISOString(),
+    };
+    const realWrite = EngineHostAuthVault.prototype.write.bind(vault);
+    const landNewer = () => realWrite(KIRO_CREDENTIAL_KIND, SCOPE, newer);
+    let removalReturned!: () => void;
+    const removal = new Promise<void>((resolve) => {
+      removalReturned = resolve;
+    });
+    const compareAndRemove = vault.compareAndRemove.bind(vault);
+    vault.compareAndRemove = async (...args) => {
+      await landNewer();
+      const removed = await compareAndRemove(...args);
+      removalReturned();
+      return removed;
+    };
+    const remove = vault.remove.bind(vault);
+    vault.remove = async (...args) => {
+      await landNewer();
+      await remove(...args);
+      removalReturned();
+    };
+    const { signIn, onSignedIn } = await signInWith({
+      vault,
+      endpoints: oidc.endpoints,
+    });
+    await signIn.start(SCOPE, { identity: 'builder-id' });
+    await writing;
+    signIn.forget(SCOPE.connectionId);
+    release();
+    await written;
+    await removal;
+    expect(
+      vault.read(KIRO_CREDENTIAL_KIND, SCOPE)?.credential.accessToken,
+    ).toBe('newer-access');
     expect(onSignedIn).not.toHaveBeenCalled();
   });
 

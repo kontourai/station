@@ -493,7 +493,7 @@ describe('Kiro social sign-in against a stub portal and service', () => {
     expect(await accepting(port!)).toBe(false);
   });
 
-  test('an IPv4 socket error while the ::1 bind is still pending ends the attempt, not the process', async () => {
+  test('an IPv4 socket error while the ::1 bind is still pending fails the open, closes every socket, and does not crash', async () => {
     const [port] = await freePorts(1);
     const servers: Server[] = [];
     let releaseV6!: () => void;
@@ -529,12 +529,8 @@ describe('Kiro social sign-in against a stub portal and service', () => {
       Object.assign(new Error('EMFILE'), { code: 'EMFILE' }),
     );
     releaseV6();
-    const listener = await opening;
-    cleanups.push(() => listener.cancel());
-    await expect(listener.result).rejects.toMatchObject({
-      code: 'listener-error',
-    });
-    await listener.closed;
+    // No listener is handed back, so no portal link is ever shown.
+    await expect(opening).rejects.toMatchObject({ code: 'listener-error' });
     expect(await accepting(port!)).toBe(false);
     expect(await accepting(port!, '::1')).toBe(false);
   });

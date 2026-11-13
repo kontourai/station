@@ -232,6 +232,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
               stationOwnsEngineSignIn(config),
           )
         : [];
+    const gatePartial = new Set<string>();
     const gateRows = new Map<string, Prerequisite[]>(
       await mapWithConcurrency(
         gated,
@@ -239,7 +240,9 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         async (config) =>
           [
             config.id,
-            await this.signInGateRows(acpAdapter!, config, request.signal),
+            await this.signInGateRows(acpAdapter!, config, request.signal, () =>
+              gatePartial.add(config.id),
+            ),
           ] as const,
         request.signal,
       ),
@@ -310,6 +313,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           ...(typeof config.icon === 'string' && config.icon
             ? { icon: config.icon }
             : {}),
+          ...(gatePartial.has(config.id) ? { inspectionPartial: true } : {}),
           // `readinessReason` mirrors what `inspectAdapter` projects for
           // runtime adapters: WHY this connection is not ready, from the
           // engine's own observation. For ACP that is the probe's actual
@@ -540,6 +544,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     acpAdapter: ProviderAdapterShape,
     config: ACPConnectionConfig,
     signal: AbortSignal | undefined,
+    partial: () => void,
   ): Promise<Prerequisite[]> {
     try {
       const rows = await raceWithSignal(
@@ -554,6 +559,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       );
     } catch {
       throwIfAborted(signal);
+      partial();
       return [
         {
           id: `${config.id}-inspection`,

@@ -265,12 +265,16 @@ export async function openSocialCallbackListener(input: {
       | { error: KiroSocialCallbackError },
   ) => void;
   let settled = false;
+  let failure: KiroSocialCallbackError | undefined;
   const result = new Promise<KiroSocialCallback>((resolve, reject) => {
     settle = (outcome) => {
       if (settled) return;
       settled = true;
       if ('callback' in outcome) resolve(outcome.callback);
-      else reject(outcome.error);
+      else {
+        failure = outcome.error;
+        reject(outcome.error);
+      }
     };
   });
   // A caller that only awaits `closed` must not see an unhandled rejection.
@@ -342,7 +346,15 @@ export async function openSocialCallbackListener(input: {
   const closed = new Promise<void>((resolve) => {
     markClosed = resolve;
   });
+  // While ports are still being bound the servers to close are not known
+  // yet: a close then is only recorded, and done once binding ends.
+  let binding = true;
+  let closeRequested = false;
   function close(): Promise<void> {
+    if (binding) {
+      closeRequested = true;
+      return closed;
+    }
     if (timer) clearTimeout(timer);
     closing ??= Promise.all(servers.map(closeServer)).then(markClosed);
     return closing;
@@ -350,6 +362,7 @@ export async function openSocialCallbackListener(input: {
 
   let port: number | undefined;
   for (const candidate of input.ports) {
+    if (failure) break;
     const bound: Server[] = [];
     let free = true;
     for (const host of LOOPBACK_HOSTS) {
@@ -366,9 +379,7 @@ export async function openSocialCallbackListener(input: {
             'Station stopped being able to listen for the sign-in on this computer.',
           );
           void closeServer(server);
-          // Mid-binding, `close` would settle before the servers it must
-          // close are known; the outcome above closes them once they are.
-          if (servers.includes(server)) void close();
+          void close();
         });
         bound.push(server);
       } else if (outcome === 'busy' || host === '127.0.0.1') {
@@ -376,13 +387,21 @@ export async function openSocialCallbackListener(input: {
         break;
       }
     }
-    if (free) {
+    if (free && !failure) {
       servers = bound;
       port = candidate;
       break;
     }
     await Promise.all(bound.map(closeServer));
   }
+  binding = false;
+  // A socket that failed while binding: nothing is listening for the
+  // portal, so no listener is handed back (and no link is shown).
+  if (failure) {
+    await close();
+    throw failure;
+  }
+  if (closeRequested) void close();
   if (port === undefined)
     throw new KiroSocialCallbackError(
       'ports-busy',

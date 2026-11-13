@@ -404,6 +404,8 @@ export class KiroSignIn {
       attempt.record = { ...attempt.record, phase: 'completed' };
       this.deps.onSignedIn?.(scope);
     } catch (error) {
+      // A cancel mid-step stays cancelled, whatever the step then threw.
+      if (attempt.record.phase !== 'verifying') return;
       fail(
         error instanceof KiroOidcError
           ? error.message
@@ -414,9 +416,10 @@ export class KiroSignIn {
 
   /**
    * The attempt was cancelled (sign-out, or the connection was removed) while
-   * its credential was being written: take that credential back out, and the
-   * attempt neither completes nor reports a sign-in. Only this attempt's own
-   * token is removed, never a credential written after it.
+   * its credential was being written: the attempt neither completes nor
+   * reports a sign-in, and its credential is taken back out if the bucket
+   * still holds exactly what it wrote (compare-and-remove against the read
+   * revision), so a credential another sign-in writes in between is kept.
    */
   async #cancelledDuringWrite(
     attempt: Attempt,
@@ -426,7 +429,11 @@ export class KiroSignIn {
     if (attempt.record.phase === 'verifying') return false;
     const stored = this.deps.vault.read(KIRO_CREDENTIAL_KIND, scope);
     if (stored?.credential.accessToken === credential.accessToken)
-      await this.deps.vault.remove(KIRO_CREDENTIAL_KIND, scope);
+      await this.deps.vault.compareAndRemove(
+        KIRO_CREDENTIAL_KIND,
+        scope,
+        stored.revision,
+      );
     return true;
   }
 
