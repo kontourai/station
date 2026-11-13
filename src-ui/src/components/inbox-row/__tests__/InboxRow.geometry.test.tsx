@@ -59,6 +59,7 @@ const css = [
   '../WorkGroupLabel.css',
   '../../chat-dock/ChatDockInboxPanel.css',
   '../../chat-dock/ChatDockHeader.css',
+  '../../NewChatAction.css',
   '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
   '../../icons/BrandIcon.css',
@@ -314,10 +315,12 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             return {
               actions: actions.x,
               extent: extent.x,
+              sameLine: actions.y === extent.y,
               overflow: document.body.scrollWidth > innerWidth,
             };
           });
           expect(order.actions).toBeLessThan(order.extent);
+          expect(order.sameLine).toBe(true);
           expect(order.overflow).toBe(false);
           await pg.screenshot({
             path: resolve(artifacts, `identity-header-${width}-${theme}.png`),

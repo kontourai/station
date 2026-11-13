@@ -1108,8 +1108,8 @@ with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
 
-After first-run setup, Home can offer **Start your first task** for a confirmed
-Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
+Create Tasks from a Project; Home no longer offers a first-task card.
+Existing guided starter links keep their focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 
@@ -1300,10 +1300,9 @@ the meaning of linked-work states.
 
 ## Inspect Approval And Review Evidence
 
-Home can offer a real approval notification or independent-review receipt to
-inspect after first-run setup. The approval action opens that Notifications
-row; it does not approve or deny it. The review action opens the receipt in its
-Project's Review layout. Missing or unavailable records remain visible as such.
+Open approval requests in **Notifications** and independent-review receipts
+in the Project's **Review** layout. Inspecting a request does not approve or deny
+it. Home no longer offers starter inspection cards.
 
 Reading a receipt does not satisfy a gate. See
 [how the inspection keeps the exact target](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#inspect-approval-and-review-evidence).
@@ -1321,13 +1320,10 @@ a model connection (Station's engine); if none is ready, the form offers **Set
 up a scheduled-job agent** to open agent creation; choose **Use a model
 connection** there.
 
-Home can create **station-starter-check** and run it once. Its daily schedule
-stays disabled until you enable it. Open the receipt to read the findings;
-a completed run means the check ran, not that its findings passed a gate.
-
-After an interruption, **Resume exact check** continues the recorded check.
-Failed or uncertain runs offer **Inspect receipt**. They are not restarted
-automatically. See [Scheduler identity and recovery](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check).
+Create and inspect scheduled jobs in **Automations**. Home no longer creates a
+starter check. Existing `station-starter-check` jobs and their receipts remain
+available; removing the Home card does not change their enabled state. A
+completed run means it ran, not that its findings passed a gate.
 
 ## When Something Goes Wrong
 

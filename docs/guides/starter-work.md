@@ -185,6 +185,19 @@ dependencies. They do not prove a live engine completed useful work or a
 particular device displayed it. Follow the exact Task, Session, or Scheduler
 receipt for that evidence.
 
+## Inspect Approval And Review Evidence
+
+Open approvals in Notifications and review receipts in the Project's Review
+layout. These replace the retired Home inspection cards. Opening a record does
+not decide an approval or establish that a gate passed. Existing exact-target
+starter bindings remain readable.
+
+## Run A Scheduled Readiness Check
+
+Create and inspect jobs in Automations. Home no longer creates the disabled
+`station-starter-check` job. Existing jobs and their Scheduler receipts remain
+available; removing the Home card does not enable, disable or restart them.
+
 ## Project display identity
 
 For operator Project lists, a Project without an explicit icon uses the first

@@ -400,6 +400,30 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     },
   );
 
+  it('describes the effective all-work empty state when Current project resolves outside a project', () => {
+    act(() => navigationStore.navigate('/'));
+    render(
+      <MobileInboxPanel
+        open
+        tasks={[]}
+        openChatSessionIds={[]}
+        activeChatSessionId={null}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        now={NOW}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Inbox scope' }), {
+      target: { value: 'current-project' },
+    });
+    expect(screen.getByText('No chats yet.')).toBeTruthy();
+    expect(screen.queryByText('No work in this filter.')).toBeNull();
+  });
+
   it('defaults to all work; a chosen Current project follows the project page on screen (#4405 A36)', () => {
     const items = [
       workItem({

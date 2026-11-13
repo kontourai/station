@@ -1012,7 +1012,7 @@ export function InboxRow({
                     separator ("[folder] • name"). */}
                 {displayableProjectIcon(projectIcon) || remoteProject ? (
                   <ProjectAccentSwatch
-                    size={20}
+                    size={24}
                     accent={projectAccent}
                     icon={projectIcon}
                     name={contextLabel}
