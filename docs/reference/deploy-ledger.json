@@ -1,5 +1,80 @@
 [
   {
+    "timestampUtc": "2026-11-13T13:09:17Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261113.1",
+    "sha": "ce3f22639a3d22d56250ca6fa2686aa1296a6091",
+    "artifactBuiltAt": "2026-11-13T11:53:26.221Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43418305981",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 43418305981)",
+      "android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:43418305981:play-upload-or-query (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "76c30c3b8dbaf4b36795ec4b0ed73902b3674509",
+      "groups": {
+        "feat": [
+          "[#4842](https://github.com/kontourai/station/pull/4842) feat(security): mark untrusted content from engine-native web reads (#4828)"
+        ],
+        "fix": [
+          "[#4889](https://github.com/kontourai/station/pull/4889) fix(connections): keep proxy cooldowns from disabling Claude",
+          "[#4877](https://github.com/kontourai/station/pull/4877) fix(ui): say what happened in chat, reset and handoff copy",
+          "[#4873](https://github.com/kontourai/station/pull/4873) fix(ui): read Session-row plan progress from the status ladder"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4631](https://github.com/kontourai/station/pull/4631) chore(deps): consolidate updates and preserve runtime contracts",
+          "[#4883](https://github.com/kontourai/station/pull/4883) test(gallery): regenerate screenshot baselines for the 13px Comfortable default",
+          "[#4875](https://github.com/kontourai/station/pull/4875) style(ui): drop decorative gradients, glows, blur and idle pulses"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-13T11:53:15Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261113.43418305981",
+    "sha": "ce3f22639a3d22d56250ca6fa2686aa1296a6091",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43418305981",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261113.43418305981 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "76c30c3b8dbaf4b36795ec4b0ed73902b3674509",
+      "groups": {
+        "feat": [
+          "[#4842](https://github.com/kontourai/station/pull/4842) feat(security): mark untrusted content from engine-native web reads (#4828)"
+        ],
+        "fix": [
+          "[#4889](https://github.com/kontourai/station/pull/4889) fix(connections): keep proxy cooldowns from disabling Claude",
+          "[#4877](https://github.com/kontourai/station/pull/4877) fix(ui): say what happened in chat, reset and handoff copy",
+          "[#4873](https://github.com/kontourai/station/pull/4873) fix(ui): read Session-row plan progress from the status ladder"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4631](https://github.com/kontourai/station/pull/4631) chore(deps): consolidate updates and preserve runtime contracts",
+          "[#4883](https://github.com/kontourai/station/pull/4883) test(gallery): regenerate screenshot baselines for the 13px Comfortable default",
+          "[#4875](https://github.com/kontourai/station/pull/4875) style(ui): drop decorative gradients, glows, blur and idle pulses"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-11-13T05:17:58Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261113",

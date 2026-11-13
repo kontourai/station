@@ -512,7 +512,9 @@
   width: 8px;
 }
 
-/* An agent is driving: hovering the page says how to take over. */
+/* An agent is driving: hovering the page says how to take over. The hint
+   floats over live page pixels, so it keeps its own dark backing, white text
+   and blur to stay readable over any page in either theme. */
 .browser-pane__takeover-hint {
   backdrop-filter: blur(6px);
   background: rgb(10 14 20 / 0.78);

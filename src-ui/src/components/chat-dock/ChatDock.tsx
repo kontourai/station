@@ -4146,7 +4146,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               )
                             )
                               throw new Error(
-                                'The selected engine binding is unavailable. Choose an engine again.',
+                                "The selected engine isn't available. Choose an engine again.",
                               );
                             // Never CLEARS the binding: a modal chat started with no project
                             // chosen leaves it exactly where it was.

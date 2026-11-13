@@ -562,9 +562,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
   test('a live stream interrupted past its grace window says so', async () => {
     await renderAttached({ connected: false, connectionInterrupted: true });
     expect(
-      screen.getByText(
-        "Station isn't responding right now — retrying automatically.",
-      ),
+      screen.getByText("Station isn't responding. Retrying automatically."),
     ).toBeTruthy();
   });
 
@@ -621,9 +619,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     });
 
     expect(
-      screen.getByText(
-        "Station isn't responding right now — retrying automatically.",
-      ),
+      screen.getByText("Station isn't responding. Retrying automatically."),
     ).toBeTruthy();
     // The stream's SSE state says nothing about the REST adoption channel
     // (archive#2630) — the recovery action stays enabled.
@@ -650,13 +646,11 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
 
     expect(
       screen.getByText(
-        "Station stopped reconnecting — it rejected this session's credentials.",
+        "Station rejected this session's credentials and stopped reconnecting.",
       ),
     ).toBeTruthy();
     expect(
-      screen.queryByText(
-        "Station isn't responding right now — retrying automatically.",
-      ),
+      screen.queryByText("Station isn't responding. Retrying automatically."),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry now' })).toBeNull();
   });
@@ -670,7 +664,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
 
     expect(
       screen.getByText(
-        "Station stopped reconnecting — it rejected this session's credentials.",
+        "Station rejected this session's credentials and stopped reconnecting.",
       ),
     ).toBeTruthy();
   });
@@ -690,9 +684,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
       ),
     ).toBeTruthy();
     expect(
-      screen.queryByText(
-        "Station isn't responding right now — retrying automatically.",
-      ),
+      screen.queryByText("Station isn't responding. Retrying automatically."),
     ).toBeNull();
     expect(
       screen.queryByText(/rejected this session's credentials/),
@@ -712,7 +704,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
 
     expect(
       screen.getByText(
-        "Station stopped reconnecting — it rejected this session's credentials.",
+        "Station rejected this session's credentials and stopped reconnecting.",
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry now' })).toBeNull();
@@ -732,9 +724,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     ).toBeTruthy();
     // Retrying cannot cure an incompatible host (sol).
     expect(
-      screen.queryByText(
-        "Station isn't responding right now — retrying automatically.",
-      ),
+      screen.queryByText("Station isn't responding. Retrying automatically."),
     ).toBeNull();
   });
 
@@ -752,7 +742,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
         "Couldn't start the continuation. Technical detail is under Details.",
       ),
     );
-    expect(screen.queryByText(/isn't responding right now/)).toBeNull();
+    expect(screen.queryByText(/isn't responding/)).toBeNull();
     // The raw cause is also kept under Details.
     expect(
       screen.getByText('source session is already being continued'),
@@ -778,7 +768,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     await waitFor(() =>
       expect(
         screen.getByText(
-          "Couldn't start the continuation — Station isn't responding right now.",
+          "Couldn't start the continuation. Station isn't responding.",
         ),
       ).toBeTruthy(),
     );
@@ -786,7 +776,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
       screen.getByText('The continuation request could not reach Station.'),
     ).toBeTruthy();
     // Nothing was sent, so there is no outcome to be unsure about.
-    expect(screen.queryByText(/Retry safely/)).toBeNull();
+    expect(screen.queryByText(/continue it twice/)).toBeNull();
     expect(
       screen
         .getByRole('button', { name: 'Continue and send' })
@@ -809,13 +799,9 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     sendFromComposer();
     fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
     await screen.findByText(
-      "Couldn't start the continuation — Station isn't responding right now.",
+      "Couldn't start the continuation. Station isn't responding.",
     );
-    expect(
-      screen.getByText(
-        'Retry safely — Station will not duplicate the continuation.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Retrying won't continue it twice.")).toBeTruthy();
     expect(
       screen
         .getByRole('button', { name: 'Continue and send' })
@@ -838,13 +824,9 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     sendFromComposer();
     fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
     await screen.findByText(
-      "Couldn't start the continuation — Station isn't responding right now.",
+      "Couldn't start the continuation. Station isn't responding.",
     );
-    expect(
-      screen.getByText(
-        'Retry safely — Station will not duplicate the continuation.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Retrying won't continue it twice.")).toBeTruthy();
     vi.restoreAllMocks();
   });
 });
@@ -989,9 +971,7 @@ describe('a conversation no project claims (#3386)', () => {
     expect(
       within(dialog).getByTestId('attached-continuation-no-project')
         .textContent,
-    ).toBe(
-      'This conversation belongs to no project. Station will continue it as a No project chat that works only in /work/scratch/app.',
-    );
+    ).toBe('Not in a Project. The agent will work only in /work/scratch/app.');
   });
 
   test('the No project confirmation offers a Project for that folder as an action', async () => {
@@ -1038,7 +1018,7 @@ describe('a conversation no project claims (#3386)', () => {
     );
     const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
     expect(dialog.textContent).toContain(
-      'Station will continue it as a No project chat that works only in /work/scratch/app.',
+      'The agent will work only in /work/scratch/app.',
     );
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
@@ -1177,8 +1157,8 @@ describe('a continuation Station settled as not created', () => {
       expect(alert.textContent).toBe(
         `Couldn't start the continuation. ${reason}`,
       );
-      expect(screen.queryByText(/isn't responding right now/)).toBeNull();
-      expect(screen.queryByText(/Retry safely/)).toBeNull();
+      expect(screen.queryByText(/isn't responding/)).toBeNull();
+      expect(screen.queryByText(/continue it twice/)).toBeNull();
       expect(
         (
           screen.getByRole('button', {
