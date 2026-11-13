@@ -5338,18 +5338,22 @@ function fakeSchemaMuse(
   options: {
     version?: string;
     versions?: string[];
+    /** Build suffixes for successive `--version` runs (default `R1.1`). */
+    builds?: string[];
     mutate?: (schema: Record<string, unknown>) => void;
     exportCode?: number;
   } = {},
 ) {
   const runs: SchemaRun[] = [];
   const versions = [...(options.versions ?? [])];
+  const builds = [...(options.builds ?? [])];
   const runner: MuseSchemaCommandRunner = async ({ args, env, omitEnv }) => {
     runs.push({ args: [...args], env, ...(omitEnv ? { omitEnv } : {}) });
     if (args[0] === '--version') {
       const version = versions.shift() ?? options.version ?? UNKNOWN_VERSION;
+      const build = builds.shift() ?? 'R1.1';
       return {
-        stdout: `Muse Code ${version} (${version}-R1.1)\n`,
+        stdout: `Muse Code ${version} (${version}-${build})\n`,
         stderr: '',
         code: 0,
       };
@@ -5587,6 +5591,20 @@ describe('Muse serve: which schema fingerprints a host may report', () => {
     expect(unavailableReason(h2, THREAD)).toContain(
       `${UNKNOWN_VERSION}, then 1.4.98`,
     );
+  });
+
+  test("two builds of the host's release swapped during the export prove nothing: falls back to exec", async () => {
+    const muse = fakeSchemaMuse({ builds: ['R1.1', 'R2.1'] });
+    const h = harness({ schemaCommandRunner: muse.runner });
+    await startReporting(
+      h,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    expect(transportOf(h, THREAD)).toBe('exec');
+    expect(unavailableReason(h, THREAD)).toContain('(another build)');
+    expect(compatibleWarnings(h)).toEqual([]);
   });
 
   test('a failed export falls back to exec, and is not remembered: the next host exports again', async () => {

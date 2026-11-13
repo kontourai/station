@@ -93,9 +93,10 @@ export interface MuseServeRequiredSurface {
  * use, derived from `muse-serve-session.ts`, `muse-serve-child-work.ts`,
  * `muse-serve-discovery.ts` and `harness-questions.ts` (Muse's question
  * form) and checked against the 1.4.18 and 1.4.20 stable exports. A field
- * Station starts sending or reading belongs here too:
- * `muse-serve-surface.test.ts` replays the captures and fails on a wire
- * method this manifest does not name.
+ * Station starts sending or reading belongs here too, by hand: the
+ * coverage tests in `muse-serve-adapter.test.ts` fail only on a wire METHOD
+ * or notification this manifest does not name (replayed captures, and every
+ * method Station sent), not on an unlisted field.
  */
 export const MUSE_SERVE_REQUIRED_SURFACE: MuseServeRequiredSurface = {
   methods: {
@@ -871,17 +872,25 @@ export class MuseServeSchemaVerifier {
       }
       return result;
     };
+    // The release (`1.4.20`) is what the host reports; the full line also
+    // names the build (`1.4.20-R8619.1`), so two builds of one release that
+    // swapped during the export still read as a mismatch.
     const binaryVersion = async () => {
       const line = (await run(['--version'])).stdout
         .slice(0, MUSE_VERSION_OUTPUT_MAX_BYTES)
         .trim();
-      return MUSE_VERSION_LINE.exec(line)?.[1];
+      return { release: MUSE_VERSION_LINE.exec(line)?.[1], line };
     };
     const dir = await mkdtemp(join(tmpdir(), 'station-muse-schema-'));
     try {
-      const before = await binaryVersion();
+      const beforeRun = await binaryVersion();
       await run([...MUSE_SCHEMA_EXPORT_ARGS, dir]);
-      const after = await binaryVersion();
+      const afterRun = await binaryVersion();
+      const before = beforeRun.release;
+      const after =
+        afterRun.line === beforeRun.line
+          ? afterRun.release
+          : `${afterRun.release ?? 'unknown'} (another build)`;
       if (before !== museVersion || after !== museVersion) {
         throw new MuseSchemaExportError(
           `the host reported Muse ${museVersion}, but the installed muse is ${
