@@ -1,6 +1,12 @@
 {
   "schemaVersion": 1,
   "screens": {
+    "active-chat-phone": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
+      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
+      "axe:scrollable-region-focusable:div.chat-messages[role=status]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
     "agent-editor": [
       "axe:label-content-name-mismatch:button.split-pane__item[Station Assistant]"
     ],
