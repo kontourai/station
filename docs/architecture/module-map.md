@@ -1912,6 +1912,42 @@ drives that composition through the real boundary, guard and routes per
 credential channel, with a real thread inbox. A person reads a conversation
 schedule with conversation read access; an agent may read its own.
 
+**Automation proposals (#4830).** `propose_automation_source` and
+`propose_automation_rule` follow the same pattern for Automation sources and
+rules ([decision](../decisions/agent-proposed-automations.md)). The
+[routes](../../src-server/routes/orchestration/automation-proposals.ts) read
+the conversation from the verified caller. Only a Session that acts for a
+recorded owner may propose, and only from a calling turn that started with
+the shared person mark (#4848). The calling turn is the Session's running
+turn by its persisted lifecycle fold
+(`OrchestrationService.stationControlCallingTurn`); it is `pending` while
+`ClientOriginTurnPropagation.holdsTurnStart` holds a start not yet stored.
+`proposingTurnId` decides, and the insert decides again inside its write
+transaction for the same turn. The calling turn is inferred, not known: a
+concurrent steer can clear a delegated continuation's reservation (known
+race), and an invocationless legacy start can leave a Session stuck
+`pending`; a turn-bound credential replaces the inference ([#4882](https://github.com/kontourai/station/issues/4882)). Everything else
+refuses (fail closed), including a delegated result that continues in a
+person's chat with `dispatchOrigin: interactive`.
+[Validation](../../src-server/services/automation/automation-proposals.ts)
+refuses anything wider than the caller's dispatch scope: actions other than
+`dispatch-task`, `auto` approval, and authority-bearing keys. The proposal
+records the untrusted-content mark (#3483) of the conversation, or of a child
+it delegated to, with Station's plain description, as a row on `EventStore`'s
+connection. It creates nothing. The chat schedule read lists open proposals
+as `automationProposals`, with the conversation's current untrusted mark
+(`untrustedContentNow`). A person's Confirm also needs the operator in
+person. It reruns the scope rule for the recorded proposer and requires each
+recorded Agent binding (slug, Project, definition digest) to be unchanged,
+before claiming and again inside the store's creation and enabling locks.
+It creates through `AutomationStore` under an id derived from the proposal
+(`automationIdForProposal`), so retries and startup reconciliation adopt
+rather than duplicate. It creates disabled or `observe` unless the
+confirmation sets `enable`, and records the mark at confirm. The
+[authority test](../../src-server/security/__tests__/automation-proposal-authority.routes.test.ts)
+drives the composition through the real boundary, guard, `EventStore`,
+`AutomationStore` and untrusted-content ledger.
+
 ## SessionDigest
 
 An agent deciding whether a peer Session is worth a full transcript read needs
@@ -2313,7 +2349,9 @@ anything else as `unknown`. Who passes what:
   context Station derived or attested (`executeExecutionTargetMessage`, by
   its `caller-derived`/`runtime-attested` provenance; Station Control
   `send_message` arrives through `/chat/delegated`), pass `delegation` when
-  it starts a new conversation or the conversation's current Session is
+  it starts a new conversation (including one whose id the send names but no
+  Session holds yet, #4830; an unreadable lineage counts as new) or the
+  conversation's current Session is
   itself unattended (`OrchestrationService.sessionDispatchFacts`: bound to a
   Task, or a Station-derived delegated child); an agent's message into a
   person's own chat passes `unknown`. A requester's own `direct-claim`

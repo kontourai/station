@@ -40,6 +40,7 @@ import {
   type ConversationUsageLimitResume,
   jobMatchesProposal,
 } from '@kontourai/station-contracts/agent-schedule';
+import type { AutomationProposal } from '@kontourai/station-contracts/automation';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
@@ -201,6 +202,13 @@ export interface AgentScheduleRoutesDeps {
     conversationId: string,
     context: Context,
   ): Promise<readonly ConversationAutomation[]>;
+  /**
+   * #4830: the Automation source and rule proposals waiting in this
+   * conversation. Absent (hosted): the chat lists none.
+   */
+  automationProposals?(
+    conversationId: string,
+  ): Promise<readonly AutomationProposal[]>;
   now?: () => number;
 }
 
@@ -490,6 +498,13 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
       // The banner reads the stop itself; this list just leaves it out.
       usageLimitResume = undefined;
     }
+    let automationProposals: readonly AutomationProposal[] | undefined;
+    try {
+      automationProposals = await deps.automationProposals?.(conversationId);
+    } catch {
+      // Left out rather than read as none.
+      automationProposals = undefined;
+    }
     let automations: readonly ConversationAutomation[] | undefined;
     try {
       automations = await deps.conversationAutomations?.(conversationId, c);
@@ -511,6 +526,7 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
         ) ?? [],
       ...(usageLimitResume ? { usageLimitResume } : {}),
       ...(automations ? { automations } : {}),
+      ...(automationProposals ? { automationProposals } : {}),
     };
     return c.json({ success: true, data }, 200, NO_STORE);
   });
