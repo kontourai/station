@@ -867,51 +867,60 @@ test('continuation publication binds exact operation parents and isolates transa
           .acquire(request),
         DelegationRoundsTransactionParentError,
       );
-      const first = await transactions.acquire(request);
-      const firstScope = preparedScope;
-      assert.ok(firstScope);
-      firstScope.assertLifetimeCurrent();
-      const sibling = await transactions.acquire(request);
-      const flowChild = await token.flowAdmission.acquire();
-      assert.throws(() => owner.runSynchronous(() => undefined), {
-        reason: 'busy',
-      });
-      await assert.rejects(
-        token.release(),
-        DelegationRoundsTransactionParentError,
-      );
-      token.assertCurrent();
-      first.assertCurrent();
-      sibling.assertCurrent();
-      await first.release();
-      assert.throws(
-        first.assertCurrent,
-        DelegationRoundsTransactionParentError,
-      );
-      assert.throws(
-        firstScope.assertLifetimeCurrent,
-        DelegationRoundsTransactionParentError,
-      );
-      sibling.assertCurrent();
-      flowChild.assertCurrent();
-      await sibling.release();
-      token.assertCurrent();
-      await flowChild.release();
-      assert.throws(
-        flowChild.assertCurrent,
-        DelegationRoundsTransactionParentError,
-      );
-      token.assertCurrent();
-      await token.release();
-      await assert.rejects(
-        transactions.acquire(request),
-        DelegationRoundsTransactionParentError,
-      );
-      assert.throws(
-        token.assertCurrent,
-        DelegationRoundsTransactionParentError,
-      );
-      owner.runSynchronous(() => undefined);
+      const releases: Array<() => Promise<void>> = [];
+      try {
+        const first = await transactions.acquire(request);
+        releases.push(first.release);
+        const firstScope = preparedScope;
+        assert.ok(firstScope);
+        firstScope.assertLifetimeCurrent();
+        const sibling = await transactions.acquire(request);
+        releases.push(sibling.release);
+        const flowChild = await token.flowAdmission.acquire();
+        releases.push(flowChild.release);
+        assert.throws(() => owner.runSynchronous(() => undefined), {
+          reason: 'busy',
+        });
+        await assert.rejects(
+          token.release(),
+          DelegationRoundsTransactionParentError,
+        );
+        token.assertCurrent();
+        first.assertCurrent();
+        sibling.assertCurrent();
+        await first.release();
+        assert.throws(
+          first.assertCurrent,
+          DelegationRoundsTransactionParentError,
+        );
+        assert.throws(
+          firstScope.assertLifetimeCurrent,
+          DelegationRoundsTransactionParentError,
+        );
+        sibling.assertCurrent();
+        flowChild.assertCurrent();
+        await sibling.release();
+        token.assertCurrent();
+        await flowChild.release();
+        assert.throws(
+          flowChild.assertCurrent,
+          DelegationRoundsTransactionParentError,
+        );
+        token.assertCurrent();
+        await token.release();
+        await assert.rejects(
+          transactions.acquire(request),
+          DelegationRoundsTransactionParentError,
+        );
+        assert.throws(
+          token.assertCurrent,
+          DelegationRoundsTransactionParentError,
+        );
+        owner.runSynchronous(() => undefined);
+      } finally {
+        for (const release of releases.reverse()) await release();
+        await token.release();
+      }
       const preparationError = new Error(
         'Controlled parent preparation failure',
       );
