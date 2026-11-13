@@ -231,6 +231,9 @@ try {
   const { ClaudeAdapter } = await import(
     '../src-server/providers/adapters/claude-adapter.js'
   );
+  const { FileDelegationAttemptClaimStore } = await import(
+    '../src-server/services/orchestration/delegation-attempt-claim-store.js'
+  );
   const { EventBus } = await import(
     '../src-server/services/orchestration/event-bus.js'
   );
@@ -403,6 +406,7 @@ try {
     '/api/orchestration',
     createOrchestrationRoutes(orchestration, {
       cliSessionGroupHome: home,
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(home),
       eventBus: bus,
       logger,
       resolvePrincipal,
