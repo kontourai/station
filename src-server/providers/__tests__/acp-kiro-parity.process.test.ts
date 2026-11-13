@@ -901,6 +901,11 @@ describe.skipIf(process.platform === 'win32')(
             : undefined,
         'late deadline',
       );
+      // Past the late deadline the hold is gone: a new rewind is taken (and
+      // times out against this slow engine) instead of being refused.
+      const again = await engine.adapter.rewindSession('late-abandoned', first);
+      expect(again).not.toMatchObject({ reason: 'rewind-pending' });
+      expect(again).toMatchObject({ kind: 'failed' });
       expect(
         await waitFor(
           () => rewoundEvents(engine, 'acp.session-rewound-late')[0],
@@ -995,6 +1000,36 @@ describe.skipIf(process.platform === 'win32')(
           'Kiro may have applied a rewind before it restarted. Turns from the chosen one on may be hidden from the engine.',
         details: { beforeTurnId: first },
       });
+    });
+
+    test('a late rewind still pending when its session is stopped warns no one', async () => {
+      const warn = vi.fn();
+      const engine = launch(
+        revertAnswering({
+          delayMs: 5000,
+          result: { success: true, affectedFiles: [], totalFiles: 0 },
+        }),
+        [{ kind: 'user-message-id' }, { kind: 'text', text: 'ok' }],
+        { rewindAnswerTimeoutMs: 200, logger: { ...quietLogger, warn } },
+      );
+      await engine.start('late-stop');
+      const first = await engine.send('late-stop', 'one');
+      await engine.completed(first);
+      expect(
+        await engine.adapter.rewindSession('late-stop', first),
+      ).toMatchObject({ kind: 'failed' });
+      await engine.adapter.stopSession('late-stop');
+      await waitFor(
+        () =>
+          warn.mock.calls.some(
+            ([, message]) =>
+              message === 'ACP rewind unanswered when its session stopped',
+          )
+            ? true
+            : undefined,
+        'stopped log',
+      );
+      expect(rewoundEvents(engine, 'acp.session-rewound-late')).toEqual([]);
     });
 
     test('a send refused while preparing its turn frees the session for a rewind', async () => {

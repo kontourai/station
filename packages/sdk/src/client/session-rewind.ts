@@ -86,10 +86,18 @@ function readRewindOutcome(value: unknown): SessionRewindOutcome | null {
       };
     }
     case 'refused':
-      return REFUSAL_REASONS.has(outcome.reason as SessionRewindRefusalReason)
+      if (REFUSAL_REASONS.has(outcome.reason as SessionRewindRefusalReason))
+        return {
+          kind: 'refused',
+          reason: outcome.reason as SessionRewindRefusalReason,
+        };
+      // A reason added after this client was built: still a refusal, shown
+      // as one rather than breaking the action.
+      return typeof outcome.reason === 'string'
         ? {
-            kind: 'refused',
-            reason: outcome.reason as SessionRewindRefusalReason,
+            kind: 'failed',
+            message:
+              'Station did not rewind the conversation. Try again later.',
           }
         : null;
     case 'failed':

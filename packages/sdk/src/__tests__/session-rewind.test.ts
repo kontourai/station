@@ -96,8 +96,22 @@ describe('session rewind client', () => {
     });
   });
 
-  it('an unknown refusal reason or outcome is an error', async () => {
+  it('a refusal reason newer than this client reads as a failed rewind, not an error', async () => {
     answer(200, { success: true, data: { kind: 'refused', reason: 'other' } });
+    await expect(
+      rewindSessionToTurn(API, 'thread-1', 'turn-2'),
+    ).resolves.toEqual({
+      kind: 'failed',
+      message: 'Station did not rewind the conversation. Try again later.',
+    });
+  });
+
+  it('a refusal without a reason, or an unknown outcome, is an error', async () => {
+    answer(200, { success: true, data: { kind: 'refused' } });
+    await expect(
+      rewindSessionToTurn(API, 'thread-1', 'turn-2'),
+    ).rejects.toThrow('Invalid session rewind response');
+    answer(200, { success: true, data: { kind: 'other' } });
     await expect(
       rewindSessionToTurn(API, 'thread-1', 'turn-2'),
     ).rejects.toThrow('Invalid session rewind response');

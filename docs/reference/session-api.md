@@ -1971,7 +1971,7 @@ missing, empty or over 1,024 characters, or any other body key, is refused
 | `refused` `send-preparing` | a message is being sent and its turn is not running yet |
 | `refused` `rewind-pending` | an earlier rewind is still with the engine: waiting for its answer, or past its 30-second deadline and not yet answered (for at most 5 more minutes) |
 | `refused` `unknown-turn` | the engine never reported an id for that turn in this process: a turn from before a restart, one Station no longer keeps, or one an earlier rewind hid |
-| `failed` | the engine's own refusal or error, with its message; or no answer within 30 seconds. Then nothing is marked rewound yet, and no other rewind starts until the engine answers. A late success with no turn since, within 5 minutes, is recorded as a rewind (the marker and rewound turns appear then); any other late success, or an engine process that ends with the request unanswered, is a `runtime.warning` `acp.session-rewound-late`, drawn as its own marker row with nothing marked |
+| `failed` | the engine's own refusal or error, with its message; or no answer within 30 seconds. Then nothing is marked rewound yet, and another rewind is refused `rewind-pending` until the engine answers or 5 more minutes pass. A late success with no turn since, within 5 minutes, is recorded as a rewind (the marker and rewound turns appear then); any other late success, or an engine process that ends with the request unanswered, is a `runtime.warning` `acp.session-rewound-late`, drawn as its own marker row with nothing marked |
 
 A refusal sends nothing to the engine. Today only the ACP adapter declares a
 rewind, for an engine whose handshake declares it (Kiro's agent service; see

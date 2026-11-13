@@ -3723,6 +3723,15 @@ export class AcpAdapter implements ProviderAdapterShape {
       },
       async (error: unknown) => {
         settle();
+        // A stop someone asked for ends the process on purpose: the session
+        // is going away, so there is no later conversation to warn.
+        if (record.stopping) {
+          logger.warn?.(
+            { threadId, beforeTurnId: turnId, error: errorMessage(error) },
+            'ACP rewind unanswered when its session stopped',
+          );
+          return;
+        }
         // The connection closed under the request (the engine exited or
         // was relaunched): the old process may have applied it first, and
         // nothing can confirm either way. The request is rejected as its
