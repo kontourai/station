@@ -1831,6 +1831,13 @@ whose ownership cannot be verified is listed and read with `trustReview`
 resolves it for the operator signed in as a person (403 otherwise; 409 when
 there is nothing to review) and records a receipt naming them.
 
+`GET /integrations/untrusted-content/coverage` returns
+`{ nativeWebReads: NativeWebReadCoverage[] }`: for each engine (`station`,
+`claude`, `codex`, `acp`, `muse`), whether reading the web with its own tools
+marks the conversation (`covered`, `partial` or `uncovered`), the engine
+signals Station marks from, and the reason
+([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
+
 `GET /integrations/untrusted-content/conversations/:conversationId` returns
 whether a conversation is marked as having read untrusted content, and its
 clearance receipts. `POST .../:conversationId/clear` (`*` clears every
