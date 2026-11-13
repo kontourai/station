@@ -165,3 +165,40 @@ test('the server CLI keeps installation beneath an oversized generated changelog
   expect(body).toContain('/compare/' + 'b'.repeat(40) + '...' + 'a'.repeat(40));
   expect(body).toContain('## Installation\n\nInstall fixture');
 });
+
+test('the nightly fallback warning names the failed request without GitHub diagnostics', async () => {
+  vi.resetModules();
+  vi.mocked(writeFileSync).mockClear();
+  vi.stubEnv('GITHUB_REPOSITORY', 'kontourai/station');
+  vi.stubEnv('GH_TOKEN', 'fixture-token');
+  process.argv = [
+    'node',
+    'server-release-notes.mjs',
+    'v0.1.11-nightly.2',
+    'a'.repeat(40),
+    '/fixture/notes.md',
+    'Install fixture',
+  ];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        { message: 'upstream detail' },
+        {
+          status: 502,
+          headers: { 'x-oauth-scopes': 'repo, workflow', 'x-ratelimit-remaining': '4999' },
+        },
+      ),
+    ),
+  );
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  await import('../server-release-notes.mjs');
+  const text = String(warning.mock.calls[0]?.[0]);
+  expect(text).toContain('GitHub API HTTP 502 for GET');
+  expect(text).not.toContain('repo, workflow');
+  expect(text).not.toContain('upstream detail');
+  expect(writeFileSync).toHaveBeenCalledExactlyOnceWith(
+    '/fixture/notes.md',
+    '\n\n## Installation\n\nInstall fixture\n',
+  );
+});

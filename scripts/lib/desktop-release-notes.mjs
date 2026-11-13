@@ -35,7 +35,10 @@ function github(repository, token) {
         if (!['TimeoutError', 'TypeError', 'AbortError'].includes(error?.name))
           throw error;
         if (!retrySafe || attempt)
-          throw Object.assign(error, { releaseNotesUnavailable: true });
+          throw Object.assign(error, {
+            releaseNotesUnavailable: true,
+            releaseNotesReason: `GitHub API ${error.name}`,
+          });
         await new Promise((resolve) => setTimeout(resolve, 250));
         continue;
       }
@@ -97,6 +100,8 @@ function github(repository, token) {
           `GitHub release notes: HTTP ${response.status} ${method} ${path} ${JSON.stringify(diagnostic)}`,
         ),
         {
+          // Logged by the nightly fallback; never the diagnostic above.
+          releaseNotesReason: `GitHub API HTTP ${response.status} for ${method} ${path}`,
           releaseNotesUnavailable:
             response.status >= 500 ||
             response.status === 429 ||
@@ -122,7 +127,10 @@ function boundedNotes(body, compareUrl) {
 }
 
 function unavailable(message) {
-  return Object.assign(new Error(message), { releaseNotesUnavailable: true });
+  return Object.assign(new Error(message), {
+    releaseNotesUnavailable: true,
+    releaseNotesReason: message,
+  });
 }
 
 export async function generateDesktopReleaseNotes({ plan, repository, token }) {

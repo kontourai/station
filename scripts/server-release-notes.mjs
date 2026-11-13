@@ -19,7 +19,7 @@ try {
   // preview publication fail closed so reviewed releases retain their changelog.
   if (!tag.includes('-nightly.') || !error.releaseNotesUnavailable) throw error;
   console.warn(
-    `::warning::Server changelog unavailable; publishing installation instructions only. ${error.message.replace(/[\r\n]/g, ' ')}`,
+    `::warning::Server changelog unavailable; publishing installation instructions only. ${String(error.releaseNotesReason ?? 'reason unavailable').replace(/[\r\n]/g, ' ')}`,
   );
   notes = '';
 }
