@@ -437,12 +437,6 @@ for (const capture of [
     await expectNoHorizontalScroll(page);
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath(`${capture.name}.png`) });
-    const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e/media');
-    mkdirSync(retained, { recursive: true });
-    copyFileSync(
-      testInfo.outputPath(`${capture.name}.png`),
-      resolve(retained, `${capture.name}.png`),
-    );
   });
 }
 
@@ -478,12 +472,6 @@ for (const theme of ['light', 'dark'] as const) {
             `connection-${notice}-${theme}-${viewport}.png`,
           ),
         });
-        const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e');
-        mkdirSync(retained, { recursive: true });
-        copyFileSync(
-          testInfo.outputPath(`connection-${notice}-${theme}-${viewport}.png`),
-          resolve(retained, `connection-${notice}-${theme}-${viewport}.png`),
-        );
       });
     }
   }
