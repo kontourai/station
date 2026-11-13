@@ -1779,9 +1779,12 @@ On a serve session:
   fallback (always `--approval-mode never`, relying on that sandbox) is
   refused for every posture except Station's `never`: a start whose serve
   host fails is refused `sandbox_unavailable` (including the start whose host
-  reported it and then failed `session/start`), and an exec turn under
-  another posture is refused `permission_denied`. Only a later host's explicit
-  `available` clears it; one that omits the field changes nothing.
+  reported it and then failed `session/start`, and one whose host reported it
+  but was refused for an unverified schema fingerprint or non-durable
+  sessions), and an exec turn under another posture is refused
+  `permission_denied`. Only a later verified host's explicit `available`
+  clears it; one that omits the field, or an unverified host, changes
+  nothing.
 - **Model catalog and allowance** (#2266). `listModelCatalog` and
   `readQuotaSnapshot` start a short-lived host (`initialize`, `initialized`,
   then `model/list` or `usage/read`) that starts no session, and terminate it
