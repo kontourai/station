@@ -5452,7 +5452,14 @@ const SCREENS: Screen[] = [
               .fill('Follow up on this');
             const trigger = composer.getByTestId('run-setup-trigger');
             await expect(trigger).toHaveAccessibleName(new RegExp(agent));
-            await expect(trigger).toHaveAttribute('title', new RegExp(model));
+            await expect(trigger).toHaveAttribute(
+              'title',
+              new RegExp(
+                names === 'long'
+                  ? 'Reasoning Model With A Very Long Version Id 2026'
+                  : model,
+              ),
+            );
             const send = composer.locator('.chat-input__send-btn');
             const controlBox = (await trigger.boundingBox())!;
             const sendBox = (await send.boundingBox())!;
