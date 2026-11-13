@@ -509,7 +509,7 @@
       "name": "reply-composer-dark-320-short",
       "width": 320,
       "height": 915,
-      "sha256": "ddefd430cb5a2c2755e8c599505b35ed404a85e21a1f9503d7fb4547e0abc301"
+      "sha256": "e8aa6ab549dc3d2c0490bc79dd94bc3df0fab028b1dd94595fcf68d0bef969eb"
     },
     {
       "name": "reply-composer-dark-360-long",
@@ -521,7 +521,7 @@
       "name": "reply-composer-dark-360-short",
       "width": 360,
       "height": 915,
-      "sha256": "26938c684e8683f75f2f4841cc45a601b0a4ca9aa67c02f29ecf029a8116dbdf"
+      "sha256": "9a602a0e5ebe19ab289300280fc094c9dafeb896cb3a31baa9bc6de2658660c7"
     },
     {
       "name": "reply-composer-dark-390-long",
@@ -533,7 +533,7 @@
       "name": "reply-composer-dark-390-short",
       "width": 390,
       "height": 915,
-      "sha256": "e2320d86ca239ad300e626501cd43c4f3511ec571386a30a58de4543bf674fa8"
+      "sha256": "0620f1245ffc75c24e05652da86a3929bb6929a923e03a7762cbd94766f6bf4e"
     },
     {
       "name": "reply-composer-dark-412-long",
