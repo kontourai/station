@@ -1178,11 +1178,7 @@ test('new chat keeps engine diagnostics out of the mobile Agent chooser', async 
     ),
   ).toBeVisible();
   const again = await openAgentList(page);
-  await (
-    await runSetupControl(again, (panel) =>
-      panel.getByRole('button', { name: /^Model: GPT-5 Codex/ }),
-    )
-  ).click();
+  await again.getByRole('button', { name: /^Model: GPT-5 Codex/ }).click();
   await expect(
     page.getByRole('dialog', { name: MODEL_PICKER_NAME }),
   ).toBeVisible();
