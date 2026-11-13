@@ -58,7 +58,7 @@ export const ACP_CHILD_WORK_REPORTERS: Readonly<
 });
 
 /** Why an ACP session reports no child work. */
-export const ACP_CHILD_WORK_NOT_REPORTED_REASON =
+const ACP_CHILD_WORK_NOT_REPORTED_REASON =
   'This engine does not report its subagents or background work over ACP.';
 
 /** Whether a session whose handshake resolved to `variant` reports child work. */

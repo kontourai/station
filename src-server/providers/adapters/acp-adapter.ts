@@ -399,7 +399,7 @@ export interface AcpResumeCursor {
  * (during `session/new`, or a `session/load` replaying history) nothing is
  * foreign: no child exists yet.
  */
-export function isForeignAcpSessionFrame(
+function isForeignAcpSessionFrame(
   record: { process?: Pick<ACPProcess, 'sessionId'> },
   frameSessionId: unknown,
 ): boolean {
@@ -422,7 +422,7 @@ const ACP_FAILURE_DETAIL_MAX_CHARS = 1000;
  * `grok_prompt_error`: `data.message` "API error (status 400 Bad
  * Request): ..."). The detail is one line, redacted and bounded.
  */
-export function acpFailureMessage(error: unknown): string {
+function acpFailureMessage(error: unknown): string {
   const base = errorMessage(error);
   const data =
     error !== null && typeof error === 'object'
