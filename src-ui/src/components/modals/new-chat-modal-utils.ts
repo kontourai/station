@@ -271,8 +271,7 @@ export function resolveNewChatWorkspaceHint({
   }
   const projectDirectory = project ? projectRunDirectory(project) : undefined;
   if (projectDirectory) {
-    const remote =
-      project?.repositoryDisplay ?? project?.repositorySource?.canonicalRemote;
+    const remote = project?.repositoryDisplay;
     const repository = remote
       ?.replace(/^https?:\/\//, '')
       .replace(/\.git$/, '')
@@ -563,19 +562,13 @@ export function buildContextOptions(
       // or path as an <img>, and a legacy stored link must not load here.
       ...(icon ? { icon } : { glyph: 'folder' as const }),
       workingDirectory: projectRunDirectory(project),
-      ...((project.repositoryDisplay ??
-      project.repositorySource?.canonicalRemote)
+      ...(project.repositoryDisplay
         ? {
-            repository: (
-              project.repositoryDisplay ??
-              project.repositorySource!.canonicalRemote
-            )
+            repository: project.repositoryDisplay
               .replace(/^https?:\/\//, '')
               .replace(/\.git$/, '')
               .replace(/^github\.com\//, ''),
-            repositoryRemote:
-              project.repositoryDisplay ??
-              project.repositorySource?.canonicalRemote,
+            repositoryRemote: project.repositoryDisplay,
           }
         : {}),
       ...(project.runsAt?.kind === 'unavailable'
