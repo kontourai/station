@@ -667,20 +667,23 @@ session's own continuity, which
   (`not-live`). While the engine answers, the session starts no turn: a send
   is refused retryably with `provider_turn_in_progress` ("Station is
   rewinding this conversation; send again when it finishes."), which the
-  inbox holds and resends, and a second rewind is refused `turn-running`.
-  A rewind is also refused `turn-running` while a send is still preparing
-  its turn (a mode or effort change, or an approval relaunch of the engine
+  inbox holds and resends, and a second rewind is refused `rewind-pending`.
+  A rewind is refused `send-preparing` while a send is still preparing its
+  turn (a mode or effort change, or an approval relaunch of the engine
   process). The wait is bounded at 30 seconds: an engine that has not
   answered by then gets `failed` ("did not answer the rewind in time"), no
   turn is marked rewound yet, and sends are accepted again. The request stays
-  open, and no other rewind starts until it settles. If the engine then
-  applies it and no turn has started since, it is recorded as if on time
-  (the turns are marked rewound). If a turn has started since, the
-  transcript cannot say which turns the engine now hides: a
-  `runtime.warning` (`acp.session-rewound-late`,
-  `ACP_SESSION_REWOUND_LATE_CODE`) says so in the chat and nothing is marked.
-  A late refusal or error is logged. Held follow-ups are looked at again as
-  soon as the rewind ends, whatever its outcome. The marker names only turns whose prompt id the engine
+  open, and other rewinds are refused `rewind-pending` until it settles or
+  for at most 5 more minutes. If the engine then applies it, no turn has
+  started since, and those 5 minutes have not passed, it is recorded as if on
+  time (the turns are marked rewound). Otherwise the transcript cannot say
+  which turns the engine now hides: a `runtime.warning`
+  (`acp.session-rewound-late`, `ACP_SESSION_REWOUND_LATE_CODE`) is drawn as
+  its own marker row ("Rewound late") and nothing is marked. The same warning
+  says the engine may have applied the rewind when its process ends (an exit
+  or a relaunch) with the request unanswered. A late refusal or error is
+  logged, and so is the 5-minute give-up. Held follow-ups are looked at again
+  as soon as the rewind ends, whatever its outcome. The marker names only turns whose prompt id the engine
   reported; a later turn with none (an engine that skipped the report) is
   still hidden by the engine but is not marked rewound in the transcript.
   The transcript keeps every turn. A `runtime.warning`

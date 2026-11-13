@@ -54,6 +54,8 @@ const REFUSAL_TEXT: Readonly<Record<SessionRewindRefusalReason, string>> = {
   unsupported: 'This agent cannot rewind its conversation.',
   'not-live': 'The agent is no longer running this conversation.',
   'turn-running': 'Stop the running turn, then rewind.',
+  'send-preparing': 'A message is being sent. Try again once its turn starts.',
+  'rewind-pending': "The engine hasn't finished the last rewind yet.",
   'unknown-turn':
     'The agent cannot rewind to this message. It may be from before a restart.',
 };

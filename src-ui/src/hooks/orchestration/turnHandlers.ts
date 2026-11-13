@@ -828,10 +828,8 @@ const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
   MUSE_SERVE_UNAVAILABLE_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   // The engine runs its own default agent rather than the one this chat was
-  // started with, or applied a rewind late and may hide turns the transcript
-  // cannot mark: part of the conversation, not a passing toast.
+  // started with: part of the conversation, not a passing toast.
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
-  ACP_SESSION_REWOUND_LATE_CODE,
 ]);
 
 /**
@@ -841,6 +839,8 @@ const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
  */
 const TRANSCRIPT_DRAWN_WARNING_CODES: ReadonlySet<string> = new Set([
   ACP_SESSION_REWOUND_CODE,
+  // A rewind applied late: the projection draws its own marker row.
+  ACP_SESSION_REWOUND_LATE_CODE,
 ]);
 
 /**

@@ -16,7 +16,10 @@
  * payload is engine-defined and carries no display contract.
  */
 
-import { ACP_SESSION_REWOUND_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
+} from '@kontourai/station-contracts/provider';
 
 export type ExtensionTranscriptMarkerKind =
   | 'context-compacted'
@@ -210,4 +213,18 @@ export function sessionRewoundMarker(event: {
     ...(affectedFileCount === undefined ? {} : { affectedFileCount }),
     text: { betweenTurns: text, duringTurn: text },
   };
+}
+
+/**
+ * A rewind the engine applied late, after a later turn started or once the
+ * session stopped waiting (`ACP_SESSION_REWOUND_LATE_CODE`): a marker row
+ * only. Which turns the engine now hides is not known, so none is marked.
+ */
+export function sessionRewoundLateMarker(event: {
+  code?: string;
+}): { betweenTurns: string; duringTurn: string } | undefined {
+  if (event.code !== ACP_SESSION_REWOUND_LATE_CODE) return undefined;
+  const text =
+    'Rewound late: the engine may no longer see turns from an earlier point on';
+  return { betweenTurns: text, duringTurn: text };
 }

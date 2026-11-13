@@ -21,6 +21,8 @@ const REFUSAL_REASONS: ReadonlySet<SessionRewindRefusalReason> = new Set([
   'unsupported',
   'not-live',
   'turn-running',
+  'send-preparing',
+  'rewind-pending',
   'unknown-turn',
 ]);
 

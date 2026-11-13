@@ -480,6 +480,32 @@ describe('runtime warning notifications', () => {
     activeChatsStore.removeChat(thread);
   });
 
+  test('the ACP late-rewind warning is drawn by the transcript, neither a toast nor an ephemeral notice', () => {
+    const thread = 'acp-posture-rewound-late';
+    activeChatsStore.removeChat(thread);
+    activeChatsStore.initChat(thread, {
+      agentSlug: 'kiro',
+      agentName: 'Kiro',
+      title: 'Kiro chat',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp' as const,
+      threadId: thread,
+      createdAt: '2026-11-13T10:00:00.000Z',
+      method: 'runtime.warning' as const,
+      severity: 'warning' as const,
+      message:
+        'Kiro applied an earlier rewind late, after a later turn started.',
+      code: 'acp.session-rewound-late',
+      details: { beforeTurnId: 't-1' },
+    });
+    expect(
+      activeChatsStore.getSnapshot()[thread].ephemeralMessages ?? [],
+    ).toEqual([]);
+    expect(toastStore.getSnapshot()).toEqual([]);
+    activeChatsStore.removeChat(thread);
+  });
+
   test('reconnect warnings group within a session without hiding other sessions or causes', () => {
     const warning = {
       provider: 'acp' as const,

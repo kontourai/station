@@ -40,7 +40,8 @@
 //                        `session/update` sent as given)
 // Client-to-engine extension requests are answered from the profile's
 // `extMethodAnswers` ({ "<method>": { result } | { error }, optional
-// `delayMs` before answering }) and recorded as
+// `delayMs` before answering, or `exitAfterMs` to exit with it unanswered })
+// and recorded as
 // `{ extMethod, params }`; any other is refused -32601. `session/load`,
 // `session/fork` and `session/delete` are answered and recorded too.
 //
@@ -394,6 +395,11 @@ const app = acp
     record({ extMethod: method, params });
     const answer = profile.extMethodAnswers?.[method];
     if (!answer) throw acp.RequestError.methodNotFound(method);
+    if (answer.exitAfterMs) {
+      // The engine process ends with the request unanswered.
+      setTimeout(() => process.exit(0), answer.exitAfterMs);
+      return new Promise(() => {});
+    }
     if (answer.delayMs)
       await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
     if (answer.error)

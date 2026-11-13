@@ -31,6 +31,7 @@ import {
   EXTENSION_TRANSCRIPT_MARKER_TEXT,
   extensionTranscriptMarker,
   modelReroutedMarkerText,
+  sessionRewoundLateMarker,
   sessionRewoundMarker,
 } from './extension-transcript-markers.js';
 import {
@@ -1631,6 +1632,9 @@ export function projectRuntimeEventsToMessages(
         // hid stay in the transcript, marked `rewound` below.
         const rewound = sessionRewoundMarker(ev);
         if (rewound) holdOrPushMarker(ev, rewound.text);
+        // A late one names no turns it hid; its marker is all there is.
+        const late = sessionRewoundLateMarker(ev);
+        if (late) holdOrPushMarker(ev, late);
         break;
       }
       case 'session.exited':

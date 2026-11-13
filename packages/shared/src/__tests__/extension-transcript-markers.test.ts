@@ -470,3 +470,35 @@ describe('in-place engine rewind marker', () => {
     expect(messages.some((message) => message.metadata?.rewound)).toBe(false);
   });
 });
+
+describe('late engine rewind marker', () => {
+  it('is drawn as its own marker row from the stored event, and marks no turn', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        ev('s1', { method: 'turn.started', turnId: 't1', prompt: 'one' }),
+        ev('d1', { method: 'content.text-delta', turnId: 't1', delta: 'a' }),
+        ev('c1', { method: 'turn.completed', turnId: 't1' }),
+        ev('w', {
+          method: 'runtime.warning',
+          severity: 'warning',
+          code: 'acp.session-rewound-late',
+          message:
+            'Kiro applied an earlier rewind late, after a later turn started.',
+          details: { beforeTurnId: 't1' },
+        }),
+      ],
+      { stableIds: true },
+    );
+    expect(messages.at(-1)).toMatchObject({
+      id: 'w:transcript-marker',
+      role: 'system',
+      parts: [
+        {
+          type: 'transcript-marker',
+          text: 'Rewound late: the engine may no longer see turns from an earlier point on',
+        },
+      ],
+    });
+    expect(messages.some((message) => message.metadata?.rewound)).toBe(false);
+  });
+});

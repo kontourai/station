@@ -512,6 +512,8 @@ export interface AcpAdapterOptions {
   sendTurnStartWaitMs?: number;
   /** Bound on a rewind's engine answer (default 30 s); a test seam. */
   rewindAnswerTimeoutMs?: number;
+  /** Bound on a timed-out rewind's late answer (default 5 min); a test seam. */
+  rewindLateAnswerTimeoutMs?: number;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -992,6 +994,30 @@ export const ACP_TURN_MESSAGES_MAX = 500;
  * under a second; this is the bound, not the expectation).
  */
 const ACP_REWIND_ANSWER_TIMEOUT_MS = 30_000;
+/** How long a rejected request waits to learn whether its process ended. */
+const ACP_PROCESS_EXIT_GRACE_MS = 2_000;
+
+/** Whether `process` has ended, or ends within `graceMs`. */
+function acpProcessEndsSoon(
+  process: ACPProcess,
+  graceMs: number,
+): Promise<boolean> {
+  if (!process.isAlive) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      process.off('exit', onExit);
+      resolve(!process.isAlive);
+    }, graceMs);
+    process.once('exit', onExit);
+  });
+}
+
+/** How long a timed-out rewind's answer is still waited for (5 min). */
+const ACP_REWIND_LATE_ANSWER_TIMEOUT_MS = 5 * 60_000;
 const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
 
 export class AcpAdapter implements ProviderAdapterShape {
@@ -3478,13 +3504,11 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (!binding) return { kind: 'refused', reason: 'unsupported' };
     // Busy: a turn runs, a send is still preparing it (it may relaunch the
     // engine process), or an earlier rewind is still with the engine.
-    if (
-      record.activeTurnId ||
-      record.rewinding ||
-      record.rewindPendingLate ||
-      (record.sendsPreparing ?? 0) > 0
-    )
-      return { kind: 'refused', reason: 'turn-running' };
+    if (record.activeTurnId) return { kind: 'refused', reason: 'turn-running' };
+    if ((record.sendsPreparing ?? 0) > 0)
+      return { kind: 'refused', reason: 'send-preparing' };
+    if (record.rewinding || record.rewindPendingLate)
+      return { kind: 'refused', reason: 'rewind-pending' };
     // A snapshot: the ledger the engine is rewound against, whatever the
     // live record holds when its answer arrives.
     const turns = [...(record.turnMessages ?? [])];
@@ -3497,7 +3521,8 @@ export class AcpAdapter implements ProviderAdapterShape {
     let answer: ReturnType<typeof readAcpRewindAnswer>;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      const answered = record.process.extMethod(binding.method, {
+      const sentTo = record.process;
+      const answered = sentTo.extMethod(binding.method, {
         sessionId,
         messageId: point.firstMessageId,
       });
@@ -3511,7 +3536,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
       const result = await Promise.race([answered, timedOut]);
       if (result === ACP_REWIND_TIMED_OUT) {
-        this.followLateRewind(record, threadId, turnId, turns, answered);
+        this.followLateRewind(
+          record,
+          threadId,
+          turnId,
+          turns,
+          answered,
+          sentTo,
+        );
         return {
           kind: 'failed',
           message: `${record.engineName} did not answer the rewind in time. Nothing is marked rewound yet; if the engine applies it later, the conversation says so.`,
@@ -3589,15 +3621,48 @@ export class AcpAdapter implements ProviderAdapterShape {
     turnId: string,
     turns: NonNullable<AcpSessionRecord['turnMessages']>,
     answered: Promise<unknown>,
+    sentTo: ACPProcess,
   ): void {
     const turnsStartedAtDeadline = record.turnsStarted ?? 0;
     record.rewindPendingLate = true;
     const logger = this.options.logger ?? console;
     const current = () =>
       !record.stopping && this.sessions.get(threadId) === record;
+    // A second, longer bound: past it the session stops waiting for this
+    // answer and takes rewinds again. An answer after that is treated as
+    // one after a later turn: the transcript can no longer say what it hid.
+    let abandoned = false;
+    const giveUp = setTimeout(() => {
+      abandoned = true;
+      record.rewindPendingLate = false;
+      logger.warn?.(
+        { threadId, beforeTurnId: turnId },
+        'ACP rewind still unanswered at its late deadline; rewinds are taken again',
+      );
+    }, this.options.rewindLateAnswerTimeoutMs ??
+      ACP_REWIND_LATE_ANSWER_TIMEOUT_MS);
+    giveUp.unref?.();
+    const settle = () => {
+      clearTimeout(giveUp);
+      // Only this rewind's hold: after the late deadline it is no longer
+      // the one pending.
+      if (!abandoned) record.rewindPendingLate = false;
+    };
+    const publishLate = (message: string) =>
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: ACP_SESSION_REWOUND_LATE_CODE,
+        message,
+        details: { beforeTurnId: turnId },
+      });
     void answered.then(
       (late) => {
-        record.rewindPendingLate = false;
+        settle();
         if (!current()) return;
         const answer = readAcpRewindAnswer(
           late,
@@ -3610,7 +3675,10 @@ export class AcpAdapter implements ProviderAdapterShape {
           );
           return;
         }
-        if ((record.turnsStarted ?? 0) === turnsStartedAtDeadline) {
+        if (
+          !abandoned &&
+          (record.turnsStarted ?? 0) === turnsStartedAtDeadline
+        ) {
           this.applyRewind(record, threadId, turnId, turns, answer);
           return;
         }
@@ -3618,20 +3686,29 @@ export class AcpAdapter implements ProviderAdapterShape {
           { threadId, beforeTurnId: turnId },
           'ACP rewind applied by the engine after its deadline and after a later turn',
         );
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId,
-          createdAt: new Date().toISOString(),
-          method: 'runtime.warning',
-          severity: 'warning',
-          code: ACP_SESSION_REWOUND_LATE_CODE,
-          message: `${record.engineName} applied an earlier rewind late, after a later turn started. That turn and everything after it may now be hidden from the engine.`,
-          details: { beforeTurnId: turnId },
-        });
+        publishLate(
+          `${record.engineName} applied an earlier rewind late, after a later turn started. That turn and everything after it may now be hidden from the engine.`,
+        );
       },
-      (error: unknown) => {
-        record.rewindPendingLate = false;
+      async (error: unknown) => {
+        settle();
+        // The connection closed under the request (the engine exited or
+        // was relaunched): the old process may have applied it first, and
+        // nothing can confirm either way. The request is rejected as its
+        // output closes, a moment before the process reports its exit.
+        if (
+          record.process !== sentTo ||
+          (await acpProcessEndsSoon(sentTo, ACP_PROCESS_EXIT_GRACE_MS))
+        ) {
+          logger.warn?.(
+            { threadId, beforeTurnId: turnId, error: errorMessage(error) },
+            'ACP rewind unanswered when its engine process ended',
+          );
+          publishLate(
+            `${record.engineName} may have applied a rewind before it restarted. Turns from the chosen one on may be hidden from the engine.`,
+          );
+          return;
+        }
         if (!current()) return;
         logger.warn?.(
           { threadId, error: errorMessage(error) },

@@ -3003,8 +3003,9 @@ session start.
 
 The transcript projection also draws an in-place engine rewind (a
 `runtime.warning` with `ACP_SESSION_REWOUND_CODE`) as a marker row and marks
-the turns it hid `rewound`; the UI handler neither toasts it nor adds a
-notice. [`SessionRewind`](../../src-ui/src/components/chat/SessionRewind.tsx)
+the turns it hid `rewound`, and a rewind the engine applied late
+(`ACP_SESSION_REWOUND_LATE_CODE`) as a marker row that marks no turn; the UI
+handler neither toasts them nor adds a notice. [`SessionRewind`](../../src-ui/src/components/chat/SessionRewind.tsx)
 offers "Rewind conversation to here" on a user turn of the live session only
 while `GET /api/orchestration/sessions/:threadId/continuity` says its engine
 rewinds in place.
