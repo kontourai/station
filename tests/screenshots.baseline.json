@@ -125,7 +125,7 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "6e3580dd41b7ae2e3dc3bf33e8c52ee703a72ef750f3ce7e81ec8d9256920638"
+      "sha256": "8df7d323e6aba801fd9ab84f993bb864cac314e20753abf157654612f95aeb42"
     },
     {
       "name": "detected-project-desktop",
@@ -245,7 +245,7 @@
       "name": "mobile-chat-dock-header-320",
       "width": 320,
       "height": 568,
-      "sha256": "1dcf12543778a0851026148fb0a56c17c89fad0efbc9f7abdd6b3bb628f078ce"
+      "sha256": "18517dd404a6e13bf58a80e6828af634786b56e37dc0f57db83c49358a3281b4"
     },
     {
       "name": "mobile-connections",
