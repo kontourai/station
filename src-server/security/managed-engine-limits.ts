@@ -78,6 +78,16 @@ export function engineAllowedByManagedPolicy(engine: string): boolean {
   return managedEngineAllowed(installedEngines, managedPolicyEngineId(engine));
 }
 
+/**
+ * Whether Station may issue a credential from its engine host-auth vault to
+ * an engine: `off` when the policy sets `limits.engines.engineHostAuth: 'off'`
+ * or does not let ACP engines run at all.
+ */
+export function engineHostAuthPolicy(): 'allowed' | 'off' {
+  if (installedEngines?.engineHostAuth === 'off') return 'off';
+  return engineAllowedByManagedPolicy('acp') ? 'allowed' : 'off';
+}
+
 /** False when the policy sets `limits.engines.acpRegistryAgents: false`. */
 function acpRegistryAgentsAllowedByManagedPolicy(): boolean {
   return installedEngines?.acpRegistryAgents !== false;

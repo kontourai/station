@@ -395,6 +395,16 @@ export const MANAGED_POLICY_CONTROLS: readonly ManagedPolicyControl[] = [
     offValue: false,
   },
   {
+    kind: 'switch',
+    id: 'EngineHostAuth',
+    title: 'Allow Station to sign engines in',
+    help: 'Disabled: Station gives no engine an access token from its own engine sign-in store (for example Kiro without kiro-cli). Engines that keep their own sign-in, such as kiro-cli, are unaffected.\n\nEnabled or Not Configured: Station answers an engine it launched that asks for its token.',
+    limitKey: 'engines',
+    valueName: 'EngineHostAuth',
+    path: ['limits', 'engines', 'engineHostAuth'],
+    offValue: 'off',
+  },
+  {
     kind: 'policy',
     id: 'EngineInstances',
     title: 'Engine launch configuration (JSON)',

@@ -32,6 +32,7 @@ export const EVERY_KEY_LIMITS = {
   engines: {
     allowed: ['claude', 'acp'],
     acpRegistryAgents: false,
+    engineHostAuth: 'off',
     instances: {
       claude: {
         locked: true,

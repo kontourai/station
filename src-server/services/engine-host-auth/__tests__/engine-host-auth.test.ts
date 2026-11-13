@@ -418,10 +418,12 @@ describe('the engine secret store', () => {
     await expect(
       handler('_kiro/secret/store', { key: 'kiro.other.key', value: 'v' }),
     ).rejects.toMatchObject({ code: -32602 });
-    const refusal = await handler('_kiro/secret/store', {
-      key: key('tokens'),
-      value: 'y'.repeat(65_537),
-    }).catch((error: { message: string; code: number }) => error);
+    const refusal: unknown = await Promise.resolve(
+      handler('_kiro/secret/store', {
+        key: key('tokens'),
+        value: 'y'.repeat(65_537),
+      }),
+    ).catch((error: unknown) => error);
     expect(refusal).toMatchObject({ code: -32602 });
     expect(JSON.stringify(refusal)).not.toContain('yyyy');
   });

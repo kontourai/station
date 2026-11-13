@@ -27,10 +27,12 @@ import {
   runCliCommand,
 } from '../../providers/auth/cli-auth.js';
 import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
+import { engineHostAuth } from '../engine-host-auth/service.js';
 import {
   namesSameExecutable,
   registryAuthFor,
   registryLaunchEnvFor,
+  stationOwnsEngineSignIn,
 } from './acp-engine-descriptors.js';
 import { engineCredentialEnvFor } from './engine-credentials.js';
 
@@ -318,6 +320,22 @@ export async function engineSignInStatus(
   connection: ConnectionLike,
   options: { refresh?: boolean; commandOnly?: boolean } = {},
 ): Promise<EngineSignInStatus> {
+  // An engine Station signs in itself: its status is the vault's, read
+  // without running anything.
+  if (stationOwnsEngineSignIn(connection)) {
+    const vault = engineHostAuth()?.status({
+      connectionId: connection.id,
+      credentialProfileRef: 'default',
+    });
+    if (!vault || vault.state === 'unknown')
+      return { state: 'unknown', source: 'none', checkable: false };
+    return {
+      state: vault.state === 'signed-in' ? 'authenticated' : 'unauthenticated',
+      source: 'station-vault',
+      observedAt: new Date(now()).toISOString(),
+      checkable: false,
+    };
+  }
   const checkable = engineStatusCheckable(connection);
   const fromCommand = checkable
     ? await commandObservation(connection, options.refresh === true)

@@ -188,7 +188,11 @@ function isEngineSignInLeaf(request: {
     (['GET', 'DELETE'].includes(request.method) &&
       /^\/acp\/connections\/[^/]+\/sign-in\/attempt$/.test(path)) ||
     (['PUT', 'DELETE'].includes(request.method) &&
-      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path))
+      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/login$/.test(path)) ||
+    (request.method === 'POST' &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path))
   );
 }
 
@@ -1858,6 +1862,29 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/acp/connections/:id/credentials',
     scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
+  // Station-run engine sign-in (acp-sign-in.ts): starting, reading (it
+  // carries the device code) or cancelling one, and signing out, are the
+  // `engine:login` decision like the engine's own sign-in above.
+  ...(['host-auth/login', 'host-auth/sign-out'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-login`,
+      method: '*',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ENGINE_LOGIN,
+      origin: 'explicit',
+    }),
+  ),
+  // Installing a managed engine downloads and lays down code Station runs:
+  // an operate-tier action, with explicit consent in the body.
+  {
+    id: '/acp/connections/:id/managed-install:operate',
+    method: 'POST',
+    prefix: '/acp/connections/:id/managed-install',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // Re-detecting engines re-runs the host user's login shell (bounded and

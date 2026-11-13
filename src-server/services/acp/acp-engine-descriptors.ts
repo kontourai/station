@@ -11,6 +11,7 @@ import {
   normalizeACPArgs,
   validateACPEngineDescriptor,
 } from '@kontourai/station-contracts/acp';
+import { argvDelegatesTo } from '@kontourai/station-contracts/engine-credential-provider';
 import {
   MANAGED_RUNTIME_SCRIPT_TOKEN,
   managedRuntimeInstallIdOf,
@@ -19,6 +20,7 @@ import type { IACPConnectionRegistryProvider } from '../../providers/provider-in
 import { listProviders } from '../../providers/registries/registry.js';
 import { createLogger } from '../../utils/logger.js';
 import { managedRuntimeInstalls } from '../engines/managed-runtime-installs.js';
+import { REVIEWED_ENGINE_CREDENTIAL_BINDINGS } from './acp-inbound-extension-policy.js';
 
 const logger = createLogger({ name: 'acp-engine-descriptors' });
 
@@ -323,6 +325,27 @@ function managedArgsAccepted(
   return (
     given.length === 0 ||
     isDeepStrictEqual(given, normalizeACPArgs(entry.args ?? []))
+  );
+}
+
+/**
+ * Whether Station owns this connection's engine sign-in: a built-in launch
+ * that delegates its credential to the host through a reviewed binding (the
+ * Kiro bundle). Such a connection is signed in from Station's engine
+ * host-auth vault, not by the engine.
+ */
+export function stationOwnsEngineSignIn(connection: {
+  command: string;
+  args?: readonly string[];
+}): boolean {
+  const facts = engineLaunchFactsFor(connection);
+  return (
+    facts.builtinDescriptor &&
+    REVIEWED_ENGINE_CREDENTIAL_BINDINGS.some(
+      (binding) =>
+        binding.wire.protocol === 'acp' &&
+        argvDelegatesTo(facts.argv, binding.delegationArgv),
+    )
   );
 }
 

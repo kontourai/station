@@ -62,6 +62,12 @@ export interface ManagedPolicyEngineLimits {
   allowed?: ManagedPolicyEngineId[];
   /** `false`: ACP connections added from the public ACP registry do not run. */
   acpRegistryAgents?: false;
+  /**
+   * `off`: Station issues no credential from its engine host-auth vault to
+   * an engine (docs/decisions/engine-credential-provider.md). Engines that
+   * keep their own sign-in are unaffected. Absent or `allowed`: issuing works.
+   */
+  engineHostAuth?: 'allowed' | 'off';
   instances?: Partial<
     Record<ManagedPolicyLaunchEngineId, ManagedPolicyEngineInstance>
   >;
@@ -99,7 +105,12 @@ interface EngineProblem {
   message: string;
 }
 
-const ENGINE_LIMIT_KEYS = ['allowed', 'acpRegistryAgents', 'instances'];
+const ENGINE_LIMIT_KEYS = [
+  'allowed',
+  'acpRegistryAgents',
+  'engineHostAuth',
+  'instances',
+];
 const INSTANCE_KEYS = ['locked', ...MANAGED_POLICY_ENGINE_LAUNCH_FIELDS];
 const BINARY_PATH_MAX_CHARS = 1024;
 const LAUNCH_ARGS_MAX = 64;
@@ -306,6 +317,16 @@ export function engineLimitProblems(
       message:
         'must be false; a policy can stop ACP registry agents from running but never force them on, so omit the key to allow them',
     });
+  const engineHostAuth = ownMember(engines, 'engineHostAuth');
+  if (
+    engineHostAuth !== undefined &&
+    engineHostAuth !== 'allowed' &&
+    engineHostAuth !== 'off'
+  )
+    problems.push({
+      path: `${path}.engineHostAuth`,
+      message: "must be 'allowed' or 'off'",
+    });
   const instances = ownMember(engines, 'instances');
   if (instances !== undefined)
     problems.push(...instancesProblems(instances, allowed));
@@ -326,6 +347,9 @@ export function engineLimitsOf(limits: Record<string, unknown>): {
     );
   if (ownMember(engines, 'acpRegistryAgents') === false)
     copy.acpRegistryAgents = false;
+  const engineHostAuth = ownMember(engines, 'engineHostAuth');
+  if (engineHostAuth === 'allowed' || engineHostAuth === 'off')
+    copy.engineHostAuth = engineHostAuth;
   const instances = ownMember(engines, 'instances');
   if (isRecord(instances)) {
     const pinned: NonNullable<ManagedPolicyEngineLimits['instances']> = {};

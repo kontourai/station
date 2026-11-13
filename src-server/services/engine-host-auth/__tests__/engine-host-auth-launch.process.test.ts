@@ -164,7 +164,6 @@ async function launch(connection: {
     command: connection.command,
     args: connection.args,
     cwd: home,
-    connection,
     createClient: () =>
       createProbeClient(createAcpInboundExtensionRequestHandler({ registry })),
     clientCapabilities: {},
