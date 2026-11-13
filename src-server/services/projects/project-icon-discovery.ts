@@ -76,7 +76,7 @@ async function rememberMissing(path: string): Promise<void> {
   while (true) {
     try {
       const stamp = await directoryStamp(directory);
-      if (missingPaths.size >= 4096)
+      if (missingPaths.size >= 32768)
         missingPaths.delete(missingPaths.keys().next().value!);
       missingPaths.set(path, { directory, stamp });
       return;

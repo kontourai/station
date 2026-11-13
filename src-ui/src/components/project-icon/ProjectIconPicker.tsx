@@ -60,7 +60,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export interface ProjectIconPickerProps {
   /** The project's name, for the preview of the current choice. */
   name: string;
-  /** The chosen icon; `''` is no icon. */
+  /** The stored choice; `''` clears it. Only iconDisabled suppresses detection. */
   value: string;
   onChange: (icon: string, disabled?: boolean) => void;
   onUseDetected?: () => void;
