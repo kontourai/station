@@ -251,7 +251,7 @@ a.room-attachments__file:focus-visible {
 
 .room-row__edited {
   color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   white-space: nowrap;
 }
 
