@@ -5,6 +5,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionAttentionKind } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -4669,5 +4670,9 @@ test.each(['AskUserQuestion', 'cursor/create_plan', 'ExitPlanMode'])(
       q: toolName === 'AskUserQuestion' ? 'input' : 'approval',
     });
     expect(summary.lifecycleState).toBe('review_pending');
+    // The real writer keeps forms as a pending review; only the display refines it.
+    expect(sessionAttentionKind(summary)).toBe(
+      toolName === 'AskUserQuestion' ? 'answer' : 'approval',
+    );
   },
 );

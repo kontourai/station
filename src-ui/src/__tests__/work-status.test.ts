@@ -847,8 +847,9 @@ describe('blocking forms from server summaries across work surfaces', () => {
   it.each([false, true])(
     'uses Needs input with a real session and chat=%s',
     (withChat) => {
+      // Shaped like the real writer: forms stay a pending review on the server.
       const summary = folded('approvalInOpenTurn', {
-        pendingReview: false,
+        pendingReview: true,
         openRequestIds: ['form'],
         blockingOpenRequestIds: ['form'],
         openRequestKinds: { form: 'input' },
@@ -889,9 +890,6 @@ describe('blocking forms from server summaries across work surfaces', () => {
       expect(workStatus(items[0], NOW, mixedFacts.get(items[0].id)).word).toBe(
         'Needs approval',
       );
-      expect(
-        sessionWorkStatus({ ...summary, pendingReview: true }, [], NOW).word,
-      ).toBe('Needs approval');
       expect(
         sessionWorkStatus({ ...summary, openRequestKinds: {} }, [], NOW).word,
       ).toBe('Needs approval');

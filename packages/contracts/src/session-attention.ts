@@ -243,13 +243,12 @@ export function sessionAttentionKind(
   const disposition = sessionAttentionDisposition(session);
   if (disposition.state !== 'awaiting') return 'waiting';
   if (disposition.via === 'review_pending') {
-    // Runtime retains review_pending for forms. Refine presentation only;
-    // unknown kinds and an explicit pending review still require approval.
+    // Runtime retains review_pending (and pendingReview) for forms. Refine
+    // presentation only, per blocking request; unknown kinds stay approval.
     const blocking = session.blockingOpenRequestIds?.filter(
       (id) => !answeredRequestIds.includes(id),
     );
     if (
-      !session.pendingReview &&
       blocking?.length &&
       blocking.every((id) => session.openRequestKinds?.[id] === 'input')
     )

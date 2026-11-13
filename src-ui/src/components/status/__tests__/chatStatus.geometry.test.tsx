@@ -51,7 +51,7 @@ test('request and background pills fit desktop and phone in both themes', async 
     title,
     status: 'running',
     lifecycleState: 'review_pending',
-    pendingReview: i !== 0,
+    pendingReview: true, // The real writer sets this for forms too.
     openRequestIds:
       i === 2 ? ['form', 'permission'] : [i === 0 ? 'form' : 'permission'],
     blockingOpenRequestIds:
