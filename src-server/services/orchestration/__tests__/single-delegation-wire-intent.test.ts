@@ -331,3 +331,56 @@ test('a single response remains owned when authority acknowledgement fails after
     await f.close();
   }
 });
+
+test('cancellation after durable single intent prevents transport and retains the no-resend fact', async () => {
+  const f = await fixture();
+  const controller = new AbortController();
+  const cancelled = Error('cancelled after durable intent');
+  class CancellingIntents extends FileFinalWireIntentStore {
+    override async consumeSingle(
+      ...args: Parameters<FileFinalWireIntentStore['consumeSingle']>
+    ): Promise<void> {
+      await super.consumeSingle(...args);
+      controller.abort(cancelled);
+    }
+  }
+  try {
+    const fence = new SingleDelegationFinalFetchLaunchFence({
+      ...f.owners,
+      intents: new CancellingIntents(f.intents.root),
+    });
+    await assert.rejects(
+      fence.start(f.binding, f.wire, controller.signal),
+      (error) => error === cancelled,
+    );
+    await assert.rejects(fence.response, (error) => error === cancelled);
+    assert.equal(fence.invoked, false);
+    assert.equal(f.transport.mock.calls.length, 0);
+    const reopened = new FileFinalWireIntentStore(f.intents.root);
+    assert.ok(
+      await reopened.lookupSingle(
+        f.binding.authority.id,
+        f.binding.invocationId,
+        f.current,
+      ),
+    );
+    const replay = new SingleDelegationFinalFetchLaunchFence({
+      ...f.owners,
+      intents: reopened,
+    });
+    await assert.rejects(
+      replay.start(f.binding, f.wire, new AbortController().signal),
+      { code: 'wire_intent_already_consumed' },
+    );
+    await assert.rejects(replay.response, {
+      code: 'wire_intent_already_consumed',
+    });
+    assert.equal(replay.invoked, false);
+    assert.equal(f.transport.mock.calls.length, 0);
+    const ledger = await f.service.inspect(f.binding.authority.id);
+    assert.equal(ledger.invocations[0]?.usage, null);
+    assert.equal(ledger.invocations[0]?.terminal, false);
+  } finally {
+    await f.close();
+  }
+});
