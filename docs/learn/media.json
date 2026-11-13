@@ -718,12 +718,12 @@
     {
       "path": "docs/learn/media/updates-after-390-dark.png",
       "kind": "image",
-      "digest": "2b931008809ae86118a9b555b99ee3eb14a52867fa157e2f301f41dbfe313d7a",
-      "alt": "Updates panel with shared summaries.",
-      "caption": "Updates panel with shared summaries.",
+      "digest": "c0ea65a9258344aba9c10034644af71dfad8d2b0c8f02bb2dc74a01997e1325f",
+      "alt": "Installed and available server changelogs in Updates.",
+      "caption": "Installed and available server changelogs in Updates.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -746,12 +746,12 @@
     {
       "path": "docs/learn/media/updates-after-1440-light.png",
       "kind": "image",
-      "digest": "cb9780e9d1d618115378cddd50b28390048dad8329fb67253b091249faf582f8",
-      "alt": "Updates panel with shared summaries.",
-      "caption": "Updates panel with shared summaries.",
+      "digest": "5bdc5f8738a3382e27eeaf9ba6a9e3e7007d62a14991254419c150eb8565c0a1",
+      "alt": "Installed and available server changelogs in Updates.",
+      "caption": "Installed and available server changelogs in Updates.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 1440px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -760,12 +760,12 @@
     {
       "path": "docs/learn/media/updates-history-after-390-dark.png",
       "kind": "image",
-      "digest": "314b3e4fc50b06b7a4707c5787bb45f90b35eb32b1f8d6e7ce8ea02e242d9336",
-      "alt": "Release history using the published styled select.",
-      "caption": "Release history using the published styled select.",
+      "digest": "e893fd651cb8d8b5c1bf7c5071bac6c32a122b36d45767e0f92af7f86cda72cf",
+      "alt": "Release history selected through the shared release picker.",
+      "caption": "Release history selected through the shared release picker.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -774,12 +774,12 @@
     {
       "path": "docs/learn/media/updates-notes-after-390-light.png",
       "kind": "image",
-      "digest": "683d1a5812dddd07c754de03f07136c57d7ec1060f72d2c8b15baebf076225f7",
-      "alt": "Installed-version changelog using the recovered exact archive notes.",
-      "caption": "Installed-version changelog using the recovered exact archive notes.",
+      "digest": "b68d65ac5b30aa6a4478cb39b92dada2c129adc66708fa064a8acac0ac1fdace",
+      "alt": "Installed server release notes in the what\u2019s new dialog.",
+      "caption": "Installed server release notes in the what\u2019s new dialog.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
