@@ -1,0 +1,31 @@
+{
+  "path": "docs/guides/native-model-channel-lab.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Contributor-only confined native model-channel prerequisite: required host authority/accounting callback, namespace identity and cleanup, bounded stdio protocol, opt-in synthetic native clients and explicit qualification limits.",
+
+  "limits": "Source review of the complete guide and named implementation/test owners. Historical epic receipts remain revision-bound; current-main slice verification is separate. No ordinary Session wiring, upstream model/native-tool/billing/inherited authority, peer/SSH/parent-child, key erasure, restart or general descendant qualification.",
+
+  "sources": [
+    "src-server/services/connections/native-model-container.ts",
+
+    "src-server/services/connections/native-model-stdio-channel.ts",
+
+    "src-server/services/connections/native-model-stdio-protocol.ts",
+
+    "src-server/services/connections/native-model-stdio-worker.ts",
+
+    "src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts",
+
+    "scripts/child-work-native-model-channel-lab.ts",
+
+    "scripts/lib/local-collaboration-process.mjs",
+
+    "scripts/lib/owned-process.mjs"
+  ],
+
+  "checks": []
+}

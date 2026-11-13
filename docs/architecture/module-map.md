@@ -66,6 +66,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [RecoveryLedger and private CredentialApplicationFactory/Handle](#recoveryledger-and-private-credentialapplicationfactoryhandle) | Persist recovery dispatch truth and exact credential-application settlement. | `packages/monument/src/recovery-ledger.ts` |
 | [CredentialRecoveryModule](#credentialrecoverymodule) | Sequence profile staging, replay, settlement, and compensation. | `src-server/services/orchestration/credential-recovery-module.ts` |
 | [ConnectionInspector](#connectioninspector) | Return one bounded, provenance-aware connection inventory. | `src-server/services/connections/connection-inspector.ts` |
+| [NativeModelStdioChannel](#nativemodelstdiochannel) | Retain bounded native request/delivery and terminal custody before authority composition. | `src-server/services/connections/native-model-stdio-channel.ts` |
 | [SecretBindingAdministration and IntegrationSecretResolver](#secretbindingadministration-and-integrationsecretresolver) | Keep binding metadata authority separate from one child-establishment materialization capability. | `src-server/services/secrets/secret-binding-administration.ts` |
 | [ExtensionNotificationBindings](#extensionnotificationbindings) | Bind exact observed extension tuples to functional consumers without promoting vendor semantics. | `src-shared/extension-notification-bindings.ts` |
 | [JsonFileMutationAuthority](#jsonfilemutationauthority) | Serialize bounded JSON read/derive/publish work without blocking the server event loop. | `src-server/domain/file-storage-helpers.ts` |
@@ -2737,6 +2738,27 @@ ConnectionService supplies current, authorized profile quota observations and
 rechecks admission after probing. The selector adds no credential custody or
 scheduler; ordinary application and provider settlement stay with the owners
 above. Missing quota/lifecycle facts remain unknown.
+
+## NativeModelStdioChannel
+
+This [#91](https://github.com/kontourai/station/issues/91) prerequisite is not wired
+into ordinary Session launch. Its required host callback owns model authority,
+provider credentials, reservation, final fetch and accounting; the channel has
+no fetch fallback. A request handle separates response delivery from terminal
+settlement, and every actual frame write re-enters its captured delivery port.
+Cancellation fences admission and signals active owners before awaiting cleanup.
+
+[NativeModelContainer](../../src-server/services/connections/native-model-container.ts)
+retains one namespace owner before startup, checks exact daemon/container/image
+identity and isolates its loopback bridge from provider network access. Native
+clients receive only a scoped bridge key. Unknown creation or cleanup remains
+an explicit retained obligation. The
+[contributor lab](../guides/native-model-channel-lab.md) owns commands, bounds,
+actual kernel/native evidence and limits; its synthetic replies qualify neither
+provider billing nor inherited delegation authority. The real-worker
+[process suite](../../src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts)
+owns byte-delivery revocation and terminal-lifetime regressions. Do not substitute
+worker exit or response completion for accounting settlement.
 
 ## ConnectionInspector
 
