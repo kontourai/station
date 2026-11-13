@@ -3321,7 +3321,9 @@ for (const viewport of [
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
       'Claude',
     );
-    await expect(agentButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    await expect(agentButton.locator('.choice-caret')).toHaveCount(1);
+    await expect(agentButton.locator('.composer-choice__icon svg')).toHaveCount(1);
+    await closeRunSetup(page);
     const attach = page
       .locator('#chat-dock')
       .getByRole('button', { name: 'Attach files' });
