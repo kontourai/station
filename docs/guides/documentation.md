@@ -303,5 +303,8 @@ feedback.
 The learning atlas and Station Docs MCP share the concept catalog and module
 map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory
 and authoring topics. Run `npm run docs:mcp:generate` when those inputs change;
-do not hand-edit `src-server/tools/station-docs-content.ts`. Keep generated
-payloads static so documentation retrieval cannot acquire live-state access.
+do not hand-edit `src-server/tools/station-docs-content.ts`. It is one Corpus
+docs bundle, validated with Corpus's bundle shape check, which list, get, and
+search all read; search ranks it with `@kontourai/corpus/search`. Its
+`synonyms` come from `corpus.json`. Keep generated payloads static so
+documentation retrieval cannot acquire live-state access.

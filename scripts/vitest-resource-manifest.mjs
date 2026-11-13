@@ -418,6 +418,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // see that seam; under the ordinary four-worker corpus two of its cases
   // timed out at canonical phase load.
   'packages/shared/src/__tests__/plugin-build.test.ts',
+  // #4831: builds the docs server bundle, which starts esbuild's service
+  // child; the file imports no child_process itself.
+  'src-server/tools/__tests__/station-docs-bundle.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
