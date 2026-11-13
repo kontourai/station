@@ -1,9 +1,11 @@
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
+import { useConnectionUsedByQuery } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
 import { FactList } from '../../components/resource-hub/FactList';
 import { UsedByList } from '../../components/resource-hub/UsedByList';
-import type { AgentSummary } from '../../types';
+import type { NavigationView } from '../../types';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
+import { connectionUsedByState } from '../connections-hub/connection-used-by';
 import { engineCatalogSourceLabel } from './EngineModelsTab';
 import { allowanceFacts, engineRouteFact, lastCheckFact } from './engine-facts';
 import './engine-detail.css';
@@ -17,8 +19,7 @@ export function EngineOverviewTab({
   connection,
   defaultModel,
   managedFact,
-  dependents,
-  onOpenAgent,
+  onNavigate,
   notices,
   headerShowsUsageLimit,
 }: {
@@ -26,9 +27,11 @@ export function EngineOverviewTab({
   /** The saved default (the draft's, when unsaved, is on Models). */
   defaultModel: string;
   managedFact: string | null;
-  /** Agents bound to this engine connection. */
-  dependents: readonly AgentSummary[];
-  onOpenAgent: (slug: string) => void;
+  /**
+   * Opens a dependent. What depends on the engine is the server's used-by
+   * read (saved Agent bindings), the same one models and tools show.
+   */
+  onNavigate: (view: NavigationView) => void;
   /** Readiness instructions, sign-in and policy notices, when they apply. */
   notices?: ReactNode;
   /**
@@ -37,6 +40,7 @@ export function EngineOverviewTab({
    */
   headerShowsUsageLimit: boolean;
 }) {
+  const usedBy = useConnectionUsedByQuery({ staleTime: 30_000, retry: false });
   const models = runtimeCatalogVisibleModels(connection);
   const route = engineRouteFact(connection.routeObservation);
   const refusals = allowanceFacts(connection, { headerShowsUsageLimit });
@@ -84,14 +88,7 @@ export function EngineOverviewTab({
         ]}
       />
       <UsedByList
-        state={{
-          kind: 'ready',
-          entries: dependents.map((agent) => ({
-            key: agent.slug,
-            name: agent.name,
-            onOpen: () => onOpenAgent(agent.slug),
-          })),
-        }}
+        state={connectionUsedByState(usedBy, connection.id, onNavigate)}
         emptyDescription="Agents that choose this engine appear here."
       />
     </>

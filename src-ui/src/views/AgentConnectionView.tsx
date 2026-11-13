@@ -56,7 +56,6 @@ import {
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useManagedEngineStateFor } from '../hooks/useManagedEngines';
 import type { AgentSummary, NavigationView } from '../types';
-import { agentsUsingEngine } from '../utils/engineDependents';
 import {
   connectionEngineId,
   runtimeCatalogSourceSentence,
@@ -681,8 +680,7 @@ export function AgentConnectionView({
             defaultModel={String(savedCopy.config.defaultModel || '')}
             managedFact={managedEngineFact(selectedManagedState)}
             headerShowsUsageLimit={health?.label === 'Usage limit reached'}
-            dependents={agentsUsingEngine(agents, current.id)}
-            onOpenAgent={(slug) => onNavigate({ type: 'agent-edit', slug })}
+            onNavigate={onNavigate}
             notices={
               <>
                 <ManagedEngineNotice state={selectedManagedState} />

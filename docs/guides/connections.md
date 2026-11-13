@@ -202,7 +202,9 @@ What **Check connection** or a header fix reported shows under the header.
 
 - **Overview** — the route the engine actually uses, its default model, where
   its model list comes from, any managed policy, recorded usage-limit refusals
-  per account, the last **Check connection** and the agents bound to it. Setup steps, and a command engine's sign-in,
+  per account, the last **Check connection** and **Used by**: the Agents whose
+  saved settings choose this engine, from the same read as model connections
+  and tool servers (above). Setup steps, and a command engine's sign-in,
   appear here when the engine needs them.
 - **Usage** — Station-observed usage over 7 or 30 days. Claude Code and Codex
   are read by engine kind, with an account filter and allowance history. Other

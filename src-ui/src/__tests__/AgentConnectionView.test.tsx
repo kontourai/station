@@ -231,7 +231,27 @@ vi.mock('../components/acp-connections/useStartChatWithEngine', () => ({
   }),
 }));
 
+const usedByRead = vi.hoisted(() => ({
+  Withheld: class ConnectionUsedByWithheldError extends Error {},
+  query: {
+    data: undefined as unknown,
+    error: null as unknown,
+    isError: false,
+  },
+  refetch: (() => {}) as () => unknown,
+}));
+
+beforeEach(() => {
+  usedByRead.query = { data: undefined, error: null, isError: false };
+  usedByRead.refetch = () => {};
+});
+
 vi.mock('@kontourai/station-sdk', () => ({
+  ConnectionUsedByWithheldError: usedByRead.Withheld,
+  useConnectionUsedByQuery: () => ({
+    ...usedByRead.query,
+    refetch: () => usedByRead.refetch(),
+  }),
   splitACPArgs: (value: string) => value.split(' ').filter(Boolean),
   joinACPArgs: (args: string[]) => args.join(' '),
   useCreateACPConnectionMutation: () => ({
@@ -2943,18 +2963,33 @@ describe('AgentConnectionView', () => {
   test('Overview lists the agents bound to this engine connection, not slug look-alikes', async () => {
     connectionQueryData = readyEngine();
     const onNavigate = vi.fn();
+    // The server's used-by read: saved bindings only.
+    usedByRead.query.data = {
+      dependents: [
+        {
+          connectionId: 'opencode',
+          kind: 'agent',
+          slug: 'reviewer',
+          name: 'Reviewer',
+          via: 'engine',
+        },
+        // Named like the engine, bound to another one.
+        {
+          connectionId: 'claude',
+          kind: 'agent',
+          slug: 'opencode-helper',
+          name: 'OpenCode Helper',
+          via: 'engine',
+        },
+      ],
+    };
+    // The client's agent list still carries registry defaults and the
+    // Station Assistant; none of them is a saved binding to this engine.
     const agents = [
-      // Bound here, with a slug that says nothing about the engine.
       {
-        slug: 'reviewer',
-        name: 'Reviewer',
+        slug: 'station-assistant',
+        name: 'Station Assistant',
         execution: { agentConnectionId: 'opencode' },
-      },
-      // Named like the engine, bound to another one.
-      {
-        slug: 'opencode-helper',
-        name: 'OpenCode Helper',
-        execution: { agentConnectionId: 'claude' },
       },
       { slug: 'opencode-unbound', name: 'Unbound' },
     ] as unknown as AgentSummary[];
@@ -2976,6 +3011,37 @@ describe('AgentConnectionView', () => {
       type: 'agent-edit',
       slug: 'reviewer',
     });
+  });
+
+  test('Overview says when the used-by read is withheld or failed, never that nothing uses it', async () => {
+    connectionQueryData = readyEngine();
+    usedByRead.query = {
+      data: undefined,
+      error: new usedByRead.Withheld('operator only'),
+      isError: true,
+    };
+    const { unmount } = await render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+    let usedBy = screen.getByRole('region', { name: 'Used by' });
+    expect(within(usedBy).getByText('Not shown')).toBeTruthy();
+    expect(within(usedBy).queryByText('Not used yet')).toBeNull();
+    unmount();
+
+    const refetch = vi.fn();
+    usedByRead.refetch = refetch;
+    usedByRead.query = {
+      data: undefined,
+      error: new Error('offline'),
+      isError: true,
+    };
+    await render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+    usedBy = screen.getByRole('region', { name: 'Used by' });
+    expect(within(usedBy).queryByText('Not used yet')).toBeNull();
+    fireEvent.click(within(usedBy).getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   test('Overview states the last check, or that there has been none', async () => {
