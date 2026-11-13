@@ -29,6 +29,7 @@ import {
 import type { DelegationExecutionBindingV2 } from '@kontourai/flow-agents/delegation-authority-contract';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { withoutLockedProjectOverrides } from '../../domain/managed-settings.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
@@ -327,10 +328,15 @@ async function captureSource(home: string, selection: Selection) {
       throw error;
     }
   };
-  const metadata = () =>
-    json({
-      project: projects.getProject(project.slug),
-      manifest: manifests.readProjectManifest(project.slug) ?? null,
+  const metadata = () => {
+    const currentProject = withoutLockedProjectOverrides(project);
+    const record = manifests.readRecord(project.slug);
+    return json({
+      // The captured Project revision is checked separately; composition still reads live layouts.
+      project: currentProject,
+      manifest: record
+        ? manifests.composeManifest(record, currentProject)
+        : null,
       bindings: bindings.read(),
       fileWitnesses: [
         join(home, 'projects', project.slug, 'project.json'),
@@ -338,6 +344,7 @@ async function captureSource(home: string, selection: Selection) {
         bindings.path,
       ].map(metadataFileWitness),
     });
+  };
   const metadataBefore = metadata();
   const resolution = await resolver.resolveProjectResource(
     project.slug,
