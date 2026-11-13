@@ -259,9 +259,11 @@ It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
 `npm run perf:station-weight` is the per-PR check for Station's weight at rest
 and the text and tools it adds to the Claude engine's first request. It runs
 the real launcher against a loopback model stub, so it costs no model spend.
-It compares with a committed baseline and fails only on growth past headroom.
-The [reference](../reference/station-weight.md) owns its metrics, budgets,
-baseline recording and gaps.
+It compares with a committed baseline and fails on growth past headroom or on
+any budget it could not compare; `--report-only` serves hosts without a
+baseline. Its end-to-end test is process-heavy, so the full-regression
+workflow runs it on Linux. The [reference](../reference/station-weight.md)
+owns its metrics, budgets, baseline recording and gaps.
 
 ### Mutation safety and interpretation
 
