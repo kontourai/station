@@ -3046,23 +3046,22 @@ account charges and invoice guarantees. Its conservative input reservation upper
 bound is 1,048,576 tokens; the documented total context is 1,000,000 tokens; the explicit output
 cap must be at most 128,000. Missing/inconsistent usage remains unknown-held.
 The installed SDK entry and manifest must match reviewed hashes. Facts expire
-at a fixed snapshot-derived deadline; startup cannot extend it. A changed SDK
+twelve hours after the earliest reviewed snapshot; startup cannot extend it. A changed SDK
 or expired profile requires new evidence and review, not a configuration flag. The
 issuer's current fixed validity window admits preparation
-from `2026-10-31T02:15:00Z` until (excluding)
-`2026-10-31T21:57:45.679Z`. Refreshing those facts does not renew an
+from `2026-11-13T20:30:00Z` until (excluding)
+`2026-11-14T08:12:15.083Z`. Refreshing those facts does not renew an
 existing group's authority or establish provider entitlement.
 
 The authority comes from retained official [model](https://platform.claude.com/docs/en/models/sonnet-4-6/overview),
-[model-version](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions),
 [context](https://platform.claude.com/docs/en/build-with-claude/context-windows),
-[Messages](https://platform.claude.com/docs/en/api/messages/create),
+[Messages](https://platform.claude.com/docs/en/api/messages),
 [pricing](https://platform.claude.com/docs/en/about-claude/pricing),
 [billing](https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage),
 [thinking](https://platform.claude.com/docs/en/build-with-claude/thinking),
-[geography](https://platform.claude.com/docs/en/manage-claude/data-residency),
+[service tiers](https://platform.claude.com/docs/en/api/service-tiers),
 [versioning](https://platform.claude.com/docs/en/api/versioning), and
-[migration](https://platform.claude.com/docs/en/api/migration-2026-10-21) snapshots;
+[errors](https://platform.claude.com/docs/en/api/errors) snapshots;
 the issuer records their hashes. It does not prove model entitlement. The
 personal-host report runtime uses this profile for new preparation; expiry or
 unsupported configuration refuses it. Authenticated Flow context-sync recipients
@@ -3091,12 +3090,14 @@ cannot settle the qualified attempt.
 
 The retained official [model](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite),
 [Generate Content thinking](https://ai.google.dev/gemini-api/docs/generate-content/thinking),
-[API](https://ai.google.dev/api/generate-content),
+[API response](https://aistudio.google.com/api-reference/generate-content),
+[request](https://aistudio.google.com/api-reference/generate-content/generate-content),
+[tokens](https://aistudio.google.com/docs/tokens),
 [pricing](https://ai.google.dev/gemini-api/docs/pricing),
 [billing](https://ai.google.dev/gemini-api/docs/billing), and
-[Generate Content caching](https://ai.google.dev/gemini-api/docs/generate-content/caching)
-snapshots anchor its validity from `2026-10-31T02:15:00Z` until (excluding)
-`2026-10-31T21:57:47.087Z`. Startup cannot extend that window. The stable model label
+[Generate Content caching](https://aistudio.google.com/docs/caching?generate-content=true)
+snapshots anchor its validity from `2026-11-13T20:30:00Z` until (excluding)
+`2026-11-14T08:18:00.046Z`. Startup cannot extend that window. The stable model label
 is not an assertion of immutable weights or current-account access; Google
 restricts 2.5 access to prior active users. The installed SDK can request an
 automatic continuation, but Station's single-use source interceptor refuses it

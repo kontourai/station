@@ -19,6 +19,31 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Reviewed provider-term renewal (2026-11-13)
+
+At `72b3b9a77c3c`, the fixed Anthropic text/input and Google text profiles
+bind reviewed official snapshots captured on November 13. The source audit
+retains twenty HTTP bodies with capture times, headers and SHA-256 digests.
+Independent review checked the source terms and eight-file renewal diff,
+including Google request-side standard selection and implicit versus explicit
+cache storage. Account access, invoices and live provider behavior remain
+unverified; Google's legacy model eligibility is a separate requirement.
+
+Validity starts at 20:30 UTC, after every retained capture. A fixed twelve-hour
+freshness window ends at 08:12:15.083 UTC for Anthropic and 08:18:00.046 UTC for
+Google on November 14. Startup cannot renew it. Model, API version, exact SDK
+pins, tariffs, limits and wire restrictions are unchanged. Historical pricing
+records retain their own evidence and are not repriced from these snapshots.
+
+All seventeen provider owner cases pass. The actual mixed Anthropic/Google
+HTTP owner also passes with source custody, raw responses and truthful
+accounting; its body takes 44.06 seconds under the original bound. These are
+synthetic-provider cases, not real account or fiscal acceptance. Independent
+negative controls extend each expiry by one millisecond: exactly the two
+freshness assertions fail. Byte-exact restoration passes all seventeen owner
+cases and leaves the exact committed tree clean. Both production qualification
+flags remain false; broader native/portable and combined readiness stays open.
+
 ### Provider SDK qualification and current-term audit (2026-11-13)
 
 Commit `2cb3f9134646` qualifies the public Google SDK 3.0.145 serialization
