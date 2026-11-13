@@ -1142,7 +1142,9 @@ fields in contracts and server code,
 including private constants and newly added files. Known out-of-scope constants
 are explicitly allowed by file, name and value: directory/command grants and
 Station Control containment are caller authority, Flow unreachable-gate claims
-are evidence governance, and person/native-title control codes do not represent
+are evidence governance, the ACP `acp.session-rewound` and
+`acp.agent-projection-unapplied` runtime warnings mark a session that kept
+running, and person/native-title control codes do not represent
 turn execution or session startup. Class-field exclusions separately name application
 configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
 a new unclassified constant or class-field code. Object-literal API/validation codes
