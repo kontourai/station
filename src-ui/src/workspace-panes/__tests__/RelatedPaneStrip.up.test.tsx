@@ -290,9 +290,9 @@ describe('Up to a plugin opener', () => {
     await waitFor(() => expect(model).not.toBeNull());
     act(() => {
       model?.placeSurface(OPENER_PANE, 'right');
-      model?.placeSurface('activity', 'right');
+      model?.placeSurface('device', 'right');
     });
-    expect(model?.regions.right.occupant).toBe('activity');
+    expect(model?.regions.right.occupant).toBe('device');
     act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
     await waitFor(() =>
       expect(model?.regions.right.occupant).toBe(OPENER_PANE),
@@ -738,4 +738,20 @@ describe('Up from a pane shown over Chat on a phone', () => {
       unregister();
     }
   });
+});
+
+test('a saved legacy Activity opener returns to its exact session in Chat', async () => {
+  seedRelation({
+    occurrenceId: 'activity',
+    label: 'Legacy session',
+    source: { kind: 'activity', selectedThreadId: 'legacy-thread' },
+  });
+  mount();
+  await waitFor(() => expect(model).not.toBeNull());
+  act(() =>
+    screen.getByRole('button', { name: 'Up to Legacy session' }).click(),
+  );
+  await waitFor(() =>
+    expect(model?.surfaceIntents.chat?.session).toBe('legacy-thread'),
+  );
 });

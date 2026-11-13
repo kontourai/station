@@ -80,6 +80,42 @@
       "sha256": "4f030fab5a00cc08660db4a7f03d85cd0d4cbe5fc5a8c7ac5ebad1340be16e72"
     },
     {
+      "name": "child-chat-dark-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "1482164008202213a7e845e23a85882a9cccf16c839e25f031e6eb28d76436dd"
+    },
+    {
+      "name": "child-chat-dark-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "13421602b626857361880ea5c6b4a5c5480fa4d1bd5b2b7eadfe7dfb571d8871"
+    },
+    {
+      "name": "child-chat-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "0a1a8319d12a6911b34bd32b6f5884e0a4866f846cbae9b6ac5728ba136adfef"
+    },
+    {
+      "name": "child-chat-light-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "1482164008202213a7e845e23a85882a9cccf16c839e25f031e6eb28d76436dd"
+    },
+    {
+      "name": "child-chat-light-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "13421602b626857361880ea5c6b4a5c5480fa4d1bd5b2b7eadfe7dfb571d8871"
+    },
+    {
+      "name": "child-chat-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "e6e17136c8247013e2b9a91bb6bec354bdc5669bb8d774eae7ad87c31b070afb"
+    },
+    {
       "name": "command-palette-empty",
       "width": 1440,
       "height": 900,
@@ -389,7 +425,7 @@
       "name": "overlay-region-chooser-from-toggle",
       "width": 1440,
       "height": 900,
-      "sha256": "be43b6d2e69fb8d6f80df5a4438ae9ac8ecd9e083c5856617851794c2af52548"
+      "sha256": "ac4811a031239794325a13b3a6407d7e20a56502d65e8183c598cbd10142e8eb"
     },
     {
       "name": "overlay-toast",

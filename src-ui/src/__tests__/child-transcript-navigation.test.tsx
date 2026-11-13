@@ -149,6 +149,7 @@ test('the real child card opens the normal message renderer in the chat pane and
     name: 'Conversation transcript',
   });
   expect(within(transcript).getByText('Inspect the child files')).toBeTruthy();
+  expect(transcript.textContent).toContain('Review files');
   expect(
     await within(transcript).findByRole('heading', { name: 'Child answer' }),
   ).toBeTruthy();

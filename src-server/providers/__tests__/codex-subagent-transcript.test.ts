@@ -58,7 +58,9 @@ describe('Codex subagent transcript (rollout file)', () => {
       'result (none)',
       'assistant: Findings: the fixture is clean.',
     ]);
+    expect(page.entries[3]).toMatchObject({ toolCallId: 'call_0015' });
     expect(page.entries[2]).toMatchObject({
+      toolCallId: 'call_0015',
       input: 'text(await tools.exec_command({cmd:"git status -sb"}))',
     });
     const all = JSON.stringify(page);
