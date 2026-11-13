@@ -5099,7 +5099,8 @@ scan bound, or `unavailable`), `kinds` (each with `count`, the detector `via`,
 `revision` (a GitHub commit resolved when it was read, or a folder digest),
 `checkedAt` and `changedAt`, the last read that found a new revision. `kind`
 is the primary catalog kind, kept for older clients. Refresh reads the source
-again before its catalogs.
+again before its catalogs. Station's default local skill folders are named for their engine and
+owner (`Codex skills · user`, `Claude skills · Station`), not one shared name.
 
 ### List Available Skills (Registry)
 
