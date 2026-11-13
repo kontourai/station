@@ -4,6 +4,7 @@
  */
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { CONVERSATION_REPORTED_COST_UNITS_MAX } from '@kontourai/station-contracts/runtime';
 import {
   isValidContextObservation,
   type SessionUsageAggregate,
@@ -123,14 +124,24 @@ function combineLineageStats(
   };
 }
 
-/** Lineage records' engine-reported costs, summed per unit. */
+/**
+ * Lineage records' engine-reported costs, summed per unit, at most
+ * CONVERSATION_REPORTED_COST_UNITS_MAX units (each record is capped, but
+ * their union need not be).
+ */
 function sumReportedCostsByUnit(
   list: ConversationStats[],
 ): Pick<ConversationStats, 'reportedCosts'> {
   const byUnit = new Map<string, number>();
   for (const stats of list)
-    for (const { unit, amount } of stats.reportedCosts ?? [])
+    for (const { unit, amount } of stats.reportedCosts ?? []) {
+      if (
+        !byUnit.has(unit) &&
+        byUnit.size >= CONVERSATION_REPORTED_COST_UNITS_MAX
+      )
+        continue;
       byUnit.set(unit, (byUnit.get(unit) ?? 0) + amount);
+    }
   return byUnit.size > 0
     ? {
         reportedCosts: [...byUnit].map(([unit, amount]) => ({ unit, amount })),

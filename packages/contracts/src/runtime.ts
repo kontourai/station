@@ -147,16 +147,26 @@ export interface ConversationReportedCost {
 /** Bound on a wire cost unit; engines spell one as a short token. */
 const REPORTED_COST_UNIT = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
 
+/**
+ * At most this many cost units in one stats response. The usage fold refuses
+ * a unit past it; the parser keeps the first this many rather than refusing
+ * the whole response.
+ */
+export const CONVERSATION_REPORTED_COST_UNITS_MAX = 16;
+
+/** A cost unit the stats wire carries (`credit`, `USD`, `EUR`). */
+export function isReportedCostUnit(unit: unknown): unit is string {
+  return typeof unit === 'string' && REPORTED_COST_UNIT.test(unit);
+}
+
 function isConversationReportedCosts(value: unknown): boolean {
   return (
     value === undefined ||
     (Array.isArray(value) &&
-      value.length <= 16 &&
       value.every(
         (entry) =>
           isRecord(entry) &&
-          typeof entry.unit === 'string' &&
-          REPORTED_COST_UNIT.test(entry.unit) &&
+          isReportedCostUnit(entry.unit) &&
           isFiniteNonnegative(entry.amount),
       ))
   );
@@ -232,6 +242,17 @@ export function parseConversationStatsResponse(
         !Object.values(candidate.modelStats).every(isConversationModelStats)))
   )
     return undefined;
+  if (
+    Array.isArray(candidate.reportedCosts) &&
+    candidate.reportedCosts.length > CONVERSATION_REPORTED_COST_UNITS_MAX
+  )
+    return {
+      ...candidate,
+      reportedCosts: candidate.reportedCosts.slice(
+        0,
+        CONVERSATION_REPORTED_COST_UNITS_MAX,
+      ),
+    } as unknown as ConversationStatsResponse;
   return candidate as unknown as ConversationStatsResponse;
 }
 

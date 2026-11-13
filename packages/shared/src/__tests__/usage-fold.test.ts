@@ -870,6 +870,23 @@ describe('foldUsageEvents: engine-reported cost and context reading', () => {
     ]);
   });
 
+  it('refuses a unit past the wire cap and a unit the wire cannot carry', () => {
+    const usage = foldUsageEvents([
+      ...Array.from({ length: 17 }, (_, i) =>
+        cost(1, 'turn', { turnId: `t${i}` }, `U${i}`),
+      ),
+      cost(5, 'turn', { turnId: 'x' }, 'credit points'),
+      // A unit already folded keeps folding.
+      cost(2, 'turn', { turnId: 'y' }, 'U0'),
+    ]);
+    expect(usage.reportedCosts).toHaveLength(16);
+    expect(usage.reportedCosts?.[0]).toEqual({ unit: 'U0', amount: 3 });
+    expect(usage.reportedCosts?.map((c) => c.unit)).not.toContain('U16');
+    expect(usage.reportedCosts?.map((c) => c.unit)).not.toContain(
+      'credit points',
+    );
+  });
+
   it('drops unusable figures and keeps the latest context reading', () => {
     const usage = foldUsageEvents([
       cost(-1, 'turn', { turnId: 'a' }),

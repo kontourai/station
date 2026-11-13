@@ -1,4 +1,8 @@
 import {
+  CONVERSATION_REPORTED_COST_UNITS_MAX,
+  isReportedCostUnit,
+} from '@kontourai/station-contracts/runtime';
+import {
   type CacheAwareTokenComponents,
   CUMULATIVE_USAGE_PROVIDERS,
   isValidContextObservation,
@@ -262,11 +266,18 @@ export interface EngineReportedCostTotal {
  * unit, and its turn figures are not added on top: an engine that reports
  * both (Kiro reports each turn and the session total) would otherwise be
  * counted twice. Units are never converted or combined.
+ *
+ * Only a unit the stats wire can carry is folded ({@link isReportedCostUnit}),
+ * and at most {@link CONVERSATION_REPORTED_COST_UNITS_MAX} of them: a unit past
+ * the cap is refused, so the stats response stays within what its parser
+ * accepts.
  */
 export class EngineReportedCostTotals {
   private readonly turns = new Map<string, Map<string, number>>();
   private readonly sessions = new Map<string, CumulativeCostSegments>();
   private readonly order: string[] = [];
+  /** Figures dropped because their unit came past the cap. */
+  refusedUnits = 0;
 
   sessionStarted(resumed: boolean): void {
     for (const segments of this.sessions.values())
@@ -279,15 +290,16 @@ export class EngineReportedCostTotals {
     reportedCost?: { amount: unknown; unit: unknown; scope: unknown };
   }): void {
     const cost = event.reportedCost;
-    if (
-      !cost ||
-      !isUsableCost(cost.amount) ||
-      typeof cost.unit !== 'string' ||
-      !cost.unit
-    )
+    if (!cost || !isUsableCost(cost.amount) || !isReportedCostUnit(cost.unit))
       return;
     if (cost.scope !== 'turn' && cost.scope !== 'session') return;
-    if (!this.order.includes(cost.unit)) this.order.push(cost.unit);
+    if (!this.order.includes(cost.unit)) {
+      if (this.order.length >= CONVERSATION_REPORTED_COST_UNITS_MAX) {
+        this.refusedUnits += 1;
+        return;
+      }
+      this.order.push(cost.unit);
+    }
     if (cost.scope === 'turn') {
       let turns = this.turns.get(cost.unit);
       if (!turns) {

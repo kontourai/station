@@ -1,4 +1,7 @@
-import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
+import {
+  CONVERSATION_REPORTED_COST_UNITS_MAX,
+  parseConversationStatsResponse,
+} from '@kontourai/station-contracts/runtime';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
@@ -702,6 +705,56 @@ describe('getConversationStats — engine-reported cost and context reading', ()
     // Credits are never a USD cost.
     expect(parsed?.estimatedCost).toBeUndefined();
     expect(parsed).not.toHaveProperty('contextPercent');
+  });
+
+  test('seventeen cost units still produce a stats response the wire parser accepts', async () => {
+    const units = Array.from({ length: 17 }, (_, i) => `U${i}`);
+    const events = units.map(
+      (unit, index) =>
+        ({
+          eventId: `e${index}`,
+          provider: 'acp',
+          threadId: 'thread-1',
+          createdAt: '2026-11-13T00:00:00.000Z',
+          method: 'token-usage.updated',
+          turnId: 't1',
+          reportedCost: { amount: 1, unit, scope: 'turn' },
+        }) as unknown as CanonicalRuntimeEvent,
+    );
+    const data = await getConversationStats(
+      'kiro',
+      'thread-1',
+      new Map(),
+      new Map(),
+      new Map(),
+      createConfigLoader(),
+      appConfig,
+      undefined,
+      mockLogger,
+      () => foldUsageEvents(events),
+    );
+    const parsed = parseConversationStatsResponse(
+      JSON.parse(JSON.stringify(data)),
+    );
+    expect(parsed).toBeDefined();
+    expect(parsed?.reportedCosts?.map((cost) => cost.unit)).toEqual(
+      units.slice(0, 16),
+    );
+  });
+
+  test('the wire parser keeps the first sixteen units rather than refusing the response', () => {
+    expect(CONVERSATION_REPORTED_COST_UNITS_MAX).toBe(16);
+    const parsed = parseConversationStatsResponse({
+      modelId: 'm',
+      turns: 0,
+      toolCalls: 0,
+      reportedCosts: Array.from({ length: 17 }, (_, i) => ({
+        unit: `U${i}`,
+        amount: i,
+      })),
+    });
+    expect(parsed?.reportedCosts).toHaveLength(16);
+    expect(parsed?.reportedCosts?.at(-1)).toEqual({ unit: 'U15', amount: 15 });
   });
 
   test('the wire validator refuses a malformed engine cost', () => {
