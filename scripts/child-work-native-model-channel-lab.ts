@@ -411,7 +411,7 @@ try {
             }
           : {
               STATION_ENGINE_PROXY_KEY: connection.token,
-              CODEX_HOME: '/home/native/codex',
+              CODEX_HOME: '/home/native',
             };
       const args =
         engine.name === 'claude'
@@ -500,6 +500,7 @@ const result=capture.finish();if(result.truncated||result.invalidUtf8)throw Erro
       receipt.status = 'FAIL';
       process.exitCode = 1;
     }
+  if (container) receipt.closed = container.inspect();
   save();
   process.stdout.write(
     `${JSON.stringify({ artifacts, status: receipt.status })}\n`,
