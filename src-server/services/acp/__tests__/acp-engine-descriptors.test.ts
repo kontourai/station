@@ -5,9 +5,9 @@ import {
 } from '../../../providers/registries/registry.js';
 import {
   listValidatedACPRegistryEntries,
-  registryMinimumVersionFor,
   nameSkeleton,
   registryLaunchEnvFor,
+  registryMinimumVersionFor,
 } from '../acp-engine-descriptors.js';
 
 /**
