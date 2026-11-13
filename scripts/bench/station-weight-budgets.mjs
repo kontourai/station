@@ -19,7 +19,9 @@ export const BASELINE_SCHEMA_VERSION = 1;
  * metric's own unit, for metrics whose baseline can sit near zero.
  */
 export const STATION_WEIGHT_BUDGETS = Object.freeze([
-  { id: 'serverReadyMs', scope: 'host', ratio: 0.5, floor: 0 },
+  // Launch timing swings with host load: clean runs on one loaded host
+  // ranged 3.6-8.6 s, so a 50% ceiling failed a clean tree.
+  { id: 'serverReadyMs', scope: 'host', ratio: 1, floor: 0 },
   { id: 'restMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
   { id: 'idleSessionsMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
   // Percentage points: a near-idle tree must not fail on scheduler noise.
