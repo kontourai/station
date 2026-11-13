@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Checked links and claims that touch the changed sources: it links connections.md only for the OAuth MCP anchor (unchanged heading), and says nothing about Connections row status, the /connections resolver, engine page Status/Retry, or tones. Changes (routing.ts engine tab segment, ConnectionsHub waiting, station-tones verdicts, connection-sections tabs, providerCatalog type export) do not affect Agent configuration claims.","inputs":["docs/guides/agent-configuration.md","src-ui/src/app-shell/routing.ts","src-ui/src/components/kontour/station-tones.ts","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
+  ]
+}
