@@ -172,10 +172,6 @@
   min-width: 0;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--k-space-2);
 }
 .mobile-inbox .inbox-row__project-context > svg,
 .mobile-inbox .inbox-row__project-context > .inbox-row__project-accent {
