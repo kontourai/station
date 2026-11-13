@@ -14,6 +14,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Off by default so every other test in this file sees the real filesystem.
 const readdirOrder = vi.hoisted(() => ({ reverse: false }));
+// When set, each FileHandle.write writes at most this many bytes and yields,
+// as a partial write on a full or remote filesystem would.
+const shortWrites = vi.hoisted(() => ({ maxBytes: 0 }));
 
 vi.mock('node:fs/promises', async () => {
   const actual =
@@ -23,6 +26,26 @@ vi.mock('node:fs/promises', async () => {
   return {
     ...actual,
     default: actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      if (!shortWrites.maxBytes) return handle;
+      return new Proxy(handle, {
+        get(target, property) {
+          if (property === 'write')
+            return async (buffer: Buffer, offset = 0, length?: number) => {
+              await new Promise((resolve) => setImmediate(resolve));
+              const remaining = (length ?? buffer.length - offset) as number;
+              return target.write(
+                buffer,
+                offset,
+                Math.min(remaining, shortWrites.maxBytes),
+              );
+            };
+          const value = Reflect.get(target, property);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    },
     readdir: async (...args: Parameters<typeof actual.readdir>) => {
       const entries = await actual.readdir(...args);
       return readdirOrder.reverse
@@ -571,6 +594,31 @@ describe('RuntimeEventLog line integrity', () => {
     });
     expect(invalid).toHaveLength(0);
     expect(lines).toHaveLength(51);
+  });
+
+  it('keeps lines whole when the filesystem accepts only part of each write', async () => {
+    const root = makeTempDir('station-event-short-writes-');
+    const log = new RuntimeEventLog(root, quietLogger(), { now });
+    shortWrites.maxBytes = 16;
+    try {
+      await Promise.all(
+        Array.from({ length: 5 }, (_, index) =>
+          log.persist({
+            timestamp: '2026-11-12T11:00:00.000Z',
+            userId: 'u1',
+            index,
+          }),
+        ),
+      );
+    } finally {
+      shortWrites.maxBytes = 0;
+    }
+    const lines = (await readFile(file(root), 'utf8'))
+      .split('\n')
+      .filter(Boolean);
+    expect(lines.map((line) => JSON.parse(line).index)).toEqual([
+      0, 1, 2, 3, 4,
+    ]);
   });
 
   it('starts a new line after a torn tail left by a writer that died mid-line', async () => {

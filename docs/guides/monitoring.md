@@ -1700,7 +1700,12 @@ leaves the span's usage absent, because its frames are session totals, not that
 turn's usage. Spans written before this change can carry a Codex session total.
 The bridge writes one `execute_tool` start per open tool call id: an engine
 that re-publishes `tool.started` as a call's title, kind or input changes (ACP)
-does not add start rows, and the start row keeps the input known at first sight.
+does not add start rows. The start row records the input known at first sight;
+when the input changes afterwards (OpenCode first reports `{}`), the end row
+carries the settled input in `gen_ai.tool.call.arguments`. Both rows use the
+name the call started under, so Insights counts a call and its outcome under
+one tool; a later retitle (OpenCode's description, such as "List files") is not
+a tool name. A call first reported with no name keeps its id on the start row.
 
 The emitter redacts content, emits the live event, and tracks an asynchronous
 persistence promise. Persistence rejection is contained; `flush()` waits for
@@ -1761,7 +1766,7 @@ Station extensions:
 | `emitAgentStart` | Chat request begins | slug, model, input |
 | `emitAgentComplete` | Chat request ends | tokens, steps, finish reason |
 | `emitToolCall` | Tool execution starts | tool name, arguments |
-| `emitToolResult` | Tool execution ends | tool name, result |
+| `emitToolResult` | Tool execution ends | tool name, result; input that changed after the start row |
 | `emitReasoning` | Extended thinking | reasoning text |
 | `emitHealth` | Health check | healthy, checks, integrations |
 | `emitRaw` | Custom events | any MonitoringEvent |

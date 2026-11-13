@@ -504,15 +504,16 @@ describe('OrchestrationMonitoringBridge', () => {
       toolCallId: 'call-1',
       kind: 'execute',
       hasKind: true,
+      rawInput: { command: 'ls' },
+      hasRawInput: true,
       status: 'in_progress',
       hasStatus: true,
     });
+    // OpenCode retitles the call with its description.
     supervisor.acceptUpdate({
       toolCallId: 'call-1',
       title: 'List files',
       hasTitle: true,
-      rawInput: { command: 'ls' },
-      hasRawInput: true,
     });
     supervisor.acceptUpdate({
       toolCallId: 'call-1',
@@ -537,7 +538,89 @@ describe('OrchestrationMonitoringBridge', () => {
       [SPAN.START, 'call-1'],
       [SPAN.END, 'call-1'],
     ]);
+    // The start row is what was known at first sight; the settled input is
+    // on the result row, and both rows file the call under one tool name.
+    expect(toolRows[0]?.[K.TOOL_NAME]).toBe('bash');
+    expect(toolRows[0]?.[K.TOOL_CALL_ARGS]).toEqual({});
+    expect(toolRows[1]?.[K.TOOL_NAME]).toBe('bash');
+    expect(toolRows[1]?.[K.TOOL_CALL_ARGS]).toEqual({ command: 'ls' });
+    expect(toolRows[1]?.[K.TOOL_CALL_RESULT]).toEqual({ output: 'a b' });
     expect(typeof toolRows[1]?.[K.TOOL_DURATION_MS]).toBe('number');
+  });
+
+  test('an ACP call first reported without a name or with settled input', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, () => ({
+      slug: 'opencode',
+      conversationId: 'conversation-1',
+      userId: 'u1',
+    }));
+    bridge.onTurnDispatched({
+      provider: 'acp',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    const supervisor = new AcpToolUpdateSupervisor(
+      {
+        provider: 'acp',
+        threadId: 'conversation-1',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      (event) => bridge.onRuntimeEvent({ ...event, turnId: 'turn-1' }),
+    );
+    // No name at first sight: the supervisor labels the call with its id.
+    supervisor.acceptStarted({ toolCallId: 'call-2' });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-2',
+      title: 'read',
+      hasTitle: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-2',
+      status: 'completed',
+      hasStatus: true,
+    });
+    // Input known from the start and re-sent unchanged on a retitle.
+    supervisor.acceptStarted({
+      toolCallId: 'call-3',
+      title: 'grep',
+      hasTitle: true,
+      rawInput: { pattern: 'x' },
+      hasRawInput: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-3',
+      title: 'Search for x',
+      hasTitle: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-3',
+      status: 'completed',
+      hasStatus: true,
+    });
+    supervisor.dispose();
+    await emitter.flush();
+
+    const rows = persisted
+      .filter((event) => event[K.OP_NAME] === OP.EXECUTE_TOOL)
+      .map((event) => ({
+        kind: event[K.SPAN_KIND],
+        id: event[K.TOOL_CALL_ID],
+        name: event[K.TOOL_NAME],
+        hasArgs: K.TOOL_CALL_ARGS in event,
+      }));
+    expect(rows).toEqual([
+      { kind: SPAN.START, id: 'call-2', name: 'call-2', hasArgs: true },
+      { kind: SPAN.END, id: 'call-2', name: 'read', hasArgs: false },
+      { kind: SPAN.START, id: 'call-3', name: 'grep', hasArgs: true },
+      { kind: SPAN.END, id: 'call-3', name: 'grep', hasArgs: false },
+    ]);
   });
 
   test('a completed call id that is reused starts a new span', async () => {

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerUsageScope } from '@kontourai/station-shared/usage-fold';
@@ -20,9 +21,33 @@ type TurnContext = {
    */
   usageNotPerTurn?: true;
   provider?: string;
-  /** Tool call start times, for the elapsed time on results (archive#3077). */
-  toolStartedAt?: Record<string, number>;
+  /** Open tool calls by id: what the start span recorded and what came after. */
+  openTools?: Map<string, OpenTool>;
 };
+
+type OpenTool = {
+  /** For the elapsed time on results (archive#3077). */
+  startedAt: number;
+  /**
+   * The start span's name, which the result reuses so Insights files a call
+   * and its outcome in one bucket: OpenCode later retitles a call with its
+   * description ("List files"), which is not the tool's name. Absent when the
+   * start carried only the call id; the result then takes the final name.
+   */
+  name?: string;
+  /** The arguments the start span carried. */
+  startArguments: unknown;
+  /** The newest arguments a repeat `tool.started` reported. */
+  latestArguments: unknown;
+};
+
+/** An adapter that knows no name yet labels the call with its own id. */
+function realToolName(
+  name: string | undefined,
+  toolCallId: string | undefined,
+): string | undefined {
+  return name && name !== toolCallId ? name : undefined;
+}
 
 /**
  * Projects canonical external-engine events into Station's monitoring store.
@@ -106,21 +131,19 @@ export class OrchestrationMonitoringBridge {
       : undefined;
     if (!context || !turnId) return;
     if (event.method === 'tool.started') {
-      // `tool.started` is an upsert, not a lifecycle edge: the ACP tool-update
-      // supervisor re-publishes it whenever a call's title, kind or input
-      // changes. Monitoring records one start span per open call, so a repeat
-      // for an id still awaiting its completion is not a new execution, and
-      // must not restart its clock either.
-      if (
-        event.toolCallId &&
-        context.toolStartedAt &&
-        Object.hasOwn(context.toolStartedAt, event.toolCallId)
-      )
+      const open = event.toolCallId
+        ? context.openTools?.get(event.toolCallId)
+        : undefined;
+      if (open) {
+        // `tool.started` is an upsert, not a lifecycle edge: the ACP
+        // tool-update supervisor re-publishes it whenever a call's title,
+        // kind or input changes. The start span is already written, and the
+        // clock keeps running; what arrived later is carried to the result.
+        // OpenCode first reports `{}` and only then the real input.
+        if (event.arguments !== undefined)
+          open.latestArguments = event.arguments;
         return;
-      // Remember when it started so the result can carry elapsed time too
-      // (archive#3077). Without this, duration exists for Station-engine
-      // tools and silently not for external ones — the same
-      // present-for-some-rows asymmetry the sibling issue is about.
+      }
       if (event.toolCallId) {
         // performance.now(), matching MetadataHandler: both producers write
         // the SAME station.tool.duration_ms, and a wall clock is not
@@ -128,10 +151,12 @@ export class OrchestrationMonitoringBridge {
         // yields a negative elapsed time for external-engine rows only. One
         // field measured by two clocks is the same defect class as one field
         // carrying two meanings.
-        context.toolStartedAt = {
-          ...(context.toolStartedAt ?? {}),
-          [event.toolCallId]: performance.now(),
-        };
+        (context.openTools ??= new Map()).set(event.toolCallId, {
+          startedAt: performance.now(),
+          name: realToolName(event.toolName, event.toolCallId),
+          startArguments: event.arguments,
+          latestArguments: event.arguments,
+        });
       }
       this.emitter?.emitToolCall({
         slug: context.slug,
@@ -145,21 +170,19 @@ export class OrchestrationMonitoringBridge {
         model: context.model,
       });
     } else if (event.method === 'tool.completed') {
-      // Consume the start time, mirroring MetadataHandler: a redelivered
+      // Consume the open call, mirroring MetadataHandler: a redelivered
       // completion for a reused id must not pick up a stale start.
-      const startedAt = event.toolCallId
-        ? context.toolStartedAt?.[event.toolCallId]
+      const open = event.toolCallId
+        ? context.openTools?.get(event.toolCallId)
         : undefined;
-      if (event.toolCallId && context.toolStartedAt) {
-        const { [event.toolCallId]: _consumed, ...rest } =
-          context.toolStartedAt;
-        context.toolStartedAt = rest;
-      }
+      if (event.toolCallId) context.openTools?.delete(event.toolCallId);
+      const startedAt = open?.startedAt;
+      const toolName = open?.name ?? event.toolName;
       if (startedAt !== undefined) {
         // Feed the histogram too, so an exporter-configured deployment sees
         // external-engine latency rather than Station-engine only.
         otelToolDuration.record(performance.now() - startedAt, {
-          ...(event.toolName ? { tool: event.toolName } : {}),
+          ...(toolName ? { tool: toolName } : {}),
           plugin: '',
         });
       }
@@ -168,8 +191,14 @@ export class OrchestrationMonitoringBridge {
         conversationId: context.conversationId,
         userId: context.userId,
         traceId: context.traceId,
-        toolName: event.toolName,
+        toolName,
         toolCallId: event.toolCallId,
+        // Only input the start span does not already show.
+        ...(open &&
+        open.latestArguments !== undefined &&
+        !isDeepStrictEqual(open.latestArguments, open.startArguments)
+          ? { input: open.latestArguments }
+          : {}),
         result: event.output ?? event.error,
         ...(startedAt !== undefined
           ? { durationMs: performance.now() - startedAt }
