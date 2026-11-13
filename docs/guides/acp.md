@@ -111,8 +111,9 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    (Antigravity 1.5.8 resumes on its account default), so the start's
    explicit mode, model and effort are applied again, in that order, where
    the resumed session differs. A value the session no longer advertises is
-   skipped rather than refusing the reopen, and `session.configured` does
-   not report it as in effect. No governed default mode is applied; a
+   skipped rather than refusing the reopen; `session.configured`'s
+   `reportedModel` says what the engine runs (`effectiveModel` stays what was
+   requested). No governed default mode is applied; a
    governed start refuses a mode outside build and plan before launch, for
    a reopen as for a new chat.
    On `session/load`, ACP has the agent replay the whole conversation as

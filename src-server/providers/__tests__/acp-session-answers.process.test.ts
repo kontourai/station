@@ -246,7 +246,25 @@ describe.skipIf(process.platform === 'win32')(
           .slice(before)
           .map((entry) => entry.method),
       ).toEqual(['initialize', 'session/resume']);
-      // Nor is it reported as in effect.
+    });
+
+    test('a reopen whose model the resumed session no longer offers keeps the engine default and says so', async () => {
+      const engine = launch(PROFILE, TEXT_TURN);
+      const first = await engine.start('gone', undefined, {
+        modelId: 'gemini-3.8-flash',
+      });
+      await engine.adapter.stopSession('gone');
+      const before = engine.record().length;
+      // A model the account no longer has: not in the recorded options.
+      await engine.start('gone', first.resumeCursor, {
+        modelId: 'retired-model',
+      });
+      expect(
+        engine
+          .record()
+          .slice(before)
+          .map((entry) => entry.method),
+      ).toEqual(['initialize', 'session/resume']);
       const configured = (await waitFor(
         () =>
           engine.events.filter(
@@ -254,10 +272,7 @@ describe.skipIf(process.platform === 'win32')(
           )[1],
         'the reopen session.configured',
       )) as { metadata?: Record<string, unknown> };
-      expect(configured.metadata?.effectiveModel).toBe('gemini-4-argon');
-      expect(
-        configured.metadata?.effectiveModelOptions ?? {},
-      ).not.toHaveProperty('effort');
+      expect(configured.metadata?.reportedModel).toBe('gemini-4-argon');
     });
 
     test('a reopen applies an effort to an option that lists no values', async () => {

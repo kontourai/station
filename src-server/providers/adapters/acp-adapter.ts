@@ -1014,25 +1014,17 @@ async function reapplyRequestedSessionState(input: {
 }): Promise<{
   reportedModel: string | undefined;
   modelSelection?: ReturnType<typeof modelSelectionReceipt>;
-  /** Requested values the resumed session did not advertise, left unapplied. */
-  skipped: { model: boolean; mode: boolean; effort: boolean };
 }> {
-  const skipped = { model: false, mode: false, effort: false };
   const { record, requestedModel } = input;
   let reportedModel = input.reportedModel;
   let modelSelection: ReturnType<typeof modelSelectionReceipt> | undefined;
   // Mode first, as a fresh start does: a mode can carry its own model.
   const catalog = record.acpModeCatalog;
-  if (input.requestedMode && input.requestedMode !== record.currentModeId) {
-    skipped.mode = !catalog?.modes.some(
-      (mode) => mode.id === input.requestedMode,
-    );
-  }
   if (
     input.requestedMode &&
     catalog &&
-    !skipped.mode &&
-    input.requestedMode !== record.currentModeId
+    input.requestedMode !== record.currentModeId &&
+    catalog.modes.some((mode) => mode.id === input.requestedMode)
   ) {
     const appliedMode = await applyAdvertisedAcpSessionMode(
       input.process,
@@ -1082,18 +1074,16 @@ async function reapplyRequestedSessionState(input: {
       await input.process.setModel(requestedModel);
       reportedModel = requestedModel;
       modelSelection = modelSelectionReceipt(requestedModel, requestedModel);
-    } else {
-      skipped.model = true;
     }
   }
   const effortOption = findAcpEffortConfigOption(record.configOptions);
   // An option that lists no values takes any (as `applyAcpEffort` does).
-  skipped.effort =
-    !!input.requestedEffort &&
-    (!effortOption ||
-      (effortOption.values.length > 0 &&
-        !effortOption.values.includes(input.requestedEffort)));
-  if (input.requestedEffort && !skipped.effort) {
+  if (
+    input.requestedEffort &&
+    effortOption &&
+    (effortOption.values.length === 0 ||
+      effortOption.values.includes(input.requestedEffort))
+  ) {
     const applied = await applyAcpEffort(
       input.process,
       record.configOptions,
@@ -1105,7 +1095,6 @@ async function reapplyRequestedSessionState(input: {
   return {
     reportedModel,
     ...(modelSelection ? { modelSelection } : {}),
-    skipped,
   };
 }
 
@@ -2098,10 +2087,6 @@ export class AcpAdapter implements ProviderAdapterShape {
       // `acpAdvertisedModelCatalog`; an answer that names none leaves it
       // honestly unset.
       let reportedModel: string | undefined;
-      // What `session.configured` reports as in effect; a reattach drops
-      // what it could not apply.
-      let effectiveModelId = input.modelId;
-      let effectiveModelOptions = input.modelOptions;
       let verifiedModelSelection:
         | ReturnType<typeof modelSelectionReceipt>
         | undefined;
@@ -2236,18 +2221,6 @@ export class AcpAdapter implements ProviderAdapterShape {
           });
           reportedModel = reapplied.reportedModel;
           verifiedModelSelection = reapplied.modelSelection;
-          // What was skipped is not reported as in effect.
-          if (reapplied.skipped.model) effectiveModelId = undefined;
-          if (reapplied.skipped.mode || reapplied.skipped.effort)
-            effectiveModelOptions = Object.fromEntries(
-              Object.entries(effectiveModelOptions ?? {}).filter(
-                ([key]) =>
-                  !(
-                    (key === 'mode' && reapplied.skipped.mode) ||
-                    (key === 'effort' && reapplied.skipped.effort)
-                  ),
-              ),
-            );
           acpResumeSessions.add(1, { connectionId: config.id, outcome });
         } finally {
           record.reattaching = false;
@@ -2489,10 +2462,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           const deliveryMetadata = mergeCapabilityDeliveryMetadata(
             {
               ...input.metadata,
-              ...effectiveModelMetadata(
-                effectiveModelId,
-                effectiveModelOptions,
-              ),
+              ...effectiveModelMetadata(input.modelId, input.modelOptions),
               ...reportedModelMetadata(reportedModel),
               ...(verifiedModelSelection
                 ? {
@@ -5315,8 +5285,6 @@ export class AcpAdapter implements ProviderAdapterShape {
   ): Promise<void> {
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;
-    // The re-prompt below is a session/prompt, whatever the turn ran before.
-    record.activeTurnRunsEngineCommand = false;
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, turnId);
     await record.process.cancel();
