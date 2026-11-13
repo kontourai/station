@@ -6946,6 +6946,77 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test('Antigravity steers by a second session/prompt that takes over the running turn', async () => {
+    // Recorded on Antigravity CLI 1.5.8: the first prompt answers `end_turn`
+    // as soon as the mid-turn prompt arrives; the work and the reply carry on
+    // under the second one.
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'agy', args: ['acp', '--process-per-session'] },
+      ],
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = {
+          name: 'Antigravity ACP Server',
+          version: '1.5.8',
+        };
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-agy-steer',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-agy-steer',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn('thread-agy-steer', 'go left', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toEqual([
+      [{ type: 'text', text: 'start' }],
+      [{ type: 'text', text: 'go left' }],
+    ]);
+    const steer = await nextEvent(iterator, 'steer turn.started');
+    expect(steer).toMatchObject({
+      method: 'turn.started',
+      turnId: turn.turnId,
+      inputKind: 'steer',
+    });
+    // Nothing was cancelled, so the steer claims no interruption.
+    expect(steer).not.toHaveProperty('steerInterruptedRun');
+
+    // The superseded prompt's `end_turn` does not end the steered turn.
+    processes[0]!.resolvePrompt('end_turn');
+    await processes[0]!.client.sessionUpdate({
+      sessionId: 'native-kiro-cli',
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'going left' },
+      },
+    } as any);
+    // The very next event is the reply, not a completion of the turn.
+    await expect(
+      nextEvent(iterator, 'content.text-delta'),
+    ).resolves.toMatchObject({
+      method: 'content.text-delta',
+      turnId: turn.turnId,
+    });
+    processes[0]!.resolvePrompt('end_turn');
+    await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
+      method: 'turn.completed',
+      turnId: turn.turnId,
+    });
+    await adapter.stopAll();
+  });
+
   test('Grok injects via _x.ai/interject without cancelling the turn', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [

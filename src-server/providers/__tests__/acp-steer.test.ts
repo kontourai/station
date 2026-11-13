@@ -42,6 +42,27 @@ describe('resolveAcpSteerChannel', () => {
     });
   });
 
+  test('Antigravity, which steers with a core prompt, matches on its agentInfo name', () => {
+    // agentInfo as recorded from Antigravity CLI 1.5.8 `agy acp`.
+    expect(
+      resolveAcpSteerChannel({
+        agentInfo: { name: 'Antigravity ACP Server', version: '1.5.8' },
+        agentCapabilities: {},
+      }),
+    ).toEqual({
+      channel: 'prompt-handoff',
+      methods: [],
+      basis: 'undeclared-engine',
+    });
+    // A look-alike name is not the engine.
+    expect(
+      resolveAcpSteerChannel({
+        agentInfo: { name: 'Antigravity ACP Server (fork)', version: '1' },
+        agentCapabilities: {},
+      }).channel,
+    ).toBe('cancel-reprompt');
+  });
+
   test('Kiro and Grok, which do not declare their methods, match on their own handshake', () => {
     expect(resolveAcpSteerChannel(KIRO_V2)).toMatchObject({
       channel: 'session-steer',

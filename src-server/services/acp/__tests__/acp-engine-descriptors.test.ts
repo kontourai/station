@@ -5,6 +5,7 @@ import {
 } from '../../../providers/registries/registry.js';
 import {
   listValidatedACPRegistryEntries,
+  registryMinimumVersionFor,
   nameSkeleton,
   registryLaunchEnvFor,
 } from '../acp-engine-descriptors.js';
@@ -132,5 +133,55 @@ describe('managedRuntime admission', () => {
       true,
     );
     expect(listValidatedACPRegistryEntries()).toEqual([]);
+  });
+});
+
+describe('minimumVersion admission', () => {
+  afterEach(() => clearAll());
+
+  const minimumVersion = {
+    versionCommand: ['example', '--version'],
+    minimum: '1.5.0',
+    updateHint: 'Update example.',
+  };
+
+  test('a built-in entry may name a version floor; a plugin entry may not', () => {
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'floor-builtin',
+            name: 'Floor',
+            command: 'example',
+            minimumVersion,
+          },
+        ],
+      },
+      'builtin-acp-connections',
+      true,
+    );
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'floor-plugin',
+            name: 'Plugin Engine',
+            command: 'other',
+            minimumVersion,
+          },
+          { id: 'plain-plugin', name: 'Plain Engine', command: 'plain' },
+        ],
+      },
+      'example-plugin',
+      false,
+    );
+    expect(
+      listValidatedACPRegistryEntries().map(({ entry }) => entry.id),
+    ).toEqual(['floor-builtin', 'plain-plugin']);
+    expect(registryMinimumVersionFor({ command: '/opt/bin/example' })).toEqual({
+      command: 'example',
+      minimumVersion,
+    });
+    expect(registryMinimumVersionFor({ command: 'other' })).toBeUndefined();
   });
 });

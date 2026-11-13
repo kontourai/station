@@ -2939,7 +2939,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (!text) {
       throw new Error('Steer input is empty.');
     }
-    const native = await this.tryNativeAcpSteer(record, text);
+    const native = await this.tryNativeAcpSteer(
+      record,
+      threadId,
+      turnId,
+      text,
+    );
     if (!native) {
       await this.steerByCancelReprompt(record, threadId, turnId, text);
     }
@@ -5013,11 +5018,17 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   private async tryNativeAcpSteer(
     record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
     text: string,
   ): Promise<boolean> {
     const selection = resolveAcpSteerChannel(record.process.initResult);
     const sessionId = record.process.sessionId;
     if (!sessionId || selection.channel === 'cancel-reprompt') return false;
+    if (selection.channel === 'prompt-handoff') {
+      this.steerByPromptHandoff(record, threadId, turnId, text);
+      return true;
+    }
     for (const method of selection.methods) {
       try {
         await record.process.extMethod(
@@ -5030,6 +5041,28 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
     }
     return false;
+  }
+
+  /**
+   * The engine takes a mid-turn `session/prompt` as a steer: it answers the
+   * running prompt at once and carries the work on under this one. Nothing
+   * is cancelled; the turn's settlement moves to the new prompt, so the
+   * earlier answer cannot complete the still-running turn.
+   */
+  private steerByPromptHandoff(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    text: string,
+  ): void {
+    record.promptEpoch += 1;
+    this.bindPromptSettlement(
+      record,
+      threadId,
+      turnId,
+      record.promptEpoch,
+      record.process.prompt([{ type: 'text', text }]),
+    );
   }
 
   private async steerByCancelReprompt(
