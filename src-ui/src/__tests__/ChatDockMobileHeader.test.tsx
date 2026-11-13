@@ -200,6 +200,13 @@ async function openActions() {
 }
 
 describe('mobile conversation focus', () => {
+  test('keeps project choice out of the unresolved header', () => {
+    renderHeader({ agentIdentity: null });
+    expect(
+      screen.queryByRole('button', { name: /^Switch project/ }),
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+  });
   test.each([
     { hasConversation: false },
     { inboxActive: true },

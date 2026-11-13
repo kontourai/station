@@ -128,7 +128,7 @@
       "faultInjection": {
         "kind": "vitest-file",
         "testFile": "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
-        "selector": "leaves project choice to the start composer"
+        "selector": "keeps project choice out of the unresolved header"
       }
     }
   ]
