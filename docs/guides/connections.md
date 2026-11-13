@@ -1127,8 +1127,11 @@ A saved `kiro` connection keeps its own arguments.
    **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
    Installing needs permission to operate Station on a paired device.
    Until you sign in, a chat on this engine is held with **Sign in to Kiro
-   (KAS, no CLI) from its sign-in panel in Connections**; Station's
-   readiness reads the installed runtime, not `PATH`.
+   (KAS, no CLI) from its sign-in panel in Connections**, and the engines
+   list shows it as **Setup required** with that step even though the
+   engine answers its handshake. Station's readiness reads the installed
+   runtime, not `PATH`. Removing the connection during a sign-in cancels it,
+   and nothing it was finishing is kept.
 2. **Sign in.** Choose **AWS Builder ID**, **IAM Identity Center** with
    your company's start URL (`https://your-company.awsapps.com/start`) and
    region, or **Google or GitHub**.
@@ -1145,11 +1148,14 @@ A saved `kiro` connection keeps its own arguments.
      off-machine request does not, and the panel then says so and offers the
      other two. A tunnel that re-dials loopback without forwarding headers
      (an SSH forward) looks local, and its sign-in times out. Station listens on
-     `127.0.0.1` for one answer, on the first free port of the ten Kiro
+     `127.0.0.1` and `::1` for one answer, on the first of the ten ports Kiro
      accepts (3128, 4649, 6588, 8008, 9091, 49153, 50153, 51153, 52153,
-     53153), checks that the answer carries this attempt's state and comes to
-     Kiro's callback path, and stops listening once it has an answer, after
-     five minutes, or when you cancel. It then exchanges the code (PKCE) at
+     53153) that no other program holds on either address, so the browser's
+     `localhost` cannot reach another program. Only a request carrying this
+     attempt's state can end it, and it must come to Kiro's callback path;
+     any other request gets a 404 and the wait goes on. Station stops
+     listening once it has an answer, after five minutes, when you cancel, or
+     if the listening socket fails. It then exchanges the code (PKCE) at
      Kiro's sign-in service and refreshes there. Station sends its own
      User-Agent and no client id; the `redirect_from=kirocli` it puts on the
      sign-in link is the portal's own parameter for this loopback flow. When

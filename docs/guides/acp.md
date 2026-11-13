@@ -561,8 +561,8 @@ How the events behave:
   statistics (`engineMcp`): the server folds the persisted reports with the
   same reducer the live chat uses (`foldEngineMcpStatus`), starting again at
   each Session of the lineage as a handoff does, and the reconnect bit comes
-  from the same report. Reports that arrive after the reopen update that
-  list. Both actions call
+  from the same report. Partial reports that arrive after the reopen update
+  that list; once a complete one arrives it replaces the list. Both actions call
   `POST /api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect`
   ([session API](../reference/session-api.md#engine-mcp-servers-sessionsthreadidmcp-servers)),
   Sign in with `startOAuth: true`, and the panel says what the engine

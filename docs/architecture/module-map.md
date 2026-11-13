@@ -3001,7 +3001,9 @@ installs a reviewed pin with consent (the manifest digest first, then each
 artifact, entry names and the unpacked tree) under
 `<STATION_HOME>/engines/<installId>/<version>/`, and `ACPProcess` resolves a
 `station-managed:<installId>` command to it at launch (the ACP adapter's
-readiness reads the same install).
+readiness reads the same install, and the connection inspector takes an
+engine Station signs in as ready only when that readiness has no required
+row missing).
 [`services/engine-host-auth/`](../../src-server/services/engine-host-auth/service.ts)
 holds the vault (`security/engine-host-auth.json`), the issuer, the
 `_kiro/secret/*` store and the Kiro sign-ins (the device-code flow, and the
