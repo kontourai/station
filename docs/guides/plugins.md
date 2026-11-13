@@ -569,12 +569,20 @@ Managing connected sources requires the Station operator and an
 `access:manage` credential. Standard paired clients can browse ordinary
 catalog items without gaining host source-management authority.
 
-The Registry's Add marketplace flow connects additional sources without
+The Registry's **Add source** flow connects additional sources without
 changing `registryUrl`. A source is a location, with an optional ref for a
 GitHub repository. Station detects what it provides from its content:
 `SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
 marketplace index or MCP definitions, which are recognized but not yet
-installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Sources persist separately, can be refreshed or disabled,
+installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
+source under **Manage sources** (opened from the Registry toolbar, so the
+catalog comes first) shows its trust tier
+(Station, Default, Plugin, or Unverified for one a person added), what it was
+detected to provide with counts (a default catalog shows its last count, or
+that it has not been scanned yet), and when it was last read and last changed
+upstream. Sources with the same name are told apart by their location, and a
+source that reads the same repository or folder as another says they overlap.
+Choosing a source keeps it selected across the Registry tabs. Sources persist separately, can be refreshed or disabled,
 and report offline/stale/error status independently. Offline plugin rows retain
 the current installed state from the local Library, even after an update or
 removal; cached catalog metadata cannot declare a package installed. Removing one preserves

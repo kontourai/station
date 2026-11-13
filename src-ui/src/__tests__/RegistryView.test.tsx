@@ -5,6 +5,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -16,6 +17,7 @@ import { useRegistryItemsQuery } from '../../../packages/sdk/src/query-domains/c
 import type { RegistryItem } from '../components/registry/registryCatalogModel';
 import * as remotePluginBundleConsent from '../core/remotePluginBundleConsent';
 
+const registrySources = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const catalogRecovery = vi.hoisted(() => ({
   useItems: vi.fn(),
   fetch: vi.fn(),
@@ -275,7 +277,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
   useInvalidateQuery: () => vi.fn(),
   useRegistrySourcesQuery: () => ({
-    data: [],
+    data: registrySources,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -562,6 +564,126 @@ describe('RegistryView', () => {
     expect(mutationCalls).toEqual([
       { tab: 'skills', id: 'skill-one', action: 'install' },
     ]);
+  });
+
+  test('choosing a source opens its catalog tab unless it supplies the current one', () => {
+    registrySources.push(
+      {
+        id: 'skills-only',
+        kind: 'skills',
+        displayName: 'Skill library',
+        origin: 'user',
+        adapter: 'github',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            { kind: 'skills', count: 3, via: 'skill-md', installable: true },
+            {
+              kind: 'plugins',
+              count: 1,
+              via: 'claude-marketplace',
+              installable: false,
+            },
+          ],
+        },
+      },
+      {
+        id: 'mixed',
+        kind: 'skills',
+        displayName: 'Team catalog',
+        origin: 'user',
+        adapter: 'directory',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            { kind: 'skills', count: 2, via: 'skill-md', installable: true },
+            {
+              kind: 'agents',
+              count: 1,
+              via: 'station-manifest',
+              installable: true,
+            },
+          ],
+        },
+      },
+    );
+    try {
+      render(<RegistryView />);
+      const browse = screen.getByLabelText('Browse marketplace');
+      fireEvent.change(browse, { target: { value: 'mixed' } });
+      expect(navigateMock).not.toHaveBeenCalled();
+      fireEvent.change(browse, { target: { value: 'skills-only' } });
+      expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
+      // The route remounts the view for the new tab; the choice survives it.
+      cleanup();
+      render(<RegistryView initialTab="skills" />);
+      expect(
+        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
+          .value,
+      ).toBe('skills-only');
+    } finally {
+      registrySources.length = 0;
+    }
+  });
+
+  test('a chosen source is kept when the person switches tabs', () => {
+    registrySources.push({
+      id: 'mixed',
+      kind: 'skills',
+      displayName: 'Team catalog',
+      origin: 'user',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+    });
+    try {
+      render(<RegistryView initialTab="skills" />);
+      fireEvent.change(screen.getByLabelText('Browse marketplace'), {
+        target: { value: 'mixed' },
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Plugins' }));
+      expect(navigateMock).toHaveBeenCalledWith('/registry/plugins');
+      // The route remounts the view for the new tab.
+      cleanup();
+      render(<RegistryView initialTab="plugins" />);
+      expect(
+        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
+          .value,
+      ).toBe('mixed');
+    } finally {
+      registrySources.length = 0;
+    }
+  });
+
+  test('Discover comes first: management opens from the toolbar instead of sitting above the catalog', () => {
+    render(<RegistryView />);
+    const browse = screen.getByLabelText('Browse marketplace');
+    const tabs = screen.getByRole('tab', { name: 'Skills' });
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(browse, tabs)).toBe(true);
+    // No source list between browsing and the catalog.
+    expect(
+      screen.queryByText(/^Manage sources/, { selector: 'summary' }),
+    ).toBeNull();
+    const manage = screen.getByRole('button', { name: /^Manage sources/ });
+    expect(follows(manage, tabs)).toBe(true);
+    fireEvent.click(manage);
+    expect(screen.getByRole('dialog', { name: 'Manage sources' })).toBeTruthy();
+  });
+
+  test('a catalog card shows a short Details label and names the item for assistive tech', () => {
+    render(<RegistryView />);
+    const button = screen.getByRole('button', {
+      name: `View ${registryItems.agents[0]!.displayName} details`,
+    });
+    expect(button.textContent).toBe('Details');
   });
 
   test('updates the URL when switching Registry tabs', () => {
