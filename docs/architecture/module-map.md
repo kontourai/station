@@ -127,12 +127,12 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/feature-previews/` | The registry of feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
-| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
+| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project rooms (every channel, `#general` included) and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
 | `src-server/services/session-summary/` | Session summary records and the server-observed intent source they are derived from | Source |
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
 | `src-server/services/tailscale/` | This Station's public tailnet origin, asked of Tailscale rather than taken from a request | [Remote access threat model](../security/remote-access-threat-model.md) |
-| `src-server/services/webhooks/` | Inbound webhook HMAC authorization, replay ledger and audit store for `POST /api/webhooks/inbound`, configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
+| `src-server/services/webhooks/` | Station's bindings for the Telltale `webhook` source that verifies `POST /api/webhooks/inbound` (credential lookup, durable replay ledger, audit store), plus the start-grant check; configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
 | `src-server/services/work-item-providers/` | Local and flow-agents work-item provider backends behind one provider seam; GitHub tracker reads and Task follow-up polling (#4508) | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) |
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
@@ -1176,9 +1176,11 @@ reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
 StrictMode/remounts share one module-owned attempt. The host retains early
 page/mount facts until DesktopServerState exists and replays them in order.
 
-While waiting on macOS, the host can show a native startup cover laid out like
-the renderer startup screen: the application icon (which carries the channel
-art) centered at 96 pt and a short centered status line below it. The WebView
+While waiting on macOS, the host can show a native startup cover drawn like the
+renderer startup screen at rest: its background and text colors for the
+window's appearance, the channel mark and "tation" in Fraunces as one centered
+wordmark, the river track (with its moving crest unless Reduce Motion is on)
+and a short centered status line below it. The WebView
 stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
@@ -1224,8 +1226,9 @@ the in-app recovery UI, so it releases the loader at once for a terminal
 sidecar, or after that budget for a progressing one, and then stops polling.
 Because the mount commit sits outside `PlatformBootstrap`, identity commit plus
 renderer mount can reveal the window while the bootstrap is still authorizing. On macOS the cover switches
-in place to a "taking longer than usual" message with **Restart** (the default
-button) and **Quit**; a background (tray-only) launch defers it until
+in place to a "taking longer than usual" message, a line naming the usual cause
+(a one-time upgrade after an update), **Restart** (the default button) and
+**Quit**; a background (tray-only) launch defers it until
 activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
 that did not start, or an overdue cover task that failed) show a native dialog
 with **Restart**, **Quit** and **Keep Waiting**. The dialog does not block the
@@ -3725,6 +3728,36 @@ access, SDK and UI tests cover those owners; production mounting, provider-backe
 execution and two-principal browser acceptance require separate runtime evidence.
 Custom channels and Task hierarchy are not implied by this Room contract.
 
+**Channel navigation (#4794, #4795).** The room destination's channel and open
+thread are route state (`?section=room&channel=<id>&thread=<messageId>`;
+[`project-navigation.ts`](../../src-ui/src/views/project-page/project-navigation.ts),
+[`project-room-navigation.ts`](../../src-ui/src/views/project-page/project-room-navigation.ts)),
+so the sidebar, links and Back all address them; opening one is a pushed entry
+that asks the room's unsaved-send guard first. A thread is a channel message and
+the replies whose `replyTo` chain reaches it; with threads on, those replies leave
+the channel stream for the root's summary, and every send from the open thread
+replies to its root, read from the route; an open thread keeps its own unsent
+draft, so text never moves between a thread and its channel. A thread link to
+a root older than the loaded history pages back to it, one window per settled
+page, within `PROJECT_ROOM_HISTORY_MAX_PAGES`. Reading only through a thread
+leaves the channel unread until the channel itself is shown. [`ProjectConversationList`](../../src-ui/src/components/project-conversations/ProjectConversationList.tsx)
+lists a Project's live channels (the server's order) and the Task rooms the
+read-marker summary can read, newest updated first and capped, in one summary
+request per Project ([`useProjectConversationIndex`](../../src-ui/src/components/project-conversations/useProjectConversationIndex.ts)).
+Unread is the summary's own `unread`; a failed summary keeps the rows at
+normal weight with its own retry. A Task room's working mark is its Task's
+Session in the Project's Running lane (`projectLiveLanes`). Channels have no
+working mark and no row has a mention mark until #4800 and #4799 supply them. The
+sidebar renders it under the expanded Project (lazily, off the shell bundle); a
+phone renders it as the Project page, opens each channel as a full-screen
+conversation and restores the list's scroll position on return
+([`useListScrollMemory`](../../src-ui/src/views/project-page/useListScrollMemory.ts)).
+[`useMarkRoomRead`](../../src-ui/src/components/room/useMarkRoomRead.ts) marks a
+channel read through the newest message its history read showed (seqs count
+messages, so that is the version on screen; a held or failed read marks
+nothing) and a Task room through its history checkpoint's `throughSeq`, while
+the document is visible.
+
 ## ProjectTaskRoom
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
@@ -5130,8 +5163,10 @@ single-flight on each tick, and `stop()` aborts, awaits and closes it. The
 poller enforces each source's `pollIntervalMs` from the
 [Automation ledger](../../src-server/services/automation/automation-ledger.ts)'s
 poll state, lists completed workflow runs through the external monitor's REST
-transport and secret-binding credential path, and records each run through the
-[normalizer](../../src-server/services/automation/github-workflow-run.ts) and
+transport and secret-binding credential path, takes the runs in the window and
+the next cursor from Telltale's `githubPollStep`, and records each run through the
+[normalizer](../../src-server/services/automation/github-workflow-run.ts) (over
+Telltale's `normalizeGitHubWorkflowRun`) and
 [intake](../../src-server/services/automation/automation-intake.ts) as matched,
 no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Each rule has a mode: `off`, `observe` or `live`.
 Only a `live` rule opens an episode or retains an intent. For every matched rule,

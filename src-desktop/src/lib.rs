@@ -11110,6 +11110,760 @@ fn request_native_cover(
 const NATIVE_STARTUP_COVER_WAITING_TEXT: &str = "Starting Station";
 #[cfg(target_os = "macos")]
 const NATIVE_STARTUP_COVER_OVERDUE_TEXT: &str = "Station is taking longer than usual to start.";
+/// Overdue detail: no action is required, and the usual cause.
+#[cfg(target_os = "macos")]
+const NATIVE_STARTUP_COVER_OVERDUE_DETAIL: &str =
+    "It opens on its own when ready. A one-time upgrade after an update can take a few minutes.";
+
+/// An sRGB colour with alpha, each component 0-1.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CoverRgba(f64, f64, f64, f64);
+
+#[cfg(target_os = "macos")]
+impl CoverRgba {
+    const fn hex(rgb: u32, alpha: f64) -> Self {
+        Self(
+            ((rgb >> 16) & 0xff) as f64 / 255.0,
+            ((rgb >> 8) & 0xff) as f64 / 255.0,
+            (rgb & 0xff) as f64 / 255.0,
+            alpha,
+        )
+    }
+
+    fn with_alpha(self, alpha: f64) -> Self {
+        Self(self.0, self.1, self.2, alpha)
+    }
+
+    fn ns_color(self) -> objc2::rc::Retained<objc2_app_kit::NSColor> {
+        objc2_app_kit::NSColor::colorWithSRGBRed_green_blue_alpha(self.0, self.1, self.2, self.3)
+    }
+}
+
+/// The renderer startup screen's surface tokens (`--k-bg`, `--k-text`,
+/// `--k-text-muted` and `--k-line-strong` in @kontourai/ui's default dark and
+/// light themes), so the cover and the screen it hands off to paint the same
+/// colours. `control` is `--k-line` laid over `--k-bg`, opaque: a neutral
+/// button fill that stays visible against the background in both themes
+/// (white `--k-panel` vanishes on the light background). A colour theme
+/// chosen in the app is stored in the WebView, which the host does not read;
+/// the cover follows the window's appearance.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CoverPalette {
+    background: CoverRgba,
+    ink: CoverRgba,
+    muted: CoverRgba,
+    track: CoverRgba,
+    control: CoverRgba,
+}
+
+#[cfg(target_os = "macos")]
+fn cover_palette(dark: bool) -> CoverPalette {
+    if dark {
+        CoverPalette {
+            background: CoverRgba::hex(0x0a0e13, 1.0),
+            ink: CoverRgba::hex(0xeef3f8, 1.0),
+            muted: CoverRgba::hex(0xaebccb, 1.0),
+            track: CoverRgba(150.0 / 255.0, 180.0 / 255.0, 210.0 / 255.0, 0.22),
+            control: CoverRgba::hex(0x1b222a, 1.0),
+        }
+    } else {
+        CoverPalette {
+            background: CoverRgba::hex(0xf5f4ef, 1.0),
+            ink: CoverRgba::hex(0x202124, 1.0),
+            muted: CoverRgba::hex(0x5b626b, 1.0),
+            track: CoverRgba(36.0 / 255.0, 40.0 / 255.0, 46.0 / 255.0, 0.20),
+            control: CoverRgba::hex(0xdcdcd8, 1.0),
+        }
+    }
+}
+
+/// Whether `view` draws in a dark appearance.
+#[cfg(target_os = "macos")]
+fn native_cover_is_dark(view: &objc2_app_kit::NSView) -> bool {
+    use objc2_app_kit::{
+        NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
+    };
+    let names = unsafe {
+        objc2_foundation::NSArray::from_slice(&[NSAppearanceNameAqua, NSAppearanceNameDarkAqua])
+    };
+    view.effectiveAppearance()
+        .bestMatchFromAppearancesWithNames(&names)
+        .is_some_and(|name: objc2::rc::Retained<objc2_foundation::NSString>| {
+            name.isEqualToString(unsafe { NSAppearanceNameDarkAqua })
+        })
+}
+
+/// The channel's river colour: the midpoint of the mark's water gradient,
+/// which is where the renderer's animation samples it
+/// (scripts/lib/station-icon.mjs CHANNEL_PALETTES water/waterLow). `None` is
+/// a development build, which wears the Dev mark like the tray does.
+#[cfg(target_os = "macos")]
+fn cover_water(channel: Option<&str>) -> CoverRgba {
+    match channel {
+        Some("stable") => CoverRgba::hex(0x2d7ca7, 1.0),
+        Some("beta") => CoverRgba::hex(0x40945a, 1.0),
+        Some("nightly") => CoverRgba::hex(0x9c3860, 1.0),
+        _ => CoverRgba::hex(0xa7622d, 1.0),
+    }
+}
+
+/// Title ink for a button filled with `fill`: white while it keeps WCAG AA
+/// contrast (4.5:1) for 14 pt text, else the dark surface ink. Beta's green
+/// river is too light for white.
+#[cfg(target_os = "macos")]
+fn cover_button_ink(fill: CoverRgba) -> CoverRgba {
+    let channel = |value: f64| {
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance = 0.2126 * channel(fill.0) + 0.7152 * channel(fill.1) + 0.0722 * channel(fill.2);
+    if 1.05 / (luminance + 0.05) >= 4.5 {
+        CoverRgba::hex(0xffffff, 1.0)
+    } else {
+        CoverRgba::hex(0x0a0e13, 1.0)
+    }
+}
+
+/// Restart's title ink. While the window is key AppKit fills the button with
+/// its bezel colour, the river, and the title takes `cover_button_ink`.
+/// Otherwise AppKit draws its standard inactive bezel instead (near white in
+/// a light window, grey in a dark one), where the surface ink reads and white
+/// would vanish.
+#[cfg(target_os = "macos")]
+fn cover_restart_title_ink(water: CoverRgba, palette: CoverPalette, window_key: bool) -> CoverRgba {
+    if window_key {
+        cover_button_ink(water)
+    } else {
+        palette.ink
+    }
+}
+
+/// The channel's transparent mark, the image the renderer splash draws.
+#[cfg(target_os = "macos")]
+fn cover_mark_png(channel: Option<&str>) -> &'static [u8] {
+    match channel {
+        Some("stable") => include_bytes!("../../src-ui/public/favicon.png"),
+        Some("beta") => include_bytes!("../../src-ui/public/favicon-beta.png"),
+        Some("nightly") => include_bytes!("../../src-ui/public/favicon-nightly.png"),
+        _ => include_bytes!("../../src-ui/public/favicon-dev.png"),
+    }
+}
+
+/// Where the renderer's startup animation leaves its composition
+/// (src-ui/src/lib/startup-animation.ts at rest), in points from the top-left
+/// of a `width` x `height` cover: the channel mark standing in for the S of
+/// "Station", the rest of the word in Fraunces, and the river track below.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CoverLayout {
+    fit: f64,
+    mark_x: f64,
+    mark_y: f64,
+    mark_size: f64,
+    word_x: f64,
+    baseline_y: f64,
+    lip_x: f64,
+    lip_y: f64,
+    impact_x: f64,
+    track_x: f64,
+    track_y: f64,
+    track_width: f64,
+    track_height: f64,
+    status_y: f64,
+}
+
+/// `word_width` measures "tation" at 52 pt times `cover_fit(width, height)`.
+#[cfg(target_os = "macos")]
+fn cover_layout(width: f64, height: f64, word_width: f64) -> CoverLayout {
+    // The generated mark geometry (startup-mark-geometry.ts): a 187 px square
+    // with the river's notch lip at (61, 159).
+    const MARK_UNITS: f64 = 187.0;
+    const LIP: (f64, f64) = (61.0, 159.0);
+    let fit = cover_fit(width, height);
+    let mark_size = 96.0 * fit;
+    let gap = 7.0 * fit;
+    let total = mark_size + gap + word_width;
+    let mark_x = (width - total) / 2.0;
+    let mark_y = (height - mark_size) / 2.0;
+    let scale = mark_size / MARK_UNITS;
+    let lip_x = mark_x + LIP.0 * scale;
+    let track_y = mark_y + mark_size + 36.0 * fit;
+    CoverLayout {
+        fit,
+        mark_x,
+        mark_y,
+        mark_size,
+        word_x: mark_x + mark_size + gap,
+        baseline_y: mark_y + mark_size * 0.65,
+        lip_x,
+        lip_y: mark_y + LIP.1 * scale,
+        impact_x: lip_x - 2.0 * scale,
+        track_x: mark_x + 18.0 * fit,
+        track_y,
+        track_width: total - 32.0 * fit,
+        track_height: 7.0 * fit,
+        status_y: track_y + 28.0 * fit,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn cover_fit(width: f64, height: f64) -> f64 {
+    ((width - 48.0) / 290.0)
+        .min((height - 64.0) / 256.0)
+        .min(1.0)
+        .max(0.1)
+}
+
+/// Station's brand faces, the same files @kontourai/ui ships to the renderer
+/// (tokens/fonts, OFL 1.1; licences beside them in src-desktop/fonts).
+/// CoreText reads WOFF2 directly.
+#[cfg(target_os = "macos")]
+const FRAUNCES_LATIN_WOFF2: &[u8] = include_bytes!("../fonts/fraunces-latin.woff2");
+#[cfg(target_os = "macos")]
+const HANKEN_GROTESK_LATIN_WOFF2: &[u8] = include_bytes!("../fonts/hanken-grotesk-latin.woff2");
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreText", kind = "framework")]
+extern "C" {
+    /// Returns a +1 CTFontDescriptorRef (toll-free bridged to
+    /// NSFontDescriptor), or NULL when the data is not a font.
+    fn CTFontManagerCreateFontDescriptorFromData(
+        data: *const std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
+}
+
+/// A font from embedded data at `size` with variation axes set by their
+/// OpenType tags, or `None` when CoreText cannot read it.
+#[cfg(target_os = "macos")]
+fn cover_font(
+    data: &'static [u8],
+    size: f64,
+    axes: &[(u32, f64)],
+) -> Option<objc2::rc::Retained<objc2_app_kit::NSFont>> {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::{NSFont, NSFontDescriptor, NSFontVariationAttribute};
+    use objc2_foundation::{NSData, NSDictionary, NSNumber, NSString};
+
+    let bytes = NSData::with_bytes(data);
+    // SAFETY: NSData is toll-free bridged to CFData; CoreText returns a
+    // retained descriptor (Create rule) or NULL, and CTFontDescriptor is
+    // toll-free bridged to NSFontDescriptor.
+    let descriptor = unsafe {
+        let raw = CTFontManagerCreateFontDescriptorFromData(
+            Retained::as_ptr(&bytes).cast::<std::ffi::c_void>(),
+        );
+        Retained::from_raw(raw.cast::<NSFontDescriptor>())?
+    };
+    let tags: Vec<Retained<NSNumber>> = axes
+        .iter()
+        .map(|(tag, _)| NSNumber::new_u32(*tag))
+        .collect();
+    let values: Vec<Retained<NSNumber>> = axes
+        .iter()
+        .map(|(_, value)| NSNumber::new_f64(*value))
+        .collect();
+    let variation = NSDictionary::from_retained_objects(
+        &tags.iter().map(|tag| &**tag).collect::<Vec<_>>(),
+        &values,
+    );
+    // SAFETY: every NSDictionary is an Objective-C object.
+    let variation: Retained<AnyObject> = unsafe { Retained::cast_unchecked(variation) };
+    let attributes = NSDictionary::<NSString, AnyObject>::from_retained_objects(
+        &[unsafe { NSFontVariationAttribute }],
+        &[variation],
+    );
+    let varied = unsafe { descriptor.fontDescriptorByAddingAttributes(&attributes) };
+    NSFont::fontWithDescriptor_size(&varied, size)
+}
+
+#[cfg(target_os = "macos")]
+const AXIS_WGHT: u32 = u32::from_be_bytes(*b"wght");
+#[cfg(target_os = "macos")]
+const AXIS_OPSZ: u32 = u32::from_be_bytes(*b"opsz");
+
+/// "tation" as the renderer draws it: Fraunces 500 with optical size at the
+/// point size. Falls back to the system serif (New York) at the same weight.
+#[cfg(target_os = "macos")]
+fn cover_wordmark_font(size: f64) -> objc2::rc::Retained<objc2_app_kit::NSFont> {
+    use objc2_app_kit::{NSFont, NSFontDescriptorSystemDesignSerif, NSFontWeightMedium};
+    cover_font(
+        FRAUNCES_LATIN_WOFF2,
+        size,
+        &[(AXIS_WGHT, 500.0), (AXIS_OPSZ, size)],
+    )
+    .or_else(|| {
+        let system = unsafe { NSFont::systemFontOfSize_weight(size, NSFontWeightMedium) };
+        let serif = unsafe {
+            system
+                .fontDescriptor()
+                .fontDescriptorWithDesign(NSFontDescriptorSystemDesignSerif)
+        }?;
+        NSFont::fontWithDescriptor_size(&serif, size)
+    })
+    .unwrap_or_else(|| NSFont::systemFontOfSize(size))
+}
+
+/// The status line's face: Hanken Grotesk (`--k-font-ui`), else the system font.
+#[cfg(target_os = "macos")]
+fn cover_text_font(size: f64, weight: f64) -> objc2::rc::Retained<objc2_app_kit::NSFont> {
+    cover_font(HANKEN_GROTESK_LATIN_WOFF2, size, &[(AXIS_WGHT, weight)])
+        .unwrap_or_else(|| objc2_app_kit::NSFont::systemFontOfSize(size))
+}
+
+#[cfg(target_os = "macos")]
+mod startup_cover_art {
+    use super::{
+        cover_fit, cover_layout, cover_wordmark_font, CoverLayout, CoverPalette, CoverRgba,
+    };
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyObject, Sel};
+    use objc2::{
+        define_class, msg_send, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly,
+    };
+    use objc2_app_kit::{
+        NSAttributedStringNSStringDrawing, NSBezelStyle, NSBezierPath, NSButton, NSButtonType,
+        NSControl, NSFont, NSFontAttributeName, NSForegroundColorAttributeName, NSGradient,
+        NSImage, NSLineCapStyle, NSResponder, NSView,
+    };
+    use objc2_foundation::{
+        ns_string, NSAttributedString, NSDictionary, NSObject, NSPoint, NSRect, NSSize, NSString,
+    };
+    use std::cell::{Cell, RefCell};
+
+    pub(super) const STATUS_HEIGHT: f64 = 20.0;
+    const DETAIL_WIDTH: f64 = 360.0;
+    const DETAIL_HEIGHT: f64 = 36.0;
+    const DETAIL_TOP_BELOW_STATUS: f64 = 6.0;
+    const BUTTON_GAP: f64 = 12.0;
+    const BUTTON_TOP_BELOW_TEXT: f64 = 20.0;
+    pub(super) const BUTTON_MIN_WIDTH: f64 = 104.0;
+    const CREST_WIDTH: f64 = 34.0;
+
+    /// The views the stage places from its layout, in reading order.
+    pub(super) struct Parts {
+        /// The accessibility element for the drawn wordmark.
+        pub(super) wordmark: Retained<NSView>,
+        /// The track's clipping view and the crest that runs inside it.
+        pub(super) crest: Option<(Retained<NSView>, Retained<StartupCoverCrest>)>,
+        pub(super) status: Retained<NSView>,
+        pub(super) detail: Option<Retained<NSView>>,
+        /// Quit, then Restart: macOS places the default button last.
+        pub(super) buttons: Option<(Retained<NSView>, Retained<NSView>)>,
+    }
+
+    /// The wordmark sized for one `cover_fit`.
+    struct Scene {
+        fit: f64,
+        font: Retained<NSFont>,
+        word: Retained<NSAttributedString>,
+    }
+
+    pub(super) struct StageIvars {
+        mark: Option<Retained<NSImage>>,
+        palette: CoverPalette,
+        water: CoverRgba,
+        motion: bool,
+        scene: RefCell<Option<Scene>>,
+        parts: RefCell<Option<Parts>>,
+    }
+
+    define_class!(
+        // SAFETY: NSView has no subclassing requirements beyond calling its
+        // designated initializer, and this class does not implement Drop.
+        #[unsafe(super(NSView, NSResponder, NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "StationStartupCoverStage"]
+        #[ivars = StageIvars]
+        pub(super) struct StartupCoverStage;
+
+        impl StartupCoverStage {
+            #[unsafe(method(isFlipped))]
+            fn is_flipped(&self) -> bool {
+                true
+            }
+
+            #[unsafe(method(drawRect:))]
+            fn draw_rect(&self, _dirty: NSRect) {
+                // Never unwind across the Objective-C boundary.
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.paint())).is_err() {
+                    log::error!("native startup cover drawing panicked");
+                }
+            }
+
+            /// Replaces autoresizing: every part is placed from the same
+            /// `cover_layout` the drawing uses, so nothing drifts on resize.
+            #[unsafe(method(resizeSubviewsWithOldSize:))]
+            fn resize_subviews(&self, _old: NSSize) {
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.arrange())).is_err() {
+                    log::error!("native startup cover layout panicked");
+                }
+            }
+        }
+    );
+
+    impl StartupCoverStage {
+        pub(super) fn new(
+            mark: Option<Retained<NSImage>>,
+            palette: CoverPalette,
+            water: CoverRgba,
+            motion: bool,
+            frame: NSRect,
+            marker: MainThreadMarker,
+        ) -> Retained<Self> {
+            let this = Self::alloc(marker).set_ivars(StageIvars {
+                mark,
+                palette,
+                water,
+                motion,
+                scene: RefCell::new(None),
+                parts: RefCell::new(None),
+            });
+            unsafe { msg_send![super(this), initWithFrame: frame] }
+        }
+
+        /// Adds `parts` (already sized) in reading order and places them.
+        pub(super) fn set_parts(&self, parts: Parts) {
+            self.addSubview(&parts.wordmark);
+            if let Some((track, _)) = &parts.crest {
+                self.addSubview(track);
+            }
+            self.addSubview(&parts.status);
+            if let Some(detail) = &parts.detail {
+                self.addSubview(detail);
+            }
+            if let Some((quit, restart)) = &parts.buttons {
+                self.addSubview(quit);
+                self.addSubview(restart);
+            }
+            *self.ivars().parts.borrow_mut() = Some(parts);
+            self.arrange();
+        }
+
+        /// The layout for the current bounds, rebuilding the wordmark font
+        /// when the fit changes. Returns whether it was rebuilt.
+        fn scene(
+            &self,
+        ) -> (
+            CoverLayout,
+            Retained<NSFont>,
+            Retained<NSAttributedString>,
+            bool,
+        ) {
+            let bounds = self.bounds();
+            let fit = cover_fit(bounds.size.width, bounds.size.height);
+            let mut scene = self.ivars().scene.borrow_mut();
+            let rebuilt = scene.as_ref().is_none_or(|scene| scene.fit != fit);
+            if rebuilt {
+                let font = cover_wordmark_font(52.0 * fit);
+                let word = label("tation", &font, self.ivars().palette.ink);
+                *scene = Some(Scene { fit, font, word });
+            }
+            let scene = scene.as_ref().expect("scene was just built");
+            let layout = cover_layout(
+                bounds.size.width,
+                bounds.size.height,
+                scene.word.size().width,
+            );
+            (layout, scene.font.clone(), scene.word.clone(), rebuilt)
+        }
+
+        fn arrange(&self) {
+            let (layout, _, word, rebuilt) = self.scene();
+            let bounds = self.bounds();
+            let (width, height) = (bounds.size.width, bounds.size.height);
+            let mid_x = width / 2.0;
+            // Keep a part inside the bottom edge when the window is short.
+            let top = |top: f64, size: f64| top.min(height - size);
+            let rect =
+                |x: f64, y: f64, w: f64, h: f64| NSRect::new(NSPoint::new(x, y), NSSize::new(w, h));
+            let parts = self.ivars().parts.borrow();
+            let Some(parts) = parts.as_ref() else {
+                return;
+            };
+            parts.wordmark.setFrame(rect(
+                layout.mark_x,
+                layout.mark_y,
+                layout.word_x + word.size().width - layout.mark_x,
+                layout.mark_size,
+            ));
+            if let Some((track, crest)) = &parts.crest {
+                track.setFrame(rect(
+                    layout.track_x,
+                    layout.track_y,
+                    layout.track_width,
+                    layout.track_height,
+                ));
+                if rebuilt {
+                    run_crest(track, crest, &layout);
+                }
+            }
+            let text_width = (width - 48.0).max(0.0);
+            parts.status.setFrame(rect(
+                24.0,
+                top(layout.status_y, STATUS_HEIGHT),
+                text_width,
+                STATUS_HEIGHT,
+            ));
+            // The detail wraps to at most two lines under the status line.
+            let detail_top = layout.status_y + STATUS_HEIGHT + DETAIL_TOP_BELOW_STATUS;
+            if let Some(detail) = &parts.detail {
+                let detail_width = DETAIL_WIDTH.min(text_width);
+                detail.setFrame(rect(
+                    mid_x - detail_width / 2.0,
+                    top(detail_top, DETAIL_HEIGHT),
+                    detail_width,
+                    DETAIL_HEIGHT,
+                ));
+            }
+            if let Some((quit, restart)) = &parts.buttons {
+                let quit_size = quit.frame().size;
+                let restart_size = restart.frame().size;
+                let row_width = quit_size.width + BUTTON_GAP + restart_size.width;
+                let row_height = quit_size.height.max(restart_size.height);
+                let row_y = top(
+                    detail_top + DETAIL_HEIGHT + BUTTON_TOP_BELOW_TEXT,
+                    row_height,
+                );
+                let row_x = mid_x - row_width / 2.0;
+                quit.setFrameOrigin(NSPoint::new(row_x, row_y));
+                restart.setFrameOrigin(NSPoint::new(row_x + quit_size.width + BUTTON_GAP, row_y));
+            }
+            self.setNeedsDisplay(true);
+        }
+
+        fn paint(&self) {
+            let ivars = self.ivars();
+            let Some(mark) = &ivars.mark else {
+                return;
+            };
+            let (layout, font, word, _) = self.scene();
+            let (palette, water) = (ivars.palette, ivars.water);
+            let scale = layout.mark_size / 187.0;
+            mark.drawInRect(NSRect::new(
+                NSPoint::new(layout.mark_x, layout.mark_y),
+                NSSize::new(layout.mark_size, layout.mark_size),
+            ));
+            // drawAtPoint places the line's top; the renderer places the
+            // baseline.
+            word.drawAtPoint(NSPoint::new(
+                layout.word_x,
+                layout.baseline_y - font.ascender(),
+            ));
+            let track = NSRect::new(
+                NSPoint::new(layout.track_x, layout.track_y),
+                NSSize::new(layout.track_width, layout.track_height),
+            );
+            let radius = layout.track_height / 2.0;
+            let pill =
+                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(track, radius, radius);
+            palette.track.ns_color().setFill();
+            pill.fill();
+            water.with_alpha(0.2).ns_color().setFill();
+            pill.fill();
+            if ivars.motion {
+                // The stream from the mark's notch down to the track.
+                let fall = NSBezierPath::bezierPath();
+                fall.moveToPoint(NSPoint::new(layout.lip_x + 2.0 * scale, layout.lip_y));
+                fall.curveToPoint_controlPoint1_controlPoint2(
+                    NSPoint::new(layout.impact_x, layout.track_y),
+                    NSPoint::new(layout.lip_x - 7.0 * scale, layout.lip_y + 12.0 * scale),
+                    NSPoint::new(layout.impact_x, layout.track_y - 20.0),
+                );
+                fall.setLineWidth(6.0 * scale);
+                fall.setLineCapStyle(NSLineCapStyle::Round);
+                water.with_alpha(0.65).ns_color().setStroke();
+                fall.stroke();
+            }
+            water.with_alpha(0.6).ns_color().setFill();
+            NSBezierPath::bezierPathWithOvalInRect(NSRect::new(
+                NSPoint::new(layout.impact_x - 8.0 * layout.fit, layout.track_y),
+                NSSize::new(16.0 * layout.fit, layout.track_height),
+            ))
+            .fill();
+        }
+    }
+
+    /// Sizes the crest for `layout` and (re)starts its loop from where the
+    /// stream lands to the end of the track, every five seconds. Core
+    /// Animation runs it outside the main thread's turns, and removing the
+    /// cover removes it.
+    fn run_crest(track: &NSView, crest: &StartupCoverCrest, layout: &CoverLayout) {
+        crest.setFrame(NSRect::new(
+            NSPoint::new(layout.impact_x - layout.track_x - 28.0, 0.0),
+            NSSize::new(CREST_WIDTH, layout.track_height),
+        ));
+        unsafe {
+            let track_layer: Option<Retained<AnyObject>> = msg_send![track, layer];
+            if let Some(track_layer) = track_layer {
+                let _: () = msg_send![&*track_layer, setMasksToBounds: true];
+                let _: () = msg_send![&*track_layer, setCornerRadius: layout.track_height / 2.0];
+            }
+            let crest_layer: Option<Retained<AnyObject>> = msg_send![crest, layer];
+            if let (Some(crest_layer), Some(animation_class)) = (
+                crest_layer,
+                objc2::runtime::AnyClass::get(c"CABasicAnimation"),
+            ) {
+                let animation: Retained<AnyObject> = msg_send![
+                    animation_class,
+                    animationWithKeyPath: ns_string!("transform.translation.x")
+                ];
+                let from = objc2_foundation::NSNumber::new_f64(0.0);
+                let to = objc2_foundation::NSNumber::new_f64(
+                    layout.track_x + layout.track_width - layout.impact_x,
+                );
+                let _: () = msg_send![&*animation, setFromValue: &*from];
+                let _: () = msg_send![&*animation, setToValue: &*to];
+                let _: () = msg_send![&*animation, setDuration: 5.0f64];
+                let _: () = msg_send![&*animation, setRepeatCount: f32::INFINITY];
+                // The same key replaces a loop started for an earlier size.
+                let _: () = msg_send![
+                    &*crest_layer,
+                    addAnimation: &*animation,
+                    forKey: ns_string!("io.kontourai.station.startup-crest")
+                ];
+            }
+        }
+    }
+
+    pub(super) struct CrestIvars {
+        water: CoverRgba,
+    }
+
+    define_class!(
+        // SAFETY: NSView has no subclassing requirements beyond calling its
+        // designated initializer, and this class does not implement Drop.
+        #[unsafe(super(NSView, NSResponder, NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "StationStartupCoverCrest"]
+        #[ivars = CrestIvars]
+        pub(super) struct StartupCoverCrest;
+
+        impl StartupCoverCrest {
+            #[unsafe(method(drawRect:))]
+            fn draw_rect(&self, _dirty: NSRect) {
+                // Never unwind across the Objective-C boundary.
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.paint())).is_err() {
+                    log::error!("native startup cover drawing panicked");
+                }
+            }
+        }
+    );
+
+    impl StartupCoverCrest {
+        pub(super) fn new(water: CoverRgba, marker: MainThreadMarker) -> Retained<Self> {
+            let this = Self::alloc(marker).set_ivars(CrestIvars { water });
+            let crest: Retained<Self> =
+                unsafe { msg_send![super(this), initWithFrame: NSRect::ZERO] };
+            crest.setWantsLayer(true);
+            crest
+        }
+
+        fn paint(&self) {
+            let water = self.ivars().water;
+            // A band, clear to bright at 80% and clear again.
+            let colors = [
+                water.with_alpha(0.0).ns_color(),
+                water.with_alpha(0.8).ns_color(),
+                water.with_alpha(0.0).ns_color(),
+            ];
+            let array = objc2_foundation::NSArray::from_retained_slice(&colors);
+            let locations = [0.0f64, 0.8, 1.0];
+            let gradient = unsafe {
+                NSGradient::initWithColors_atLocations_colorSpace(
+                    NSGradient::alloc(),
+                    &array,
+                    locations.as_ptr(),
+                    &objc2_app_kit::NSColorSpace::sRGBColorSpace(),
+                )
+            };
+            if let Some(gradient) = gradient {
+                gradient.drawInRect_angle(self.bounds(), 0.0);
+            }
+        }
+    }
+
+    pub(super) struct ButtonIvars {
+        /// The title while the window is key and AppKit draws the bezel colour.
+        key: Retained<NSAttributedString>,
+        /// The title on AppKit's standard inactive bezel.
+        inactive: Retained<NSAttributedString>,
+        shown_key: Cell<Option<bool>>,
+    }
+
+    define_class!(
+        // SAFETY: NSButton has no subclassing requirements beyond calling its
+        // designated initializer, and this class does not implement Drop.
+        #[unsafe(super(NSButton, NSControl, NSView, NSResponder, NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "StationStartupCoverButton"]
+        #[ivars = ButtonIvars]
+        pub(super) struct StartupCoverButton;
+
+        impl StartupCoverButton {
+            /// AppKit drops the bezel colour while the window is not key, so
+            /// the title follows the key state each time the button draws.
+            #[unsafe(method(viewWillDraw))]
+            fn view_will_draw(&self) {
+                let key = self.window().is_some_and(|window| window.isKeyWindow());
+                let ivars = self.ivars();
+                if ivars.shown_key.replace(Some(key)) != Some(key) {
+                    self.setAttributedTitle(if key { &ivars.key } else { &ivars.inactive });
+                }
+                let _: () = unsafe { msg_send![super(self), viewWillDraw] };
+            }
+        }
+    );
+
+    impl StartupCoverButton {
+        /// A push button like `+[NSButton buttonWithTitle:target:action:]`,
+        /// titled `key` while its window is key and `inactive` otherwise.
+        pub(super) fn new(
+            key: Retained<NSAttributedString>,
+            inactive: Retained<NSAttributedString>,
+            target: &AnyObject,
+            action: Sel,
+            marker: MainThreadMarker,
+        ) -> Retained<Self> {
+            let this = Self::alloc(marker).set_ivars(ButtonIvars {
+                key,
+                inactive,
+                shown_key: Cell::new(None),
+            });
+            let button: Retained<Self> =
+                unsafe { msg_send![super(this), initWithFrame: NSRect::ZERO] };
+            button.setButtonType(NSButtonType::MomentaryPushIn);
+            button.setBezelStyle(NSBezelStyle::Push);
+            button.setAttributedTitle(&button.ivars().key);
+            unsafe {
+                button.setTarget(Some(target));
+                button.setAction(Some(action));
+            }
+            button
+        }
+    }
+
+    /// `text` in `font` and `ink`.
+    pub(super) fn label(text: &str, font: &NSFont, ink: CoverRgba) -> Retained<NSAttributedString> {
+        let color = ink.ns_color();
+        let keys: [&objc2_foundation::NSString; 2] =
+            unsafe { [NSFontAttributeName, NSForegroundColorAttributeName] };
+        let values: [&objc2::runtime::AnyObject; 2] = [font.as_ref(), color.as_ref()];
+        let attributes = NSDictionary::from_slices(&keys, &values);
+        unsafe {
+            NSAttributedString::initWithString_attributes(
+                NSAttributedString::alloc(),
+                &NSString::from_str(text),
+                Some(&attributes),
+            )
+        }
+    }
+}
 
 #[cfg(target_os = "macos")]
 mod startup_cover_actions {
@@ -11392,8 +12146,7 @@ fn with_native_startup_cover(
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
         NSAccessibilityLayoutChangedNotification, NSAccessibilityPostNotification,
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSUserInterfaceItemIdentification,
-        NSView,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSUserInterfaceItemIdentification, NSView,
     };
     use objc2_foundation::{ns_string, NSObjectProtocol};
 
@@ -11447,11 +12200,14 @@ fn with_native_startup_cover(
                         | NSAutoresizingMaskOptions::ViewHeightSizable,
                 );
                 cover.setBoxType(NSBoxType::Custom);
-                cover.setFillColor(&NSColor::windowBackgroundColor());
+                let palette = cover_palette(native_cover_is_dark(&content));
+                cover.setFillColor(&palette.background.ns_color());
+                cover.setBorderWidth(0.0);
+                cover.setContentViewMargins(objc2_foundation::NSSize::new(0.0, 0.0));
                 cover.setTitle(ns_string!(""));
                 cover.setIdentifier(Some(cover_identifier));
                 let focus = cover.contentView().and_then(|cover_content| {
-                    populate_native_startup_cover(&cover_content, cover_kind, &app, marker)
+                    populate_native_startup_cover(&cover_content, cover_kind, palette, &app, marker)
                 });
                 content.addSubview(&cover);
                 unsafe {
@@ -11537,103 +12293,156 @@ fn with_native_startup_cover(
     }
 }
 
-/// Lays out the cover like the renderer's startup screen: a centered 96 pt
-/// application mark and a centered status line 128 pt below center. Overdue
-/// content adds Restart (default) and Quit below the status line. Returns the
-/// control that should receive keyboard focus.
+/// Lays out the cover as the renderer's startup screen comes to rest: the
+/// channel mark and "tation" as one centred wordmark, the river track below
+/// it and a centred status line under the track (`cover_layout`). While
+/// waiting with motion allowed, a crest runs along the track as the renderer's
+/// does. Overdue content adds a detail line, then Restart (default) and Quit.
+/// The stage places every part from one layout whenever the window resizes.
+/// Returns the control that should receive keyboard focus.
 #[cfg(target_os = "macos")]
 fn populate_native_startup_cover(
     cover_content: &objc2_app_kit::NSView,
     content: startup_readiness::StartupCoverContent,
+    palette: CoverPalette,
     app: &AppHandle,
     marker: objc2::MainThreadMarker,
 ) -> Option<objc2::rc::Retained<objc2_app_kit::NSButton>> {
+    use objc2::{AnyThread, MainThreadOnly, Message};
     use objc2_app_kit::{
-        NSApplication, NSAutoresizingMaskOptions, NSButton, NSColor, NSFont, NSImageScaling,
-        NSImageView, NSTextAlignment, NSTextField,
+        NSAccessibilityImageRole, NSAutoresizingMaskOptions, NSButton, NSControlSize, NSImage,
+        NSTextAlignment, NSTextField, NSView, NSWorkspace,
     };
-    use objc2_foundation::{ns_string, NSPoint, NSRect, NSSize, NSString};
+    use objc2_foundation::{ns_string, NSData, NSRect, NSSize, NSString};
+    use startup_cover_art::{StartupCoverButton, StartupCoverCrest, StartupCoverStage};
 
-    const MARK_SIZE: f64 = 96.0;
-    const STATUS_TOP_BELOW_CENTER: f64 = 128.0;
-    const STATUS_HEIGHT: f64 = 20.0;
-    const BUTTON_GAP: f64 = 12.0;
-    const BUTTON_TOP_BELOW_STATUS: f64 = 16.0;
-    const BUTTON_MIN_WIDTH: f64 = 96.0;
+    let channel = if cfg!(debug_assertions) {
+        None
+    } else {
+        channel_ports_generated::desktop_channel_from_identifier(&app.config().identifier)
+    };
+    let water = cover_water(channel);
+    let motion = !NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion();
+    let mark = NSImage::initWithData(
+        NSImage::alloc(),
+        &NSData::with_bytes(cover_mark_png(channel)),
+    );
+    let has_mark = mark.is_some();
+    // The wordmark and track are drawn by the stage the way the renderer's
+    // canvas draws them, and scale with the window.
+    let stage =
+        StartupCoverStage::new(mark, palette, water, motion, cover_content.bounds(), marker);
+    stage.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+    );
+    cover_content.addSubview(&stage);
 
-    let centered = NSAutoresizingMaskOptions::ViewMinXMargin
-        | NSAutoresizingMaskOptions::ViewMaxXMargin
-        | NSAutoresizingMaskOptions::ViewMinYMargin
-        | NSAutoresizingMaskOptions::ViewMaxYMargin;
-    let bounds = cover_content.bounds();
-    let mid_x = bounds.size.width / 2.0;
-    let mid_y = bounds.size.height / 2.0;
-
-    // The application icon carries the channel art (Nightly/Beta/Stable).
-    if let Some(image) = NSApplication::sharedApplication(marker).applicationIconImage() {
-        let mark = NSImageView::imageViewWithImage(&image, marker);
-        mark.setFrame(NSRect::new(
-            NSPoint::new(mid_x - MARK_SIZE / 2.0, mid_y - MARK_SIZE / 2.0),
-            NSSize::new(MARK_SIZE, MARK_SIZE),
-        ));
-        mark.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
-        mark.setAutoresizingMask(centered);
+    let wordmark = NSView::initWithFrame(NSView::alloc(marker), NSRect::ZERO);
+    if has_mark {
         unsafe {
-            let _: () = objc2::msg_send![&*mark, setAccessibilityLabel: ns_string!("Station")];
+            let _: () = objc2::msg_send![&*wordmark, setAccessibilityElement: true];
+            let _: () =
+                objc2::msg_send![&*wordmark, setAccessibilityRole: NSAccessibilityImageRole];
+            let _: () = objc2::msg_send![&*wordmark, setAccessibilityLabel: ns_string!("Station")];
         }
-        cover_content.addSubview(&mark);
     }
 
-    let label_text = NSString::from_str(match content {
+    let waiting = matches!(content, startup_readiness::StartupCoverContent::Waiting);
+    let crest = (waiting && motion).then(|| {
+        let track = NSView::initWithFrame(NSView::alloc(marker), NSRect::ZERO);
+        track.setWantsLayer(true);
+        let crest = StartupCoverCrest::new(water, marker);
+        track.addSubview(&crest);
+        (track, crest)
+    });
+
+    let status_text = match content {
         startup_readiness::StartupCoverContent::Waiting => NATIVE_STARTUP_COVER_WAITING_TEXT,
         startup_readiness::StartupCoverContent::Overdue { .. } => NATIVE_STARTUP_COVER_OVERDUE_TEXT,
-    });
+    };
+    let label_text = NSString::from_str(status_text);
     let label = NSTextField::labelWithString(&label_text, marker);
-    let status_y = (mid_y - STATUS_TOP_BELOW_CENTER - STATUS_HEIGHT).max(0.0);
-    label.setFrame(NSRect::new(
-        NSPoint::new(24.0, status_y),
-        NSSize::new((bounds.size.width - 48.0).max(0.0), STATUS_HEIGHT),
-    ));
-    label.setAutoresizingMask(
-        NSAutoresizingMaskOptions::ViewWidthSizable
-            | NSAutoresizingMaskOptions::ViewMinYMargin
-            | NSAutoresizingMaskOptions::ViewMaxYMargin,
-    );
     // NSTextAlignment's raw values differ by ABI (arm64 macOS uses the iOS
     // values, where 2 is Right). Only the named constant is portable.
     label.setAlignment(NSTextAlignment::Center);
-    label.setFont(Some(&NSFont::systemFontOfSize(14.0)));
-    label.setTextColor(Some(&NSColor::secondaryLabelColor()));
+    label.setFont(Some(&cover_text_font(14.0, 400.0)));
+    label.setTextColor(Some(&palette.muted.ns_color()));
     unsafe {
         let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
         // A forced accessibility element otherwise reports AXUnknown.
         let _: () = objc2::msg_send![&*label, setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole];
         let _: () = objc2::msg_send![&*label, setAccessibilityLabel: &*label_text];
     }
-    cover_content.addSubview(&label);
+    let mut parts = startup_cover_art::Parts {
+        wordmark,
+        crest,
+        status: label.into_super().into_super(),
+        detail: None,
+        buttons: None,
+    };
 
     let startup_readiness::StartupCoverContent::Overdue { epoch } = content else {
         NATIVE_STARTUP_COVER_ACTIONS.with(|actions| actions.borrow_mut().take());
+        stage.set_parts(parts);
         return None;
     };
+
+    let detail_text = NSString::from_str(NATIVE_STARTUP_COVER_OVERDUE_DETAIL);
+    let detail = NSTextField::wrappingLabelWithString(&detail_text, marker);
+    detail.setAlignment(NSTextAlignment::Center);
+    detail.setFont(Some(&cover_text_font(13.0, 400.0)));
+    detail.setTextColor(Some(&palette.muted.ns_color()));
+    detail.setMaximumNumberOfLines(2);
+    unsafe {
+        let _: () = objc2::msg_send![&*detail, setAccessibilityElement: true];
+        let _: () = objc2::msg_send![&*detail, setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole];
+        let _: () = objc2::msg_send![&*detail, setAccessibilityLabel: &*detail_text];
+    }
+    parts.detail = Some(detail.into_super().into_super());
+
     let actions = startup_cover_actions::StartupCoverActions::new(app.clone(), epoch, marker);
     let target: &objc2::runtime::AnyObject = &actions;
-    let (quit, restart) = unsafe {
-        (
-            NSButton::buttonWithTitle_target_action(
-                ns_string!("Quit"),
-                Some(target),
-                Some(objc2::sel!(quit:)),
-                marker,
-            ),
-            NSButton::buttonWithTitle_target_action(
-                ns_string!("Restart"),
-                Some(target),
-                Some(objc2::sel!(restart:)),
-                marker,
-            ),
-        )
+    // Restart wears the channel's river colour, Quit the neutral control
+    // fill, both with titles in the startup screen's face. AppKit draws the
+    // bezel colour only while the window is key, so each title also has an
+    // ink for the standard inactive bezel.
+    let button = |title: &str,
+                  action: objc2::runtime::Sel,
+                  bezel: CoverRgba,
+                  key_ink: CoverRgba,
+                  inactive_ink: CoverRgba| {
+        let font = cover_text_font(14.0, 500.0);
+        let button = StartupCoverButton::new(
+            startup_cover_art::label(title, &font, key_ink),
+            startup_cover_art::label(title, &font, inactive_ink),
+            target,
+            action,
+            marker,
+        );
+        button.setControlSize(NSControlSize::Large);
+        button.setBezelColor(Some(&bezel.ns_color()));
+        button.sizeToFit();
+        let size = button.frame().size;
+        button.setFrameSize(NSSize::new(
+            size.width.max(startup_cover_art::BUTTON_MIN_WIDTH),
+            size.height,
+        ));
+        button
     };
+    let quit = button(
+        "Quit",
+        objc2::sel!(quit:),
+        palette.control,
+        palette.ink,
+        palette.ink,
+    );
+    let restart = button(
+        "Restart",
+        objc2::sel!(restart:),
+        water,
+        cover_restart_title_ink(water, palette, true),
+        cover_restart_title_ink(water, palette, false),
+    );
     // Restart is the default button. The cover's key monitor delivers Return
     // to it even when WebKit has made the hidden WebView first responder.
     restart.setKeyEquivalent(ns_string!("\r"));
@@ -11642,28 +12451,6 @@ fn populate_native_startup_cover(
             objc2::msg_send![&*restart, setAccessibilityLabel: ns_string!("Restart Station")];
         let _: () = objc2::msg_send![&*quit, setAccessibilityLabel: ns_string!("Quit Station")];
     }
-    quit.sizeToFit();
-    restart.sizeToFit();
-    let quit_size = NSSize::new(
-        quit.frame().size.width.max(BUTTON_MIN_WIDTH),
-        quit.frame().size.height,
-    );
-    let restart_size = NSSize::new(
-        restart.frame().size.width.max(BUTTON_MIN_WIDTH),
-        restart.frame().size.height,
-    );
-    let row_width = quit_size.width + BUTTON_GAP + restart_size.width;
-    let row_height = quit_size.height.max(restart_size.height);
-    let row_y = (status_y - BUTTON_TOP_BELOW_STATUS - row_height).max(0.0);
-    let row_x = mid_x - row_width / 2.0;
-    // macOS places the default button last (rightmost).
-    quit.setFrame(NSRect::new(NSPoint::new(row_x, row_y), quit_size));
-    restart.setFrame(NSRect::new(
-        NSPoint::new(row_x + quit_size.width + BUTTON_GAP, row_y),
-        restart_size,
-    ));
-    quit.setAutoresizingMask(centered);
-    restart.setAutoresizingMask(centered);
     // With keyboard navigation on, Tab and Shift-Tab cycle between the two.
     // SAFETY: AppKit keeps nextKeyView unretained; both buttons are retained
     // by the same cover view tree, which removes them together.
@@ -11671,8 +12458,12 @@ fn populate_native_startup_cover(
         quit.setNextKeyView(Some(&restart));
         restart.setNextKeyView(Some(&quit));
     }
-    cover_content.addSubview(&quit);
-    cover_content.addSubview(&restart);
+    let restart: objc2::rc::Retained<NSButton> = restart.into_super();
+    parts.buttons = Some((
+        quit.into_super().into_super().into_super(),
+        (*restart).retain().into_super().into_super(),
+    ));
+    stage.set_parts(parts);
     NATIVE_STARTUP_COVER_ACTIONS.with(|slot| *slot.borrow_mut() = Some(actions));
     Some(restart)
 }
@@ -16516,7 +17307,11 @@ mod tests {
                 "{call} must sit directly inside `if front {{`"
             );
         }
-        assert!(cover.contains("applicationIconImage()"));
+        // The cover wears the channel mark the renderer splash draws, in the
+        // window's palette, and the overdue state explains itself.
+        assert!(cover.contains("cover_mark_png(channel)"));
+        assert!(cover.contains("cover_palette(native_cover_is_dark(&content))"));
+        assert!(cover.contains("NATIVE_STARTUP_COVER_OVERDUE_DETAIL"));
         assert!(
             cover.contains("setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole")
         );
@@ -16571,6 +17366,144 @@ mod tests {
         assert!(cover.contains("setAlphaValue: 0.0f64"));
         assert!(cover.contains("setAlphaValue: 1.0f64"));
         assert!(!cover.contains("webview_view.setHidden("));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_lays_out_the_renderer_wordmark_at_rest() {
+        // 1200 x 772 is the default window's content area; "tation" at 52 pt
+        // Fraunces measures about 140 pt.
+        let layout = cover_layout(1200.0, 772.0, 140.0);
+        assert_eq!(layout.fit, 1.0);
+        assert_eq!(layout.mark_size, 96.0);
+        // Mark, gap and word are centred together, not the mark alone.
+        let right = layout.word_x + 140.0;
+        assert!((layout.mark_x - (1200.0 - right)).abs() < 1e-9);
+        assert_eq!(layout.mark_y, (772.0 - 96.0) / 2.0);
+        // The stream leaves the mark's notch and lands on the track, which
+        // sits 36 pt under the mark with the status line 28 pt under it.
+        assert!(layout.lip_x > layout.mark_x && layout.lip_x < layout.mark_x + 96.0);
+        assert!(layout.lip_y < layout.track_y);
+        assert_eq!(layout.track_y, layout.mark_y + 96.0 + 36.0);
+        assert_eq!(layout.status_y, layout.track_y + 28.0);
+        assert!(layout.impact_x > layout.track_x);
+        assert!(layout.impact_x < layout.track_x + layout.track_width);
+        // A small window scales the whole composition down.
+        let small = cover_layout(240.0, 400.0, 70.0);
+        assert!(small.fit < 1.0 && small.fit >= 0.1);
+        assert_eq!(small.mark_size, 96.0 * small.fit);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_paints_the_startup_screen_palette_per_channel() {
+        // --k-bg in @kontourai/ui's default dark and light themes.
+        assert_eq!(
+            cover_palette(true).background,
+            CoverRgba::hex(0x0a0e13, 1.0)
+        );
+        assert_eq!(
+            cover_palette(false).background,
+            CoverRgba::hex(0xf5f4ef, 1.0)
+        );
+        assert_ne!(cover_palette(true).muted, cover_palette(false).muted);
+        // Each channel's river colour is its own; a development build is Dev.
+        let waters = ["stable", "beta", "nightly"].map(|channel| cover_water(Some(channel)));
+        assert!(waters.iter().all(|water| *water != cover_water(None)));
+        assert_ne!(waters[0], waters[1]);
+        assert_ne!(waters[1], waters[2]);
+        // Restart's title keeps AA contrast on every river colour: white on
+        // the darker rivers, dark ink on Beta's lighter green.
+        let white = CoverRgba::hex(0xffffff, 1.0);
+        assert_eq!(cover_button_ink(cover_water(Some("stable"))), white);
+        assert_eq!(cover_button_ink(cover_water(Some("nightly"))), white);
+        assert_eq!(cover_button_ink(cover_water(None)), white);
+        assert_eq!(
+            cover_button_ink(cover_water(Some("beta"))),
+            CoverRgba::hex(0x0a0e13, 1.0)
+        );
+        assert_eq!(
+            cover_mark_png(Some("nightly")),
+            include_bytes!("../../src-ui/public/favicon-nightly.png")
+        );
+        assert_eq!(
+            cover_mark_png(None),
+            include_bytes!("../../src-ui/public/favicon-dev.png")
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_restart_title_reads_whether_or_not_the_window_is_key() {
+        fn luminance(color: CoverRgba) -> f64 {
+            let channel = |value: f64| {
+                if value <= 0.04045 {
+                    value / 12.92
+                } else {
+                    ((value + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * channel(color.0) + 0.7152 * channel(color.1) + 0.0722 * channel(color.2)
+        }
+        fn contrast(a: CoverRgba, b: CoverRgba) -> f64 {
+            let (a, b) = (luminance(a), luminance(b));
+            (a.max(b) + 0.05) / (a.min(b) + 0.05)
+        }
+        // AppKit's inactive push-button bezel, sampled from the rendered
+        // cover with another app active (macOS 26): it replaces the river
+        // fill while the window is not key.
+        let inactive_bezel = |dark: bool| {
+            if dark {
+                CoverRgba::hex(0x1c2026, 1.0)
+            } else {
+                CoverRgba::hex(0xe3e2dd, 1.0)
+            }
+        };
+        for dark in [false, true] {
+            let palette = cover_palette(dark);
+            for channel in [Some("stable"), Some("beta"), Some("nightly"), None] {
+                let water = cover_water(channel);
+                let key = cover_restart_title_ink(water, palette, true);
+                let inactive = cover_restart_title_ink(water, palette, false);
+                assert!(
+                    contrast(key, water) >= 4.5,
+                    "{channel:?} dark={dark}: key title on the river"
+                );
+                assert!(
+                    contrast(inactive, inactive_bezel(dark)) >= 4.5,
+                    "{channel:?} dark={dark}: inactive title on AppKit's inactive bezel"
+                );
+            }
+        }
+        // The cover wires both inks into Restart.
+        let source = include_str!("lib.rs");
+        let start = source
+            .find("fn populate_native_startup_cover(")
+            .expect("cover population exists");
+        let populate = &source[start..];
+        assert!(populate.contains("cover_restart_title_ink(water, palette, true)"));
+        assert!(populate.contains("cover_restart_title_ink(water, palette, false)"));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_reads_the_embedded_brand_faces() {
+        let wordmark = cover_font(FRAUNCES_LATIN_WOFF2, 52.0, &[(AXIS_WGHT, 500.0)])
+            .expect("CoreText reads the embedded Fraunces WOFF2");
+        assert_eq!(
+            wordmark
+                .familyName()
+                .map(|name| name.to_string())
+                .as_deref(),
+            Some("Fraunces")
+        );
+        let text = cover_font(HANKEN_GROTESK_LATIN_WOFF2, 14.0, &[(AXIS_WGHT, 400.0)])
+            .expect("CoreText reads the embedded Hanken Grotesk WOFF2");
+        assert_eq!(
+            text.familyName().map(|name| name.to_string()).as_deref(),
+            Some("Hanken Grotesk")
+        );
+        assert!(cover_font(b"not a font", 14.0, &[]).is_none());
     }
 
     #[test]
