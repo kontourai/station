@@ -1546,7 +1546,9 @@ describe('CI verification workflow contracts', () => {
     const nightly = documentFor('nightly-gallery.yml');
 
     // The protected PR workflow and synthesized queue candidate must both
-    // produce the Gallery context before it can be required for landing.
+    // produce the Gallery contexts before it can be required for landing, so
+    // merge_group stays a trigger even though the capture skips there (the
+    // ready-gating suite below pins that skip).
     expect(Object.keys(pr.on ?? {})).toEqual([
       'pull_request_target',
       'merge_group',
@@ -1593,7 +1595,7 @@ describe('CI verification workflow contracts', () => {
     const job = pr.jobs['gallery-diff'];
     expect(job.needs).toBe('classify');
     expect(job.if).toBe(
-      `always() && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
+      `always() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
     );
     const classificationGuard = job.steps[0];
     expect(classificationGuard.env).toEqual({
@@ -4326,16 +4328,21 @@ describe('heavy platform lanes wait for ready-for-review on PR events', () => {
       file: 'build-ios.yml',
       job: 'build-ios-verification',
       condition: `needs.classify.outputs.relevant == 'true' && (${HEAVY_PR_LANE_GUARD})`,
+      mergeGroupRuns: true,
     },
     {
       file: 'windows-pr-verification.yml',
       job: 'windows-pr-portable',
       condition: HEAVY_PR_LANE_GUARD,
+      mergeGroupRuns: true,
     },
     {
       file: 'gallery-pr-check.yml',
       job: 'gallery-diff',
-      condition: `always() && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
+      condition: `always() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
+      // Gallery is not a required context, so a merge-group capture could
+      // never stop a landing; Nightly: Gallery covers main after landing.
+      mergeGroupRuns: false,
     },
   ];
   const repository = 'kontourai/station';
@@ -4415,14 +4422,15 @@ describe('heavy platform lanes wait for ready-for-review on PR events', () => {
       ).toBe(true);
       expect(runs(pullRequest({ ...releasePr, login: 'someone' }))).toBe(true);
       expect(runs(pullRequest({ ...releasePr, ref: 'feature/x' }))).toBe(true);
-      // The merge group is unchanged, for the release PR's candidate too.
+      // The merge group runs the required lanes for every candidate, the
+      // release PR's included; Gallery's capture skips there by design.
       expect(
         runs({
           event_name: 'merge_group',
           repository,
           event: { merge_group: {} },
         }),
-      ).toBe(true);
+      ).toBe(lane.mergeGroupRuns);
     },
   );
 

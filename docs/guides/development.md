@@ -916,7 +916,9 @@ gh api repos/kontourai/station/rules/branches/main
   review runs them on its head, and every later push to the ready PR runs them
   again, so open the PR as a draft (`gh pr create --draft`) and run
   `gh pr ready <n> --repo kontourai/station` when you intend to land it. The
-  merge queue runs them for every candidate either way. Pre-landing iOS builds
+  merge queue runs the Windows floor, and the iOS build when native inputs
+  changed, for every candidate either way; the Gallery capture runs on ready
+  PRs only. Pre-landing iOS builds
   cover native inputs only; a change confined to the rest of `src-ui/` or
   the bundled packages gets its iOS build from the main push, and a red one
   opens a `Main pipeline red: PR: iOS build` tracker.
