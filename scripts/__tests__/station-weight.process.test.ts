@@ -195,17 +195,18 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     expect(leftoverAfterStop([], processTable(), tagging)).toEqual([]);
   });
 
-  test('a process naming the run tag only in its arguments is not the run', async () => {
-    // Every tag spelled as an argument, none in the environment: it must be
-    // neither selected nor signalled.
-    const impostor = start(idle, process.env, [
-      `STATION_WEIGHT_RUN=${nonce}`,
+  test('a process naming the run tags only in its arguments is not the run', async () => {
+    // Tags spelled as arguments, none in the environment: neither may be
+    // selected or signalled. The first names only the scratch paths, so
+    // only reading the environment apart from the arguments excludes it.
+    const paths = start(idle, process.env, [
       `HOME=${scratch}/user`,
       `TMPDIR=${scratch}/tmp`,
     ]);
+    const named = start(idle, process.env, [`STATION_WEIGHT_RUN=${nonce}`]);
     // Positive control: the same process with the tag in its environment.
     const genuine = start(idle, tagged);
-    await Promise.all([impostor.firstLine, genuine.firstLine]);
+    await Promise.all([paths.firstLine, named.firstLine, genuine.firstLine]);
     const table = processTable();
     expect(taggedRows(table, tagging).map((row) => row.pid)).toEqual([
       genuine.child.pid,
