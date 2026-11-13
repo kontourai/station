@@ -2761,7 +2761,8 @@ Each check examines at most `ALLOWANCE_SUPERSESSION_SCAN_LIMIT` (1,000)
 `turn.completed` rows since the refusal, newest first; reaching the cap without a
 match drops the refusal, so the read can miss a true limit but never shows a false
 one. A failed read attaches nothing. The `/agents` and `/agents/catalog` routes
-also drop each refusal's `account` for those viewers (`allowanceEvidenceForViewer`).
+also drop each refusal's `account` for viewers who are neither the operator in
+person nor holders of `access:manage` (`allowanceEvidenceForViewer`).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims
