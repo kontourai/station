@@ -245,7 +245,7 @@
       "name": "mobile-chat-dock-header-320",
       "width": 320,
       "height": 568,
-      "sha256": "1b92fdad466d1a18955158514a18b2bcdc564412cfc20ea2ff4ba77c14fd4885"
+      "sha256": "1dcf12543778a0851026148fb0a56c17c89fad0efbc9f7abdd6b3bb628f078ce"
     },
     {
       "name": "mobile-connections",
@@ -401,7 +401,7 @@
       "name": "overlay-mobile-sheet",
       "width": 390,
       "height": 844,
-      "sha256": "ff7f2a2293d472ab6ab85fdf45ce55b12b733fbec6a0bc4a68f1296e2f757a2b"
+      "sha256": "f63c29c97691e4f672f5ba9fe837c2db2cef7f491ad4b458ba2edaecb3663abb"
     },
     {
       "name": "overlay-new-project-layout-control",
