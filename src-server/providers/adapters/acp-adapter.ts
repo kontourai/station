@@ -156,6 +156,12 @@ import {
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
 import {
+  sharedUntrustedContentLedger,
+  type UntrustedContentLedger,
+  untrustedContentAncestry,
+} from '../../services/plugins/untrusted-content-policy.js';
+import { acpPersistenceTarget } from '../../services/plugins/untrusted-persistence-protection.js';
+import {
   acpPassthroughSessions,
   acpResumeSessions,
   agentCapabilityUndelivered,
@@ -465,6 +471,8 @@ export function acpEngineExitEndsLaunch(input: {
 }
 
 export interface AcpAdapterOptions {
+  /** #4828: where untrusted reads are looked up; the shared ledger by default. */
+  untrustedContentLedger?: UntrustedContentLedger;
   getConnections: () => Promise<ACPConnectionConfig[]>;
   /**
    * How long a start waits for a model option sent after `session/new`.
@@ -3684,6 +3692,31 @@ export class AcpAdapter implements ProviderAdapterShape {
             params.toolCall?.rawInput,
             record.session.cwd ?? context.cwd,
           ));
+      // #4828: after an untrusted read, a change to a known agent-instruction
+      // or git-hook location is declined by path (best effort; it does not
+      // contain git hook execution, #4860), read from the call's kind, locations
+      // and input whether or not the agent named the tool (the name is
+      // optional, and the staged evaluator below needs one).
+      const persistence = acpPersistenceTarget(params.toolCall ?? {});
+      if (
+        persistence &&
+        (await (
+          this.options.untrustedContentLedger ?? sharedUntrustedContentLedger
+        ).conversationHasRead(
+          ...untrustedContentAncestry({
+            conversationId: record.session.threadId,
+            delegation: record.delegation,
+          }),
+        ))
+      ) {
+        context.logger.warn?.(
+          'Untrusted-content persistence protection declined an ACP change',
+          { threadId: record.session.threadId, kind: params.toolCall?.kind },
+        );
+        return {
+          outcome: mapAcpDecisionToOutcome('decline', params.options),
+        };
+      }
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {

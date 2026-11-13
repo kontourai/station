@@ -1,0 +1,9 @@
+{
+  "revision": "829a4c3df193ff6509e3bdc8816354aea687b9f2",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#4828 fix round 1: config.md only gained a mention of the persistence protection in the autoApprove row; this document makes no claim about autoApprove ordering, so it stays accurate.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#4828 fix round 1: config.md only gained a mention of the persistence protection in the autoApprove row; this document makes no claim about autoApprove ordering, so it stays accurate.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
+  ]
+}
