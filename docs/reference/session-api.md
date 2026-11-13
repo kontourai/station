@@ -1253,7 +1253,10 @@ aborted. Two aborts count, and they settle different sets
   waiting on it. Separately, the adapters read for this change (Claude Code,
   Codex, ACP) resolve the requests they hold `cancelled` when they stop a
   turn or session, a subagent's included on Claude Code; that publication,
-  not this rule, is what normally closes them.
+  not this rule, is what normally closes them. ACP resolves only the requests
+  the stopped turn opened (on interrupt, steer and prompt end); one opened
+  outside any turn, such as an MCP reconnect's consent link, stays open until
+  it is answered or the session stops.
 
 A turn that fails without being aborted (`runtime.error` or `session.exited`
 alone) settles nothing, and neither does an ordinary `turn.completed` or a
