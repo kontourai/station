@@ -3261,6 +3261,7 @@ for (const viewport of [
       page.getByRole('dialog', { name: 'Run setup', exact: true }),
     ).toBeHidden();
     const railControlBox = await page
+      .locator('.chat-input')
       .getByTestId('run-setup-trigger')
       .boundingBox();
     expect(reconnectBox).not.toBeNull();
