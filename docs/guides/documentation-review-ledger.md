@@ -40,6 +40,10 @@ can cover named outstanding inputs; restoring old bytes alone cannot erase an
 unreviewed change. `docs:review:record -- --show-delta` shows the input diff
 since the coverage baseline, including working edits. This is an inspection
 lead, not an assertion that every intermediate change is visible in the net diff.
+If global history is covered but the current branch still lacks its own
+review, the command shows the outstanding branch inputs from the same scoped
+policy as the freshness gate. It does not treat a note already on the base
+branch as approval of this change.
 Advisory dependency history reads deduplicate repeated valid paths in historical
 path-only records, preserving their dependency leads. Current records still
 refuse duplicate paths; legacy digest/revision bindings and malformed historical
