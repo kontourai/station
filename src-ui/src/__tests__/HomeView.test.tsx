@@ -970,6 +970,11 @@ describe('HomeView', () => {
       expect(
         within(form)
           .getByTestId('run-setup-trigger')
+          .querySelector('.composer-choice__value')?.textContent,
+      ).toBe(expected);
+      expect(
+        within(form)
+          .getByTestId('run-setup-trigger')
           .getAttribute('aria-label'),
       ).toContain(expected);
     },

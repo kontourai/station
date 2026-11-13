@@ -2414,3 +2414,17 @@ test.each([
     );
   },
 );
+
+test('reply setup omits an unresolved model instead of naming Model', () => {
+  renderChatInputArea({
+    agentLabel: 'Writer',
+    currentModel: undefined,
+    agentDefaultModel: undefined,
+    availableModels: [],
+  });
+  expect(
+    screen
+      .getByTestId('run-setup-trigger')
+      .querySelector('.composer-choice__value')?.textContent,
+  ).toBe('Writer');
+});
