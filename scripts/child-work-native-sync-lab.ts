@@ -154,6 +154,18 @@ const server = createServer(async (request, response) => {
         response.writeHead(202).end();
         return;
       }
+      // This stateless fixture does not implement optional pre-initialize discovery.
+      if (value.method === 'server/discover') {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: value.id,
+            error: { code: -32601, message: 'Method not found' },
+          }),
+        );
+        return;
+      }
       let result: unknown;
       switch (value.method) {
         case 'initialize':
