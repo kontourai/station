@@ -64,7 +64,7 @@ at most one fix. A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix or reads **Usage limit reached**, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
-failed; or Knowledge has no vector store turned on. Engines the managed policy refuses,
+failed or it needs a sign-in; or Knowledge has no vector store turned on. Engines the managed policy refuses,
 saved-but-untested model connections, Knowledge without an embedding model, and
 computers that are not connected carry no mark. The rows, the engine page and
 the marks share one [readiness
@@ -115,8 +115,11 @@ rather than a section. Each section's **Connections** eyebrow links back to it.
   with its badge, one sentence and at most one action. The connection's name
   opens its page. The action is the fix its badge names and opens the page
   that performs it; Claude Code and Codex sign in on their **Accounts** tab.
-  A tool server whose last check failed reads **Needs attention**, as on the
-  Tools page; a turned-off one is not listed. The list shows a loading state
+  A tool server reads as its Tools row does: **Check failed** when its last
+  check failed, and **Sign in required** when it wants a sign-in, even if its
+  check passed, since either needs the reader's action. One never checked
+  (**Saved — not verified**), one turned off, or one Station runs itself is
+  not listed. The list shows a loading state
   until every section list that can carry a mark (and any managed engine
   policy) loads, says so when any section list, Computers included, could not
   be loaded (with **Retry** when the read failed), and reads **Nothing needs

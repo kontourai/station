@@ -15,8 +15,10 @@ export interface KnowledgeReadiness extends ResourceStatus {
 
 /**
  * Whether semantic search is on, and why not, from the knowledge status
- * route: it needs a vector store and an embedding model, both turned on. Off
- * is a resting state, not an attention mark (`connection-section-signals`).
+ * route: it needs a vector store and an embedding model, both turned on.
+ * Off for want of an embedding model is a resting state, not an attention
+ * mark; a missing or turned-off vector store is marked on the Overview
+ * (`connection-section-signals`).
  */
 export function knowledgeReadiness(
   status: Pick<GlobalKnowledgeStatus, 'vectorDb' | 'embedding'>,

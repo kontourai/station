@@ -29,6 +29,7 @@ import {
   useManagedEngineStateFor,
   useManagedEngineStateSettled,
 } from '../../hooks/useManagedEngines';
+import { toolServerStatus } from '../integrations/tool-server-status';
 import type { ProviderConnection } from '../provider-settings/types';
 import {
   describeProvider,
@@ -42,6 +43,12 @@ import {
 } from './connection-health';
 import type { ConnectionSectionId } from './connection-sections';
 import { useComputerRows } from './useComputerRows';
+
+/** The Tools row statuses that ask the reader to act. */
+const TOOL_ATTENTION_LABELS: ReadonlySet<string> = new Set([
+  'Check failed',
+  'Sign in required',
+]);
 
 /**
  * One connection the reader can fix, in the words its own page uses. The
@@ -224,30 +231,34 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     // CI-R3: `connected` is "an agent session currently holds a client",
     // which is false for every tool server — including the built-ins — until
     // a turn runs, so deriving attention from it put a warn dot on a healthy
-    // section forever. A probe that FAILED is the observation that means
-    // attention; never-probed is not a failure. A disabled server reads
-    // "Disabled" on the Tools page whatever its last check said, so it is
-    // not listed. The words are the Tools row's (`filterIntegrationItems`).
-    ...tools.flatMap((tool) =>
-      tool.enabled !== false && tool.probe && !tool.probe.ok
+    // section forever. The status is the Tools row's own
+    // (`toolServerStatus`), so the words match. "Check failed" and "Sign in
+    // required" are marked: both need the reader's action, and a passing
+    // probe does not make a server the reader has not signed in to usable.
+    // "Saved — not verified" (never probed) is not a failure, and a disabled
+    // or Station-run server has nothing to fix.
+    ...tools.flatMap((tool) => {
+      const status = toolServerStatus(tool);
+      return TOOL_ATTENTION_LABELS.has(status.label)
         ? [
             {
               id: `tools:${tool.id}`,
               section: 'tools' as const,
               title: tool.displayName || tool.id,
-              status: {
-                label: 'Needs attention',
-                tone: connectionVerdictTone('failing'),
-              },
-              sentence: tool.probe.error || 'The last check failed.',
+              status,
+              sentence:
+                status.reason ||
+                (status.label === 'Sign in required'
+                  ? 'Sign in to this tool server.'
+                  : 'The last check failed.'),
               path: getPathForView({
                 type: 'connections-tool-edit',
                 id: tool.id,
               })!,
             },
           ]
-        : [],
-    ),
+        : [];
+    }),
     // A store with no embedding model is a resting state (semantic search
     // off), like an unconnected computer: the Knowledge page says so. No
     // store at all, or the only one turned off, is not.

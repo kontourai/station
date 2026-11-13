@@ -21,6 +21,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { canonicalConnectionPath } from '../views/connections-hub/connection-sections';
+import { toolServerStatus } from '../views/integrations/tool-server-status';
 
 const state: {
   connections: unknown[];
@@ -405,7 +406,7 @@ describe('the /connections Overview', () => {
     expect(attentionItems()).toEqual([
       'Anthropic: Check failed',
       'Muse Code: Limited',
-      'Audit Echo: Needs attention',
+      'Audit Echo: Check failed',
       'Knowledge store: Setup required',
     ]);
     // One sentence each: the tool server's own failure, not a generic one.
@@ -420,6 +421,27 @@ describe('the /connections Overview', () => {
       'Tools',
       'Knowledge',
     ]);
+  });
+
+  test('a turned-off vector store is listed as Disabled, opening the Knowledge page', () => {
+    state.knowledge = {
+      vectorDb: {
+        id: 'lancedb-builtin',
+        name: 'Station Built-In',
+        enabled: false,
+      },
+      embedding: null,
+      stats: { totalDocuments: 0, totalChunks: 0, projectCount: 0 },
+    };
+    renderHub();
+    expect(attentionItems()).toEqual(['Knowledge store: Disabled']);
+    expect(screen.getByText('The vector store is turned off.')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open it: Knowledge store' }),
+    );
+    expect(navigate).toHaveBeenLastCalledWith('/connections/knowledge');
+    renderRail();
+    expect(railAttentionSections()).toEqual(['Knowledge']);
   });
 
   test("each item's one action is the fix its status names, opening the page that performs it", () => {
@@ -570,7 +592,7 @@ describe('the /connections Overview', () => {
     ).toBeTruthy();
     expect(screen.queryByText('Nothing needs attention')).toBeNull();
     // What did answer is still listed.
-    expect(attentionItems()).toEqual(['audit-echo: Needs attention']);
+    expect(attentionItems()).toEqual(['audit-echo: Check failed']);
     const engines = screen.getByRole('button', { name: /^Engines/ });
     expect(engines.textContent).toContain('Not loaded');
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -736,20 +758,58 @@ describe('the /connections Overview', () => {
         id: 'audit-echo',
         displayName: 'Audit Echo',
         connected: false,
-        probe: { ok: false, toolCount: 0, error: 'spawn ENOENT' },
+        probe: {
+          ok: false,
+          toolCount: 0,
+          error: 'spawn ENOENT',
+          checkedAt: '2026-11-12T10:00:00.000Z',
+        },
+      },
+      {
+        // Its probe passed, but it still needs the reader to sign in.
+        id: 'linear',
+        displayName: 'Linear',
+        connected: false,
+        probe: {
+          ok: true,
+          toolCount: 3,
+          checkedAt: '2026-11-12T10:00:00.000Z',
+          authorization: { state: 'never-authorized' },
+        },
       },
       {
         id: 'old-server',
         displayName: 'Old Server',
         enabled: false,
         connected: false,
-        probe: { ok: false, toolCount: 0, error: 'spawn ENOENT' },
+        probe: {
+          ok: false,
+          toolCount: 0,
+          error: 'spawn ENOENT',
+          checkedAt: '2026-11-12T10:00:00.000Z',
+        },
       },
+      // Never checked: not a failure, and not listed.
+      { id: 'fresh', displayName: 'Fresh Server', connected: false },
     ];
     renderHub();
-    expect(attentionItems()).toEqual(['Audit Echo: Needs attention']);
+    expect(attentionItems()).toEqual([
+      'Audit Echo: Check failed',
+      'Linear: Sign in required',
+    ]);
+    // The Tools row's own status for the same servers.
+    expect(
+      state.tools.map((tool) => toolServerStatus(tool as never).label),
+    ).toEqual([
+      'Check failed',
+      'Sign in required',
+      'Disabled',
+      'Saved — not verified',
+    ]);
+    expect(screen.getByText('spawn ENOENT')).toBeTruthy();
+    expect(screen.getByText('Sign in to this tool server.')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Tools/ }).textContent).toBe(
-      'Tools2Needs attention',
+      'Tools4Needs attention',
     );
     // No fix to name: the title opens the server's page instead.
     expect(screen.queryByRole('button', { name: /: Audit Echo$/ })).toBeNull();
