@@ -186,7 +186,7 @@ describe.skipIf(process.platform === 'win32')(
       // `gemini-4-argon`, thinking `medium`.
       const selection = {
         modelId: 'gemini-3.8-flash',
-        modelOptions: { effort: 'low' },
+        modelOptions: { effort: 'low', mode: 'plan' },
       };
       const engine = launch(PROFILE, TEXT_TURN);
       const first = await engine.start('again', undefined, selection);
@@ -195,17 +195,22 @@ describe.skipIf(process.platform === 'win32')(
 
       await engine.start('again', first.resumeCursor, selection);
       const afterReopen = engine.record().slice(before);
-      expect(afterReopen.map((entry) => entry.method)).toEqual([
+      // Mode first, as at a fresh start (a mode can carry its own model).
+      expect(
+        afterReopen.map((entry) =>
+          entry.method === 'session/set_config_option'
+            ? entry.configId
+            : entry.method === 'session/set_mode'
+              ? `mode:${entry.modeId}`
+              : entry.method,
+        ),
+      ).toEqual([
         'initialize',
         'session/resume',
-        'session/set_config_option',
-        'session/set_config_option',
+        expect.stringMatching(/^(mode|mode:plan)$/),
+        'model',
+        'thought_level',
       ]);
-      expect(
-        afterReopen
-          .filter((entry) => entry.method === 'session/set_config_option')
-          .map((entry) => entry.configId),
-      ).toEqual(['model', 'thought_level']);
       // The reopen's own `session.configured` (the start's is the first),
       // saying what the engine now runs, not only what was asked for.
       const configured = (await waitFor(
@@ -216,6 +221,9 @@ describe.skipIf(process.platform === 'win32')(
         'the reopen session.configured',
       )) as { metadata?: Record<string, unknown> };
       expect(configured.metadata?.reportedModel).toBe('gemini-3.8-flash');
+      expect(configured.metadata).toMatchObject({
+        acpSessionMode: 'plan',
+      });
     });
 
     test('a reopen whose effort the resumed session does not offer is skipped, not refused', async () => {
@@ -235,6 +243,17 @@ describe.skipIf(process.platform === 'win32')(
           .slice(before)
           .map((entry) => entry.method),
       ).toEqual(['initialize', 'session/resume']);
+      // Nor is it reported as in effect.
+      const configured = (await waitFor(
+        () =>
+          engine.events.filter(
+            (event) => event.method === 'session.configured',
+          )[1],
+        'the reopen session.configured',
+      )) as { metadata?: Record<string, unknown> };
+      expect(
+        configured.metadata?.effectiveModelOptions ?? {},
+      ).not.toHaveProperty('effort');
     });
 
     test('a reopened session that already has its model and effort is not set again', async () => {

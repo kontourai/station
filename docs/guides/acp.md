@@ -109,10 +109,12 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    A field the answer leaves out keeps what the session already holds. An
    engine need not keep a conversation's model or options across processes
    (Antigravity 1.5.8 resumes on its account default), so the start's
-   explicit model, mode and effort are applied again where the resumed
-   session differs. A value the session no longer advertises is skipped
-   rather than refusing the reopen, no governed default mode is applied,
-   and a governed session keeps its mode.
+   explicit mode, model and effort are applied again, in that order, where
+   the resumed session differs. A value the session no longer advertises is
+   skipped rather than refusing the reopen, and `session.configured` does
+   not report it as in effect. No governed default mode is applied; a
+   governed start refuses a mode outside build and plan before launch, for
+   a reopen as for a new chat.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
@@ -757,8 +759,11 @@ and the scripted profile
   `mid-turn-steer`). Station's composer queues follow-ups for ACP engines,
   so the hand-off runs through Station's steer command. While the engine
   waits for an approval or question answer it refuses a new prompt, and the
-  refusal would end the turn, so Station refuses that steer instead and the
-  turn and its request stay open.
+  refusal would end the turn, so the adapter refuses that steer before
+  sending anything and the turn and its request stay open. A direct steer
+  call receives the refusal; a durable steer (one with a `clientInputId`)
+  is recorded as unconfirmed, as orchestration records any steer an engine
+  refuses.
 - **In an open chat**, Station's composer does not send a changed mode, and
   the effort picker is fixed after the chat starts. Both are Station limits
   for every ACP engine; a new chat applies its chosen mode and effort.
