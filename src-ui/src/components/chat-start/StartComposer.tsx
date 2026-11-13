@@ -133,6 +133,8 @@ export type StartAgentChip =
        */
       modelLabel?: string;
       executionAgentId?: string;
+      /** Catalog entry for the selected execution engine, including overrides. */
+      executionAgent?: AgentData;
       environmentId?: string;
       /** The Agent shown needs setup before Start can use it. */
       needsSetup: boolean;
@@ -536,7 +538,9 @@ export function StartComposer({
                       name="Engine"
                       engineId={
                         parseEngineId(
-                          agent.agent?.execution?.agentConnectionId,
+                          (agent.executionAgent ?? agent.agent)?.engineId ??
+                            (agent.executionAgent ?? agent.agent)?.execution
+                              ?.agentConnectionId,
                         ) ?? undefined
                       }
                       size={20}
