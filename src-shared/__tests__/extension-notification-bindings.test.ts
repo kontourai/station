@@ -406,7 +406,10 @@ describe('engine extension bindings (Kiro parity)', () => {
       'kiro-v3.tool.agent-subtask',
     ]);
     for (const row of pending) {
-      expect(ENGINE_EXTENSION_CONSUMERS[row.consumer as EngineExtensionConsumerId]?.implemented).toBe(true);
+      expect(
+        ENGINE_EXTENSION_CONSUMERS[row.consumer as EngineExtensionConsumerId]
+          ?.implemented,
+      ).toBe(true);
       if (row.wire.kind !== 'notification') continue;
       const [namespace, type] = [
         row.wire.method.slice(0, row.wire.method.indexOf('/')),

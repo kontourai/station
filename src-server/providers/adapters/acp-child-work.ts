@@ -65,7 +65,9 @@ export const ACP_CHILD_WORK_NOT_REPORTED_REASON =
 export function acpEngineReportsChildWork(
   variant: ProviderDeclaredEngineVariant | undefined,
 ): boolean {
-  return variant !== undefined && ACP_CHILD_WORK_REPORTERS[variant] !== undefined;
+  return (
+    variant !== undefined && ACP_CHILD_WORK_REPORTERS[variant] !== undefined
+  );
 }
 
 /** Adapter-owned per-session child-work state (part of the session record). */

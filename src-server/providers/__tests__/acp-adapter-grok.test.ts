@@ -1,0 +1,577 @@
+import { readFileSync } from 'node:fs';
+import {
+  agent as agentApp,
+  ndJsonStream,
+} from '@agentclientprotocol/sdk/unstable';
+import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import {
+  inputRequestFromRequestEvent,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
+import { describe, expect, test } from 'vitest';
+import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createACPClientApp } from '../../services/acp/acp-bridge-client.js';
+import type { ACPProcess } from '../../services/acp/acp-process.js';
+import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
+import { AcpAdapter } from '../adapters/acp-adapter.js';
+import { FakeAcpProcess } from './fake-acp-process.js';
+
+/**
+ * Grok Build over ACP, driven through the real AcpAdapter: its own Client
+ * serves a real client app, and a real agent app sends frames taken verbatim
+ * from the scrubbed grok 1.0.77 live capture (`GROK_LIVE_CAPTURE`) over
+ * ndjson. The capture's session is mapped onto the fake process's session;
+ * any other session in it (a subagent's own) stays foreign.
+ */
+
+const makeTempDir = trackTempDirs();
+
+const CONNECTIONS: ACPConnectionConfig[] = [
+  {
+    id: 'grok-lab',
+    name: 'Grok Lab',
+    command: 'grok',
+    args: ['agent', 'stdio'],
+    enabled: true,
+  },
+];
+
+/** What grok 1.0.77 puts in its `initialize` result's `_meta` that identifies it. */
+const GROK_INITIALIZE_META = { grokShell: true, agentVersion: '1.0.77' };
+
+type Frame = { method?: string; id?: unknown; params?: any; result?: any };
+
+function captureFrames(capture: string): Frame[] {
+  return readFileSync(
+    new URL(`../../../${GROK_LIVE_CAPTURE}`, import.meta.url),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.capture === capture && entry.dir === 'E->C')
+    .map((entry) => entry.msg as Frame);
+}
+
+/** The capture's own session id: the one its first session frame names. */
+function captureSessionId(frames: Frame[]): string {
+  const id = frames.find((msg) => typeof msg.params?.sessionId === 'string')
+    ?.params.sessionId;
+  if (!id) throw new Error('capture names no session');
+  return id;
+}
+
+/** `value` with every `from` string replaced by `to`, at any depth. */
+function renamed<T>(value: T, from: string, to: string): T {
+  return JSON.parse(JSON.stringify(value).replaceAll(from, to));
+}
+
+async function startGrokSession(
+  options: { grok?: boolean; unattended?: boolean } = {},
+) {
+  let proc: FakeAcpProcess | undefined;
+  const adapter = new AcpAdapter({
+    getConnections: async () => CONNECTIONS,
+    logger: {
+      debug: () => {},
+      warn: () => {},
+      error: () => {},
+      info: () => {},
+    },
+    managedWorkspaceHomeDir: makeTempDir('station-acp-grok-test-'),
+    processFactory: (opts) => {
+      proc = new FakeAcpProcess(opts);
+      if (options.grok !== false)
+        proc.initResult!._meta = { ...GROK_INITIALIZE_META };
+      return proc as unknown as ACPProcess;
+    },
+  });
+  const events: CanonicalRuntimeEvent[] = [];
+  const drained = (async () => {
+    for await (const event of adapter.streamEvents()) events.push(event);
+  })();
+  const threadId = `grok-${crypto.randomUUID()}`;
+  await adapter.startSession({
+    provider: 'acp',
+    threadId,
+    cwd: '/tmp/project',
+    metadata: {
+      connectionId: 'grok-lab',
+      ...(options.unattended
+        ? {
+            delegation: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: 'parent',
+              rootAgentSlug: 'parent',
+              denyApprovals: true,
+            },
+          }
+        : {}),
+    },
+  });
+  if (!proc?.client || !proc.sessionId)
+    throw new Error('adapter did not build a Client and session');
+  const clientToAgent = new TransformStream<Uint8Array, Uint8Array>();
+  const agentToClient = new TransformStream<Uint8Array, Uint8Array>();
+  createACPClientApp(proc.client).connect(
+    ndJsonStream(clientToAgent.writable, agentToClient.readable),
+  );
+  const agent = agentApp().connect(
+    ndJsonStream(agentToClient.writable, clientToAgent.readable),
+  ).client;
+  const sessionId = proc.sessionId;
+  const fake = proc;
+
+  async function waitFor<T extends CanonicalRuntimeEvent>(
+    predicate: (event: CanonicalRuntimeEvent) => event is T,
+    label: string,
+  ): Promise<T> {
+    const deadline = Date.now() + 1000;
+    while (Date.now() < deadline) {
+      const found = events.find(predicate);
+      if (found) return found;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error(`Timed out waiting for ${label}`);
+  }
+
+  /**
+   * Send a capture's engine notifications in order, as this session's. A
+   * frame answering the capture's `session/prompt` resolves Station's open
+   * prompt with the recorded stop reason; the engine's own requests are not
+   * replayed.
+   */
+  async function replay(capture: string, promptRequestId?: number) {
+    const frames = captureFrames(capture);
+    const own = captureSessionId(frames);
+    for (const raw of frames) {
+      const msg = renamed(raw, own, sessionId);
+      if (msg.id !== undefined) {
+        if (msg.id === promptRequestId && msg.result) {
+          await settle();
+          fake.resolvePrompt(msg.result.stopReason);
+          await settle();
+        }
+        continue;
+      }
+      if (msg.method) await agent.notify(msg.method, msg.params);
+    }
+    await settle();
+  }
+
+  return {
+    adapter,
+    agent,
+    proc: fake,
+    sessionId,
+    events,
+    threadId,
+    waitFor,
+    replay,
+    of: <M extends CanonicalRuntimeEvent['method']>(method: M) =>
+      events.filter(
+        (event): event is Extract<CanonicalRuntimeEvent, { method: M }> =>
+          event.method === method,
+      ),
+    stop: async () => {
+      await adapter.stopAll();
+      await drained;
+    },
+  };
+}
+
+/** Lets in-flight wire traffic land before asserting what arrived. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+type RequestOpened = Extract<
+  CanonicalRuntimeEvent,
+  { method: 'request.opened' }
+>;
+const isRequestOpened = (
+  event: CanonicalRuntimeEvent,
+): event is RequestOpened => event.method === 'request.opened';
+
+function within<T>(promise: Promise<T>, ms = 1000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`no response within ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+/** The live `_x.ai/ask_user_question` params, as this session's. */
+function liveQuestion(sessionId: string): Record<string, unknown> {
+  const frames = captureFrames('ask-user-question-answered');
+  const ask = frames.find((msg) => msg.method === '_x.ai/ask_user_question');
+  if (!ask) throw new Error('capture holds no question');
+  return renamed(ask.params, captureSessionId(frames), sessionId);
+}
+
+describe('Grok `_x.ai/ask_user_question` reaches the harness-question contract', () => {
+  test("the person's choice goes back keyed by question text, as the engine read it live", async () => {
+    const session = await startGrokSession();
+    const response = session.agent.request(
+      '_x.ai/ask_user_question',
+      liveQuestion(session.sessionId),
+    );
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    const form = inputRequestFromRequestEvent(opened);
+    expect(form).toMatchObject({
+      source: 'harness:grok',
+      requester: 'Grok Lab',
+      body: {
+        fields: [
+          {
+            kind: 'choice',
+            title: 'Which color do you prefer?',
+            options: [
+              { value: '0', label: 'red' },
+              { value: '1', label: 'blue' },
+            ],
+          },
+        ],
+      },
+    });
+    if (!form) throw new Error('no form');
+    await session.adapter.respondToRequest(
+      session.threadId,
+      opened.requestId,
+      'accept',
+      {
+        inputContent: validateInputRequestContent(form, {
+          [form.body.fields[0]!.name]: '1',
+        }),
+        expectedRequestEventId: opened.eventId,
+      },
+    );
+    await expect(within(response)).resolves.toEqual({
+      outcome: 'accepted',
+      answers: { 'Which color do you prefer?': ['blue'] },
+    });
+    await session.stop();
+  });
+
+  test('a declined question goes back cancelled, which Grok reads as a decline', async () => {
+    const session = await startGrokSession();
+    const response = session.agent.request(
+      '_x.ai/ask_user_question',
+      liveQuestion(session.sessionId),
+    );
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    await session.adapter.respondToRequest(
+      session.threadId,
+      opened.requestId,
+      'decline',
+      { expectedRequestEventId: opened.eventId },
+    );
+    await expect(within(response)).resolves.toEqual({ outcome: 'cancelled' });
+    await session.stop();
+  });
+
+  test('a question Station cannot show is answered cancelled at once, with a warning', async () => {
+    const session = await startGrokSession();
+    const question = liveQuestion(session.sessionId);
+    const [only] = question.questions as unknown[];
+    // Two questions with the same text could not be answered back apart.
+    const response = session.agent.request('_x.ai/ask_user_question', {
+      ...question,
+      questions: [only, only],
+    });
+    await expect(within(response)).resolves.toEqual({ outcome: 'cancelled' });
+    expect(session.events.some(isRequestOpened)).toBe(false);
+    expect(session.of('runtime.warning')).toEqual([
+      expect.objectContaining({ code: 'acp.extension-request-unreadable' }),
+    ]);
+    await session.stop();
+  });
+
+  test('a child no person may be asked for answers cancelled without a request', async () => {
+    const session = await startGrokSession({ unattended: true });
+    const response = session.agent.request(
+      '_x.ai/ask_user_question',
+      liveQuestion(session.sessionId),
+    );
+    await expect(within(response)).resolves.toEqual({ outcome: 'cancelled' });
+    expect(session.events.some(isRequestOpened)).toBe(false);
+    await session.stop();
+  });
+});
+
+describe('Grok child work and its own session', () => {
+  test('a Grok session reports child work; another ACP engine states not-reported once', async () => {
+    const grok = await startGrokSession();
+    const other = await startGrokSession({ grok: false });
+    await settle();
+    const notReported = (session: typeof grok) =>
+      session
+        .of('child-work.updated')
+        .filter((event) => event.delta.kind === 'not-reported');
+    expect(notReported(grok)).toEqual([]);
+    expect(notReported(other)).toEqual([
+      expect.objectContaining({
+        threadId: other.threadId,
+        delta: expect.objectContaining({
+          kind: 'not-reported',
+          reporterThreadId: other.threadId,
+        }),
+      }),
+    ]);
+    await grok.stop();
+    await other.stop();
+  });
+
+  test("a background subagent is one child, and the child's own session never reaches this transcript", async () => {
+    const session = await startGrokSession();
+    const turn = await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: 'spawn',
+    });
+    await session.replay('background-subagent', 5);
+
+    const deltas = session.of('child-work.updated').map((event) => event.delta);
+    const snapshot = deltas.find((delta) => delta.kind === 'snapshot');
+    expect(snapshot).toMatchObject({
+      running: [
+        expect.objectContaining({
+          workKind: 'agent',
+          kindLabel: 'general-purpose',
+          title: 'Reply exact text sub-ok',
+          model: { id: 'grok-4.5', source: 'spawn-result' },
+          depth: 1,
+          parent: { turnId: turn.turnId },
+        }),
+      ],
+    });
+    expect(deltas.find((delta) => delta.kind === 'settle')).toMatchObject({
+      status: 'completed',
+      result: { summary: 'sub-ok', source: 'child-message' },
+      usage: { totalTokens: 12321, toolUses: 0, durationMs: 2136 },
+    });
+    // The child streams its own prompt and reply under its own session on
+    // the same connection. None of it is this session's: every text delta is
+    // one of the parent's own chunks, and no extension frame of the child's
+    // is forwarded.
+    const frames = captureFrames('background-subagent');
+    const own = captureSessionId(frames);
+    const child = frames.find(
+      (msg) =>
+        typeof msg.params?.sessionId === 'string' &&
+        msg.params.sessionId !== own,
+    )?.params.sessionId;
+    expect(child).toBeDefined();
+    const ownChunks = frames.filter(
+      (msg) =>
+        msg.method === 'session/update' &&
+        msg.params.sessionId === own &&
+        msg.params.update.sessionUpdate === 'agent_message_chunk',
+    );
+    const childChunks = frames.filter(
+      (msg) =>
+        msg.method === 'session/update' &&
+        msg.params.sessionId === child &&
+        msg.params.update.sessionUpdate === 'agent_message_chunk',
+    );
+    expect(childChunks.length).toBeGreaterThan(0);
+    expect(session.of('content.text-delta')).toHaveLength(ownChunks.length);
+    expect(
+      session
+        .of('extension.notification')
+        .filter(
+          (event) =>
+            (event.payload as { sessionId?: unknown }).sessionId === child,
+        ),
+    ).toEqual([]);
+    // Only the parent's turn cost is reported, never the child's on top.
+    expect(
+      session
+        .of('token-usage.updated')
+        .flatMap((event) => (event.reportedCost ? [event.reportedCost] : [])),
+    ).toEqual([{ amount: 0.02747336, unit: 'USD', scope: 'turn' }]);
+    await session.stop();
+  });
+
+  test('a background command is a backgrounded child that settles with its output', async () => {
+    const session = await startGrokSession();
+    await session.adapter.sendTurn({ threadId: session.threadId, input: 'bg' });
+    await session.replay('background-bash-interject', 5);
+    const deltas = session.of('child-work.updated').map((event) => event.delta);
+    expect(deltas.find((delta) => delta.kind === 'snapshot')).toMatchObject({
+      running: [
+        expect.objectContaining({
+          workKind: 'command',
+          kindLabel: 'bash',
+          backgrounded: true,
+          title: 'Background sleep then echo finished',
+        }),
+      ],
+    });
+    expect(deltas.find((delta) => delta.kind === 'settle')).toMatchObject({
+      status: 'completed',
+      result: { summary: 'bg-finished', source: 'tool-return' },
+    });
+    await session.stop();
+  });
+});
+
+describe('Grok wake turns are provider turns', () => {
+  test('each prompt Grok runs on its own after the turn opens and closes a provider turn its reply lands in', async () => {
+    const session = await startGrokSession();
+    const turn = await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: 'monitor',
+    });
+    await session.replay('monitor-wake-turns', 5);
+
+    const started = session.of('turn.started');
+    const provider = started.filter(
+      (event) => event.metadata?.trigger === 'provider',
+    );
+    // Two monitor lines and the monitor's end each woke the engine; the
+    // prompt Station sent is never one of them, though Grok restated it.
+    expect(started.map((event) => event.turnId)).toEqual([
+      turn.turnId,
+      ...provider.map((event) => event.turnId),
+    ]);
+    expect(provider).toHaveLength(3);
+    const completed = session.of('turn.completed');
+    expect(completed.map((event) => event.turnId)).toEqual([
+      turn.turnId,
+      ...provider.map((event) => event.turnId),
+    ]);
+    for (const event of completed.slice(1))
+      expect(event.metadata).toEqual({ trigger: 'provider' });
+    // The engine's reply to a wake is in that wake's turn.
+    const firstWake = provider[0]!.turnId;
+    expect(
+      session
+        .of('content.text-delta')
+        .filter((event) => event.turnId === firstWake)
+        .map((event) => (event as { delta?: string }).delta)
+        .join(''),
+    ).toContain('tick 1 received');
+    // The monitor is one child: its lines are its progress.
+    const deltas = session.of('child-work.updated').map((event) => event.delta);
+    expect(
+      deltas.flatMap((delta) =>
+        delta.kind === 'upsert' && delta.item.progress
+          ? [delta.item.progress]
+          : [],
+      ),
+    ).toEqual(['tick 1', 'tick 2']);
+    expect(deltas.find((delta) => delta.kind === 'snapshot')).toMatchObject({
+      running: [expect.objectContaining({ workKind: 'monitor' })],
+    });
+    expect(deltas.find((delta) => delta.kind === 'settle')).toMatchObject({
+      status: 'completed',
+    });
+    // Each wake's cost is that wake's turn's.
+    const costTurns = session
+      .of('token-usage.updated')
+      .filter((event) => event.reportedCost)
+      .map((event) => event.turnId);
+    expect(costTurns).toEqual([
+      turn.turnId,
+      ...provider.map((event) => event.turnId),
+    ]);
+    await session.stop();
+  });
+
+  test('a send while a wake turn runs is refused busy, and interrupting the wake ends it as a provider turn', async () => {
+    const session = await startGrokSession();
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'task-completed-wake',
+    });
+    const opened = await session.waitFor(
+      (
+        event,
+      ): event is Extract<CanonicalRuntimeEvent, { method: 'turn.started' }> =>
+        event.method === 'turn.started',
+      'turn.started',
+    );
+    expect(opened.metadata).toEqual({ trigger: 'provider' });
+    await expect(
+      session.adapter.sendTurn({ threadId: session.threadId, input: 'hi' }),
+    ).rejects.toThrow(/already has an active turn/);
+    await expect(
+      session.adapter.interruptTurn(session.threadId, opened.turnId),
+    ).resolves.toEqual({ outcome: 'cancelled', turnId: opened.turnId });
+    expect(session.of('turn.aborted')).toEqual([
+      expect.objectContaining({
+        turnId: opened.turnId,
+        metadata: { trigger: 'provider' },
+      }),
+    ]);
+    // Its late end is not a second terminal.
+    await session.agent.notify('_x.ai/session_notification', {
+      sessionId: session.sessionId,
+      update: {
+        sessionUpdate: 'turn_completed',
+        prompt_id: 'task-completed-wake',
+        stop_reason: 'cancelled',
+      },
+    });
+    await settle();
+    expect(session.of('turn.completed')).toEqual([]);
+    expect(session.of('turn.aborted')).toHaveLength(1);
+    await session.stop();
+  });
+
+  test('a wake that fails ends its provider turn with the engine’s own reason', async () => {
+    const session = await startGrokSession();
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'subagent-completed-x',
+    });
+    await settle();
+    await session.agent.notify('_x.ai/session_notification', {
+      sessionId: session.sessionId,
+      update: {
+        sessionUpdate: 'turn_completed',
+        prompt_id: 'subagent-completed-x',
+        stop_reason: 'error',
+        agent_result: 'API error (status 400 Bad Request): bad request',
+      },
+    });
+    await settle();
+    expect(session.of('runtime.error')).toEqual([
+      expect.objectContaining({
+        metadata: { trigger: 'provider' },
+        message: 'API error (status 400 Bad Request): bad request',
+      }),
+    ]);
+    await session.stop();
+  });
+});
+
+describe('a failed prompt names the engine’s own reason', () => {
+  test('`error.data.message` is quoted after the JSON-RPC message', async () => {
+    const session = await startGrokSession();
+    await session.adapter.sendTurn({ threadId: session.threadId, input: 'x' });
+    // Grok's prompt failure (T3 Code `grok_prompt_error`, grok 1.0.44).
+    session.proc.rejectPrompt(
+      Object.assign(new Error('Internal error'), {
+        code: -32603,
+        data: {
+          message:
+            'API error (status 400 Bad Request): invalid_request_error: probe',
+          http_status: 400,
+        },
+      }),
+    );
+    await settle();
+    expect(session.of('runtime.error')).toEqual([
+      expect.objectContaining({
+        message:
+          'Internal error: API error (status 400 Bad Request): invalid_request_error: probe',
+      }),
+    ]);
+    await session.stop();
+  });
+});

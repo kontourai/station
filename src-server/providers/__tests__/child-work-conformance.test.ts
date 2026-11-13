@@ -34,8 +34,8 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
-import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
+import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
@@ -275,10 +275,11 @@ function replayGrokCapture(capture: string): CanonicalRuntimeEvent[] {
     .filter(Boolean)
     .map((line) => JSON.parse(line))
     .filter((entry) => entry.capture === capture && entry.dir === 'E->C')
-    .map((entry) => entry.msg as { method?: string; id?: unknown; params?: any });
-  const own = frames.find(
-    (msg) => typeof msg.params?.sessionId === 'string',
-  )?.params.sessionId;
+    .map(
+      (entry) => entry.msg as { method?: string; id?: unknown; params?: any },
+    );
+  const own = frames.find((msg) => typeof msg.params?.sessionId === 'string')
+    ?.params.sessionId;
   const events: CanonicalRuntimeEvent[] = [];
   const ctx = {
     provider: 'acp',

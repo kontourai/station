@@ -253,7 +253,10 @@ async function nextEventOrTimeout(
     const event = await Promise.race([
       iterator.next().then((result) => result.value as CanonicalRuntimeEvent),
       new Promise<'TIMED_OUT'>((resolve) =>
-        setTimeout(() => resolve('TIMED_OUT'), Math.max(0, deadline - Date.now())),
+        setTimeout(
+          () => resolve('TIMED_OUT'),
+          Math.max(0, deadline - Date.now()),
+        ),
       ),
     ]);
     if (event === 'TIMED_OUT' || !event || !isChildWorkNotReported(event))

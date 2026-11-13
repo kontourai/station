@@ -447,7 +447,9 @@ function grokTaskStart(
 }
 
 /** A finished task's verdict: killed, its exit code, or not one Station can name. */
-function grokTaskStatus(task: Record<string, unknown>): ChildWorkTerminalStatus {
+function grokTaskStatus(
+  task: Record<string, unknown>,
+): ChildWorkTerminalStatus {
   if (task.explicitly_killed === true) return 'cancelled';
   if (task.exit_code === 0) return 'completed';
   if (
@@ -538,7 +540,9 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
       workKind: 'agent',
       ...(kindLabel ? { kindLabel } : {}),
       ...(title ? { title } : {}),
-      ...(model ? { model: { id: model, source: 'spawn-result' as const } } : {}),
+      ...(model
+        ? { model: { id: model, source: 'spawn-result' as const } }
+        : {}),
       ...(parentSession && parentSession === ownSession ? { depth: 1 } : {}),
       ...(ctx.activeTurnId ? { parent: { turnId: ctx.activeTurnId } } : {}),
     });

@@ -562,7 +562,10 @@ export type ProviderDeclaredHandshakeFact =
  * declares `agentCapabilities._meta.kiro`), `grok-build` the xAI Grok CLI's
  * `grok agent` (its `initialize` result sets `_meta.grokShell: true`).
  */
-export type ProviderDeclaredEngineVariant = 'kiro-v2' | 'kiro-v3' | 'grok-build';
+export type ProviderDeclaredEngineVariant =
+  | 'kiro-v2'
+  | 'kiro-v3'
+  | 'grok-build';
 
 /**
  * Feature flags an engine declared under its vendor namespace in

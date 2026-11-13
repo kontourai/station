@@ -291,7 +291,8 @@ export function grokInputRequest(
       !options ||
       options.length === 0 ||
       prompts.has(question.question) ||
-      (question.multiSelect != null && typeof question.multiSelect !== 'boolean')
+      (question.multiSelect != null &&
+        typeof question.multiSelect !== 'boolean')
     )
       return null;
     prompts.add(question.question);

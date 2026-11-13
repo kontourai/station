@@ -233,6 +233,10 @@ import {
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
 import {
+  acpChildWorkNotReportedEvent,
+  acpEngineReportsChildWork,
+} from './acp-child-work.js';
+import {
   acpCommandAnswer,
   acpCommandFailure,
   acpCommandUnsupported,
@@ -251,15 +255,6 @@ import {
   readCursorAskQuestion,
   readCursorCreatePlan,
 } from './acp-cursor-extensions.js';
-import {
-  acpChildWorkNotReportedEvent,
-  acpEngineReportsChildWork,
-} from './acp-child-work.js';
-import {
-  grokInputRequest,
-  grokQuestionCancelled,
-  grokQuestionResponse,
-} from './harness-questions.js';
 import {
   type AcpInputDecision,
   type AcpInputRequestRead,
@@ -310,6 +305,11 @@ import {
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
+import {
+  grokInputRequest,
+  grokQuestionCancelled,
+  grokQuestionResponse,
+} from './harness-questions.js';
 
 /** Matches the `any`-typed logger threaded through the existing ACP substrate (acp-manager.ts, acp-connection.ts, ACPProcessOptions.logger). */
 type AcpLogger = any;
@@ -4764,8 +4764,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
       return grokQuestionCancelled();
     }
-    if (record.delegation?.denyApprovals)
-      return grokQuestionCancelled();
+    if (record.delegation?.denyApprovals) return grokQuestionCancelled();
     const toolCallId =
       typeof params.toolCallId === 'string' ? params.toolCallId : undefined;
     const answer = await this.awaitPersonRequest(record, {
