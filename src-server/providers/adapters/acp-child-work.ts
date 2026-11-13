@@ -71,7 +71,7 @@ export function acpReportsSubagents(
 }
 
 /** Why an ACP engine's child work is `not-reported`. */
-export const ACP_CHILD_WORK_NOT_REPORTED_REASON =
+const ACP_CHILD_WORK_NOT_REPORTED_REASON =
   'This engine reports no subagents to Station over ACP.';
 
 function event(
