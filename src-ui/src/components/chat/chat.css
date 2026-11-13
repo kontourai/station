@@ -3643,7 +3643,12 @@
 .chat-input .chat-controls-row {
   flex-wrap: nowrap;
 }
-.chat-controls-row > .chat-input__settings {
+/* Beat the global toolbar's fixed-child reset while keeping setup shrinkable. */
+div.chat-input
+  .chat-controls-row
+  > .composer-choices.chat-input__settings:has(
+    > .choice-trigger.composer-run-control
+  ) {
   flex: 0 1 auto;
   min-width: 44px;
   max-width: 45%;
