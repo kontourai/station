@@ -7004,6 +7004,73 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test('prompt end settles only its own turn’s requests; one opened between turns stays open', async () => {
+    const { adapter, processes } = createAdapter();
+    const events: CanonicalRuntimeEvent[] = [];
+    const drained = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-request-turns',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    const client = processes[0]!.client;
+    // Between turns: the engine asks (an MCP sign-in after a reconnect).
+    const outside = requestPermission(client, 'tool-outside', 'write');
+    await vi.waitFor(() =>
+      expect(
+        events.filter((event) => event.method === 'request.opened'),
+      ).toHaveLength(1),
+    );
+    const outsideId = String(
+      (events.find((event) => event.method === 'request.opened') as any)
+        .requestId,
+    );
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-acp-request-turns',
+      input: 'go',
+    });
+    const inside = requestPermission(client, 'tool-inside', 'write');
+    await vi.waitFor(() =>
+      expect(
+        events.filter((event) => event.method === 'request.opened'),
+      ).toHaveLength(2),
+    );
+    processes[0]!.resolvePrompt('end_turn');
+    await expect(inside).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    await vi.waitFor(() =>
+      expect(
+        events.some(
+          (event) =>
+            event.method === 'turn.completed' &&
+            (event as any).turnId === turn.turnId,
+        ),
+      ).toBe(true),
+    );
+    const resolved = events.filter(
+      (event) => event.method === 'request.resolved',
+    );
+    expect(resolved.map((event) => (event as any).requestId)).not.toContain(
+      outsideId,
+    );
+    expect(resolved).toHaveLength(1);
+    // Still answerable: the engine is still waiting on it.
+    await adapter.respondToRequest(
+      'thread-acp-request-turns',
+      outsideId,
+      'accept',
+    );
+    await expect(outside).resolves.toMatchObject({
+      outcome: { outcome: 'selected' },
+    });
+    await adapter.stopAll();
+    await drained;
+  });
+
   test('#2316: cancel-and-reprompt settles the open permission request; a late answer is refused and grants nothing', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],

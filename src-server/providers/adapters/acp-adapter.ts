@@ -591,6 +591,12 @@ interface AcpPendingRequest {
   resolve: (decision: AcpDecision, content?: InputRequestContent) => void;
   options: PermissionOption[];
   /**
+   * The Station turn running when the engine opened it, or absent when none
+   * was (an MCP sign-in link from a reconnect, an engine's own request
+   * between turns). Prompt end settles only its own turn's requests.
+   */
+  openedInTurnId?: string;
+  /**
    * #3390: the form a harness question opened (Cursor's
    * `cursor/ask_question`), answered with content, and the id of the
    * `request.opened` event an answer must name.
@@ -3090,13 +3096,31 @@ export class AcpAdapter implements ProviderAdapterShape {
    * (`approvalRetiredBy`). Settling it here as `cancelled` is the same
    * terminal the interrupt path publishes, and it is what every one of those
    * consumers already clears on.
+   *
+   * Only the ending turn's own requests: one opened outside any turn (an MCP
+   * sign-in link a reconnect asked for) or in another turn is still awaited
+   * by the engine, and stays open.
    */
   private settleRequestsAtPromptEnd(
     record: AcpSessionRecord,
     threadId: string,
+    turnId: string,
   ): void {
-    if (record.pendingRequests.size === 0) return;
-    this.cancelPendingRequests(record, threadId);
+    for (const [requestId, pending] of record.pendingRequests) {
+      if (pending.openedInTurnId !== turnId) continue;
+      record.pendingRequests.delete(requestId);
+      pending.resolve('cancel');
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        ...pending.origin,
+        requestId,
+        method: 'request.resolved',
+        status: mapAcpDecisionToApprovalStatus('cancel'),
+      });
+    }
   }
 
   private prepareRecordForStop(record: AcpSessionRecord): void {
@@ -3715,6 +3739,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.pendingRequests.set(requestId, {
           resolve,
           options: params.options,
+          ...(record.activeTurnId
+            ? { openedInTurnId: record.activeTurnId }
+            : {}),
           ...(toolName ? { toolName } : {}),
           ...(needsPerson ? { needsPerson: true as const } : {}),
           ...(governedEdit ? { governedEdit: true as const } : {}),
@@ -4604,6 +4631,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         needsPerson: true,
         eventId,
         inputRequest: request.inputRequest,
+        ...(record.activeTurnId ? { openedInTurnId: record.activeTurnId } : {}),
         ...(origin ? { origin } : {}),
       });
     });
@@ -4782,7 +4810,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
-        this.settleRequestsAtPromptEnd(record, threadId);
+        this.settleRequestsAtPromptEnd(record, threadId, turnId);
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -4808,7 +4836,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const quota = classifyProviderQuotaFailure(error);
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
-        this.settleRequestsAtPromptEnd(record, threadId);
+        this.settleRequestsAtPromptEnd(record, threadId, turnId);
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
