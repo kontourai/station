@@ -43,7 +43,11 @@ describe('new-chat-modal-utils', () => {
       repositoryRemote: 'https://github.com/example/demo.git',
     });
     expect(
-      resolveNewChatWorkspaceHint({ project, acpConnections: [] }),
+      resolveNewChatWorkspaceHint({
+        agent: undefined,
+        project,
+        acpConnections: [],
+      }),
     ).toMatchObject({
       repository: 'example/demo',
       repositoryRemote: 'https://github.com/example/demo.git',

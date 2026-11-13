@@ -268,6 +268,10 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           extentToggle={{ maximized: false, onToggle: vi.fn() }}
           onNewChat={vi.fn()}
           overflow={{
+            onCollapseDock: vi.fn(),
+            onExpandDock: vi.fn(),
+            onRestoreDock: vi.fn(),
+            isDockMaximized: false,
             onOpenConversation: vi.fn(),
             onToggleHistory: vi.fn(),
             onOpenChatSettings: vi.fn(),
