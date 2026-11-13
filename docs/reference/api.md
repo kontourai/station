@@ -2763,8 +2763,10 @@ same viewer rule as a `station` or `policy` origin above), whether it
 `applies` to the engine's `current-account`, an `other-account` or a
 `proxy-route`, `observedAt`, the provider's `resetAt` or unqualified
 `resetReported` when reported, and `expiresAt`. The server reads it from
-recorded events without calling a provider; absent means none is fresh, not
-that allowance remains. Clients re-check `expiresAt`
+recorded events without calling a provider; absent means none is fresh, or
+more than 1,000 finished turns since a refusal left it unsettled (the bounded
+read fails toward absent), not that allowance remains. Only these two listings
+carry it; `GET /api/connections` does not. Clients re-check `expiresAt`
 (`currentAccountAllowanceRefusal`). It does not change what dispatch accepts
 ([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
 

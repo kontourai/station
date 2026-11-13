@@ -96,7 +96,10 @@ outranks **Usage limit reached**, the current account's line states its reset. C
 does not say which model's window refused, so a refusal on one model marks the
 engine until the provider accepts a later turn on that account or the reset
 passes. Station reads these refusals from the events it already
-recorded and calls no provider to do so. The engine's **Accounts** tab still
+recorded and calls no provider to do so. To keep that read short it looks at
+the 1,000 most recent finished turns since a refusal; when that many turns
+went by without settling it, the refusal is not shown, so a busy Station can
+miss a limit but never shows one that a later turn cleared. The engine's **Accounts** tab still
 shows live allowance to viewers with `access:manage`.
 
 Status and dispatch can differ here: Station keeps dispatching new work to an
