@@ -62,7 +62,7 @@ export function ContextPickerOptions({
         ref={filterRef}
         className="new-chat-modal__dropdown-search"
         type="text"
-        placeholder="Filter..."
+        placeholder="Filter…"
         value={contextSearch}
         onChange={(e) => onContextSearchChange(e.target.value)}
         onKeyDown={(e) => {

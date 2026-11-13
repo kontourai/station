@@ -1,0 +1,7 @@
+{
+  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"chat.css change only removes decorative from-prompt/avatar-ring/brand-hover gradient styling. station-connection.md describes wire contracts, commands and connection states and makes no claim about chat message visuals. Nothing stale.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -93,20 +93,21 @@
   height: 8px;
   border-radius: 50%;
   background: var(--health-success);
+}
+
+/* Settled dots are static. The base rule used to pulse, and `.status-dot` is
+   shared with the integration list, so every integration dot pulsed forever
+   once this sheet loaded. No component emits `.status-dot-connecting` today. */
+.status-dot-connecting {
+  background: var(--health-warning);
   animation: statusPulse var(--motion-status-breathe) var(--ease-standard)
     infinite;
 }
-
-.status-dot-connecting {
-  background: var(--health-warning);
-}
 .status-dot-error {
   background: var(--health-error);
-  animation: none;
 }
 .status-dot-disconnected {
   background: var(--text-tertiary);
-  animation: none;
 }
 
 @keyframes statusPulse {
@@ -483,7 +484,6 @@
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
-  animation: pulse var(--motion-status-breathe) var(--ease-standard) infinite;
 }
 
 @keyframes pulse {

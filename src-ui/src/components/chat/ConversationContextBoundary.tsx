@@ -13,29 +13,20 @@ export function ConversationContextBoundary({
   const empty = !boundary.priorTranscriptInjected;
   const summarized = isSummaryContextBoundary(boundary.policy);
   return (
-    <section
-      className="conversation-handoff-boundary"
-      aria-label={
-        summarized
-          ? 'Context continued from a bounded summary'
-          : empty
-            ? 'Next engine context started without prior transcript'
-            : 'Next engine context re-anchored from prior transcript'
-      }
-    >
+    <section className="conversation-handoff-boundary">
       <strong>
         {summarized
-          ? 'Context continued from a bounded summary'
+          ? 'Context reset: continued from a summary'
           : empty
-            ? 'Next engine context started empty'
-            : 'Next engine context re-anchored from durable history'}
+            ? 'Context reset: started fresh'
+            : 'Context reset: continued from history'}
       </strong>
       <span>
         {summarized
-          ? 'Raw history remains readable. Earlier tool state, approvals and attachments were omitted from engine context.'
+          ? 'The agent sees a summary, without its tool state, approvals, attachments or earlier tool results. Messages above stay readable.'
           : empty
-            ? 'Prior transcript was not injected. The readable transcript, Task links, and evidence remain preserved.'
-            : 'Prior transcript was re-anchored into this engine context. The readable transcript, Task links, and evidence remain preserved.'}
+            ? 'The agent no longer sees messages above this line.'
+            : 'The agent rebuilt its context from this chat.'}
       </span>
     </section>
   );

@@ -141,6 +141,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // #4828: short-lived `git init`, `git config` and `git status` children
+  // prove the persistence protection reads the effective core.hooksPath from
+  // git and runs no repository-named program; no wall-clock assertion.
+  'src-server/services/plugins/__tests__/untrusted-persistence-protection.test.ts',
+  'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
   // #3075: one short-lived tsx child writes a person's first acknowledgement
   // as another process would, while this suite holds the event store open.
   'src-server/services/orchestration/__tests__/thread-content-backfill.test.ts',

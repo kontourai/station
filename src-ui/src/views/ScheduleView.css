@@ -4,15 +4,7 @@
   margin: 0 0 1.5rem;
   font-size: 1.75rem;
   font-weight: 700;
-  color: var(--text-primary);
-  background: linear-gradient(
-    135deg,
-    var(--text-primary) 0%,
-    var(--accent-primary) 100%
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--k-text);
   letter-spacing: -0.02em;
 }
 
@@ -55,82 +47,31 @@
   padding: 1rem 1.25rem;
   min-width: 140px;
   flex: 1;
-  background: linear-gradient(
-    135deg,
-    var(--bg-secondary) 0%,
-    var(--bg-tertiary) 100%
-  );
-  border: 1px solid var(--border-primary);
+  /* A read-only figure: a flat panel with a tone edge, no hover lift. */
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
   border-radius: 12px;
-  border-left: 4px solid var(--border-primary);
-  transition:
-    background var(--motion-slow) var(--ease-standard),
-    transform var(--motion-slow) var(--ease-standard),
-    box-shadow var(--motion-slow) var(--ease-standard);
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.stat-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
-}
-
-.stat-card:hover {
-  background: linear-gradient(
-    135deg,
-    var(--bg-tertiary) 0%,
-    var(--bg-secondary) 100%
-  );
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-left: 4px solid var(--k-line);
 }
 
 .stat-card--success {
-  border-left-color: var(--success-text);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--success-text) 5%, var(--bg-secondary)) 0%,
-    var(--bg-secondary) 100%
-  );
+  border-left-color: var(--k-positive);
+  background: color-mix(in srgb, var(--k-positive) 5%, var(--k-panel));
 }
 
 .stat-card--error {
-  border-left-color: var(--error-text);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--error-text) 5%, var(--bg-secondary)) 0%,
-    var(--bg-secondary) 100%
-  );
+  border-left-color: var(--k-negative);
+  background: color-mix(in srgb, var(--k-negative) 5%, var(--k-panel));
 }
 
 .stat-card--warning {
-  border-left-color: var(--warning-text);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--warning-text) 5%, var(--bg-secondary)) 0%,
-    var(--bg-secondary) 100%
-  );
+  border-left-color: var(--k-caution);
+  background: color-mix(in srgb, var(--k-caution) 5%, var(--k-panel));
 }
 
 .stat-card--accent {
-  border-left-color: var(--accent-primary);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--accent-primary) 8%, var(--bg-secondary)) 0%,
-    var(--bg-secondary) 100%
-  );
+  border-left-color: var(--k-action);
+  background: color-mix(in srgb, var(--k-action) 8%, var(--k-panel));
 }
 
 .stat-card__label {
@@ -158,35 +99,14 @@
   border: 1px solid var(--border-primary);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.06),
-    0 1px 4px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--k-shadow);
   position: relative;
-}
-
-.schedule__table-wrap::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
 }
 
 .schedule__filter {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border-primary);
-  background: linear-gradient(
-    135deg,
-    var(--bg-tertiary) 0%,
-    var(--bg-secondary) 100%
-  );
+  border-bottom: 1px solid var(--k-line);
+  background: var(--k-panel-raised);
 }
 
 .schedule__filter-input {
@@ -222,12 +142,8 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: linear-gradient(
-    135deg,
-    var(--bg-tertiary) 0%,
-    var(--bg-secondary) 100%
-  );
-  border-bottom: 2px solid var(--border-primary);
+  background: var(--k-panel-raised);
+  border-bottom: 2px solid var(--k-line);
 }
 
 .schedule__th--sortable {
@@ -240,12 +156,8 @@
 }
 
 .schedule__th--sortable:hover {
-  color: var(--text-primary);
-  background: linear-gradient(
-    135deg,
-    var(--bg-secondary) 0%,
-    var(--bg-tertiary) 100%
-  );
+  color: var(--k-text);
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-panel-raised));
 }
 
 .schedule__th--sortable::after {
@@ -848,11 +760,7 @@
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 0.375rem;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--k-text) 3%, transparent) 0%,
-    color-mix(in srgb, var(--k-text) 1%, transparent) 100%
-  );
+  background: color-mix(in srgb, var(--k-text) 2%, transparent);
   border: 2px solid var(--border-primary);
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
