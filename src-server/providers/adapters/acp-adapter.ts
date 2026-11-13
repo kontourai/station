@@ -994,9 +994,10 @@ function adoptAdvertisedSessionState(
 
 /**
  * After a reattach, apply the start's explicit model, mode and effort where
- * the resumed session differs from them. A model or mode the session does
- * not advertise is skipped; an engine that answers a set with another value
- * than asked still fails, as at a fresh start.
+ * the resumed session differs from them (`applyAcpEffort` skips an effort
+ * already current). A model, mode or effort the session does not advertise is
+ * skipped; an engine that answers a set with another value than asked still
+ * fails, as at a fresh start.
  */
 async function reapplyRequestedSessionState(input: {
   process: ACPProcess;
@@ -1078,9 +1079,7 @@ async function reapplyRequestedSessionState(input: {
   const effortOption = findAcpEffortConfigOption(record.configOptions);
   if (
     input.requestedEffort &&
-    effortOption &&
-    effortOption.currentValue !== input.requestedEffort &&
-    effortOption.values.includes(input.requestedEffort)
+    effortOption?.values.includes(input.requestedEffort)
   ) {
     const applied = await applyAcpEffort(
       input.process,

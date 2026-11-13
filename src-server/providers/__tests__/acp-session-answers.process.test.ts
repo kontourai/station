@@ -208,8 +208,28 @@ describe.skipIf(process.platform === 'win32')(
       ).toEqual(['model', 'thought_level']);
       const configured = engine.events
         .filter((event) => event.method === 'session.configured')
-        .at(-1);
-      expect(JSON.stringify(configured)).toContain('gemini-3.8-flash');
+        .at(-1) as { metadata?: Record<string, unknown> } | undefined;
+      // What the engine now runs, not only what was asked for.
+      expect(configured?.metadata?.reportedModel).toBe('gemini-3.8-flash');
+    });
+
+    test('a reopen whose effort the resumed session does not offer is skipped, not refused', async () => {
+      const engine = launch(PROFILE, TEXT_TURN);
+      const first = await engine.start('skip', undefined, {
+        modelOptions: { effort: 'low' },
+      });
+      await engine.adapter.stopSession('skip');
+      const before = engine.record().length;
+      // `max` is not among the recorded options (low, medium, high).
+      await engine.start('skip', first.resumeCursor, {
+        modelOptions: { effort: 'max' },
+      });
+      expect(
+        engine
+          .record()
+          .slice(before)
+          .map((entry) => entry.method),
+      ).toEqual(['initialize', 'session/resume']);
     });
 
     test('a reopened session that already has its model and effort is not set again', async () => {
