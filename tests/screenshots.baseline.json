@@ -311,7 +311,7 @@
       "name": "new-chat-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "4a5e43273102c5a93fe6bb80d0d637d8b5f2a7e03dcd0e1252f209cf39e4ee7d"
+      "sha256": "00308c8f5bfa0c8dc4a98b7a301d3214e9ad71e581b9fdf98ea42a243589ab95"
     },
     {
       "name": "new-chat-light-desktop",
@@ -323,7 +323,7 @@
       "name": "new-chat-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "2def97bf17ecaa1523082e536ed440187de4b429222c64e2023353909f7ba6c5"
+      "sha256": "d1247159cb68de22583c0fabf493246aaeb44d3524f141ea931eac957af96256"
     },
     {
       "name": "overlay-add-job-modal",
@@ -491,121 +491,121 @@
       "name": "reply-composer-dark-1440-long",
       "width": 1440,
       "height": 900,
-      "sha256": "edcc8c8a3b071ba9867bea58a954738c6f0c8240c7f6c52cace7c50b29f9bbf6"
+      "sha256": "e652d34931c7c8ddd467f41959a2347388572c74495c8da429f63de7e89563fb"
     },
     {
       "name": "reply-composer-dark-1440-short",
       "width": 1440,
       "height": 900,
-      "sha256": "defeed99a45207e7d1539884bdde66a1111f58bca5b3a4f1fd037912b62e5d80"
+      "sha256": "b98295d2c1ea98236d1ff9cbecc16985f83c5d6626ac949910bdedd69e013d88"
     },
     {
       "name": "reply-composer-dark-320-long",
       "width": 320,
       "height": 915,
-      "sha256": "e8c54ed19ce95b281f9ee90abdd4108d7aa37f2d91eb14282263bf4abb994e3b"
+      "sha256": "b9c6c5fb8b20225d398bbe13c982a8e36a4795fc925c6dacd128e8e89b49707c"
     },
     {
       "name": "reply-composer-dark-320-short",
       "width": 320,
       "height": 915,
-      "sha256": "e8aa6ab549dc3d2c0490bc79dd94bc3df0fab028b1dd94595fcf68d0bef969eb"
+      "sha256": "909cd914f4f23a887f3050a62ead2c7b9b55ecdb5a437edbfa8c6a4c01344440"
     },
     {
       "name": "reply-composer-dark-360-long",
       "width": 360,
       "height": 915,
-      "sha256": "fd8558cf16794ca61ef086b0e624c525d8bc6293cb46106a8ae6b8b82935b733"
+      "sha256": "b011bb9709c94a54e52e8d52de6e8b688d6d1963beff3ad03a5180c5ccc120a8"
     },
     {
       "name": "reply-composer-dark-360-short",
       "width": 360,
       "height": 915,
-      "sha256": "9a602a0e5ebe19ab289300280fc094c9dafeb896cb3a31baa9bc6de2658660c7"
+      "sha256": "525831f2d02d80baa27d87b3147c8866f341e3eb41588d125bb518980638210b"
     },
     {
       "name": "reply-composer-dark-390-long",
       "width": 390,
       "height": 915,
-      "sha256": "c5dbe6729667613dbd032b2596eeb227ae66307ef688a35e7ce362ae77d87d95"
+      "sha256": "882dd0ce7999a187932ec2f0a7399eafadc95de4f0540d3b400eab4158f6ddba"
     },
     {
       "name": "reply-composer-dark-390-short",
       "width": 390,
       "height": 915,
-      "sha256": "0620f1245ffc75c24e05652da86a3929bb6929a923e03a7762cbd94766f6bf4e"
+      "sha256": "60bfe96aaaceda760f93079516bbd2b30a162e34eedbcf8045449c6ecd8ff64d"
     },
     {
       "name": "reply-composer-dark-412-long",
       "width": 412,
       "height": 915,
-      "sha256": "e7053c0a880448b5eff7f7f8da07739668661e3120b00debb54e5c3799efd5f8"
+      "sha256": "b4cb596297082f6e23fa27a280dbd58eca318d1e2d3487e42a1691a6ae1649e8"
     },
     {
       "name": "reply-composer-dark-412-short",
       "width": 412,
       "height": 915,
-      "sha256": "cb271807d423287b526f2a8bace9b150f585f761d2f4ba2f91dccb222f32a280"
+      "sha256": "5a2affe431effcc4fdd5712e3c84ea6014f81b8b8a0e896d1c1985a6c35646da"
     },
     {
       "name": "reply-composer-light-1440-long",
       "width": 1440,
       "height": 900,
-      "sha256": "b3293ff9ae9585cffb94cedb06241fafbd5f4734dbe896602b8fa6cbe9a475d5"
+      "sha256": "8ac73f54015f1265e02936794bbf13014d215c7b9fd95be2062673e07eec4676"
     },
     {
       "name": "reply-composer-light-1440-short",
       "width": 1440,
       "height": 900,
-      "sha256": "928583d8fc0aea293527b161fd930b38cd22c81362fe23e246c85f3e1fc5a499"
+      "sha256": "4d23d7179c8d6f9da48d2884273d5d7c3d70ab69c69ce467f797c91d290b3262"
     },
     {
       "name": "reply-composer-light-320-long",
       "width": 320,
       "height": 915,
-      "sha256": "bc22d60aee75af1854a102d20306ba0ecb258c99ec7c6c5291c5a3deef5b195d"
+      "sha256": "0bd64636a3b30d55ef3d3826f9c267f4e8c7bc7377ea9b4a712647563ad09aa9"
     },
     {
       "name": "reply-composer-light-320-short",
       "width": 320,
       "height": 915,
-      "sha256": "1420ef4b38606f1b53128540c1b5295751761abfc231700471ab15dcf6245234"
+      "sha256": "9145ff5f0d47c6ecfd1a2b9da209a7b123d3820cee2cafc21ba2e2edac808f6a"
     },
     {
       "name": "reply-composer-light-360-long",
       "width": 360,
       "height": 915,
-      "sha256": "60fdd64c0c65f0d409256de5a4ba8b9cdb24966f775a2d7c19512c21231a48f2"
+      "sha256": "b5607bbcbd4fd6dfd674f98d0cdc034c8cc87bbead88509a412baea664f50dc9"
     },
     {
       "name": "reply-composer-light-360-short",
       "width": 360,
       "height": 915,
-      "sha256": "a8b4ea9296b97c419bcf3eb2ff8ec8b224c0345492a8bdc6047fec7753f47c79"
+      "sha256": "fac9da83e105e7c58cd1e345752d1ba356e833b07a2cba7a0b96bd736c5097b6"
     },
     {
       "name": "reply-composer-light-390-long",
       "width": 390,
       "height": 915,
-      "sha256": "a8e64fde876abddf7ba656250ade42f949dd179874ec9bd3c1cb816a6a0e0fb7"
+      "sha256": "928fd6aefd591bfdbeb9308f387c959add58dc0ad0695a9be710e8c53e4a2d7c"
     },
     {
       "name": "reply-composer-light-390-short",
       "width": 390,
       "height": 915,
-      "sha256": "2f5da51260cc138e1d1b56ea2f1fc827eedb727a85c8ffdcb834ee194f416c5e"
+      "sha256": "20086291cb346648a503270947b050dae10f6e703a0daef79dd3298ad96436c1"
     },
     {
       "name": "reply-composer-light-412-long",
       "width": 412,
       "height": 915,
-      "sha256": "a7a81ba482a7294e300be447ce7ad40a2d9d7f6f003181063d4e00a843fc6fd8"
+      "sha256": "485a111a52dab5736fba56513a4f0860140ef32e2d75cdd1b3be07e8a55a420d"
     },
     {
       "name": "reply-composer-light-412-short",
       "width": 412,
       "height": 915,
-      "sha256": "738976317470bcd249ff46dcc86242f086edb49464ed094a7fbced54b31e598a"
+      "sha256": "c278e68af1ef0cb7e573ef6dd25ef1eb5690f69ad20ce2ef3b85512b6d4403aa"
     },
     {
       "name": "room-agent-abandon-dark-desktop",

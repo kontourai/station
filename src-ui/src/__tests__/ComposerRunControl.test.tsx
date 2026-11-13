@@ -171,8 +171,8 @@ test('safety is a corner badge and the model has its own untruncated label segme
   expect(trigger.getAttribute('aria-label')).toContain('Full access');
   expect(
     trigger.querySelector('.composer-run-control__agent')?.textContent,
-  ).toBe('A long Agent name');
+  ).toBe('A long Agent name · ');
   expect(
     trigger.querySelector('.composer-run-control__model')?.textContent,
-  ).toBe(' · Mini');
+  ).toBe('Mini');
 });

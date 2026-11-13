@@ -133,10 +133,10 @@ export function ComposerRunControl({
               <span className="composer-run-control__label">
                 <span className="composer-run-control__agent">
                   {label.slice(0, separator)}
+                  {' · '}
                 </span>
                 <span className="composer-run-control__model">
-                  {' '}
-                  · {label.slice(separator + 3)}
+                  {label.slice(separator + 3)}
                 </span>
               </span>
             )

@@ -60,13 +60,14 @@
   min-width: 0;
 }
 /* The agent name gives way first; a long model id still ellipsizes instead of
-   being clipped mid-word once the agent part is gone. */
+   being clipped mid-word once the agent part is gone. The separator clips
+   with the Agent name so the model never starts with a dangling dot. */
 .composer-run-control__agent {
   flex: 0 1000 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre;
 }
 .composer-run-control__model {
   flex: 0 1 auto;
@@ -105,7 +106,7 @@
   overflow: hidden;
 }
 .composer-choices > .choice-trigger.composer-run-control {
-  gap: clamp(0px, calc((100cqw - 450px) * 1000), var(--k-space-2));
+  gap: var(--k-space-2);
   padding-inline: clamp(
     var(--k-space-1),
     calc((100cqw - 450px) * 1000),

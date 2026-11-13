@@ -5407,6 +5407,22 @@ const SCREENS: Screen[] = [
             await expect(
               draft.getByRole('textbox', { name: 'What would you like done?' }),
             ).toBeVisible();
+            const setup = draft.getByTestId('run-setup-trigger');
+            const markBox = (await setup
+              .locator('.composer-choice__icon')
+              .boundingBox())!;
+            const labelBox = (await setup
+              .locator('.chat-input__chip-stack')
+              .boundingBox())!;
+            const caretBox = (await setup
+              .locator('.choice-caret')
+              .boundingBox())!;
+            expect(
+              labelBox.x - markBox.x - markBox.width,
+            ).toBeGreaterThanOrEqual(4);
+            expect(
+              caretBox.x - labelBox.x - labelBox.width,
+            ).toBeGreaterThanOrEqual(4);
             const location = draft.locator('.start-composer__location');
             await expect(location).toBeInViewport();
             const bounds = await location.boundingBox();
@@ -5483,6 +5499,50 @@ const SCREENS: Screen[] = [
             expect(
               await composer.evaluate((el) => el.scrollWidth <= el.clientWidth),
             ).toBe(true);
+            if (width === 412 && names === 'long') {
+              // Read glyph geometry through every clipping ancestor. textContent
+              // alone includes the Agent and separator even when neither paints.
+              const firstVisibleGlyph = await trigger
+                .locator('.composer-run-control__label')
+                .evaluate((label) => {
+                  const walker = document.createTreeWalker(
+                    label,
+                    NodeFilter.SHOW_TEXT,
+                  );
+                  for (
+                    let node = walker.nextNode();
+                    node;
+                    node = walker.nextNode()
+                  ) {
+                    for (let i = 0; i < (node.textContent?.length ?? 0); i++) {
+                      const char = node.textContent![i]!;
+                      if (!char.trim()) continue;
+                      const range = document.createRange();
+                      range.setStart(node, i);
+                      range.setEnd(node, i + 1);
+                      const rect = range.getBoundingClientRect();
+                      let left = rect.left;
+                      let right = rect.right;
+                      for (
+                        let parent = node.parentElement;
+                        parent;
+                        parent = parent.parentElement
+                      ) {
+                        if (getComputedStyle(parent).overflowX !== 'visible') {
+                          const clip = parent.getBoundingClientRect();
+                          left = Math.max(left, clip.left);
+                          right = Math.min(right, clip.right);
+                        }
+                      }
+                      if (rect.width > 1 && right - left >= rect.width * 0.9)
+                        return char;
+                    }
+                  }
+                  return null;
+                });
+              expect(firstVisibleGlyph).not.toBeNull();
+              expect(firstVisibleGlyph).not.toBe('·');
+            }
             if (width === 320)
               await expect(
                 trigger.locator('.chat-input__chip-stack'),
