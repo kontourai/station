@@ -1172,12 +1172,18 @@ export interface ModelReroutedEvent extends CanonicalRuntimeEventBase {
   childWorkId?: string;
 }
 
+/**
+ * `configured`: the engine's own configuration enables the server, and the
+ * engine reports no connection state for it (Muse Code, whose stable
+ * protocol has no MCP status). Never a claim that it started or connected.
+ */
 export type EngineMcpServerState =
   | 'starting'
   | 'ready'
   | 'failed'
   | 'needs-auth'
-  | 'disabled';
+  | 'disabled'
+  | 'configured';
 
 /** One MCP server as the engine reports it. Engine-attributed, never Station's own view. */
 /** The longest MCP server name an engine status names; a longer one is dropped. */

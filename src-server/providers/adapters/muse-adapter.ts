@@ -149,6 +149,10 @@ import {
   MUSE_REASONING_EFFORTS,
   type MuseReasoningEffort,
 } from './muse-adapter-types.js';
+import {
+  type MuseMcpListRunner,
+  museMcpStatusFromList,
+} from './muse-mcp-status.js';
 import { museExecChildWorkNotReportedEvent } from './muse-serve-child-work.js';
 import {
   type MuseDiscoveryDeps,
@@ -217,6 +221,13 @@ export interface MuseAdapterOptions {
    * credential store a fresh session would read.
    */
   peekAppHomeEnv?: () => Promise<ResolvedAppHome | undefined>;
+  /**
+   * Reads the engine's own MCP servers at session start
+   * (`muse-mcp-status.ts`), published as `engine-mcp.status`. Absent means
+   * none is read: the Station runtime passes `runMuseMcpList`, and this
+   * suite's adapters stay spawn-free.
+   */
+  listMcpServers?: MuseMcpListRunner;
   /** Mints the durable `--session-id` handed to every turn of a session. */
   newSessionId?: () => string;
   terminateProcess?: (processHandle: MuseProcessLike) => Promise<void>;
@@ -1737,6 +1748,10 @@ export class MuseAdapter implements ProviderAdapterShape {
       });
     }
 
+    // Best effort and off the start's path: a slow or failed read delays and
+    // refuses nothing.
+    void this.reportEngineMcpServers(record);
+
     providerOps.add(1, {
       operation: 'adapter-session-start',
       provider: this.provider,
@@ -1745,6 +1760,52 @@ export class MuseAdapter implements ProviderAdapterShape {
       provider: this.provider,
     });
     return record.session;
+  }
+
+  /**
+   * The MCP servers muse's own config enables for this session's folder,
+   * read under the session's own profile env (so a credential profile's
+   * `settings.json` is the one listed) and the unattended launcher switches.
+   * Configuration only: see `muse-mcp-status.ts` for why nothing here is
+   * `ready`, and why no reconnect is declared.
+   */
+  private async reportEngineMcpServers(
+    record: MuseSessionRecord,
+  ): Promise<void> {
+    const list = this.options.listMcpServers;
+    if (!list) return;
+    try {
+      const command =
+        managedEngineBinaryPath('muse') ?? this.findBinary('muse');
+      if (!command) return;
+      const result = await list({
+        command,
+        ...(record.cwd ? { cwd: record.cwd } : {}),
+        env: { ...MUSE_UNATTENDED_LAUNCHER_ENV, ...record.appHomeEnv },
+      });
+      if (!result || result.code !== 0) return;
+      const servers = museMcpStatusFromList(result.stdout);
+      if (!servers) return;
+      // The session may have ended, or been replaced, while muse answered.
+      if (this.sessions.get(record.externalThreadId) !== record) return;
+      if (record.stopped) return;
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'engine-mcp.status',
+        servers,
+        complete: true,
+      });
+    } catch (error) {
+      this.options.logger?.warn?.('Muse MCP server list could not be read.', {
+        reason: redactSecrets(errorMessage(error)).slice(
+          0,
+          MUSE_REFUSED_VALUE_MAX_CHARS,
+        ),
+      });
+    }
   }
 
   /** The durable muse session id a resume cursor names. */

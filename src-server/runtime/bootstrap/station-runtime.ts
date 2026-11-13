@@ -172,6 +172,7 @@ import { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
+import { runMuseMcpList } from '../../providers/adapters/muse-mcp-status.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
@@ -1199,6 +1200,8 @@ export class StationRuntime {
     ),
     peekAppHomeEnv: () =>
       createCredentialProfileAppHomeEnvPeek(this.museAppHomeSettings)(),
+    // The engine's own MCP servers, read at session start (`muse mcp list`).
+    listMcpServers: runMuseMcpList,
     logger: {
       warn: (msg: string, context?: unknown) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(

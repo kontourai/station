@@ -12,6 +12,7 @@ const STATES = new Set<ChatEngineMcpServer['state']>([
   'failed',
   'needs-auth',
   'disabled',
+  'configured',
 ]);
 
 function readServer(value: unknown): ChatEngineMcpServer | undefined {

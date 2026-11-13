@@ -96,6 +96,7 @@ vi.mock('../../telemetry/metrics.js', () => ({
 }));
 
 import { FakeMuseProcess } from './fake-muse-process.js';
+import { MUSE_MCP_LIST_JSON } from './muse-mcp-list-output.js';
 
 async function flushIo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -4478,6 +4479,81 @@ describe('#1942: exec turns run under the credential profile', () => {
     });
     expect(envs).toEqual([undefined]);
     expect(harness.logger.warn).toHaveBeenCalled();
+    await harness.adapter.stopAll();
+  });
+});
+
+describe("muse's own MCP servers at session start", () => {
+  async function queued(harness: Harness): Promise<any[]> {
+    const events: any[] = [];
+    for (;;) {
+      const next = await Promise.race([
+        harness.iterator.next(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30)),
+      ]);
+      if (!next || next.done) return events;
+      events.push(next.value);
+    }
+  }
+
+  test('publishes the configured servers as engine-config, read in the session folder under its profile', async () => {
+    const listMcpServers = vi.fn(async () => ({
+      stdout: MUSE_MCP_LIST_JSON,
+      stderr: '',
+      code: 0,
+    }));
+    const harness = createHarness({
+      listMcpServers,
+      findBinary: () => '/opt/muse/bin/muse',
+      getAppHomeEnv: async () => ({
+        profileRef: 'work',
+        env: { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-z' },
+      }),
+    });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'mcp-status',
+      cwd: '/workspace/repo',
+      credentialProfileRef: 'work',
+    });
+    const events = await queued(harness);
+    expect(listMcpServers).toHaveBeenCalledWith({
+      command: '/opt/muse/bin/muse',
+      cwd: '/workspace/repo',
+      env: {
+        MUSE_NO_AUTO_UPDATE: '1',
+        MUSE_LOGIN: '0',
+        XDG_CONFIG_HOME: '/station/app-homes/credential-profile-z',
+      },
+    });
+    const status = events.filter((e) => e.method === 'engine-mcp.status');
+    expect(status).toHaveLength(1);
+    expect(status[0]).toMatchObject({
+      threadId: 'mcp-status',
+      complete: true,
+      servers: [
+        { name: 'http-one', state: 'configured', scope: 'engine-config' },
+        { name: 'stdio-one', state: 'disabled', scope: 'engine-config' },
+      ],
+    });
+    // Stable MSP has no MCP reconnect; none is declared.
+    expect(status[0]).not.toHaveProperty('reconnect');
+    expect(JSON.stringify(events)).not.toContain('canary-arg-secret');
+    await harness.adapter.stopAll();
+  });
+
+  test('a failed read publishes nothing', async () => {
+    const harness = createHarness({
+      listMcpServers: async () => ({
+        stdout: '',
+        stderr: 'muse: installed binary is missing; rerun the installer',
+        code: 1,
+      }),
+      findBinary: () => '/opt/muse/bin/muse',
+    });
+    await harness.adapter.startSession({ provider: 'muse', threadId: 'mcp-x' });
+    const events = await queued(harness);
+    expect(events.some((e) => e.method === 'engine-mcp.status')).toBe(false);
     await harness.adapter.stopAll();
   });
 });

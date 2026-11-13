@@ -409,7 +409,13 @@ export type ChatLiveUsage = {
  */
 export type ChatEngineMcpServer = {
   name: string;
-  state: 'starting' | 'ready' | 'failed' | 'needs-auth' | 'disabled';
+  state:
+    | 'starting'
+    | 'ready'
+    | 'failed'
+    | 'needs-auth'
+    | 'disabled'
+    | 'configured';
   toolCount?: number;
   error?: string;
   scope: 'session' | 'engine-config';
