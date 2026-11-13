@@ -112,12 +112,17 @@ describe('engine extension events: the kiro-cli 2.35.0 live capture', () => {
     ]);
   });
 
-  test('the engine user message id is recorded against the Station turn', () => {
-    const { feed, state } = harness();
-    for (const msg of liveFrames('turn-autopilot-off')) feed(msg);
-    expect(state.engineUserMessageIds?.get('turn-1')).toBe(
-      '00000000-0000-4000-8000-000000000003',
+  // The adapter's turn ledger owns the id (acp-kiro-parity.process.test.ts
+  // proves rewind and fork read it); the mapper publishes nothing for it.
+  test('the engine user message id frame publishes nothing', () => {
+    const { feed, events } = harness();
+    const assigned = liveFrames('turn-autopilot-off').filter(
+      (msg) =>
+        msg.params?.update?._meta?.kiro?.kind === 'user_message_id_assigned',
     );
+    expect(assigned.length).toBeGreaterThan(0);
+    for (const msg of assigned) feed(msg);
+    expect(events).toEqual([]);
   });
 
   test('host-chrome kinds publish nothing and pending_interaction is never a second approval', () => {

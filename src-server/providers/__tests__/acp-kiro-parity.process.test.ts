@@ -524,6 +524,52 @@ describe.skipIf(process.platform === 'win32')(
       });
     });
 
+    test('a steered turn is rewound from its own prompt id, and forked from its last', async () => {
+      const engine = launch(profileOf('kiro-v3'), [
+        { kind: 'user-message-id' },
+        { kind: 'wait-ms', ms: 400 },
+        { kind: 'text', text: 'ok' },
+      ]);
+      await engine.start('rewind-steer');
+      const first = await engine.send('rewind-steer', 'one');
+      await engine.completed(first);
+      const second = await engine.send('rewind-steer', 'two');
+      // msg-2 is assigned at once; steer while the turn waits.
+      await waitFor(
+        () =>
+          engine.record().filter((entry) => entry.method === 'session/prompt')
+            .length === 2
+            ? true
+            : undefined,
+        'second prompt',
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await engine.adapter.steerTurn('rewind-steer', 'two, but left', second);
+      await engine.completed(second);
+      expect(
+        engine.record().filter((entry) => entry.method === 'session/prompt'),
+      ).toHaveLength(3);
+
+      const forked = await engine.adapter.forkSession('rewind-steer', second);
+      expect(forked).toHaveProperty('resumeCursor');
+      expect(
+        engine.record().find((entry) => entry.method === 'session/fork'),
+      ).toMatchObject({ meta: { kiro: { messageId: 'msg-3' } } });
+
+      expect(
+        await engine.adapter.rewindSession('rewind-steer', first),
+      ).toMatchObject({ kind: 'answered', success: true });
+      // Turn 2's own prompt, not the steer's re-prompt: reverting from msg-3
+      // would leave turn 2's first prompt in the engine's history.
+      expect(
+        engine
+          .record()
+          .find(
+            (entry) => entry.extMethod === '_kiro/checkpoint/revertMultiple',
+          ),
+      ).toMatchObject({ params: { messageId: 'msg-2' } });
+    });
+
     test('native fork names the turn’s prompt id; discarding deletes the engine session', async () => {
       const engine = launch(profileOf('kiro-v3'), [
         { kind: 'user-message-id' },

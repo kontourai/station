@@ -762,11 +762,19 @@ export interface AcpSessionRecord {
    */
   credentialRefusalsSurfaced?: Set<string>;
   /**
-   * The engine's id for each turn's prompt (`user_message_id_assigned`),
-   * oldest first: the points a rewind or a native fork names. Kept for this
-   * engine process only; a turn whose id was not seen cannot be a target.
+   * The engine's ids for each turn's prompts (`user_message_id_assigned`),
+   * oldest first, at most {@link ACP_TURN_MESSAGES_MAX} turns: the points a
+   * rewind or a native fork names. A steer that cancels and re-prompts gets a
+   * second id in the same turn: `firstMessageId` is the turn's own prompt (a
+   * rewind reverts from it), `lastMessageId` the latest (a fork keeps the
+   * whole turn). Kept for this engine process only; a turn whose id was not
+   * seen cannot be a target. The single ledger for these ids.
    */
-  turnMessages?: Array<{ turnId: string; messageId: string }>;
+  turnMessages?: Array<{
+    turnId: string;
+    firstMessageId: string;
+    lastMessageId: string;
+  }>;
   /** Cursor's todo list as `cursor/create_plan`/`cursor/update_todos` left it. */
   cursorTodos?: CursorTodo[];
   /**
@@ -905,6 +913,9 @@ export const ACP_ADAPTER_CAPABILITIES = [
  * `turn.started`, both stamped by ORCHESTRATION before this adapter ever
  * sees the turn — this file needs no change to participate correctly.
  */
+/** Turns whose engine prompt ids one ACP session keeps for rewind and fork. */
+export const ACP_TURN_MESSAGES_MAX = 500;
+
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
   readonly metadata = {
@@ -3211,8 +3222,21 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (!messageId || !turnId) return;
     record.turnMessages ??= [];
     const known = record.turnMessages.find((entry) => entry.turnId === turnId);
-    if (known) known.messageId = messageId;
-    else record.turnMessages.push({ turnId, messageId });
+    // The first id stays: it is the turn's own prompt, and a later one is a
+    // steer's re-prompt inside the same turn.
+    if (known) known.lastMessageId = messageId;
+    else {
+      record.turnMessages.push({
+        turnId,
+        firstMessageId: messageId,
+        lastMessageId: messageId,
+      });
+      if (record.turnMessages.length > ACP_TURN_MESSAGES_MAX)
+        record.turnMessages.splice(
+          0,
+          record.turnMessages.length - ACP_TURN_MESSAGES_MAX,
+        );
+    }
   }
 
   /**
@@ -3280,7 +3304,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       outcome = acpCommandAnswer(
         await record.process.extMethod(binding.method, {
           sessionId,
-          messageId: first.messageId,
+          messageId: first.firstMessageId,
         }),
       );
     } catch (error) {
@@ -3334,7 +3358,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       sessionId,
       record.session.cwd ?? '',
       record.mcpServers ?? [],
-      { [namespace]: { messageId: point.messageId } },
+      { [namespace]: { messageId: point.lastMessageId } },
     );
     return {
       resumeCursor: { ...cursor, acpSessionId: forked.sessionId },

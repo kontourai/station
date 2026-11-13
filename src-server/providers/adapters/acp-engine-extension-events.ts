@@ -62,12 +62,6 @@ export interface EngineExtensionState {
    * figure; it is not published twice.
    */
   engineTurnCosts?: Map<string, number>;
-  /**
-   * The engine's own id for the user message of each Station turn
-   * (`session.message-id`), bounded. Rewind and fork read it to name the
-   * engine-side message a Station turn corresponds to.
-   */
-  engineUserMessageIds?: Map<string, string>;
 }
 
 /** Bound on the per-session maps above; the oldest entry goes first. */
@@ -497,24 +491,11 @@ export function mapEngineSessionInfo(
         );
       continue;
     }
-    if (row.consumer === 'session.message-id') {
-      recordEngineUserMessageId(row, meta, ctx);
-      continue;
-    }
+    // The adapter's turn ledger (`recordTurnMessage` in acp-adapter.ts) owns
+    // the engine's prompt ids; nothing is published for this frame.
+    if (row.consumer === 'session.message-id') continue;
     runReader(row, meta, ctx);
   }
-}
-
-function recordEngineUserMessageId(
-  row: EngineExtensionBinding,
-  meta: Record<string, unknown>,
-  ctx: EngineExtensionContext,
-): void {
-  if (!consumerImplemented(row)) return;
-  const messageId = engineId(meta.userMessageId);
-  if (!messageId || !ctx.activeTurnId || !ctx.state) return;
-  ctx.state.engineUserMessageIds ??= new Map();
-  setBounded(ctx.state.engineUserMessageIds, ctx.activeTurnId, messageId);
 }
 
 /**
