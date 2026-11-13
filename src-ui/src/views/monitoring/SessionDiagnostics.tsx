@@ -1,7 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { Button } from '../../components/Button';
 import { Empty } from '../../components/state';
-import { useShowSurface } from '../../contexts/useShowSurface';
 import { sessionRecency, sessionTitle } from '../../utils/sessionDisplay';
 
 export function SessionDiagnostics({
@@ -11,7 +9,6 @@ export function SessionDiagnostics({
   sessions: OrchestrationSessionSummary[] | undefined;
   readStatus: 'pending' | 'success' | 'error';
 }) {
-  const showSurface = useShowSurface();
   if (readStatus !== 'success') return null;
   const active = (sessions ?? [])
     .filter(
@@ -73,11 +70,6 @@ export function SessionDiagnostics({
               ))}
             </tbody>
           </table>
-          {active.length > 50 && (
-            <Button variant="ghost" onClick={() => showSurface('chat')}>
-              Open chat for more sessions
-            </Button>
-          )}
         </div>
       ) : (
         <Empty

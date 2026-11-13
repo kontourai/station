@@ -102,3 +102,25 @@
 .chat-dock__mobile-header--child .child-chat-trail > button {
   display: none;
 }
+
+.chat-dock__mobile-header--child .chat-dock__mobile-identity {
+  min-width: 0;
+  padding-inline: 0;
+  overflow: hidden;
+}
+.chat-dock__mobile-header--child .chat-dock__mobile-identity-lines {
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.chat-dock__mobile-header--child .chat-dock__mobile-identity-lines {
+  flex-direction: row;
+  align-items: center;
+}
+.chat-dock__mobile-header--child .child-chat-trail {
+  max-width: 100%;
+  flex-basis: 0;
+}
+.child-chat-trail__segment:last-child {
+  flex-basis: 0;
+}

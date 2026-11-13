@@ -407,7 +407,7 @@ test.describe('subagent transcript cards', () => {
         ).toBe(true);
       }
       await expect(card.getByRole('img', { name: 'Codex' })).toBeVisible();
-      await expect(card.getByText('Completed')).toBeVisible();
+      await expect(card.getByText('Run finished')).toBeVisible();
       await expect(card.getByText('gpt-5.5')).toHaveCount(0);
       await expect(card.getByText('done', { exact: true })).toBeVisible();
       await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
@@ -588,7 +588,7 @@ test.describe('subagent transcript cards', () => {
 
     await expect(page.getByText(/Background task finished/)).toHaveCount(0);
     await expect(card.locator('.child-work-activity')).toHaveCount(0);
-    await expect(card.getByText('Completed')).toBeVisible();
+    await expect(card.getByText('Run finished')).toBeVisible();
     await expect(card.getByText('17:04')).toBeVisible();
     await expect(
       card.getByText(/^Verdict: merge as-is\. I found no blockers/),
@@ -642,7 +642,11 @@ test.describe('subagent transcript cards', () => {
     await page.screenshot({
       path: testInfo.outputPath('subagent-card-expanded-mobile-390.png'),
     });
-    await page.getByRole('button', { name: 'Back to parent chat' }).click();
+    await page
+      .getByRole('navigation', { name: 'Chat breadcrumb' })
+      .getByRole('button')
+      .first()
+      .click();
     await card
       .getByRole('button', { name: /review station#3657 ADR freeze/ })
       .click();

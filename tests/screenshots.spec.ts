@@ -2846,7 +2846,11 @@ function taskCapabilityScreens(): Screen[] {
           await page.keyboard.press('ArrowLeft');
           await expect(page).toHaveURL(/taskView=review/);
           await page.goto(screen.path);
+          const beforeBack = page.url();
           await page.goBack();
+          expect(page.url(), 'child Back retains the parent URL').toBe(
+            beforeBack,
+          );
           await expect(page).toHaveURL(/taskView=review/);
           await expect(review).toHaveAttribute('aria-selected', 'true');
           await page.goForward();
@@ -4122,10 +4126,27 @@ function childChatScreens(): Screen[] {
       return {
         name: `child-chat-${theme}-${viewport.width}`,
         title: `Child chat in the dock — ${theme}, ${viewport.width}px`,
-        path: `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=${child}&childTitle=Review+files`,
+        path: `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=${child}&childTitle=Review+files&galleryTheme=${theme}`,
         viewport,
         beforeGoto: async (page: Page) => {
           await clearDockGalleryStorage(page);
+          await page.addInitScript(
+            ({ theme, parent }) => {
+              const params = new URLSearchParams(location.search);
+              if (
+                params.get('chat') !== parent ||
+                params.get('galleryTheme') !== theme
+              )
+                return;
+              const key = 'station-device-settings-v1';
+              const envelope = JSON.parse(
+                localStorage.getItem(key) ?? '{"version":2,"values":{}}',
+              );
+              envelope.values = { ...envelope.values, theme };
+              localStorage.setItem(key, JSON.stringify(envelope));
+            },
+            { theme, parent },
+          );
           await seedActiveChatSession(page, {
             conversationId: parent,
             agentSlug: 'demo-agent',
@@ -4174,6 +4195,16 @@ function childChatScreens(): Screen[] {
           const json = (data: unknown) => (route: Route) =>
             route.fulfill({ json: { success: true, data } });
           cleanups = [
+            await withRoute(page, '**/api/me/preferences', (route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({
+                json: {
+                  success: true,
+                  data: { schemaVersion: 1, values: { theme } },
+                },
+              });
+            }),
             await withRoute(
               page,
               '**/api/orchestration/sessions/read-model',
@@ -4220,9 +4251,8 @@ function childChatScreens(): Screen[] {
           ];
         },
         afterGoto: async (page: Page) => {
-          await page.evaluate(
-            (theme) =>
-              document.documentElement.setAttribute('data-theme', theme),
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
             theme,
           );
           const dock = page.locator('#chat-dock');
@@ -4281,9 +4311,8 @@ function childChatScreens(): Screen[] {
             await expect(
               dock.getByRole('button', { name: 'Chat actions', exact: true }),
             ).toBeVisible();
-          await page.evaluate(
-            (theme) =>
-              document.documentElement.setAttribute('data-theme', theme),
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
             theme,
           );
           if (viewport.width < 600) {
@@ -4305,6 +4334,18 @@ function childChatScreens(): Screen[] {
                 true,
               );
             }
+          }
+          if (viewport.width < 600) {
+            const titleBox = await dock
+              .locator('[aria-current="page"]')
+              .boundingBox();
+            const actionsBox = await dock
+              .getByRole('button', { name: 'Chat actions', exact: true })
+              .boundingBox();
+            expect(
+              (titleBox?.x ?? 0) + (titleBox?.width ?? 0),
+              'breadcrumb stays before actions',
+            ).toBeLessThanOrEqual(actionsBox?.x ?? 0);
           }
           const overflow = await dock.evaluate(
             (element) => element.scrollWidth > element.clientWidth + 1,
