@@ -24,8 +24,8 @@ async function fixture(
   retirement: Promise<void> = Promise.resolve(),
 ) {
   const home = temporary('native-model-stdio-');
-  const registry = join(home, 'registry');
-  mkdirSync(registry, { mode: 0o700 });
+  const temporaryRegistry = join(home, 'registry');
+  mkdirSync(temporaryRegistry, { mode: 0o700 });
   const handle = spawnOwnedChild(
     process.execPath,
     [
@@ -34,7 +34,7 @@ async function fixture(
       resolve(import.meta.dirname, '../native-model-stdio-worker.ts'),
     ],
     {
-      registryDir: registry,
+      registryDir: temporaryRegistry,
       env: {
         PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
         HOME: home,
@@ -87,7 +87,7 @@ async function fixture(
     await stop();
     await closed;
     expect(channel.inspect().pending).toBe(0);
-    expect(readdirSync(registry)).toEqual([]);
+    expect(readdirSync(temporaryRegistry)).toEqual([]);
   });
   const ready = await channel.ready;
   return {
