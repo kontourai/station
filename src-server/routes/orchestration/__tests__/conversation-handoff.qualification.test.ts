@@ -200,6 +200,16 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       preserveProfile: false,
       failFirstHandoffSeed: 'turn.aborted' as const,
     },
+    {
+      label:
+        'Claude handoff seed and its redelivery both interrupted redeliver again',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      failFirstHandoffSeed: 'turn.aborted' as const,
+      failRedeliveredSeed: true,
+    },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
     async ({
@@ -213,6 +223,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       raceContextReservation = false,
       restartBeforeReturnStart = false,
       missingSeedInvocation = false,
+      failRedeliveredSeed = false,
       failFirstHandoffSeed = undefined as
         | 'runtime.error'
         | 'turn.aborted'
@@ -594,6 +605,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             currentSessionId: handoffReceipt.data.sessionId,
             nextTurnStartsSession: true,
           });
+          // Switch, stop, send, stop: the redelivery's own first turn is
+          // stopped too.
+          targetAdapter.failNextTranscriptSeed = failRedeliveredSeed;
           await execute(target, {
             conversationId,
             message: 'Continue after the first handoff seed failed.',
@@ -607,6 +621,36 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           expect(redelivered.ambientContext).toContain(CONTEXT_TOKEN);
           // Never the failed Session's native thread: it never took the seed.
           expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
+          if (failRedeliveredSeed) {
+            await eventually(async () => {
+              const current = await service.readCurrentConversationSession(
+                conversationId,
+                INTERNAL_SESSION_READ_SCOPE,
+              );
+              expect(current?.session.threadId).toBe(redelivered.threadId);
+              expect(current?.session.hasActiveTurn).toBe(false);
+              expect(
+                store
+                  .listEvents(redelivered.threadId)
+                  .some((row) => row.payload.method === 'turn.aborted'),
+              ).toBe(true);
+            });
+            // ... send: the stopped continuation seed is redelivered again
+            // rather than refused forever.
+            await execute(target, {
+              conversationId,
+              message: 'Continue after the redelivery was stopped too.',
+            });
+            await eventually(() => expect(targetAdapter.turns).toHaveLength(3));
+            const again = targetAdapter.turns[2]!;
+            expect(again.threadId).not.toBe(redelivered.threadId);
+            expect(again.threadId).not.toBe(handoffReceipt.data.sessionId);
+            expect(
+              store.conversationSessions(conversationId).at(-1)?.sessionId,
+            ).toBe(again.threadId);
+            expect(again.ambientContext).toContain(CONTEXT_TOKEN);
+            expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
+          }
         } finally {
           await service.shutdown();
           store.close();

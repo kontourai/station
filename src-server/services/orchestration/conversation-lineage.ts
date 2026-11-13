@@ -629,9 +629,11 @@ export class ConversationLineage {
    * refusal; the open read's `nextTurnStartsSession` claims nothing while it
    * stands.
    *
-   * `'redeliver'` when a handoff's (not a native return's) seed-bearing turn
-   * reached a definitive failure: `turn.aborted` or `runtime.error` for that
-   * exact turn, e.g. the user stopped the first turn after an engine switch.
+   * `'redeliver'` when a handoff's (not a native return's) or a plain
+   * continuation's (no context boundary) seed-bearing turn reached a
+   * definitive failure: `turn.aborted` or `runtime.error` for that exact
+   * turn, e.g. the user stopped the first turn after an engine switch, or
+   * stopped the redelivery's own first turn too.
    * The context was provably not acknowledged, and refusing every later send
    * would leave the conversation with no way forward, so the next ordinary
    * turn reconciles it as a fresh handoff to the same target would: it starts
@@ -658,26 +660,43 @@ export class ConversationLineage {
         started?.method === 'session.started' ? started.metadata : undefined,
         startSeed,
       );
-      const delivered = carrier
-        ? hasCompletedConversationSeedTurn({
-            store,
-            threadId: sessionId,
-            clientTurnId: carrier.clientTurnId,
-            expected: {
-              kind: 'boundary',
-              contextId: sessionId,
-              contextDigest: startSeed.pinDigest,
-              seedDigest: startSeed.seedDigest,
-            },
-            requiresNativeIdentity:
-              this.deps.nativeIdentityRequiredFor?.(detail.session.provider) ===
-              true,
-          })
-        : undefined;
-      if (!delivered)
+      const seedTurn = carrier && {
+        store,
+        threadId: sessionId,
+        clientTurnId: carrier.clientTurnId,
+        expected: {
+          kind: 'boundary' as const,
+          contextId: sessionId,
+          contextDigest: startSeed.pinDigest,
+          seedDigest: startSeed.seedDigest,
+        },
+        requiresNativeIdentity:
+          this.deps.nativeIdentityRequiredFor?.(detail.session.provider) ===
+          true,
+      };
+      if (!seedTurn || !hasCompletedConversationSeedTurn(seedTurn)) {
+        // A plain continuation seed (no deliberate context boundary, which
+        // includes the seed a redelivery pins) whose turn definitively failed
+        // is redelivered by a fresh successor exactly as it was pinned. A
+        // boundary's policy is the user's choice a plain successor would
+        // not reproduce, so a failed boundary seed stays refused.
+        if (
+          seedTurn &&
+          !store.conversationContextBoundaryForSuccessor(sessionId) &&
+          (
+            await observeConversationSeedTurn({
+              ...seedTurn,
+              ...(this.deps.turnDeduplicator
+                ? { deduplicator: this.deps.turnDeduplicator }
+                : {}),
+            })
+          ).contextStatus === 'failed'
+        )
+          return 'redeliver';
         return new ConversationStartContextError(
           'Continuation context delivery has not completed. Reconcile the context before continuing.',
         );
+      }
     }
     const handoff = store.conversationHandoffForSession(sessionId);
     const forkDelivery = await this.deps.readForkContextDelivery?.(
