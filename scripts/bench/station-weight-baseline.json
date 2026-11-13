@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "request": {
+    "sourceRevision": "19a83d20ae7d23586c1ed72bdf4e390795c69d0c",
+    "recordedAt": "2026-11-13T07:26:51.589Z",
+    "claudeCodeVersion": "2.1.318",
+    "values": {
+      "request.stationAddedTextBytes": 979,
+      "request.stationAddedToolCount": 20,
+      "request.stationAddedToolDefinitionBytes": 4502,
+      "request.sideCallCount": 0
+    }
+  },
+  "hosts": {
+    "darwin-arm64": {
+      "sourceRevision": "19a83d20ae7d23586c1ed72bdf4e390795c69d0c",
+      "recordedAt": "2026-11-13T07:26:51.589Z",
+      "host": {
+        "release": "25.6.0",
+        "cpuModel": "Apple M5 Pro",
+        "cpus": 15,
+        "totalMemoryBytes": 51539607552
+      },
+      "values": {
+        "serverReadyMs": 6010.835917,
+        "restRssBytes": 1329201152,
+        "idleSessionsRssBytes": 2096758784,
+        "idleCpuPercent": 0.1331358028845985,
+        "leftoverAfterStopRssBytes": 0
+      }
+    }
+  }
+}
