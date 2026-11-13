@@ -105,6 +105,17 @@ export function repositoryState() {
 // Process tree: what belongs to the run, by recorded identity and by the
 // environment every process the instance starts inherits.
 
+/**
+ * One process as this check sees it. `uid`, `startedAtMs` and
+ * `contextSwitches` (Linux) come with a table read; `memoryBytes` is attached
+ * by withMemory.
+ * @typedef {{ pid: number, ppid: number, uid?: number, rssBytes: number, cpuSeconds: number, started: string, startedAtMs?: number, contextSwitches?: number, command: string, memoryBytes?: number }} ProcessRow
+ * @typedef {{ pid: number, started: string }} ProcessIdentity
+ * @typedef {{ tags: string[], excludeTags?: string[], argumentMarkers?: string[], uid: number, notBeforeMs: number }} Tagging
+ * @typedef {(command: string, args: string[], options: object) => string} RunCommand
+ * @typedef {{ status: string, value?: number, unit?: string, reason?: string, [detail: string]: any }} Metric
+ */
+
 /** Pinned so lstart is a property of the process, not of who asked. */
 const PS_ENV = { ...process.env, LC_ALL: 'C', TZ: 'UTC' };
 
@@ -191,6 +202,10 @@ function defaultLinuxContext() {
  * in ticks: procps prints `time` in whole seconds, which rounds a quiet
  * tree's CPU to zero.
  */
+/**
+ * @param {{ readFile?: (path: string, encoding: 'utf8') => string, listPids?: () => number[], bootId: string, hz: number, pageSize: number, bootTimeSeconds: number }} [context]
+ * @returns {ProcessRow[]}
+ */
 export function linuxProcessTable(
   {
     readFile = readFileSync,
@@ -250,8 +265,13 @@ export function linuxProcessTable(
  * Linux the table comes from `/proc` alone (see linuxProcessTable); on macOS
  * one `ps` call reads every field of a process at once.
  */
+/**
+ * @param {RunCommand} [run]
+ * @param {{ platform?: string, linux?: Parameters<typeof linuxProcessTable>[0] }} [options]
+ * @returns {ProcessRow[]}
+ */
 export function processTable(
-  run = execFileSyncBounded,
+  run = /** @type {RunCommand} */ (execFileSyncBounded),
   { platform: platformName = process.platform, linux } = {},
 ) {
   if (platformName === 'linux') return linuxProcessTable(linux);
@@ -295,6 +315,11 @@ const identityKey = (row) => `${row.pid}:${row.started}`;
  * row, and every descendant of those by parent pid. A root whose pid now
  * belongs to another process contributes nothing.
  */
+/**
+ * @param {ProcessRow[]} table
+ * @param {ProcessIdentity[]} roots
+ * @returns {ProcessRow[]}
+ */
 export function ownedTree(table, roots) {
   const wanted = new Set(roots.map(identityKey));
   const ids = new Set(
@@ -334,6 +359,10 @@ export function recordedRoots(record) {
  * process naming the nonce in its arguments is excluded: the nonce is only
  * ever passed through the environment. The slack absorbs whole-second birth
  * times (macOS lstart, Linux btime).
+ */
+/**
+ * @param {{ nonce: string, scratch: string, startedAtMs: number, controlConfigDir?: string, uid?: number }} run
+ * @returns {Tagging}
  */
 export function runTagging({
   nonce,
@@ -453,11 +482,17 @@ function environments(rows, { run, platformName, readFile }) {
  * whatever their ancestry: a double-forked daemon or a child spawned during
  * shutdown has no path back to the roots.
  */
+/**
+ * @param {ProcessRow[]} table
+ * @param {Tagging} tagging
+ * @param {{ run?: RunCommand, platform?: string, readFile?: (path: string, encoding: 'utf8') => string }} [options]
+ * @returns {ProcessRow[]}
+ */
 export function taggedRows(
   table,
   { tags, excludeTags = [], argumentMarkers = [], uid, notBeforeMs },
   {
-    run = execFileSyncBounded,
+    run = /** @type {RunCommand} */ (execFileSyncBounded),
     platform: platformName = process.platform,
     readFile = readFileSync,
   } = {},
@@ -488,7 +523,12 @@ export function taggedRows(
   });
 }
 
-/** The instance's processes: owned by the recorded roots or tagged. */
+/**
+ * The instance's processes: owned by the recorded roots or tagged.
+ * @param {ProcessRow[]} table
+ * @param {ProcessIdentity[]} roots
+ * @param {ProcessRow[]} tagged
+ */
 export function instanceTree(table, roots, tagged) {
   return ownedTree(table, [...roots, ...tagged]);
 }
@@ -496,12 +536,20 @@ export function instanceTree(table, roots, tagged) {
 /**
  * Rows from `before` still alive in `after` with the same birth token, plus
  * anything they spawned since.
+ * @param {ProcessIdentity[]} before
+ * @param {ProcessRow[]} after
  */
 export function survivors(before, after) {
   return ownedTree(after, before);
 }
 
-/** The instance's tree in `table`: its recorded roots and tagged processes. */
+/**
+ * The instance's tree in `table`: its recorded roots and tagged processes.
+ * @param {ProcessRow[]} table
+ * @param {ProcessIdentity[]} roots
+ * @param {Tagging} tagging
+ * @param {Parameters<typeof taggedRows>[2]} [options]
+ */
 export function instanceSnapshot(table, roots, tagging, options) {
   return instanceTree(table, roots, taggedRows(table, tagging, options));
 }
@@ -510,6 +558,10 @@ export function instanceSnapshot(table, roots, tagging, options) {
  * What lives on after stop: survivors of the pre-stop tree by identity, and
  * every process still carrying the run's environment, whether it detached or
  * was spawned after the pre-stop snapshot.
+ * @param {ProcessIdentity[]} beforeStop
+ * @param {ProcessRow[]} after
+ * @param {Tagging} tagging
+ * @param {Parameters<typeof taggedRows>[2]} [options]
  */
 export function leftoverAfterStop(beforeStop, after, tagging, options) {
   return ownedTree(after, [
@@ -600,7 +652,15 @@ const isAlive = (pid) => {
  * be read is dropped; a live one the reader did not report is an error, not
  * a zero.
  */
-export function withMemory(rows, run = execFileSyncBounded) {
+/**
+ * @param {ProcessRow[]} rows
+ * @param {RunCommand} [run]
+ * @returns {ProcessRow[]}
+ */
+export function withMemory(
+  rows,
+  run = /** @type {RunCommand} */ (execFileSyncBounded),
+) {
   if (MEMORY_BASIS === 'rss' || !rows.length)
     return rows.map((row) => ({ ...row, memoryBytes: row.rssBytes }));
   let footprints;
@@ -1126,6 +1186,7 @@ async function settleTree(snapshot, settings) {
 }
 
 /** A settled tree's memory; an empty tree measured nothing. */
+/** @returns {Metric} */
 export function restMetric(settled, extra = {}) {
   const detail = {
     basis: MEMORY_BASIS,
@@ -1163,6 +1224,10 @@ export function restMetric(settled, extra = {}) {
  * interval, so the span between two consecutive reads is measured: from the
  * start of one snapshot to the end of the next, the longest a process can
  * run between the last read that saw it and the first that did not.
+ */
+/**
+ * @param {(final: boolean) => ProcessRow[]} snapshot
+ * @param {{ windowMs: number, intervalMs: number }} timing
  */
 export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
   const startCpu = new Map();
@@ -1225,6 +1290,7 @@ export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
 export const IDLE_CPU_GAP = ({ intervalMs, maxReadSpanMs }) =>
   `not counted: CPU a process used after its last read before exiting (up to ${Math.ceil(maxReadSpanMs)} ms per process, the longest span observed between the start of one read and the end of the next; the nominal interval is ${intervalMs} ms), processes that started and exited between two reads, and processes that left the tree by detaching inside the window and exited before its end (the window follows ancestry and rescans the environment only at its end)`;
 
+/** @returns {Metric} */
 export function idleCpuMetric(sampled, intervalMs) {
   const detail = {
     windowSeconds: sampled.windowSeconds,
@@ -1324,6 +1390,10 @@ export function evaluateRun(
   return result;
 }
 
+/**
+ * @param {{ out?: string, baselinePath?: string, record?: boolean, reportOnly?: boolean, allowDirty?: boolean, settings?: Partial<Record<keyof typeof DEFAULT_SETTINGS, number>>, hooks?: { beforeStop?: (context: { env: NodeJS.ProcessEnv, scratch: string }) => Promise<void> } }} [options]
+ * @returns {Promise<Record<string, any>>}
+ */
 export async function runStationWeight({
   out,
   baselinePath = DEFAULT_BASELINE_PATH,

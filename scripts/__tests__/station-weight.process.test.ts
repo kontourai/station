@@ -246,7 +246,7 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     expect(
       taggedRows(
         table.map((row) =>
-          row.pid === child.pid ? { ...row, uid: row.uid + 1 } : row,
+          row.pid === child.pid ? { ...row, uid: (row.uid ?? 0) + 1 } : row,
         ),
         tagging,
       ),

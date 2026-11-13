@@ -55,12 +55,12 @@ const ENGINE_TOOLS = [
   {
     name: 'Bash',
     description: 'Run a command.',
-    input_schema: { type: 'object' },
+    input_schema: { type: 'object' as const },
   },
   {
     name: 'Read',
     description: 'Read a file.',
-    input_schema: { type: 'object' },
+    input_schema: { type: 'object' as const },
   },
 ];
 
@@ -181,7 +181,7 @@ describe('station-weight request analysis', () => {
           {
             name: 'AskUserQuestion',
             description: 'Ask.',
-            input_schema: { type: 'object' },
+            input_schema: { type: 'object' as const },
           },
         ],
       }),
