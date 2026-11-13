@@ -1312,9 +1312,10 @@ Baseline artifacts (both committed):
   path: an unchanged screen never touches its reference image.
 - `tests/screenshots.baseline/<name>.png` — the reference image itself,
   read only when a screen's hash disagrees, to compute and localize exactly
-  which pixels moved. Committing the full companion PNG set costs ~2.6MB per
-  regeneration — accepted as the price of localizing a real regression to
-  exact pixels instead of only knowing a screen's hash changed.
+  which pixels moved. Committing the full companion PNG set costs about 14MB
+  per regeneration at 166 screens (#4692) — accepted as the price of
+  localizing a real regression to exact pixels instead of only knowing a
+  screen's hash changed.
 
 - `npm run screenshot:baseline` reads a completed `gallery/capture.json` +
   its PNGs and writes both baseline artifacts. It refuses to write from a

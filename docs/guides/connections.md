@@ -1105,6 +1105,13 @@ alone does not override that result. **Refresh models** refreshes the catalog.
 
 Model requests use the proxy; the engine and its tools still run on this Station.
 
+A proxy's HTTP 429 or rate-limit cooldown does not mean its key is invalid and
+does not create a retained sign-in failure. Wait for the provider's reset or
+repair the proxy, then retry. If Station has already retained a sign-in failure,
+fix the credentials or proxy and run **Check connection** on the engine page.
+Only a successful chat turn clears that failure; refreshing the model catalog
+or running the CLI's prerequisite-only `connections test` does not prove recovery.
+
 A routed connection authenticates with that proxy key: readiness reports the
 saved key as the engine's credential (shown as **Proxy key**) and does not
 require the CLI's own login. Without a route the engine's CLI login is the

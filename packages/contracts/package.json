@@ -275,7 +275,7 @@
     "@kontourai/datum": "0.8.1",
     "@kontourai/flow": "5.4.0",
     "@kontourai/flow-agents": "9.14.0",
-    "@kontourai/surface": "^6.2.1",
+    "@kontourai/surface": "^6.3.0",
     "@kontourai/thread": "0.7.0"
   },
   "publishConfig": {
