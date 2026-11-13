@@ -10,10 +10,12 @@ import {
   useKnowledgeStatusQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
-import { useReducer, useState } from 'react';
+import { useReducer, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { BranchGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
+import { requestNewChannel } from '../components/project-conversations/new-channel-request';
+import { ProjectConversationList } from '../components/project-conversations/ProjectConversationList';
 import { useStationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -23,6 +25,7 @@ import {
 } from '../contexts/ProjectsContext';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
 import { requestTaskShaping } from '../lib/task-shaping';
 import { errorText } from '../utils/errorText';
@@ -50,6 +53,7 @@ import type { ProjectRoomProps } from './project-page/ProjectRoom';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import type { AvailableLayout } from './project-page/types';
+import { useListScrollMemory } from './project-page/useListScrollMemory';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import './project-page-frame.css';
 import './ProjectPage.css';
@@ -207,7 +211,25 @@ function ProjectOperatorPage({
   requestScope: ProjectRoomProps['requestScope'];
 }) {
   const { setLayout, navigate } = useNavigation();
-  const { destination, selectDestination } = useProjectDestination(slug);
+  const {
+    destination,
+    selectDestination,
+    room,
+    openRoom,
+    openThread,
+    leaveRoom,
+  } = useProjectDestination(slug);
+  // #4795: on a phone the Project page is its channel list, and a channel
+  // is its own full screen; one breakpoint, `MOBILE_MEDIA_QUERY`.
+  const phone = useIsMobile();
+  const roomScreen = phone && destination === 'room';
+  const pageRef = useRef<HTMLDivElement>(null);
+  const { openFromList } = useListScrollMemory(
+    slug,
+    pageRef,
+    phone && destination === 'overview',
+    roomScreen,
+  );
   const extensionAccess = useStationExtensionsAccess();
   // #801: the page renders as soon as the *project* query settles, so a
   // layouts fetch still in flight used to reach the section as an empty array
@@ -321,21 +343,55 @@ function ProjectOperatorPage({
   }
 
   return (
-    <div className="project-page project-page--space">
+    <div
+      ref={pageRef}
+      className={`project-page project-page--space${roomScreen ? ' project-page--room-screen' : ''}`}
+    >
       <div className="project-page__inner project-page__space">
-        <ProjectPageHeader
-          project={project}
-          gitStatus={gitStatus}
-          navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
-        />
+        {!roomScreen && (
+          <ProjectPageHeader
+            project={project}
+            gitStatus={gitStatus}
+            navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
+          />
+        )}
 
         <div className="section-nav-rail project-page__layout">
-          <ProjectNavigation slug={slug} projectId={project.id} />
+          {!roomScreen && (
+            <ProjectNavigation slug={slug} projectId={project.id} />
+          )}
           <section className="section-nav-rail__body project-page__content">
             <section
               hidden={destination !== 'overview'}
               aria-label="Project overview"
             >
+              {/* #4795: on a phone the Project page leads with its channels. */}
+              {phone && (
+                <ProjectConversationList
+                  variant="page"
+                  project={{
+                    slug,
+                    id: project.id,
+                    name: project.name || slug,
+                  }}
+                  requestScope={requestScope}
+                  onOpenChannel={(channelId) =>
+                    openFromList(() => openRoom(channelId))
+                  }
+                  onOpenTask={(taskId) =>
+                    openFromList(() =>
+                      navigate(`/tasks/${encodeURIComponent(taskId)}`, {
+                        taskView: 'conversation',
+                      }),
+                    )
+                  }
+                  onMoreTasks={() => selectDestination('tasks')}
+                  onNewChannel={() => {
+                    requestNewChannel(slug);
+                    openFromList(() => openRoom(undefined));
+                  }}
+                />
+              )}
               <div className="project-page__operator-actions">
                 <Button
                   variant="primary"
@@ -350,13 +406,34 @@ function ProjectOperatorPage({
               <ProjectLiveWorkSection slug={slug} />
             </section>
 
-            <div hidden={destination !== 'overview' && destination !== 'room'}>
+            <div
+              hidden={
+                phone
+                  ? destination !== 'room'
+                  : destination !== 'overview' && destination !== 'room'
+              }
+            >
               <ProjectRoom
                 slug={slug}
                 projectId={project.id}
                 requestScope={requestScope}
                 variant={destination === 'room' ? 'full' : 'preview'}
-                onOpenRoom={() => selectDestination('room')}
+                onOpenRoom={openRoom}
+                {...(destination === 'room'
+                  ? {
+                      routeChannel: { id: room.channelId },
+                      onRouteChannel: openRoom,
+                      thread: { rootId: room.threadId, open: openThread },
+                    }
+                  : {})}
+                {...(roomScreen
+                  ? {
+                      screen: {
+                        backLabel: `Back to ${project.name || slug}`,
+                        onBack: leaveRoom,
+                      },
+                    }
+                  : {})}
               />
             </div>
 

@@ -57,3 +57,25 @@
     padding: 1.5rem 1rem 2rem;
   }
 }
+
+/* A phone's room screen (#4795): the conversation is the page, edge to edge.
+   The Project's header and section picker are not rendered; the room's own
+   bar leads back to them. */
+.project-page--room-screen {
+  overflow: hidden;
+}
+
+.project-page--room-screen > .project-page__inner {
+  max-width: none;
+  height: 100%;
+  padding: 0;
+}
+
+.project-page--room-screen .project-page__layout {
+  display: block;
+  padding: 0;
+}
+
+.project-page--room-screen .project-page__content {
+  gap: 0;
+}

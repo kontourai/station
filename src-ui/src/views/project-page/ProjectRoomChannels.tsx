@@ -11,14 +11,19 @@ import type {
   useProjectRoomChannels,
 } from '@kontourai/station-sdk/project-rooms';
 import { Badge, Field } from '@kontourai/ui/react';
-import { type FormEvent, useId, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useId, useRef, useState } from 'react';
 import {
   ActionOverflowMenu,
   type OverflowAction,
 } from '../../components/ActionOverflowMenu';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
-import { ArrowDownGlyph } from '../../components/icons/Glyph';
+import {
+  ArrowDownGlyph,
+  ArrowLeftGlyph,
+  MoreGlyph,
+} from '../../components/icons/Glyph';
+import { useNewChannelRequest } from '../../components/project-conversations/new-channel-request';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -29,6 +34,7 @@ import './ProjectRoomChannels.css';
 export type ProjectRoomChannels = ReturnType<typeof useProjectRoomChannels>;
 type Panel =
   | { kind: 'switch' }
+  | { kind: 'actions' }
   | { kind: 'create' }
   | { kind: 'rename' | 'topic' | 'archive'; channel: ProjectRoomChannel };
 
@@ -77,12 +83,24 @@ function refusal(error: unknown) {
   return error instanceof StationHttpError ? error.code : undefined;
 }
 
+export interface ChannelScreen {
+  backLabel: string;
+  onBack(): void;
+  trailing?: ReactNode;
+  /** Replaces the channel's name and topic (a thread: "Thread", `#name`). */
+  heading?: { title: string; subtitle?: string };
+  /** Room commands beside the channel's own settings (Notes). */
+  actions: readonly { key: string; label: string; onSelect(): void }[];
+}
+
 export function ProjectRoomChannelHeader({
   channels,
   current,
   canEdit,
   guards,
   onSelect,
+  projectSlug,
+  screen,
 }: {
   channels: ProjectRoomChannels;
   current: ProjectRoomChannel | undefined;
@@ -90,6 +108,14 @@ export function ProjectRoomChannelHeader({
   /** Absent until the room's person and Project are known. */
   guards: ProjectRoomChannelGuards | undefined;
   onSelect(channelId: string | undefined): void;
+  /** Takes "New channel" requests from the sidebar and channel list (#4794). */
+  projectSlug?: string;
+  /**
+   * A phone's full-screen conversation (#4795): a back button, the channel's
+   * name and topic, `trailing` (who is here) and a ⋯ sheet holding the
+   * channel's settings and `actions`.
+   */
+  screen?: ChannelScreen;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [panel, setPanel] = useState<Panel>();
@@ -97,6 +123,11 @@ export function ProjectRoomChannelHeader({
   const list = channels.list.data;
   const switchable = !!list && !!current;
   const manageable = switchable && canEdit && !!guards;
+  // Someone who cannot create channels gets the list, where they can still
+  // pick one, rather than a form the server would refuse.
+  useNewChannelRequest(projectSlug, switchable, () =>
+    setPanel(manageable ? { kind: 'create' } : { kind: 'switch' }),
+  );
   const unarchive = (channel: ProjectRoomChannel) => {
     if (!guards) return;
     channels.update.mutate({
@@ -151,56 +182,155 @@ export function ProjectRoomChannelHeader({
     (channels.unsupported || list?.length === 0
       ? PROJECT_ROOM_DEFAULT_CHANNEL_NAME
       : undefined);
+  // The phone's ⋯ sheet: switching, then the channel's own settings, then
+  // the room's commands. Each row hands over to the panel it opens.
+  const sheetRows = screen
+    ? [
+        ...(switchable
+          ? [
+              {
+                key: 'switch',
+                label: 'Switch channel',
+                onSelect: () => setPanel({ kind: 'switch' }),
+              },
+            ]
+          : []),
+        ...settings.map((action) => ({
+          key: action.key,
+          label: action.label,
+          tone: action.tone,
+          onSelect: () => {
+            close();
+            // The settings open their own panels; none reads the trigger.
+            if (triggerRef.current) action.onSelect(triggerRef.current);
+          },
+        })),
+        ...screen.actions.map((action) => ({
+          ...action,
+          onSelect: () => {
+            close();
+            action.onSelect();
+          },
+        })),
+      ]
+    : [];
   return (
-    <div className="room-channel">
-      <div className="room-channel__line">
-        <h3 className="room-channel__name">
-          {switchable ? (
+    <div className={`room-channel${screen ? ' room-channel--screen' : ''}`}>
+      {screen ? (
+        <div className="room-channel__bar">
+          <button
+            type="button"
+            className="room-channel__bar-button"
+            aria-label={screen.backLabel}
+            onClick={screen.onBack}
+          >
+            <ArrowLeftGlyph />
+          </button>
+          {screen.heading ? (
+            <div className="room-channel__bar-title">
+              <h2 className="room-channel__name">
+                <span className="room-channel__label">
+                  {screen.heading.title}
+                </span>
+              </h2>
+              {screen.heading.subtitle && (
+                <p className="room-channel__topic">{screen.heading.subtitle}</p>
+              )}
+            </div>
+          ) : (
+            <div className="room-channel__bar-title">
+              <h2 className="room-channel__name">
+                <span className="room-channel__label" title={name}>
+                  <span className="room-channel__hash" aria-hidden="true">
+                    #
+                  </span>
+                  {name ?? 'Room'}
+                </span>
+              </h2>
+              {current?.topic ? (
+                <p className="room-channel__topic" title={current.topic}>
+                  {current.topic}
+                </p>
+              ) : current?.archivedAt ? (
+                <p className="room-channel__topic">Archived</p>
+              ) : null}
+            </div>
+          )}
+          {screen.trailing}
+          {sheetRows.length > 0 && (
             <button
               ref={triggerRef}
               type="button"
-              className="room-channel__trigger"
+              className="room-channel__bar-button"
+              aria-label="Channel options"
               aria-haspopup="dialog"
-              aria-expanded={panel?.kind === 'switch'}
-              onClick={() => setPanel({ kind: 'switch' })}
+              aria-expanded={panel?.kind === 'actions'}
+              onClick={() => setPanel({ kind: 'actions' })}
             >
-              <span className="room-channel__label" title={name}>
-                <span className="room-channel__hash" aria-hidden="true">
-                  #
-                </span>
-                {name}
-              </span>
-              <span className="sr-only">, switch channel</span>
-              <ArrowDownGlyph className="room-channel__caret" />
+              <MoreGlyph />
             </button>
-          ) : name ? (
-            <span className="room-channel__static">
-              <span className="room-channel__label" title={name}>
-                <span className="room-channel__hash" aria-hidden="true">
-                  #
-                </span>
-                {name}
-              </span>
-            </span>
-          ) : channels.list.isError ? (
-            <span className="room-channel__static">Room</span>
-          ) : (
-            <SkeletonBlock label="Loading channel" />
           )}
-        </h3>
-        {current?.archivedAt && <Badge value="Archived" tone="neutral" />}
-        {settings.length > 0 && (
-          <ActionOverflowMenu
-            label="Channel settings"
-            actions={settings}
-            triggerClassName="action-overflow__trigger room-channel__settings"
-          />
-        )}
-      </div>
-      {current?.topic && (
-        <p className="room-channel__topic" title={current.topic}>
-          {current.topic}
-        </p>
+        </div>
+      ) : (
+        <>
+          <div className="room-channel__line">
+            <h3 className="room-channel__name">
+              {switchable ? (
+                <button
+                  ref={triggerRef}
+                  type="button"
+                  className="room-channel__trigger"
+                  aria-haspopup="dialog"
+                  aria-expanded={panel?.kind === 'switch'}
+                  onClick={() => setPanel({ kind: 'switch' })}
+                >
+                  <span className="room-channel__label" title={name}>
+                    <span className="room-channel__hash" aria-hidden="true">
+                      #
+                    </span>
+                    {name}
+                  </span>
+                  <span className="sr-only">, switch channel</span>
+                  <ArrowDownGlyph className="room-channel__caret" />
+                </button>
+              ) : name ? (
+                <span className="room-channel__static">
+                  <span className="room-channel__label" title={name}>
+                    <span className="room-channel__hash" aria-hidden="true">
+                      #
+                    </span>
+                    {name}
+                  </span>
+                </span>
+              ) : channels.list.isError ? (
+                <span className="room-channel__static">Room</span>
+              ) : (
+                <SkeletonBlock label="Loading channel" />
+              )}
+            </h3>
+            {current?.archivedAt && <Badge value="Archived" tone="neutral" />}
+            {settings.length > 0 && (
+              <ActionOverflowMenu
+                label="Channel settings"
+                actions={settings}
+                triggerClassName="action-overflow__trigger room-channel__settings"
+              />
+            )}
+          </div>
+          {current?.topic && (
+            <p className="room-channel__topic" title={current.topic}>
+              {current.topic}
+            </p>
+          )}
+        </>
+      )}
+      {panel?.kind === 'actions' && (
+        <ChannelActions
+          title={name ? `#${name}` : 'Channel'}
+          rows={sheetRows}
+          anchorRef={triggerRef}
+          onClose={close}
+        />
       )}
       {channels.update.isError && !panel && (
         <p className="room-channel__notice" role="status">
@@ -232,24 +362,84 @@ export function ProjectRoomChannelHeader({
           }}
         />
       )}
-      {panel && panel.kind !== 'switch' && guards && (
-        <ChannelForm
-          key={panel.kind}
-          panel={panel}
-          channels={channels}
-          guards={guards}
-          anchorRef={triggerRef}
-          atLimit={
-            (list?.length ?? 0) >= PROJECT_ROOM_LIMITS.channelsPerProject
-          }
-          onClose={close}
-          onCreated={(channel) => {
-            close();
-            onSelect(channel.channelId);
-          }}
-        />
-      )}
+      {panel &&
+        panel.kind !== 'switch' &&
+        panel.kind !== 'actions' &&
+        guards && (
+          <ChannelForm
+            key={panel.kind}
+            panel={panel}
+            channels={channels}
+            guards={guards}
+            anchorRef={triggerRef}
+            atLimit={
+              (list?.length ?? 0) >= PROJECT_ROOM_LIMITS.channelsPerProject
+            }
+            onClose={close}
+            onCreated={(channel) => {
+              close();
+              onSelect(channel.channelId);
+            }}
+          />
+        )}
     </div>
+  );
+}
+
+/** The phone's ⋯ for a channel: one sheet of commands (#4795). */
+function ChannelActions({
+  title,
+  rows,
+  anchorRef,
+  onClose,
+}: {
+  title: string;
+  rows: readonly {
+    key: string;
+    label: string;
+    tone?: 'danger';
+    onSelect(): void;
+  }[];
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  onClose(): void;
+}) {
+  const titleId = useId();
+  const firstRef = useRef<HTMLButtonElement>(null);
+  return (
+    <ResponsiveDialogSurface
+      layer="popover"
+      ariaLabelledBy={titleId}
+      onClose={onClose}
+      historyMode="entry"
+      anchorRef={anchorRef}
+      returnFocusTarget={anchorRef.current}
+      initialFocusRef={firstRef}
+      initialFocusPolicy="always"
+      overlayClassName="room-channel-overlay"
+      panelClassName="room-channel-panel"
+    >
+      <ResponsiveDialogHeader
+        title={title}
+        titleId={titleId}
+        closeLabel="Close channel options"
+        onClose={onClose}
+      />
+      <ul className="room-channel-list" aria-label="Channel options">
+        {rows.map((row, index) => (
+          <li key={row.key}>
+            <button
+              ref={index === 0 ? firstRef : undefined}
+              type="button"
+              className="room-channel-list__item"
+              data-tone={row.tone}
+              onClick={row.onSelect}
+            >
+              <span className="room-channel-list__name">{row.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </ResponsiveDialogSurface>
   );
 }
 
@@ -373,7 +563,7 @@ function ChannelForm({
   onClose,
   onCreated,
 }: {
-  panel: Exclude<Panel, { kind: 'switch' }>;
+  panel: Exclude<Panel, { kind: 'switch' | 'actions' }>;
   channels: ProjectRoomChannels;
   guards: ProjectRoomChannelGuards;
   anchorRef: React.RefObject<HTMLButtonElement | null>;

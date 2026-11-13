@@ -1,0 +1,13 @@
+{
+  "revision": "8b89c4fcbe426692da9cf8bedb02168ff374b90c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"ProjectRoom.tsx's draft envelope now carries a revision id that is new on every edit and survives storage; clearDraftIfCurrent compares that id, never content, so a late acknowledgement leaves a retyped draft alone. The channel-navigation paragraph's per-thread draft claim is unchanged and still accurate.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ProjectRoom.tsx's draft revision id is client-side session storage only; no route or wire shape described here changed.","inputs":["docs/reference/api.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"packages/contracts/src/__tests__/provider-failure.test.ts now pins project_room_project_not_found as input_unsupported (not retryable), matching provider-failure.ts; ProjectRoom.tsx's draft revision id is UI only. No contract described here changed.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"The Shared Project room paragraph's draft claims (text, reply target and Agent recipient kept per channel, an open thread keeps its own) still hold; the added revision id only identifies an edit so an acknowledgement clears exactly the asked revision.","inputs":["docs/reference/sdk.md","src-ui/src/views/project-page/ProjectRoom.tsx"]}
+  ]
+}

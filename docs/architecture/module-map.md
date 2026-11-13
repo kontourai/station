@@ -127,7 +127,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/feature-previews/` | The registry of feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
-| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
+| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project rooms (every channel, `#general` included) and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
 | `src-server/services/session-summary/` | Session summary records and the server-observed intent source they are derived from | Source |
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
@@ -3700,6 +3700,36 @@ The operator and member Project pages mount the scoped Room. Focused store,
 access, SDK and UI tests cover those owners; production mounting, provider-backed
 execution and two-principal browser acceptance require separate runtime evidence.
 Custom channels and Task hierarchy are not implied by this Room contract.
+
+**Channel navigation (#4794, #4795).** The room destination's channel and open
+thread are route state (`?section=room&channel=<id>&thread=<messageId>`;
+[`project-navigation.ts`](../../src-ui/src/views/project-page/project-navigation.ts),
+[`project-room-navigation.ts`](../../src-ui/src/views/project-page/project-room-navigation.ts)),
+so the sidebar, links and Back all address them; opening one is a pushed entry
+that asks the room's unsaved-send guard first. A thread is a channel message and
+the replies whose `replyTo` chain reaches it; with threads on, those replies leave
+the channel stream for the root's summary, and every send from the open thread
+replies to its root, read from the route; an open thread keeps its own unsent
+draft, so text never moves between a thread and its channel. A thread link to
+a root older than the loaded history pages back to it, one window per settled
+page, within `PROJECT_ROOM_HISTORY_MAX_PAGES`. Reading only through a thread
+leaves the channel unread until the channel itself is shown. [`ProjectConversationList`](../../src-ui/src/components/project-conversations/ProjectConversationList.tsx)
+lists a Project's live channels (the server's order) and the Task rooms the
+read-marker summary can read, newest updated first and capped, in one summary
+request per Project ([`useProjectConversationIndex`](../../src-ui/src/components/project-conversations/useProjectConversationIndex.ts)).
+Unread is the summary's own `unread`; a failed summary keeps the rows at
+normal weight with its own retry. A Task room's working mark is its Task's
+Session in the Project's Running lane (`projectLiveLanes`). Channels have no
+working mark and no row has a mention mark until #4800 and #4799 supply them. The
+sidebar renders it under the expanded Project (lazily, off the shell bundle); a
+phone renders it as the Project page, opens each channel as a full-screen
+conversation and restores the list's scroll position on return
+([`useListScrollMemory`](../../src-ui/src/views/project-page/useListScrollMemory.ts)).
+[`useMarkRoomRead`](../../src-ui/src/components/room/useMarkRoomRead.ts) marks a
+channel read through the newest message its history read showed (seqs count
+messages, so that is the version on screen; a held or failed read marks
+nothing) and a Task room through its history checkpoint's `throughSeq`, while
+the document is visible.
 
 ## ProjectTaskRoom
 

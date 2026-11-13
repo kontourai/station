@@ -150,7 +150,10 @@ does the same for the Board templates and editor.
 Layouts appear beneath it, as a vertical list. Up/Down/Home/End move within
 that list's single tab stop. The disclosure folds the selected project's
 views; project selection and Layout selection still use canonical guarded
-navigation.
+navigation. Below its Layouts the selected project lists its channels and Task
+rooms (#4794): another vertical list with one tab stop, read only while the
+project is expanded, unread and counts from the server's read markers, and a
+quiet **New channel**. Opening one navigates to the room's address.
 
 Clicking a collapsed project opens a popup with its Layouts followed by
 **Open project**. Layout and Board-availability reads are enabled only for visible

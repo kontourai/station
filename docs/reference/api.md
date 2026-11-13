@@ -1041,6 +1041,10 @@ default channel, `#general`; every per-room operation above except `POST /init`
 is also served at `/api/projects/:slug/channels/:channelId`, where `channelId`
 is that channel's room UUID. Messages, the shared note and Agent requests
 belong to one channel. A host that predates channels answers 404 for these paths.
+A Project that is not on this Station answers 404 `project_room_project_not_found`
+on every room and channel path, so clients show "no such Project", not an
+outage; a room the Project never opened answers 404 `project_room_not_found`,
+and storage that cannot be read answers 503 `project_room_unavailable`.
 
 | Method and path | Input | Result |
 | --- | --- | --- |
@@ -2269,7 +2273,10 @@ POST /api/read-markers/summary
 The response holds one item per target, in request order:
 `{ target, latestVersion, seenVersion, unread, unreadCount? }`, or
 `{ target, unavailable: true }`. More than 100 targets is a 400 with
-`read_marker_too_many_targets`.
+`read_marker_too_many_targets`. A Project room target's `roomId` is any of the
+Project's channels (`channelId`, `#general` included); an id that is not one
+of its channels is unavailable. A Task room never opened is unavailable too:
+reading markers never opens one.
 
 ```http
 POST /api/read-markers/mark

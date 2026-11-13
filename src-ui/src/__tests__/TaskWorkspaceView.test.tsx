@@ -188,6 +188,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     });
   },
   useDiffCommentsQuery: () => ({ data: [] }),
+  // The Task room marks itself read through the server read markers (#4795).
+  useMarkReadMutation: () => ({ mutate: vi.fn() }),
   useCreateDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   bindStarterWork: (...args: unknown[]) => bindStarterWork(...args),

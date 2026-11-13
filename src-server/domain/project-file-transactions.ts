@@ -83,6 +83,20 @@ export class ProjectIdentityNotPreparedError extends FileStorageNotFoundError {
   }
 }
 
+/**
+ * The Project itself is not stored here (no record, or an emptied one). A
+ * subclass, not a message variant, so a route can answer "no such Project"
+ * (#4855). It keeps the inherited `file_storage_not_found` code, which
+ * storage readers and the identity route already branch on, so every
+ * existing `instanceof` catch and code check reads it exactly as before.
+ */
+export class ProjectNotFoundError extends FileStorageNotFoundError {
+  constructor(projectSlug: string) {
+    super(`Project '${projectSlug}' not found`);
+    this.name = 'ProjectNotFoundError';
+  }
+}
+
 export class FileStorageUnavailableError extends Error {
   readonly code = 'file_storage_unavailable';
 
@@ -123,6 +137,8 @@ type Parser<T> = (value: unknown) => T;
 type ListParser<T> = (value: unknown) => T[];
 interface RevisionOptions {
   projectRevision?: boolean;
+  /** The error a missing file reads as; a plain not-found by default. */
+  missing?: () => FileStorageNotFoundError;
   requiredProjectFingerprint?: string;
 }
 
@@ -196,7 +212,10 @@ export class ProjectFileTransactions {
       this.projectPath(projectSlug),
       parse,
       `Project '${projectSlug}' not found`,
-      { projectRevision: true },
+      {
+        projectRevision: true,
+        missing: () => new ProjectNotFoundError(projectSlug),
+      },
     ) as ProjectStoredFileRevision<T>;
   }
 
@@ -374,7 +393,9 @@ export class ProjectFileTransactions {
       snapshot = readJsonFileSnapshot<unknown>(path, undefined);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new FileStorageNotFoundError(missingMessage);
+        throw (
+          options.missing?.() ?? new FileStorageNotFoundError(missingMessage)
+        );
       }
       throw new FileStorageUnavailableError(
         'Project storage is unavailable',
@@ -382,7 +403,7 @@ export class ProjectFileTransactions {
       );
     }
     if (snapshot.fingerprint === null) {
-      throw new FileStorageNotFoundError(missingMessage);
+      throw options.missing?.() ?? new FileStorageNotFoundError(missingMessage);
     }
     let value: T;
     try {
@@ -577,9 +598,7 @@ export class ProjectFileTransactions {
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new FileStorageNotFoundError(
-          `Project '${projectSlug}' not found`,
-        );
+        throw new ProjectNotFoundError(projectSlug);
       }
       throw new FileStorageUnavailableError(
         'Project storage is unavailable',
@@ -587,7 +606,7 @@ export class ProjectFileTransactions {
       );
     }
     if (project.fingerprint === null) {
-      throw new FileStorageNotFoundError(`Project '${projectSlug}' not found`);
+      throw new ProjectNotFoundError(projectSlug);
     }
     try {
       this.validateProject?.(project.value);

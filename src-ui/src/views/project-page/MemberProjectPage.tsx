@@ -15,6 +15,7 @@ import {
   useScopedMemberProjectSharedTaskDetails,
   useScopedMemberProjectSharedTasksQuery,
 } from '../../contexts/ProjectsContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { ToolLibraryClientContext } from '../agent-editor/ToolLibraryContext';
 import { AccessSection } from '../project-settings/AccessSection';
 import { ProjectAgentsPanel } from '../project-settings/ProjectAgentsPanel';
@@ -36,9 +37,10 @@ export function MemberProjectPage({
   requestScope: NonNullable<RequestScope>;
   accessWriteDisabledReason?: string;
 }) {
-  const { destination, selectDestination } = useProjectDestination(
-    project.slug,
-  );
+  const { destination, room, openRoom, openThread, leaveRoom } =
+    useProjectDestination(project.slug);
+  // #4795: a channel is its own full screen on a phone.
+  const roomScreen = useIsMobile() && destination === 'room';
   const overview = destination === 'overview' || destination === 'sources';
   const [selectedShareId, setSelectedShareId] = useState<string | null>(null);
   const [toolsProjectId, setToolsProjectId] = useState<string>();
@@ -51,7 +53,9 @@ export function MemberProjectPage({
   );
 
   return (
-    <div className="project-page project-page--space">
+    <div
+      className={`project-page project-page--space${roomScreen ? ' project-page--room-screen' : ''}`}
+    >
       <div className="project-page__inner project-page__space">
         {/* The one icon rule every surface uses. It refuses a URL or a path,
             so the native relay view never issues a raw image request outside
@@ -59,13 +63,15 @@ export function MemberProjectPage({
             `ProjectIcon` applies the same rule; it is stated again here
             because this is the broker boundary, so a header that stopped
             using `ProjectIcon` could not start loading remote images. */}
-        <MemberProjectHeader
-          project={{ ...project, icon: displayableProjectIcon(project.icon) }}
-          onRefresh={() => void sharedWork.refetch()}
-          refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
-        />
+        {!roomScreen && (
+          <MemberProjectHeader
+            project={{ ...project, icon: displayableProjectIcon(project.icon) }}
+            onRefresh={() => void sharedWork.refetch()}
+            refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
+          />
+        )}
         <div className="section-nav-rail project-page__layout">
-          <ProjectNavigation slug={project.slug} member />
+          {!roomScreen && <ProjectNavigation slug={project.slug} member />}
           <section className="section-nav-rail__body project-page__content">
             <div hidden={!overview && destination !== 'room'}>
               <ProjectRoom
@@ -73,10 +79,25 @@ export function MemberProjectPage({
                 projectId={project.id}
                 requestScope={requestScope}
                 variant={destination === 'room' ? 'full' : 'preview'}
-                onOpenRoom={() => selectDestination('room')}
+                onOpenRoom={openRoom}
+                {...(destination === 'room'
+                  ? {
+                      routeChannel: { id: room.channelId },
+                      onRouteChannel: openRoom,
+                      thread: { rootId: room.threadId, open: openThread },
+                    }
+                  : {})}
+                {...(roomScreen
+                  ? {
+                      screen: {
+                        backLabel: `Back to ${project.name}`,
+                        onBack: leaveRoom,
+                      },
+                    }
+                  : {})}
               />
             </div>
-            {project.actions.includes('manage-members') && (
+            {!roomScreen && project.actions.includes('manage-members') && (
               <details>
                 <summary>Project access</summary>
                 <AccessSection
@@ -87,7 +108,8 @@ export function MemberProjectPage({
                 />
               </details>
             )}
-            {project.actions.includes('manage-members') &&
+            {!roomScreen &&
+              project.actions.includes('manage-members') &&
               (toolsProjectId === project.id ? (
                 <ToolLibraryClientContext.Provider
                   value={{

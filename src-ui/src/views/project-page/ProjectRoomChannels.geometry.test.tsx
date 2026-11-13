@@ -55,6 +55,7 @@ const channels: ProjectRoomChannel[] = [
 const hook = {
   list: { data: channels, isError: false, refetch: async () => undefined },
   unsupported: false,
+  projectMissing: false,
   create: { isPending: false },
   update: { isPending: false, isError: false },
 } as unknown as ProjectRoomChannels;
