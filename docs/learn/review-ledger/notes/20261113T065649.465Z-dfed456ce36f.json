@@ -1,0 +1,15 @@
+{
+  "revision": "4660c74643f26936379aea9ae2327f499ff55594",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Inspected frozen historical composer capture. Preserve original pixels and capturedRevision; current mark stacking, generic Agent fallback and model-priority label are later changes, separately rendered in the ten current gallery PNGs. This review does not promote historical imagery to current UI evidence.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Inspected frozen historical composer capture. Preserve original pixels and capturedRevision; current mark stacking, generic Agent fallback and model-priority label are later changes, separately rendered in the ten current gallery PNGs. This review does not promote historical imagery to current UI evidence.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Inspected frozen historical composer capture. Preserve original pixels and capturedRevision; current mark stacking, generic Agent fallback and model-priority label are later changes, separately rendered in the ten current gallery PNGs. This review does not promote historical imagery to current UI evidence.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Inspected frozen historical composer capture. Preserve original pixels and capturedRevision; current mark stacking, generic Agent fallback and model-priority label are later changes, separately rendered in the ten current gallery PNGs. This review does not promote historical imagery to current UI evidence.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"Inspected updated screenshot manifest: ten successful composer captures merged through the existing partial baseline command, retaining unrelated baselines. Model geometry at 390/412 and source mappings extend existing gallery coverage; no runner policy or deadlines changed.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}
