@@ -2461,24 +2461,23 @@ export class MuseAdapter implements ProviderAdapterShape {
       prompt: input.displayInput ?? input.input,
       metadata: { museTransport: 'serve' },
     });
-    // After the send returns, as an engine's own output would arrive.
-    setImmediate(() => {
-      this.publish({
-        ...base,
-        eventId: crypto.randomUUID(),
-        createdAt: this.now().toISOString(),
-        itemId: `${turnId}:command`,
-        method: 'content.text-delta',
-        delta: text,
-      });
-      this.publish({
-        ...base,
-        eventId: crypto.randomUUID(),
-        createdAt: this.now().toISOString(),
-        method: 'turn.completed',
-        finishReason: 'stop',
-        outputText: text,
-      });
+    // Opened and closed together: the session already takes another send,
+    // so this turn must never read as open after the send returns.
+    this.publish({
+      ...base,
+      eventId: crypto.randomUUID(),
+      createdAt: this.now().toISOString(),
+      itemId: `${turnId}:command`,
+      method: 'content.text-delta',
+      delta: text,
+    });
+    this.publish({
+      ...base,
+      eventId: crypto.randomUUID(),
+      createdAt: this.now().toISOString(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: text,
     });
     return { threadId: input.threadId, turnId };
   }

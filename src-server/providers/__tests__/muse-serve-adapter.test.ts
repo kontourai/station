@@ -4475,6 +4475,12 @@ describe('Muse parity: /compact is session/compact', () => {
       result: { commandId: request.params?.commandId, status: 'accepted' },
     });
     const { turnId } = await compacting;
+    // The turn is closed by the time the send returns: draining only
+    // microtasks (no timer or I/O turn) already delivers its terminal.
+    for (let hop = 0; hop < 50; hop += 1) await Promise.resolve();
+    expect(
+      of(h.events, 'turn.completed').some((event) => event.turnId === turnId),
+    ).toBe(true);
     await settle();
     const forTurn = h.events.filter(
       (event) => (event as { turnId?: string }).turnId === turnId,
