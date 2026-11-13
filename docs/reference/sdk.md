@@ -721,8 +721,11 @@ An `indeterminate` command may have applied: refresh and inspect before another
 explicit operation. Reads do not start or resume an engine.
 
 The default-off **Session goals** preview currently supports Codex inspection,
-paused-objective saves, pause and clear. Resume and Station-managed objective
-execution remain unavailable. Goal usage is engine-reported and is not a billing
+paused-objective saves, pause and clear, and Muse (`muse serve`) inspection,
+pause and clear. Resume and Station-managed objective execution remain
+unavailable. Goal accounting fields are optional: render only the figures
+present, and hide the budget input when the capability's `tokenBudget` is
+`unsupported`. Goal usage is engine-reported and is not a billing
 statement or proof that the requested outcome was achieved.
 
 Use hooks inside the host's React provider tree. Query hooks return a React

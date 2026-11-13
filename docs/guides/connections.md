@@ -94,7 +94,7 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ## Sign an engine profile in from a device
 
-Open **Connections → Engines → Codex** or **Claude**. The account picker shows
+Open **Connections → Engines → Codex**, **Claude** or **Muse**. The account picker shows
 saved accounts and marks the account currently in use. Picking an account changes
 what you view; it does not change the account used by runs. Existing account
 application controls remain under **Advanced**.
@@ -106,6 +106,27 @@ and select **Finish sign-in**. Station reports completion only after the engine
 confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
+
+Muse Code (#1942) signs in with a device code too: Station runs the bare
+`muse login`, offered only while `muse login --help` still says "approve a code
+in your browser", and relays its link and code. Sign-in state comes from
+`muse usage --json`: its JSON answer is signed in, "not logged in" is signed
+out, and anything else is unknown. API-key sign-in is not offered for a
+profile (`META_API_KEY` in Station's environment still takes priority, as Muse
+documents). A Muse profile is an XDG config root: sessions, `muse serve` hosts
+and exec turns run with `XDG_CONFIG_HOME` set to the profile, where Muse reads
+its `muse/` folder, and a named profile that cannot be prepared refuses the
+start. Import copies `settings.json` and `skills/`, `auth.json` only when you
+tick the credential box, and never `trust.json` (folder trust is your decision,
+not the profile's). `XDG_DATA_HOME` is not moved, so sessions resume under any
+profile. Because `XDG_CONFIG_HOME` is not private to Muse, tools a profile
+session runs inherit it: a tool that reads its configuration from
+`XDG_CONFIG_HOME` when that is set (for example the GitHub CLI's
+`gh/hosts.yml`) looks in the profile instead and does not find it there. Per-profile
+allowance for Muse reads unavailable: the account it was observed on reported
+no allowance, so Station has no real shape to map. The device-code relay was
+checked live against Muse Code 1.4.18 up to the code, then cancelled before
+approval.
 
 Relayed login applies to saved credential profiles. The default account follows
 the connection's configured home and environment and is managed by the host CLI;

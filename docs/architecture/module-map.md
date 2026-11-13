@@ -57,6 +57,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [SessionGoalModule](#sessiongoalmodule) | Inspect and control an exact live Session's advertised Goal capability. | `src-server/services/orchestration/session-goal-module.ts` |
+| [MuseCodeAdapter](#musecodeadapter) | Run Muse Code sessions on `muse serve`, with `muse exec` as the per-turn fallback. | `src-server/providers/adapters/muse-adapter.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
 | [SessionCommandModule](#sessioncommandmodule) | Execute the closed session-command vocabulary and return an outcome with explicit receipt certainty. | `src-server/services/orchestration/session-command-module.ts` |
 | [SessionLifecycleModule](#sessionlifecyclemodule) | Mutate one session lifecycle without racing provider turn startup. | `src-server/services/orchestration/session-lifecycle-module.ts` |
@@ -1499,7 +1500,10 @@ Station, authority and Session; Chat settings consumes the same capability.
 uses an already-owned app-server connection and validates native thread identity.
 It supports read, save paused, pause and clear, with bounded waits and no
 automatic mutation retry. An unacknowledged mutation remains pending after a
-timeout. Reads never start or resume an engine. Activation and Station-managed
+timeout. The [Muse adapter](../../src-server/providers/adapters/muse-adapter.ts)
+supports read, pause and clear on a `muse serve` Session and reports no
+accounting figures; a mutation applies only once Muse's own `goalChanged`
+confirms it. Reads never start or resume an engine. Activation and Station-managed
 execution remain unavailable pending durable admission and recovery integration.
 
 **Evidence.** [Route tests](../../src-server/routes/orchestration/__tests__/session-goals.test.ts)
@@ -2311,7 +2315,8 @@ For an adapter that announces `session.started` before its start returns, accept
 content validator. Provider normalization
 (`src-server/providers/adapters/harness-questions.ts`) maps Claude
 AskUserQuestion, Codex requestUserInput and Cursor's `cursor/ask_question`
-ACP extension request into a form on the canonical
+ACP extension request, and Muse's `userInput/request` (single or multiple
+choice; free text only on a single-choice question), into a form on the canonical
 request event, and the MCP edge maps a tool server's elicitation the same
 way. SessionCommandModule validates content against the current event's form
 before the adapter, which checks it again against its own copy, translates it
@@ -2769,10 +2774,47 @@ failing Adapter or a timed-out read would erase every connection's engine.
 Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
 resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
 readiness keeps the live read (#3355).
+The projected `AgentConnectionView` carries the Adapter's declared `modelLaunch`
+(#2266), so a consumer reads model selection from the declaration rather than
+from whether the catalog listed anything.
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims
 freshness it did not observe, or route-level mapping of inspection failure.
+
+## MuseCodeAdapter
+
+**Interface.** [`MuseAdapter`](../../src-server/providers/adapters/muse-adapter.ts)
+is the provider Adapter for Muse Code. The Station runtime builds it with
+`serve: {}`, the shared credential-profile resolver (#1942) and the engine MCP
+reader, so each Session runs one `muse serve` host
+([session](../../src-server/providers/adapters/muse-serve-session.ts),
+[RPC](../../src-server/providers/adapters/muse-serve-rpc.ts),
+[child work](../../src-server/providers/adapters/muse-serve-child-work.ts)) and
+falls back to a `muse exec` process per turn when that host cannot be used.
+
+**Supporting modules.**
+[`muse-serve-discovery.ts`](../../src-server/providers/adapters/muse-serve-discovery.ts)
+runs a session-less query on a short-lived host (`model/list`, `usage/read`)
+and terminates it before the read settles.
+[`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts)
+is the engine-neutral slash-command half shared with the ACP Adapter: parsing
+the invocation, finding an `adapter-action` route in the Adapter's own listing,
+and the outcome line; how a route reaches the engine stays with each Adapter.
+[`muse-mcp-status.ts`](../../src-server/providers/adapters/muse-mcp-status.ts)
+reads `muse mcp list --json` once per Session into `engine-mcp.status`.
+[`muse-auth.ts`](../../src-server/providers/auth/muse-auth.ts) owns Muse's XDG
+config root, credential presence (never opening the file) and the unattended
+launcher environment for probes.
+
+**Behavior and limits.** The [contracts reference](../reference/contracts.md#muse-code-on-muse-serve)
+lists what a serve Session supports and what is deliberately left out.
+**Evidence.** [`muse-serve-adapter.test.ts`](../../src-server/providers/__tests__/muse-serve-adapter.test.ts)
+replays scrubbed live Muse Code 1.4.18 captures and schema-built frames;
+[`muse-adapter.test.ts`](../../src-server/providers/__tests__/muse-adapter.test.ts)
+covers exec, and [`app-home-muse.routes.test.ts`](../../src-server/routes/connections/__tests__/app-home-muse.routes.test.ts)
+the profile routes. They do not qualify an installed release or a completed
+live sign-in.
 
 ## SecretBindingAdministration and IntegrationSecretResolver
 

@@ -125,7 +125,11 @@ describes delivery per engine.
 `@kontourai/station-contracts/session-goal` owns provider-neutral Goal,
 capability, command and result shapes and their boundary parsers. Implementations
 identify `engine` or `station` ownership and advertise actual operations. Saving
-stores a paused objective; activation is a separate capability. Native Goal
+stores a paused objective; activation is a separate capability. A Goal's
+`tokenBudget`, `tokensUsed` and `timeUsedSeconds` are optional: absent means
+the implementation reports no such figure (Muse), never zero, while a `null`
+budget still means none. A capability whose implementation has no budget
+declares `tokenBudget: 'unsupported'`. Native Goal
 completion is an implementation observation, never Task completion or a Flow
 gate verdict. Unsupported, unavailable, refused and indeterminate remain
 distinct; a possible mutation must not be replayed automatically. See the
@@ -1110,6 +1114,9 @@ non-retryable.
 | `muse-exit-without-terminal` | `engine_crashed` | `true` |
 | `muse-held-turn-unfinished` | `warning` | `false` |
 | `muse-lingering-child-reaped` | `warning` | `false` |
+| `muse-model-retry-scheduled` | `warning` | `false` |
+| `muse-model-route-unserved` | `warning` | `false` |
+| `muse-sandbox-unavailable` | `warning` | `false` |
 | `muse-serve-host-exited` | `engine_crashed` | `true` |
 | `muse-serve-stop-unconfirmed` | `warning` | `false` |
 | `muse-serve-unavailable` | `warning` | `false` |
@@ -1226,6 +1233,9 @@ qualified expiry deadline. Non-null malformed groups still refuse projection.
 `subscriptionEnd` carries its own observation time and explicit renewal state;
 missing lifecycle data is not inferred from a provider plan string. Sparse
 updates preserve prior lifecycle observations without refreshing their timestamp.
+An `unavailable` result with reason `not-reported` means the provider answered
+the read and reported no observation (Muse's `usage/read` before its host has
+seen one); it is not an error and never a window at 0%.
 
 `connection-recovery` owns optional `allowancePreference` (window ID and minimum
 remaining percentage). It ranks existing eligible recovery accounts, grants no
@@ -1607,7 +1617,9 @@ first requests a child stop or turn interrupt, then can end the host after
 another bounded wait. These actions produce warnings. See the
 [approval owner](../../src-server/providers/adapters/muse-serve-session.ts).
 Workflow subagents are `child-work.updated` deltas, and an exec
-session reports its child work `not-reported`.
+session reports its child work `not-reported`. What a serve session supports
+beyond this, and what it deliberately leaves out, is in
+[Muse Code on `muse serve`](#muse-code-on-muse-serve).
 
 The shared stall watchdog (`TurnStallWatchdog` / `TurnProgressTracker`)
 defaults to three minutes. An Agent's positive, finite
@@ -1693,6 +1705,149 @@ bounded status fields. Protocol version numbers and captures cited above are
 historical observations, not a claim that a current installation runs those
 engine versions. Adapter fixture tests and real-provider journeys provide
 different evidence.
+
+## Muse Code on `muse serve`
+
+The [Muse adapter](../../src-server/providers/adapters/muse-adapter.ts) and its
+[serve session](../../src-server/providers/adapters/muse-serve-session.ts)
+accept a `muse serve` (MSP) host whose `initialize` reports one of two verified
+schema fingerprints: Muse Code 1.3.0 and 1.4.18. Any other fingerprint runs the
+session on `muse exec` with a `muse-serve-unavailable` warning. The evidence is
+adapter tests replaying scrubbed live 1.4.18 captures
+(`src-server/providers/__tests__/fixtures/muse-serve-1.4.18-*.jsonl`) and the
+evidence comments on the Muse entry of the
+[capability matrix](../../packages/contracts/src/engine-capability-matrix.ts).
+Mappings marked schema-only below were built from the 1.4.18 schema; the probed
+account never emitted them.
+
+On a serve session:
+
+- **Approvals and questions.** Muse 1.4 sends `approval/request` and
+  `userInput/request` as server requests. Station answers each with an empty
+  presentation receipt and opens one request per prompt; it still refuses any
+  other server request. A question becomes an input request with single or
+  multiple choice and selection bounds; free text is offered only on a
+  single-choice question. Station answers with `userInput/answer` (by option
+  label) or declines with `userInput/cancel`. The end of the turn, loss of the
+  host, or a session stop closes open questions; a re-hosted session reopens
+  the ones Muse still lists, under new request ids. `approval/reviewing`, when
+  Muse's automated reviewer holds a call, is `tool.progress` on that call,
+  never a request. It is not reported for a workflow subagent's call or a call
+  Station has not seen start. An escalation still arrives as an approval
+  request (schema-built, no live capture).
+- **Mid-turn steering** (#1952). `steerTurn` sends `turn/steer` with the
+  running turn as `expectedTurnId` and publishes a steer `turn.started`. Muse's
+  `commandRejected` reads as no active turn. The matrix declares native
+  steering, so the composer's Send mode defaults to Steer. A session on the
+  exec fallback answers `canSteerTurn` false, and orchestration refuses its
+  steer as `unsupported-engine` before the adapter is called.
+- **Reasoning effort.** `modelOptions.effort` maps by identity to Muse's
+  tiers (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`,
+  `ultra`): `turn/start.reasoningEffort` on serve, `--reasoning-effort` on
+  exec. A turn that names none sends the session's starting tier. A word with
+  no tier is refused `input_unsupported` before anything reaches Muse,
+  including at `preflightStart`. `turn.started` reports the tier sent as
+  `museReasoningEffort`, except under the `echo` override, which drops it.
+  A steer carries no tier.
+- **Cost and context.** `session/tokenUsage.cumulative.cost` becomes
+  `token-usage.updated.reportedCost` (`unit: 'USD'`, `scope: 'session'`) only
+  when Muse marks it `partial: false`. A partial cost is a lower bound that
+  `reportedCost` cannot mark, so it is not published. `session/contextUsage`
+  becomes `contextTokens`, plus `contextWindowTokens` when Muse's basis has a
+  window. Live 1.4.18 sent no cost; context is schema-only.
+- **Plan, model changes and retries** (schema-only).
+  `session/todoListChanged` is a full-replace `plan.updated`; cancelled and
+  unknown-status items are left out, because `PlanEntryStatus` has no
+  `cancelled`. `session/modelChanged` from `policy` is a session-scope
+  `model.rerouted`; a `user` or `default` change is a `session.configured`
+  carrying the model. `session/modelRouteUnserved` is a
+  `muse-model-route-unserved` warning, and each `turn/retryScheduled` or
+  `turn/modelRetryScheduled` is one `muse-model-retry-scheduled` warning.
+- **Sandbox.** When `initialize.sandboxAvailability` is `unavailable`, Auto
+  (which runs Muse in `allowAll`, contained only by its sandbox) is refused
+  with `SessionStartRefusedError` code `sandbox_unavailable`. The refusal
+  comes at start (before `session/start`, with no exec fallback, which would
+  run the same posture without a sandbox), at `preflightStart` once a host has
+  reported it, and per turn. Other postures run with a
+  `muse-sandbox-unavailable` warning carrying Muse's reason, and report
+  `museSandbox: 'unavailable'`.
+- **Model catalog and allowance** (#2266). `listModelCatalog` and
+  `readQuotaSnapshot` start a short-lived host (`initialize`, `initialized`,
+  then `model/list` or `usage/read`) that starts no session, and terminate it
+  before the read settles. A successful catalog is reused for one minute.
+  Live 1.4.18 answered `model/list` with an empty catalog, and an empty
+  `usage/read` is the `ConnectionQuotaResult` reason `not-reported`, never a
+  window at 0%. Selection does not follow the catalog: `AgentConnectionView`
+  carries the adapter's declared `modelLaunch`, and delegate-target discovery
+  reads `modelSelection` from it, falling back to the catalog only for a view
+  without one. Muse itself refuses an id outside its catalog.
+- **Child work.** A 1.4.18 `subagent` item supplies a workflow child's result.
+  A native `subagent` item (no workflow) is mapped from the same fields; no
+  live native spawn was captured. A tool call Muse keeps running after its
+  turn completed is child work with `workKind: command`; Stop sends
+  `task/stop` for it and `subagent/stop` for a subagent. `steerChildWork`
+  sends `subagent/sendMessage`. A workflow's turn ends at launch, so the serve
+  adapter declares `childSteerOutlivesParentTurn`: with no running parent
+  turn, orchestration admits a child steer only for a child the child-work
+  projection holds running under that steer token, after the same dormant and
+  confinement checks.
+- **`/compact`.** `getCommands` lists `/compact` as an `adapter-action` route
+  ([shared dispatch](../../src-server/providers/adapters/engine-command-dispatch.ts)),
+  sent as `session/compact`. Muse's `run_active` refuses the send as `busy`;
+  `compaction_unavailable` and `missing_run` refuse it as `input_unsupported`.
+  An exec-fallback session refuses `/compact` rather than sending it as prompt
+  text.
+- **Resume after a Station restart.** The resume cursor is the durable Muse
+  session id (`continuity.resume: 'same-session'`). A start with that cursor
+  re-attaches it on a fresh host with `session/resume`, never `session/start`
+  and never the exec fallback. Muse answering `sessionNotFound`, or with
+  another session, publishes `engine-session-binding-dead`, which recovery does
+  not retry; any other failure refuses the start and keeps the cursor. Exec
+  sessions do not resume.
+- **Goals.** Read, `goal/pause` and `goal/clear` (`tokenBudget:
+  'unsupported'`). A read reports the goal Muse last stated
+  (`session/goalChanged`): none on a fresh session, unknown after a resume
+  until Muse restates it. Pause and clear are applied once Muse's own
+  `goalChanged` shows the result; otherwise the outcome is indeterminate. The
+  goal carries no token or time figures.
+- **MCP servers.** `muse mcp list --json` runs once per session, in the
+  session's folder and credential-profile environment, and publishes a
+  complete `engine-mcp.status` with `scope: 'engine-config'`. Only names and
+  enabled state are read. An enabled server is `configured` (the engine's
+  configuration enables it; Muse reports no connection state), a disabled one
+  `disabled`. No reconnect is declared.
+- **Sign-in.** Muse uses credential profiles; see
+  [Sign an engine profile in from a device](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
+  Readiness and sign-in probes and the device login run with
+  `MUSE_NO_AUTO_UPDATE=1` and `MUSE_LOGIN=0` (`MUSE_UNATTENDED_LAUNCHER_ENV` in
+  [muse-auth.ts](../../src-server/providers/auth/muse-auth.ts)), so the `muse`
+  launcher neither downloads nor prompts during a probe. Sessions do not set
+  them.
+
+A session on the exec fallback has no steering, questions, resume,
+`/compact` or goals (a goal read answers unsupported), and reports its child
+work `not-reported`; exec always runs as Auto (see
+[managed policy](../guides/managed-policy.md)). The catalog and allowance
+reads belong to the adapter, not a session, and need only a usable `muse
+serve`.
+
+These Muse capabilities are deliberately not offered:
+
+| Capability | Why not |
+| --- | --- |
+| Native fork (`session/fork`) | The conversation fork route is replay-only and no native fork activation path exists; offering one needs an owner decision on disclosure copy and fallback. |
+| Rewind | Muse offers it only on its experimental surface. |
+| Goal set and resume | `goal/set` and `goal/resume` start a goal turn on an idle session, outside Station's turn admission; needs a product decision. |
+| Adopting Muse sessions Station did not start | No attached-session source lists them (`externalSessionContinuation: unsupported`). |
+| Subagent resume, interrupt, read result, close | No Station caller or adapter seam uses them. |
+| `task/background`, `stopAll` | No Station surface; Stop targets one task or subagent. |
+| Listing Muse's skills | `skill/list` is per session, while command listing is per provider; a probe host would have to start, and leave stored, a Muse session. |
+| API-key sign-in | No engine route offers an API-key mechanism for profiles; `META_API_KEY` in the environment still applies. |
+| Per-profile account allowance | The allowance shape has not been seen (the observed account reported none), so account usage reads unknown. |
+| Managed install | The binary channel is publicly downloadable with a sha256 manifest, but managed install is keyed on built-in ACP descriptors. |
+| MCP reconnect | Not in stable MSP. |
+| `session/sideChat`, `userShell`, recap, computer use, feedback, plugins, hooks list, `view/*`, video media and upload | No Station surface. |
+| Engine-side queue | Station's conversation inbox owns queueing. |
 
 ## Provider plan quota (#2265)
 
@@ -1849,7 +2004,11 @@ child, turn, input and required client input ID. `ChildWorkInstructionPage`
 contains Station-owned instructions and their delivery states, separately from
 the provider transcript. The optional `childWorkSteering` host flag advertises
 the command and page, not a guarantee that a particular provider accepts a child
-steer. See the [Session API](session-api.md#lifecycle-control-commands) for
+steer. A child steer normally needs the parent turn to be running. An adapter
+that declares `childSteerOutlivesParentTurn` (Muse serve, whose workflow turn
+ends at launch) also has a steer admitted with no running parent turn, but
+only for a child the child-work projection holds running under that steer
+token. See the [Session API](session-api.md#lifecycle-control-commands) for
 authority, replay and provider limits.
 
 ### Conversation titles

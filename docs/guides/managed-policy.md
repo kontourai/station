@@ -244,6 +244,13 @@ runs as Auto inside Muse's sandbox. Under a ceiling of `ask`, a Muse chat
 that would run through `muse exec` (because `muse serve` is turned off or
 fails to start) does not start, and says why. Under `auto` it runs as usual.
 
+Separately from any ceiling, a `muse serve` host that reports it cannot
+enforce its sandbox (`sandboxAvailability: unavailable`) refuses Auto, which
+relies on that sandbox as its only containment: the start is refused
+(`sandbox_unavailable`) without falling back to `muse exec`, and so is a turn
+asking for Auto. Other approval modes still run, with a
+`muse-sandbox-unavailable` warning.
+
 A plugin Agent's tool approvals (`autoApprove`, `unattendedAutoApprove`) can
 be removed or narrowed under a ceiling, but not added to.
 

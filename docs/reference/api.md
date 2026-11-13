@@ -57,6 +57,12 @@ comes from the request.
 
 The first Codex implementation saves objectives paused and preserves native
 accounting when the engine does. It does not advertise activation/resume.
+A Muse Session on `muse serve` advertises `read`, `pause` and `clear` only:
+Muse's `goal/set` and `goal/resume` start a goal turn outside Station's turn
+admission. Its capability declares `tokenBudget: 'unsupported'`, and its Goal
+omits `tokenBudget`, `tokensUsed` and `timeUsedSeconds`; an absent figure is
+unreported, never zero. After a Station restart its Goal reads unavailable
+until Muse states it again.
 Results distinguish applied, refused, unsupported and indeterminate. A timeout
 after invocation is indeterminate; pending native acknowledgement blocks another
 mutation. Refresh is observation, not permission to retry an uncertain write.
