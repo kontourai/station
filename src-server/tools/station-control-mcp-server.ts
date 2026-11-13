@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerAssessmentTools } from './station-control-assessment-tools.js';
+import { registerAutomationProposalTools } from './station-control-automation-proposal-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
@@ -481,6 +482,7 @@ export function createSelectedStationControlMcpServer(
   registerCatalogTools(registry);
   registerOperationsTools(registry);
   registerScheduleTools(registry);
+  registerAutomationProposalTools(registry);
   registerTerminalTools(registry);
   registerPlatformTools(registry);
   registerAssessmentTools(registry);

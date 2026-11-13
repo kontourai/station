@@ -145,6 +145,6 @@ test('a definite refusal leaves the answer editable without an uncertainty warni
     screen.queryByRole('button', { name: 'Retry same answer' }),
   ).toBeNull();
   expect(document.body.textContent).not.toMatch(
-    /private_machine_scope|could not confirm|same operation identity/i,
+    /private_machine_scope|could not confirm|send it twice/i,
   );
 });

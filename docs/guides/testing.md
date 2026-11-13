@@ -1301,9 +1301,10 @@ Baseline artifacts (both committed):
   path: an unchanged screen never touches its reference image.
 - `tests/screenshots.baseline/<name>.png` — the reference image itself,
   read only when a screen's hash disagrees, to compute and localize exactly
-  which pixels moved. Committing the full companion PNG set costs ~2.6MB per
-  regeneration — accepted as the price of localizing a real regression to
-  exact pixels instead of only knowing a screen's hash changed.
+  which pixels moved. Committing the full companion PNG set costs about 14MB
+  per regeneration at 166 screens (#4692) — accepted as the price of
+  localizing a real regression to exact pixels instead of only knowing a
+  screen's hash changed.
 
 - `npm run screenshot:baseline` reads a completed `gallery/capture.json` +
   its PNGs and writes both baseline artifacts. It refuses to write from a
@@ -1451,8 +1452,8 @@ Two consequences worth stating plainly:
 - **Bump the container in lockstep with `@playwright/test`** and review renderer
   differences separately. Baseline changes need a reviewed commit of their own.
   A rebuilt base image published under the same tag is a different renderer
-  wearing the same name, which is why the pin is a digest rather than
-  `v1.64.1-noble`.
+  wearing the same name, which is why the pin is a digest rather than a
+  `vX.Y.Z-noble` tag alone.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version

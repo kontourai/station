@@ -1,0 +1,7 @@
+{
+  "revision": "a3b5900fa819f6de586858853c21db6ad7d657f3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"event-store.ts change only rewrites the private #3075 thread-content backfill (per-thread index walk, thread cursor column, legacy numeric-cursor resume) and exports its SQL; searched for content-version, thread_content, backfill and index claims: none describe the backfill mechanics, and the read-marker projection row stays accurate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

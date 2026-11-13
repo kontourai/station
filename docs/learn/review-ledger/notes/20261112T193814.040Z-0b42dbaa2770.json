@@ -1,0 +1,7 @@
+{
+  "revision": "0b810862bf4c254ddb692f9c0d7a755416e4c4da",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"SessionsView now computes the row's sessionWorkStatus once for the meta and plan lines; Quick review, row menu, selection, filters and focus return unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/views/SessionsView.tsx"]}
+  ]
+}

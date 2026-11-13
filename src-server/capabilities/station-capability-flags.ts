@@ -135,6 +135,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // (src-server/routes/system/diagnostics.ts) and the station-control
   // troubleshoot tools. Served in every deployment mode.
   troubleshootPrepare: true,
+  // #4710: GET /api/analytics/usage-rollup (src-server/routes/operations/
+  // analytics.ts) filters by `connectionId`/`modelConnectionId` and accepts
+  // every declared usage provider. An older host ignores the connection filters and would
+  // answer unfiltered totals, so clients send them only on this flag.
+  usageConnectionFilters: true,
   // A busy `/chat` send with files is held in the conversation inbox
   // (src-server/routes/orchestration/orchestration.ts `inboxFollowUpOf`),
   // its bytes in the attachment blob store. Hosted deployments withdraw it:

@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). Checked app-homes/<connectionId> and credential-profile ref claims (line 311); these concern credential homes, not usage attribution.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

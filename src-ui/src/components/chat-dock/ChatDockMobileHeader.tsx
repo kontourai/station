@@ -327,7 +327,7 @@ export function ChatDockMobileHeader({
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
-            title={inboxActive ? 'Inbox' : sessionTitle}
+            title={inboxActive ? undefined : sessionTitle}
           >
             {inboxActive ? 'Inbox' : sessionTitle}
           </span>
