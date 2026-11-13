@@ -5355,7 +5355,9 @@ proposal (404).
 `ConversationAgentSchedule`: the conversation's waiting check-backs
 (`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
 by name), the automations whose runs land in it (`automations`, absent when
-the scheduler could not be read), and a usage-limit stop waiting for a known
+the scheduler could not be read), the agent's open Automation source and rule
+proposals (`automationProposals`; absent on a hosted Station or one that
+predates them), and a usage-limit stop waiting for a known
 reset (`usageLimitResume`). A person must be able to read every Session of
 the conversation; an agent may read only its own conversation.
 `POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
@@ -5367,6 +5369,87 @@ and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
 needs a person who may send to the conversation, and answers 404 to anyone
 else. An agent cannot take those person-only actions. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
+
+### Automation proposals
+
+An agent proposes an Automation source or rule, and a person confirms it
+(#4830; [decision](../decisions/agent-proposed-automations.md),
+[routes](../../src-server/routes/orchestration/automation-proposals.ts)).
+
+The agent's leaves are internal-only (404 otherwise). They act on the
+verified caller's own conversation:
+
+- `POST /api/orchestration/station-control/automation-proposals/sources`
+  (`propose_automation_source`);
+- `POST .../automation-proposals/rules` (`propose_automation_rule`);
+- `GET .../automation-proposals` (`list_automation_proposals`, newest 20 in
+  any state).
+
+A proposal answers `{id, state: 'open', description}` and creates nothing.
+The `description` holds only Station's own sentences. The agent's name,
+conditions, instructions and reason stay in the proposal's `source` or
+`rule` and `rationale`, and the card shows them apart, whole.
+It is refused with one of these codes:
+
+- 403 `automation_proposal_unattended`: the inferred calling turn (the
+  Session's running turn, `stationControlCallingTurn`) did not start with
+  the server-stamped person mark (`authoredBy: 'person'`). This includes a
+  call while that turn's start is not yet stored, and a turn that changed
+  before the proposal was written: the check runs again in the insert's
+  transaction. The turn is inferred, not known: a concurrent steer can clear
+  a delegated continuation's pending reservation and let its call through,
+  and an invocationless legacy start can leave the Session refusing until
+  it exits ([#4882](https://github.com/kontourai/station/issues/4882)). Only the composer sets the mark. A delegated
+  child's result, a `/chat/delegated` peer send, a background or CLI run,
+  an MCP prompt, an automation, a Task dispatch, a check-back, a turn
+  recorded before the mark, and no turn at all are refused. A Session that acts for no one is refused earlier by the
+  station-control guard (`station_control_role_required`).
+- 403 `automation_proposal_exceeds_authority`: a Project or Agent outside
+  the chat's dispatch scope, an action other than `dispatch-task`,
+  `approvalMode: 'auto'`, or a `fullAccessGrant`, credential, secret,
+  `enabled` or `mode` field.
+- 400 `automation_proposal_invalid`: something the Automation store would not
+  create. `problems` lists why.
+- 409 `automation_proposal_limit_reached` (3 open) or
+  `automation_proposal_rate_limited` (10 an hour).
+- 503 `automation_proposal_unavailable`.
+
+A person answers a proposal with these leaves:
+
+- `POST /api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/confirm`,
+  with an optional body `{enable: boolean}`;
+- `POST .../automation-proposals/:proposalId/decline`.
+
+Both need a person who may send to the conversation; anyone else gets 404.
+A request that may be an agent's gets 403 `person-approval-required`.
+Confirm also needs the Station operator in person (403
+`automation_proposal_operator_required`).
+
+Confirm decides the proposing chat's scope again, for its recorded caller.
+Each Agent must still be the one it named: the same slug, its own Project,
+and a digest of its definition. Confirm checks this before claiming the
+proposal, then again inside the configuration store's lock for creation and
+for enabling. A moved, deleted, reused-slug or unreadable binding answers
+409 `automation_proposal_binding_changed` and creates nothing. If the check
+fails only inside the enabling lock, the object is created but not enabled
+(`enabled: false`).
+
+Confirm creates the source disabled, or the rule in `observe`, unless
+`enable` is true. The id is derived from the proposal, so a Confirm retried
+after an interrupted one adopts what it created instead of creating a
+second. Startup marks an interrupted Confirm `confirmed` if its object
+exists, and `open` otherwise.
+
+Other Confirm refusals:
+
+- 409 `automation_proposal_source_pending`: a rule whose source proposal is
+  not yet confirmed.
+- 409 `automation_proposal_settled`: the proposal was already answered.
+
+Confirm answers `{proposal, createdId, enabled, untrustedContentAtConfirm}`.
+The chat schedule read adds `untrustedContentNow` to each open proposal: the
+conversation's untrusted-content mark as it is now, beside the
+`untrustedContent` recorded when the agent proposed it.
 
 ### A person's coordinator Session
 

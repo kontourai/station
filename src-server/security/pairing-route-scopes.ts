@@ -3744,6 +3744,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/job-proposals',
     },
+    // #4830 `propose_automation_source`, `propose_automation_rule` and
+    // `list_automation_proposals`: internal-only at the route like the leaves
+    // above, on the verified caller's own conversation. A proposal creates
+    // nothing; a person's Confirm below does.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/sources',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/rules',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/automation-proposals',
+    },
     // `terminal_run` and `terminal_read` (#3994): internal-only at the route
     // (404 otherwise), on the verified caller's own conversation. A request
     // runs nothing until a person approves it on `/api/terminal/runs`.
@@ -3782,6 +3798,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
+    },
+    // #4830: a person's Confirm and Decline of an agent's Automation
+    // proposal. The same gate as the job proposal's Decline (sending to the
+    // conversation, never a request that may be an agent's); Confirm also
+    // requires the Station operator in person, because it creates
+    // Station-wide configuration.
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/confirm',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/decline',
     },
     // #3628: the person's own coordinator designation. Every leaf reads or
     // writes only the request principal's record and refuses a request that
