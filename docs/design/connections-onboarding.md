@@ -32,7 +32,10 @@ work-blocking restrictions also appear in the workspace. Routine reconnects use
 the connection indicator. After three failed checks, a toast names the previously
 connected Station and its loss reason, without showing its address. It remains
 until recovery or dismissal. Recovery replaces that notice after any active event
-stream catches up. Decisions shown in Station details do not also raise a toast. Setup-return guidance is inline on the current page,
+stream catches up. If health recovers with a terminally closed stream, the loss
+notice clears without claiming event delivery recovered. A paused reconnect
+updates the notice to request attention. Decisions shown in Station details take
+over an existing loss notice and do not also raise a toast. Setup-return guidance is inline on the current page,
 and short action outcomes use toasts. No global banner stack is mounted.
 
 A fresh phone without a real saved Station instead shows the QR-first welcome
