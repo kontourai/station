@@ -180,7 +180,7 @@ describe('POST / applies the same rule at creation', () => {
 });
 
 describe('GET / derives repository artwork', () => {
-  test('returns discovered artwork without persisting it', async () => {
+  test('returns the same derived artwork in list and detail without persisting it', async () => {
     const { app, stored } = await harness();
     const directory = stored().workingDirectory as string;
     mkdirSync(join(directory, '.git'));
@@ -189,6 +189,8 @@ describe('GET / derives repository artwork', () => {
     expect(response.status).toBe(200);
     const body = await json(response);
     expect(body.data[0].icon).toBe(pngDataUrl(8));
+    const detail = await json(await app.request('/demo'));
+    expect(detail.data.icon).toBe(body.data[0].icon);
     expect(stored().icon).toBeUndefined();
   });
 });

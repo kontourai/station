@@ -201,7 +201,7 @@ available; removing the Home card does not enable, disable or restart them.
 
 ## Project display identity
 
-For operator Project lists, a Project without an explicit icon uses the first
+For operator Project list and detail reads, a Project without an explicit icon uses the first
 valid discovered image when its working directory is a repository root
 (including a worktree with a `.git` file). This is derived display metadata;
 Station does not save the discovered icon into the Project record. Discovery

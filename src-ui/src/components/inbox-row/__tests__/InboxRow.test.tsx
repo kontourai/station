@@ -538,6 +538,23 @@ describe('the chip line exists only when a chip does', () => {
     expect(document.querySelector('.project-icon')).not.toBeNull();
   });
 
+  it('does not borrow host artwork or colour for a peer-bound chat with the same project slug', () => {
+    const row = rowFor();
+    renderRow(
+      {
+        ...row,
+        facts: {
+          ...row.facts!,
+          station: { id: 'peer', label: 'Peer Station' },
+        },
+      },
+      { projectIcon: '🚀', projectAccent: '#ff8800' },
+    );
+    expect(document.querySelector('.project-icon--icon')).toBeNull();
+    expect(document.querySelector('.project-icon--initials')).not.toBeNull();
+    expect(document.querySelector('[data-project-icon="dot"]')).toBeNull();
+  });
+
   it('the chip derivation, fact by fact', () => {
     expect(inboxRowChips({})).toEqual([]);
     expect(inboxRowChips({ receivedAgentMessage: true })).toEqual([

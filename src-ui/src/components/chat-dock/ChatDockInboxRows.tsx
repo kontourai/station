@@ -576,8 +576,8 @@ export function InboxRow({
   onDraftDiscarded,
   agents,
   gitLocation,
-  projectAccent,
-  projectIcon,
+  projectAccent: suppliedProjectAccent,
+  projectIcon: suppliedProjectIcon,
   size = 'card',
   chrome = 'hover',
   actionsInDetails = false,
@@ -588,6 +588,9 @@ export function InboxRow({
   detailsOpen: controlledDetailsOpen,
   onDetailsOpenChange,
 }: InboxRowProps) {
+  // The slug maps belong to the host; peer facts must not borrow its artwork.
+  const projectIcon = facts?.station ? undefined : suppliedProjectIcon;
+  const projectAccent = facts?.station ? undefined : suppliedProjectAccent;
   const identity = workIdentityMarks(item, agents);
   // #3159: a row whose conversation a message may reference is a drag source.
   const referenceable = useReferenceableConversations();
