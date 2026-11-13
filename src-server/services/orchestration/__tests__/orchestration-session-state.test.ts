@@ -4624,3 +4624,50 @@ test('summary does not invent a permission kind when the open event is unavailab
   expect(summary?.openRequestIds).toEqual(['unknown']);
   expect(summary?.openRequestKinds?.unknown).toBeUndefined();
 });
+
+test.each(['AskUserQuestion', 'cursor/create_plan', 'ExitPlanMode'])(
+  'summary display kind for %s never changes lifecycle routing',
+  (toolName) => {
+    const loaded = {
+      provider: 'claude' as const,
+      threadId: 'display-form',
+      status: 'running' as const,
+      createdAt: '2026-11-01T00:00:00Z',
+      updatedAt: '2026-11-01T00:00:00Z',
+    };
+    const summary = buildOrchestrationSessionSummary({
+      loaded,
+      answerability: OBSERVATION,
+      openRequestIds: ['q'],
+      events: [
+        {
+          provider: 'claude',
+          threadId: loaded.threadId,
+          createdAt: loaded.createdAt,
+          eventId: 'q-event',
+          method: 'request.opened',
+          requestId: 'q',
+          requestType: 'approval',
+          title: 'Review',
+          payload: {
+            toolName,
+            inputRequest: {
+              schema: 'station.input-request/v1',
+              source: 'harness:claude',
+              requester: 'Claude',
+              message: 'Choose',
+              body: {
+                kind: 'form',
+                fields: [{ name: 'answer', kind: 'string', required: true }],
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(summary.openRequestKinds).toEqual({
+      q: toolName === 'AskUserQuestion' ? 'input' : 'approval',
+    });
+    expect(summary.lifecycleState).toBe('review_pending');
+  },
+);

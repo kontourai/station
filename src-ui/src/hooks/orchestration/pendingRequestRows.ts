@@ -186,7 +186,12 @@ export function unansweredApprovalRequests(
       needsApproval: true,
       approvalId: request.requestId,
       requestKind:
-        request.requestType === 'input' || inputRequest ? 'input' : 'approval',
+        request.requestType === 'input' ||
+        (inputRequest &&
+          request.payload?.toolName !== 'cursor/create_plan' &&
+          request.payload?.toolName !== 'ExitPlanMode')
+          ? 'input'
+          : 'approval',
       ...(inputRequest ? { inputRequest } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,

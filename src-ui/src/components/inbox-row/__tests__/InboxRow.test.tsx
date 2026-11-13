@@ -288,7 +288,7 @@ describe('what a screen reader and a ticking clock each get', () => {
     expect(statusText()).toBe('Running · Bash · 1m 12s');
     // The per-second number is hidden from the description; a duration that
     // only moves with the host's clock stands in for it.
-    expect(describedText()).toBe('Running · Bash, for 1m 12s');
+    expect(describedText()).toBe('Running · Bash, for about 1 minute');
   });
 
   it('ticks once a second', () => {

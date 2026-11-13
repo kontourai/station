@@ -18,7 +18,6 @@ import {
   isSessionLifecycleStateStopped,
   validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
 import {
@@ -232,7 +231,6 @@ export function projectSessionLifecycle(options: {
       event.method === 'request.opened' &&
       event.blocking !== false &&
       event.requestType !== 'input' &&
-      !inputRequestFromRequestEvent(event) &&
       !resolvedRequestIds.has(event.requestId) &&
       !settledRequestIds.has(event.requestId),
   );
@@ -281,27 +279,6 @@ export function projectSessionLifecycle(options: {
         : lifecycleState;
     lifecycleState = 'review_pending';
     transitionReason = 'review_requested';
-    transitionSource = 'runtime';
-  }
-
-  // Resolving a permission must not hide a question still open in the same turn.
-  if (
-    !pendingReview &&
-    lifecycleState !== 'idle' &&
-    lifecycleState !== 'blocked' &&
-    !isSessionLifecycleStateStopped(lifecycleState) &&
-    options.events.some(
-      (event) =>
-        event.method === 'request.opened' &&
-        event.blocking !== false &&
-        (event.requestType === 'input' ||
-          inputRequestFromRequestEvent(event)) &&
-        !resolvedRequestIds.has(event.requestId) &&
-        !settledRequestIds.has(event.requestId),
-    )
-  ) {
-    lifecycleState = 'needs_input';
-    transitionReason = 'input_requested';
     transitionSource = 'runtime';
   }
 
@@ -1126,12 +1103,6 @@ function deriveLifecycleTransition(
   if (isStaleTurnTerminal) return null;
   if (
     event.sessionState &&
-    !(
-      event.method === 'request.opened' &&
-      event.sessionState === 'review_pending' &&
-      event.blocking !== false &&
-      (event.requestType === 'input' || inputRequestFromRequestEvent(event))
-    ) &&
     !isLegacyAttachStamp(event) &&
     !isStampedStaleCancellation &&
     !isStaleTurnTerminal
@@ -1248,14 +1219,9 @@ function deriveLifecycleTransition(
       if (event.blocking === false) return null;
       return {
         from,
-        to:
-          event.requestType === 'input' ||
-          inputRequestFromRequestEvent(event) !== null
-            ? 'needs_input'
-            : 'review_pending',
+        to: event.requestType === 'input' ? 'needs_input' : 'review_pending',
         reason:
-          event.requestType === 'input' ||
-          inputRequestFromRequestEvent(event) !== null
+          event.requestType === 'input'
             ? 'input_requested'
             : 'review_requested',
         source: 'runtime',

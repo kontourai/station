@@ -252,7 +252,7 @@ export function mapServerRequestToEvent(
         createdAt,
         requestId,
         method: 'request.opened',
-        requestType: 'input',
+        requestType: 'approval',
         ...(payload.isBlocking === false ? { blocking: false } : {}),
         title: inputRequest.message,
         payload: { ...payload, inputRequest },

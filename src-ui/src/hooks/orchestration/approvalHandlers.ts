@@ -62,7 +62,10 @@ export function handleRequestOpenedEvent(
     pendingRequestKinds: {
       ...chat.pendingRequestKinds,
       [event.requestId]:
-        event.requestType === 'input' || inputRequestFromRequestEvent(event)
+        event.requestType === 'input' ||
+        (event.payload?.toolName !== 'cursor/create_plan' &&
+          event.payload?.toolName !== 'ExitPlanMode' &&
+          inputRequestFromRequestEvent(event))
           ? 'input'
           : 'approval',
     },

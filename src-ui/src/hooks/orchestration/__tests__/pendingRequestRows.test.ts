@@ -192,7 +192,7 @@ test('a typed Codex question survives the adapter-to-reload presentation seam', 
     },
     '2026-11-01T00:00:00Z',
   );
-  expect(opened?.requestType).toBe('input');
+  expect(opened?.requestType).toBe('approval');
   expect(opened).not.toBeNull();
   const events = [opened!];
   const transcript = projectRuntimeEventsToMessages(events);

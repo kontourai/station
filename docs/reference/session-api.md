@@ -2477,8 +2477,12 @@ fields, and the [HTTP leaves](api.md#station-control-work-discovery).
 ### Blocking request kinds and background elapsed time
 
 Session summaries include `openRequestKinds`, keyed by unresolved request ID,
-with `input` for questions, elicitation forms and plan review, and `approval`
-for tool permissions. `blockingOpenRequestIds` remains the authoritative set
+with `input` for questions and elicitation forms, and `approval` for tool
+permissions and plan review that gates leaving plan mode (including Claude
+ExitPlanMode and ACP plan approval). These are display hints only: adapters
+retain their existing request types and lifecycle/Attention routing. Structured
+forms retain an exact `requestReference`; request inspection directs the person
+to the chat to answer the form. `blockingOpenRequestIds` remains the authoritative set
 that suspends progress. The fields are additive: an older host without kind
 metadata uses conservative approval display until a validated form is read. Older persisted forms are
 classified from their validated input-request payload when the host projects

@@ -796,7 +796,9 @@ export function buildOrchestrationSessionSummary(options: {
               if (!event || event.method !== 'request.opened') return [];
               const kind =
                 event.requestType === 'input' ||
-                inputRequestFromRequestEvent(event)
+                (event.payload?.toolName !== 'cursor/create_plan' &&
+                  event.payload?.toolName !== 'ExitPlanMode' &&
+                  inputRequestFromRequestEvent(event))
                   ? 'input'
                   : 'approval';
               return [[id, kind] as const];

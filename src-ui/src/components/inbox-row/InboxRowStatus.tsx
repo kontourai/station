@@ -82,10 +82,9 @@ export function WorkStatusLineText({ status }: { status: WorkStatus }) {
   );
 }
 
-/** What a screen reader hears instead of a number that changes every
- *  second: a coarse duration that only moves when the host's clock does. */
+/** Screen-reader duration stays coarse on the list's 30-second clock. */
 function coarseDuration(elapsedMs: number): string {
-  return `for ${formatDuration(elapsedMs)}`;
+  return `for ${formatDuration(elapsedMs, 'coarse')}`;
 }
 
 /** The detail's test id names what it is the basis for, where one exists. */

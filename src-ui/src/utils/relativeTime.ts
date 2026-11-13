@@ -153,10 +153,21 @@ export function relativeTimeAgoFromIso(
  * same item never reads "4m 10s" on one surface and "4m" on another.
  * Live clocks retain seconds under an hour.
  */
-export function formatDuration(elapsedMs: number): string {
+export function formatDuration(
+  elapsedMs: number,
+  mode: 'live' | 'coarse' = 'live',
+): string {
   const seconds = Number.isFinite(elapsedMs)
     ? Math.max(0, Math.floor(elapsedMs / 1000))
     : 0;
+  if (mode === 'coarse') {
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 1) return 'under a minute';
+    if (minutes < 60)
+      return `about ${minutes} minute${minutes === 1 ? '' : 's'}`;
+    const hours = Math.round(minutes / 60);
+    return `about ${hours} hour${hours === 1 ? '' : 's'}`;
+  }
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
