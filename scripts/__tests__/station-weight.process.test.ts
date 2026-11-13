@@ -252,6 +252,7 @@ describe.skipIf(!posix)('station-weight git isolation', () => {
     spawnSync('git', args, {
       cwd,
       encoding: 'utf8',
+      windowsHide: true,
       env: {
         ...gitEnvironment(),
         GIT_CONFIG_NOSYSTEM: '1',
@@ -365,7 +366,7 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
         `--baseline=${baselinePath}`,
         ...flags.filter((flag) => flag !== '--no-baseline'),
       ],
-      { encoding: 'utf8', timeout: 60_000 },
+      { encoding: 'utf8', timeout: 60_000, windowsHide: true },
     );
     return { ...run, baselinePath };
   }

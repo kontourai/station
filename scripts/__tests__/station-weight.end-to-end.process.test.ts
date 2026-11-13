@@ -41,7 +41,7 @@ function leakDuringShutdown(env: NodeJS.ProcessEnv) {
        daemon.unref();
        process.stdout.write(String(daemon.pid));`,
     ],
-    { env, stdio: ['ignore', 'pipe', 'ignore'] },
+    { env, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true },
   );
   return new Promise<number>((resolveDaemon) =>
     helper.stdout.once('data', (chunk) => {
