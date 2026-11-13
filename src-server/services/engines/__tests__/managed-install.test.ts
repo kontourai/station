@@ -85,6 +85,7 @@ interface Fixture {
 async function fixture(
   options: {
     engine?: TarEntry[];
+    engineBytes?: Buffer;
     engineSha?: (actual: string) => string;
     engineSize?: (actual: number) => number;
     engineFault?: 'truncate';
@@ -93,7 +94,8 @@ async function fixture(
   } = {},
 ): Promise<Fixture> {
   const server = await startFixtureServer();
-  const engine = tarGz(options.engine ?? engineEntries());
+  const engine =
+    options.engineBytes ?? tarGz(options.engine ?? engineEntries());
   const runtime = tarGz(runtimeEntries());
   server.put(`/kas/${VERSION}/kas-engine.tar.gz`, engine, options.engineFault);
   server.put(`/kas/${VERSION}/node-runtime.tar.gz`, runtime);
@@ -209,6 +211,37 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
         .split('\n')
         .filter((name) => name.startsWith('.staging')),
     ).toEqual([]);
+  });
+
+  test('installs an xz-compressed engine archive, as the published builds are', async (context) => {
+    const source = mkdtempSync(join(tmpdir(), 'managed-install-xz-'));
+    cleanups.push(() => rmSync(source, { recursive: true, force: true }));
+    const server = join(source, 'node_modules/@kiro/agent/dist/server');
+    execFileSync('mkdir', ['-p', server]);
+    writeFileSync(join(server, 'acp-server.js'), SERVER_JS);
+    const archive = join(source, 'engine.tar.xz');
+    try {
+      execFileSync(process.platform === 'darwin' ? '/usr/bin/tar' : 'tar', [
+        '-cJf',
+        archive,
+        '-C',
+        source,
+        'node_modules',
+      ]);
+    } catch {
+      // A host tar without xz support cannot build the fixture.
+      context.skip();
+    }
+    const f = await fixture({ engineBytes: readFileSync(archive) });
+    const inst = await run(f);
+    const state = inst.state('kiro-kas');
+    expect(state.kind).toBe('installed');
+    if (state.kind !== 'installed') return;
+    expect(
+      execFileSync(state.entry.runtime, [state.entry.script], {
+        encoding: 'utf8',
+      }),
+    ).toBe('fake acp server\n');
   });
 
   test('refuses without explicit consent, before any request', async () => {

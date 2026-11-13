@@ -30,7 +30,7 @@ import {
   AcpInboundExtensionRegistry,
   createAcpInboundExtensionRequestHandler,
 } from '../../acp/acp-inbound-extension-policy.js';
-import { createProbeClient } from '../../acp/acp-probe.js';
+import { ACPProbe, createProbeClient } from '../../acp/acp-probe.js';
 import { ACPProcess } from '../../acp/acp-process.js';
 import {
   sha256,
@@ -278,3 +278,42 @@ test('a managed connection carrying arguments of its own is refused', async () =
     /runs only with the arguments Station pins/,
   );
 });
+
+test.skipIf(process.platform === 'win32')(
+  "the availability probe answers the bundle's token request from the vault",
+  async () => {
+    const installer = await installFakeKas();
+    registerManagedRuntimeInstalls(installer);
+    await signIn('kiro-kas-bundle');
+    const launched: ACPProcess[] = [];
+    const probe = new ACPProbe(
+      {
+        id: 'kiro-kas-bundle',
+        name: 'Kiro (KAS, no CLI)',
+        command: managedRuntimeCommand('kiro-kas'),
+        args: [],
+        enabled: true,
+      },
+      quiet,
+      home,
+      (options) => {
+        const acpProcess = new ACPProcess(options);
+        launched.push(acpProcess);
+        return acpProcess;
+      },
+      20_000,
+    );
+    cleanups.push(() => probe.dispose());
+    // The fake engine refuses session/new, so the probe itself reports
+    // failure; what matters is the token it was given during initialize.
+    await probe.probe('request');
+    const init = launched[0]?.initResult as
+      | { _meta?: { fakeKas?: Record<string, unknown> } }
+      | null
+      | undefined;
+    expect(init?._meta?.fakeKas).toMatchObject({
+      result: { accessToken: 'vault-access-token' },
+    });
+  },
+  60_000,
+);
