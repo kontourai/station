@@ -1,0 +1,11 @@
+{
+  "revision": "81e331821a3facadb3704da18549d07b1399e720",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the final gallery-only timing correction after a dark stacked capture measured bottom 915.388 during entry animation. The test now awaits its real panel animations before sampling; the 915px viewport bound and all assertions remain unchanged. This changes evidence timing, not runtime layout, motion tokens or telemetry behavior. Thirteen other final-head captures were pixel-identical before this fix; the settled stacked capture is rerun separately.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the final gallery-only timing correction after a dark stacked capture measured bottom 915.388 during entry animation. The test now awaits its real panel animations before sampling; the 915px viewport bound and all assertions remain unchanged. This changes evidence timing, not runtime layout, motion tokens or telemetry behavior. Thirteen other final-head captures were pixel-identical before this fix; the settled stacked capture is rerun separately.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the final gallery-only timing correction after a dark stacked capture measured bottom 915.388 during entry animation. The test now awaits its real panel animations before sampling; the 915px viewport bound and all assertions remain unchanged. This changes evidence timing, not runtime layout, motion tokens or telemetry behavior. Thirteen other final-head captures were pixel-identical before this fix; the settled stacked capture is rerun separately.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}
