@@ -3389,3 +3389,279 @@ describe('Muse parity: a host that cannot enforce its sandbox', () => {
     ).toEqual([]);
   });
 });
+
+/** The live 1.4.18 `initialize` result (steer capture, scrubbed). */
+function liveInitializeResult(): Record<string, unknown> {
+  const frame = loadMuseServeCapture('steer').find(
+    (entry) =>
+      entry.dir === 's2c' &&
+      (entry.msg.result as { schema?: unknown } | undefined)?.schema,
+  );
+  return structuredClone(frame?.msg.result as Record<string, unknown>);
+}
+
+/**
+ * A host that answers `initialize` with `init`, then each listed query in
+ * order, as the live host did for a session-less discovery read.
+ */
+function discoveryHost(
+  answers: Array<[method: string, result: unknown]>,
+  init: Record<string, unknown> = liveInitializeResult(),
+) {
+  return (args: string[]) => {
+    const host = new FakeMuseServeHost(args);
+    void (async () => {
+      const consumed = new Set<SentFrame>();
+      const initialize = await host.nextRequest('initialize', consumed);
+      consumed.add(initialize);
+      reply(host, initialize, init);
+      for (const [method, result] of answers) {
+        const request = await host.nextRequest(method, consumed);
+        consumed.add(request);
+        reply(host, request, result);
+      }
+    })().catch(() => {});
+    return host;
+  };
+}
+
+/** Schema-shaped `model/list` rows (MSP 1.4.18 `ModelCatalogEntry`). */
+function catalogEntry(overrides: Record<string, unknown>) {
+  return {
+    modelId: 'muse-spark-1.3-contributor',
+    displayLabel: 'Muse Spark 1.3',
+    providerId: 'meta',
+    profileId: null,
+    description: null,
+    contextLimit: 262144,
+    outputLimit: 32768,
+    releaseDate: null,
+    cost: { input: '1.25', output: '10', cached: '0.125', currency: 'USD' },
+    isActive: false,
+    isDefault: true,
+    variants: ['low', 'medium', 'high'],
+    reasoningEffortVariants: [
+      { tier: 'low', description: 'Faster' },
+      { tier: 'medium' },
+      { tier: 'high', description: 'Deeper' },
+    ],
+    defaultReasoningEffort: 'high',
+    ...overrides,
+  };
+}
+
+describe('Muse parity: the model catalog through a short-lived host (#2266)', () => {
+  test('an empty live catalog is an empty answer: initialize, model/list with no session, then the host is closed', async () => {
+    const h = harness({
+      spawnHost: discoveryHost([
+        [
+          'model/list',
+          {
+            providerId: 'meta',
+            profileId: 'profile',
+            source: 'bundledCatalog',
+            models: [],
+          },
+        ],
+      ]),
+    });
+    await expect(h.adapter.listModelCatalog!()).resolves.toEqual({
+      models: [],
+    });
+    expect(h.hosts).toHaveLength(1);
+    const methods = h.hosts[0].sent.map((frame) => frame.method);
+    expect(methods).toEqual(['initialize', 'initialized', 'model/list']);
+    expect(h.hosts[0].sent[2].params).toEqual({});
+    expect(h.hosts[0].stdinEnded).toBe(true);
+    expect(h.hosts[0].exitCode).not.toBeNull();
+    expect(h.adapter.metadata.abortSettlement).toBe('await');
+  });
+
+  test('rows map to selectable models with their effort tiers and window; what Station has no field for is left out', async () => {
+    const h = harness({
+      spawnHost: discoveryHost([
+        [
+          'model/list',
+          {
+            providerId: 'meta',
+            profileId: null,
+            source: 'providerCatalog',
+            models: [
+              catalogEntry({}),
+              catalogEntry({
+                modelId: 'muse-lite',
+                displayLabel: 'Muse Lite',
+                contextLimit: null,
+                variants: 'unknown',
+                reasoningEffortVariants: undefined,
+                defaultReasoningEffort: undefined,
+              }),
+              catalogEntry({ modelId: 'bad id; rm -rf /' }),
+            ],
+          },
+        ],
+      ]),
+    });
+    const catalog = await h.adapter.listModelCatalog!();
+    expect(catalog).toEqual({
+      models: [
+        {
+          id: 'muse-spark-1.3-contributor',
+          name: 'Muse Spark 1.3',
+          originalId: 'muse-spark-1.3-contributor',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['low', 'medium', 'high'],
+            effortLabels: { low: 'Faster', high: 'Deeper' },
+            contextWindow: 262144,
+          },
+        },
+        { id: 'muse-lite', name: 'Muse Lite', originalId: 'muse-lite' },
+      ],
+    });
+    // A second read inside the cache window starts no host.
+    await expect(h.adapter.listModels!({ maxEntries: 1 })).resolves.toEqual([
+      expect.objectContaining({ id: 'muse-spark-1.3-contributor' }),
+    ]);
+    expect(h.hosts).toHaveLength(1);
+  });
+
+  test('a host with an unverified schema is not asked for its catalog', async () => {
+    const init = liveInitializeResult();
+    (init.schema as Record<string, unknown>).fingerprint = `sha256:${'0'.repeat(64)}`;
+    const h = harness({ spawnHost: discoveryHost([], init) });
+    await expect(h.adapter.listModelCatalog!()).rejects.toThrow(
+      /unverified MSP schema/,
+    );
+    expect(h.hosts[0].sent.map((frame) => frame.method)).toEqual([
+      'initialize',
+    ]);
+    expect(h.hosts[0].stdinEnded).toBe(true);
+  });
+
+  test('an abort settles only after the host it started is terminated', async () => {
+    let terminated = false;
+    const h = harness({
+      // Answers initialize, never model/list.
+      spawnHost: discoveryHost([]),
+      terminateHost: async (host) => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        terminated = true;
+        host.exit(0);
+      },
+    });
+    const controller = new AbortController();
+    const reading = h.adapter.listModelCatalog!({ signal: controller.signal });
+    await h.hosts[0]?.nextRequest('model/list', new Set());
+    controller.abort(new Error('caller gave up'));
+    await expect(reading).rejects.toThrow('caller gave up');
+    expect(terminated).toBe(true);
+  });
+
+  test('an exec-only adapter and the echo override expose no catalog and no quota', () => {
+    expect(new MuseAdapter().listModelCatalog).toBeUndefined();
+    expect(new MuseAdapter().readQuotaSnapshot).toBeUndefined();
+    const echo = new MuseAdapter({
+      serve: {},
+      env: {
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-smoke-live-1788039214298-qpssuh',
+        STATION_E2E_MUSE_PROVIDER: 'echo',
+      },
+    });
+    expect(echo.listModelCatalog).toBeUndefined();
+    expect(echo.readQuotaSnapshot).toBeUndefined();
+    expect(echo.metadata).not.toHaveProperty('abortSettlement');
+  });
+});
+
+describe('Muse parity: the subscription allowance through usage/read', () => {
+  test('`{}` (live: nothing observed) is not-reported, never a window at 0%', async () => {
+    const h = harness({ spawnHost: discoveryHost([['usage/read', {}]]) });
+    await expect(
+      h.adapter.readQuotaSnapshot!({ connectionId: 'muse' }),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-reported',
+      detail: 'Muse has observed no subscription usage yet.',
+    });
+    expect(h.hosts[0].sent.map((frame) => frame.method)).toEqual([
+      'initialize',
+      'initialized',
+      'usage/read',
+    ]);
+  });
+
+  test('an observed allowance is a provider-reported snapshot with normalized reset deadlines', async () => {
+    const observedAtMs = Date.parse('2026-11-13T15:00:00.000Z');
+    const h = harness({
+      spawnHost: discoveryHost([
+        [
+          'usage/read',
+          {
+            usage: {
+              observedAtMs,
+              tier: 'pro',
+              window: {
+                usedPercent: 42,
+                resetsAtMs: Date.parse('2026-11-13T18:00:00.000Z'),
+                windowDurationMins: 300,
+              },
+              weekly: {
+                usedPercent: 107,
+                resetsAtMs: Date.parse('2026-11-17T00:00:00.000Z'),
+              },
+            },
+          },
+        ],
+      ]),
+    });
+    await expect(
+      h.adapter.readQuotaSnapshot!({ connectionId: 'muse' }),
+    ).resolves.toEqual({
+      kind: 'snapshot',
+      snapshot: {
+        connectionId: 'muse',
+        provider: 'muse',
+        observedAt: '2026-11-13T15:00:00.000Z',
+        baselineAt: '2026-11-13T15:00:00.000Z',
+        source: 'provider-reported',
+        accountScope: 'global',
+        plan: {
+          value: { type: 'pro' },
+          observedAt: '2026-11-13T15:00:00.000Z',
+        },
+        windows: [
+          {
+            id: 'window',
+            label: 'Current window',
+            usedPercent: 42,
+            observedAt: '2026-11-13T15:00:00.000Z',
+            windowDurationMins: 300,
+            resetDeadlineAt: '2026-11-13T18:00:00.000Z',
+          },
+          {
+            id: 'weekly',
+            label: 'Weekly',
+            usedPercent: 107,
+            observedAt: '2026-11-13T15:00:00.000Z',
+            resetDeadlineAt: '2026-11-17T00:00:00.000Z',
+          },
+        ],
+      },
+    });
+  });
+
+  test('a host that fails the read is a provider error, not a snapshot', async () => {
+    const h = harness({
+      spawnHost: (args) => {
+        const host = new FakeMuseServeHost(args);
+        setImmediate(() => host.exit(2));
+        return host;
+      },
+    });
+    await expect(
+      h.adapter.readQuotaSnapshot!({ connectionId: 'muse' }),
+    ).resolves.toMatchObject({ kind: 'unavailable', reason: 'provider-error' });
+  });
+});

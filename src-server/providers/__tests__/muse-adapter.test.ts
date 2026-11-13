@@ -249,8 +249,9 @@ describe('MuseAdapter', () => {
     expect(adapter.metadata.builtin).toBe(true);
     // `abortSettlement` is consulted ONLY where a discovery call must settle
     // before an abort resolves (`ConnectionInspector` around
-    // `listModelCatalog`/`listModels`), and this adapter implements neither —
-    // so declaring it was a settlement policy with nothing behind it.
+    // `listModelCatalog`/`listModels`). An exec-only adapter has no
+    // discovery host, so it implements neither and declares no settlement
+    // (the serve adapter's catalog is pinned in `muse-serve-adapter.test.ts`).
     expect(adapter.metadata).not.toHaveProperty('abortSettlement');
     expect(adapter.listModelCatalog).toBeUndefined();
     expect(adapter.listModels).toBeUndefined();

@@ -127,6 +127,24 @@ const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The verified stable-surface fingerprint an `initialize` result reports,
+ * or `undefined` when it reports none or one nobody checked this adapter
+ * against. Sessions and the short-lived discovery host both gate on it.
+ */
+export function verifiedMuseServeFingerprint(
+  initializeResult: unknown,
+): string | undefined {
+  const schema =
+    isRecord(initializeResult) && isRecord(initializeResult.schema)
+      ? initializeResult.schema
+      : {};
+  const fingerprint = readString(schema.fingerprint);
+  return fingerprint && MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS.has(fingerprint)
+    ? fingerprint
+    : undefined;
+}
+
+/**
  * Station's bound on an unanswered Muse approval. `muse serve` never expires
  * one itself; past this Station declines it (`abort`, with feedback) and the
  * request resolves `expired`, so the turn or subagent that asked continues.
@@ -1123,16 +1141,12 @@ export class MuseServeSession {
           : `initialize failed: ${errorMessage(error)}`,
       );
     }
-    const schema =
-      isRecord(result) && isRecord(result.schema) ? result.schema : {};
-    const fingerprint = readString(schema.fingerprint);
-    if (
-      !fingerprint ||
-      !MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS.has(fingerprint)
-    ) {
+    if (!verifiedMuseServeFingerprint(result)) {
+      const schema =
+        isRecord(result) && isRecord(result.schema) ? result.schema : {};
       await this.closeHost();
       throw new MuseServeUnavailableError(
-        `unverified MSP schema fingerprint ${fingerprint ?? '(none)'}`,
+        `unverified MSP schema fingerprint ${readString(schema.fingerprint) ?? '(none)'}`,
       );
     }
     const durability = isRecord(result) ? result.sessionDurability : undefined;

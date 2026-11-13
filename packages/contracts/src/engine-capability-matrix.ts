@@ -1134,6 +1134,19 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `MUSE_MODEL_LAUNCH` (muse-adapter-types.ts), read by
     // `MuseAdapter.metadata.modelLaunch` and by `launchCapabilities()` in
     // `execution-target-resolver.ts`.
+    //
+    // On `muse serve` the same selector rides `session/start.modelId` and
+    // `session/setModel` (refused by muse for an id outside its catalog;
+    // live-capture: `session/started.modelId` echoes the applied model). The
+    // catalog itself is listed through a session-less `model/list` (#2266),
+    // which live against 1.4.18 answered `models: []` (`bundledCatalog`):
+    // enumeration can be empty while selection still applies, so this cell
+    // and the connection's `modelLaunch` say selection, never the catalog.
+    // The channel stays `flag`: exec is the transport every Muse install
+    // has. Reasoning effort (`modelOptions.effort`) rides
+    // `turn/start.reasoningEffort` / `--reasoning-effort` (schema + live
+    // `session/reasoningEffortChanged` for the session-level form); the
+    // matrix has no cell for effort.
     modelSelection: { state: 'session', channel: 'flag' },
     toolPolicy: { state: 'unsupported', adapterModule: 'muse-adapter' },
     // Image bytes are validated and staged until the owned process exits;

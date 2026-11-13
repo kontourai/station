@@ -30,6 +30,7 @@ import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
+import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
@@ -63,6 +64,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   type ProviderAdapterMetadata,
+  type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
   type ProviderSession,
@@ -114,6 +116,13 @@ import {
   type MuseReasoningEffort,
 } from './muse-adapter-types.js';
 import { museExecChildWorkNotReportedEvent } from './muse-serve-child-work.js';
+import {
+  type MuseDiscoveryDeps,
+  museModelCatalog,
+  museQuotaFailure,
+  museQuotaResult,
+  withMuseDiscoveryHost,
+} from './muse-serve-discovery.js';
 import type {
   MuseServeProcessLike,
   MuseServeSpawnResult,
@@ -279,6 +288,10 @@ export interface MuseServeAdapterOptions {
  * turn, not a live turn.
  */
 export const MUSE_LINGERING_CHILD_REAP_MS = 30 * 60_000;
+/** How long one successful `model/list` read is reused. */
+export const MUSE_MODEL_CATALOG_CACHE_MS = 60_000;
+/** Bound on catalog rows kept from one `model/list`. */
+const MUSE_MODEL_CATALOG_MAX_ENTRIES = 200;
 export const MUSE_MAX_SUPERVISION_TIMEOUT_MS = 24 * 60 * 60_000;
 /**
  * Resolution of the lingering-child reap window: a positive finite number
@@ -914,11 +927,9 @@ export class MuseAdapter implements ProviderAdapterShape {
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),
-    // No `abortSettlement`: it is consulted only where a discovery call has
-    // to settle before an abort resolves (`ConnectionInspector`
-    // wraps `listModelCatalog`/`listModels`), and this adapter implements
-    // neither. Declaring it would be a settlement policy with nothing behind
-    // it.
+    // `abortSettlement` is declared per instance (constructor): only an
+    // adapter that lists its catalog through a `muse serve` host has a
+    // discovery call to settle.
     //
     // The one model channel muse genuinely has, declared once in
     // `MUSE_MODEL_LAUNCH`. Without this, `resolveModelLaunchPlan` returns
@@ -975,6 +986,19 @@ export class MuseAdapter implements ProviderAdapterShape {
    */
   private readonly providerRefusal: MuseProviderOverrideRefusal | undefined;
   private providerNoticeReported = false;
+  /**
+   * #2266: muse's catalog (`model/list`) and allowance (`usage/read`), read
+   * through a short-lived `muse serve` host. Present only on an adapter that
+   * runs serve and selects models (not under the `echo` override, where no
+   * model is ever applied); absent, Station reads no catalog and no quota.
+   */
+  readonly listModelCatalog?: ProviderAdapterShape['listModelCatalog'];
+  readonly listModels?: ProviderAdapterShape['listModels'];
+  readonly readQuotaSnapshot?: ProviderAdapterShape['readQuotaSnapshot'];
+  private catalogCache?: {
+    observedAt: number;
+    catalog: ProviderAdapterModelCatalog;
+  };
   /**
    * The last serve host's report that it cannot enforce its sandbox. MSP
    * defines availability as a property of the machine, the same for every
@@ -1043,6 +1067,87 @@ export class MuseAdapter implements ProviderAdapterShape {
       refusal = refused;
     });
     this.providerRefusal = refusal;
+    if (options.serve && this.providerOverride !== 'echo') {
+      const discovery = this.discoveryDeps(options.serve);
+      this.metadata = { ...this.metadata, abortSettlement: 'await' };
+      this.listModelCatalog = (request) =>
+        this.readModelCatalog(discovery, request);
+      this.listModels = async (request) =>
+        (await this.readModelCatalog(discovery, request)).models;
+      this.readQuotaSnapshot = async ({ connectionId }) =>
+        this.readMuseQuota(discovery, connectionId);
+    }
+  }
+
+  private discoveryDeps(serve: MuseServeAdapterOptions): MuseDiscoveryDeps {
+    // The posture is irrelevant to a query; the default sandboxed host is
+    // what every session starts from.
+    const posture: MuseServeHostPosture = { disableSandbox: false };
+    return {
+      spawnHost: () =>
+        serve.spawnHost
+          ? serve.spawnHost(posture)
+          : createMuseServeHost(posture, undefined, serve.dataHome),
+      terminateHost: serve.terminateHost ?? terminateMuseServeHost,
+      timeoutMs: serve.handshakeTimeoutMs ?? MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
+    };
+  }
+
+  /**
+   * `model/list` with no session (no row is `isActive`). A successful read
+   * is reused for {@link MUSE_MODEL_CATALOG_CACHE_MS}, so inspecting
+   * connections does not start a host each time; a failure is never cached.
+   */
+  private async readModelCatalog(
+    discovery: MuseDiscoveryDeps,
+    request: { signal?: AbortSignal; maxEntries?: number } | undefined,
+  ): Promise<ProviderAdapterModelCatalog> {
+    const maxEntries = Math.max(
+      1,
+      Math.min(
+        MUSE_MODEL_CATALOG_MAX_ENTRIES,
+        Math.floor(request?.maxEntries ?? MUSE_MODEL_CATALOG_MAX_ENTRIES),
+      ),
+    );
+    const cached = this.catalogCache;
+    const now = this.now().getTime();
+    if (!cached || now - cached.observedAt >= MUSE_MODEL_CATALOG_CACHE_MS) {
+      const result = await withMuseDiscoveryHost(
+        discovery,
+        'model/list',
+        {},
+        request?.signal,
+      );
+      this.catalogCache = {
+        observedAt: now,
+        catalog: museModelCatalog(result, MUSE_MODEL_CATALOG_MAX_ENTRIES),
+      };
+    }
+    const catalog = this.catalogCache!.catalog;
+    const truncated =
+      catalog.truncated === true || catalog.models.length > maxEntries;
+    return {
+      models: catalog.models.slice(0, maxEntries),
+      ...(truncated ? { truncated: true } : {}),
+    };
+  }
+
+  /** `usage/read`: muse's subscription allowance, when it has observed one. */
+  private async readMuseQuota(
+    discovery: MuseDiscoveryDeps,
+    connectionId: string,
+  ): Promise<ConnectionQuotaResult> {
+    try {
+      return museQuotaResult(
+        await withMuseDiscoveryHost(discovery, 'usage/read', {}, undefined),
+        connectionId,
+      );
+    } catch (error) {
+      this.options.logger?.warn?.('Muse quota read unavailable', {
+        error: errorMessage(error),
+      });
+      return museQuotaFailure(error);
+    }
   }
 
   /**
