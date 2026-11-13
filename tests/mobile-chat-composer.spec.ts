@@ -111,6 +111,38 @@ async function openComposer(
     execution?: Record<string, unknown>;
   } = {},
 ) {
+  // The shell advertises this delegated session; declare its real event window.
+  const delegatedTurns = buildLongSessionTurns({
+    threadId: 'delegated-review',
+    provider: 'codex',
+    turnCount: 1,
+    replyText: () => 'Delegated review is ready.',
+  });
+  await page.route(
+    '**/api/orchestration/sessions/delegated-review/event-window**',
+    createLongSessionEventWindowHandler({
+      threadId: 'delegated-review',
+      provider: 'codex',
+      availableTurns: () => delegatedTurns,
+    }),
+  );
+  if (projectScoped) {
+    await page.route('**/api/projects/default/chat-defaults', async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill(
+        json({
+          success: true,
+          data: {
+            version: 'station.project-chat-defaults/v1',
+            projectSlug: 'default',
+            model: { selection: 'fixed', lastUsed: [] },
+            approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+          },
+        }),
+      );
+    });
+  }
   const sessionId = `${agentSlug}:1760000000000`;
   await seedActiveChats(page, [
     {
@@ -4236,6 +4268,7 @@ for (const width of [320, 390, 600]) {
         railBox!.x + railBox!.width + 1,
       );
     }
+    await closeRunSetup(page);
     expect(
       await rail.evaluate(
         (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -4304,12 +4337,10 @@ for (const width of [320, 390, 1280]) {
       await expect(send).toHaveCSS('opacity', '1');
       expect((await backgroundPaint(send)).alpha).toBe(1);
       await expect.poll(() => contrastRatio(send)).toBeGreaterThanOrEqual(4.5);
-      const drafts = page
-        .locator('.chat-controls-row')
-        .getByRole('button', {
-          name: width < 768 ? 'More draft options' : 'Drafts',
-          exact: true,
-        });
+      const drafts = page.locator('.chat-controls-row').getByRole('button', {
+        name: width < 768 ? 'More draft options' : 'Drafts',
+        exact: true,
+      });
       const inputBox = (await textarea.boundingBox())!;
       const draftsBox = (await drafts.boundingBox())!;
       expect(draftsBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);

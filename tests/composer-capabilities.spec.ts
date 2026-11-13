@@ -690,6 +690,60 @@ for (const [label, viewport] of [
     await expect(mic).toBeFocused();
   });
 
+  if (label === 'desktop') {
+    test(`${label}: typing keeps Stop fixed at the send-row edge`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      const executionRequests: Array<Record<string, unknown>> = [];
+      await installMockOrchestrationSse(page);
+      await seedRoutes(page, executionRequests);
+      const { composer, started } = await openStartComposer(page, label);
+      await closeRunSetup(page);
+      await composer
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .fill('start the task');
+      await composer
+        .getByRole('button', { name: 'Start', exact: true })
+        .click();
+      await started();
+      await waitForMockOrchestrationSse(page);
+      await expect
+        .poll(() => executionRequests.length, { timeout: 15_000 })
+        .toBe(1);
+
+      const messageComposer = page.getByRole('group', {
+        name: 'Message composer',
+        exact: true,
+      });
+      const textarea = messageComposer.getByRole('textbox');
+      await expect(textarea).toHaveAttribute('placeholder', /follow-up|Steer/);
+      const stop = page.getByRole('button', { name: 'Stop the current turn' });
+      await expect(stop).toBeVisible();
+      await evidence(page, testInfo, `running-turn-empty-${label}.png`);
+
+      const before = (await stop.boundingBox())!;
+      await textarea.fill('a follow-up');
+      await expect(
+        page.getByRole('button', { name: 'Send', exact: true }),
+      ).toBeVisible();
+      const after = (await stop.boundingBox())!;
+      const geometry = await page
+        .locator('.chat-controls-row')
+        .evaluate((row) =>
+          [...row.children].map((el) => ({
+            className: el.className,
+            x: el.getBoundingClientRect().x,
+            width: el.getBoundingClientRect().width,
+            flex: getComputedStyle(el).flex,
+            minWidth: getComputedStyle(el).minWidth,
+          })),
+        );
+      expect(after.x, JSON.stringify(geometry)).toBeCloseTo(before.x, 0);
+      await evidence(page, testInfo, 'desktop-stop-after-typing.png');
+    });
+  }
+
   test(`${label}: a running turn keeps attach usable and says why files wait`, async ({
     page,
   }, testInfo) => {
