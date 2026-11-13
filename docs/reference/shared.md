@@ -713,6 +713,7 @@ interface ProjectMetadata {
   slug: string;
   name: string;
   icon?: string;
+  repositorySource?: ProjectRepositorySource;
   description?: string;
   hasWorkingDirectory: boolean;
   workingDirectory?: string;
@@ -722,6 +723,10 @@ interface ProjectMetadata {
   position?: number;
 }
 ```
+
+Operator Project lists may derive `icon` from bounded repository artwork without
+writing the Project record. `repositorySource`, when present, retains verified
+acquisition identity for display; it does not match Projects across Stations.
 
 ### `ProjectRunLocations`
 

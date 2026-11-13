@@ -190,7 +190,8 @@ receipt for that evidence.
 Open approvals in Notifications and review receipts in the Project's Review
 layout. These replace the retired Home inspection cards. Opening a record does
 not decide an approval or establish that a gate passed. Existing exact-target
-starter bindings remain readable.
+starter bindings remain readable. Exact review links use
+`/projects/<slug>/layouts/review?receipt=...`.
 
 ## Run A Scheduled Readiness Check
 

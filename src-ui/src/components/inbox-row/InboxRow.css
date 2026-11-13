@@ -812,7 +812,7 @@
 .inbox-row__chip--remote,
 .inbox-row__slim-remote {
   border: 1px solid var(--k-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--k-radius-sm);
   background: color-mix(in srgb, var(--k-action) 10%, transparent);
   color: var(--k-text);
 }
