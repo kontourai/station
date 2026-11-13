@@ -184,6 +184,15 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
     },
     {
       label:
+        'Codex handoff seed completed without a delivery witness stays refused',
+      source: CLAUDE,
+      target: CODEX,
+      nativeReturn: false,
+      preserveProfile: false,
+      dropHandoffSeedWitness: true,
+    },
+    {
+      label:
         'Claude first handoff seed failure redelivers context in a successor',
       source: CODEX,
       target: CLAUDE,
@@ -224,6 +233,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       restartBeforeReturnStart = false,
       missingSeedInvocation = false,
       failRedeliveredSeed = false,
+      dropHandoffSeedWitness = false,
       failFirstHandoffSeed = undefined as
         | 'runtime.error'
         | 'turn.aborted'
@@ -785,6 +795,58 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           )?.session.lifecycleState,
         ).toBe('idle');
       });
+      if (dropHandoffSeedWitness) {
+        try {
+          const handoffSessionId = handoffReceipt.data.sessionId;
+          await eventually(async () => {
+            const status = await service.readConversationHandoffStatus(
+              conversationId,
+              idempotencyKey,
+              INTERNAL_SESSION_READ_SCOPE,
+            );
+            expect(status?.contextDelivery?.status).toBe('completed');
+          });
+          // The turn completed, but nothing now proves the exact seed was
+          // delivered: uncertain, not failed, so it must not be redelivered
+          // (resending could duplicate it) nor silently skipped.
+          store['db']
+            .prepare(
+              'DELETE FROM orchestration_context_seed_witnesses WHERE thread_id = ?',
+            )
+            .run(handoffSessionId);
+          const status = await service.readConversationHandoffStatus(
+            conversationId,
+            idempotencyKey,
+            INTERNAL_SESSION_READ_SCOPE,
+          );
+          expect(status?.status).toBe('completed');
+          expect(status?.contextDelivery?.status).toBe('indeterminate');
+          const opened = await service.resolveConversationOpen(
+            conversationId,
+            sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+          );
+          expect(opened).not.toHaveProperty('nextTurnStartsSession');
+          const refused = await execute(target, {
+            conversationId,
+            message: 'Continue after an unwitnessed handoff seed.',
+          }).then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+          expect(refused).toMatchObject({
+            code: 'conversation-context-unavailable',
+            message: expect.stringContaining(
+              'Handoff context delivery has not completed.',
+            ),
+          });
+          expect(targetAdapter.turns).toHaveLength(1);
+          expect(store.conversationSessions(conversationId)).toHaveLength(2);
+        } finally {
+          await service.shutdown();
+          store.close();
+        }
+        return;
+      }
       const lineageAfterHandoff = store.conversationSessions(conversationId);
       expect(lineageAfterHandoff).toHaveLength(2);
       expect(lineageAfterHandoff[1]?.sessionId).toBe(
