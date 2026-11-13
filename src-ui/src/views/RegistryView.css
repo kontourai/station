@@ -163,7 +163,7 @@
 }
 .marketplaces__location {
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   overflow-wrap: anywhere;
 }
