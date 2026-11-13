@@ -51,8 +51,16 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
         },
         ...common,
       ];
-    case 'connections':
     case 'connections-tools':
+      return [
+        {
+          label: 'Which tool connections are configured?',
+          prompt:
+            'Use list_integrations and get_integration to summarize my tool connections and any reported setup problems.',
+        },
+        ...common,
+      ];
+    case 'connections':
     case 'connections-models':
       return [
         {

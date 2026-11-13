@@ -9,7 +9,7 @@ describe('header utils', () => {
     expect(getHelpPrompts()[0].prompt).toContain('list_active_work');
     expect(getHelpPrompts()[1].prompt).toContain('system_status');
     expect(getHelpPrompts({ type: 'connections-tools' })[0].prompt).toContain(
-      'list_providers',
+      'list_integrations',
     );
     expect(getHelpPrompts({ type: 'schedule' })[0].prompt).toContain(
       'get_job_logs',
