@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md edits are limited to POST /integrations/check-all; terminal routes and resolver claims referenced here are unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

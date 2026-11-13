@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md edit only adds that the Tools page passes no signal to useCheckAllIntegrationsMutation; SDK package agent instructions remain accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

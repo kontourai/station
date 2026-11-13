@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"station-tones adds tone mappings, ConnectionsHub adds the bounded resolve wait, providerCatalog extracts modelCatalogInput; none changes the agent configuration or Inbox attention claims in this guide.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/kontour/station-tones.ts","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"SplitPaneLayout only exports SplitPaneItem; the Connections walkthrough steps and media remain accurate.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}

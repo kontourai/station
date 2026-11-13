@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md edits cover Knowledge attention (vector store turned on) and Check all failures/timeouts; machine relationship and Computers creator claims here are unchanged.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

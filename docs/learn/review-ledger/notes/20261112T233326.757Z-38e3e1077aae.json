@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"ConnectionsHub and providerCatalog changes are UI-internal (resolve wait, catalog input extraction); the example's API usage is unchanged.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
+  ]
+}

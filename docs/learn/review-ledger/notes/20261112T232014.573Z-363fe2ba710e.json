@@ -1,0 +1,7 @@
+{
+  "revision": "9f68e8f5ccf5d94051be2f7c821e986dfa2b4b5f",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"SplitPaneLayout only exports SplitPaneItem; ConnectionsHub now renders a SkeletonBlock while it resolves, consistent with the skeleton vocabulary; view-to-skeleton mapping unchanged.","inputs":["docs/design/shell-skeletons.md","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/ConnectionsHub.tsx"]}
+  ]
+}
