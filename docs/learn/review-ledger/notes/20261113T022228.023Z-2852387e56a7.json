@@ -1,0 +1,17 @@
+{
+  "revision": "9fca540255176ece7f098abe9f880305f1d2aab5",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"AgentConnectionView change: the Not loaded header badge (engine list unread) now uses the neutral tone, matching the Overview tile; text and behaviour unchanged. Readiness labels and Add rules unaffected.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"AgentConnectionView change: the Not loaded header badge (engine list unread) now uses the neutral tone, matching the Overview tile; text and behaviour unchanged. The guide's sentence on Not loaded still matches.","inputs":["docs/guides/connections.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"AgentConnectionView change: the Not loaded header badge (engine list unread) now uses the neutral tone, matching the Overview tile; text and behaviour unchanged. Walkthrough steps unaffected.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"AgentConnectionView change: the Not loaded header badge (engine list unread) now uses the neutral tone, matching the Overview tile; text and behaviour unchanged. Smoke evidence claims unaffected.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"AgentConnectionView change: the Not loaded header badge (engine list unread) now uses the neutral tone, matching the Overview tile; text and behaviour unchanged. Capture stays historical per media.json and doesn't show this state.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"AgentConnectionView change: the Not loaded header badge (engine list unread) now uses the neutral tone, matching the Overview tile; text and behaviour unchanged. Recording stays historical per media.json and doesn't show this state.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}
