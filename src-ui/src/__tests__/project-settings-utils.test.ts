@@ -43,6 +43,23 @@ describe('project-settings utils', () => {
     });
   });
 
+  test('choosing No icon for detected artwork sends an explicit clear while rename leaves it alone', () => {
+    const saved = buildProjectForm({
+      name: 'Demo',
+      derivedIcon: 'data:image/png;base64,iVBORw0KGgo=',
+    } as any);
+    expect(
+      buildProjectSavePayload({ ...saved, name: 'Renamed' }, undefined, saved),
+    ).not.toHaveProperty('icon');
+    const payload = buildProjectSavePayload(
+      { ...saved, iconDisabled: true },
+      undefined,
+      saved,
+    );
+    expect(payload.icon).toBe('');
+    expect(payload).not.toHaveProperty('derivedIcon');
+  });
+
   test('getKnowledgeTimeAgo formats recent durations', () => {
     const now = new Date('2026-01-01T12:00:00.000Z').getTime();
     expect(getKnowledgeTimeAgo('2026-01-01T11:59:30.000Z', now)).toBe(

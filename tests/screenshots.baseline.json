@@ -74,6 +74,18 @@
       "sha256": "561ea168f5cfce8030e091d4d8c45018a2a5764238a2ca0e8c0092f2ea81b35b"
     },
     {
+      "name": "detected-project-desktop",
+      "width": 1440,
+      "height": 900,
+      "sha256": "5f1a3fbe68b2ec199d104a8b3a04edce958095e9a643709d80ad6a5177df44ab"
+    },
+    {
+      "name": "detected-project-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "b9384ba7beb259f99ac33fca99ec498574ac399d0b83cf2e2e8dbc1e8fb3b426"
+    },
+    {
       "name": "developer-telemetry",
       "width": 1440,
       "height": 900,
