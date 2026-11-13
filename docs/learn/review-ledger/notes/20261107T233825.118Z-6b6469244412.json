@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Searched for /connections, engine page, Status, row readiness and rail wording: none are described; its retry/route mentions concern station-control tool retries and API routes. Changed UI sources (routing.ts, ConnectionsHub, connection-sections, providerCatalog) do not alter any claim.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/app-shell/routing.ts","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
+  ]
+}
