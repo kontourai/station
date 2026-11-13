@@ -5266,6 +5266,13 @@ const SCREENS: Screen[] = [
               exact: true,
             });
             await expect(picker).toBeVisible();
+            await picker.evaluate(async (panel) => {
+              await Promise.allSettled(
+                panel
+                  .getAnimations({ subtree: true })
+                  .map((animation) => animation.finished),
+              );
+            });
             const box = await picker.boundingBox();
             expect(box!.x).toBeGreaterThanOrEqual(0);
             expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
