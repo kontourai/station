@@ -565,7 +565,7 @@ describe('navigationStore legacy Activity canonicalization', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
 
     expect(window.location.pathname + window.location.search).toBe(
-      '/?surface=chat&session=x&anything=y',
+      '/?surface=chat&session=x',
     );
     expect(navigationStore.getSnapshot().pathname).toBe('/');
   });

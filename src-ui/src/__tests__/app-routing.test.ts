@@ -11,8 +11,8 @@ import type { NavigationView } from '../types';
 const LEGACY_PATH_CASES = [
   // #928: Activity's standalone placement is gone, so both retired spellings
   // land on the surface's canonical deep link. `extra`/`anything` are dropped
-  // rather than pasted onto `/`: the canonical link carries `session` and
-  // `focus` and nothing else, and the retired route never read the rest.
+  // rather than pasted onto `/`: only the meaningful session, focus,
+  // notification-read and dock/chat state survives the legacy redirect.
   ['/sessions', '/notifications'],
   ['/sessions/', '/notifications'],
   ['/sessions/?session=x&extra=y', '/?surface=chat&session=x'],

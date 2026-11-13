@@ -1001,7 +1001,7 @@ describe('engine-opened transcript cause (#3419)', () => {
   });
 });
 
-describe('exact send/receive navigation through Activity and older pages (#3419)', () => {
+describe('exact send/receive navigation through Chat and older pages (#3419)', () => {
   test.each(['sent', 'received'] as const)(
     'the canonical %s link loads its older page and focuses the exact record',
     async (direction) => {
@@ -1106,7 +1106,7 @@ describe('exact send/receive navigation through Activity and older pages (#3419)
         }),
       );
       navigationStore.navigate(
-        `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=${direction}&messageRequest=${key}`,
+        `/?surface=chat&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=${direction}&messageRequest=${key}`,
       );
       renderTranscript(false);
       await waitFor(() =>
@@ -1184,7 +1184,7 @@ describe('real anchor paging failure and resource bound (#3419)', () => {
         }),
       );
       navigationStore.navigate(
-        `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=received&messageRequest=not-present`,
+        `/?surface=chat&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=received&messageRequest=not-present`,
       );
       const view = renderTranscript(false);
       if (mode === 'page-limit') {
@@ -1247,7 +1247,7 @@ test('two sends sharing a request key in one answer remain an ambiguous anchor (
     event,
   }));
   navigationStore.navigate(
-    `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=sent&messageRequest=${key}`,
+    `/?surface=chat&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=sent&messageRequest=${key}`,
   );
   renderTranscript(false);
   await screen.findByText(
