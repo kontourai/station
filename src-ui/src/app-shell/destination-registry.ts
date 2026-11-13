@@ -6,7 +6,6 @@ type ManagementDestinationId =
   | 'registry'
   | 'connections'
   | 'plugins'
-  | 'activity'
   | 'developer'
   | 'notifications'
   | 'schedule';

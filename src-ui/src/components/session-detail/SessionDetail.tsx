@@ -26,7 +26,7 @@ import {
   MutableSessionDetail,
   type SessionEvidenceReveal,
 } from './MutableSessionDetail';
-import './SessionDetail.css';
+import '../../views/SessionsView.css';
 
 /** Resolve the record owner here; surfaces cannot turn a peer id into a host id. */
 export function SessionDetail(
