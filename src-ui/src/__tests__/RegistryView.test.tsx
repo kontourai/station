@@ -661,15 +661,21 @@ describe('RegistryView', () => {
     }
   });
 
-  test('Discover comes first: browse and catalog before source management', () => {
+  test('Discover comes first: management opens from the toolbar instead of sitting above the catalog', () => {
     render(<RegistryView />);
     const browse = screen.getByLabelText('Browse marketplace');
     const tabs = screen.getByRole('tab', { name: 'Skills' });
-    const manage = screen.getByText(/^Manage sources/);
     const follows = (a: Node, b: Node) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(follows(browse, tabs)).toBe(true);
-    expect(follows(tabs, manage)).toBe(true);
+    // No source list between browsing and the catalog.
+    expect(
+      screen.queryByText(/^Manage sources/, { selector: 'summary' }),
+    ).toBeNull();
+    const manage = screen.getByRole('button', { name: /^Manage sources/ });
+    expect(follows(manage, tabs)).toBe(true);
+    fireEvent.click(manage);
+    expect(screen.getByRole('dialog', { name: 'Manage sources' })).toBeTruthy();
   });
 
   test('a catalog card shows a short Details label and names the item for assistive tech', () => {

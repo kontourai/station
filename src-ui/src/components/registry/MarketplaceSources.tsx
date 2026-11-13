@@ -4,7 +4,7 @@ import {
   useRegistrySourcesQuery,
 } from '@kontourai/station-sdk';
 import { Badge } from '@kontourai/ui/react';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
@@ -109,10 +109,9 @@ function Freshness({ source }: { source: RegistrySource }) {
 }
 
 /**
- * Discover first: which source to browse, and adding one. The sources
- * themselves are managed by {@link MarketplaceSourceManager}, which a view
- * places after its catalog; `manage="inline"` keeps both together for a
- * compact picker.
+ * Discover first: which source to browse, adding one, and a button that opens
+ * the sources in a dialog, so managing them never pushes the catalog down.
+ * `manage="inline"` keeps the collapsible list in place for a compact picker.
  */
 export function MarketplaceSources({
   selected,
@@ -127,7 +126,7 @@ export function MarketplaceSources({
    */
   onSelect: OnSelect;
   kinds?: readonly CatalogKind[];
-  manage?: 'inline' | 'separate';
+  manage?: 'inline' | 'dialog';
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -136,6 +135,7 @@ export function MarketplaceSources({
   const [ref, setRef] = useState('');
   const [name, setName] = useState('');
   const [added, setAdded] = useState<RegistrySource | null>(null);
+  const [managing, setManaging] = useState(false);
   const result = useRef<HTMLParagraphElement>(null);
   const all = sources.data ?? [];
   const visible = all.filter((source) => suppliesAny(source, kinds));
@@ -191,6 +191,11 @@ export function MarketplaceSources({
         >
           Add source
         </Button>
+        {manage === 'dialog' && (
+          <Button variant="secondary" onClick={() => setManaging(true)}>
+            Manage sources ({visible.length})
+          </Button>
+        )}
       </div>
       {sources.error && (
         <p role="alert">
@@ -207,6 +212,25 @@ export function MarketplaceSources({
           onSelect={onSelect}
           kinds={kinds}
         />
+      )}
+      {managing && (
+        <Dialog
+          title="Manage sources"
+          closeLabel="Close manage sources"
+          onClose={() => setManaging(false)}
+          footer={
+            <Button variant="secondary" onClick={() => setManaging(false)}>
+              Close
+            </Button>
+          }
+        >
+          <MarketplaceSourceManager
+            selected={selected}
+            onSelect={onSelect}
+            kinds={kinds}
+            presentation="list"
+          />
+        </Dialog>
       )}
       {open && (
         <Dialog
@@ -341,15 +365,20 @@ export function MarketplaceSources({
   );
 }
 
-/** Every connected source as a card: trust, what it provides, freshness. */
+/**
+ * Every connected source as a card: trust, what it provides, freshness.
+ * `details` collapses it behind a summary; `list` shows it open (in a dialog).
+ */
 export function MarketplaceSourceManager({
   selected,
   onSelect,
   kinds,
+  presentation = 'details',
 }: {
   selected: string;
   onSelect: OnSelect;
   kinds?: readonly CatalogKind[];
+  presentation?: 'details' | 'list';
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -380,8 +409,10 @@ export function MarketplaceSourceManager({
   };
   return (
     <section className="marketplaces__manager" aria-label="Connected sources">
-      <details className="marketplaces__manage">
-        <summary>Manage sources ({visible.length})</summary>
+      <Wrapper
+        presentation={presentation}
+        summary={`Manage sources (${visible.length})`}
+      >
         <p className="marketplaces__note">
           A source makes its catalog available; it installs nothing. Each item
           still needs its own installation and approval. Publisher metadata does
@@ -499,11 +530,29 @@ export function MarketplaceSourceManager({
             );
           })}
         </div>
-      </details>
+      </Wrapper>
       {notice && <p role="status">{notice}</p>}
       {mutation.error && (
         <p role="alert">{describeStationFailure(mutation.error).body}</p>
       )}
     </section>
+  );
+}
+
+function Wrapper({
+  presentation,
+  summary,
+  children,
+}: {
+  presentation: 'details' | 'list';
+  summary: string;
+  children: ReactNode;
+}) {
+  if (presentation === 'list') return <>{children}</>;
+  return (
+    <details className="marketplaces__manage">
+      <summary>{summary}</summary>
+      {children}
+    </details>
   );
 }

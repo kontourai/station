@@ -14,10 +14,7 @@ import {
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '../components/Button';
 import { KitCatalog } from '../components/registry/KitCatalog';
-import {
-  MarketplaceSourceManager,
-  MarketplaceSources,
-} from '../components/registry/MarketplaceSources';
+import { MarketplaceSources } from '../components/registry/MarketplaceSources';
 import {
   getRegistryItemId,
   RegistryCatalog,
@@ -566,7 +563,7 @@ export function RegistryView({
             if (tabs.length > 0 && !tabs.includes(activeTab))
               selectTab(tabs[0]!, id);
           }}
-          manage="separate"
+          manage="dialog"
         />
       )}
       {installTarget ? (
@@ -670,12 +667,6 @@ export function RegistryView({
             },
             renderKits: () => <KitCatalog />,
           }}
-        />
-      )}
-      {!toolPicker && !installTarget && (
-        <MarketplaceSourceManager
-          selected={selectedSource}
-          onSelect={(id) => setSelectedSource(id)}
         />
       )}
       {!remoteIsolationActive && remoteBundlesSection}
