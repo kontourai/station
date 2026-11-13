@@ -2424,6 +2424,147 @@ describe('AgentConnectionView', () => {
         ).toBeTruthy();
     },
   );
+
+  // The row's status is a badge from the one connection verdict; the
+  // subtitle carries facts. A configured engine the server reports as
+  // failing read "Setup required" in the subtitle before.
+  test('engine rows show the verdict as a badge, not subtitle text', async () => {
+    agentConnections = [
+      ...DEFAULT_AGENT_CONNECTIONS,
+      {
+        id: 'muse',
+        kind: 'agent',
+        type: 'muse',
+        name: 'Muse',
+        enabled: true,
+        status: 'error',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: {},
+        setup: { state: 'configured', detected: true, configured: true },
+      },
+    ];
+    const { container } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
+    const rowFor = (name: string) =>
+      [...container.querySelectorAll('.split-pane__item')].find(
+        (row) =>
+          row.querySelector('.split-pane__item-name-text')?.textContent ===
+          name,
+      )!;
+    const badge = (name: string) =>
+      rowFor(name).querySelector('.resource-status__badge');
+    expect(badge('Codex')?.textContent).toBe('Ready');
+    expect(badge('Muse')?.textContent).toBe('Unreachable');
+    expect(badge('Muse')?.classList.contains('tone-negative')).toBe(true);
+    for (const name of ['Codex', 'Muse']) {
+      const subtitle =
+        rowFor(name).querySelector('.split-pane__item-subtitle')?.textContent ??
+        '';
+      expect(subtitle).not.toMatch(/Ready|Unreachable|Setup required/);
+    }
+  });
+
+  /** The detail's Status tile and Ready step. */
+  const detailStatus = (container: HTMLElement) => ({
+    tile: [...container.querySelectorAll('.provider-detail__summary > div')]
+      .find((tile) => tile.textContent?.startsWith('Status'))
+      ?.querySelector('strong')?.textContent,
+    readyStep: [
+      ...container.querySelectorAll('.provider-detail__progress-step'),
+    ].find((step) => step.textContent === 'Ready'),
+  });
+
+  // The detail read the resolver directly, which put "Ready" on a degraded
+  // engine the row (and dispatch) already refused.
+  test('a degraded engine detail is not Ready anywhere on the page', async () => {
+    const muse = {
+      id: 'muse',
+      kind: 'agent',
+      type: 'muse',
+      name: 'Muse',
+      enabled: true,
+      status: 'degraded',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [...DEFAULT_AGENT_CONNECTIONS, muse];
+    connectionQueryData = muse;
+    const { container } = await render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+    const { tile, readyStep } = detailStatus(container);
+    expect(tile).toBe('Limited');
+    expect(
+      readyStep?.classList.contains('provider-detail__progress-step--complete'),
+    ).toBe(false);
+    expect(
+      container.querySelector('.provider-detail__notice strong')?.textContent,
+    ).toBe('Limited');
+  });
+
+  test('a policy-refused engine reads Not allowed in its row and its detail', async () => {
+    managedPolicy.summary = {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: {},
+      engines: { allowed: ['claude'], acpRegistryAgents: true, pinned: [] },
+    };
+    // The policy names engines by `config.engineId`, as the server writes it.
+    const codex = {
+      ...(DEFAULT_AGENT_CONNECTIONS[0] as Record<string, unknown>),
+      config: { executionClass: 'connected', engineId: 'codex' },
+    };
+    agentConnections = [codex, DEFAULT_AGENT_CONNECTIONS[1]];
+    connectionQueryData = codex;
+    const { container } = await render(
+      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+    );
+    const row = [...container.querySelectorAll('.split-pane__item')].find(
+      (item) =>
+        item.querySelector('.split-pane__item-name-text')?.textContent ===
+        'Codex',
+    )!;
+    expect(row.querySelector('.resource-status__badge')?.textContent).toBe(
+      'Not allowed',
+    );
+    expect(detailStatus(container).tile).toBe('Not allowed');
+  });
+
+  // Retry check repairs a failed check; it cannot lift a policy refusal.
+  test('a policy-refused engine that is otherwise ready offers no Retry check', async () => {
+    managedPolicy.summary = {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: {},
+      engines: { allowed: ['claude'], acpRegistryAgents: true, pinned: [] },
+    };
+    acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    const opencode = {
+      id: 'opencode',
+      kind: 'agent',
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: { engineId: 'acp' },
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [...DEFAULT_AGENT_CONNECTIONS, opencode];
+    connectionQueryData = opencode;
+    const { container } = await render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+    expect(detailStatus(container).tile).toBe('Not allowed');
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+  });
 });
 
 test('guided proxy setup saves a reference and checks only saved settings', async () => {
@@ -2483,4 +2624,16 @@ test('guided proxy setup saves a reference and checks only saved settings', asyn
   expect(stored.connection.config).not.toHaveProperty('apiKey');
   expect(stored.connection.config).not.toHaveProperty('env');
   modelConnections = [];
+});
+
+// Hoisted by Vitest; kept at the end so recorded fixture line numbers hold.
+const managedPolicy = vi.hoisted(() => ({ summary: undefined as unknown }));
+vi.mock('../contexts/ManagedPolicyContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../contexts/ManagedPolicyContext')
+  >()),
+  useManagedPolicySummary: () => managedPolicy.summary,
+}));
+afterEach(() => {
+  managedPolicy.summary = undefined;
 });
