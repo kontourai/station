@@ -1,0 +1,7 @@
+{
+  "revision": "9e050898178562589e8b9d1730607897e538c133",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the ledger schema and current diff: this PR changes neither deploy-ledger.md nor deploy-ledger.json against origin/main. Recorded release history is preserved; dock/header/picker changes add no shipping or deployment claim.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
