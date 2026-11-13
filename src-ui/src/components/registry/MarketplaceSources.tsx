@@ -1,90 +1,34 @@
-import type {
-  RegistrySource,
-  RegistrySourceDetectedKind,
-} from '@kontourai/station-contracts/catalog';
+import type { RegistrySource } from '@kontourai/station-contracts/catalog';
 import {
   useRegistrySourceActionMutation,
   useRegistrySourcesQuery,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { Badge } from '@kontourai/ui/react';
+import { useEffect, useRef, useState } from 'react';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
+import {
+  countLabel,
+  coverageLabel,
+  distinctLabels,
+  isBrowsable,
+  kindTone,
+  overlappingSources,
+  statusTone,
+  suppliedKinds,
+  suppliesAny,
+  trustTier,
+} from './marketplaceSourceModel';
 
 type CatalogKind = RegistrySource['kind'];
-
-/**
- * Whether a source supplies a catalog of one of `kinds`: its primary kind, or
- * an installable kind its content was detected to provide.
- */
-function supplies(source: RegistrySource, kinds?: readonly CatalogKind[]) {
-  if (!kinds) return true;
-  return (
-    kinds.includes(source.kind) ||
-    (source.detection?.kinds ?? []).some(
-      (detected) =>
-        detected.installable &&
-        detected.kind !== 'integrations' &&
-        kinds.includes(detected.kind),
-    )
-  );
-}
-
-/** The catalog kinds a source supplies, primary first. */
-function suppliedKinds(source: RegistrySource): CatalogKind[] {
-  const kinds: CatalogKind[] = [source.kind];
-  for (const detected of source.detection?.kinds ?? [])
-    if (
-      detected.installable &&
-      detected.kind !== 'integrations' &&
-      !kinds.includes(detected.kind)
-    )
-      kinds.push(detected.kind);
-  return kinds;
-}
-
-const KIND_NAMES: Record<RegistrySourceDetectedKind['kind'], [string, string]> =
-  {
-    skills: ['skill', 'skills'],
-    plugins: ['plugin', 'plugins'],
-    agents: ['agent', 'agents'],
-    integrations: ['tool server', 'tool servers'],
-  };
-
-function kindLabel(kind: RegistrySourceDetectedKind) {
-  const [one, many] = KIND_NAMES[kind.kind];
-  return `${kind.count} ${kind.count === 1 ? one : many}`;
-}
-
-/**
- * Who stands behind a source. Only Station's own bundled collection ships
- * with Station. A default or configured catalog, a plugin's, and a person's
- * own are not verified by Station, whatever their publisher metadata says.
- */
-function trust(source: RegistrySource): { label: string; detail: string } {
-  switch (source.origin) {
-    case 'station':
-      return { label: 'Station', detail: 'Ships with Station' };
-    case 'configured':
-      return {
-        label: 'Default',
-        detail:
-          'A default or configured catalog of this Station. Its publisher is not verified.',
-      };
-    case 'plugin':
-      return {
-        label: 'Plugin',
-        detail: `Provided by plugin ${source.owner ?? ''}`,
-      };
-    default:
-      return {
-        label: 'Unverified',
-        detail: 'Added on this Station. Its publisher is not verified.',
-      };
-  }
-}
+type OnSelect = (
+  id: string,
+  kind?: CatalogKind,
+  supplied?: readonly CatalogKind[],
+) => void;
 
 function relative(iso: string | undefined): string | undefined {
   if (!iso) return undefined;
@@ -103,30 +47,44 @@ const NOTHING_RECOGNIZED =
 
 function DetectedKinds({ source }: { source: RegistrySource }) {
   const detection = source.detection;
-  if (!detection) return null;
+  if (!detection) {
+    const coverage = coverageLabel(source);
+    return coverage ? (
+      <ul
+        className="marketplaces__kinds"
+        aria-label="What this source provides"
+      >
+        <li className="marketplaces__kind">
+          <Badge
+            value={coverage}
+            tone={source.itemCount === undefined ? 'neutral' : 'active'}
+          />
+        </li>
+      </ul>
+    ) : null;
+  }
   if (detection.state === 'nothing-recognized')
     return <p className="marketplaces__note">{NOTHING_RECOGNIZED}</p>;
   if (detection.kinds.length === 0) return null;
   return (
     <ul className="marketplaces__kinds" aria-label="What this source provides">
-      {detection.kinds.map((kind) => {
-        const blocked = kind.managedDenial !== undefined;
-        const muted = blocked || !kind.installable;
-        return (
-          <li
-            key={kind.kind}
-            className={`marketplaces__kind${muted ? ' marketplaces__kind--muted' : ''}`}
-            title={kind.managedDenial ?? kind.note}
-          >
-            <strong>{kindLabel(kind)}</strong>
-            {blocked ? (
-              <span> · blocked by policy</span>
-            ) : !kind.installable ? (
-              <span> · recognized, not installable</span>
-            ) : null}
-          </li>
-        );
-      })}
+      {detection.kinds.map((kind) => (
+        <li
+          key={kind.kind}
+          className="marketplaces__kind"
+          title={kind.managedDenial ?? kind.note}
+        >
+          <Badge
+            value={countLabel(kind.kind, kind.count)}
+            tone={kindTone(kind)}
+          />
+          {kind.managedDenial !== undefined ? (
+            <span> · blocked by policy</span>
+          ) : !kind.installable ? (
+            <span> · recognized, not installable</span>
+          ) : null}
+        </li>
+      ))}
     </ul>
   );
 }
@@ -150,22 +108,26 @@ function Freshness({ source }: { source: RegistrySource }) {
   ) : null;
 }
 
+/**
+ * Discover first: which source to browse, and adding one. The sources
+ * themselves are managed by {@link MarketplaceSourceManager}, which a view
+ * places after its catalog; `manage="inline"` keeps both together for a
+ * compact picker.
+ */
 export function MarketplaceSources({
   selected,
   onSelect,
   kinds,
+  manage = 'inline',
 }: {
   selected: string;
   /**
    * `kind` is the source's primary catalog kind; `supplied` lists every
    * catalog kind it supplies, so a view can keep its tab when it is one.
    */
-  onSelect: (
-    id: string,
-    kind?: RegistrySource['kind'],
-    supplied?: readonly RegistrySource['kind'][],
-  ) => void;
-  kinds?: readonly RegistrySource['kind'][];
+  onSelect: OnSelect;
+  kinds?: readonly CatalogKind[];
+  manage?: 'inline' | 'separate';
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -174,10 +136,15 @@ export function MarketplaceSources({
   const [ref, setRef] = useState('');
   const [name, setName] = useState('');
   const [added, setAdded] = useState<RegistrySource | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const visible = (sources.data ?? []).filter((source) =>
-    supplies(source, kinds),
-  );
+  const result = useRef<HTMLParagraphElement>(null);
+  const all = sources.data ?? [];
+  const visible = all.filter((source) => suppliesAny(source, kinds));
+  const labels = distinctLabels(all);
+  // The form is replaced by the result: move focus into it, so it is
+  // announced and focus does not fall back to the page.
+  useEffect(() => {
+    if (added) result.current?.focus();
+  }, [added]);
   const closeDialog = () => {
     setOpen(false);
     setAdded(null);
@@ -185,29 +152,9 @@ export function MarketplaceSources({
     setRef('');
     setName('');
   };
-  const act = (
-    source: RegistrySource,
-    action: 'enable' | 'disable' | 'refresh' | 'remove',
-  ) => {
-    setNotice(null);
-    mutation.mutate(
-      { id: source.id, action },
-      {
-        onSuccess: () => {
-          if (action === 'remove' && selected === source.id) onSelect('all');
-          setNotice(
-            action === 'remove'
-              ? 'Source removed. Installed content is preserved in your Library.'
-              : action === 'refresh'
-                ? 'Source read again.'
-                : 'Source updated.',
-          );
-        },
-      },
-    );
-  };
+  const browsable = added ? isBrowsable(added) : false;
   return (
-    <section className="marketplaces" aria-label="Connected sources">
+    <section className="marketplaces" aria-label="Discover sources">
       <div className="marketplaces__toolbar">
         <label>
           Browse marketplace
@@ -215,7 +162,7 @@ export function MarketplaceSources({
             className="choice-trigger"
             value={selected}
             onChange={(event) => {
-              const source = sources.data?.find(
+              const source = all.find(
                 (candidate) => candidate.id === event.target.value,
               );
               onSelect(
@@ -228,7 +175,7 @@ export function MarketplaceSources({
             <option value="all">All sources</option>
             {visible.map((source) => (
               <option key={source.id} value={source.id}>
-                {source.displayName}
+                {labels.get(source.id) ?? source.displayName}
                 {!source.enabled ? ' (disabled)' : ''}
               </option>
             ))}
@@ -254,137 +201,39 @@ export function MarketplaceSources({
           </Button>
         </p>
       )}
-      <details className="marketplaces__manage">
-        <summary>Manage sources ({visible.length})</summary>
-        <p className="marketplaces__note">
-          A source makes its catalog available; it installs nothing. Each item
-          still needs its own installation and approval. Publisher metadata does
-          not establish Station endorsement.
-        </p>
-        {sources.isLoading && (
-          <SkeletonList count={3} label="Loading sources" />
-        )}
-        <div className="marketplaces__grid">
-          {visible.map((source) => {
-            const tier = trust(source);
-            const unread =
-              source.detection?.state === 'refused' ||
-              source.detection?.state === 'unavailable';
-            return (
-              <article key={source.id} className="marketplaces__source">
-                <header className="marketplaces__source-head">
-                  <strong className="marketplaces__source-name">
-                    {source.displayName}
-                  </strong>
-                  <span
-                    className={`marketplaces__trust marketplaces__trust--${source.origin}`}
-                    title={tier.detail}
-                  >
-                    {tier.label}
-                  </span>
-                  {source.status !== 'unknown' && (
-                    <span className="page__meta-pill">{source.status}</span>
-                  )}
-                </header>
-                <p className="marketplaces__meta">{tier.detail}</p>
-                {source.location && (
-                  <code className="marketplaces__location">
-                    {source.location}
-                    {source.ref ? ` @ ${source.ref}` : ''}
-                  </code>
-                )}
-                <DetectedKinds source={source} />
-                <Freshness source={source} />
-                {unread && source.detection?.reason ? (
-                  <p role="status" className="marketplaces__problem">
-                    {source.detection.reason}
-                  </p>
-                ) : (
-                  source.error && (
-                    <p role="status" className="marketplaces__problem">
-                      {source.error}
-                    </p>
-                  )
-                )}
-                {source.managedDenial && (
-                  <p role="status" className="marketplaces__problem">
-                    {source.managedDenial}
-                  </p>
-                )}
-                <ActionRow
-                  className="marketplaces__actions"
-                  overflowLabel={`More actions for ${source.displayName}`}
-                  primary={
-                    <Button
-                      variant="secondary"
-                      disabled={mutation.isPending || !source.enabled}
-                      onClick={() => act(source, 'refresh')}
-                    >
-                      Refresh
-                    </Button>
-                  }
-                  secondary={
-                    source.origin !== 'plugin' ? (
-                      <Button
-                        variant="secondary"
-                        // #4521: a source the managed policy refuses stays off.
-                        disabled={
-                          mutation.isPending ||
-                          source.managedDenial !== undefined
-                        }
-                        onClick={() =>
-                          act(source, source.enabled ? 'disable' : 'enable')
-                        }
-                      >
-                        {source.enabled ? 'Disable' : 'Enable'}
-                      </Button>
-                    ) : undefined
-                  }
-                  overflow={
-                    source.origin === 'user'
-                      ? [
-                          {
-                            key: 'remove',
-                            label: 'Remove source',
-                            tone: 'danger',
-                            disabled: mutation.isPending,
-                            onSelect: () => act(source, 'remove'),
-                          },
-                        ]
-                      : []
-                  }
-                />
-                {source.origin === 'plugin' && (
-                  <p className="marketplaces__note">
-                    Enable, disable, or revoke this source through its owning
-                    plugin.
-                  </p>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </details>
-      {notice && <p role="status">{notice}</p>}
-      {mutation.error && !open && (
-        <p role="alert">{describeStationFailure(mutation.error).body}</p>
+      {manage === 'inline' && (
+        <MarketplaceSourceManager
+          selected={selected}
+          onSelect={onSelect}
+          kinds={kinds}
+        />
       )}
       {open && (
         <Dialog
-          title={added ? `Added ${added.displayName}` : 'Add source'}
+          title={
+            added
+              ? `Added ${labels.get(added.id) ?? added.displayName}`
+              : 'Add source'
+          }
           closeLabel="Close add source"
           onClose={closeDialog}
           footer={
             added ? (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  onSelect(added.id, added.kind, suppliedKinds(added));
-                  closeDialog();
-                }}
-              >
-                Browse this source
-              </Button>
+              browsable ? (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    onSelect(added.id, added.kind, suppliedKinds(added));
+                    closeDialog();
+                  }}
+                >
+                  Browse this source
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={closeDialog}>
+                  Done
+                </Button>
+              )
             ) : (
               <>
                 <Button variant="secondary" onClick={closeDialog}>
@@ -420,7 +269,7 @@ export function MarketplaceSources({
         >
           {added ? (
             <div className="marketplaces__form">
-              <p>
+              <p ref={result} tabIndex={-1} className="marketplaces__result">
                 {added.detection?.state === 'detected'
                   ? 'Station read this source and found:'
                   : added.detection?.state === 'nothing-recognized'
@@ -430,8 +279,9 @@ export function MarketplaceSources({
               </p>
               <DetectedKinds source={added} />
               <p className="marketplaces__note">
-                Nothing is installed yet. Choose items from the catalog and
-                approve each one when you install it.
+                {browsable
+                  ? 'Nothing is installed yet. Choose items from the catalog and approve each one when you install it.'
+                  : 'There is nothing to install from it yet. It stays in Manage sources, where you can refresh or remove it.'}
               </p>
             </div>
           ) : (
@@ -486,6 +336,173 @@ export function MarketplaceSources({
             </div>
           )}
         </Dialog>
+      )}
+    </section>
+  );
+}
+
+/** Every connected source as a card: trust, what it provides, freshness. */
+export function MarketplaceSourceManager({
+  selected,
+  onSelect,
+  kinds,
+}: {
+  selected: string;
+  onSelect: OnSelect;
+  kinds?: readonly CatalogKind[];
+}) {
+  const sources = useRegistrySourcesQuery();
+  const mutation = useRegistrySourceActionMutation();
+  const [notice, setNotice] = useState<string | null>(null);
+  const all = sources.data ?? [];
+  const visible = all.filter((source) => suppliesAny(source, kinds));
+  const labels = distinctLabels(all);
+  const act = (
+    source: RegistrySource,
+    action: 'enable' | 'disable' | 'refresh' | 'remove',
+  ) => {
+    setNotice(null);
+    mutation.mutate(
+      { id: source.id, action },
+      {
+        onSuccess: () => {
+          if (action === 'remove' && selected === source.id) onSelect('all');
+          setNotice(
+            action === 'remove'
+              ? 'Source removed. Installed content is preserved in your Library.'
+              : action === 'refresh'
+                ? 'Source read again.'
+                : 'Source updated.',
+          );
+        },
+      },
+    );
+  };
+  return (
+    <section className="marketplaces__manager" aria-label="Connected sources">
+      <details className="marketplaces__manage">
+        <summary>Manage sources ({visible.length})</summary>
+        <p className="marketplaces__note">
+          A source makes its catalog available; it installs nothing. Each item
+          still needs its own installation and approval. Publisher metadata does
+          not establish Station endorsement.
+        </p>
+        {sources.isLoading && (
+          <SkeletonList count={3} label="Loading sources" />
+        )}
+        <div className="marketplaces__grid">
+          {visible.map((source) => {
+            const tier = trustTier(source);
+            const label = labels.get(source.id) ?? source.displayName;
+            const unread =
+              source.detection?.state === 'refused' ||
+              source.detection?.state === 'unavailable';
+            const overlaps = overlappingSources(source, all);
+            return (
+              <article key={source.id} className="marketplaces__source">
+                <header className="marketplaces__source-head">
+                  <strong className="marketplaces__source-name">{label}</strong>
+                  <span title={tier.detail}>
+                    <Badge value={tier.label} tone={tier.tone} />
+                  </span>
+                  {source.status !== 'unknown' && (
+                    <Badge
+                      value={source.status}
+                      tone={statusTone(source.status)}
+                    />
+                  )}
+                </header>
+                <p className="marketplaces__meta">{tier.detail}</p>
+                {source.location && (
+                  <code className="marketplaces__location">
+                    {source.location}
+                    {source.ref ? ` @ ${source.ref}` : ''}
+                  </code>
+                )}
+                <DetectedKinds source={source} />
+                <Freshness source={source} />
+                {overlaps.length > 0 && (
+                  <p className="marketplaces__note">
+                    Overlaps{' '}
+                    {overlaps
+                      .map((other) => labels.get(other.id) ?? other.displayName)
+                      .join(', ')}
+                    : the same items can appear from each, as separate choices.
+                  </p>
+                )}
+                {unread && source.detection?.reason ? (
+                  <p role="status" className="marketplaces__problem">
+                    {source.detection.reason}
+                  </p>
+                ) : (
+                  source.error && (
+                    <p role="status" className="marketplaces__problem">
+                      {source.error}
+                    </p>
+                  )
+                )}
+                {source.managedDenial && (
+                  <p role="status" className="marketplaces__problem">
+                    {source.managedDenial}
+                  </p>
+                )}
+                <ActionRow
+                  className="marketplaces__actions"
+                  overflowLabel={`More actions for ${label}`}
+                  primary={
+                    <Button
+                      variant="secondary"
+                      disabled={mutation.isPending || !source.enabled}
+                      onClick={() => act(source, 'refresh')}
+                    >
+                      Refresh
+                    </Button>
+                  }
+                  secondary={
+                    source.origin !== 'plugin' ? (
+                      <Button
+                        variant="secondary"
+                        // #4521: a source the managed policy refuses stays off.
+                        disabled={
+                          mutation.isPending ||
+                          source.managedDenial !== undefined
+                        }
+                        onClick={() =>
+                          act(source, source.enabled ? 'disable' : 'enable')
+                        }
+                      >
+                        {source.enabled ? 'Disable' : 'Enable'}
+                      </Button>
+                    ) : undefined
+                  }
+                  overflow={
+                    source.origin === 'user'
+                      ? [
+                          {
+                            key: 'remove',
+                            label: 'Remove source',
+                            tone: 'danger',
+                            disabled: mutation.isPending,
+                            onSelect: () => act(source, 'remove'),
+                          },
+                        ]
+                      : []
+                  }
+                />
+                {source.origin === 'plugin' && (
+                  <p className="marketplaces__note">
+                    Enable, disable, or revoke this source through its owning
+                    plugin.
+                  </p>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </details>
+      {notice && <p role="status">{notice}</p>}
+      {mutation.error && (
+        <p role="alert">{describeStationFailure(mutation.error).body}</p>
       )}
     </section>
   );

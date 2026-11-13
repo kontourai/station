@@ -632,6 +632,54 @@ describe('RegistryView', () => {
     }
   });
 
+  test('a chosen source is kept when the person switches tabs', () => {
+    registrySources.push({
+      id: 'mixed',
+      kind: 'skills',
+      displayName: 'Team catalog',
+      origin: 'user',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+    });
+    try {
+      render(<RegistryView initialTab="skills" />);
+      fireEvent.change(screen.getByLabelText('Browse marketplace'), {
+        target: { value: 'mixed' },
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Plugins' }));
+      expect(navigateMock).toHaveBeenCalledWith('/registry/plugins');
+      // The route remounts the view for the new tab.
+      cleanup();
+      render(<RegistryView initialTab="plugins" />);
+      expect(
+        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
+          .value,
+      ).toBe('mixed');
+    } finally {
+      registrySources.length = 0;
+    }
+  });
+
+  test('Discover comes first: browse and catalog before source management', () => {
+    render(<RegistryView />);
+    const browse = screen.getByLabelText('Browse marketplace');
+    const tabs = screen.getByRole('tab', { name: 'Skills' });
+    const manage = screen.getByText(/^Manage sources/);
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(browse, tabs)).toBe(true);
+    expect(follows(tabs, manage)).toBe(true);
+  });
+
+  test('a catalog card shows a short Details label and names the item for assistive tech', () => {
+    render(<RegistryView />);
+    const button = screen.getByRole('button', {
+      name: `View ${registryItems.agents[0]!.displayName} details`,
+    });
+    expect(button.textContent).toBe('Details');
+  });
+
   test('updates the URL when switching Registry tabs', () => {
     render(<RegistryView />);
 

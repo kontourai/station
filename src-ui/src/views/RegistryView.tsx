@@ -14,7 +14,10 @@ import {
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '../components/Button';
 import { KitCatalog } from '../components/registry/KitCatalog';
-import { MarketplaceSources } from '../components/registry/MarketplaceSources';
+import {
+  MarketplaceSourceManager,
+  MarketplaceSources,
+} from '../components/registry/MarketplaceSources';
 import {
   getRegistryItemId,
   RegistryCatalog,
@@ -83,9 +86,18 @@ export function RegistryView({
   useEffect(() => {
     setActiveTab(initialTab ?? 'agents');
   }, [initialTab]);
-  const selectTab = (tab: RegistryCatalogTab) => {
+  // The route remounts this view for each tab (`RouteViewBoundary` keys by
+  // route), so the chosen source is handed to the next mount: browsing a
+  // source keeps it across tabs.
+  const selectTab = (
+    tab: RegistryCatalogTab,
+    source: string = selectedSource,
+  ) => {
     setActiveTab(tab);
-    if (!toolPicker) navigate(`/registry/${tab}`);
+    if (!toolPicker) {
+      sourceForNextTab = { tab, source };
+      navigate(`/registry/${tab}`);
+    }
   };
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(installTarget ?? '');
@@ -551,11 +563,10 @@ export function RegistryView({
             // Show the chosen source's catalog: keep the tab when the source
             // supplies it, otherwise open its primary kind's tab.
             const tabs: readonly RegistryCatalogTab[] = supplied ?? [];
-            if (tabs.length > 0 && !tabs.includes(activeTab)) {
-              sourceForNextTab = { tab: tabs[0]!, source: id };
-              selectTab(tabs[0]!);
-            }
+            if (tabs.length > 0 && !tabs.includes(activeTab))
+              selectTab(tabs[0]!, id);
           }}
+          manage="separate"
         />
       )}
       {installTarget ? (
@@ -659,6 +670,12 @@ export function RegistryView({
             },
             renderKits: () => <KitCatalog />,
           }}
+        />
+      )}
+      {!toolPicker && !installTarget && (
+        <MarketplaceSourceManager
+          selected={selectedSource}
+          onSelect={(id) => setSelectedSource(id)}
         />
       )}
       {!remoteIsolationActive && remoteBundlesSection}

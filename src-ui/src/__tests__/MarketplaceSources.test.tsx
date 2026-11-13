@@ -333,3 +333,188 @@ test('a kind the managed policy refuses is marked on that kind, not on the whole
   ]);
   expect(items[0]!.getAttribute('title')).toContain('cannot be signed');
 });
+
+// ── Review round: focus, browsability, labels, overlap, coverage, badges ──
+
+function addThroughDialog(result: Record<string, unknown>) {
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
+  const dialog = screen.getByRole('dialog', { name: 'Add source' });
+  fireEvent.change(within(dialog).getByLabelText('Location'), {
+    target: { value: '/sources/example' },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Add source' }));
+  const { onSuccess } = mutate.mock.calls.at(-1)![1] as {
+    onSuccess: (source: unknown) => void;
+  };
+  act(() => onSuccess(result));
+}
+
+test('the result of adding a source takes focus, instead of leaving it on the page', () => {
+  addThroughDialog(exampleSource);
+  const result = screen.getByText('Station read this source and found:');
+  expect(document.activeElement).toBe(result);
+  expect(result.closest('[role="dialog"]')).not.toBeNull();
+});
+
+test.each([
+  [
+    'nothing recognized',
+    {
+      state: 'nothing-recognized',
+      kinds: [],
+      checkedAt: '2026-11-12T00:00:00.000Z',
+    },
+  ],
+  [
+    'only kinds Station cannot install',
+    {
+      state: 'detected',
+      checkedAt: '2026-11-12T00:00:00.000Z',
+      kinds: [
+        {
+          kind: 'plugins',
+          count: 2,
+          via: 'claude-marketplace',
+          installable: false,
+        },
+      ],
+    },
+  ],
+  [
+    'only kinds the policy refuses',
+    {
+      state: 'detected',
+      checkedAt: '2026-11-12T00:00:00.000Z',
+      kinds: [
+        {
+          kind: 'skills',
+          count: 2,
+          via: 'skill-md',
+          installable: true,
+          managedDenial: 'Refused by policy.',
+        },
+      ],
+    },
+  ],
+])('a source with %s offers Done, not Browse', (_name, detection) => {
+  addThroughDialog({ ...exampleSource, id: 'unbrowsable', detection });
+  expect(
+    screen.queryByRole('button', { name: 'Browse this source' }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  expect(select).not.toHaveBeenCalled();
+});
+
+test('sources that share a name are told apart by their location', () => {
+  extraSources.push(
+    {
+      id: 'codex-skills',
+      kind: 'skills',
+      displayName: 'Local skills',
+      origin: 'configured',
+      location: '/home/someone/.codex/skills',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+    },
+    {
+      id: 'agents-skills',
+      kind: 'skills',
+      displayName: 'Local skills',
+      origin: 'configured',
+      location: '/home/someone/.claude/.agents/skills',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+    },
+  );
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const options = within(screen.getByLabelText('Browse marketplace'))
+    .getAllByRole('option')
+    .map((option) => option.textContent);
+  expect(options).toContain('Local skills · …/.codex/skills');
+  expect(options).toContain('Local skills · …/.agents/skills');
+  expect(
+    screen.getByText('Local skills · …/.codex/skills', { selector: 'strong' }),
+  ).toBeTruthy();
+});
+
+test('an added source that reads the same repository as a default one says they overlap', () => {
+  extraSources.push(
+    {
+      id: 'default-repo',
+      kind: 'skills',
+      displayName: 'example-org/example-skills/main/skills',
+      origin: 'configured',
+      location: 'github:example-org/example-skills/main/skills',
+      adapter: 'github',
+      enabled: true,
+      status: 'ready',
+      itemCount: 12,
+    },
+    {
+      ...exampleSource,
+      id: 'added-repo',
+      displayName: 'Example skills',
+      location: 'https://github.com/Example-Org/example-skills',
+    },
+  );
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const added = screen
+    .getByText('Example skills', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  expect(added.textContent).toContain(
+    'Overlaps example-org/example-skills/main/skills: the same items can appear from each',
+  );
+  const community = screen
+    .getByText('Community', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  expect(community.textContent).not.toContain('Overlaps');
+});
+
+test('a default catalog shows its last count, or that it has not been scanned', () => {
+  extraSources.push(
+    {
+      id: 'counted',
+      kind: 'skills',
+      displayName: 'Counted defaults',
+      origin: 'configured',
+      location: '/defaults/one',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+      itemCount: 12,
+    },
+    {
+      id: 'unscanned',
+      kind: 'skills',
+      displayName: 'Unscanned defaults',
+      origin: 'configured',
+      location: '/defaults/two',
+      adapter: 'directory',
+      enabled: true,
+      status: 'unknown',
+    },
+  );
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const card = (name: string) =>
+    screen
+      .getByText(name, { selector: 'strong' })
+      .closest('article') as HTMLElement;
+  expect(card('Counted defaults').textContent).toContain('12 skills');
+  expect(card('Unscanned defaults').textContent).toContain('Not scanned yet');
+});
+
+test('trust, status and counts use the shared tone badges', () => {
+  extraSources.push(exampleSource);
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const card = screen
+    .getByText('example-org/example-skills-and-plugin', { selector: 'strong' })
+    .closest('article') as HTMLElement;
+  const badge = (text: string) => within(card).getByText(text);
+  expect(badge('Unverified').className).toBe('badge tone-caution');
+  expect(badge('ready').className).toBe('badge tone-positive');
+  expect(badge('1 skill').className).toBe('badge tone-active');
+  expect(badge('1 plugin').className).toBe('badge tone-neutral');
+});

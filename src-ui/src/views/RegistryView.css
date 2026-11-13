@@ -154,23 +154,6 @@
   margin-inline-end: auto;
   overflow-wrap: anywhere;
 }
-.marketplaces__trust {
-  font-size: var(--k-text-xs);
-  border-radius: var(--k-radius-sm);
-  padding: 0 var(--k-space-2);
-  border: var(--k-border-thin) solid var(--k-line-strong);
-  color: var(--k-text-muted);
-}
-.marketplaces__trust--station {
-  border-color: var(--k-positive);
-  color: var(--k-text);
-  background: var(--k-positive-soft);
-}
-.marketplaces__trust--user {
-  border-color: var(--k-caution);
-  color: var(--k-text);
-  background: var(--k-caution-soft);
-}
 .marketplaces__meta,
 .marketplaces__note,
 .marketplaces__hint {
@@ -193,16 +176,14 @@
   padding: 0;
 }
 .marketplaces__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
   font-size: var(--k-text-sm);
-  border-radius: var(--k-radius-sm);
-  padding: var(--k-space-1) var(--k-space-2);
-  background: var(--k-action-soft);
-  color: var(--k-text);
-}
-.marketplaces__kind--muted {
-  background: var(--k-panel);
   color: var(--k-text-muted);
-  border: var(--k-border-thin) dashed var(--k-line-strong);
+}
+.marketplaces__manager {
+  margin-block: var(--k-space-4);
 }
 .marketplaces__problem {
   margin: 0;
