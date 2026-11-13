@@ -72,6 +72,19 @@ const pluginToolName = 'mcp__plugin_child-work-probe_probe__mark';
 for (const directory of [workspace, home, registry])
   mkdirSync(directory, { recursive: true, mode: 0o700 });
 
+const permissionControlResponse = z
+  .object({
+    type: z.literal('control_response'),
+    response: z
+      .object({
+        request_id: z.string(),
+        subtype: z.enum(['success', 'error']),
+        response: z.object({ state: z.unknown() }).optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 const permissionState = z
   .object({
     managedOnly: z.boolean(),
@@ -518,28 +531,33 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
               controller.abort(new Error('native_protocol_frame_limit'));
               return;
             }
-            let newline: number;
-            while ((newline = buffered.indexOf('\n')) !== -1) {
+            for (;;) {
+              const newline = buffered.indexOf('\n');
+              if (newline === -1) break;
               const line = buffered.slice(0, newline);
               buffered = buffered.slice(newline + 1);
-              let frame;
+              let frame: unknown;
               try {
                 frame = JSON.parse(line);
               } catch {
                 controller.abort(new Error('native_protocol_invalid_json'));
                 return;
               }
+              const control = permissionControlResponse.safeParse(frame);
               if (
                 pending &&
-                frame.type === 'control_response' &&
-                frame.response?.request_id === pending.id
+                control.success &&
+                control.data.response.request_id === pending.id
               ) {
                 const waiter = pending;
                 pending = undefined;
                 const decoded = permissionState.safeParse(
-                  frame.response?.response?.state,
+                  control.data.response.response?.state,
                 );
-                if (frame.response.subtype !== 'success' || !decoded.success)
+                if (
+                  control.data.response.subtype !== 'success' ||
+                  !decoded.success
+                )
                   waiter.reject(
                     new Error('native_permission_observation_unavailable'),
                   );
