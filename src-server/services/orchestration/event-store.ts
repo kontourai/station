@@ -2830,6 +2830,7 @@ export class EventStore {
   private appendEventInsert?: ReturnType<EventStore['db']['prepare']>;
   private appendEventInsertOrIgnore?: ReturnType<EventStore['db']['prepare']>;
   private appendEventHighWaterUpdate?: ReturnType<EventStore['db']['prepare']>;
+  private conversationHistoryUpsert?: ReturnType<EventStore['db']['prepare']>;
   /** Persisted with this store so issued cursors survive a Station restart. */
   private readonly declaredOutputCursorKey: Buffer;
   private readonly sessionInventoryCursorKey: Buffer;
@@ -5765,12 +5766,10 @@ export class EventStore {
   }
 
   private readPersistedEventObservedAt(eventId: string): string | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT observed_at, typeof(observed_at) AS observed_at_type
+    const row = this.readStatement(
+      `SELECT observed_at, typeof(observed_at) AS observed_at_type
            FROM orchestration_events WHERE id = ?`,
-      )
-      .get(eventId) as
+    ).get(eventId) as
       | { observed_at?: unknown; observed_at_type?: unknown }
       | undefined;
     if (!row) return undefined;
@@ -18044,12 +18043,10 @@ export class EventStore {
   }
 
   private projectConversationHistoryEvent(event: CanonicalRuntimeEvent): void {
-    const existing = this.db
-      .prepare(
-        `SELECT owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at
+    const existing = this.readStatement(
+      `SELECT owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at
          FROM orchestration_conversation_history WHERE thread_id = ?`,
-      )
-      .get(event.threadId) as
+    ).get(event.threadId) as
       | {
           owner_user_id: string | null;
           tenant_id: string | null;
@@ -18061,12 +18058,10 @@ export class EventStore {
           created_at: string;
         }
       | undefined;
-    const persisted = this.db
-      .prepare(
-        `SELECT tenant_execution_context, created_at
+    const persisted = this.readStatement(
+      `SELECT tenant_execution_context, created_at
          FROM provider_session_state WHERE thread_id = ?`,
-      )
-      .get(event.threadId) as
+    ).get(event.threadId) as
       | { tenant_execution_context: string | null; created_at: string }
       | undefined;
     const metadata =
@@ -18120,12 +18115,10 @@ export class EventStore {
       : undefined;
     const inheritedRow =
       lineage?.predecessorSessionId && lineage.conversationId !== event.threadId
-        ? (this.db
-            .prepare(
-              `SELECT title, title_source FROM orchestration_conversation_history
+        ? (this.readStatement(
+            `SELECT title, title_source FROM orchestration_conversation_history
                WHERE thread_id = ?`,
-            )
-            .get(lineage.conversationId) as
+          ).get(lineage.conversationId) as
             | { title?: string | null; title_source?: string | null }
             | undefined)
         : undefined;
@@ -18180,9 +18173,7 @@ export class EventStore {
       event.method === 'turn.completed'
         ? 1
         : 0);
-    this.db
-      .prepare(
-        `INSERT INTO orchestration_conversation_history
+    const upsertSql = `INSERT INTO orchestration_conversation_history
           (thread_id, owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(thread_id) DO UPDATE SET
@@ -18200,22 +18191,26 @@ export class EventStore {
              ELSE COALESCE(orchestration_conversation_history.title, excluded.title)
            END,
            message_count = excluded.message_count,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        event.threadId,
-        ownerUserId ?? null,
-        tenant?.tenantId ?? existing?.tenant_id ?? null,
-        agentSlug ?? null,
-        projectSlug ?? null,
-        candidate?.title ?? null,
-        candidate?.source ?? null,
-        messageCount,
-        existing?.created_at ?? persisted?.created_at ?? event.createdAt,
-        event.createdAt,
-        replaceLowContentTitle ? 1 : 0,
-        replaceLowContentTitle ? 1 : 0,
-      );
+           updated_at = excluded.updated_at`;
+    let upsert = this.conversationHistoryUpsert;
+    if (this.cachesDisabled || !upsert) {
+      upsert = this.db.prepare(upsertSql);
+      if (!this.cachesDisabled) this.conversationHistoryUpsert = upsert;
+    }
+    upsert.run(
+      event.threadId,
+      ownerUserId ?? null,
+      tenant?.tenantId ?? existing?.tenant_id ?? null,
+      agentSlug ?? null,
+      projectSlug ?? null,
+      candidate?.title ?? null,
+      candidate?.source ?? null,
+      messageCount,
+      existing?.created_at ?? persisted?.created_at ?? event.createdAt,
+      event.createdAt,
+      replaceLowContentTitle ? 1 : 0,
+      replaceLowContentTitle ? 1 : 0,
+    );
     this.refreshConversationHistoryQuarantine(event.threadId);
   }
 
@@ -18828,13 +18823,11 @@ export class EventStore {
   }
 
   private nextSequence(threadId: string): number {
-    const row = this.db
-      .prepare(
-        `SELECT COALESCE(MAX(sequence), 0) AS max_sequence
+    const row = this.readStatement(
+      `SELECT COALESCE(MAX(sequence), 0) AS max_sequence
          FROM orchestration_events
          WHERE thread_id = ?`,
-      )
-      .get(threadId) as { max_sequence: number };
+    ).get(threadId) as { max_sequence: number };
     return row.max_sequence + 1;
   }
 
@@ -18845,12 +18838,10 @@ export class EventStore {
    * insert or rollback leaves it unchanged.
    */
   private nextGlobalSequence(): number {
-    const row = this.db
-      .prepare(
-        `SELECT high_water AS max_sequence
+    const row = this.readStatement(
+      `SELECT high_water AS max_sequence
          FROM orchestration_stream_identity WHERE singleton = 1`,
-      )
-      .get() as { max_sequence: number };
+    ).get() as { max_sequence: number };
     return row.max_sequence + 1;
   }
 }
