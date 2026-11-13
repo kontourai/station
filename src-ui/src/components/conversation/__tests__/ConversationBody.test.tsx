@@ -506,14 +506,15 @@ test.each([
           </PreviewProvider>
         </QueryClientProvider>,
       );
-      await waitFor(() =>
+      await waitFor(() => {
+        const trigger = screen.getByTestId('run-setup-trigger');
+        const marks = trigger.querySelectorAll('[data-brand-key]');
         expect(
-          screen
-            .getByTestId('run-setup-trigger')
-            .querySelectorAll('[data-brand-key]')[1]
-            ?.getAttribute('data-brand-key'),
-        ).toBe(expected),
-      );
+          Array.from(marks, (mark) => mark.getAttribute('data-brand-key')),
+        ).toEqual(
+          connection === 'configured' ? ['codex'] : ['codex', expected],
+        );
+      });
     } finally {
       for (const key of Object.keys(agent))
         delete (agent as unknown as Record<string, unknown>)[key];

@@ -5255,6 +5255,11 @@ const SCREENS: Screen[] = [
           await expect(
             draft.getByRole('button', { name: 'Start', exact: true }),
           ).toBeInViewport();
+          await expect(
+            draft.getByRole('button', {
+              name: /^(Speak message|Microphone unavailable)$/,
+            }),
+          ).toBeInViewport();
         },
         true,
         true,
