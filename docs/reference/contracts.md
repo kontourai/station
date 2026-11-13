@@ -1739,8 +1739,11 @@ On a serve session:
   running turn as `expectedTurnId` and publishes a steer `turn.started`. Muse's
   `commandRejected` reads as no active turn. The matrix declares native
   steering, so the composer's Send mode defaults to Steer. A session on the
-  exec fallback answers `canSteerTurn` false, and orchestration refuses its
-  steer as `unsupported-engine` before the adapter is called.
+  exec fallback answers `canSteerTurn` false, so its Session summary reports
+  `steerPlacement` `none` (the composer defaults to Queue), and orchestration
+  refuses its steer as `unsupported-engine` before the adapter is called. A
+  steer Muse accepts after it already ended the turn publishes no steer
+  `turn.started` and is indeterminate, not a no-effect refusal.
 - **Reasoning effort.** `modelOptions.effort` maps by identity to Muse's
   tiers (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`,
   `ultra`): `turn/start.reasoningEffort` on serve, `--reasoning-effort` on
@@ -1770,11 +1773,20 @@ On a serve session:
   run the same posture without a sandbox), at `preflightStart` once a host has
   reported it, and per turn. Other postures run with a
   `muse-sandbox-unavailable` warning carrying Muse's reason, and report
-  `museSandbox: 'unavailable'`.
+  `museSandbox: 'unavailable'`. Once a host has reported it, the exec
+  fallback (always `--approval-mode never`, relying on that sandbox) is
+  refused for every posture except Station's `never`: a start whose serve
+  host fails is refused `sandbox_unavailable`, and an exec turn under another
+  posture is refused `permission_denied`.
 - **Model catalog and allowance** (#2266). `listModelCatalog` and
   `readQuotaSnapshot` start a short-lived host (`initialize`, `initialized`,
   then `model/list` or `usage/read`) that starts no session, and terminate it
-  before the read settles. A successful catalog is reused for one minute.
+  before the read settles. Both run under the connection's credential
+  profile, as a session would: the allowance under the profile the
+  connection names (a profile that cannot be prepared fails the read, and a
+  snapshot reports `accountScope: 'profile'`), the catalog under the active
+  profile. A successful catalog is reused for one minute for the same
+  profile.
   Live 1.4.18 answered `model/list` with an empty catalog, and an empty
   `usage/read` is the `ConnectionQuotaResult` reason `not-reported`, never a
   window at 0%. Selection does not follow the catalog: `AgentConnectionView`
@@ -1822,7 +1834,10 @@ On a serve session:
   `MUSE_NO_AUTO_UPDATE=1` and `MUSE_LOGIN=0` (`MUSE_UNATTENDED_LAUNCHER_ENV` in
   [muse-auth.ts](../../src-server/providers/auth/muse-auth.ts)), so the `muse`
   launcher neither downloads nor prompts during a probe. Sessions do not set
-  them.
+  them. A run under a credential profile or app home (sessions, hosts,
+  discovery reads, readiness, sign-in checks and the device login) drops an
+  ambient `META_API_KEY`, which Muse honours under any config home: the key
+  signs in only the default account.
 
 A session on the exec fallback has no steering, questions, resume,
 `/compact` or goals (a goal read answers unsupported), and reports its child
@@ -1842,7 +1857,7 @@ These Muse capabilities are deliberately not offered:
 | Subagent resume, interrupt, read result, close | No Station caller or adapter seam uses them. |
 | `task/background`, `stopAll` | No Station surface; Stop targets one task or subagent. |
 | Listing Muse's skills | `skill/list` is per session, while command listing is per provider; a probe host would have to start, and leave stored, a Muse session. |
-| API-key sign-in | No engine route offers an API-key mechanism for profiles; `META_API_KEY` in the environment still applies. |
+| API-key sign-in | No engine route offers an API-key mechanism for profiles; `META_API_KEY` in the environment applies only to the default account. |
 | Per-profile account allowance | The allowance shape has not been seen (the observed account reported none), so account usage reads unknown. |
 | Managed install | The binary channel is publicly downloadable with a sha256 manifest, but managed install is keyed on built-in ACP descriptors. |
 | MCP reconnect | Not in stable MSP. |
@@ -2396,7 +2411,9 @@ values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
 Current Session summaries and conversation-open execution carry the registered
-adapter's `durability` declaration at read time. The live composer consumes that
+adapter's `durability` declaration at read time, except that a Session its
+adapter says cannot steer (`canSteerTurn` false) reports `steerPlacement`
+`none`. The live composer consumes that
 observation rather than resolving a provider-name table; absence stays unknown.
 Claude, Codex and Muse declare their live steering channels as native (Muse's
 is `muse serve`'s; an exec-fallback Session refuses a steer). ACP discloses a

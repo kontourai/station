@@ -248,8 +248,10 @@ Separately from any ceiling, a `muse serve` host that reports it cannot
 enforce its sandbox (`sandboxAvailability: unavailable`) refuses Auto, which
 relies on that sandbox as its only containment: the start is refused
 (`sandbox_unavailable`) without falling back to `muse exec`, and so is a turn
-asking for Auto. Other approval modes still run, with a
-`muse-sandbox-unavailable` warning.
+asking for Auto. Other approval modes still run on `muse serve`, with a
+`muse-sandbox-unavailable` warning, but never fall back to `muse exec`, which
+would run them unprompted without the sandbox: only Full access (`never`)
+does.
 
 A plugin Agent's tool approvals (`autoApprove`, `unattendedAutoApprove`) can
 be removed or narrowed under a ceiling, but not added to.

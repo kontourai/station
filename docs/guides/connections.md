@@ -112,8 +112,9 @@ Muse Code (#1942) signs in with a device code too: Station runs the bare
 in your browser", and relays its link and code. Sign-in state comes from
 `muse usage --json`: its JSON answer is signed in, "not logged in" is signed
 out, and anything else is unknown. API-key sign-in is not offered for a
-profile (`META_API_KEY` in Station's environment still takes priority, as Muse
-documents). A Muse profile is an XDG config root: sessions, `muse serve` hosts
+profile, and a profile never inherits `META_API_KEY` from Station's
+environment: Muse honours that key under any config home, so Station keeps it
+for the default account only. A Muse profile is an XDG config root: sessions, `muse serve` hosts
 and exec turns run with `XDG_CONFIG_HOME` set to the profile, where Muse reads
 its `muse/` folder, and a named profile that cannot be prepared refuses the
 start. Import copies `settings.json` and `skills/`, `auth.json` only when you
