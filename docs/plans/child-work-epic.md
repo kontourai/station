@@ -19,6 +19,42 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Actual confined Claude/Codex channel checkpoint (2026-11-13)
+
+Draft [#4919](https://github.com/kontourai/station/pull/4919) now publishes the
+remaining lane and its ownership boundaries. It is not a qualified whole-epic
+merge candidate; smaller reviewed slices carry protected delivery.
+
+At `7a761679a11a`, the opt-in model-channel lab runs pinned Linux Claude
+2.1.322 and Codex 0.167.0 binaries under UID 10001 in the existing no-network,
+read-only, resource-bounded namespace. Their native model requests cross the
+owned stdio bridge to synthetic provider fixtures. Claude returns a structured
+success result; Codex emits one completed turn with the exact fixture reply and
+no error events. Three requests and nine delivery checks include the original
+Node probe. The retained `child-work-native-model-container-lwDMgF` receipt binds
+controller sources, bundled worker inputs, native binary sizes/hashes and the
+explicit synthetic Codex model catalog. Owner cleanup reports namespace removal,
+worker settlement and zero pending requests. No global OS descendant census is
+claimed.
+
+Independent review of the earlier channel result preserved Codex's metadata
+fallback error despite exit zero. A stronger event assertion then fails the
+actual `child-work-native-model-container-ChdjPV` run on that error; cleanup
+still settles. A version-compatible local catalog for `station-channel-fixture`
+removes the fixture's metadata gap without claiming upstream model support.
+Earlier failures remain retained: `fsGrny` rejected an abbreviated source SHA
+before downloads or container creation; `tdXotu` completed Claude but Codex's
+configured home did not exist; `9sfFZd` rejected a truncated CDN binary before
+image creation. Explicit retained-binary reuse keeps the same exact byte/hash
+checks. Scripts typechecking passes after the catalog change.
+
+This closes the two-native-family model-channel prerequisite only. No native
+tool call, authenticated delegation issuance, finite provider billing,
+monotonic budget ledger, staged effect publication, peer/SSH path or
+parent/child/grandchild journey is qualified by these text-only fixtures. Both
+production qualification flags and all lab qualification fields remain false.
+The full epic remains NOT_READY.
+
 ### Confined native model-channel prerequisite (2026-11-13)
 
 At `1af6b32efb47`, the new stdio model channel keeps model requests and
