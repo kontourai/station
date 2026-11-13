@@ -827,6 +827,11 @@ export type ChatUIState = {
   /** The engine's MCP servers (`engine-mcp.status`), in the engine's order. */
   engineMcpServers?: ChatEngineMcpServer[];
   /**
+   * The latest `engine-mcp.status` said this session can reconnect a server
+   * (`reconnect: true`). Absent: no Reconnect or Sign in action is offered.
+   */
+  engineMcpReconnect?: true;
+  /**
    * Synthetic event-replay occupant of this store key. Lineage ids stay
    * unset so live SSE cannot fuzzy-match the source thread into it.
    */

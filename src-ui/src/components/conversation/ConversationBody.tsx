@@ -1884,6 +1884,7 @@ function LiveConversationBody({
           onToggle={() => setShowStatsPanel(!showStatsPanel)}
           messageCount={activeSession.messages.length}
           engineMcpServers={activeSession.engineMcpServers}
+          engineMcpReconnect={activeSession.engineMcpReconnect === true}
           executionThreadId={
             activeSession.replay || connectionRecord?.readOnly
               ? undefined

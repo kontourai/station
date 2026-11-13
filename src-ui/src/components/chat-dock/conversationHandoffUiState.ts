@@ -132,6 +132,8 @@ export function acceptConversationHandoffUiState(
     activityHint: undefined,
     backgroundTasks: [],
     liveUsage: undefined,
+    engineMcpServers: undefined,
+    engineMcpReconnect: undefined,
     status: 'sending',
     sendAwaitingTurnStart: true,
     orchestrationSessionStarted: true,

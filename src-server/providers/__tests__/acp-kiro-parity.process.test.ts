@@ -527,6 +527,28 @@ describe.skipIf(process.platform === 'win32')(
       ).toBeUndefined();
     });
 
+    test('an MCP report from an engine that can reconnect says so', async () => {
+      const engine = launch(profileOf('kiro-v3'), [
+        {
+          kind: 'notification',
+          method: '_kiro/mcp/status',
+          params: {
+            sessionId: '$sessionId',
+            servers: [{ name: 'docs', status: 'connected' }],
+          },
+        },
+        { kind: 'text', text: 'ok' },
+      ]);
+      await engine.start('mcp-reconnect');
+      await engine.completed(await engine.send('mcp-reconnect', 'go'));
+      const report = await waitFor(
+        () =>
+          engine.events.find((event) => event.method === 'engine-mcp.status'),
+        'engine-mcp.status',
+      );
+      expect(report).toMatchObject({ reconnect: true });
+    });
+
     test('rewind is refused mid-turn and runs to the next turn’s prompt id after it', async () => {
       const engine = launch(profileOf('kiro-v3'), [
         { kind: 'user-message-id' },

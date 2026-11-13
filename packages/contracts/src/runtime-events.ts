@@ -1207,6 +1207,12 @@ export interface EngineMcpStatusEvent extends CanonicalRuntimeEventBase {
   method: 'engine-mcp.status';
   servers: EngineMcpServerStatus[];
   complete: boolean;
+  /**
+   * `true` when this session's engine can reconnect one of these servers on
+   * request (and start its sign-in); absent otherwise. Set by the adapter
+   * from what the engine declared, never guessed from the engine's name.
+   */
+  reconnect?: true;
 }
 
 /**

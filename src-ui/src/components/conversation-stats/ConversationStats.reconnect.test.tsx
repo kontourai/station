@@ -67,7 +67,7 @@ const SERVERS = [
   { name: 'tracker', state: 'failed' as const, scope: 'session' as const },
 ];
 
-function panel(executionThreadId?: string) {
+function panel(executionThreadId?: string, engineMcpReconnect = true) {
   return (
     <ConversationStats
       agentSlug="kiro"
@@ -76,6 +76,7 @@ function panel(executionThreadId?: string) {
       isVisible
       onToggle={() => {}}
       engineMcpServers={SERVERS}
+      engineMcpReconnect={engineMcpReconnect}
       {...(executionThreadId ? { executionThreadId } : {})}
     />
   );
@@ -156,6 +157,16 @@ describe('ConversationStats engine MCP reconnect', () => {
       screen.queryByRole('button', { name: /Sign in:|Reconnect:/ }),
     ).toBeNull();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test('a live Session whose engine cannot reconnect (Codex) gets no action', async () => {
+    render(panel('thread-live', false));
+    expect(
+      await screen.findByRole('region', { name: 'Engine MCP servers' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /Sign in:|Reconnect:/ }),
+    ).toBeNull();
   });
 
   test.each<[EngineCommandOutcome, string]>([

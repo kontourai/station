@@ -4798,8 +4798,15 @@ export class AcpAdapter implements ProviderAdapterShape {
    */
   private publishForTurn(
     record: AcpSessionRecord,
-    event: CanonicalRuntimeEvent,
+    incoming: CanonicalRuntimeEvent,
   ): void {
+    // An MCP report says whether this session can reconnect a server
+    // (`reconnectMcpServer`), so a surface offers the action only then.
+    const event =
+      incoming.method === 'engine-mcp.status' &&
+      resolveAcpMcpReconnect(record.process.initResult)
+        ? { ...incoming, reconnect: true as const }
+        : incoming;
     if (event.invocationId !== undefined) {
       this.publish(event);
       return;

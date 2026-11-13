@@ -76,5 +76,6 @@ export function handleEngineMcpStatusEvent(
       event.servers,
       event.complete === true,
     ),
+    engineMcpReconnect: event.reconnect === true ? true : undefined,
   });
 }

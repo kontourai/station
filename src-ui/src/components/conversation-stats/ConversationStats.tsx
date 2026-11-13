@@ -72,6 +72,12 @@ interface ConversationStatsProps {
    * command on it. Absent hides the panel's Reconnect and Sign in actions.
    */
   executionThreadId?: string;
+  /**
+   * The session's engine can reconnect its MCP servers (its last
+   * `engine-mcp.status` said `reconnect: true`). Without it the panel offers
+   * no Reconnect or Sign in action: Codex, for one, has no reconnect.
+   */
+  engineMcpReconnect?: boolean;
 }
 
 export function ConversationStats({
@@ -83,6 +89,7 @@ export function ConversationStats({
   messageCount,
   engineMcpServers,
   executionThreadId,
+  engineMcpReconnect,
 }: ConversationStatsProps) {
   // Same defect shape as SHELL-09's SkillsView: `useStats` already derives a
   // loading flag and this discarded it for a hardcoded `false`, so the modal's
@@ -173,7 +180,9 @@ export function ConversationStats({
           usageTree.isPending && usageTree.fetchStatus !== 'idle',
         usageTreeError: usageTreeMissing ? undefined : usageTree.error,
         engineMcpServers,
-        ...(executionThreadId ? { onReconnectMcpServer } : {}),
+        ...(executionThreadId && engineMcpReconnect
+          ? { onReconnectMcpServer }
+          : {}),
         mcpReconnectPendingServer: mcpReconnect.pendingServer,
         mcpReconnectNotice: mcpReconnect.notice,
       }}
