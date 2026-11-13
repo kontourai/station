@@ -19,6 +19,38 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Provider SDK qualification and current-term audit (2026-11-13)
+
+Commit `2cb3f9134646` qualifies the public Google SDK 3.0.145 serialization
+for the existing fixed no-tools profile. Both public tarballs match registry
+SHA-512 integrity; installed files match the retained 3.0.145 package. The
+complete 3.0.141–3.0.145 diff was reviewed independently. Schema resource
+limits, tool handling and Interactions labels remain outside this profile;
+SDK tier metadata fallback does not replace raw-response accounting. All eight
+owner tests fail with the old pin and pass after the four-value update.
+Pricing sources, validity, model, API version, limits and tariffs stay unchanged.
+
+At `3ae95c36a345`, reverting only the Anthropic wrapper hash to its prior
+qualified value makes the actual preparation test fail with
+`untrusted_contract` before provider execution. Byte-exact restoration passes
+the selected test and leaves the tree clean. This supports the installed-SDK
+repair; it does not establish live provider acceptance.
+
+The current official-source audit retains eleven Anthropic snapshots and nine
+Google snapshots with capture times, HTTP headers and body hashes. Independent
+semantic review found missing Google request-tier and implicit/explicit-cache
+sources; the method-specific request reference and legacy caching guide are
+now retained and inspected. Neither production qualification window has been
+renewed. Google legacy-model account eligibility, provider invoices and actual
+provider behavior remain unverified. Both production qualification flags stay
+false; native inherited authority and cross-transport acceptance remain open.
+
+Committed-head readiness at `2cb3f9134646` failed documentation truth: 255 of
+256 foundation cases passed, while the recorded-review freshness case named
+outstanding accumulated epic dependencies. The default working-tree scope
+was empty, so this run does not qualify committed change-specific policies.
+Semantic reconciliation and a correctly scoped readiness run remain required.
+
 ### Initialized report caller and SDK qualification checkpoint (2026-11-13)
 
 The current-head initialized HTTP report/accounting caller now passes at
