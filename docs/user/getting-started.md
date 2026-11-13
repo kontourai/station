@@ -18,8 +18,8 @@ without adding a model API key:
    **Check connection** sends a short message using your model allowance.
 3. An empty Home guides you through choosing an agent and optionally adding
    files. **View available agents** opens the agent list; **Set up an agent
-   engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
-   **Start**. You can start without a Project. The detected Codex Agent is
+   engine** opens Connections when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
+   **Agent**, then **Codex**, write a request, and choose **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. Choose **New Project** on Home, enter a name, and choose **Repository or
    folder**, **Documents and knowledge**, **Connected tools**, or **Blank
@@ -38,8 +38,8 @@ without adding a model API key:
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
 5. To talk to the built-in **Station Assistant** using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
-   **Codex**, choose **Use this engine**, then **Save**. Select **Station
-   Assistant** in the chat's Agent picker. Ask it to list your projects to exercise a read-only
+   **Codex**, choose **Use this engine**, then **Save**. Open the Agent/model control beside **Start** or **Send**. Under **Agent**,
+   select **Station Assistant**. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
 For a customized Codex Agent, open **Customize → Agents → New agent → Use an
