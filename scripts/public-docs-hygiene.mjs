@@ -195,7 +195,7 @@ export const PUBLIC_PROMISE_SOURCE = 'docs/strategy/differentiators.md';
 const PUBLIC_PROMISE_SENTENCE = /The public promise is “([^”]+)”/g;
 
 /** The promise from its source record, or null when it is not stated once. */
-export function readPublicPromise(
+function readPublicPromise(
   read = (file, encoding) => readFileSync(file, encoding),
 ) {
   const text = read(PUBLIC_PROMISE_SOURCE, 'utf8').replace(/\s+/g, ' ');
