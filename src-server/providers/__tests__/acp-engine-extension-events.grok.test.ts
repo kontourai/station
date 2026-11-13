@@ -212,9 +212,10 @@ describe('MCP server secrets in a published extension payload', () => {
         {
           name: 'remote',
           type: 'http',
-          url: 'https://user:secret-pass@mcp.example.com/v1?token=secret-q',
+          url: 'https://user:secret-pass@mcp.example.com/sse/secret-path?token=secret-q',
           args: ['--api-key', 'secret-arg'],
         },
+        { name: 'one-line', command: 'tool', args: '--token secret-string' },
       ],
     });
     const [published] = of('extension.notification');
@@ -232,9 +233,10 @@ describe('MCP server secrets in a published extension payload', () => {
         {
           name: 'remote',
           type: 'http',
-          url: 'https://mcp.example.com/v1',
+          url: 'https://mcp.example.com',
           args: ['[redacted]', '[redacted]'],
         },
+        { name: 'one-line', command: 'tool', args: '[redacted]' },
       ],
     });
     // The live list keeps each server's name, source and command.

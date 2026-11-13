@@ -939,6 +939,8 @@ export interface AcpSessionRecord {
      * turn before anything is rewound.
      */
     promptText?: string;
+    /** When the engine reported starting the turn's prompt, in epoch ms. */
+    startedAt?: number;
   }>;
   /** The start of the running Station turn's prompt text (see `turnMessages`). */
   activePromptText?: string;
@@ -1108,6 +1110,11 @@ function mergeAcpConfigOption(
 export const ACP_TURN_MESSAGES_MAX = 500;
 /** How much of a turn's prompt text the ledger keeps to check a rewind point. */
 const ACP_TURN_PROMPT_TEXT_MAX = 1024;
+/**
+ * How far a rewind point's start may be from when Station saw the engine
+ * start that turn's prompt (live: 10-22 ms on one host).
+ */
+const ACP_REWIND_POINT_TIME_TOLERANCE_MS = 1000;
 
 /**
  * For a managed-runtime connection, the installed runtime readiness should
@@ -3630,6 +3637,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         ...(record.activePromptText !== undefined
           ? { promptText: record.activePromptText }
           : {}),
+        startedAt: Date.now(),
       });
       if (record.turnMessages.length > ACP_TURN_MESSAGES_MAX)
         record.turnMessages.splice(
@@ -3731,15 +3739,15 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   /**
    * Resolve a Station turn to the engine's prompt index, on an engine that
-   * names rewind and fork points by index. The ledger holds, in order, every
-   * prompt the engine started for this process's Station turns, and the
-   * engine lists a point for each prompt a client sent (a wake takes an index
-   * but lists none), so the ledger's turns are the last points listed: its
-   * last turn the last point, and the rest counting back from it. Every turn
-   * from the chosen one to the last must have exactly its point's preview,
-   * or nothing is resolved: a prompt the engine ran without listing a point
-   * (a slash command it handled itself), or one it listed that Station never
-   * sent, puts them out of step, and they would no longer agree.
+   * names rewind and fork points by index. Each point says when its prompt
+   * started (`created_at`; live, 10-22 ms after the engine's own notice that
+   * it was running it), and the ledger keeps when Station saw that notice
+   * for each turn, so the turn's point is the one point started within
+   * `ACP_REWIND_POINT_TIME_TOLERANCE_MS` of it. Counting points is no anchor:
+   * a wake takes an index without a point, and a prompt the engine handles
+   * itself (a built-in slash command) takes neither. The point's preview must
+   * also be this turn's. No such point, or more than one, resolves nothing;
+   * so does an engine whose clock is not Station's (a remote host).
    */
   private async promptIndexForTurn(
     record: AcpSessionRecord,
@@ -3760,19 +3768,23 @@ export class AcpAdapter implements ProviderAdapterShape {
       return {
         failed: `${record.engineName} listed its rewind points in a shape Station cannot read. Nothing was changed.`,
       };
-    const offset = points.length - turns.length;
-    const aligned =
-      offset + position >= 0 &&
-      turns
-        .slice(position)
-        .every((turn, k) =>
-          acpRewindPointMatches(
-            points[offset + position + k] ?? {},
-            turn.promptText,
-          ),
-        );
-    const point = points[offset + position];
-    if (!aligned || !point)
+    const turn = turns[position];
+    const startedAt = turn?.startedAt;
+    const near =
+      startedAt === undefined
+        ? []
+        : points.filter(
+            (point) =>
+              point.createdAt !== undefined &&
+              Math.abs(point.createdAt - startedAt) <=
+                ACP_REWIND_POINT_TIME_TOLERANCE_MS,
+          );
+    const [point] = near;
+    if (
+      near.length !== 1 ||
+      !point ||
+      !acpRewindPointMatches(point, turn?.promptText)
+    )
       return {
         failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
       };

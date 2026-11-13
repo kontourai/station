@@ -8,11 +8,11 @@
  *
  * Engines name their rewind and fork points two ways. Kiro names a turn by
  * the id it assigned the turn's user message; Grok Build names it by the
- * prompt's index in the conversation, listed by `x.ai/rewind/points`. Every
- * prompt Grok runs takes an index, a wake included, but only a prompt a
- * client sent is listed as a point (live: points 0, 1, 2 and 4 after a wake
- * ran as 3). Each binding says which, and the adapter resolves a Station turn
- * to that point.
+ * prompt's index in the conversation, listed by `x.ai/rewind/points` with
+ * the time the prompt started (`created_at`). Grok 1.0.77 gives every prompt
+ * it runs an index, a wake included, and lists points only for prompts a
+ * client sent (live: points 0, 1, 2 and 4 after a wake ran as 3). Each
+ * binding says which, and the adapter resolves a Station turn to that point.
  */
 
 import {
@@ -86,7 +86,7 @@ const REWIND_BINDINGS: ReadonlyArray<
     method: '_x.ai/rewind/execute',
     pointsMethod: '_x.ai/rewind/points',
     evidence:
-      'grok 1.0.77 live captures (grok-1.0.77-session-frames.jsonl): `rewind-preview-commit` (one point per client prompt, none for a mid-turn interject; force:false answered success:false with clean_files and no conflicts; force:true answered success:true reverted_files and removed the file) and `rewind-points-after-wake` (points 0, 1, 2, 4: the wake ran as index 3 with no point). xai-org/grok-build session/acp_session_impl/rewind.rs, helpers/rewind_preview.rs',
+      'grok 1.0.77 live captures (grok-1.0.77-session-frames.jsonl): `rewind-preview-commit` (one point per client prompt, none for a mid-turn interject; each point created_at 10-22 ms after the queue/changed naming that prompt running; force:false answered success:false with clean_files and no conflicts; force:true answered success:true reverted_files and removed the file) and `rewind-points-after-wake` (points 0, 1, 2, 4: the wake ran as index 3 with no point). xai-org/grok-build session/acp_session_impl/rewind.rs, helpers/rewind_preview.rs',
   },
 ];
 
@@ -176,18 +176,21 @@ const REWIND_PREVIEW_MAX_CHARS = 1024;
 
 /**
  * `x.ai/rewind/points` as the client prompts the engine lists, in order:
- * `{rewind_points: [{prompt_index, prompt_preview?}]}`. The indexes are the
- * engine's own and need not be consecutive (a wake takes one and lists no
- * point), but they must rise; anything else is unreadable (`undefined`).
+ * `{rewind_points: [{prompt_index, prompt_preview?, created_at?}]}`. The
+ * indexes are the engine's own and need not be consecutive (a wake takes one
+ * and lists no point), but they must rise; anything else is unreadable
+ * (`undefined`). `createdAt` is when the prompt started, in epoch ms; a point
+ * copied from another session (a fork, a load) carries none.
  */
 export function readAcpRewindPoints(
   result: unknown,
-): Array<{ index: number; preview?: string }> | undefined {
+): Array<{ index: number; preview?: string; createdAt?: number }> | undefined {
   if (!isRecord(result) || !Array.isArray(result.rewind_points))
     return undefined;
   const points = result.rewind_points;
   if (points.length > REWIND_POINTS_MAX) return undefined;
-  const read: Array<{ index: number; preview?: string }> = [];
+  const read: Array<{ index: number; preview?: string; createdAt?: number }> =
+    [];
   for (const point of points) {
     if (!isRecord(point)) return undefined;
     const index = point.prompt_index;
@@ -203,7 +206,15 @@ export function readAcpRewindPoints(
       point.prompt_preview.length <= REWIND_PREVIEW_MAX_CHARS
         ? point.prompt_preview
         : undefined;
-    read.push({ index, ...(preview ? { preview } : {}) });
+    const createdAt =
+      typeof point.created_at === 'string'
+        ? Date.parse(point.created_at)
+        : Number.NaN;
+    read.push({
+      index,
+      ...(preview ? { preview } : {}),
+      ...(Number.isFinite(createdAt) ? { createdAt } : {}),
+    });
   }
   return read;
 }
@@ -215,7 +226,10 @@ const REWIND_PREVIEW_LINE_MAX_CHARS = 60;
  * The preview the engine lists for a prompt of this text: its first
  * non-empty trimmed line, cut to 57 characters plus `...` when longer than
  * 60 (xai-org/grok-build `helpers/rewind_preview.rs`, characters counted as
- * code points). `undefined` for a blank prompt, which lists none.
+ * code points). `undefined` for a blank prompt, which lists none. Grok first
+ * strips some tag blocks (`extract_user_query`); a prompt that opens with one
+ * gets a different preview there, so it never matches here and its rewind is
+ * refused, never misdirected.
  */
 export function acpRewindPreviewOf(promptText: string): string | undefined {
   const line = promptText
@@ -230,9 +244,12 @@ export function acpRewindPreviewOf(promptText: string): string | undefined {
 }
 
 /**
- * Whether a point is the prompt of this text: its preview equals the one the
- * engine would list for it. A point with no preview, or a turn with no text,
- * cannot be checked and does not match.
+ * Whether a point's preview is the one the engine would list for a prompt of
+ * this text. A point with no preview, or a turn with no text, cannot be
+ * checked and does not match. Station puts the same ambient line (the
+ * timezone) first in every prompt, so previews alone rarely tell turns
+ * apart; the adapter locates a turn's point by its start time and uses this
+ * only as a second check.
  */
 export function acpRewindPointMatches(
   point: { preview?: string },
