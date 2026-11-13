@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { cpus, loadavg, platform, release, tmpdir, totalmem } from 'node:os';
+import { cpus, loadavg, platform, release, totalmem } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -610,7 +610,10 @@ export async function runStationWeight({
     return result;
   }
 
-  const scratch = mkdtempSync(join(tmpdir(), 'station-weight-'));
+  // Rooted at /tmp, not the caller's TMPDIR: tools under this home listen on
+  // Unix sockets, whose paths are limited to ~104 bytes, and a test runner's
+  // nested TMPDIR overruns that.
+  const scratch = mkdtempSync(join('/tmp', 'station-weight-'));
   const instance = `weight-${runId.slice(0, 8)}`;
   const markers = {
     claudeMd: `station-weight-claude-md-${runId}`,
