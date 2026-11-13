@@ -699,7 +699,8 @@ session's own continuity, which
   (`acp.session-rewound-late`, `ACP_SESSION_REWOUND_LATE_CODE`) is drawn as
   its own marker row ("Rewound late") and nothing is marked. The same warning
   says the engine may have applied the rewind when its process ends (an exit
-  or a relaunch) with the request unanswered. A late refusal or error is
+  or a relaunch) with the request unanswered; a stop someone asked for only
+  logs it, since that conversation's session is ending. A late refusal or error is
   logged, and so is the 5-minute give-up. Held follow-ups are looked at again
   as soon as the rewind ends, whatever its outcome. The marker names only turns whose prompt id the engine
   reported; a later turn with none (an engine that skipped the report) is
