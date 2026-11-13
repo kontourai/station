@@ -294,7 +294,8 @@ export function MarketplaceSources({
           }
         >
           {added ? (
-            <div className="marketplaces__form">
+            // A live region: the outcome is announced as well as focused.
+            <div className="marketplaces__form" role="status">
               <p ref={result} tabIndex={-1} className="marketplaces__result">
                 {added.detection?.state === 'detected'
                   ? 'Station read this source and found:'
