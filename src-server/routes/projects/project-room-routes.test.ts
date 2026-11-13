@@ -1132,12 +1132,19 @@ test('message files: upload, send, read back; past the count or size limit is re
   expect(borrowed.status).toBe(400);
   // Unsent, the file is nobody's to read.
   expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(404);
-  // Six descriptors are refused at the message too, not only at upload.
+  // Six distinct stored files are refused at the message too, not only at
+  // upload. Distinct ids keep the repeated-file refusal from answering first.
+  const five = await upload(
+    Array.from({ length: 5 }, (_, i) => png(`${i}.png`)),
+  );
+  expect(five.status).toBe(200);
+  const six = [file, ...((await data(five)) as { id: string }[])];
+  expect(new Set(six.map((stored) => stored!.id)).size).toBe(6);
   const tooMany = await h.request('alice', '/messages', 'POST', {
     ...guard(a),
     intentId: randomUUID(),
     text: '',
-    attachments: Array.from({ length: 6 }, () => ({ ...file })),
+    attachments: six,
   });
   expect(tooMany.status).toBe(400);
   // The same file twice is refused, not a storage failure (503).
