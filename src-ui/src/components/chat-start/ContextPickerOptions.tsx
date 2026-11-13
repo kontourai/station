@@ -101,8 +101,13 @@ export function ContextPickerOptions({
                 <span>{opt.label}</span>
               </span>
               {opt.workingDirectory && (
-                <span className="new-chat-modal__dropdown-item-dir">
-                  <CwdBreadcrumb path={opt.workingDirectory} />
+                <span
+                  className="new-chat-modal__dropdown-item-dir"
+                  title={opt.workingDirectory}
+                >
+                  {opt.repository ?? (
+                    <CwdBreadcrumb path={opt.workingDirectory} />
+                  )}
                 </span>
               )}
             </span>

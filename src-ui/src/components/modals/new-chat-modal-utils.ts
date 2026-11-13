@@ -430,6 +430,7 @@ export interface NewChatModalContextOption {
   glyph?: 'folder' | 'globe';
   /** The directory the project's chats run in, when the project has one. */
   workingDirectory?: string;
+  repository?: string;
   /** Why a chat cannot start in this project here (#3370); absent when it can. */
   unavailable?: string;
   /** Why the folder was not checked this time; not a refusal. */
@@ -552,6 +553,13 @@ export function buildContextOptions(
       // or path as an <img>, and a legacy stored link must not load here.
       ...(icon ? { icon } : { glyph: 'folder' as const }),
       workingDirectory: projectRunDirectory(project),
+      ...(project.repositorySource?.canonicalRemote
+        ? {
+            repository: project.repositorySource.canonicalRemote
+              .replace(/^https?:\/\//, '')
+              .replace(/\.git$/, ''),
+          }
+        : {}),
       ...(project.runsAt?.kind === 'unavailable'
         ? { unavailable: project.runsAt.reason }
         : {}),

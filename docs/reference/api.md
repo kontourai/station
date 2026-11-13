@@ -1291,8 +1291,8 @@ POST /api/starter-work/launch
 DELETE /api/starter-work/:starterId/binding
 ```
 
-Starter Work links a bounded onboarding catalog to real Work owners. Its five
-IDs are `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
+Starter Work links a bounded onboarding catalog to real Work owners. The catalog
+offers `start-task` and `continue-session`. The five accepted endpoint IDs remain `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
 and `run-scheduled-check`. Binding/launch and inspection candidates require the
 home's completed first-run decision. Catalog/status reads describe readiness
 and correlation; they do not make a browser checklist authoritative.
