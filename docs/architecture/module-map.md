@@ -733,10 +733,16 @@ limits and the remaining encrypted-path acceptance.
 ## RegistrySourceManager
 
 [The source manager](../../src-server/providers/registries/registry-source-manager.ts)
-composes the existing visible Skill/plugin providers with user-added local
-Skill directories, public GitHub libraries and local/HTTPS Station manifests.
-It persists source configuration and last successful bounded snapshots under
-the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
+composes the existing visible Skill/plugin providers with sources a person
+adds by location and optional ref. [Detection](../../src-server/providers/registries/registry-source-detection.ts)
+reads each source within fixed bounds, refusing rather than truncating past
+them, and [reads a folder source only inside itself](../../src-server/providers/registries/confined-local-read.ts),
+following no link. Root indexes (a Station manifest, a Claude Code marketplace) decide the
+kinds they declare, a structural scan finds the rest, and one source can supply
+skills, plugins and agents through one catalog entry per kind
+([decision](../decisions/registry-sources-detected-by-structure.md)). It
+persists source configuration, detections and last successful bounded snapshots
+under the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
 refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
 and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
 uses the current local inventory and source ownership aliases for live and

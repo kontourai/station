@@ -1,0 +1,7 @@
+{
+  "revision": "09e131075c635543343a670a35b1658ee743bc56",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed SDK credential recovery against reportAuthenticated and the SDK transport/app banner regressions: declared HTML and XHTML 2xx responses do not retire credential rejection, caller content validation remains intact, JSON recovery and captured authority fences remain unchanged. Physical fixed APK behavior is not verified.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/http.ts"]}
+  ]
+}

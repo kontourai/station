@@ -1,0 +1,11 @@
+{
+  "revision": "53491112f65a51cbaa5c0ee799bc581ffb7221a3",
+
+  "notes": [
+    {"path":"README.md","note":"Stale through plugins.md (the agent-ownership refusal now also on plugin install, preview and update). The root README states no registry acquisition rules. No prose change.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Stale through plugins.md. Its Browse marketplaces mention is unaffected by the acquisition-path refusal. No prose change.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Stale through sdk.md (the agent-catalog refusal codes added beside the acquisition refusals). Its routing and cancellation guidance is unchanged. No prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
