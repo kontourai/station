@@ -58,8 +58,10 @@ pane.
   and `/activity?session=…&focus=evidence` are permanent compatibility links to
   the inbox and Chat respectively. The compatibility builder
   (`activityDeepLink`) now mints Chat links with `surface=chat`; collection links
-  use `/notifications`. Legacy redirects keep `session`, valid `focus=evidence`,
-  `openedNotification`, `dock`, `chat`, and an existing Project path. Unknown
+  use `/notifications`. Legacy redirects trim `session`; blank sessions open the
+  inbox. Session links keep valid `focus=evidence` and the `messageSession`,
+  `messageDirection`, and `messageRequest` exact-message anchor fields. Redirects
+  also keep `openedNotification`, `dock`, `chat`, and an existing Project path. Unknown
   parameters are dropped; values retain percent encoding for spaces. What the
   invariant forbids is a 404 or a silently discarded payload: if converting a
   surface would break a URL, the conversion is wrong, not the URL.
