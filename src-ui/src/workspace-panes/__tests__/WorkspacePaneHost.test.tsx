@@ -1078,7 +1078,9 @@ test('pop-out retains a bounded failure and returns focus to the invoking comman
     'Station could not open this pane in a separate window. Try again.',
   );
   expect(screen.getByRole('alert').textContent).not.toContain(nativeDetails);
-  expect(globalThis.document.activeElement).toBe(command);
+  // The command is disabled while the request is pending, which moves focus
+  // to the body; the component hands it back on the next animation frame.
+  await waitFor(() => expect(globalThis.document.activeElement).toBe(command));
 });
 
 test('layout catalog placement opens through the controller as the sole document writer', async () => {
