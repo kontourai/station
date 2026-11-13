@@ -229,7 +229,10 @@ test.describe('replay state coverage', () => {
             '.tool-call-batch__slot[data-open="true"] .tool-call__label--active',
           ),
         ).toHaveCount(Math.min(scenario.tools!, 2));
-        await expect(transcript.locator('.streaming-activity')).toHaveCount(0);
+        await expect(transcript.locator('.streaming-activity')).toHaveCount(1);
+        await expect(transcript.locator('.streaming-activity')).toContainText(
+          'Working for 1m 5s',
+        );
       }
       if (scenario.name === 'partial answer still running') {
         await expect(transcript.locator('.streaming-activity')).toHaveCount(1);

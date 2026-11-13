@@ -96,11 +96,17 @@ async function expectDockFits(page: Page) {
   const fits = await page
     .locator('.subagent-card__title')
     .evaluateAll((elements) =>
-      elements.every(
-        (element) =>
-          element.getBoundingClientRect().right <=
-          element.parentElement!.getBoundingClientRect().right + 1,
-      ),
+      elements.every((element) => {
+        const boundary = element
+          .closest('.subagent-card__main')
+          ?.getBoundingClientRect();
+        const title = element.getBoundingClientRect();
+        return (
+          boundary &&
+          title.left >= boundary.left - 1 &&
+          title.right <= boundary.right + 1
+        );
+      }),
     );
   expect(fits).toBe(true);
 }
