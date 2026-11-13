@@ -59,7 +59,7 @@ test('omits absent controls and keeps the visible label first', () => {
   expect(
     screen.getByTestId('run-setup-trigger').getAttribute('aria-label'),
   ).toBe('Choose agent');
-  expect(screen.getByTestId('run-setup-trigger').textContent).toBe(
+  expect(screen.getByTestId('run-setup-trigger').textContent?.trim()).toBe(
     'Choose agent',
   );
 });
