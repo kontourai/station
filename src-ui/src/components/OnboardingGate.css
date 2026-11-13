@@ -20,16 +20,11 @@
   }
 }
 
-/* The setup surfaces were a fixed navy slab with pale-blue text, so under the
-   light theme (or any palette) they stayed dark. They keep their brand-tinted
-   lift by deriving it from the active palette instead. */
+/* The setup surfaces derive from the active palette, so they follow the light
+   theme and any palette: a flat raised panel with a brand-tinted edge. */
 .onboarding-setup-banner,
 .onboarding-setup-launcher__panel {
-  --onboarding-panel-bg: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--k-brand) 8%, var(--k-panel-raised)),
-    var(--k-panel-raised)
-  );
+  --onboarding-panel-bg: var(--k-panel-raised);
   --onboarding-panel-border: color-mix(
     in srgb,
     var(--k-brand) 28%,

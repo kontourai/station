@@ -244,7 +244,7 @@ describe('ShareAnswerButton', () => {
     render(<ShareAnswerButton provenance={envelope()} />);
     fireEvent.click(screen.getByRole('button'));
 
-    const status = await screen.findByText(/would not let Station copy it/);
+    const status = await screen.findByText(/Copy this link now/);
     // Never "copied" — a browser can refuse the clipboard outright, and a
     // false claim here loses the token.
     expect(status.textContent).not.toContain('copied');

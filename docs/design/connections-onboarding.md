@@ -57,10 +57,10 @@ that run explicitly after the work entry.
 New chat opens the start composer (Agent and project chips, Start) as a draft
 in the chat dock. A setup helper appears when the
 selected Agent cannot respond. It shows server-supplied prerequisites and links
-to engine installation instructions, existing account sign-in, or Model setup.
-For the built-in Station assistant, **Choose AI for Station** opens the existing
-engine chooser, including ready external apps, before requiring a new Model
-account. Installation commands are display guidance, never automatic execution. The
+to engine installation instructions, existing account sign-in, or **Add a
+model connection**. For Station's own agent, **Choose AI for Station** opens the
+existing engine chooser, including ready external engines, before requiring a
+new model connection. Installation commands are display guidance, never automatic execution. The
 existing setup-return owner retains the draft and revalidates the same Station
 access before returning. Choosing a ready replacement in the draft still waits
 for Send; Home’s automatic goal path continues to use a runnable recommendation.

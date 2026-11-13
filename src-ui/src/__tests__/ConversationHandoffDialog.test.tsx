@@ -6,7 +6,10 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ConversationHandoffDialog } from '../components/chat-dock/ConversationHandoffDialog';
+import {
+  ConversationHandoffDialog,
+  handoffStatusFeedback,
+} from '../components/chat-dock/ConversationHandoffDialog';
 import { acceptConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
 import { useConversationBoundaryDialogs } from '../components/chat-dock/useConversationBoundaryDialogs';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -550,9 +553,7 @@ describe('ConversationHandoffDialog', () => {
       'Send or remove attachments before switching engines.',
     );
     expect(
-      screen.getByText(
-        'Keep the Claude Agent and run this conversation on Codex.',
-      ),
+      screen.getByText('Keep the Claude agent and run this chat on Codex.'),
     ).toBeTruthy();
   });
 
@@ -624,7 +625,7 @@ describe('ConversationHandoffDialog', () => {
       expect(retry.disabled).toBe(true);
       const reason = screen.getByRole('status');
       expect(reason.textContent).toBe(
-        'This request’s Agent, engine or model is not available here. Check status, or restore that setup to retry.',
+        'This request’s agent, engine or model isn’t available here. Restore that setup to retry.',
       );
       expect(retry.getAttribute('aria-describedby')).toBe(reason.id);
       expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
@@ -706,7 +707,7 @@ describe('ConversationHandoffDialog', () => {
     const { onClose } = renderDialog();
     expect(screen.queryByText('Offline Agent')).toBeNull();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Cancel Agent handoff' }),
+      screen.getByRole('button', { name: 'Cancel agent handoff' }),
     );
     expect(onClose).toHaveBeenCalledOnce();
     expect(handoffExecutionMessage).not.toHaveBeenCalled();
@@ -751,7 +752,9 @@ describe('ConversationHandoffDialog', () => {
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry safely' }));
 
@@ -796,7 +799,9 @@ describe('ConversationHandoffDialog', () => {
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     const key = handoffExecutionMessage.mock.calls[0][2].idempotencyKey;
     first.unmount();
@@ -832,7 +837,9 @@ describe('ConversationHandoffDialog', () => {
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     first.unmount();
 
@@ -879,7 +886,9 @@ describe('ConversationHandoffDialog', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain('final response'),
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
     );
     expect(onDefiniteFailure).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Retry safely' })).toBeTruthy();
@@ -897,7 +906,7 @@ describe('ConversationHandoffDialog', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toContain(
-        'queued or offline messages',
+        'queued messages before',
       ),
     );
     expect(handoffExecutionMessage).not.toHaveBeenCalled();
@@ -923,7 +932,7 @@ describe('ConversationHandoffDialog', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: 'Cancel Agent handoff',
+          name: 'Cancel agent handoff',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
@@ -997,7 +1006,7 @@ describe('ConversationHandoffDialog', () => {
 
       await waitFor(() =>
         expect(screen.getByRole('alert').textContent).toContain(
-          'final response',
+          "Station didn't confirm the switch",
         ),
       );
       expect(onDefiniteFailure).not.toHaveBeenCalled();
@@ -1031,6 +1040,64 @@ describe('ConversationHandoffDialog', () => {
       ),
     ).toBeNull();
   });
+
+  test.each([
+    ['failed', 'The switch failed. Your message is kept, so you can retry.'],
+    [
+      'indeterminate',
+      "Station couldn't confirm whether the switch ran. Check status before retrying.",
+    ],
+    [
+      'reserved',
+      "The switch started but the new agent hasn't replied. Restore its setup, then retry.",
+    ],
+  ] as const)(
+    'an observed %s switch says what it means, not its status name',
+    async (status, feedback) => {
+      handoffExecutionMessage.mockRejectedValueOnce(
+        new TypeError('response lost'),
+      );
+      const view = renderDialog();
+      fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+      );
+      await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+      getConversationHandoffStatus.mockResolvedValueOnce({
+        ...acceptedStatus(),
+        status,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+      await waitFor(() =>
+        expect(screen.getByRole('alert').textContent).toBe(feedback),
+      );
+      expect(view.onAccepted).not.toHaveBeenCalled();
+    },
+  );
+});
+
+test('every handoff status has its own plain sentence', () => {
+  const statuses = [
+    'reserved',
+    'accepted',
+    'completed',
+    'failed',
+    'indeterminate',
+  ] as const;
+  for (const status of statuses) {
+    // Never the raw union member as a word ("The switch is indeterminate").
+    expect(handoffStatusFeedback(status)).not.toMatch(
+      new RegExp(`is ${status}`),
+    );
+    expect(handoffStatusFeedback(status)).toMatch(/^[A-Z].*\.$/);
+  }
+  expect(handoffStatusFeedback('failed')).toBe(
+    'The switch failed. Your message is kept, so you can retry.',
+  );
+  expect(handoffStatusFeedback('indeterminate')).toBe(
+    "Station couldn't confirm whether the switch ran. Check status before retrying.",
+  );
 });
 
 /** The refusal the REAL SDK fetcher throws for a validation 400 (#2708). */
