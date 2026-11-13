@@ -150,13 +150,14 @@ export class OrchestrationMonitoringBridge {
         // tool-update supervisor re-publishes it whenever a call's title,
         // kind or input changes. The start span is already written, and the
         // clock keeps running; what arrived later is carried to the result.
-        // OpenCode first reports `{}` and only then the real input. Only an
-        // input that was not yet known is filled in: Claude re-publishes a
-        // started Agent call with its task descriptor, which is not the
-        // tool's input and must not replace it.
+        // An ACP agent's later input supersedes the earlier one: OpenCode
+        // first reports `{}`, and Grok backfills fields into a partial input.
+        // Claude's repeat is different: its `task_started` re-publishes a
+        // started Agent call with a task descriptor, which is not the tool's
+        // input, so for Claude only an input not yet known is filled in.
         if (
           event.arguments !== undefined &&
-          isUnknownInput(open.startArguments)
+          (event.provider !== 'claude' || isUnknownInput(open.startArguments))
         )
           open.latestArguments = event.arguments;
         return;

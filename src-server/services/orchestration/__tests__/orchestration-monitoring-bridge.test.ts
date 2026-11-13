@@ -679,6 +679,7 @@ describe('OrchestrationMonitoringBridge', () => {
     const input = { subagent_type: 'general-purpose', prompt: 'do it' };
     bridge.onRuntimeEvent(
       runtimeEvent({
+        provider: 'claude',
         method: 'tool.started',
         itemId: 'task-1',
         toolCallId: 'task-1',
@@ -688,6 +689,7 @@ describe('OrchestrationMonitoringBridge', () => {
     );
     bridge.onRuntimeEvent(
       runtimeEvent({
+        provider: 'claude',
         method: 'tool.started',
         itemId: 'task-1',
         toolCallId: 'task-1',
@@ -701,6 +703,7 @@ describe('OrchestrationMonitoringBridge', () => {
     );
     bridge.onRuntimeEvent(
       runtimeEvent({
+        provider: 'claude',
         method: 'tool.completed',
         itemId: 'task-1',
         toolCallId: 'task-1',
@@ -718,5 +721,65 @@ describe('OrchestrationMonitoringBridge', () => {
     ]);
     expect(rows[0]![K.TOOL_CALL_ARGS]).toEqual(input);
     expect(K.TOOL_CALL_ARGS in rows[1]!).toBe(false);
+  });
+
+  test('an ACP input backfilled after a partial start reaches the result span', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, () => ({
+      slug: 'grok',
+      conversationId: 'conversation-1',
+      userId: 'u1',
+    }));
+    bridge.onTurnDispatched({
+      provider: 'acp',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    const supervisor = new AcpToolUpdateSupervisor(
+      {
+        provider: 'acp',
+        threadId: 'conversation-1',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      (event) => bridge.onRuntimeEvent({ ...event, turnId: 'turn-1' }),
+    );
+    // Grok's tool_call carries a partial input; an update backfills fields.
+    supervisor.acceptStarted({
+      toolCallId: 'call-4',
+      title: 'bash',
+      hasTitle: true,
+      rawInput: { command: 'ls' },
+      hasRawInput: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-4',
+      rawInput: { command: 'ls', description: 'list' },
+      hasRawInput: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-4',
+      status: 'completed',
+      hasStatus: true,
+    });
+    supervisor.dispose();
+    await emitter.flush();
+    const rows = persisted.filter(
+      (event) => event[K.OP_NAME] === OP.EXECUTE_TOOL,
+    );
+    expect(rows.map((event) => event[K.SPAN_KIND])).toEqual([
+      SPAN.START,
+      SPAN.END,
+    ]);
+    expect(rows[0]![K.TOOL_CALL_ARGS]).toEqual({ command: 'ls' });
+    expect(rows[1]![K.TOOL_CALL_ARGS]).toEqual({
+      command: 'ls',
+      description: 'list',
+    });
   });
 });
