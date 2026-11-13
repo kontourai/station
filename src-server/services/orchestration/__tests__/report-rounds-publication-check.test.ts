@@ -22,6 +22,30 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
   const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
   assert.ok(isRuntimePublicationParticipant(participant));
   const owner = await HomeWriterOwner.forHome(home);
+  let replaceOnLifetime: (() => void) | undefined;
+  const acquire = participant.acquire.bind(participant);
+  const observeLifetime = vi
+    .spyOn(participant, 'acquire')
+    .mockImplementation(() => {
+      const parent = acquire();
+      return {
+        ...parent,
+        borrow: (homeDir?: string) => {
+          const child = parent.borrow(homeDir);
+          return {
+            ...child,
+            assertCurrent: () => {
+              child.assertCurrent();
+              const replace = replaceOnLifetime;
+              replaceOnLifetime = undefined;
+              replace?.();
+            },
+          };
+        },
+      };
+    });
+  onTestFinished(() => observeLifetime.mockRestore());
+
   const physical = await prepareFileMutationOwner(
     join(home, 'security', '.home-writer.mutation'),
   );
@@ -128,7 +152,7 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
             '.home-writer.mutation',
           );
           const movedMutation = `${mutation}.held-for-observation`;
-          for (const replaceAt of ['body', 'result'] as const) {
+          for (const replaceAt of ['lifetime', 'body', 'result'] as const) {
             let replacementActive = false;
             let sourceAfterReplacement = 0;
             const implementation = current.getMockImplementation();
@@ -146,6 +170,7 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
               });
             };
             try {
+              if (replaceAt === 'lifetime') replaceOnLifetime = replace;
               assert.throws(() =>
                 scope.check(() => {
                   if (replaceAt === 'body') replace();
@@ -158,8 +183,10 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
                   };
                 }),
               );
+              assert.equal(replacementActive, true, replaceAt);
               assert.equal(sourceAfterReplacement, 0, replaceAt);
             } finally {
+              replaceOnLifetime = undefined;
               if (replacementActive) {
                 fs.rmSync(mutation, { force: true });
                 fs.renameSync(movedMutation, mutation);
