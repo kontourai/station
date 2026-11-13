@@ -63,6 +63,7 @@ const requests: {
   model: string;
 }[] = [];
 const warnings: unknown[] = [];
+const pendingRequests = new Set<Promise<Response>>();
 const receipt: Record<string, unknown> = {
   sourceHead: process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD,
   driverSha256: createHash('sha256')
@@ -346,6 +347,24 @@ try {
     environmentSecurityService: security,
   });
   const app = new Hono();
+  const originalFetch = app.fetch;
+  app.fetch = (request, ...args) => {
+    lifetime.signal.throwIfAborted();
+    const pending = Promise.resolve(
+      originalFetch(
+        new Request(request, {
+          signal: AbortSignal.any([request.signal, lifetime.signal]),
+        }),
+        ...args,
+      ),
+    );
+    pendingRequests.add(pending);
+    void pending.then(
+      () => pendingRequests.delete(pending),
+      () => pendingRequests.delete(pending),
+    );
+    return pending;
+  };
   app.use('/api/orchestration/*', async (c, next) => {
     const bearer = c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '';
     const admitted = security.withCurrentAuthority(() => {
@@ -485,12 +504,18 @@ try {
     assert.ok(member.handle);
     const session = storeOwner.readSessionByThread(member.handle.sessionId);
     assert.ok(session && session.persistSession !== false);
-    const native = adapter.nativeSessionIdentity(session.resumeCursor);
-    assert.ok(native);
+    const liveBinding = adapter.preparedTurnBinding(session.threadId);
+    assert.ok(liveBinding);
+    assert.equal(storeOwner.nativeSessionOwnedBy(session.threadId), true);
+    const durableBinding = storeOwner.nativeSessionBindingIdentity(
+      session.threadId,
+    );
+    assert.ok(durableBinding);
     return {
       seatId: member.seatId,
       sessionId: session.threadId,
-      nativeSessionId: native.sessionId,
+      nativeSessionId: liveBinding.nativeIdentity.sessionId,
+      durableBinding,
     };
   });
   assert.equal(
@@ -537,6 +562,10 @@ try {
     assert.equal(
       adapter.nativeSessionIdentity(session.resumeCursor)?.sessionId,
       identity.nativeSessionId,
+    );
+    assert.equal(
+      storeOwner.nativeSessionBindingIdentity(identity.sessionId),
+      identity.durableBinding,
     );
   }
   const canonical = identities.flatMap(({ sessionId }) =>
@@ -601,6 +630,29 @@ try {
   const cleanupFailures: { owner: string; error: string }[] = [];
   const owners: [string, () => Promise<void>][] = [
     [
+      'requests',
+      async () => {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            (async () => {
+              while (pendingRequests.size)
+                await Promise.allSettled([...pendingRequests]);
+            })(),
+            new Promise<never>((_, reject) => {
+              timeout = setTimeout(
+                () => reject(new Error('native_http_cleanup_unsettled')),
+                2_000,
+              );
+            }),
+          ]);
+        } finally {
+          if (timeout) clearTimeout(timeout);
+        }
+        receipt.pendingHttpRequests = pendingRequests.size;
+      },
+    ],
+    [
       'orchestration',
       async () => {
         if (service) await service.shutdown();
@@ -644,6 +696,12 @@ try {
       cleanupFailures.push({ owner, error: String(error) });
     }
   }
+  receipt.pendingHttpRequests = pendingRequests.size;
+  if (pendingRequests.size)
+    cleanupFailures.push({
+      owner: 'requests',
+      error: 'HTTP owner remains unsettled after teardown',
+    });
   receipt.remainingOwnedRecords = readdirSync(registry);
   if (readdirSync(registry).length)
     cleanupFailures.push({
