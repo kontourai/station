@@ -37,6 +37,13 @@ const MUSE_SERVE_CAPTURE_VERSIONS = {
   steer: '1.4.18',
   // A `request_user_input` question: request + requested, answer, settled.
   'user-input': '1.4.18',
+  // A one-child workflow (its `subagent` item carries the child's result)
+  // and a `subagent/sendMessage` the child delivered into its reply.
+  'workflow-child-steer': '1.4.18',
+  // Two background shell tasks: one that finished on its own, one stopped
+  // with `task/stop`; `task/list` lists each while it runs; then an idle
+  // `session/compact` refused `compaction_unavailable`.
+  'background-task-stop': '1.4.18',
 } as const;
 
 export type MuseServeCaptureName = keyof typeof MUSE_SERVE_CAPTURE_VERSIONS;
@@ -73,6 +80,9 @@ const DRIVEN_METHODS = new Set([
   'turn/steer',
   'userInput/answer',
   'userInput/cancel',
+  'subagent/sendMessage',
+  'task/stop',
+  'session/compact',
 ]);
 
 export interface SentFrame {
@@ -189,6 +199,8 @@ export interface ReplayOptions {
   ) => Promise<unknown> | undefined;
   /** Stop before this capture index (exclusive). */
   stopAt?: number;
+  /** Driven methods this replay skips, as if only the probe had sent them. */
+  notDriven?: ReadonlySet<string>;
 }
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -214,7 +226,7 @@ export async function replayMuseServeCapture(
     const method = typeof msg.method === 'string' ? msg.method : undefined;
     if (dir === 'c2s') {
       if (!method || msg.id === undefined) continue;
-      if (!DRIVEN_METHODS.has(method)) {
+      if (!DRIVEN_METHODS.has(method) || options.notDriven?.has(method)) {
         skipped.add(msg.id);
         continue;
       }

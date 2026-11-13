@@ -3676,3 +3676,354 @@ describe('Muse parity: the subscription allowance through usage/read', () => {
     ).resolves.toMatchObject({ kind: 'unavailable', reason: 'provider-error' });
   });
 });
+
+const WORKFLOW_TURN_1418 = '00000000-0000-7000-8000-000000000007';
+const WORKFLOW_CHILD_1418 = '00000000-0000-7000-8000-000000000025';
+const OWNER_NOTE = 'Note from the owner: include the word ZEBRA in your reply.';
+
+/**
+ * The `workflow-child-steer` capture as a NATIVE subagent would put it on
+ * the wire: no `workflow` items, no `workflowRunId`, and the turn held open
+ * until the child reports (a native spawn the model waits on). Every frame
+ * is the live one; the only additions are that reorder and a terminal
+ * revision of the `subagent` item, shaped from its live `resultReady`
+ * revision with the schema's terminal `status` (no native spawn was
+ * capturable: the live agent offered no spawn tool outside workflows).
+ */
+function nativeSubagentCapture() {
+  const frames = loadMuseServeCapture('workflow-child-steer');
+  const itemOf = (frame: (typeof frames)[number]) => {
+    const params = frame.msg.params as Record<string, unknown> | undefined;
+    return params?.item as Record<string, unknown> | undefined;
+  };
+  const dispatchedEnd = frames.findIndex(
+    (frame) =>
+      frame.msg.method === 'turn/completed' &&
+      (frame.msg.params as Record<string, unknown>).turnId ===
+        WORKFLOW_TURN_1418,
+  );
+  const [turnEnd] = frames.splice(dispatchedEnd, 1);
+  const kept = frames
+    .filter((frame) => itemOf(frame)?.kind !== 'workflow')
+    .map((frame) => {
+      const item = itemOf(frame);
+      if (item?.kind !== 'subagent') return frame;
+      const { workflowRunId: _run, ...native } = item;
+      return {
+        ...frame,
+        msg: {
+          ...frame.msg,
+          params: { ...(frame.msg.params as object), item: native },
+        },
+      };
+    });
+  const resultAt = kept.findIndex(
+    (frame) =>
+      itemOf(frame)?.kind === 'subagent' &&
+      (itemOf(frame)?.result as { summary?: string } | undefined)?.summary,
+  );
+  const resultFrame = kept[resultAt];
+  const resultItem = itemOf(resultFrame) as Record<string, unknown>;
+  const terminal = {
+    ...resultFrame,
+    msg: {
+      ...resultFrame.msg,
+      method: 'item/completed',
+      params: {
+        ...(resultFrame.msg.params as object),
+        item: {
+          ...resultItem,
+          revision: (resultItem.revision as number) + 1,
+          status: 'completed',
+          controlStatus: 'closed',
+        },
+      },
+    },
+  };
+  kept.splice(resultAt + 1, 0, terminal, turnEnd);
+  return kept;
+}
+
+describe('Muse parity: subagents and background tasks are child work', () => {
+  test("a workflow child's own subagent item names its result; no steer is offered once the launching turn ended", async () => {
+    const h = harness();
+    const host = await startServe(h);
+    await replayMuseServeCapture(
+      host,
+      loadMuseServeCapture('workflow-child-steer'),
+      {
+        notDriven: new Set(['subagent/sendMessage']),
+        onDrivenRequest: (method) =>
+          method === 'turn/start'
+            ? h.adapter.sendTurn({ threadId: THREAD, input: 'go' })
+            : undefined,
+      },
+    );
+    await settle();
+    const [child] = childWorkForReporter(fold(h.events), THREAD);
+    // The child's own reply, not 1.4.18's reconciliation `final_summary`
+    // (a JSON rendering of the whole script's return value).
+    expect(child).toMatchObject({
+      childId: WORKFLOW_CHILD_1418,
+      status: 'completed',
+      kindLabel: 'workflow',
+      result: { summary: 'CHILDDONE ZEBRA', source: 'provider-summary' },
+    });
+    // muse ends the launching turn before it lists the child, and a child
+    // steer is admitted only inside a running parent turn.
+    for (const delta of childWorkDeltas(h.events)) {
+      const items =
+        delta.kind === 'snapshot'
+          ? delta.running
+          : delta.kind === 'upsert'
+            ? [delta.item]
+            : [];
+      for (const item of items) expect(item.controls?.steer).toBeUndefined();
+    }
+    const sent = host.sent.length;
+    await expect(
+      h.adapter.steerChildWork(
+        THREAD,
+        WORKFLOW_CHILD_1418,
+        WORKFLOW_TURN_1418,
+        OWNER_NOTE,
+      ),
+    ).resolves.toEqual({ outcome: 'no-active-task' });
+    expect(host.sent.slice(sent)).toEqual([]);
+  });
+
+  test('a native subagent is running child work with a steer; the steer is subagent/sendMessage, and its terminal settles it with its result', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    let sent: Promise<{ turnId: string }> | undefined;
+    let steered: Promise<unknown> | undefined;
+    const driven = await replayMuseServeCapture(host, nativeSubagentCapture(), {
+      onDrivenRequest: (method, _occurrence, captured) => {
+        if (method === 'turn/start') {
+          sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+          return sent;
+        }
+        if (method === 'subagent/sendMessage') {
+          steered = (async () =>
+            h.adapter.steerChildWork(
+              THREAD,
+              String(captured.subagentId),
+              (await sent!).turnId,
+              `  ${OWNER_NOTE}\n`,
+            ))();
+          return steered;
+        }
+        return undefined;
+      },
+    });
+    await settle();
+    await expect(steered).resolves.toEqual({
+      outcome: 'steered',
+      turnId: WORKFLOW_TURN_1418,
+    });
+    expect(
+      driven.find((frame) => frame.method === 'subagent/sendMessage')?.params,
+    ).toEqual({
+      commandId: expect.any(String),
+      sessionId: SESSION_1418,
+      subagentId: WORKFLOW_CHILD_1418,
+      body: OWNER_NOTE,
+    });
+    const firstSnapshot = childWorkDeltas(h.events).find(
+      (delta) => delta.kind === 'snapshot',
+    );
+    expect(firstSnapshot).toMatchObject({
+      running: [
+        expect.objectContaining({
+          childId: WORKFLOW_CHILD_1418,
+          status: 'running',
+          kindLabel: 'workflow-agent',
+          workKind: 'agent',
+          depth: 1,
+          title: expect.stringMatching(/^Run the shell command `sleep 30`/),
+          parent: { turnId: WORKFLOW_TURN_1418 },
+          backgrounded: false,
+          controls: {
+            stop: 'provider-task-stop',
+            steer: { turnId: WORKFLOW_TURN_1418 },
+          },
+        }),
+      ],
+    });
+    const [child] = childWorkForReporter(fold(h.events), THREAD);
+    expect(child).toMatchObject({
+      childId: WORKFLOW_CHILD_1418,
+      status: 'completed',
+      usage: { totalTokens: 59007 + 306, durationMs: 34846 },
+      result: { summary: 'CHILDDONE ZEBRA', source: 'provider-summary' },
+    });
+  });
+
+  test("muse refusing a child steer (the child's state no longer takes input) is no-active-task", async () => {
+    const h = harness();
+    const host = await startServe(h);
+    const frames = nativeSubagentCapture();
+    let sent: Promise<{ turnId: string }> | undefined;
+    await replayMuseServeCapture(host, frames, {
+      stopAt: frames.findIndex(
+        (frame) => frame.msg.method === 'subagent/sendMessage',
+      ),
+      onDrivenRequest: (method) => {
+        if (method !== 'turn/start') return undefined;
+        sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+        return sent;
+      },
+    });
+    const steering = h.adapter.steerChildWork(
+      THREAD,
+      WORKFLOW_CHILD_1418,
+      (await sent!).turnId,
+      OWNER_NOTE,
+    );
+    const request = await host.nextRequest('subagent/sendMessage', new Set());
+    // Muse 1.4.18's own refusal, captured live for a child that had ended.
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      error: {
+        code: -32030,
+        message: `subagent/sendMessage command ${String(request.params?.commandId)} rejected: subagent_state_ineligible`,
+        data: {
+          kind: 'commandRejected',
+          retryable: false,
+          reason: 'subagent_state_ineligible',
+        },
+      },
+    });
+    await expect(steering).resolves.toEqual({ outcome: 'no-active-task' });
+  });
+
+  test('a call still running when its turn completes is a background task: its row returns, the task is child work until its own terminal, and stop is task/stop', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    let stop: Promise<unknown> | undefined;
+    const driven = await replayMuseServeCapture(
+      host,
+      loadMuseServeCapture('background-task-stop'),
+      {
+        stopAt: captureIndex(
+          'background-task-stop',
+          (msg) => msg.method === 'session/compact',
+        ),
+        onDrivenRequest: (method, _occurrence, captured) => {
+          if (method === 'turn/start')
+            return h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+          if (method === 'task/stop') {
+            stop = h.adapter.stopProviderTask(THREAD, String(captured.taskId));
+            return stop;
+          }
+          return undefined;
+        },
+      },
+    );
+    await settle();
+    const FIRST_TASK = '00000000-0000-7000-8000-000000000019';
+    const SECOND_TASK = '00000000-0000-7000-8000-000000000045';
+    await expect(stop).resolves.toEqual({
+      outcome: 'stopped',
+      taskId: SECOND_TASK,
+    });
+    expect(
+      driven.find((frame) => frame.method === 'task/stop')?.params,
+    ).toEqual({
+      commandId: expect.any(String),
+      sessionId: SESSION_1418,
+      taskId: SECOND_TASK,
+    });
+    expect(driven.some((frame) => frame.method === 'subagent/stop')).toBe(
+      false,
+    );
+    // Each row closes as a call that returned, never as one whose fate is
+    // unknown, and once: the task's later revisions are the task's.
+    const rows = of(h.events, 'tool.completed').filter(
+      (event) => event.toolName === 'bash',
+    );
+    expect(rows.map((row) => [row.toolCallId, row.status])).toEqual([
+      ['call_00000000000000000000000000000001', 'success'],
+      ['call_00000000000000000000000000000002', 'success'],
+    ]);
+    expect(String(rows[0].output)).toContain('background_running');
+    const deltas = childWorkDeltas(h.events);
+    const firstSnapshot = deltas.find((delta) => delta.kind === 'snapshot');
+    expect(firstSnapshot).toMatchObject({
+      running: [
+        {
+          producer: 'engine-subagent',
+          childId: FIRST_TASK,
+          status: 'running',
+          parent: {
+            turnId: WORKFLOW_TURN_1418,
+            toolCallId: 'call_00000000000000000000000000000001',
+          },
+          title: 'Start sleep marker command',
+          kindLabel: 'bash',
+          workKind: 'command',
+          backgrounded: true,
+          controls: { stop: 'provider-task-stop' },
+        },
+      ],
+    });
+    expect(
+      deltas.some(
+        (delta) =>
+          delta.kind === 'settle' &&
+          delta.childId === SECOND_TASK &&
+          delta.status === 'stopped-unconfirmed',
+      ),
+    ).toBe(true);
+    const settled = childWorkForReporter(fold(h.events), THREAD);
+    expect(settled).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          childId: FIRST_TASK,
+          status: 'completed',
+          result: { summary: 'bg-one-done\n', source: 'tool-return' },
+        }),
+        expect.objectContaining({
+          childId: SECOND_TASK,
+          status: 'cancelled',
+          result: {
+            summary: 'cancelled by runtime client',
+            source: 'provider-error',
+          },
+        }),
+      ]),
+    );
+  });
+
+  test('a stop for a task that already ended is no-active-task, and nothing reaches muse', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    await replayMuseServeCapture(
+      host,
+      loadMuseServeCapture('background-task-stop'),
+      {
+        stopAt: captureIndex(
+          'background-task-stop',
+          (msg) => msg.method === 'turn/start' && (msg.id as number) > 4,
+        ),
+        onDrivenRequest: (method) =>
+          method === 'turn/start'
+            ? h.adapter.sendTurn({ threadId: THREAD, input: 'go' })
+            : undefined,
+      },
+    );
+    await settle();
+    const sent = host.sent.length;
+    await expect(
+      h.adapter.stopProviderTask(
+        THREAD,
+        '00000000-0000-7000-8000-000000000019',
+      ),
+    ).resolves.toEqual({
+      outcome: 'no-active-task',
+      taskId: '00000000-0000-7000-8000-000000000019',
+    });
+    expect(host.sent.slice(sent)).toEqual([]);
+  });
+});

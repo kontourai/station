@@ -66,6 +66,7 @@ import {
   type ProviderAdapterMetadata,
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
+  type ProviderChildSteerResult,
   type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderSessionStartInput,
@@ -1936,6 +1937,24 @@ export class MuseAdapter implements ProviderAdapterShape {
     const record = this.requireSession(threadId);
     if (!record.serve) return { outcome: 'unsupported' };
     return record.serve.stopChild(taskId);
+  }
+
+  /**
+   * Input for one running Muse subagent (`subagent/sendMessage`), leaving the
+   * turn and its siblings alone. Serve sessions only: an exec session names
+   * no subagent, so it has none to address.
+   */
+  async steerChildWork(
+    threadId: string,
+    childId: string,
+    turnId: string,
+    input: string,
+  ): Promise<ProviderChildSteerResult> {
+    const record = this.requireSession(threadId);
+    if (!record.serve) return { outcome: 'unsupported' };
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    return record.serve.steerChild(childId, turnId, text);
   }
 
   /**

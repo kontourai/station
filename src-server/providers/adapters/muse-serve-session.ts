@@ -32,6 +32,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
 import {
+  type ProviderChildSteerResult,
   type ProviderInterruptTurnResult,
   type ProviderTaskStopResult,
   ProviderTurnEndedError,
@@ -43,10 +44,15 @@ import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import { museAnswers, museInputRequest } from './harness-questions.js';
 import type { MuseReasoningEffort } from './muse-adapter-types.js';
 import {
+  adoptMuseBackgroundTasks,
   createMuseServeChildWorkState,
   type MuseServeChildWorkContext,
   museServeChildIsRunning,
+  museServeChildSteerable,
+  museServeChildStopMethod,
   museServeHasRunningChildren,
+  observeMuseSubagentItem,
+  observeMuseToolCallItem,
   observeMuseWorkflowItem,
   observeMuseWorkflowLaunch,
   recordMuseChildStopRequested,
@@ -1028,18 +1034,75 @@ export class MuseServeSession {
       return { outcome: 'no-active-task', taskId: childId };
     }
     const connection = this.requireConnection();
-    await connection.request(
-      'subagent/stop',
-      {
-        commandId: this.deps.newCommandId(),
-        sessionId: this.requireMuseSessionId(),
-        subagentId: childId,
-        reason: 'Stopped from Station.',
-      },
-      { timeoutMs: this.deps.requestTimeoutMs },
-    );
+    const sessionId = this.requireMuseSessionId();
+    if (museServeChildStopMethod(this.childWork, childId) === 'task/stop') {
+      // A background task. Muse admits a stop of a task that has already
+      // ended, so the admission is not the stop: the task reads
+      // stopped-unconfirmed until its item's own terminal arrives.
+      await connection.request(
+        'task/stop',
+        { commandId: this.deps.newCommandId(), sessionId, taskId: childId },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    } else {
+      await connection.request(
+        'subagent/stop',
+        {
+          commandId: this.deps.newCommandId(),
+          sessionId,
+          subagentId: childId,
+          reason: 'Stopped from Station.',
+        },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    }
     recordMuseChildStopRequested(this.childWork, childId);
     return { outcome: 'stopped', taskId: childId };
+  }
+
+  /**
+   * Sends `input` to a running subagent (`subagent/sendMessage`): muse
+   * queues it and delivers it into the child's next step. A child that is
+   * not running, or whose steer token is not `turnId`, is `no-active-task`
+   * before anything reaches muse; muse refusing it (`commandRejected`, e.g.
+   * `subagent_state_ineligible` once the child ended) is the same race.
+   */
+  async steerChild(
+    childId: string,
+    turnId: string,
+    text: string,
+  ): Promise<ProviderChildSteerResult> {
+    const connection = this.host?.connection;
+    if (
+      this.stopped ||
+      !connection ||
+      connection.isClosed ||
+      !museServeChildSteerable(this.childWork, childId, turnId)
+    ) {
+      return { outcome: 'no-active-task' };
+    }
+    try {
+      await connection.request(
+        'subagent/sendMessage',
+        {
+          commandId: this.deps.newCommandId(),
+          sessionId: this.requireMuseSessionId(),
+          subagentId: childId,
+          body: text,
+        },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    } catch (error) {
+      if (
+        error instanceof MuseServeRpcError &&
+        error.code === MSP_COMMAND_REJECTED
+      ) {
+        return { outcome: 'no-active-task' };
+      }
+      // A timeout or a vanished host is indeterminate: the input may be in.
+      throw error;
+    }
+    return { outcome: 'steered', turnId };
   }
 
   /**
@@ -1365,6 +1428,18 @@ export class MuseServeSession {
           observeMuseWorkflowItem(this.childWork, item);
           return;
         }
+        if (item.kind === 'subagent') {
+          observeMuseSubagentItem(this.childWork, item);
+          return;
+        }
+        // A background task's revisions after its turn ended belong to the
+        // task, not to the turn whose row already closed.
+        if (
+          item.kind === 'toolCall' &&
+          observeMuseToolCallItem(this.childWork, item)
+        ) {
+          return;
+        }
         // Deltas name only their item, so its kind and turn are recorded
         // here, before any buffering, for the deltas that follow.
         const itemId = readString(item.itemId);
@@ -1518,8 +1593,9 @@ export class MuseServeSession {
     const turnId = readString(params.turnId);
     const turn = turnId ? this.turns.get(turnId) : undefined;
     if (!turn || turn.settled) return;
-    this.closeOpenTools(turn);
     const terminal = readString(params.terminal);
+    if (terminal === 'completed') this.closeBackgroundedTools(turn);
+    this.closeOpenTools(turn);
     if (terminal === 'completed') {
       this.settle(turn, { method: 'turn.completed', finishReason: 'stop' });
       return;
@@ -2971,6 +3047,40 @@ export class MuseServeSession {
     return (
       unsettled.find((turn) => turn.kind === 'provider') ?? unsettled.at(-1)
     );
+  }
+
+  /**
+   * A turn muse completed with a call still running: the call returned to
+   * the model (its output says the command went to the background) and muse
+   * keeps running it as a task, which is child work from here on. Its row
+   * closes as a call that returned, not as one whose fate is unknown.
+   */
+  private closeBackgroundedTools(turn: ServeTurn): void {
+    const adopted = adoptMuseBackgroundTasks(
+      this.childWork,
+      turn.turnId,
+      turn.openTools.keys(),
+    );
+    for (const { callId, output } of adopted) {
+      const toolName = turn.openTools.get(callId);
+      if (!toolName) continue;
+      turn.openTools.delete(callId);
+      const preview = projectBoundedToolOutput(output);
+      this.deps.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'muse',
+        threadId: this.deps.threadId,
+        createdAt: this.nowIso(),
+        method: 'tool.completed',
+        turnId: turn.turnId,
+        itemId: `tool:${callId}`,
+        toolCallId: callId,
+        toolName,
+        status: 'success',
+        ...(output === undefined ? {} : { output: preview.value }),
+        ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
+      });
+    }
   }
 
   private closeOpenTools(turn: ServeTurn): void {
