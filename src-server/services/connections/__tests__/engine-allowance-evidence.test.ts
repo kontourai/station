@@ -18,6 +18,7 @@ import {
   providerQuotaEventDetails,
 } from '../../../providers/provider-plan-quota.js';
 import {
+  ALLOWANCE_SUPERSESSION_SCAN_LIMIT,
   type AllowanceRefusalRow,
   EventStore,
 } from '../../orchestration/event-store.js';
@@ -569,6 +570,37 @@ describe('recorded refusals read from the event store', () => {
     expect(read()).toBeUndefined();
   });
 
+  test('the supersession check examines a bounded window and fails toward no label past it', () => {
+    expect(ALLOWANCE_SUPERSESSION_SCAN_LIMIT).toBe(1_000);
+    startClaudeSession('refused', null);
+    store.appendEvent(
+      claudeUsageLimitError('refused', Date.now() + 2 * HOUR) as never,
+    );
+    const check = () =>
+      store.allowanceRefusalSupersession({
+        provider: 'claude',
+        observedAt: new Date(Date.now() - HOUR).toISOString(),
+        globalSequence: 0,
+        account: { accountKey: usageCredentialAccountKey('claude', null) },
+      });
+    // Unrelated traffic: another account's accepted turns.
+    startClaudeSession('busy', 'work');
+    for (
+      let index = 0;
+      index < ALLOWANCE_SUPERSESSION_SCAN_LIMIT - 1;
+      index += 1
+    )
+      acceptTurn('busy', `busy-${index}`, 'stop');
+    // Below the cap the whole window is read: still refused, still shown.
+    expect(check()).toBe('none');
+    expect(read()).toHaveLength(1);
+    acceptTurn('busy', 'busy-cap', 'stop');
+    acceptTurn('busy', 'busy-past-cap', 'stop');
+    // Past it the read stops at the cap and the refusal is not shown.
+    expect(check()).toBe('scan-capped');
+    expect(read()).toBeUndefined();
+  });
+
   test("an ACP refusal is its connection's; only a turn accepted on that connection clears it", () => {
     const opencode = { id: 'opencode', provider: 'acp', profileRefs: [] };
     const readAcp = () =>
@@ -615,6 +647,78 @@ describe('recorded refusals read from the event store', () => {
 });
 
 describe('engine connection listing', () => {
+  test('dispatch, chat and agent listings never read allowance evidence', async () => {
+    const listAllowanceRefusals = vi.fn(() => [
+      refusal({
+        observedAt: new Date(Date.now() - HOUR).toISOString(),
+        accountKey: usageCredentialAccountKey('claude', 'work'),
+        details: { ...claudeUsageLimitDetails(Date.now() + 2 * HOUR) },
+      }),
+    ]);
+    const allowanceRefusalSupersession = vi.fn(() => 'none' as const);
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      } as any,
+      () =>
+        [
+          {
+            provider: 'claude',
+            metadata: {
+              displayName: 'Claude Code',
+              description: 'claude',
+              capabilities: ['agent-runtime'],
+              runtimeId: 'claude',
+              executionClass: 'connected',
+            },
+            getPrerequisites: vi.fn().mockResolvedValue([]),
+            listModels: vi.fn().mockResolvedValue([]),
+          },
+        ] as any,
+      async () => [],
+      () => ({ connections: [] }),
+      async () =>
+        ({
+          agentConnections: {
+            claude: {
+              credentialRecovery: {
+                profiles: [{ ref: 'work' }],
+                activeProfileRef: 'work',
+              },
+            },
+          },
+        }) as any,
+      vi.fn(),
+    );
+    service.setAllowanceEvidenceSource({
+      listAllowanceRefusals,
+      allowanceRefusalSupersession,
+    });
+    // chat.ts, runtime-routes agent availability/saves, tool-library and
+    // readiness all read this listing.
+    const [dispatched] = await service.listRuntimeConnections();
+    expect(dispatched?.id).toBe('claude');
+    expect(dispatched).not.toHaveProperty('allowanceEvidence');
+    await service.listEngineConnectionStates();
+    await service.listConnections();
+    await service.listRuntimeConnectionInventory();
+    await service.listRuntimeConnectionCatalog();
+    expect(listAllowanceRefusals).not.toHaveBeenCalled();
+    expect(allowanceRefusalSupersession).not.toHaveBeenCalled();
+
+    // The served listing reads it: the spy is live.
+    const [served] = (
+      await service.listRuntimeConnectionInventory({
+        withAllowanceEvidence: true,
+      })
+    ).connections;
+    expect(listAllowanceRefusals).toHaveBeenCalledTimes(1);
+    expect(served?.allowanceEvidence).toHaveLength(1);
+  });
+
   test('the engine view carries the evidence its source records, per the active account', async () => {
     const listAllowanceRefusals = vi.fn(() => [
       refusal({
@@ -660,14 +764,20 @@ describe('engine connection listing', () => {
         }) as any,
       vi.fn(),
     );
-    const [unwired] = await service.listRuntimeConnections();
+    const served = async () =>
+      (
+        await service.listRuntimeConnectionInventory({
+          withAllowanceEvidence: true,
+        })
+      ).connections;
+    const [unwired] = await served();
     expect(unwired).not.toHaveProperty('allowanceEvidence');
 
     service.setAllowanceEvidenceSource({
       listAllowanceRefusals,
-      hasAllowanceAcceptedTurnAfter: vi.fn(() => false),
+      allowanceRefusalSupersession: vi.fn(() => 'none' as const),
     });
-    const [connection] = await service.listRuntimeConnections();
+    const [connection] = await served();
     expect(connection?.allowanceEvidence).toEqual([
       expect.objectContaining({
         account: { kind: 'profile', ref: 'work' },
@@ -679,7 +789,7 @@ describe('engine connection listing', () => {
     listAllowanceRefusals.mockImplementation(() => {
       throw new Error('database is locked');
     });
-    const [failed] = await service.listRuntimeConnections();
+    const [failed] = await served();
     expect(failed).not.toHaveProperty('allowanceEvidence');
   });
 
@@ -699,7 +809,7 @@ describe('engine connection listing', () => {
       async () => ({}) as any,
       vi.fn(),
     );
-    const hasAllowanceAcceptedTurnAfter = vi.fn(() => false);
+    const allowanceRefusalSupersession = vi.fn(() => 'none' as const);
     service.setAllowanceEvidenceSource({
       listAllowanceRefusals: () => [
         refusal({
@@ -711,11 +821,13 @@ describe('engine connection listing', () => {
           details: acpPlanQuotaDetails(),
         }),
       ],
-      hasAllowanceAcceptedTurnAfter,
+      allowanceRefusalSupersession,
     });
-    const kiro = (await service.listRuntimeConnections()).find(
-      (connection) => connection.id === 'kiro',
-    );
+    const kiro = (
+      await service.listRuntimeConnectionCatalog({
+        withAllowanceEvidence: true,
+      })
+    ).find((connection) => connection.id === 'kiro');
     // The inspector's ACP view: no `config.provider`, `engineId: 'acp'`.
     expect(kiro?.config).not.toHaveProperty('provider');
     expect(kiro?.config.engineId).toBe('acp');
@@ -726,7 +838,7 @@ describe('engine connection listing', () => {
         applies: 'current-account',
       }),
     ]);
-    expect(hasAllowanceAcceptedTurnAfter).toHaveBeenCalledWith(
+    expect(allowanceRefusalSupersession).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: 'acp',
         account: { connectionId: 'kiro' },

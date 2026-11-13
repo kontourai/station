@@ -2749,14 +2749,19 @@ What depends on a connection is a separate read, not part of the inspection:
 projects saved Agent and Project bindings through the pure
 [used-by contract](../../packages/contracts/src/connection-used-by.ts), and the kit's
 [used-by list](../../src-ui/src/components/resource-hub/UsedByList.tsx) presents it.
-Last, the inspection attaches `allowanceEvidence`: one bounded read of recorded quota
+Only the `/agents` and `/agents/catalog` routes attach `allowanceEvidence`
+(`withAllowanceEvidence`); `listRuntimeConnections()`, which dispatch, chat sends
+and agent saves read, does not. It is one read of at most 200 recorded quota
 refusals from the orchestration `EventStore` (wired by
 `setAllowanceEvidenceSource`), scoped per account by each run's process epoch,
-then one bounded check per candidate refusal for a later accepted turn on the
-same account
+then one check per account's newest fresh refusal for a later accepted turn on
+the same account
 ([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
-A failed read attaches nothing. Dispatch does not read it. The same two routes
-drop each refusal's `account` for those viewers (`allowanceEvidenceForViewer`).
+Each check examines at most `ALLOWANCE_SUPERSESSION_SCAN_LIMIT` (1,000)
+`turn.completed` rows since the refusal, newest first; reaching the cap without a
+match drops the refusal, so the read can miss a true limit but never shows a false
+one. A failed read attaches nothing. The `/agents` and `/agents/catalog` routes
+also drop each refusal's `account` for those viewers (`allowanceEvidenceForViewer`).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims

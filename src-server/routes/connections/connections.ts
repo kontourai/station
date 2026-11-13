@@ -117,7 +117,9 @@ export function createConnectionRoutes(
   app.get('/agents', async (c) => {
     try {
       const { connections, failures } =
-        await connectionService.listRuntimeConnectionInventory();
+        await connectionService.listRuntimeConnectionInventory({
+          withAllowanceEvidence: true,
+        });
       return c.json({
         success: true,
         data: forViewer(c, connections),
@@ -130,7 +132,9 @@ export function createConnectionRoutes(
 
   app.get('/agents/catalog', async (c) => {
     try {
-      const data = await connectionService.listRuntimeConnectionCatalog();
+      const data = await connectionService.listRuntimeConnectionCatalog({
+        withAllowanceEvidence: true,
+      });
       return c.json({ success: true, data: forViewer(c, data) });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);

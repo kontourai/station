@@ -915,6 +915,22 @@ const ALLOWANCE_EPOCH_FACT_COLUMNS = `
                     AND json_valid(route.payload)
                     AND json_type(route.payload, '$.metadata.modelRoute') = 'object') AS proxy_routed${USAGE_RECEIPT_ENGINE_CONNECTION_COLUMN}`;
 
+/**
+ * The most `turn.completed` rows one allowance supersession check examines,
+ * so a still-active refusal on a busy Station costs a bounded read.
+ */
+export const ALLOWANCE_SUPERSESSION_SCAN_LIMIT = 1_000;
+
+/**
+ * What the bounded supersession check found: a later accepted turn on the
+ * refused account, none within every row since the refusal, or the scan
+ * cap reached without a match (not proven either way).
+ */
+export type AllowanceRefusalSupersession =
+  | 'accepted-turn'
+  | 'none'
+  | 'scan-capped';
+
 /** One recorded event with the epoch facts allowance evidence is scoped by. */
 export interface AllowanceEpochFactRow {
   eventId: string;
@@ -8444,47 +8460,65 @@ export class EventStore {
    * Whether the provider finished a turn with a proven finish reason after
    * this refusal, on the same account and not through a proxy route: the
    * provider's own word that the refusal no longer describes the account.
-   * One bounded EXISTS per refusal, so no amount of other traffic can push
-   * the superseding turn out of the read. The account is the recorded
-   * credential account key (Claude Code, Codex), on any connection; an ACP
-   * adapter records no key and runs one account per connection, so its
-   * account is its connection.
+   * The account is the recorded credential account key (Claude Code, Codex),
+   * on any connection; an ACP adapter records no key and runs one account
+   * per connection, so its account is its connection.
+   *
+   * Bounded: it examines at most `ALLOWANCE_SUPERSESSION_SCAN_LIMIT`
+   * `turn.completed` rows since the refusal, newest first, over
+   * `idx_events_usage_observed`, and runs the per-thread epoch lookups only
+   * on those. When the cap is reached without a match the answer is
+   * `scan-capped`, which the caller treats as superseded: past the cap the
+   * refusal is not shown, so a busy Station can lose a true "Usage limit
+   * reached", never gain a false one.
    */
-  hasAllowanceAcceptedTurnAfter(refusal: {
+  allowanceRefusalSupersession(refusal: {
     provider: string;
     observedAt: string;
     globalSequence: number;
     account: { accountKey: string } | { connectionId: string };
-  }): boolean {
+  }): AllowanceRefusalSupersession {
     const proven = [...PROVIDER_PROVEN_FINISH_REASONS];
     const byKey = 'accountKey' in refusal.account;
     const row = this.db
       .prepare(
-        `SELECT EXISTS (
-           SELECT 1 FROM (
-             SELECT e.global_sequence,${ALLOWANCE_EPOCH_FACT_COLUMNS}
-               FROM orchestration_events e INDEXED BY idx_events_usage_observed
-              WHERE e.method = 'turn.completed'
-                AND e.observed_at >= ?
-                AND e.provider = ?
-                AND e.global_sequence > ?
-                AND json_valid(e.payload)
-                AND json_extract(e.payload, '$.finishReason') IN (${proven.map(() => '?').join(', ')})
-           ) turn
-           WHERE turn.proxy_routed = 0
-             AND ${byKey ? 'turn.account_key' : 'turn.connection_id'} = ?
-         ) AS found`,
+        `WITH capped AS (
+           SELECT e.id, e.thread_id, e.sequence, e.provider, e.global_sequence, e.payload
+             FROM orchestration_events e INDEXED BY idx_events_usage_observed
+            WHERE e.method = 'turn.completed'
+              AND e.observed_at >= ?
+            ORDER BY e.observed_at DESC
+            LIMIT ?
+         )
+         SELECT
+           (SELECT COUNT(*) FROM capped) AS examined,
+           EXISTS (
+             SELECT 1 FROM (
+               SELECT e.global_sequence,${ALLOWANCE_EPOCH_FACT_COLUMNS}
+                 FROM capped e
+                WHERE e.provider = ?
+                  AND e.global_sequence > ?
+                  AND json_valid(e.payload)
+                  AND json_extract(e.payload, '$.finishReason') IN (${proven.map(() => '?').join(', ')})
+             ) turn
+             WHERE turn.proxy_routed = 0
+               AND ${byKey ? 'turn.account_key' : 'turn.connection_id'} = ?
+           ) AS found`,
       )
       .get(
         refusal.observedAt,
+        ALLOWANCE_SUPERSESSION_SCAN_LIMIT,
         refusal.provider,
         refusal.globalSequence,
         ...proven,
         'accountKey' in refusal.account
           ? refusal.account.accountKey
           : refusal.account.connectionId,
-      ) as { found: number | bigint } | undefined;
-    return row?.found === 1 || row?.found === 1n;
+      ) as { examined: number | bigint; found: number | bigint } | undefined;
+    if (row?.found === 1 || row?.found === 1n) return 'accepted-turn';
+    return Number(row?.examined ?? 0) >= ALLOWANCE_SUPERSESSION_SCAN_LIMIT
+      ? 'scan-capped'
+      : 'none';
   }
 
   private mapAllowanceEpochFactRow(

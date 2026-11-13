@@ -290,6 +290,12 @@ describe('Connection Routes', () => {
 
     for (const path of ['/agents', '/agents/catalog']) {
       const below = await evidence(presenting('orchestration:read'), path);
+      // These two listings are where evidence is served, so they ask for it.
+      expect(
+        path === '/agents'
+          ? service.listRuntimeConnectionInventory
+          : service.listRuntimeConnectionCatalog,
+      ).toHaveBeenLastCalledWith({ withAllowanceEvidence: true });
       expect(below).toEqual([
         {
           source: 'usage-limit',

@@ -222,6 +222,15 @@ class InventorySiblingAbort extends Error {
   }
 }
 
+/** Options for the runtime listings the Connections engine routes serve. */
+export interface RuntimeConnectionListingOptions {
+  /**
+   * Attach recorded quota refusals (`allowanceEvidence`). Only listings a
+   * client reads set this; dispatch does not read it.
+   */
+  withAllowanceEvidence?: boolean;
+}
+
 interface ModelCatalogCacheEntry {
   fingerprint: string;
   observedAt: string;
@@ -810,16 +819,19 @@ export class ConnectionService {
   }
 
   /**
-   * Fresh recorded quota refusals, attached to each engine view. A failed
-   * read attaches nothing, which readers treat as unknown, never as
-   * allowance left.
+   * Fresh recorded quota refusals, attached to each engine view. Only the
+   * Connections engine listings ask for this (`withAllowanceEvidence`):
+   * dispatch, chat sends and agent saves list runtime connections too, and
+   * must not pay a SQLite read for evidence they never serve. A failed read
+   * attaches nothing, which readers treat as unknown, never as allowance
+   * left.
    */
-  private withAllowanceEvidence(
+  private async withAllowanceEvidence(
     connections: AgentConnectionView[],
-    appConfig: AppConfig,
-  ): AgentConnectionView[] {
+  ): Promise<AgentConnectionView[]> {
     const source = this.allowanceEvidenceSource;
     if (!source || connections.length === 0) return connections;
+    const appConfig = await this.getAppConfig();
     let evidence: Map<string, EngineAllowanceEvidence[]>;
     try {
       evidence = readEngineAllowanceEvidence(
@@ -1330,7 +1342,9 @@ export class ConnectionService {
    * route too, so the reason travels with it rather than being lost one seam
    * away from where it is rendered.
    */
-  async listRuntimeConnectionInventory(): Promise<{
+  async listRuntimeConnectionInventory(
+    options: RuntimeConnectionListingOptions = {},
+  ): Promise<{
     connections: AgentConnectionView[];
     failures: ConnectionInventoryFailure[];
   }> {
@@ -1338,7 +1352,12 @@ export class ConnectionService {
     const connections = await this.listRuntimeConnectionsForModels(
       inventoryPromise.then((inventory) => inventory.connections),
     );
-    return { connections, failures: (await inventoryPromise).failures };
+    return {
+      connections: options.withAllowanceEvidence
+        ? await this.withAllowanceEvidence(connections)
+        : connections,
+      failures: (await inventoryPromise).failures,
+    };
   }
 
   async listRuntimeConnections(): Promise<AgentConnectionView[]> {
@@ -1475,10 +1494,16 @@ export class ConnectionService {
    * unregistered adapters, but still projects their clean public
    * EngineConnectionId paired with each Adapter's canonical EngineId.
    */
-  async listRuntimeConnectionCatalog(): Promise<AgentConnectionView[]> {
-    return this.listRuntimeConnectionsForModels(this.listModelConnections(), {
-      registryAuthoritative: false,
-    });
+  async listRuntimeConnectionCatalog(
+    options: RuntimeConnectionListingOptions = {},
+  ): Promise<AgentConnectionView[]> {
+    const connections = await this.listRuntimeConnectionsForModels(
+      this.listModelConnections(),
+      { registryAuthoritative: false },
+    );
+    return options.withAllowanceEvidence
+      ? this.withAllowanceEvidence(connections)
+      : connections;
   }
 
   private async listRuntimeConnectionsForModels(
@@ -1624,7 +1649,7 @@ export class ConnectionService {
           }
         : withEvidence;
     });
-    return this.withAllowanceEvidence(projected, appConfig);
+    return projected;
   }
 
   private async refreshLaunchableModelInventory(

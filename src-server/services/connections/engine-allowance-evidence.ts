@@ -27,6 +27,7 @@ import { providerQuotaFactsFromDetails } from '../../providers/provider-plan-quo
 import type {
   AllowanceEpochFactRow,
   AllowanceRefusalRow,
+  AllowanceRefusalSupersession,
 } from '../orchestration/event-store.js';
 
 /**
@@ -61,12 +62,13 @@ export interface AllowanceEvidenceSource {
     since: string;
     limit: number;
   }): AllowanceRefusalRow[];
-  hasAllowanceAcceptedTurnAfter(refusal: {
+  /** Bounded; see `EventStore.allowanceRefusalSupersession`. */
+  allowanceRefusalSupersession(refusal: {
     provider: string;
     observedAt: string;
     globalSequence: number;
     account: AllowanceRefusalAccount;
-  }): boolean;
+  }): AllowanceRefusalSupersession;
 }
 
 /** What the projection needs to know about one engine connection. */
@@ -286,12 +288,16 @@ export function readEngineAllowanceEvidence(
       const account = refusalAccount(row);
       // `eventAccount` already refused an unnamed account; nothing to match.
       if (!account) return false;
-      return source.hasAllowanceAcceptedTurnAfter({
-        provider: row.provider,
-        observedAt: row.observedAt,
-        globalSequence: row.globalSequence,
-        account,
-      });
+      // A capped scan proved nothing either way; fail toward no evidence,
+      // never toward a "Usage limit reached" nothing current supports.
+      return (
+        source.allowanceRefusalSupersession({
+          provider: row.provider,
+          observedAt: row.observedAt,
+          globalSequence: row.globalSequence,
+          account,
+        }) !== 'none'
+      );
     },
     now,
   });
