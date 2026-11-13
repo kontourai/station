@@ -78,6 +78,8 @@ interface ConversationStatsProps {
    * no Reconnect or Sign in action: Codex, for one, has no reconnect.
    */
   engineMcpReconnect?: boolean;
+  /** The session's engine connection name, for the panel's wording. */
+  engineName?: string;
 }
 
 export function ConversationStats({
@@ -90,6 +92,7 @@ export function ConversationStats({
   engineMcpServers,
   executionThreadId,
   engineMcpReconnect,
+  engineName,
 }: ConversationStatsProps) {
   // Same defect shape as SHELL-09's SkillsView: `useStats` already derives a
   // loading flag and this discarded it for a hardcoded `false`, so the modal's
@@ -180,6 +183,7 @@ export function ConversationStats({
           usageTree.isPending && usageTree.fetchStatus !== 'idle',
         usageTreeError: usageTreeMissing ? undefined : usageTree.error,
         engineMcpServers,
+        ...(engineName ? { engineName } : {}),
         ...(executionThreadId && engineMcpReconnect
           ? { onReconnectMcpServer }
           : {}),

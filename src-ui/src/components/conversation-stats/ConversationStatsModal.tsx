@@ -55,6 +55,11 @@ interface ConversationStatsModalProps {
   usageTreeError?: unknown;
   /** The engine's MCP servers as it last reported them (`engine-mcp.status`). */
   engineMcpServers?: readonly ChatEngineMcpServer[];
+  /**
+   * The session's engine connection name ("Kiro (KAS)"), named in place of
+   * the generic label for its provider ("Custom engine" for `acp`).
+   */
+  engineName?: string;
   /** Restart one of the engine's MCP servers; absent hides the action. */
   onReconnectMcpServer?: EngineMcpReconnect;
   /** The server a reconnect is in flight for. */
@@ -117,6 +122,7 @@ export function ConversationStatsModal({
   usageTreeLoading,
   usageTreeError,
   engineMcpServers,
+  engineName,
   onReconnectMcpServer,
   mcpReconnectPendingServer,
   mcpReconnectNotice,
@@ -127,7 +133,7 @@ export function ConversationStatsModal({
   const unreportedNote = stats
     ? describeUnreportedMeasurements(
         conversationStatsMeasurementView(stats),
-        engineDisplayLabel,
+        (provider) => engineName?.trim() || engineDisplayLabel(provider),
       )
     : null;
 

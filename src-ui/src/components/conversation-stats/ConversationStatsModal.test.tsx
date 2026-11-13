@@ -164,6 +164,32 @@ describe('ConversationStatsModal — unmeasured figures', () => {
     expect(note).not.toContain('context usage');
   });
 
+  test('engine-reported credits and a context reading are not called unreported, and the engine is named', () => {
+    // Kiro (KAS): credits in its own unit and a context percentage, no tokens.
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        engineName="Kiro (KAS)"
+        stats={{
+          modelId: 'auto',
+          conversationId: 'c-kas',
+          turns: 1,
+          toolCalls: 0,
+          contextWindowPercentage: 2.2,
+          reportedCosts: [{ unit: 'credit', amount: 0.0535 }],
+          measurement: { source: 'engine-events', provider: 'acp' },
+        }}
+      />,
+    );
+    const note = screen.getByText(/did not report/).textContent ?? '';
+    expect(note).toMatch(
+      /^Kiro \(KAS\) did not report token counts for this session/,
+    );
+    expect(note).not.toContain('Custom engine');
+    expect(note).not.toContain('cost');
+    expect(note).not.toContain('context usage');
+  });
+
   test('the derived context header still renders — it is the one real number', () => {
     renderModal(UNMEASURED);
 
