@@ -9,6 +9,7 @@ import {
   createBuiltinVendedToolDef,
   listBuiltinVendedRegistryItems,
 } from '../../runtime/tools/vended-tool-compat.js';
+import { managedRuntimeInstalls } from '../../services/engines/managed-runtime-installs.js';
 import { findCliBinary } from '../auth/cli-auth.js';
 import type {
   AuthStatus,
@@ -166,7 +167,15 @@ export class BuiltinACPConnectionRegistryProvider
     const discoveryDisabled = this.discoveryDisabled();
     return entries.map((entry) => ({
       ...entry,
-      detected: !discoveryDisabled && this.commandExists(entry.command),
+      // A managed runtime is not on PATH: it is detected once Station has
+      // installed it.
+      detected:
+        !discoveryDisabled &&
+        (entry.managedRuntime
+          ? managedRuntimeInstalls()?.installed(
+              entry.managedRuntime.installId,
+            ) !== undefined
+          : this.commandExists(entry.command)),
     }));
   }
 }

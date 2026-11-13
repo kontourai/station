@@ -22,26 +22,28 @@
  * on macOS, which preserves the app bundle's symlinks; `tar` on Windows 10+;
  * `unzip` on Linux).
  */
-import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
   accessSync,
-  createWriteStream,
   existsSync,
   constants as fsConstants,
   mkdirSync,
-  readdirSync,
   readFileSync,
-  readlinkSync,
-  realpathSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  downloadPinnedArtifact,
+  findEscapingEntry,
+  PinnedArtifactError,
+  runArchiveTool,
+  unsafeArchiveEntry,
+} from '../infra/pinned-artifact.js';
 
 export type ChromeForTestingPlatform =
   | 'mac-arm64'
@@ -278,34 +280,6 @@ function defaultIsExecutableFile(path: string): boolean {
   }
 }
 
-function runArchiveTool(
-  command: string,
-  args: string[],
-  timeoutMs: number,
-  collect?: (chunk: Buffer) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ['ignore', collect ? 'pipe' : 'ignore', 'ignore'],
-      windowsHide: true,
-    });
-    if (collect) child.stdout?.on('data', collect);
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error(`${command} did not finish within ${timeoutMs}ms`));
-    }, timeoutMs);
-    child.once('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.once('exit', (code, signal) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`${command} exited ${code ?? signal}`));
-    });
-  });
-}
-
 function defaultExtract(
   platform: NodeJS.Platform,
 ): (zipPath: string, destDir: string) => Promise<void> {
@@ -356,53 +330,6 @@ function defaultListEntries(
       .split(/\r?\n/)
       .filter((line) => line !== '');
   };
-}
-
-/**
- * Zip-slip: an entry name that is absolute, has a drive or UNC prefix, or has
- * a `..` segment could land outside the install directory. Refused before
- * extraction.
- */
-function unsafeArchiveEntry(name: string): boolean {
-  if (name.includes('\0')) return true;
-  const normalized = name.replace(/\\/g, '/');
-  if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) return true;
-  return normalized.split('/').some((segment) => segment === '..');
-}
-
-/**
- * After extraction, every entry — and every symlink's target — must resolve
- * inside the extraction root (the app bundle's own relative symlinks do).
- * Returns the first escaping path, or undefined.
- */
-function findEscapingEntry(root: string): string | undefined {
-  const realRoot = realpathSync(root);
-  const within = (candidate: string) => {
-    const rel = relative(realRoot, candidate);
-    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-  };
-  const stack = [realRoot];
-  while (stack.length > 0) {
-    const dir = stack.pop() as string;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.isSymbolicLink()) {
-        const target = resolve(dir, readlinkSync(path));
-        let real: string;
-        try {
-          real = realpathSync(target);
-        } catch {
-          // A dangling link is judged by where it points.
-          real = target;
-        }
-        if (!within(real)) return path;
-        continue;
-      }
-      if (!within(realpathSync(path))) return path;
-      if (entry.isDirectory()) stack.push(path);
-    }
-  }
-  return undefined;
 }
 
 export function defaultChromiumAcquisitionDeps(): ChromiumAcquisitionDeps {
@@ -597,72 +524,25 @@ export class ChromiumAcquisition {
     try {
       const zipPath = join(staging, 'chromium.zip');
       const url = `${this.deps.pin.baseUrl}/${this.deps.pin.version}/${platform}/chrome-${platform}.zip`;
-      let response: Response;
+      let md5: string;
+      let digest: string;
       try {
-        response = await this.deps.fetch(url, { redirect: 'error' });
+        ({ md5, sha256: digest } = await downloadPinnedArtifact({
+          fetch: this.deps.fetch,
+          url,
+          dest: zipPath,
+          bytes: build.bytes,
+          sha256: build.sha256,
+          md5: build.md5,
+          sourceName: 'Chrome for Testing',
+          onProgress: (received) => {
+            progress.receivedBytes = received;
+          },
+        }));
       } catch (error) {
-        throw new AcquisitionFailure(
-          'download-failed',
-          `Could not reach Chrome for Testing: ${(error as Error).message}`,
-        );
-      }
-      if (!response.ok || !response.body) {
-        throw new AcquisitionFailure(
-          'download-failed',
-          `Chrome for Testing answered HTTP ${response.status}.`,
-        );
-      }
-      const declared = Number(response.headers.get('content-length'));
-      if (
-        Number.isFinite(declared) &&
-        declared > 0 &&
-        declared !== build.bytes
-      ) {
-        throw new AcquisitionFailure(
-          'size-mismatch',
-          `Archive length ${declared} does not match the pinned ${build.bytes}.`,
-        );
-      }
-      const hash = createHash('md5');
-      const sha256 = createHash('sha256');
-      const file = createWriteStream(zipPath);
-      try {
-        for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-          progress.receivedBytes += chunk.byteLength;
-          if (progress.receivedBytes > build.bytes) {
-            throw new AcquisitionFailure(
-              'size-mismatch',
-              `Archive exceeded the pinned ${build.bytes} bytes.`,
-            );
-          }
-          hash.update(chunk);
-          sha256.update(chunk);
-          if (!file.write(chunk)) {
-            await new Promise<void>((resolve) => file.once('drain', resolve));
-          }
-        }
-      } finally {
-        await new Promise<void>((resolve) => file.end(resolve));
-      }
-      if (progress.receivedBytes !== build.bytes) {
-        throw new AcquisitionFailure(
-          'size-mismatch',
-          `Archive was ${progress.receivedBytes} bytes; the pin is ${build.bytes}.`,
-        );
-      }
-      const md5 = hash.digest('base64');
-      if (md5 !== build.md5) {
-        throw new AcquisitionFailure(
-          'integrity-mismatch',
-          `Archive MD5 ${md5} does not match the pinned ${build.md5}.`,
-        );
-      }
-      const digest = sha256.digest('hex');
-      if (!/^[0-9a-f]{64}$/.test(build.sha256) || digest !== build.sha256) {
-        throw new AcquisitionFailure(
-          'integrity-mismatch',
-          `Archive SHA-256 ${digest} does not match the pinned ${build.sha256}.`,
-        );
+        if (error instanceof PinnedArtifactError)
+          throw new AcquisitionFailure(error.reason, error.message);
+        throw error;
       }
       let entries: string[];
       try {

@@ -72,9 +72,10 @@ function serve(
       };
       calls.push(call);
       const custom = respond(call, view) as
-        | { view?: Record<string, unknown>; attempt?: unknown }
+        | { view?: Record<string, unknown>; attempt?: unknown; data?: unknown }
         | undefined;
       if (custom?.view) view = custom.view;
+      if (custom && 'data' in custom) return reply(custom.data);
       if (custom && 'attempt' in custom) attempt = custom.attempt;
       if (u.pathname.endsWith('/sign-in/attempt')) return reply(attempt);
       if (u.pathname.endsWith('/sign-in/start')) return reply(attempt);
@@ -422,3 +423,161 @@ test.each(['connection', 'authority', 'host', 'disconnect'] as const)(
     );
   },
 );
+
+const bundleView = {
+  connectionId: 'kiro-kas-bundle',
+  engineName: 'Kiro (KAS, no CLI)',
+  status: {
+    state: 'unauthenticated',
+    source: 'station-vault',
+    observedAt: '2026-11-13T10:00:00.000Z',
+    checkable: false,
+  },
+  credentials: [],
+  allowed: { signIn: true, terminal: false },
+  hostAuth: {
+    status: { owner: 'station', state: 'signed-out', issueCount24h: 0 },
+    identities: ['builder-id', 'identity-center'],
+    policy: 'allowed',
+    install: {
+      installId: 'kiro-kas',
+      version: '0.66.104',
+      state: { kind: 'not-installed' },
+    },
+    allowed: { install: true },
+  },
+};
+
+test('an engine Station signs in: install with consent, then a Builder ID sign-in shows the code and opens the link only on request', async () => {
+  let login: unknown = null;
+  const calls = serve(bundleView, (call) => {
+    if (call.path.endsWith('/managed-install'))
+      return {
+        data: {
+          kind: 'installing',
+          startedAt: '2026-11-13T10:00:01.000Z',
+          receivedBytes: 0,
+          totalBytes: 54_000_000,
+        },
+      };
+    if (call.path.endsWith('/host-auth/login')) {
+      if (call.method === 'POST')
+        login = {
+          kind: 'kiro.oidc-access-token',
+          phase: 'awaiting-approval',
+          startedAt: '2026-11-13T10:00:02.000Z',
+          expiresAt: '2026-11-13T10:10:02.000Z',
+          verificationUri:
+            'https://device.sso.us-east-1.amazonaws.com/?user_code=ABCD-EFGH',
+          userCode: 'ABCD-EFGH',
+        };
+      return { data: login };
+    }
+    return undefined;
+  });
+  renderPanel();
+  expect(
+    await screen.findByText(/Station keeps .*sign-in itself/),
+  ).toBeTruthy();
+  // No engine handshake for an engine Station signs in.
+  expect(calls.some((call) => call.path.endsWith('/sign-in/check'))).toBe(
+    false,
+  );
+  expect(
+    screen.getByText(/checks every file against the checksums/),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Install' }));
+  await waitFor(() =>
+    expect(
+      calls.find((call) => call.path.endsWith('/managed-install'))?.body,
+    ).toBe(JSON.stringify({ consent: true })),
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  expect(await screen.findByText('ABCD-EFGH')).toBeTruthy();
+  const start = calls.find(
+    (call) => call.path.endsWith('/host-auth/login') && call.method === 'POST',
+  );
+  expect(JSON.parse(start?.body ?? '{}')).toEqual({ identity: 'builder-id' });
+  expect(openLink).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Open link' }));
+  expect(openLink).toHaveBeenCalledWith(
+    'https://device.sso.us-east-1.amazonaws.com/?user_code=ABCD-EFGH',
+  );
+});
+
+test('Identity Center needs a start URL and region before it can start', async () => {
+  const calls = serve(bundleView, (call) =>
+    call.path.endsWith('/host-auth/login') ? { data: null } : undefined,
+  );
+  renderPanel();
+  await screen.findByText(/Station keeps .*sign-in itself/);
+  fireEvent.change(screen.getByLabelText('Sign in with'), {
+    target: { value: 'identity-center' },
+  });
+  const submit = screen.getByRole('button', {
+    name: 'Sign in',
+  }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Start URL'), {
+    target: { value: 'https://acme.awsapps.com/start' },
+  });
+  fireEvent.change(screen.getByLabelText('Region'), {
+    target: { value: 'eu-central-1' },
+  });
+  expect(submit.disabled).toBe(false);
+  fireEvent.click(submit);
+  await waitFor(() =>
+    expect(
+      JSON.parse(
+        calls.find(
+          (call) =>
+            call.path.endsWith('/host-auth/login') && call.method === 'POST',
+        )?.body ?? '{}',
+      ),
+    ).toEqual({
+      identity: 'identity-center',
+      startUrl: 'https://acme.awsapps.com/start',
+      region: 'eu-central-1',
+    }),
+  );
+});
+
+test('a signed-in engine offers sign-out; an installed one shows its version', async () => {
+  const calls = serve(
+    {
+      ...bundleView,
+      status: { ...bundleView.status, state: 'authenticated' },
+      hostAuth: {
+        ...bundleView.hostAuth,
+        status: {
+          owner: 'station',
+          state: 'signed-in',
+          identity: { kind: 'builder-id', region: 'us-east-1' },
+          accessExpiresAt: '2026-11-13T11:00:00.000Z',
+          issueCount24h: 2,
+        },
+        install: {
+          ...bundleView.hostAuth.install,
+          state: { kind: 'installed', version: '0.66.104' },
+        },
+      },
+    },
+    (call) =>
+      call.path.endsWith('/host-auth/login') ? { data: null } : undefined,
+  );
+  renderPanel();
+  expect(
+    await screen.findByText('Kiro (KAS, no CLI) 0.66.104 is installed.'),
+  ).toBeTruthy();
+  expect(screen.getByText('Signed in with AWS Builder ID.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  await waitFor(() =>
+    expect(
+      calls.some(
+        (call) =>
+          call.path.endsWith('/host-auth/sign-out') && call.method === 'POST',
+      ),
+    ).toBe(true),
+  );
+});

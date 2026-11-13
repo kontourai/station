@@ -9,6 +9,12 @@
  * (`@kontourai/station-contracts/engine-credential-provider`).
  */
 
+import type {
+  EngineHostAuthPolicy,
+  EngineHostAuthStatus,
+} from './engine-credential-provider.js';
+import type { ManagedInstallState } from './managed-engine-install.js';
+
 export type EngineSignInState = 'authenticated' | 'unauthenticated' | 'unknown';
 
 /**
@@ -119,5 +125,36 @@ export interface EngineSignInView {
     signIn: boolean;
     /** Run the engine's login in a terminal on the host. */
     terminal: boolean;
+  };
+  /**
+   * Present when Station itself signs this engine in (the engine delegates
+   * its credential to the host) or installs it. Never carries a token, a
+   * sign-in code or a host path.
+   */
+  hostAuth?: EngineHostAuthView;
+}
+
+/** A managed install's state as a client sees it: no host paths. */
+export type ManagedInstallStateView =
+  | Exclude<ManagedInstallState, { readonly kind: 'installed' }>
+  | { readonly kind: 'installed'; readonly version: string };
+
+export interface EngineHostAuthView {
+  /** Present when Station owns this engine's sign-in. */
+  status?: EngineHostAuthStatus;
+  /** The identities Station can sign this engine in with. */
+  identities: Array<'builder-id' | 'identity-center'>;
+  /** Managed policy's `limits.engines.engineHostAuth`. */
+  policy: EngineHostAuthPolicy;
+  /** Present when Station installs this engine itself. */
+  install?: {
+    installId: string;
+    version: string;
+    state: ManagedInstallStateView;
+  };
+  /** What this caller may do beyond `allowed.signIn`. */
+  allowed: {
+    /** Install the engine (an operate-level action). */
+    install: boolean;
   };
 }

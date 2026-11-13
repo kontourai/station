@@ -6319,9 +6319,15 @@ sign-in for an engine run as a command (`/acp/connections/:id/sign-in*`):
 `useEngineSignInAttemptQuery` (polls every 2 seconds while a sign-in runs),
 `useEngineSignInMutation` (start by method id, or cancel) and
 `useEngineCredentialMutation` (set a key value or clear it; the value is never
-read back). Responses are parsed strictly against
-`@kontourai/station-contracts/engine-sign-in`, and every caller supplies a
-captured `ApiRequestScope`.
+read back). For an engine Station signs in itself, the view carries
+`hostAuth`, and `useEngineHostAuthLoginQuery` (polls every 2 seconds while the
+sign-in runs; it carries the device code), `useEngineHostAuthLoginMutation`
+(start with a `HostAuthLoginRequest`, or cancel),
+`useEngineHostAuthSignOutMutation` and `useManagedEngineInstallMutation`
+(`{ consent: true }`) drive `/host-auth/login`, `/host-auth/sign-out` and
+`/managed-install`; the view polls while an install runs. Responses are parsed
+strictly against `@kontourai/station-contracts/engine-sign-in`, and every
+caller supplies a captured `ApiRequestScope`.
 
 ## Engine account queries
 

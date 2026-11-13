@@ -40,6 +40,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 import { createACPClientApp } from './acp-bridge-client.js';
 import type { ACPClientCallbacks } from './acp-bridge-types.js';
+import { resolveManagedRuntimeLaunch } from './acp-engine-descriptors.js';
 import { REVIEWED_ENGINE_SECRET_BINDINGS } from './acp-inbound-extension-policy.js';
 
 /**
@@ -517,9 +518,19 @@ export class ACPProcess extends EventEmitter {
     // #4520: a managed policy's pinned binary and arguments. A locked pin
     // replaces the connection's own; this is every ACP launch (sessions,
     // availability probes and sign-in all start an ACPProcess).
+    // A built-in managed-runtime connection (`station-managed:<installId>`)
+    // runs the installed runtime with its descriptor's argv; any other
+    // command is unchanged. Throws, before anything is spawned, when the
+    // install is missing.
+    const managed = resolveManagedRuntimeLaunch({
+      command: this.opts.command,
+      args: this.opts.args,
+    });
     const pinned = managedEngineLaunch(
       'acp',
-      { command: this.opts.command, args: this.opts.args || [], env: {} },
+      managed
+        ? { command: managed.command, args: managed.args, env: {} }
+        : { command: this.opts.command, args: this.opts.args || [], env: {} },
       'user',
     );
     const bin = await this.findCommand(pinned.command);
