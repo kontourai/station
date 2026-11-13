@@ -132,7 +132,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/session-summary/` | Session summary records and the server-observed intent source they are derived from | Source |
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
 | `src-server/services/tailscale/` | This Station's public tailnet origin, asked of Tailscale rather than taken from a request | [Remote access threat model](../security/remote-access-threat-model.md) |
-| `src-server/services/webhooks/` | Inbound webhook HMAC authorization, replay ledger and audit store for `POST /api/webhooks/inbound`, configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
+| `src-server/services/webhooks/` | Station's bindings for the Telltale `webhook` source that verifies `POST /api/webhooks/inbound` (credential lookup, durable replay ledger, audit store), plus the start-grant check; configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
 | `src-server/services/work-item-providers/` | Local and flow-agents work-item provider backends behind one provider seam; GitHub tracker reads and Task follow-up polling (#4508) | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) |
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
@@ -5136,8 +5136,10 @@ single-flight on each tick, and `stop()` aborts, awaits and closes it. The
 poller enforces each source's `pollIntervalMs` from the
 [Automation ledger](../../src-server/services/automation/automation-ledger.ts)'s
 poll state, lists completed workflow runs through the external monitor's REST
-transport and secret-binding credential path, and records each run through the
-[normalizer](../../src-server/services/automation/github-workflow-run.ts) and
+transport and secret-binding credential path, takes the runs in the window and
+the next cursor from Telltale's `githubPollStep`, and records each run through the
+[normalizer](../../src-server/services/automation/github-workflow-run.ts) (over
+Telltale's `normalizeGitHubWorkflowRun`) and
 [intake](../../src-server/services/automation/automation-intake.ts) as matched,
 no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Each rule has a mode: `off`, `observe` or `live`.
 Only a `live` rule opens an episode or retains an intent. For every matched rule,
