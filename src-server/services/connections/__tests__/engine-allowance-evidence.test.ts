@@ -720,15 +720,12 @@ describe('engine connection listing', () => {
     ).connections;
     expect(listAllowanceRefusals).toHaveBeenCalledTimes(1);
     expect(served?.allowanceEvidence).toHaveLength(1);
-    // A plain single read stays free of it; the engine page's read carries it.
+    // The single read (dispatch, the CLI, the engine page's editable copy)
+    // stays free of it.
     expect(await service.getConnection('claude')).not.toHaveProperty(
       'allowanceEvidence',
     );
     expect(listAllowanceRefusals).toHaveBeenCalledTimes(1);
-    const detail = (await service.getConnection('claude', {
-      withAllowanceEvidence: true,
-    })) as { allowanceEvidence?: unknown[] } | null;
-    expect(detail?.allowanceEvidence).toHaveLength(1);
   });
 
   test('the engine view carries the evidence its source records, per the active account', async () => {

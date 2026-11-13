@@ -2749,19 +2749,19 @@ What depends on a connection is a separate read, not part of the inspection:
 projects saved Agent and Project bindings through the pure
 [used-by contract](../../packages/contracts/src/connection-used-by.ts), and the kit's
 [used-by list](../../src-ui/src/components/resource-hub/UsedByList.tsx) presents it.
-Only the `/agents` and `/agents/catalog` routes and the engine read `GET /:id`
-attach `allowanceEvidence` (`withAllowanceEvidence`); `listRuntimeConnections()`, which dispatch, chat sends
+Only the `/agents` and `/agents/catalog` routes attach `allowanceEvidence`
+(`withAllowanceEvidence`; the engine page takes it from its list row); `listRuntimeConnections()`, which dispatch, chat sends
 and agent saves read, does not. It is one read of at most 200 recorded quota
 refusals from the orchestration `EventStore` (wired by
 `setAllowanceEvidenceSource`), scoped per account by each run's process epoch,
 then one check per account's newest fresh refusal for a later accepted turn on
 the same account
 ([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
-Each check examines at most `ALLOWANCE_SUPERSESSION_SCAN_LIMIT` (1,000)
-`turn.completed` rows since the refusal, newest first; reaching the cap without a
-match drops the refusal, so the read can miss a true limit but never shows a false
-one. A failed read attaches nothing. Every route that returns engine rows (`/`,
-`/:id`, `/agents`, `/agents/catalog`) applies `forViewer`, which also drops each
+Each check examines at most `ALLOWANCE_SUPERSESSION_SCAN_LIMIT` (1,000) + 1
+`turn.completed` rows since the refusal, newest first; rows left past the cap
+without a match drop the refusal, so the read can miss a true limit but never shows a false
+one. A failed read attaches nothing. Every response that returns engine rows (`/`,
+`/:id`, `/agents`, `/agents/catalog` and the save responses) applies `forViewer`, which also drops each
 refusal's `account` for viewers who are neither the operator in
 person nor holders of `access:manage` (`allowanceEvidenceForViewer`).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,

@@ -1951,20 +1951,7 @@ export class ConnectionService {
     });
   }
 
-  /**
-   * `withAllowanceEvidence` is for the engine detail read, which shows the
-   * same status as the engine listings and so needs the same evidence.
-   */
-  async getConnection(
-    id: string,
-    options: RuntimeConnectionListingOptions = {},
-  ): Promise<ConnectionConfig | null> {
-    if (options.withAllowanceEvidence) {
-      const { connections } =
-        await this.listRuntimeConnectionInventory(options);
-      const engine = connections.find((connection) => connection.id === id);
-      if (engine) return engine;
-    }
+  async getConnection(id: string): Promise<ConnectionConfig | null> {
     const connections = await this.listConnections();
     return connections.find((connection) => connection.id === id) ?? null;
   }

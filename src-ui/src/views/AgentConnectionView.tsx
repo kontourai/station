@@ -255,6 +255,18 @@ export function AgentConnectionView({
     isSaving: () => saveMutation.isPending,
   });
   const form = editor.draft;
+  // Usage-limit evidence is served on the engine listings only (the engine
+  // read stays cheap for dispatch and CLI callers), so the header and
+  // Overview read it from this engine's own row.
+  const listedEvidence = runtimes.find(
+    (row) => row.id === selectedEngineConnectionId,
+  )?.allowanceEvidence;
+  const withListedEvidence = (
+    connection: AgentConnectionViewData,
+  ): AgentConnectionViewData =>
+    listedEvidence
+      ? { ...connection, allowanceEvidence: listedEvidence }
+      : connection;
   // A message about one engine is not about the next one.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the engine id is the intentional reset signal.
   useEffect(() => {
@@ -498,7 +510,7 @@ export function AgentConnectionView({
   // one fix and the readiness instructions cannot say Ready where the row
   // (and dispatch) say otherwise.
   const health = form
-    ? deriveConnectionHealth(engineHealthInput(form), {
+    ? deriveConnectionHealth(engineHealthInput(withListedEvidence(form)), {
         policyDisallowed: selectedManagedState?.disallowed === true,
       })
     : null;
@@ -640,8 +652,9 @@ export function AgentConnectionView({
     tab: EngineDetailTab,
     current: AgentConnectionViewData,
   ): ReactNode {
-    const savedCopy =
-      (runtime as AgentConnectionViewData | undefined) ?? current;
+    const savedCopy = withListedEvidence(
+      (runtime as AgentConnectionViewData | undefined) ?? current,
+    );
     switch (tab) {
       case 'usage':
         return <EngineUsageTab connection={savedCopy} />;

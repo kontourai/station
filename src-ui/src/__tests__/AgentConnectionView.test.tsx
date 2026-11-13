@@ -470,6 +470,21 @@ const headerBadge = (container: HTMLElement) =>
   container.querySelector('.detail-header .resource-status__badge')
     ?.textContent;
 
+/**
+ * Allowance evidence is served on the engine listings, not the engine read
+ * (`GET /api/connections/:id`), so the page takes it from its list row.
+ */
+function servedFromList(engine: Record<string, unknown>) {
+  const { allowanceEvidence: _listOnly, ...detail } = engine;
+  connectionQueryData = detail;
+  agentConnections = [
+    ...(DEFAULT_AGENT_CONNECTIONS as Array<{ id?: unknown }>).filter(
+      (row) => row.id !== engine.id,
+    ),
+    engine,
+  ];
+}
+
 describe('AgentConnectionView', () => {
   beforeEach(() => {
     queryClient = new QueryClient({
@@ -2760,26 +2775,28 @@ describe('AgentConnectionView', () => {
 
   test('a recorded usage-limit refusal reads in the header and on Overview, with no check to retry', async () => {
     acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
-    connectionQueryData = readyEngine({
-      type: 'acp',
-      allowanceEvidence: [
-        {
-          source: 'plan-quota',
-          account: { kind: 'default' },
-          applies: 'current-account',
-          observedAt: '2099-01-01T10:00:00.000Z',
-          resetReported: '2099-01-01 15:00:00',
-          expiresAt: '2099-01-01T15:00:00.000Z',
-        },
-        {
-          source: 'usage-limit',
-          account: { kind: 'profile', ref: 'work' },
-          applies: 'other-account',
-          observedAt: '2099-01-01T09:00:00.000Z',
-          expiresAt: '2099-01-01T14:00:00.000Z',
-        },
-      ],
-    });
+    servedFromList(
+      readyEngine({
+        type: 'acp',
+        allowanceEvidence: [
+          {
+            source: 'plan-quota',
+            account: { kind: 'default' },
+            applies: 'current-account',
+            observedAt: '2099-01-01T10:00:00.000Z',
+            resetReported: '2099-01-01 15:00:00',
+            expiresAt: '2099-01-01T15:00:00.000Z',
+          },
+          {
+            source: 'usage-limit',
+            account: { kind: 'profile', ref: 'work' },
+            applies: 'other-account',
+            observedAt: '2099-01-01T09:00:00.000Z',
+            expiresAt: '2099-01-01T14:00:00.000Z',
+          },
+        ],
+      }),
+    );
     await render(
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
@@ -2803,21 +2820,23 @@ describe('AgentConnectionView', () => {
   });
 
   test('a refusal on another account leaves the engine Ready and is still stated', async () => {
-    connectionQueryData = readyEngine({
-      id: 'claude',
-      type: 'claude',
-      name: 'Claude Code',
-      allowanceEvidence: [
-        {
-          source: 'usage-limit',
-          account: { kind: 'profile', ref: 'work' },
-          applies: 'other-account',
-          observedAt: '2099-01-01T09:00:00.000Z',
-          resetAt: '2099-01-01T14:00:00.000Z',
-          expiresAt: '2099-01-01T14:00:00.000Z',
-        },
-      ],
-    });
+    servedFromList(
+      readyEngine({
+        id: 'claude',
+        type: 'claude',
+        name: 'Claude Code',
+        allowanceEvidence: [
+          {
+            source: 'usage-limit',
+            account: { kind: 'profile', ref: 'work' },
+            applies: 'other-account',
+            observedAt: '2099-01-01T09:00:00.000Z',
+            resetAt: '2099-01-01T14:00:00.000Z',
+            expiresAt: '2099-01-01T14:00:00.000Z',
+          },
+        ],
+      }),
+    );
     await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
@@ -2830,27 +2849,29 @@ describe('AgentConnectionView', () => {
 
   test('below access:manage, refusals read without naming the account', async () => {
     // The server withholds `account` for this viewer; status and reset stay.
-    connectionQueryData = readyEngine({
-      id: 'claude',
-      type: 'claude',
-      name: 'Claude Code',
-      allowanceEvidence: [
-        {
-          source: 'usage-limit',
-          applies: 'current-account',
-          observedAt: '2099-01-01T10:00:00.000Z',
-          resetAt: '2099-01-01T15:00:00.000Z',
-          expiresAt: '2099-01-01T15:00:00.000Z',
-        },
-        {
-          source: 'usage-limit',
-          applies: 'other-account',
-          observedAt: '2099-01-01T09:00:00.000Z',
-          resetAt: '2099-01-01T14:00:00.000Z',
-          expiresAt: '2099-01-01T14:00:00.000Z',
-        },
-      ],
-    });
+    servedFromList(
+      readyEngine({
+        id: 'claude',
+        type: 'claude',
+        name: 'Claude Code',
+        allowanceEvidence: [
+          {
+            source: 'usage-limit',
+            applies: 'current-account',
+            observedAt: '2099-01-01T10:00:00.000Z',
+            resetAt: '2099-01-01T15:00:00.000Z',
+            expiresAt: '2099-01-01T15:00:00.000Z',
+          },
+          {
+            source: 'usage-limit',
+            applies: 'other-account',
+            observedAt: '2099-01-01T09:00:00.000Z',
+            resetAt: '2099-01-01T14:00:00.000Z',
+            expiresAt: '2099-01-01T14:00:00.000Z',
+          },
+        ],
+      }),
+    );
     await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
@@ -2872,22 +2893,24 @@ describe('AgentConnectionView', () => {
   });
 
   test('when another status outranks the usage-limit label, the current account line states its reset', async () => {
-    connectionQueryData = readyEngine({
-      id: 'claude',
-      type: 'claude',
-      name: 'Claude Code',
-      status: 'degraded',
-      allowanceEvidence: [
-        {
-          source: 'usage-limit',
-          account: { kind: 'default' },
-          applies: 'current-account',
-          observedAt: '2099-01-01T10:00:00.000Z',
-          resetAt: '2099-01-01T15:00:00.000Z',
-          expiresAt: '2099-01-01T15:00:00.000Z',
-        },
-      ],
-    });
+    servedFromList(
+      readyEngine({
+        id: 'claude',
+        type: 'claude',
+        name: 'Claude Code',
+        status: 'degraded',
+        allowanceEvidence: [
+          {
+            source: 'usage-limit',
+            account: { kind: 'default' },
+            applies: 'current-account',
+            observedAt: '2099-01-01T10:00:00.000Z',
+            resetAt: '2099-01-01T15:00:00.000Z',
+            expiresAt: '2099-01-01T15:00:00.000Z',
+          },
+        ],
+      }),
+    );
     await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
@@ -2899,28 +2922,30 @@ describe('AgentConnectionView', () => {
   });
 
   test('a proxied engine never reads a refused account as its own', async () => {
-    connectionQueryData = readyEngine({
-      id: 'claude',
-      type: 'claude',
-      name: 'Claude Code',
-      allowanceEvidence: [
-        {
-          source: 'usage-limit',
-          account: { kind: 'profile', ref: 'work' },
-          applies: 'proxy-route',
-          observedAt: '2099-01-01T10:00:00.000Z',
-          resetAt: '2099-01-01T15:00:00.000Z',
-          expiresAt: '2099-01-01T15:00:00.000Z',
-        },
-        {
-          // Withheld below access:manage.
-          source: 'usage-limit',
-          applies: 'proxy-route',
-          observedAt: '2099-01-01T09:00:00.000Z',
-          expiresAt: '2099-01-01T14:00:00.000Z',
-        },
-      ],
-    });
+    servedFromList(
+      readyEngine({
+        id: 'claude',
+        type: 'claude',
+        name: 'Claude Code',
+        allowanceEvidence: [
+          {
+            source: 'usage-limit',
+            account: { kind: 'profile', ref: 'work' },
+            applies: 'proxy-route',
+            observedAt: '2099-01-01T10:00:00.000Z',
+            resetAt: '2099-01-01T15:00:00.000Z',
+            expiresAt: '2099-01-01T15:00:00.000Z',
+          },
+          {
+            // Withheld below access:manage.
+            source: 'usage-limit',
+            applies: 'proxy-route',
+            observedAt: '2099-01-01T09:00:00.000Z',
+            expiresAt: '2099-01-01T14:00:00.000Z',
+          },
+        ],
+      }),
+    );
     await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );

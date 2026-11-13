@@ -2745,9 +2745,10 @@ provider configuration or `--profile`), a Bedrock or Vertex switch, an endpoint
 that is not an `http`/`https` URL, or a proxy the launch would refuse reads
 `unknown`. Engine settings files are not read, so clients present `account` as
 an unobserved route, not as the account.
-Access: every read that returns engine rows (`GET /api/connections`,
-`GET /api/connections/:id`, `GET /api/connections/agents` and
-`GET /api/connections/agents/catalog`) omits `origin` from an `ambient` observation whose `source` is `station` or
+Access: every response that returns engine rows (`GET /api/connections`,
+`GET /api/connections/:id`, `GET /api/connections/agents`,
+`GET /api/connections/agents/catalog`, and the `POST`/`PUT` save responses)
+omits `origin` from an `ambient` observation whose `source` is `station` or
 `policy` unless the request is the operator in person or a request that is not
 an agent's and whose pairing scope includes `access:manage`; the `kind` and
 `source` still say an override exists. Default-scoped pairings include
@@ -2766,10 +2767,10 @@ same viewer rule as a `station` or `policy` origin above), whether it
 `resetReported` when reported, and `expiresAt`. The server reads it from
 recorded events without calling a provider; absent means none is fresh, or
 more than 1,000 finished turns since a refusal left it unsettled (the bounded
-read fails toward absent), not that allowance remains. These two listings and the
-engine read `GET /api/connections/:id` carry it; `GET /api/connections` does
-not. All four apply the same viewer rules to `routeObservation` and the refused
-account. Clients re-check `expiresAt`
+read fails toward absent), not that allowance remains. Only these two listings carry it;
+`GET /api/connections` and `GET /api/connections/:id` do not, so the engine page
+takes it from its own list row. Every read or write that returns engine rows
+applies the same viewer rules to `routeObservation` and the refused account. Clients re-check `expiresAt`
 (`currentAccountAllowanceRefusal`). It does not change what dispatch accepts
 ([projection](../../src-server/services/connections/engine-allowance-evidence.ts)).
 

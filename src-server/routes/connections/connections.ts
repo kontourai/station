@@ -216,11 +216,11 @@ export function createConnectionRoutes(
 
   app.get('/:id', async (c) => {
     try {
-      // The engine page reads its engine here, so it carries the same
-      // evidence and viewer rules as the engine listings.
-      const connection = await connectionService.getConnection(param(c, 'id'), {
-        withAllowanceEvidence: true,
-      });
+      // Engine rows carry routeObservation, so the viewer rules apply here
+      // too. Usage-limit evidence stays on the listings, which the engine
+      // page reads; this read is also dispatch's and the CLI's.
+      const connection = await connectionService.getConnection(param(c, 'id'));
+
       if (!connection) {
         return c.json({ success: false, error: 'Connection not found' }, 404);
       }
@@ -260,7 +260,9 @@ export function createConnectionRoutes(
       return c.json(
         {
           success: true,
-          data: redactConnectionSecrets(mutation.value),
+          data: redactConnectionSecrets(
+            forViewer(c, [mutation.value])[0] ?? mutation.value,
+          ),
           ...configurationActivationPayload(mutation.activation),
         },
         configurationMutationStatus(mutation.activation, 201),
@@ -286,7 +288,9 @@ export function createConnectionRoutes(
       return c.json(
         {
           success: true,
-          data: redactConnectionSecrets(mutation.value),
+          data: redactConnectionSecrets(
+            forViewer(c, [mutation.value])[0] ?? mutation.value,
+          ),
           ...configurationActivationPayload(mutation.activation),
         },
         configurationMutationStatus(mutation.activation, 200),

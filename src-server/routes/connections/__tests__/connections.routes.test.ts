@@ -115,9 +115,7 @@ describe('Connection Routes', () => {
       success: true,
       data: { id: 'codex', name: 'Codex' },
     });
-    expect(service.getConnection).toHaveBeenCalledWith('codex', {
-      withAllowanceEvidence: true,
-    });
+    expect(service.getConnection).toHaveBeenCalledWith('codex');
   });
 
   test('GET / returns projected connections', async () => {
@@ -170,9 +168,9 @@ describe('Connection Routes', () => {
     service.listRuntimeConnectionCatalog.mockResolvedValue(listed);
     // The full list and the single read carry engine rows too.
     service.listConnections.mockResolvedValue(listed);
-    const getConnection = vi.fn(
-      async (_id: string, _options?: object) => listed[0],
-    );
+    const getConnection = vi.fn(async (_id: string) => listed[0]);
+    // A save answers with the saved engine row.
+    const saveConnection = vi.fn(async () => listed[0]);
     const presenting = (
       scope: string | undefined,
       principal?: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
@@ -186,7 +184,11 @@ describe('Connection Routes', () => {
       });
       outer.route(
         '/',
-        createConnectionRoutes({ ...service, getConnection } as any),
+        createConnectionRoutes({
+          ...service,
+          getConnection,
+          saveConnection,
+        } as any),
       );
       return outer;
     };
@@ -242,7 +244,7 @@ describe('Connection Routes', () => {
         ['policy', undefined],
       ]);
     }
-    // The engine page's own read: same rule, and it asks for the evidence.
+    // The single read: the same rule.
     const single = async (scope: string) =>
       (await json(await presenting(scope).request('/claude'))).data
         .routeObservation;
@@ -251,8 +253,24 @@ describe('Connection Routes', () => {
       source: 'station',
     });
     expect((await single('access:manage')).origin).toBe('https://gw.example');
-    expect(getConnection).toHaveBeenCalledWith('claude', {
-      withAllowanceEvidence: true,
+    expect(getConnection).toHaveBeenCalledWith('claude');
+    // A save's response is an engine row too.
+    const saved = await presenting('orchestration:read').request('/claude', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'agent',
+        type: 'claude',
+        name: 'Claude Code',
+        enabled: true,
+        config: {},
+        capabilities: ['agent-runtime'],
+      }),
+    });
+    expect(saved.status).toBe(200);
+    expect((await json(saved)).data.routeObservation).toEqual({
+      kind: 'ambient',
+      source: 'station',
     });
   });
 
