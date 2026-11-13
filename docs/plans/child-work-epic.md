@@ -19,6 +19,43 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Initialized report caller and SDK qualification checkpoint (2026-11-13)
+
+The current-head initialized HTTP report/accounting caller now passes at
+`e3591b0765ef`: actual runtime and Hono construction, local-grant minting, Flow
+report creation, one provider invocation/reservation, retained raw result,
+exact four-input/two-output accounting, accounting recovery/replay, sealed-input
+refusal and owned-store shutdown remain asserted. Its 34.88-second body stays
+inside the original 120-second limit. The shared initialized shutdown case also
+passes with its original bound, holding the store and Home while report work is
+pending. Neither result establishes all finalizer, restart or performance claims.
+
+The preceding current-head failure was earlier than the historical timeout:
+configuration capture saw an active mutation at revision 1, null loaded provider
+and app revisions, current source revisions 0, and matching selected-package
+identity. Startup deliberately detaches ACP readiness; its callback reloads the
+default Agent. The fixture now awaits that actual owned reload before report
+preparation, as the existing unattended-hook caller already did. This removes
+no configuration fence, fabricates no stable generation and increases no bound.
+It then reached an independent `untrusted_contract` refusal: installed
+`@ai-sdk/anthropic` 3.0.142 differed from the exact 3.0.138 pin.
+
+Both public package archives matched their registry SHA-512 integrity; the
+complete wrapper and provider-utils 4.0.64-to-4.0.66 diffs were inspected.
+Independent review found no reachable broadening for the fixed one-user/two-text
+profile and optional single client-input tool. New inline tools, computer-toolset
+handling, Fable capabilities and untrusted-download changes do not enter that
+constrained request path. Only the exact SDK hashes, bound version and
+SDK-qualified revision IDs advance. All nine owner cases pass, including fixed
+expiry, unsupported-feature and cross-Request refusals; delta lint passes with
+one existing advisory. Independent fixture/pin review found no actionable issue.
+
+The original pricing sources, API/model, caps and validity remain unchanged.
+This controlled historical-clock result does not renew the expired October 31
+profile for today's clock, qualify real billing, explain the old timeout's
+cause, or enable either production qualification flag. Broader portable/native
+and combined acceptance remains open.
+
 ### Actual confined Claude/Codex channel checkpoint (2026-11-13)
 
 Draft [#4919](https://github.com/kontourai/station/pull/4919) now publishes the
