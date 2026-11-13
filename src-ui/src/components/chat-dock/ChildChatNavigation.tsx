@@ -273,6 +273,8 @@ function LiveChildReader({
     {
       readTarget: entry.connection.station,
       enabled: observe,
+      // An external child intent may be newer than the cached parent inventory.
+      refetchOnMount: 'always',
       retry: false,
     },
     entry.connection.requestScope,
