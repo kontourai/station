@@ -158,7 +158,7 @@ export function SessionRewindProvider({
       <ConfirmModal
         isOpen={pending !== null}
         title="Rewind conversation to here?"
-        message="The agent forgets this message and everything after it. They stay in the chat, marked rewound. The agent may restore files its tools changed since then."
+        message="The agent forgets this message and what follows, which stays here marked rewound. It may restore files it changed since."
         confirmLabel="Rewind"
         variant="warning"
         pending={isPending}
