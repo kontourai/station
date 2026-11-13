@@ -91,8 +91,8 @@ describe('Gemini CLI sign-in', () => {
       processFactory: () => geminiHandshake() as never,
     });
     await service.refreshMethods(gemini);
-    await expect(
-      service.startAgent(gemini, 'oauth-personal'),
-    ).rejects.toThrow('does not offer');
+    await expect(service.startAgent(gemini, 'oauth-personal')).rejects.toThrow(
+      'does not offer',
+    );
   });
 });
