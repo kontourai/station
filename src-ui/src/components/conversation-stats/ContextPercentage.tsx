@@ -47,20 +47,35 @@ function contextPercentage(
  * refetches as messages arrive). One derivation for the composer's meter and
  * the phone's Actions sheet, so the two can never disagree.
  */
-export function useContextPercentage({
+export function useContextPercentage(
+  source: ContextPercentageSource,
+): number | null {
+  return useContextMeter(source).percentage;
+}
+
+/**
+ * The meter's figures: the context share (see {@link useContextPercentage})
+ * and the engine-reported cost. Both come from the live observation first,
+ * then from the conversation's stats, so a reopened conversation (whose live
+ * state is empty) still shows the credits its engine reported.
+ */
+function useContextMeter({
   agentSlug,
   conversationId,
   apiBase,
   messageCount,
   liveUsage,
-}: ContextPercentageSource): number | null {
+}: ContextPercentageSource): {
+  percentage: number | null;
+  reportedCost: ChatLiveUsage['reportedCost'] | undefined;
+} {
   const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
   useEffect(() => {
     if (messageCount !== undefined && messageCount > 0) {
       refetch();
     }
   }, [messageCount, refetch]);
-  return (
+  const percentage =
     contextPercentage(
       liveUsage?.contextTokens,
       liveUsage?.contextWindowTokens,
@@ -68,8 +83,16 @@ export function useContextPercentage({
     // An engine that reports its own reading rather than the token pair.
     contextPercentage(liveUsage?.contextPercent, 100) ??
     contextPercentage(stats?.contextWindowPercentage, 100) ??
-    null
-  );
+    null;
+  // The stats carry the session's folded total per unit; the first unit is
+  // the one the meter has room for.
+  const stored = stats?.reportedCosts?.[0];
+  const reportedCost =
+    liveUsage?.reportedCost ??
+    (stored
+      ? { amount: stored.amount, unit: stored.unit, scope: 'session' as const }
+      : undefined);
+  return { percentage, reportedCost };
 }
 
 /** The live engine-reported cost, in the engine's unit, for the meter's label. */
@@ -93,7 +116,7 @@ export function ContextPercentage({
   onClick,
   compaction,
 }: ContextPercentageProps) {
-  const percentage = useContextPercentage({
+  const { percentage, reportedCost } = useContextMeter({
     agentSlug,
     conversationId,
     apiBase,
@@ -103,7 +126,7 @@ export function ContextPercentage({
 
   if (percentage === null) return null;
 
-  const label = `Context ${percentage.toFixed(1)}% used${reportedCostLabel(liveUsage?.reportedCost)}${compaction ? ` · Compaction ${compaction.state} at ${compaction.threshold}%` : ''}`;
+  const label = `Context ${percentage.toFixed(1)}% used${reportedCostLabel(reportedCost)}${compaction ? ` · Compaction ${compaction.state} at ${compaction.threshold}%` : ''}`;
   return (
     <Button
       variant="ghost"
