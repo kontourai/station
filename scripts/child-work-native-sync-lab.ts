@@ -18,14 +18,18 @@ import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { PassThrough } from 'node:stream';
+import { StringDecoder } from 'node:string_decoder';
 import {
   createSdkMcpServer,
   query,
+  type SDKControlRequest,
   type SDKMessage,
   type SDKUserMessage,
   type SpawnOptions,
   tool,
 } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod/v3';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -68,11 +72,29 @@ const pluginToolName = 'mcp__plugin_child-work-probe_probe__mark';
 for (const directory of [workspace, home, registry])
   mkdirSync(directory, { recursive: true, mode: 0o700 });
 
+const permissionState = z
+  .object({
+    managedOnly: z.boolean(),
+    rules: z.array(
+      z
+        .object({
+          behavior: z.enum(['allow', 'deny', 'ask']),
+          source: z.string(),
+          rule: z.string(),
+          notInEffect: z.boolean().optional(),
+        })
+        .passthrough(),
+    ),
+    errors: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
 type Phase = {
   kind: 'write' | 'sdk-mcp' | 'plugin-mcp' | 'agent-write';
   restricted: boolean;
   marker: string;
   requests: number;
+  permissions?: z.infer<typeof permissionState>;
   childRequests?: number;
   agentToolUseId?: string;
   childToolUseId?: string;
@@ -342,6 +364,9 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
   const owned: ReturnType<typeof spawnOwnedChild>[] = [];
   const closes: Promise<unknown>[] = [];
   const messages: SDKMessage[] = [];
+  let inspectRules:
+    | (() => Promise<z.infer<typeof permissionState>>)
+    | undefined;
   const sdkMcp = createSdkMcpServer({
     name: 'probe',
     tools: [
@@ -401,6 +426,9 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
         settingSources: [],
+        ...(process.argv.includes('--managed-only')
+          ? { managedSettings: { allowManagedPermissionRulesOnly: true } }
+          : {}),
         ...(input.kind === 'plugin-mcp'
           ? { plugins: [{ type: 'local' as const, path: plugin }] }
           : {}),
@@ -451,7 +479,82 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
           );
           const { stdin, stdout } = handle.proc;
           assert.ok(stdin && stdout, 'native SDK requires owned pipes');
-          return Object.assign(handle.proc, { stdin, stdout });
+          const forwarded = new PassThrough();
+          const decoder = new StringDecoder('utf8');
+          let buffered = '';
+          let pending:
+            | {
+                id: string;
+                resolve(value: z.infer<typeof permissionState>): void;
+                reject(error: unknown): void;
+              }
+            | undefined;
+          controller.signal.addEventListener(
+            'abort',
+            () => {
+              pending?.reject(controller.signal.reason);
+              pending = undefined;
+            },
+            { once: true },
+          );
+          inspectRules = () =>
+            new Promise((resolve, reject) => {
+              assert.equal(pending, undefined);
+              const request: SDKControlRequest = {
+                type: 'control_request',
+                request_id: randomUUID(),
+                request: { subtype: 'list_permission_rules' },
+              };
+              pending = { id: request.request_id, resolve, reject };
+              stdin.write(`${JSON.stringify(request)}\n`, (error) => {
+                if (!error) return;
+                pending?.reject(error);
+                pending = undefined;
+              });
+            });
+          stdout.on('data', (chunk: Buffer) => {
+            buffered += decoder.write(chunk);
+            if (Buffer.byteLength(buffered) > 4 * 1024 * 1024) {
+              controller.abort(new Error('native_protocol_frame_limit'));
+              return;
+            }
+            let newline: number;
+            while ((newline = buffered.indexOf('\n')) !== -1) {
+              const line = buffered.slice(0, newline);
+              buffered = buffered.slice(newline + 1);
+              let frame;
+              try {
+                frame = JSON.parse(line);
+              } catch {
+                controller.abort(new Error('native_protocol_invalid_json'));
+                return;
+              }
+              if (
+                pending &&
+                frame.type === 'control_response' &&
+                frame.response?.request_id === pending.id
+              ) {
+                const waiter = pending;
+                pending = undefined;
+                const decoded = permissionState.safeParse(
+                  frame.response?.response?.state,
+                );
+                if (frame.response.subtype !== 'success' || !decoded.success)
+                  waiter.reject(
+                    new Error('native_permission_observation_unavailable'),
+                  );
+                else waiter.resolve(decoded.data);
+              } else forwarded.write(`${line}\n`);
+            }
+          });
+          stdout.on('end', () => {
+            const tail = buffered + decoder.end();
+            if (tail) forwarded.write(tail);
+            forwarded.end();
+            pending?.reject(new Error('native_permission_observation_closed'));
+            pending = undefined;
+          });
+          return Object.assign(handle.proc, { stdin, stdout: forwarded });
         },
       },
     });
@@ -480,6 +583,22 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
         await session.setPermissionMode('bypassPermissions');
         break;
     }
+    assert.ok(inspectRules);
+    input.permissions = await inspectRules();
+    assert.equal(input.permissions.errors?.length ?? 0, 0);
+    if (process.argv.includes('--managed-only'))
+      assert.equal(input.permissions.managedOnly, true);
+    if (input.restricted)
+      assert.ok(
+        input.permissions.rules.some(
+          (rule) =>
+            rule.source === 'cliArg' &&
+            rule.behavior === 'deny' &&
+            rule.rule === '*' &&
+            rule.notInEffect !== true,
+        ),
+        'wildcard deny is effective in the actual native CLI',
+      );
     ready();
     for await (const message of session) {
       messages.push(message);
