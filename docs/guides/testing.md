@@ -478,7 +478,11 @@ human summary and fenced JSON snapshot to that issue through REST. There is no
 default issue. The [throughput health workflow](../../.github/workflows/ci-throughput-health.yml)
 records six-hour windows on issue #3101 while it remains open; it starts no
 verification builds. `--history --issue=<n>` reads these
-comments into a trend table; `--json` also works for history.
+comments into a trend table; `--json` also works for history. The trend table
+adds runner-hours per landing, last-entry-to-merge median/p90 and the
+cancelled-run share; snapshots recorded before those fields show
+`n/a (legacy snapshot)`. New fields are additive under the same
+`station-ci-health/v1` schema, so older comments still parse.
 
 | Measure | Definition |
 | --- | --- |
@@ -493,6 +497,11 @@ comments into a trend table; `--json` also works for history.
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
 | Main qualification and recovery | Every available push, scheduled or manual attempt of `Main: Qualification` (including its historical name) on `main`; non-success conclusions count as failed or incomplete. Restore time runs from the first terminal failure's creation to the next successful attempt's update. An episode with no observed success remains unresolved. Repair-step executions are reported separately and do not establish qualification success. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
+| Lane ledger | One row per workflow file, normalized job name and event among the capacity population: executed jobs, runner-minutes clipped to the window and their share of the total, median/p90 full job minutes, median/p90 wait minutes (creation to start) of executed jobs, failed or timed-out jobs, and runner-minutes of executed jobs whose run attempt concluded `cancelled` (superseded runs, including legs that finished first). Standalone numbers in job names become `N`, so shard and matrix legs share a lane; digits inside a token (`linux-x64`, `ubuntu-22.04`) stay. Lane runner-minutes sum to the capacity runner-hours. Rows with unfinished or unattributed jobs carry `incomplete: true`; those jobs already make the snapshot incomplete. A lane whose jobs were all cancelled before runner assignment has no row. The top 25 lanes by runner-minutes are kept; the rest fold into one `other` row. |
+| Cancelled-run share | Runner-minutes in run attempts that concluded `cancelled` divided by all lane runner-minutes. |
+| PR-level unique catch | Per non-`ci.yml` lane on `pull_request`/`pull_request_target` runs: head SHAs with a verdict, SHAs where the lane failed, and of those the SHAs whose `ci.yml` run-level verdict passed. A lane attempt fails when any leg failed or timed out and passes when every leg concluded success, skipped or neutral with at least one success; cancelled or unfinished attempts give no verdict. Any passing attempt on a SHA supersedes failed attempts on that SHA, on both sides, regardless of order. `ci.yml` runs titled `PR metadata` (body edits) verify nothing and give no reference verdict. Both sides see only runs created in the window. The count includes real defects and flakes: an upper bound on a lane's value, not a defect count. The top 25 lanes are kept; `omittedLanes` counts the rest. |
+| Cost per landing | Landings are PRs whose `merged_at` lies in the half-open window, from one GitHub search (`is:pr is:merged merged:since..until`, refiltered because search ranges are inclusive). Queue squash commits carry the time their group was built, hours before some reach `main`, so commit dates cannot place a landing in the window; the review-ledger measure above still selects by commit date. Runner-hours per landing divides capacity runner-hours by landings, `null`/`n/a` with no landings or when the search failed. Runner-hours are also split by event: `pull_request` (with `pull_request_target`), `merge_group`, `push`, `schedule`, `workflow_run` and `other`. Search errors, incomplete search results and more than 1,000 results set `incomplete: true`. |
+| Landing latency | For each landed PR, minutes from its last and from its first `added_to_merge_queue` timeline event before `merged` to `merged`, median/p90; their difference is dequeue and re-entry cost. Counts PRs with more than one queue entry and PRs merged without a queue entry (excluded from the distributions). Each landed PR costs one paginated timeline request unless a failed group already fetched it. A landed PR without a timeline `merged` event sets `incomplete: true`. |
 
 Runs are selected by creation time in the half-open window, including available
 attempts. Capacity intervals are clipped to the window and exclude jobs created
@@ -513,10 +522,19 @@ caps remain visible as `listingCapHits`. History errors also exit nonzero;
 incomplete recorded snapshots are flagged in the trend table. Recording writes
 only an issue comment; no snapshot file or workflow is added to `main`.
 
+The recorded comment carries the snapshot as indented JSON. GitHub refuses
+comments over 65,536 characters; the lane and unique-catch caps keep a busy
+window well under it, and an oversized snapshot falls back to unindented JSON.
+A snapshot too large for either form fails recording with its size instead of
+posting a truncated record.
+
 Fixture coverage lives in
 [`scripts/__tests__/ci-health.test.ts`](../../scripts/__tests__/ci-health.test.ts).
 The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits`,
-`ci-health-bot-login` and `ci-health-listing-cap` use `npm run test:mutation:smoke -- --case=<id>`.
+`ci-health-bot-login`, `ci-health-listing-cap`, `ci-health-lane-shard-normalization`,
+`ci-health-lane-cancelled-run`, `ci-health-unique-catch-supersede`,
+`ci-health-landing-last-entry` and `ci-health-landing-window-end` use
+`npm run test:mutation:smoke -- --case=<id>`.
 
 ## Philosophy
 
