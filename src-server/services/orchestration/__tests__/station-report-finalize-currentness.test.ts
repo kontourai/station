@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import fs, { readFileSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
@@ -11,6 +12,7 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { SourceRefusal } from '../delegation-group-source-admission.js';
+import * as reportPublication from '../report-rounds-publication.js';
 import {
   closeFinalizer,
   finalizeFixture,
@@ -111,6 +113,84 @@ test('pass-through final transaction observer reaches body and durable return on
   const open = fs.openSync;
   let measuring = false;
   let registryReads = 0;
+  let retiredLocationsVerified = 0;
+  const preparing =
+    new AsyncLocalStorage<reportPublication.ReportRoundsScope>();
+  const locationGuards = new WeakMap<
+    reportPublication.ReportRoundsScope,
+    Array<() => undefined>
+  >();
+  const readLocation = f.h.f.owner.readHistoricalFlowLocation.bind(f.h.f.owner);
+  const locations = vi
+    .spyOn(f.h.f.owner, 'readHistoricalFlowLocation')
+    .mockImplementation(async (input) => {
+      const scope = preparing.getStore();
+      const location = await readLocation(input);
+      if (scope) {
+        const guards = locationGuards.get(scope) ?? [];
+        guards.push(location.assertCurrent);
+        locationGuards.set(scope, guards);
+      }
+      return location;
+    });
+  const publish = reportPublication.withReportRoundsPublication;
+  const interceptPublication: typeof publish = (input, body) =>
+    publish(input, (publication) =>
+      body({
+        ...publication,
+        transactionOwner: (options) => ({
+          acquire: async (request) => {
+            let preparedScope: reportPublication.ReportRoundsScope | undefined;
+            const owner = publication.transactionOwner({
+              ...options,
+              prepare: async (scope) => {
+                preparedScope = scope;
+                await preparing.run(scope, () => options.prepare?.(scope));
+              },
+            });
+            const transaction = await owner.acquire(request);
+            const guards = preparedScope
+              ? (locationGuards.get(preparedScope) ?? [])
+              : [];
+            return {
+              ...transaction,
+              release: async () => {
+                await transaction.release();
+                const parent = request.publicationLease;
+                if (!parent) return;
+                assert.ok(guards.length > 0, 'observe actual child locations');
+                parent.assertCurrent();
+                const sibling = await parent.flowAdmission.acquire();
+                try {
+                  sibling.assertCurrent();
+                  const before = registryReads;
+                  measuring = true;
+                  try {
+                    for (const guard of guards)
+                      assert.throws(guard, {
+                        code: 'rounds_transaction_parent_unavailable',
+                      });
+                  } finally {
+                    measuring = false;
+                  }
+                  assert.equal(
+                    registryReads,
+                    before,
+                    'retired child locations refuse before registry reads while a sibling is live',
+                  );
+                  retiredLocationsVerified += guards.length;
+                } finally {
+                  await sibling.release();
+                }
+              },
+            };
+          },
+        }),
+      }),
+    );
+  const publication = vi
+    .spyOn(reportPublication, 'withReportRoundsPublication')
+    .mockImplementation(interceptPublication);
   const reads = vi
     .spyOn(fs, 'openSync')
     .mockImplementation((path, flags, mode) => {
@@ -139,6 +219,7 @@ test('pass-through final transaction observer reaches body and durable return on
     assert.ok(result.group?.continuations[0].receipt);
     assert.equal(observer.reached, 1);
     assert.equal(observer.completedBodies, 1);
+    assert.ok(retiredLocationsVerified > 0, 'a real transaction child retired');
     noEffects();
     assert.ok(registryReads > 0, 'the real paired-registry observer must run');
     assert.ok(
@@ -159,6 +240,8 @@ test('pass-through final transaction observer reaches body and durable return on
       'retired guards must refuse before registry reads',
     );
   } finally {
+    publication.mockRestore();
+    locations.mockRestore();
     noEffects.restore();
     observer.restore();
     reads.mockRestore();

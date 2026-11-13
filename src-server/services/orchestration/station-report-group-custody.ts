@@ -1285,6 +1285,10 @@ export class StationReportGroupCustody {
               cwd: string;
               assertCurrent(): undefined;
             }> = [];
+            const sourceLocationCurrent = (): undefined => {
+              scope.assertLifetimeCurrent();
+              return scope.owner.runWithLease(scope.lease, captured.current);
+            };
             for (const member of before.admission.members) {
               const envelopes = before.admission.envelopes.filter(
                 (entry) => entry.execution_id === member.reservedTaskId,
@@ -1297,7 +1301,7 @@ export class StationReportGroupCustody {
                   admission: record,
                   principalId: captured.principal.id,
                   hostContextId: captured.lease.hostContextId,
-                  current: scope.current,
+                  current: sourceLocationCurrent,
                 }),
               );
             }
