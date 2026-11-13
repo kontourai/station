@@ -147,6 +147,9 @@ test('owner Device chats through a real Station delegation and keeps target refu
   await expect(transcript).toContainText(
     'The receiver accepted the attachment turn.',
   );
+  // The turn must be settled before its events are cut: the lost send below
+  // is the next turn, not this one's unobserved completion.
+  await expect(composer).toBeEditable();
   const keyedSends: string[] = [];
   page.on('request', (request) => {
     if (
