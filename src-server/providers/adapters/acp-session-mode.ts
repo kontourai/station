@@ -274,6 +274,8 @@ export interface AcpEffortConfigOption {
   id: string;
   currentValue?: string;
   values: string[];
+  /** The engine's display name for each value that has one. */
+  names: Record<string, string>;
 }
 
 export function findAcpEffortConfigOption(
@@ -296,6 +298,24 @@ export function findAcpEffortConfigOption(
               : [],
         )
       : [],
+    names: Object.fromEntries(
+      Array.isArray(option.options)
+        ? option.options.flatMap((entry) =>
+            entry &&
+            typeof entry === 'object' &&
+            typeof (entry as { value?: unknown }).value === 'string' &&
+            typeof (entry as { name?: unknown }).name === 'string' &&
+            (entry as { name: string }).name.trim()
+              ? [
+                  [
+                    (entry as { value: string }).value,
+                    (entry as { name: string }).name,
+                  ],
+                ]
+              : [],
+          )
+        : [],
+    ),
   });
   const usable = configOptions.filter(
     (option): option is Record<string, unknown> =>
