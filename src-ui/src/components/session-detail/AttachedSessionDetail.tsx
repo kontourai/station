@@ -170,7 +170,7 @@ export function AttachedSessionDetail({
     ? { kind: 'own-folder' }
     : undefined;
   const ownFolder = session.cwd ? session.cwd : 'its own folder';
-  const noProjectExplanation = `This conversation belongs to no project. Station will continue it as a No project chat that works only in ${ownFolder}.`;
+  const noProjectExplanation = `Not in a Project. The agent will work only in ${ownFolder}.`;
   const isMobile = useIsMobile();
   /**
    * #3552: the alternative to a No project chat is a Project for this
@@ -471,7 +471,7 @@ export function AttachedSessionDetail({
                   : adoptionDidNotReachStation ||
                       adoptionOutcomeUncertain ||
                       adoptionTransportFailed
-                    ? "Couldn't start the continuation — Station isn't responding right now."
+                    ? "Couldn't start the continuation. Station isn't responding."
                     : showHeader
                       ? "Couldn't start the continuation. Technical detail is under Details."
                       : "Couldn't start the continuation. Try again."}
@@ -479,7 +479,7 @@ export function AttachedSessionDetail({
       )}
       {adoptionOutcomeUncertain && !serverRejectedRetry && (
         <p className="sessions-detail__disabled-reason">
-          Retry safely — Station will not duplicate the continuation.
+          Retrying won't continue it twice.
         </p>
       )}
     </>
@@ -592,8 +592,8 @@ export function AttachedSessionDetail({
         (stoppedTerminal ? (
           <div className="sessions-detail__connection-state" role="status">
             <strong>
-              Station stopped reconnecting — it rejected this session's
-              credentials.
+              Station rejected this session's credentials and stopped
+              reconnecting.
             </strong>
           </div>
         ) : stoppedRecoverable ? (
@@ -610,9 +610,7 @@ export function AttachedSessionDetail({
           </div>
         ) : (
           <div className="sessions-detail__connection-state" role="status">
-            <strong>
-              Station isn't responding right now — retrying automatically.
-            </strong>
+            <strong>Station isn't responding. Retrying automatically.</strong>
           </div>
         ))
       )}

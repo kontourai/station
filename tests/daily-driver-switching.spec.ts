@@ -625,7 +625,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await agentTrigger.focus();
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', {
-      name: 'Continue with another Agent',
+      name: 'Continue with another agent',
     });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await dialog.getByRole('radio', { name: /Codex Runtime/ }).check();

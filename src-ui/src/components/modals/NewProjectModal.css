@@ -7,7 +7,6 @@
   justify-content: center;
   padding: 1.5rem;
   background: var(--overlay-modal);
-  backdrop-filter: blur(10px);
 }
 
 .new-project-modal__intents {
@@ -63,23 +62,12 @@
   flex-direction: column;
   overflow: hidden;
   padding: 1.5rem;
-  background:
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--accent-primary) 16%, transparent),
-      transparent 32%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--bg-primary) 92%, var(--surface-lift) 8%),
-      var(--bg-primary)
-    );
-  border: 1px solid
-    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
-  border-radius: 20px;
-  box-shadow:
-    0 30px 80px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  /* The surface the editor hints were measured against; --k-bg drops their
+     contrast below AA in the gallery's axe check. */
+  background: var(--bg-primary);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay);
+  box-shadow: var(--k-elevation-overlay);
 }
 
 .new-project-modal__header {
@@ -178,11 +166,7 @@
 }
 
 .new-project-modal__panel--featured {
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--accent-primary) 9%, var(--bg-secondary)),
-    color-mix(in srgb, var(--bg-secondary) 88%, var(--surface-lift) 12%)
-  );
+  background: var(--bg-secondary);
 }
 
 .new-project-modal__panel-title {
@@ -355,9 +339,9 @@
   overflow: auto;
   padding: 1.25rem;
   border: 1px solid var(--border-primary);
-  border-radius: 18px;
+  border-radius: var(--k-radius-overlay);
   background: var(--bg-primary);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--k-elevation-overlay);
 }
 
 .new-project-layout-browser__header {

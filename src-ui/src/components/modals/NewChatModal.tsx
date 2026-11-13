@@ -78,7 +78,10 @@ import {
 } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
-import { AgentPickerGroups } from '../chat-start/AgentPickerRow';
+import {
+  AgentPickerGroups,
+  NO_AGENT_SETUP_HINT,
+} from '../chat-start/AgentPickerRow';
 import {
   ContextLabelSeparator,
   ContextPickerOptions,
@@ -1612,13 +1615,13 @@ export function NewChatModal({
             <SkeletonList
               count={1}
               label={
-                enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
+                enableInFlight ? 'Preparing the engine' : 'Opening your chat'
               }
             />
           ) : preparedStillStarting ? (
             <Empty
               variant="compact"
-              label="Your AI app is still starting"
+              label="The engine is still starting"
               description={startingNotice}
               action={
                 <Button onClick={() => beginSetup('/connections/engines')}>
@@ -1641,11 +1644,11 @@ export function NewChatModal({
           ) : (
             <Empty
               variant="compact"
-              label="Connect an AI account"
-              description="Station needs access to an AI account before it can help."
+              label="Connect an engine"
+              description="Station needs an engine or model connection before it can help."
               action={
                 <Button onClick={() => beginSetup('/connections/engines')}>
-                  Connect an AI app
+                  Connect an engine
                 </Button>
               }
             />
@@ -1870,7 +1873,7 @@ export function NewChatModal({
             <input
               ref={agentInputRef}
               type="text"
-              placeholder="Search agents..."
+              placeholder="Search agents…"
               value={agentSearch}
               onChange={(e) => {
                 preservedAgentSlug.current = undefined;
@@ -2284,7 +2287,7 @@ export function NewChatModal({
               <Empty
                 variant="compact"
                 label="Nothing to chat with yet"
-                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
+                description={NO_AGENT_SETUP_HINT}
                 action={
                   <button
                     type="button"

@@ -50,7 +50,7 @@
 }
 
 .live-surface__stage {
-  background: var(--bg-secondary, #111);
+  background: var(--k-panel);
   border-radius: var(--radius-md, 6px);
   flex: 1 1 auto;
   min-height: 0;

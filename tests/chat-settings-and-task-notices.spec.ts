@@ -194,7 +194,7 @@ async function openChatSettings(page: Page): Promise<Locator> {
   if (await phoneActions.isVisible()) await phoneActions.click();
   else await page.getByRole('button', { name: 'More dock actions' }).click();
   await page.getByRole('menuitem', { name: 'Chat settings' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Chat Settings' });
+  const dialog = page.getByRole('dialog', { name: 'Chat settings' });
   await expect(dialog).toBeVisible();
   await dialog.evaluate((element) =>
     Promise.all(
@@ -906,7 +906,7 @@ test('replay working chat selection focuses its transcript', async ({
   );
   const settings = await openChatSettings(page);
   await settings
-    .getByRole('button', { name: 'Step through this conversation' })
+    .getByRole('button', { name: 'Step through this chat' })
     .click();
   const transport = page.getByTestId('replay-transport');
   await expect(transport).toBeVisible();

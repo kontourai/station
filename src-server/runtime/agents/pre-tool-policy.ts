@@ -10,6 +10,10 @@ import {
   type GuardianDenialLedger,
   sharedGuardianDenialLedger,
 } from '../../services/approvals/guardian-conversation.js';
+import {
+  isPersistenceRelevantTool,
+  untrustedPersistenceTarget,
+} from '../../services/plugins/untrusted-persistence-protection.js';
 import { approvalGuardianOps, toolDenials } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
@@ -33,7 +37,8 @@ type ToolDenialReason =
   | 'no_approval_channel'
   | 'policy_evaluation_failed'
   | 'project_tool_policy'
-  | 'untrusted_content_denied';
+  | 'untrusted_content_denied'
+  | 'untrusted_persistence_protection';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -123,6 +128,16 @@ interface StagedPreToolPolicyDeps {
     tool: ToolCallContext,
     invocation: InvocationContext,
   ): Promise<'ask' | 'allow' | 'deny' | undefined>;
+  /**
+   * #4828: whether this conversation has read content written by others
+   * (an untrusted integration's result or an engine-native web read). After
+   * that, writes to known agent-instruction and git-hook or git
+   * configuration locations are denied by path, and a shell command naming
+   * one asks the person (`untrusted-persistence-protection.ts`). This is a
+   * best-effort early check; it does not contain git hook execution
+   * (#4860). Absent: no check.
+   */
+  untrustedContentRead?(invocation: InvocationContext): Promise<boolean>;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
     info(message: string, meta?: Record<string, unknown>): void;
@@ -557,6 +572,43 @@ export function createStagedPreToolPolicyEvaluator(
         );
       return { behavior: 'ask', required: true };
     };
+
+    // #4828: a best-effort early check, by path, against an injection
+    // persisting itself past this conversation. It does not contain git hook
+    // execution (#4860).
+    // The operation is the tool's own name: on the Station engine the
+    // loader's provenance (an MCP tool's original name), never the display
+    // name the loader composed; on an external engine its own leaf name.
+    // Only a write or shell tool waits on the ledger, and only a marked
+    // conversation's call has its targets read.
+    const operationName =
+      options.interaction === 'external'
+        ? identity.configProtectionToolName
+        : (tool.mcp?.provenance?.originalToolName ??
+          deps.toolNameMapping.get(tool.toolName)?.provenance
+            ?.originalToolName ??
+          deps.toolNameMapping.get(tool.toolName)?.tool ??
+          tool.toolName);
+    const persistence =
+      deps.untrustedContentRead &&
+      isPersistenceRelevantTool(operationName) &&
+      (await deps.untrustedContentRead(invocation))
+        ? untrustedPersistenceTarget(operationName, tool.toolArgs)
+        : undefined;
+    if (persistence) {
+      deps.logger.warn('Untrusted-content persistence protection applied', {
+        toolName: tool.toolName,
+        agentSlug: invocation.agentSlug,
+        conversationId: invocation.conversationId,
+        kind: persistence.kind,
+      });
+      if (persistence.kind === 'shell') return requiredAsk();
+      return deny(
+        'untrusted_persistence_protection',
+        tool.toolName,
+        "was refused: this conversation read content written by others, so it may not change agent instructions or repository hooks and configuration. Make this change yourself, or clear the conversation's untrusted-content mark first.",
+      );
+    }
 
     const untrusted = await deps.untrustedContentPermission?.(tool, invocation);
     if (untrusted === 'deny') {
