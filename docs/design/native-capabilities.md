@@ -36,7 +36,7 @@ missing required id; an id the shell omits stays at its initial state.
 | PWA share URL intake (`share-intake`) | enabled | disabled: no native host receives shared text | Preserves `share`, `text`, `url`, and `title` query parameters and removes them after delivery. |
 | Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation and bundled-server status. |
 | Native image share receiver (`image-share-intake`) | unsupported | Android enabled; iOS and desktop disabled | `station-media-intake` receives `image/*` `ACTION_SEND`/`ACTION_SEND_MULTIPLE` and opens the conversation picker. iOS needs a Share Extension that is not built. See [Clipboard images and the share target](#clipboard-images-and-the-share-target). |
-| Clipboard images (`clipboard-image`) | unsupported (composers use `navigator.clipboard.read()` on a touch browser) | enabled on mobile; unsupported on desktop | `station-media-intake` reads the system clipboard for **Paste image**, because mobile WebViews offer no Paste for an image-only clipboard. |
+| Clipboard images (`clipboard-image`) | unsupported (composers use `navigator.clipboard.read()` on a touch browser) | enabled on mobile; unsupported on desktop | `station-media-intake` reads the system clipboard for **Paste image**, as a fallback where the WebView does not offer image Paste. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
@@ -95,6 +95,14 @@ defined in [`share-image.ts`](../../src-ui/src/platform/native/share-image.ts).
   image** action (reply, start and Task composers) calls the native read where
   `clipboard-image` is enabled and `navigator.clipboard.read()` on a touch
   browser, then hands the files to that composer's own Attach path.
+- **Android keyboard images.** Wry's configured `RustWebView` extension wraps
+  the input connection on API 25+ and the system selection-menu callback.
+  The media-intake plugin reads the received URI through the same admission
+  and image bounds above, then delivers files to the captured reply/start
+  composer's paste handler. It drops delivery when that field loses focus or
+  changes identity. This does not add an adapter command or automatically send.
+  JVM/DOM tests are separate from physical Gboard and image-only system Paste
+  acceptance; see [the device sequence](../guides/mobile-release.md).
 - **Share target (`image-share-intake`).** Android's generated MainActivity
   carries an `image/*` filter for `ACTION_SEND` and `ACTION_SEND_MULTIPLE`; the
   channel bootstrap (`scripts/apply-android-native-bootstrap.mjs`) restores it

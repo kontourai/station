@@ -97,6 +97,12 @@ updater payloads; it is not the Android upload key.
    without the file reaching the artefact.
 8. **Upload** — debug APK/AAB uploaded as a workflow artifact
 
+The same Cargo configuration also supplies `WRY_RUSTWEBVIEW_CLASS_EXTENSION`
+for keyboard image input and the image clipboard selection menu. Its maintained
+implementation and JS asset live in the media-intake Android plugin; no generated
+`RustWebView.kt` edit is required. Build/package and physical keyboard acceptance
+remain separate; follow [the mobile verification sequence](mobile-release.md).
+
 ### Renderer recovery and network cost
 
 The [Cargo configuration](../../src-desktop/.cargo/config.toml) supplies Wry 0.57's
