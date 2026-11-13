@@ -231,10 +231,6 @@ export function SessionInventoryCompact({
           requestScope={requestScope}
         />
       ) : null}
-      <p className="session-inventory-compact__intro">
-        Highlights from this scope. Open full Basis to browse every group and
-        exact detail.
-      </p>
       {inventory.error ? (
         <p role="status">
           Couldn’t refresh this inventory; showing the last read.{' '}
@@ -307,7 +303,7 @@ export function SessionInventoryCompact({
         type="button"
         onClick={(event) => onOpenFull(event.currentTarget, selection)}
       >
-        Open full Basis
+        See all
       </button>
     </aside>
   );

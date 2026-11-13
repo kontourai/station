@@ -327,7 +327,7 @@ describe.skipIf(!chromiumAvailable)(
             name: 'Close Chat inventory',
           });
           const firstHighlight = highlights.getByRole('button').first();
-          const full = page.getByRole('button', { name: 'Open full Basis' });
+          const full = page.getByRole('button', { name: 'See all' });
           await expectPlaywright(full).toBeVisible();
           for (const control of [close, firstHighlight, full]) {
             // The shared floor constant, not a bare `44`: these are raw

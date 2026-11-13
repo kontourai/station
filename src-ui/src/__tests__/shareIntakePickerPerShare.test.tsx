@@ -86,7 +86,7 @@ test('a queued share opens a fresh picker, not the last share’s state', async 
   );
 
   await screen.findByText('Choose a conversation for 2 shared images');
-  fireEvent.change(screen.getByLabelText('Search conversations'), {
+  fireEvent.change(screen.getByLabelText('Search chats'), {
     target: { value: 'design' },
   });
   fireEvent.click(screen.getByRole('button', { name: /New chat/ }));
@@ -103,9 +103,7 @@ test('a queued share opens a fresh picker, not the last share’s state', async 
   // The first picker is dismissed; the queued share takes its place.
   fireEvent.keyDown(document, { key: 'Escape' });
   await screen.findByText('Choose a conversation for the shared image');
-  const search = screen.getByLabelText(
-    'Search conversations',
-  ) as HTMLInputElement;
+  const search = screen.getByLabelText('Search chats') as HTMLInputElement;
   expect(search.value).toBe('');
   expect(await screen.findByText('Design review')).not.toBeNull();
 });

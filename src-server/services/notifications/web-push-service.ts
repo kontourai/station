@@ -8,7 +8,7 @@
  * caller never has to inspect a `WebPushError` directly.
  */
 import type { WebPushSubscription } from '@kontourai/station-contracts';
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 import type { VapidKeyPair } from './vapid-key-service.js';
 
 export type WebPushSendResult = 'sent' | 'gone' | 'error';

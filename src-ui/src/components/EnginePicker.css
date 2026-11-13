@@ -20,31 +20,20 @@
 .engine-picker__backdrop {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(
-      circle at top,
-      color-mix(in srgb, var(--k-brand) 16%, transparent),
-      transparent 45%
-    ),
-    var(--overlay-modal);
-  backdrop-filter: blur(8px);
+  background: var(--overlay-modal);
 }
 
 .engine-picker__panel {
   position: relative;
   z-index: 1;
   width: min(560px, calc(100vw - 32px));
-  border-radius: 22px;
-  /* Was a fixed navy panel with pale-blue text, so it stayed dark under the
-     light theme. Same brand-tinted lift, derived from the active palette. */
-  border: 1px solid color-mix(in srgb, var(--k-brand) 28%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--k-brand) 8%, var(--k-panel-raised)),
-    var(--k-panel-raised)
-  );
-  color: var(--text-primary);
-  box-shadow: var(--shadow-modal);
+  border-radius: var(--k-radius-overlay);
+  /* A flat raised panel from the active palette, so it follows the light
+     theme and any palette. */
+  border: 1px solid var(--k-line);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  box-shadow: var(--k-elevation-overlay);
   padding: 24px;
 }
 

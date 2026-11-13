@@ -1410,9 +1410,31 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
     // #4401: focus handed back to a rail item after a pointer interaction
     // (a closed panel restores it) is not visible focus, so it raises no tip
     // that would stay over the rail once the pointer has gone.
-    act(() => railItem('Files').focus());
-    expect(window.document.activeElement).toBe(railItem('Files'));
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    // jsdom 31 aliases :focus-visible to :focus: it has no input-modality
+    // heuristic. Model only that browser-owned selector here, retaining real
+    // focus events and both outcomes. tests/chat-dock-bounds.spec.ts exercises
+    // pointer-close restoration and keyboard focus in Chromium without a mock.
+    const filesItem = railItem('Files');
+    const matches = filesItem.matches.bind(filesItem);
+    let keyboardFocus = false;
+    const focusVisible = vi
+      .spyOn(filesItem, 'matches')
+      .mockImplementation((selector) =>
+        selector === ':focus-visible' ? keyboardFocus : matches(selector),
+      );
+    try {
+      act(() => filesItem.focus());
+      expect(window.document.activeElement).toBe(railItem('Files'));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+
+      act(() => filesItem.blur());
+      keyboardFocus = true;
+      act(() => filesItem.focus());
+      expect(window.document.activeElement).toBe(filesItem);
+      expect(screen.getByRole('tooltip').textContent).toBe('src/app/files.ts');
+    } finally {
+      focusVisible.mockRestore();
+    }
   });
 });
 
