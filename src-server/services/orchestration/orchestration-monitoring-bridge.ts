@@ -151,7 +151,8 @@ export class OrchestrationMonitoringBridge {
         // yields a negative elapsed time for external-engine rows only. One
         // field measured by two clocks is the same defect class as one field
         // carrying two meanings.
-        (context.openTools ??= new Map()).set(event.toolCallId, {
+        context.openTools ??= new Map();
+        context.openTools.set(event.toolCallId, {
           startedAt: performance.now(),
           name: realToolName(event.toolName, event.toolCallId),
           startArguments: event.arguments,
