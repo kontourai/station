@@ -89,6 +89,9 @@ describe.skipIf(!posix)('station-weight end to end', () => {
         });
       expect(result.metrics.restMemoryBytes.processCount).toBeGreaterThan(0);
       expect(result.metrics.idleCpuPercent.samples).toBeGreaterThan(2);
+      // Linux: switches counted across the window, not the end read twice.
+      if (process.platform === 'linux')
+        expect(result.metrics.idleContextSwitches.value).toBeGreaterThan(0);
 
       // The leaked daemon is counted and ended, though no ancestry ties it
       // to the instance.

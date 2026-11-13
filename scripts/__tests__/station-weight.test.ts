@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  contextSwitchDelta,
   hostFingerprint,
   hostFingerprintInputs,
   IDLE_CPU_GAP,
@@ -709,6 +710,21 @@ describe('station-weight process identity', () => {
         cpuSeconds: 0.51,
       }),
     ]);
+  });
+
+  test('context switches count only processes read at both ends of the window', () => {
+    expect(
+      contextSwitchDelta(
+        new Map([
+          ['1:a', 10],
+          ['2:b', 5],
+        ]),
+        new Map([
+          ['1:a', 25],
+          ['3:c', 99],
+        ]),
+      ),
+    ).toBe(15);
   });
 
   test('macOS birth tokens keep lstart day padding, matching the instance record', () => {

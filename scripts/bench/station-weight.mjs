@@ -465,20 +465,34 @@ export function withMemory(rows, run = execFileSyncBounded) {
     });
 }
 
-/** Linux only: voluntary + involuntary context switches across the tree. */
+/**
+ * Linux only: voluntary + involuntary context switches per process, keyed by
+ * identity, read from `/proc` at the moment of the call. A process that
+ * exited before it was read is absent.
+ */
 function contextSwitches(rows) {
-  let total = 0;
+  const counts = new Map();
   for (const row of rows) {
     try {
       const status = readFileSync(`/proc/${row.pid}/status`, 'utf8');
+      let total = 0;
       for (const match of status.matchAll(
         /^(?:non)?voluntary_ctxt_switches:\s+(\d+)$/gm,
       ))
         total += Number(match[1]);
+      counts.set(identityKey(row), total);
     } catch {
-      // A process that exited between snapshots contributes nothing.
+      // Exited between the snapshot and the read.
     }
   }
+  return counts;
+}
+
+/** Switches over the window by the processes read at both of its ends. */
+export function contextSwitchDelta(start, end) {
+  let total = 0;
+  for (const [key, count] of end)
+    if (start.has(key)) total += count - start.get(key);
   return total;
 }
 
@@ -1272,12 +1286,20 @@ export async function runStationWeight({
     // tagged at its start (a full environment scan every 250 ms would be the
     // heaviest thing on the host), and rescans for tagged processes at its end.
     const taggedAtStart = taggedRows(processTable(), tagging);
+    const linux = process.platform === 'linux';
+    // Context switches are read from /proc when the window opens and when it
+    // closes, not from the rows afterwards (both would then read the end).
+    let switchesStart;
+    let switchesEnd;
     const sampled = await sampleTreeCpu(
       (final) => {
         const table = processTable();
-        return final
+        const rows = final
           ? treeNow(table)
           : instanceTree(table, roots, taggedAtStart);
+        if (linux && !switchesStart) switchesStart = contextSwitches(rows);
+        if (linux && final) switchesEnd = contextSwitches(rows);
+        return rows;
       },
       {
         windowMs: settings.cpuWindowMs,
@@ -1294,17 +1316,11 @@ export async function runStationWeight({
         : 'Linux has no per-process wakeup counter; see idleContextSwitches',
       'count',
     );
-    result.metrics.idleContextSwitches =
-      process.platform === 'linux'
-        ? measured(
-            contextSwitches(sampled.endRows) -
-              contextSwitches(sampled.firstRows),
-            'count',
-            {
-              note: 'voluntary + involuntary context switches of the processes alive at both ends of the window; a proxy, not wakeups',
-            },
-          )
-        : notMeasured('reads /proc; Linux only', 'count');
+    result.metrics.idleContextSwitches = linux
+      ? measured(contextSwitchDelta(switchesStart, switchesEnd), 'count', {
+          note: 'voluntary + involuntary context switches of the processes alive at both ends of the window; a proxy, not wakeups',
+        })
+      : notMeasured('reads /proc; Linux only', 'count');
 
     const preTurn = stub.requests.length;
     result.endpointCallsAtRest = stub.requests
