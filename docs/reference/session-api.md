@@ -1933,6 +1933,47 @@ the server's new state. A report carries `reconnect: true` only when the
 Session's engine declares a reconnect Station can send; clients offer
 Reconnect and Sign in only then.
 
+### Engine continuity and rewind (`/sessions/:threadId/continuity`, `/rewind`)
+
+Some engines can act on their own session natively. What a live Session's
+engine declared at its handshake is read per Session, never assumed for an
+engine family:
+
+- `GET /sessions/:threadId/continuity` answers `SessionLiveContinuity`
+  (`@kontourai/station-contracts/provider`): `{ live, rewind, fork }`, where
+  `rewind` is `in-place` or `none` and `fork` is `native` or `none`. A Session
+  no engine process holds answers `{ live: false, rewind: 'none', fork:
+  'none' }`; no engine is started for the read. It is read under the Session's
+  read gate; anyone who cannot read the Session gets `404`, which a client
+  reads like an older host: nothing offered.
+- `POST /sessions/:threadId/rewind` with body `{ "turnId": "<turn>" }` rewinds
+  the engine's context in place to before that turn: the turn and every later
+  one are hidden from the engine. The transcript is never edited. The engine
+  records the rewind as a `runtime.warning` with code `acp.session-rewound`
+  (`ACP_SESSION_REWOUND_CODE`, details `beforeTurnId`, `hiddenTurnIds` and,
+  when the engine reported restored files, `affectedFileCount`); the
+  transcript projection draws it as a marker row and marks each hidden turn
+  `rewound`. This is not checkpoint restore: only files the engine itself
+  restores change.
+
+The rewind caller must be the current request principal and own the Session,
+as for the MCP reconnect above; anyone else gets `404`. A `turnId` that is
+missing, empty or over 1,024 characters, or any other body key, is refused
+`400`. Otherwise it answers `SessionRewindOutcome`:
+
+| Outcome | Meaning |
+| --- | --- |
+| `rewound` | `beforeTurnId`, `hiddenTurnIds`, and `affectedFiles: { count, paths }` when the engine reported them (at most 50 paths; `count` is the engine's) |
+| `refused` `unsupported` | the Session's engine declared no in-place rewind, or its adapter has none |
+| `refused` `not-live` | no engine process holds the Session |
+| `refused` `turn-running` | a turn is running; stop it first |
+| `refused` `unknown-turn` | the engine never reported an id for that turn in this process: a turn from before a restart, one Station no longer keeps, or one an earlier rewind hid |
+| `failed` | the engine's own refusal or error, with its message |
+
+A refusal sends nothing to the engine. Today only the ACP adapter declares a
+rewind, for an engine whose handshake declares it (Kiro's agent service; see
+[ACP](../guides/acp.md#engine-session-actions)).
+
 ### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
 
 When a Claude Code or Codex turn stops on a provider usage limit, Station

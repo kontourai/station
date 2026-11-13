@@ -2993,7 +2993,21 @@ tuple the table above already binds. Today eleven bind: Kiro v2's
 and `metadata` (`usage.context-percent`), v3's `_kiro/mcp/status`
 (`engine-mcp.status`), and seven v3 notifications bound as `acp.host-chrome`. The notification table carries no promotion
 metadata: a tuple's binding says nothing about which canonical event, if any,
-should replace it.
+should replace it. The `child-work` consumer is implemented in
+[`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
+kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
+its engine row reads the roster into `child-work.updated`, and a `tool_call`
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
+engine whose handshake names neither reporter publishes `not-reported` at
+session start.
+
+The transcript projection also draws an in-place engine rewind (a
+`runtime.warning` with `ACP_SESSION_REWOUND_CODE`) as a marker row and marks
+the turns it hid `rewound`; the UI handler neither toasts it nor adds a
+notice. [`SessionRewind`](../../src-ui/src/components/chat/SessionRewind.tsx)
+offers "Rewind conversation to here" on a user turn of the live session only
+while `GET /api/orchestration/sessions/:threadId/continuity` says its engine
+rewinds in place.
 
 Engines Station installs and signs in itself have two owners.
 [`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts)
