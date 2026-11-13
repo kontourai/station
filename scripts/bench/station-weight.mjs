@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import {
   existsSync,
@@ -108,91 +108,171 @@ export function repositoryState() {
 /** Pinned so lstart is a property of the process, not of who asked. */
 const PS_ENV = { ...process.env, LC_ALL: 'C', TZ: 'UTC' };
 
+const MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ');
+
 /** C-locale lstart, `Www Mmm [ d]d HH:MM:SS YYYY`, as `ps` prints it. */
 const lstartToken = ([weekday, month, day, clock, year]) =>
   `${weekday} ${month} ${day.padStart(2, ' ')} ${clock} ${year}`;
 
-/**
- * Linux identity and CPU from `/proc/<pid>/stat`: the birth token in the
- * format `lookupProcessBirthFingerprint` and the instance record use
- * (`linux:<boot id>:<start ticks>`), and utime + stime in seconds. procps
- * prints `time` in whole seconds, which rounds a quiet tree's CPU to zero.
- * `null` once the process has exited.
- */
-export function linuxProcStat(pid, { readFile = readFileSync, bootId, hz }) {
-  try {
-    const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
-    const fields = stat
-      .slice(stat.lastIndexOf(')') + 1)
-      .trim()
-      .split(/\s+/);
-    const [utime, stime, startTime] = [fields[11], fields[12], fields[19]];
-    if (![utime, stime, startTime].every((field) => /^\d+$/.test(field ?? '')))
-      return null;
-    return {
-      started: `linux:${bootId}:${startTime}`,
-      cpuSeconds: (Number(utime) + Number(stime)) / hz,
-    };
-  } catch {
-    return null;
-  }
-}
-
-let clockTicks;
-const linuxClockTicks = () => {
-  clockTicks ??= Number(
-    execFileSyncBounded('getconf', ['CLK_TCK'], {
-      encoding: 'utf8',
-      windowsHide: true,
-    }).trim(),
+/** Epoch ms of a UTC lstart (whole seconds), or NaN. */
+const lstartMs = ([, month, day, clock, year]) => {
+  const [hours, minutes, seconds] = clock.split(':').map(Number);
+  return Date.UTC(
+    Number(year),
+    MONTHS.indexOf(month),
+    Number(day),
+    hours,
+    minutes,
+    seconds,
   );
-  assert(Number.isInteger(clockTicks) && clockTicks > 0, 'getconf CLK_TCK');
-  return clockTicks;
 };
 
 /**
- * One `ps` snapshot. `started` is the process birth token in the format the
- * instance record and `lookupProcessBirthFingerprint` use (pinned lstart on
- * macOS, `/proc` start ticks plus boot id on Linux), so pid plus `started` is
- * the process identity and a reused pid is never mistaken for the same one.
- * On Linux, CPU comes from `/proc` too (see linuxProcStat).
+ * The fields of one `/proc/<pid>/stat` line this check uses, or `null` when
+ * it does not parse. Field numbers are proc(5)'s: ppid 4, utime 14, stime
+ * 15, starttime 22, rss 24 (pages).
+ */
+export function parseProcStat(text) {
+  const open = text.indexOf('(');
+  const close = text.lastIndexOf(')');
+  if (open < 0 || close < open) return null;
+  const fields = text
+    .slice(close + 1)
+    .trim()
+    .split(/\s+/);
+  const picked = [fields[1], fields[11], fields[12], fields[19], fields[21]];
+  if (!picked.every((field) => /^\d+$/.test(field ?? ''))) return null;
+  const [ppid, utime, stime, startTicks, rssPages] = picked;
+  return {
+    command: text.slice(open + 1, close),
+    ppid: Number(ppid),
+    ticks: Number(utime) + Number(stime),
+    startTicks,
+    rssPages: Number(rssPages),
+  };
+}
+
+let linuxContext;
+/** Host constants a Linux row is computed with; read once. */
+function defaultLinuxContext() {
+  const getconf = (name) => {
+    const value = Number(
+      execFileSyncBounded('getconf', [name], {
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim(),
+    );
+    assert(Number.isInteger(value) && value > 0, `getconf ${name}`);
+    return value;
+  };
+  linuxContext ??= {
+    bootId: readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(),
+    hz: getconf('CLK_TCK'),
+    pageSize: getconf('PAGESIZE'),
+    bootTimeSeconds: Number(
+      readFileSync('/proc/stat', 'utf8').match(/^btime\s+(\d+)$/m)?.[1],
+    ),
+  };
+  assert(
+    Number.isInteger(linuxContext.bootTimeSeconds),
+    '/proc/stat carries no btime',
+  );
+  return linuxContext;
+}
+
+/**
+ * The Linux process table, one row per process from a single
+ * `/proc/<pid>/stat` read (parent, CPU, birth and RSS together) plus its
+ * `status` (effective uid, context switches). `stat` is read again after
+ * `status`: a process whose start ticks changed in between exited and its pid
+ * was reused, so it is dropped rather than given another process's fields.
+ * The birth token is the format `lookupProcessBirthFingerprint` and the
+ * instance record use (`linux:<boot id>:<start ticks>`). CPU is utime + stime
+ * in ticks: procps prints `time` in whole seconds, which rounds a quiet
+ * tree's CPU to zero.
+ */
+export function linuxProcessTable(
+  {
+    readFile = readFileSync,
+    listPids = () =>
+      readdirSync('/proc')
+        .filter((entry) => /^\d+$/.test(entry))
+        .map(Number),
+    bootId,
+    hz,
+    pageSize,
+    bootTimeSeconds,
+  } = defaultLinuxContext(),
+) {
+  const read = (path) => {
+    try {
+      return readFile(path, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const rows = [];
+  for (const pid of listPids()) {
+    const statText = read(`/proc/${pid}/stat`);
+    const stat = statText && parseProcStat(statText);
+    const status = stat && read(`/proc/${pid}/status`);
+    const recheck = status && read(`/proc/${pid}/stat`);
+    // Exited, or the pid now names another process.
+    if (!recheck || parseProcStat(recheck)?.startTicks !== stat.startTicks)
+      continue;
+    const uid = status.match(/^Uid:\s+\d+\s+(\d+)/m)?.[1];
+    let contextSwitches = 0;
+    for (const match of status.matchAll(
+      /^(?:non)?voluntary_ctxt_switches:\s+(\d+)$/gm,
+    ))
+      contextSwitches += Number(match[1]);
+    rows.push({
+      pid,
+      ppid: stat.ppid,
+      uid: uid === undefined ? NaN : Number(uid),
+      rssBytes: stat.rssPages * pageSize,
+      cpuSeconds: stat.ticks / hz,
+      started: `linux:${bootId}:${stat.startTicks}`,
+      startedAtMs: (bootTimeSeconds + Number(stat.startTicks) / hz) * 1000,
+      contextSwitches,
+      command: stat.command,
+    });
+  }
+  return rows;
+}
+
+/**
+ * One snapshot of every process. `started` is the birth token in the format
+ * the instance record and `lookupProcessBirthFingerprint` use (pinned lstart
+ * on macOS, `/proc` start ticks plus boot id on Linux), so pid plus `started`
+ * is the process identity and a reused pid is never mistaken for the same
+ * one. `startedAtMs` is the wall-clock birth (whole seconds on macOS). On
+ * Linux the table comes from `/proc` alone (see linuxProcessTable); on macOS
+ * one `ps` call reads every field of a process at once.
  */
 export function processTable(
   run = execFileSyncBounded,
-  { platform: platformName = process.platform, procStat } = {},
+  { platform: platformName = process.platform, linux } = {},
 ) {
-  const text = run('ps', ['-A', '-o', 'pid=,ppid=,rss=,time=,lstart=,comm='], {
-    encoding: 'utf8',
-    windowsHide: true,
-    env: PS_ENV,
-  });
-  let readStat = procStat;
-  if (platformName === 'linux' && !readStat) {
-    const context = {
-      bootId: readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(),
-      hz: linuxClockTicks(),
-    };
-    readStat = (pid) => linuxProcStat(pid, context);
-  }
+  if (platformName === 'linux') return linuxProcessTable(linux);
+  const text = run(
+    'ps',
+    ['-A', '-o', 'pid=,ppid=,uid=,rss=,time=,lstart=,comm='],
+    { encoding: 'utf8', windowsHide: true, env: PS_ENV },
+  );
   const rows = [];
   for (const line of text.split('\n')) {
     const parts = line.trim().split(/\s+/);
-    if (parts.length < 10) continue;
-    const [pid, ppid, rss, time, ...rest] = parts;
-    let started = lstartToken(rest.slice(0, 5));
-    let cpuSeconds = parseCpuTime(time);
-    if (platformName === 'linux') {
-      const stat = readStat(Number(pid));
-      // A Linux process that exited before its stat was read is gone.
-      if (!stat) continue;
-      ({ started, cpuSeconds } = stat);
-    }
+    if (parts.length < 11) continue;
+    const [pid, ppid, uid, rss, time, ...rest] = parts;
     rows.push({
       pid: Number(pid),
       ppid: Number(ppid),
+      uid: Number(uid),
       rssBytes: Number(rss) * 1024,
-      cpuSeconds,
-      started,
+      cpuSeconds: parseCpuTime(time),
+      started: lstartToken(rest.slice(0, 5)),
+      startedAtMs: lstartMs(rest.slice(0, 5)),
       command: basename(rest.slice(5).join(' ')),
     });
   }
@@ -245,80 +325,167 @@ export function recordedRoots(record) {
 }
 
 /**
- * Environment entries every process the instance starts inherits. Station
- * keeps PATH, HOME and TMPDIR for its children (an engine needs PATH to find
- * `claude`), so a process that detached from the tree still carries them.
+ * How a process is recognised as the run's by its environment, with no
+ * ancestry. Station keeps PATH, HOME and TMPDIR for its children (an engine
+ * needs PATH to find `claude`), so a process that detached from the tree
+ * still carries the scratch HOME and TMPDIR; the nonce `STATION_WEIGHT_RUN`
+ * is set for every process the instance starts. A process qualifies only if
+ * it runs as this user (effective uid) and started after the run did, and a
+ * process naming the nonce in its arguments is excluded: the nonce is only
+ * ever passed through the environment. The slack absorbs whole-second birth
+ * times (macOS lstart, Linux btime).
  */
-export function runTags({ runId, scratch }) {
-  return [
-    `STATION_WEIGHT_RUN=${runId}`,
-    `HOME=${join(scratch, 'user')}`,
-    `TMPDIR=${join(scratch, 'tmp')}`,
-  ];
-}
-
-const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/**
- * pid -> environment test for every same-user process. macOS `ps -E` appends
- * the environment a process was started with to its command line; Linux
- * exposes it in `/proc/<pid>/environ`. A process whose environment cannot be
- * read (another user's) is not one of the run's.
- */
-function environmentMatcher(run, platformName) {
-  if (platformName === 'linux') {
-    const environments = new Map();
-    for (const entry of readdirSync('/proc')) {
-      if (!/^\d+$/.test(entry)) continue;
-      try {
-        environments.set(
-          Number(entry),
-          new Set(readFileSync(`/proc/${entry}/environ`, 'utf8').split('\0')),
-        );
-      } catch {
-        // Exited, or another user's.
-      }
-    }
-    return (pid, tag) => environments.get(pid)?.has(tag) ?? false;
-  }
-  const lines = new Map();
-  const text = run('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], {
-    encoding: 'utf8',
-    windowsHide: true,
-    env: PS_ENV,
-  });
-  for (const line of text.split('\n')) {
-    const match = line.match(/^\s*(\d+)\s(.*)$/);
-    if (match) lines.set(Number(match[1]), ` ${match[2]} `);
-  }
-  // A whole `KEY=VALUE` entry, bounded by spaces, so `TMPDIR=/x/tmp` does not
-  // match `TMPDIR=/x/tmp2`.
-  const patterns = new Map();
-  return (pid, tag) => {
-    if (!patterns.has(tag))
-      patterns.set(tag, new RegExp(` ${escapeRegExp(tag)} `));
-    return patterns.get(tag).test(lines.get(pid) ?? '');
+export function runTagging({
+  nonce,
+  scratch,
+  startedAtMs,
+  controlConfigDir,
+  uid = process.geteuid(),
+}) {
+  assert(/^[0-9a-f]{32}$/.test(nonce), 'the run tag is a 128-bit hex nonce');
+  return {
+    tags: [
+      `STATION_WEIGHT_RUN=${nonce}`,
+      `HOME=${join(scratch, 'user')}`,
+      `TMPDIR=${join(scratch, 'tmp')}`,
+    ],
+    excludeTags: controlConfigDir
+      ? [`CLAUDE_CONFIG_DIR=${controlConfigDir}`]
+      : [],
+    argumentMarkers: [nonce],
+    uid,
+    notBeforeMs: Math.floor(startedAtMs / 1000) * 1000 - 2_000,
   };
 }
 
+const LSTART_LINE =
+  /^\s*(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d\d:\d\d:\d\d)\s+(\d{4})\s+(.*)$/;
+
+/** pid -> { started, command } from `ps -o pid=,lstart=,command=` output. */
+function psCommands(text) {
+  const lines = new Map();
+  for (const line of text.split('\n')) {
+    const match = line.match(LSTART_LINE);
+    if (match)
+      lines.set(Number(match[1]), {
+        started: lstartToken(match.slice(2, 7)),
+        command: match[7],
+      });
+  }
+  return lines;
+}
+
 /**
- * Rows of `table` whose environment carries any of `tags` and none of
- * `excludeTags` (the control engine shares the run's environment but is not
- * Station's). These are found whatever their ancestry: a double-forked daemon
- * or a child spawned during shutdown has no path back to the roots.
+ * pid -> environment test and argument line for each row. Linux: the exact
+ * NUL-separated entries of `/proc/<pid>/environ` (and `cmdline`), accepted
+ * only if the pid still has the row's start ticks afterwards. macOS: `ps -E` appends
+ * the environment a process was started with to its arguments, so the
+ * environment is what follows the process's plain `ps` command line, and a
+ * process whose two lines disagree (or whose birth differs from the row's)
+ * changed between the reads and is skipped. A process whose environment
+ * cannot be read (another user's) gets no entry.
+ */
+function environments(rows, { run, platformName, readFile }) {
+  const tests = new Map();
+  if (platformName === 'linux') {
+    for (const row of rows) {
+      let entries;
+      let argv;
+      let recheck;
+      try {
+        entries = readFile(`/proc/${row.pid}/environ`, 'utf8');
+        argv = readFile(`/proc/${row.pid}/cmdline`, 'utf8');
+        recheck = parseProcStat(readFile(`/proc/${row.pid}/stat`, 'utf8'));
+      } catch {
+        continue;
+      }
+      if (
+        !recheck ||
+        row.started !==
+          `${row.started.slice(0, row.started.lastIndexOf(':') + 1)}${recheck.startTicks}`
+      )
+        continue;
+      const set = new Set(entries.split('\0'));
+      tests.set(row.pid, {
+        carries: (tag) => set.has(tag),
+        argv: argv.split('\0').join(' '),
+      });
+    }
+    return tests;
+  }
+  const ps = (args) =>
+    psCommands(
+      run('ps', ['-A', ...args, '-ww', '-o', 'pid=,lstart=,command='], {
+        encoding: 'utf8',
+        windowsHide: true,
+        env: PS_ENV,
+      }),
+    );
+  const plain = ps([]);
+  const withEnvironment = ps(['-E']);
+  for (const row of rows) {
+    const argv = plain.get(row.pid);
+    const full = withEnvironment.get(row.pid);
+    if (!argv || !full) continue;
+    if (argv.started !== row.started || full.started !== row.started) continue;
+    if (
+      full.command !== argv.command &&
+      !full.command.startsWith(`${argv.command} `)
+    )
+      continue;
+    // Entries are space-separated and a value may itself contain spaces, so
+    // a tag is a whole `KEY=VALUE` entry bounded by spaces: `TMPDIR=/x/tmp`
+    // does not match `TMPDIR=/x/tmp2`.
+    const environment = ` ${full.command.slice(argv.command.length + 1)} `;
+    tests.set(row.pid, {
+      carries: (tag) => environment.includes(` ${tag} `),
+      argv: argv.command,
+    });
+  }
+  return tests;
+}
+
+/**
+ * Rows of `table` that are the run's by environment (see runTagging): the
+ * same effective uid, started after the run, carrying any of `tags` and none
+ * of `excludeTags` (the control engine shares the run's environment but is
+ * not Station's), with no argument naming the nonce. These are found
+ * whatever their ancestry: a double-forked daemon or a child spawned during
+ * shutdown has no path back to the roots.
  */
 export function taggedRows(
   table,
-  { tags, excludeTags = [] },
-  { run = execFileSyncBounded, platform: platformName = process.platform } = {},
+  { tags, excludeTags = [], argumentMarkers = [], uid, notBeforeMs },
+  {
+    run = execFileSyncBounded,
+    platform: platformName = process.platform,
+    readFile = readFileSync,
+  } = {},
 ) {
-  const carries = environmentMatcher(run, platformName);
-  return table.filter(
+  assert(
+    Number.isInteger(uid) && Number.isFinite(notBeforeMs),
+    'tagging needs the run uid and start time',
+  );
+  const candidates = table.filter(
     (row) =>
       row.pid !== process.pid &&
-      tags.some((tag) => carries(row.pid, tag)) &&
-      !excludeTags.some((tag) => carries(row.pid, tag)),
+      row.uid === uid &&
+      row.startedAtMs >= notBeforeMs,
   );
+  const environment = environments(candidates, {
+    run,
+    platformName,
+    readFile,
+  });
+  return candidates.filter((row) => {
+    const entry = environment.get(row.pid);
+    return (
+      entry !== undefined &&
+      !argumentMarkers.some((marker) => entry.argv.includes(marker)) &&
+      tags.some(entry.carries) &&
+      !excludeTags.some(entry.carries)
+    );
+  });
 }
 
 /** The instance's processes: owned by the recorded roots or tagged. */
@@ -467,25 +634,15 @@ export function withMemory(rows, run = execFileSyncBounded) {
 
 /**
  * Linux only: voluntary + involuntary context switches per process, keyed by
- * identity, read from `/proc` at the moment of the call. A process that
- * exited before it was read is absent.
+ * identity, as read with the row itself (see linuxProcessTable), so a count
+ * never belongs to a process that reused the pid.
  */
 function contextSwitches(rows) {
-  const counts = new Map();
-  for (const row of rows) {
-    try {
-      const status = readFileSync(`/proc/${row.pid}/status`, 'utf8');
-      let total = 0;
-      for (const match of status.matchAll(
-        /^(?:non)?voluntary_ctxt_switches:\s+(\d+)$/gm,
-      ))
-        total += Number(match[1]);
-      counts.set(identityKey(row), total);
-    } catch {
-      // Exited between the snapshot and the read.
-    }
-  }
-  return counts;
+  return new Map(
+    rows
+      .filter((row) => Number.isFinite(row.contextSwitches))
+      .map((row) => [identityKey(row), row.contextSwitches]),
+  );
 }
 
 /** Switches over the window by the processes read at both of its ends. */
@@ -756,7 +913,7 @@ async function controlRequest({ cwd, env, stub, executable, model }) {
 
 // ---------------------------------------------------------------------------
 
-function scrubbedEnvironment(scratch, stubUrl, claudeExecutable, runId) {
+function scrubbedEnvironment(scratch, stubUrl, claudeExecutable, runNonce) {
   // Station reports the Claude engine ready only when a `claude` is on PATH.
   // Point that at the SDK's bundled binary, so Station and the control run
   // the same lockfile-pinned executable rather than whatever this host has
@@ -801,8 +958,8 @@ function scrubbedEnvironment(scratch, stubUrl, claudeExecutable, runId) {
     DISABLE_AUTOUPDATER: '1',
     DISABLE_TELEMETRY: '1',
     DISABLE_ERROR_REPORTING: '1',
-    // Ties every process the instance starts to this run (see runTags).
-    STATION_WEIGHT_RUN: runId,
+    // Ties every process the instance starts to this run (see runTagging).
+    STATION_WEIGHT_RUN: runNonce,
   };
   for (const key of [
     'HOME',
@@ -1002,13 +1159,26 @@ export function restMetric(settled, extra = {}) {
  * process counts the CPU time it last showed minus what it showed at the
  * window's start (zero if it appeared inside the window), so a worker that
  * exits during the window still counts what it used up to its last sample.
- * `snapshot(final)` returns the tree's rows.
+ * `snapshot(final)` returns the tree's rows. A slow snapshot stretches the
+ * interval, so the span between two consecutive reads is measured: from the
+ * start of one snapshot to the end of the next, the longest a process can
+ * run between the last read that saw it and the first that did not.
  */
 export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
   const startCpu = new Map();
   const lastCpu = new Map();
   let samples = 0;
-  const observe = (rows, first) => {
+  let previousStart;
+  let maxReadSpanMs = 0;
+  const observe = (final, first) => {
+    const readStart = performance.now();
+    const rows = snapshot(final);
+    if (previousStart !== undefined)
+      maxReadSpanMs = Math.max(
+        maxReadSpanMs,
+        performance.now() - previousStart,
+      );
+    previousStart = readStart;
     samples += 1;
     for (const row of rows) {
       const key = identityKey(row);
@@ -1018,7 +1188,7 @@ export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
     return rows;
   };
   const begin = performance.now();
-  const firstRows = observe(snapshot(false), true);
+  const firstRows = observe(false, true);
   let next = begin;
   for (;;) {
     next += intervalMs;
@@ -1028,9 +1198,9 @@ export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
       break;
     }
     await wait(Math.max(0, next - performance.now()));
-    observe(snapshot(false), false);
+    observe(false, false);
   }
-  const endRows = observe(snapshot(true), false);
+  const endRows = observe(true, false);
   const windowSeconds = (performance.now() - begin) / 1000;
   const endKeys = new Set(endRows.map(identityKey));
   let cpuSeconds = 0;
@@ -1040,6 +1210,7 @@ export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
     cpuSeconds,
     windowSeconds,
     samples,
+    maxReadSpanMs,
     firstRows,
     endRows,
     exitedDuringWindow: [...lastCpu.keys()].filter((key) => !endKeys.has(key))
@@ -1047,9 +1218,12 @@ export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
   };
 }
 
-/** What `sampleTreeCpu` cannot see; reported beside every CPU value. */
-export const IDLE_CPU_GAP = (intervalMs) =>
-  `not counted: CPU a process used after its last sample before exiting (at most one ${intervalMs} ms interval per process) and processes that started and exited between two samples`;
+/**
+ * What `sampleTreeCpu` cannot see; reported beside every CPU value. The
+ * value is a lower bound: none of this is counted, and it is still compared.
+ */
+export const IDLE_CPU_GAP = ({ intervalMs, maxReadSpanMs }) =>
+  `not counted: CPU a process used after its last read before exiting (up to ${Math.ceil(maxReadSpanMs)} ms per process, the longest span observed between the start of one read and the end of the next; the nominal interval is ${intervalMs} ms), processes that started and exited between two reads, and processes that left the tree by detaching inside the window and exited before its end (the window follows ancestry and rescans the environment only at its end)`;
 
 export function idleCpuMetric(sampled, intervalMs) {
   const detail = {
@@ -1058,8 +1232,9 @@ export function idleCpuMetric(sampled, intervalMs) {
     processCount: sampled.endRows.length,
     samples: sampled.samples,
     sampleIntervalMs: intervalMs,
+    maxReadSpanMs: sampled.maxReadSpanMs,
     exitedDuringWindow: sampled.exitedDuringWindow,
-    gap: IDLE_CPU_GAP(intervalMs),
+    gap: IDLE_CPU_GAP({ intervalMs, maxReadSpanMs: sampled.maxReadSpanMs }),
   };
   if (!sampled.firstRows.length || !sampled.endRows.length)
     return {
@@ -1075,6 +1250,14 @@ export function idleCpuMetric(sampled, intervalMs) {
     detail,
   );
 }
+
+/**
+ * What the leftover check cannot find; reported with the metric. Nothing ties
+ * such a process to the run: no subreaper or cgroup follows it on macOS, and
+ * a process group or session can be left with setsid and its id reused.
+ */
+export const LEFTOVER_GAP =
+  'not found: a process that both left the instance tree (for example by double-forking, so it is reparented away) and was started with an environment that drops the run tag, HOME and TMPDIR (for example env: {}); neither ancestry nor environment ties it to the run';
 
 const median = (values) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -1161,7 +1344,11 @@ export async function runStationWeight({
   );
   const { sha, dirty } = repositoryState();
   assert(allowDirty || !dirty, 'commit first: the check measures a clean tree');
+  const runStartedAtMs = Date.now();
   const runId = randomUUID();
+  // The environment tag is its own nonce, not the run id: the run id also
+  // names the output directory and the fixture markers.
+  const runNonce = randomBytes(16).toString('hex');
   const outputDir = resolve(
     out ?? join(ROOT, '.kontourai/station-weight', sha, runId),
   );
@@ -1209,14 +1396,21 @@ export async function runStationWeight({
   };
   const stub = await startStubAnthropic();
   const claudeExecutable = bundledClaudeExecutable();
-  const env = scrubbedEnvironment(scratch, stub.url, claudeExecutable, runId);
+  const env = scrubbedEnvironment(
+    scratch,
+    stub.url,
+    claudeExecutable,
+    runNonce,
+  );
   const repo = fixtureRepository(scratch, markers, env);
   const controlConfigDir = join(scratch, 'claude-control');
   // The control engine shares the run's environment but is not Station's.
-  const tagging = {
-    tags: runTags({ runId, scratch }),
-    excludeTags: [`CLAUDE_CONFIG_DIR=${controlConfigDir}`],
-  };
+  const tagging = runTagging({
+    nonce: runNonce,
+    scratch,
+    startedAtMs: runStartedAtMs,
+    controlConfigDir,
+  });
   const ports = await allocatePorts();
   const api = client(ports.server);
   let started = false;
@@ -1465,6 +1659,7 @@ export async function runStationWeight({
           beforeStopUntagged: untaggedBeforeStop,
           killed: cleanup.signalled,
           notSignalledPidReused: cleanup.skipped,
+          gap: LEFTOVER_GAP,
         })
       : notMeasured(
           "the instance's process tree was empty before stop: nothing was measured",
@@ -1482,7 +1677,10 @@ export async function runStationWeight({
     // Whatever still carries the run's environment, Station's or the
     // control's, is the run's to end; identity is rechecked per signal.
     try {
-      const strays = taggedRows(processTable(), { tags: tagging.tags });
+      const strays = taggedRows(processTable(), {
+        ...tagging,
+        excludeTags: [],
+      });
       if (strays.length)
         result.cleanupKilled = signalIfSame(strays, 'SIGKILL').signalled;
     } catch (error) {

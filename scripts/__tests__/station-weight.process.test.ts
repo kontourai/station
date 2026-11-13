@@ -1,9 +1,10 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
+import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   fixtureRepository,
@@ -14,8 +15,11 @@ import {
   processTable,
   repositoryState,
   runLauncher,
+  runTagging,
   sampleTreeCpu,
+  signalIfSame,
   survivors,
+  taggedRows,
 } from '../bench/station-weight.mjs';
 
 // Fast real-process mechanics of the station-weight check. The full run
@@ -25,16 +29,19 @@ const ROOT = resolve(__dirname, '../..');
 const RUNNER = join(ROOT, 'scripts/bench/station-weight.mjs');
 const makeTempDir = trackTempDirs();
 const posix = ['darwin', 'linux'].includes(process.platform);
-const strays: number[] = [];
+const strays: Array<{ pid: number; started: string }> = [];
+
+/**
+ * Remembers `pid` with its birth token for cleanup, which signals it only
+ * while the pid still has that birth: a pid reused since is never killed.
+ */
+function stray(pid: number) {
+  const started = lookupProcessBirthFingerprint(pid);
+  if (started) strays.push({ pid, started });
+}
 
 afterEach(() => {
-  for (const pid of strays.splice(0)) {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // Already gone.
-    }
-  }
+  signalIfSame(strays.splice(0), 'SIGKILL');
 });
 
 const identity = (pid: number) => {
@@ -44,13 +51,19 @@ const identity = (pid: number) => {
 };
 
 /** Starts `script` under node with `env` and resolves the first stdout line. */
-function start(script: string, env: NodeJS.ProcessEnv = process.env) {
-  const child = spawn(process.execPath, ['-e', script], {
+function start(
+  script: string,
+  env: NodeJS.ProcessEnv = process.env,
+  args: string[] = [],
+) {
+  const child = spawn(process.execPath, ['-e', script, ...args], {
     env,
     stdio: ['ignore', 'pipe', 'ignore'],
     windowsHide: true,
   });
-  strays.push(child.pid as number);
+  // Read synchronously after spawn: the child is not reaped before the event
+  // loop turns, so its pid cannot have been reused yet.
+  stray(child.pid as number);
   const firstLine = new Promise<string>((resolveLine) =>
     child.stdout.once('data', (chunk) => resolveLine(String(chunk).trim())),
   );
@@ -85,7 +98,7 @@ describe.skipIf(!posix)('station-weight process tree ownership', () => {
       `${DETACH} process.stdout.write(detach() + '\\n'); setInterval(() => {}, 1000);`,
     );
     const childPid = Number(await firstLine);
-    strays.push(childPid);
+    stray(childPid);
     const root = identity(parent.pid as number);
     const before = ownedTree(processTable(), [root]);
     expect(before.map((row) => row.pid).sort()).toEqual(
@@ -104,12 +117,17 @@ describe.skipIf(!posix)('station-weight process tree ownership', () => {
 });
 
 describe.skipIf(!posix)('station-weight leftover detection', () => {
-  const runId = randomUUID();
-  const tagging = {
-    tags: [`STATION_WEIGHT_RUN=${runId}`],
-    excludeTags: [`CLAUDE_CONFIG_DIR=/control-${runId}`],
-  };
-  const tagged = { ...process.env, STATION_WEIGHT_RUN: runId };
+  const nonce = randomBytes(16).toString('hex');
+  const scratch = `/tmp/station-weight-test-${nonce}`;
+  const startedAtMs = Date.now();
+  const tagging = runTagging({
+    nonce,
+    scratch,
+    startedAtMs,
+    controlConfigDir: `/control-${nonce}`,
+  });
+  const tagged = { ...process.env, STATION_WEIGHT_RUN: nonce };
+  const idle = `process.stdout.write('ready\\n'); setInterval(() => {}, 1000);`;
 
   test('a double-forked daemon that left the tree before stop is a leftover', async () => {
     // The instance root starts a helper that detaches a daemon and exits, so
@@ -125,7 +143,7 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
       tagged,
     );
     const daemon = Number(await firstLine);
-    strays.push(daemon);
+    stray(daemon);
     await wait(200);
     const roots = [identity(root.pid as number)];
     const beforeStop = instanceSnapshot(processTable(), roots, tagging);
@@ -156,7 +174,7 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     );
     root.kill('SIGTERM');
     const spawnedDuringShutdown = await late;
-    strays.push(spawnedDuringShutdown);
+    stray(spawnedDuringShutdown);
     await exited(root);
     await wait(200);
     expect(alive(spawnedDuringShutdown)).toBe(true);
@@ -165,16 +183,74 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
   });
 
   test('a process carrying the control tag or no run tag is not a leftover', async () => {
-    const control = start(
-      `process.stdout.write('ready\\n'); setInterval(() => {}, 1000);`,
-      { ...tagged, CLAUDE_CONFIG_DIR: `/control-${runId}` },
-    );
-    const unrelated = start(
-      `process.stdout.write('ready\\n'); setInterval(() => {}, 1000);`,
-      { ...process.env, STATION_WEIGHT_RUN: `${runId}-other` },
-    );
+    const control = start(idle, {
+      ...tagged,
+      CLAUDE_CONFIG_DIR: `/control-${nonce}`,
+    });
+    const unrelated = start(idle, {
+      ...process.env,
+      STATION_WEIGHT_RUN: `${nonce}-other`,
+    });
     await Promise.all([control.firstLine, unrelated.firstLine]);
     expect(leftoverAfterStop([], processTable(), tagging)).toEqual([]);
+  });
+
+  test('a process naming the run tag only in its arguments is not the run', async () => {
+    // Every tag spelled as an argument, none in the environment: it must be
+    // neither selected nor signalled.
+    const impostor = start(idle, process.env, [
+      `STATION_WEIGHT_RUN=${nonce}`,
+      `HOME=${scratch}/user`,
+      `TMPDIR=${scratch}/tmp`,
+    ]);
+    // Positive control: the same process with the tag in its environment.
+    const genuine = start(idle, tagged);
+    await Promise.all([impostor.firstLine, genuine.firstLine]);
+    const table = processTable();
+    expect(taggedRows(table, tagging).map((row) => row.pid)).toEqual([
+      genuine.child.pid,
+    ]);
+    expect(leftoverAfterStop([], table, tagging).map((row) => row.pid)).toEqual(
+      [genuine.child.pid],
+    );
+  });
+
+  test('a tagged process that names the nonce in its arguments too is not the run', async () => {
+    // Not `--x=`: node would read a dashed argument after -e as its own option.
+    const both = start(idle, tagged, [`run=${nonce}`]);
+    await both.firstLine;
+    expect(taggedRows(processTable(), tagging)).toEqual([]);
+  });
+
+  test('a tagged process older than the run, or of another user, is not the run', async () => {
+    const { child, firstLine } = start(idle, tagged);
+    await firstLine;
+    const table = processTable();
+    const own = table.find((row) => row.pid === child.pid);
+    expect(own).toBeDefined();
+    expect(taggedRows(table, tagging).map((row) => row.pid)).toEqual([
+      child.pid,
+    ]);
+    // The run began after the process did.
+    expect(
+      taggedRows(
+        table,
+        runTagging({
+          nonce,
+          scratch,
+          startedAtMs: Date.now() + 10_000,
+        }),
+      ),
+    ).toEqual([]);
+    // The same row under another effective uid.
+    expect(
+      taggedRows(
+        table.map((row) =>
+          row.pid === child.pid ? { ...row, uid: row.uid + 1 } : row,
+        ),
+        tagging,
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -376,6 +452,15 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
   test('a complete run within budget exits 0', () => {
     const run = gate(complete());
     expect(run.stdout).toContain('GATE PASS');
+    expect(run.status).toBe(0);
+  });
+
+  test('a result without the report-only ready time exits 0', () => {
+    const result = complete();
+    delete result.metrics.serverReadyMs;
+    const run = gate(result);
+    expect(run.stdout).toContain('GATE PASS');
+    expect(run.stdout).not.toContain('not compared');
     expect(run.status).toBe(0);
   });
 

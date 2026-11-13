@@ -21,7 +21,8 @@ decomposes what reached it, and the
    repository whose `CLAUDE.md` and `AGENTS.md` each carry a unique marker,
    and builds an allowlisted environment: scratch `HOME`, `TMPDIR`,
    `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, telemetry off, `ANTHROPIC_BASE_URL`
-   pointing at the stub, and a `STATION_WEIGHT_RUN=<run id>` tag. Nothing
+   pointing at the stub, and a `STATION_WEIGHT_RUN=<nonce>` tag (a random
+   128-bit value, distinct from the run id). Nothing
    from the caller's agent session leaks in. The fixture commit runs git
    without any `GIT_*` variable, system config or global config, so a caller
    inside another checkout's hook cannot route it there.
@@ -52,7 +53,7 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
 | `idleWakeups` | Not measured: see [Gaps](#gaps). |
 | `idleContextSwitches` | Linux only: voluntary plus involuntary context switches over the same window, from `/proc`. This is a proxy, not wakeups. |
-| `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: survivors of the pre-stop tree, and any process carrying the run's environment, however it detached and whenever it started. They are then killed. |
+| `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: survivors of the pre-stop tree, and any process carrying the run's environment, however it detached. They are then killed. What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). |
 | `request.stationAddedTextBytes` | Text lines, blank lines included, in Station's first turn request that the control request lacks, sized from the text sent. |
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
@@ -66,17 +67,34 @@ Every turn is answered by the stub (`ok`). No real model is called.
   boot id on Linux), plus every descendant by parent pid. A root whose pid
   now belongs to another process contributes nothing.
 - *Environment.* Every process the instance starts inherits the run's
-  `HOME`, `TMPDIR` and `STATION_WEIGHT_RUN` tag. Same-user environments are
-  read from `ps -E` on macOS and `/proc/<pid>/environ` on Linux, so a
-  double-forked daemon or a child spawned during shutdown is found with no
-  ancestry at all. The control engine shares the environment but has its own
+  `HOME`, `TMPDIR` and `STATION_WEIGHT_RUN` nonce, so a double-forked daemon
+  or a child spawned during shutdown is found with no ancestry at all. Only
+  the environment counts, never the arguments. On Linux the entries of
+  `/proc/<pid>/environ` must match exactly. On macOS the environment is what
+  `ps -E` prints after the process's plain `ps` command line, and a process
+  whose two lines disagree is skipped. A process that names the nonce in its
+  arguments is excluded, because the nonce is only ever passed through the
+  environment. The process must also run as the same effective user and have
+  started after the run did, with 2 s of slack for whole-second birth times.
+  The control engine shares the environment but has its own
   `CLAUDE_CONFIG_DIR`, which excludes it. A run records which pre-stop
-  processes only ancestry found (`beforeStopUntagged`); on macOS that list
+  processes only ancestry found (`beforeStopUntagged`). On macOS that list
   was empty.
 
+On Linux each process is read from `/proc` alone: one `stat` read gives its
+parent, CPU, birth and RSS, and `status` gives its uid and context switches.
+`stat` is read again afterwards, and a process whose start ticks changed in
+between is dropped, so a reused pid never pairs one process's birth with
+another's parent. An environment read is likewise kept only if the pid still
+has the row's start ticks after it. On macOS one `ps` call reads every field
+of a process together.
+
 A process is signalled only after its birth token is read again and still
-matches, so a reused pid is never killed. A tree that is empty when sampled
-is `NOT_MEASURED`, never zero.
+matches, so a reused pid is never killed. The tests clean up the same way. A
+tree that is empty when sampled is `NOT_MEASURED`, never zero.
+
+A process that both leaves the tree and drops the run's environment is not
+found (see [Gaps](#gaps)).
 
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out
@@ -85,9 +103,13 @@ The basis is recorded with each value.
 
 **Control request.** The control is the same executable driven directly
 through the Agent SDK `query()`, with the same directory, environment and
-model, and with no Station. Lines are compared as a multiset after
-normalizing session ids and the per-request suffix of the version stamp. If
-the two runs report different Claude Code versions, the diff is not measured.
+model, and with no Station. Lines are compared as a multiset. Only one field
+is normalized: the per-request suffix of the version stamp in the
+`x-anthropic-billing-header` line (`cc_version=2.1.318.a25` against
+`.da9` in recorded runs). Session and device ids travel in `metadata`, which
+is not compared. Every other line and every tool definition is compared byte
+for byte. If the two runs report different Claude Code versions, the diff is
+not measured.
 
 **Sizes.** Sizes are UTF-8 bytes and Unicode code points. No tokenizer is
 applied, so the results contain no token counts or estimates.
@@ -160,16 +182,30 @@ revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
 - **Unready engine.** A memory sample that never settles, an engine that never
   reports ready, or a missing bundled binary makes the affected metrics
   `not_measured`, with the reason, and the run exits non-zero.
-- **Idle CPU of short-lived processes.** Sampling every 250 ms misses the CPU
-  a process uses after its last sample before it exits (at most one interval
-  per process) and any process that starts and exits between two samples.
-  The window rescans the environment only at its end, so a process that
-  detaches and exits inside the window is missed too. The gap is written
-  beside every CPU value (`idleCpuPercent.gap`).
+- **Idle CPU of short-lived processes.** The tree is read every 250 ms, but a
+  slow read stretches that: on a loaded host reads were 376–377 ms apart. Not
+  counted: the CPU a process uses after its last read before it exits, up to
+  the longest span observed between the start of one read and the end of the
+  next (`idleCpuPercent.maxReadSpanMs`), and any process that starts and exits
+  between two reads. The window follows ancestry and rescans the environment
+  only at its end, so a process that detaches and exits inside the window is
+  missed too. The gap, with the observed span, is written beside every CPU
+  value (`idleCpuPercent.gap`).
 - **Context switches** (Linux) count only processes alive at both ends of
   the window.
+- **A detached process without the run's environment.** A process that both
+  leaves the instance tree (for example by double-forking) and is started
+  with an environment that drops the run tag, `HOME` and `TMPDIR` (for
+  example `env: {}`) is not found after stop. Neither ancestry nor
+  environment ties it to the run. macOS has no subreaper or cgroup to follow
+  it. A process group or session can be left with `setsid`, and its id can be
+  reused once the group is gone. The gap is written beside the value
+  (`leftoverAfterStopMemoryBytes.gap`).
 
-None of these is ever zero or a pass.
+A gap that leaves a metric without a value makes it `NOT_MEASURED`, never
+zero or a pass. Sampled idle CPU and the leftover memory are different: the
+value is a lower bound that is still compared, so what the gaps above miss
+can let a run pass.
 
 ## Limits
 

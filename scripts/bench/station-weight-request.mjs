@@ -13,9 +13,6 @@
 
 const MCP_TOOL_NAME = /mcp__[A-Za-z0-9_-]+?__[A-Za-z0-9_-]+/g;
 const CLAUDE_CODE_VERSION = /cc_version=([0-9]+\.[0-9]+\.[0-9]+)/;
-const UUID =
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-const LONG_HEX = /\b[0-9a-f]{24,}\b/gi;
 const EXCERPT_CHARS = 160;
 
 const bytes = (text) => Buffer.byteLength(text, 'utf8');
@@ -123,14 +120,19 @@ export function summarizeRequest(body, requestBytes) {
 }
 
 /**
- * Session identifiers and the per-request suffix Claude Code appends to its
- * version stamp differ per request; they are not Station's contribution.
+ * The one text field known to differ between two requests that carry the
+ * same content: the billing header's version stamp, whose suffix after the
+ * Claude Code version changes per request (recorded runs:
+ * `x-anthropic-billing-header: cc_version=2.1.318.a25; cc_entrypoint=sdk-ts;`
+ * for Station against `cc_version=2.1.318.da9` for the control). Session and
+ * device ids travel in `metadata`, which is not compared. Every other line,
+ * and every tool definition, is compared byte for byte.
  */
+const BILLING_HEADER_VERSION =
+  /^(x-anthropic-billing-header: (?:.*; )?cc_version=[0-9]+\.[0-9]+\.[0-9]+)\.[^;\s]+(;|$)/;
+
 function normalizeLine(line) {
-  return line
-    .replace(UUID, '<uuid>')
-    .replace(LONG_HEX, '<hex>')
-    .replace(/(cc_version=[0-9]+\.[0-9]+\.[0-9]+)[^;\s]*/g, '$1');
+  return line.replace(BILLING_HEADER_VERSION, '$1$2');
 }
 
 /**
@@ -179,10 +181,11 @@ function lineReport(lines) {
 }
 
 /**
- * A tool definition as compared: its JSON with session ids normalized, so
- * the same definition in two runs compares equal.
+ * A tool definition as compared: its exact JSON. Recorded runs carry
+ * byte-identical definitions for every tool both requests share, so nothing
+ * in a definition is normalized away.
  */
-const toolKey = (tool) => normalizeLine(JSON.stringify(tool ?? null));
+const toolKey = (tool) => JSON.stringify(tool ?? null);
 
 /**
  * What Station's turn request carries beyond (and without) the control's.

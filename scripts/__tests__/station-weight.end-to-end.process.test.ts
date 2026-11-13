@@ -2,8 +2,13 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { runStationWeight } from '../bench/station-weight.mjs';
+import {
+  LEFTOVER_GAP,
+  runStationWeight,
+  signalIfSame,
+} from '../bench/station-weight.mjs';
 import { STATION_WEIGHT_BUDGETS } from '../bench/station-weight-budgets.mjs';
 
 const makeTempDir = trackTempDirs();
@@ -14,16 +19,12 @@ const BASELINE = JSON.parse(
     'utf8',
   ),
 );
-const strays: number[] = [];
+const strays: Array<{ pid: number; started: string }> = [];
 
+// The run is expected to have ended the daemon already; a pid reused since
+// is never signalled.
 afterEach(() => {
-  for (const pid of strays.splice(0)) {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // Already gone (the run is expected to have ended it).
-    }
-  }
+  signalIfSame(strays.splice(0), 'SIGKILL');
 });
 
 /**
@@ -46,7 +47,8 @@ function leakDuringShutdown(env: NodeJS.ProcessEnv) {
   return new Promise<number>((resolveDaemon) =>
     helper.stdout.once('data', (chunk) => {
       const pid = Number(String(chunk));
-      strays.push(pid);
+      const started = lookupProcessBirthFingerprint(pid);
+      if (started) strays.push({ pid, started });
       helper.once('exit', () => resolveDaemon(pid));
     }),
   );
@@ -102,6 +104,10 @@ describe.skipIf(!posix)('station-weight end to end', () => {
       ).toContain(leaked);
       expect(leftover.value).toBeGreaterThan(0);
       expect(leftover.killed).toContain(leaked);
+      expect(leftover.gap).toBe(LEFTOVER_GAP);
+      expect(result.metrics.idleCpuPercent.gap).toContain(
+        `up to ${Math.ceil(result.metrics.idleCpuPercent.maxReadSpanMs)} ms`,
+      );
 
       expect(result.repoRules).toMatchObject({ claudeMd: true });
       // Host-dependent budgets compare only against this host's own

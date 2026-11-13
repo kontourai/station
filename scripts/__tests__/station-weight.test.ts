@@ -8,17 +8,22 @@ import {
   hostFingerprintInputs,
   IDLE_CPU_GAP,
   idleCpuMetric,
-  linuxProcStat,
+  linuxProcessTable,
   ownedTree,
   parseFootprint,
+  parseProcStat,
   processTable,
   recordedRoots,
   restMetric,
+  runTagging,
+  sampleTreeCpu,
   signalIfSame,
+  taggedRows,
   withMemory,
 } from '../bench/station-weight.mjs';
 import {
   evaluateBudgets,
+  formatVerdicts,
   gateOutcome,
   recordBaseline,
   STATION_WEIGHT_BUDGETS,
@@ -76,6 +81,8 @@ function engineTurn({
   return {
     model: 'claude-sonnet-5-5',
     max_tokens: 1024,
+    // Where the engine sends its session id (recorded runs): not in any text.
+    metadata: { user_id: JSON.stringify({ session_id: sessionId }) },
     system: [
       {
         type: 'text' as const,
@@ -88,7 +95,6 @@ function engineTurn({
       {
         role: 'user' as const,
         content: [
-          { type: 'text' as const, text: `Session ${sessionId}` },
           {
             type: 'text' as const,
             text: ['Deferred tools:', 'WebFetch', ...extraLines].join('\n'),
@@ -186,7 +192,7 @@ describe('station-weight request analysis', () => {
     expect(control).toBeDefined();
     expect(station).toBeDefined();
     const diff = diffAgainstControl(station.body, control.body);
-    // Session ids and the per-request version suffix cancel out.
+    // Session ids (in metadata) and the per-request version suffix cancel out.
     expect(diff.addedText.excerpts).toEqual([
       'mcp__station-browser__browser_open',
       INJECTED,
@@ -250,6 +256,53 @@ describe('station-weight request diff blind spots', () => {
       expect.objectContaining({ name: 'Bash', growthBytes: 190_000 }),
     ]);
     expect(diff.addedToolDefinitionBytes).toBe(190_000);
+  });
+
+  test('a definition grown with hex text counts every byte it grew', () => {
+    // Hex runs and ids are not normalized inside a definition: a description
+    // growing from 32 to 190,000 hex characters is 189,968 bytes of growth.
+    const hex = (length: number) => 'a1'.repeat(length / 2);
+    const withBash = (description: string) => {
+      const turn = control();
+      turn.tools = turn.tools.map((tool) =>
+        tool.name === 'Bash' ? { ...tool, description } : tool,
+      );
+      return turn;
+    };
+    const diff = diffAgainstControl(withBash(hex(190_000)), withBash(hex(32)));
+    expect(diff.changedTools).toEqual([
+      expect.objectContaining({ name: 'Bash', growthBytes: 189_968 }),
+    ]);
+    expect(diff.addedToolDefinitionBytes).toBe(189_968);
+  });
+
+  test('a line differing only by an id or a hex run is Station text', () => {
+    const station = control();
+    const ours = `Station run ${crypto.randomUUID()} ${'f'.repeat(40)}`;
+    const theirs = `Station run ${crypto.randomUUID()} ${'0'.repeat(40)}`;
+    station.messages[0].content.push({ type: 'text' as const, text: ours });
+    const reference = control();
+    reference.messages[0].content.push({ type: 'text' as const, text: theirs });
+    const diff = diffAgainstControl(station, reference);
+    expect(diff.addedText.bytes).toBe(Buffer.byteLength(ours) + 1);
+    expect(diff.removedText.bytes).toBe(Buffer.byteLength(theirs) + 1);
+  });
+
+  test('only the billing header version suffix is normalized', () => {
+    const station = engineTurn({
+      sessionId: 's',
+      versionSuffix: 'f9e',
+      userText: 'hi',
+    });
+    expect(diffAgainstControl(station, control()).addedText.lineCount).toBe(0);
+    // The same stamp anywhere but the billing header is ordinary text.
+    station.messages[0].content.push({
+      type: 'text' as const,
+      text: 'cc_version=2.1.318.f9e',
+    });
+    expect(diffAgainstControl(station, control()).addedText.bytes).toBe(
+      'cc_version=2.1.318.f9e'.length + 1,
+    );
   });
 
   test('an unchanged tool set adds no definition bytes', () => {
@@ -418,6 +471,43 @@ describe('station-weight budgets', () => {
     expect(gateOutcome(result, verdicts).passed).toBe(true);
   });
 
+  test('ready time missing, unmeasured or non-finite never reaches the gate', () => {
+    const variants: Array<[string, (metrics: Record<string, Metric>) => void]> =
+      [
+        ['absent', (metrics) => delete metrics.serverReadyMs],
+        [
+          'not measured',
+          (metrics) => {
+            metrics.serverReadyMs = {
+              status: 'not_measured',
+              unit: 'ms',
+              reason: 'never ready',
+            };
+          },
+        ],
+        [
+          'not finite',
+          (metrics) => {
+            metrics.serverReadyMs.value = Number.NaN;
+          },
+        ],
+      ];
+    for (const [label, change] of variants) {
+      const result = resultAtBaseline();
+      change(result.metrics);
+      const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
+      expect(verdictOf(verdicts, 'serverReadyMs'), label).toBe('REPORTED');
+      expect(gateOutcome(result, verdicts), label).toMatchObject({
+        passed: true,
+        reasons: [],
+        comparedCount: 8,
+      });
+      expect(formatVerdicts(verdicts).join('\n'), label).toContain(
+        'REPORTED serverReadyMs',
+      );
+    }
+  });
+
   test('host budgets compare only against the same host fingerprint; request budgets compare everywhere', () => {
     const result = resultAtBaseline(OTHER_HOST);
     const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
@@ -510,11 +600,46 @@ describe('station-weight measured-nothing guards', () => {
         firstRows: [],
         endRows: [],
         exitedDuringWindow: 0,
+        maxReadSpanMs: 260,
       },
       250,
     );
     expect(metric).toMatchObject({ status: 'not_measured' });
-    expect(metric.gap).toBe(IDLE_CPU_GAP(250));
+    expect(metric.gap).toBe(
+      IDLE_CPU_GAP({ intervalMs: 250, maxReadSpanMs: 260 }),
+    );
+  });
+});
+
+describe('station-weight idle CPU gap', () => {
+  test('a slow read widens the stated gap to the span actually observed', async () => {
+    // Each read blocks for 150 ms against a 100 ms interval, as a loaded
+    // host's `ps` or /proc walk does: reads are 250 ms or more apart.
+    const row = {
+      pid: 1,
+      ppid: 0,
+      rssBytes: 0,
+      cpuSeconds: 0,
+      started: 'a',
+      command: 'node',
+    };
+    const slowSnapshot = () => {
+      const until = performance.now() + 150;
+      while (performance.now() < until);
+      return [row];
+    };
+    const sampled = await sampleTreeCpu(slowSnapshot, {
+      windowMs: 800,
+      intervalMs: 100,
+    });
+    expect(sampled.maxReadSpanMs).toBeGreaterThanOrEqual(250);
+    const metric = idleCpuMetric(sampled, 100);
+    expect(metric.maxReadSpanMs).toBe(sampled.maxReadSpanMs);
+    expect(metric.gap).toContain(
+      `up to ${Math.ceil(sampled.maxReadSpanMs)} ms per process`,
+    );
+    expect(metric.gap).not.toMatch(/up to 100 ms/);
+    expect(metric.gap).toContain('detaching inside the window');
   });
 });
 
@@ -685,31 +810,125 @@ describe('station-weight process identity', () => {
     expect(outcome).toEqual({ signalled: [8], skipped: [7] });
   });
 
-  test('Linux identity and CPU come from /proc, not the whole-second ps time', () => {
-    // utime 37 + stime 14 ticks at 100 Hz, start tick 123456 (fields 14, 15, 22).
-    const stat =
-      '4242 (node worker) S 1 4242 4242 0 -1 4194560 100 0 0 0 37 14 0 0 20 0 11 0 123456 1000 200';
-    expect(
-      linuxProcStat(4242, { readFile: () => stat, bootId: 'boot', hz: 100 }),
-    ).toEqual({ started: 'linux:boot:123456', cpuSeconds: 0.51 });
+  /** proc(5) stat line: ppid, utime, stime, start ticks and RSS pages. */
+  const statLine = (
+    pid: number,
+    { ppid = 1, utime = 0, stime = 0, start = 1000, rss = 0 } = {},
+  ) =>
+    `${pid} (node worker) S ${ppid} ${pid} ${pid} 0 -1 4194560 100 0 0 0 ${utime} ${stime} 0 0 20 0 11 0 ${start} 1000 ${rss}`;
+  const linux = (files: Record<string, string | string[]>, pids: number[]) => {
+    const reads = new Map<string, number>();
+    return {
+      readFile: (path: string) => {
+        const entry = files[path];
+        if (entry === undefined) throw new Error(`ENOENT ${path}`);
+        const index = reads.get(path) ?? 0;
+        reads.set(path, index + 1);
+        return Array.isArray(entry)
+          ? entry[Math.min(index, entry.length - 1)]
+          : entry;
+      },
+      listPids: () => pids,
+      bootId: 'boot',
+      hz: 100,
+      pageSize: 4096,
+      bootTimeSeconds: 1_700_000_000,
+    };
+  };
+  const STATUS =
+    'Name:\tnode\nUid:\t1000\t501\t501\t501\nvoluntary_ctxt_switches:\t7\nnonvoluntary_ctxt_switches:\t3\n';
+
+  test('Linux rows take parent, CPU, birth and RSS from one /proc stat read', () => {
+    expect(parseProcStat(statLine(4242, { utime: 37, stime: 14 }))).toEqual({
+      command: 'node worker',
+      ppid: 1,
+      ticks: 51,
+      startTicks: '1000',
+      rssPages: 0,
+    });
     const table = processTable(
-      () =>
-        '  4242     1  2048 00:00:00 Mon Nov  2 08:05:09 2026 node\n  4243     1  2048 00:00:00 Mon Nov  2 08:05:09 2026 gone\n',
+      () => {
+        throw new Error('ps is not consulted on Linux');
+      },
       {
         platform: 'linux',
-        procStat: (pid: number) =>
-          pid === 4242
-            ? { started: 'linux:boot:123456', cpuSeconds: 0.51 }
-            : null,
+        linux: linux(
+          {
+            '/proc/4242/stat': statLine(4242, {
+              ppid: 77,
+              utime: 37,
+              stime: 14,
+              start: 123456,
+              rss: 3,
+            }),
+            '/proc/4242/status': STATUS,
+          },
+          [4242, 4243],
+        ),
       },
     );
     expect(table).toEqual([
-      expect.objectContaining({
+      {
         pid: 4242,
-        started: 'linux:boot:123456',
+        ppid: 77,
+        uid: 501,
+        rssBytes: 3 * 4096,
         cpuSeconds: 0.51,
-      }),
+        started: 'linux:boot:123456',
+        startedAtMs: (1_700_000_000 + 1234.56) * 1000,
+        contextSwitches: 10,
+        command: 'node worker',
+      },
     ]);
+  });
+
+  test('a Linux pid reused between its stat and status reads is dropped', () => {
+    const table = linuxProcessTable(
+      linux(
+        {
+          // The first read saw one process; by the recheck the pid was reused.
+          '/proc/10/stat': [
+            statLine(10, { ppid: 99, start: 500 }),
+            statLine(10, { ppid: 1, start: 900 }),
+          ],
+          '/proc/10/status': STATUS,
+          '/proc/11/stat': statLine(11, { start: 600 }),
+          '/proc/11/status': STATUS,
+        },
+        [10, 11],
+      ),
+    );
+    expect(table.map((entry) => entry.pid)).toEqual([11]);
+  });
+
+  test('a Linux environment counts only while the pid keeps the row birth', () => {
+    const nonce = 'ab'.repeat(16);
+    const tagging = runTagging({
+      nonce,
+      scratch: '/tmp/station-weight-x',
+      startedAtMs: 1_700_000_000_000,
+      uid: 501,
+    });
+    const tableRow = {
+      ...row(10, 1, 'linux:boot:500'),
+      uid: 501,
+      startedAtMs: 1_700_000_005_000,
+    };
+    const tagged = (stat: string) =>
+      taggedRows([tableRow], tagging, {
+        platform: 'linux',
+        readFile: linux(
+          {
+            '/proc/10/environ': `PATH=/bin\0STATION_WEIGHT_RUN=${nonce}\0`,
+            '/proc/10/cmdline': 'node\0-e\0x\0',
+            '/proc/10/stat': stat,
+          },
+          [10],
+        ).readFile,
+      }).map((entry) => entry.pid);
+    expect(tagged(statLine(10, { start: 500 }))).toEqual([10]);
+    // The environment read belonged to whatever reused pid 10.
+    expect(tagged(statLine(10, { start: 900 }))).toEqual([]);
   });
 
   test('context switches count only processes read at both ends of the window', () => {
@@ -730,13 +949,15 @@ describe('station-weight process identity', () => {
   test('macOS birth tokens keep lstart day padding, matching the instance record', () => {
     const table = processTable(
       () =>
-        '  100     1  2048  0:01.50 Mon Nov  2 08:05:09 2026 /usr/bin/node\n',
+        '  100     1   501  2048  0:01.50 Mon Nov  2 08:05:09 2026 /usr/bin/node\n',
       { platform: 'darwin' },
     );
     expect(table).toEqual([
       expect.objectContaining({
         pid: 100,
+        uid: 501,
         started: 'Mon Nov  2 08:05:09 2026',
+        startedAtMs: Date.UTC(2026, 10, 2, 8, 5, 9),
         cpuSeconds: 1.5,
       }),
     ]);

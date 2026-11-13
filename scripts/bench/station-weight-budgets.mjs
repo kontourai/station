@@ -86,6 +86,16 @@ export function evaluateBudgets(result, baseline, { reportOnly = false } = {}) {
   checkSchema(baseline);
   return STATION_WEIGHT_BUDGETS.map((budget) => {
     const metric = result.metrics?.[budget.id];
+    // Report-only metrics are checked first: missing, unmeasured or at any
+    // value, they never reach the gate.
+    if (!compared(budget))
+      return metric?.status === 'measured' && Number.isFinite(metric.value)
+        ? { id: budget.id, verdict: 'REPORTED', value: metric.value }
+        : {
+            id: budget.id,
+            verdict: 'REPORTED',
+            reason: metric?.reason ?? 'metric absent from this run',
+          };
     if (metric?.status !== 'measured')
       return {
         id: budget.id,
@@ -94,8 +104,6 @@ export function evaluateBudgets(result, baseline, { reportOnly = false } = {}) {
       };
     if (!Number.isFinite(metric.value))
       throw new Error(`${budget.id} is measured but has no finite value`);
-    if (!compared(budget))
-      return { id: budget.id, verdict: 'REPORTED', value: metric.value };
     if (reportOnly)
       return { id: budget.id, verdict: 'NOT_COMPARED', value: metric.value };
     const reference = baselineValues(baseline, budget, result.host)?.[
@@ -212,7 +220,7 @@ export function recordBaseline(result, previous) {
 export function formatVerdicts(verdicts) {
   return verdicts.map((entry) => {
     const detail =
-      entry.verdict === 'NOT_MEASURED'
+      entry.verdict === 'NOT_MEASURED' || entry.value === undefined
         ? entry.reason
         : ['REPORTED', 'NOT_COMPARED'].includes(entry.verdict)
           ? `value=${round(entry.value)}`
