@@ -135,7 +135,9 @@ export function managedRuntimeCommand(installId: string): string {
 }
 
 /** The install id a managed-runtime command names, or undefined for any other command. */
-export function managedRuntimeInstallIdOf(command: unknown): string | undefined {
+export function managedRuntimeInstallIdOf(
+  command: unknown,
+): string | undefined {
   if (
     typeof command !== 'string' ||
     !command.startsWith(MANAGED_RUNTIME_COMMAND_PREFIX)
