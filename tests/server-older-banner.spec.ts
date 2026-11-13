@@ -3,6 +3,7 @@
  * at phone/desktop widths. SDK responses and connection/platform identity are
  * controlled inputs; the panel, confirmation and service-progress UI are real.
  */
+import { copyFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -298,12 +299,14 @@ for (const theme of ['light', 'dark'] as const) {
       ).toBeVisible();
       await expectNoHorizontalScroll(page);
       await page.screenshot({
-        path: resolve(
-          REPO_ROOT,
-          'gallery/diagnostics/ux-lane-e',
-          `installed-${theme}-${viewport}.png`,
-        ),
+        path: testInfo.outputPath(`installed-${theme}-${viewport}.png`),
       });
+      const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e');
+      mkdirSync(retained, { recursive: true });
+      copyFileSync(
+        testInfo.outputPath(`installed-${theme}-${viewport}.png`),
+        resolve(retained, `installed-${theme}-${viewport}.png`),
+      );
     });
   }
 }
