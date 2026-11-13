@@ -565,7 +565,8 @@ refusal; a request alone does not prove storage.
   earlier follow-ups are still waiting), the send is held and answered `202`
   with `data.outcome: "queued"` and the held `entry`. Otherwise it is sent at
   once, with the usual receipt. A send refused because the engine opened a turn
-  itself (`provider_turn_in_progress`) or is still starting
+  itself or is rewinding the conversation in place
+  (`provider_turn_in_progress`) or is still starting
   (`provider_session_starting`) can be held before its keyed dispatch begins.
   If the keyed dispatch has begun and is definitively refused, it closes that
   key: HTTP `409`, `success: false`, `code: "client_turn_settled"`, and the
