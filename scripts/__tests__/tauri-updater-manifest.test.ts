@@ -292,7 +292,7 @@ describe('the Tauri updater manifest (station#575)', () => {
   test.each(['0.1.4-preview.1', '0.1.4-rc.1'])(
     'refuses a suffixed %s tagged-feed version',
     (version) => {
-      const directory = mkdtempSync(join(tmpdir(), 'station-updater-order-'));
+      const directory = tempDir('station-updater-order-');
       const candidatePath = join(directory, 'candidate.json');
       const currentPath = join(directory, 'current.json');
       writeFileSync(candidatePath, JSON.stringify({ version }));
