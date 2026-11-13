@@ -1,0 +1,25 @@
+{
+  "revision": "1379c85e9bf929eb0ab0eef41fa1969d48128682",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Stale only because docs/architecture/module-map.md changed. That change adds Grok's _x.ai/ask_user_question to the module map's Harness question interaction paragraph. Searched this page for harness-question, AskUserQuestion, requestUserInput and ask_question claims: none; it links the module map for other modules, whose rows are unchanged. No prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}
