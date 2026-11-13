@@ -96,8 +96,10 @@ host paths, session ids and private agent names, are the repository fixtures
 
 grok 1.0.77 (`grok agent stdio`) was run signed in on 2026-11-13, with a
 background command, a background subagent, a monitor (with a wake cancelled
-mid-run), an MCP server Station passed that fails, and a model question
-answered, declined and refused. The
+mid-run), an MCP server Station passed that fails, a model question
+answered, declined and refused, a rewind previewed and applied, a fork at a
+prompt loaded in a new process, and an MCP server removed and passed again.
+The
 frames, scrubbed of host paths, ids and private names, are
 `src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl`.
 
@@ -106,12 +108,12 @@ frames, scrubbed of host paths, ids and private names, are
   `grok-build`. Grok lists no extension methods, so its rows are
   `undeclared-engine`.
 - **Child work is the engine's.** ACP has no subagent concept, so the ACP
-  capability cell for subagent observability is now `declared`, and the
-  adapter decides per session from the handshake: a variant listed in
-  `ACP_CHILD_WORK_REPORTERS` reports, and any other session states
-  `not-reported` once at start. The `child-work` consumer is implemented.
-  Kiro's two child-work rows carry `pending` (test-vector evidence only, and
-  tool-call `_meta` kinds are not dispatched), so they still bind nothing.
+  capability cell for subagent observability is `declared`, and the adapter
+  decides per session from the handshake which subagent wires it reads
+  (`acpSubagentWires` in `acp-child-work.ts`): Kiro's roster and
+  `agent-subtask` wires, and Grok's background-task and subagent-lifecycle
+  wires keyed on `_meta.grokShell`. A session whose handshake names none
+  states `not-reported` once at start.
 - **One frame, several facts.** A row may name `also` consumers it feeds.
   Grok's `turn_completed` ends a turn and states that turn's cost, so its row
   is `session.turn-boundary` with `also` `usage.reported-cost`. A row runs
@@ -129,6 +131,18 @@ frames, scrubbed of host paths, ids and private names, are
   session-scoped frame naming another session than its process's own.
 - `_x.ai/ask_user_question` is a reviewed inbound request, answered from the
   person's choice.
+- **Rewind and fork name a prompt by index.** Grok declares neither, so both
+  are keyed on its handshake identity (`acp-session-actions.ts`). Its points
+  are one per client prompt (none for a wake or a steer), so a Station turn
+  is located by counting back from the last point, and checked against the
+  point's `prompt_preview` before anything is sent. A rewind is a dry run
+  (`force: false`) first; files changed outside the engine since then fail
+  it rather than being overwritten. A fork copies through the named prompt,
+  inclusive.
+- **MCP reconnect replaces the list.** Grok's one MCP call replaces the
+  servers the client passed, so reconnecting one sends the list without it,
+  then with it. A server taken out reports `unavailable` `config_removed`,
+  read as `disabled`, not `failed`.
 
 What Station leaves unbound, and why, is listed in
 [the ACP guide](../guides/acp.md#grok-extensions-station-does-not-support).

@@ -323,14 +323,20 @@ function kasMcpServer(entry: unknown): EngineMcpServerStatus | undefined {
 
 /**
  * Grok `_x.ai/mcp/server_status` states, as observed (grok 1.0.77): a server
- * that came up is `ready`; one whose handshake or restart failed is
- * `unavailable` with a `reason` and `detail`. A state not observed maps to
- * nothing, so an unknown one is never guessed.
+ * coming up is `initializing`, one that came up is `ready`, and one whose
+ * handshake or restart failed is `unavailable` with a `reason` and
+ * `detail`. A server the client's list no longer names is `unavailable`
+ * with reason `config_removed`: taken out, not broken
+ * ({@link GROK_MCP_REMOVED_REASON}). A state not observed maps to nothing,
+ * so an unknown one is never guessed.
  */
 const GROK_MCP_STATES: Readonly<Record<string, EngineMcpServerState>> = {
+  initializing: 'starting',
   ready: 'ready',
   unavailable: 'failed',
 };
+/** The `unavailable` reason Grok gives a server taken out of the client's list. */
+const GROK_MCP_REMOVED_REASON = 'config_removed';
 
 /** Grok's `costUsdTicks`: 10^10 ticks to the US dollar (live: 91,782,320 ticks = $0.009178232). */
 const GROK_COST_TICKS_PER_USD = 1e10;
@@ -771,10 +777,14 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
   },
   'grok.mcp-server-status': (params, ctx) => {
     const name = mcpServerName(params.name);
-    const state =
+    const reported =
       typeof params.status === 'string'
         ? GROK_MCP_STATES[params.status]
         : undefined;
+    const state =
+      reported === 'failed' && params.reason === GROK_MCP_REMOVED_REASON
+        ? 'disabled'
+        : reported;
     if (!name || !state) return;
     const error =
       state === 'failed'

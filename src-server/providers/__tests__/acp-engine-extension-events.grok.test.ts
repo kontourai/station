@@ -180,6 +180,62 @@ describe('Grok MCP server status', () => {
       events.filter((event) => event.method === 'engine-mcp.status'),
     ).toEqual([]);
   });
+
+  test('a reconnect takes the server out (disabled, not failed), then starts it again', () => {
+    const { notify, of } = harness({ mcpServers: [{ name: 'probe-broken' }] });
+    for (const msg of capture('mcp-reconnect'))
+      if (msg.method === '_x.ai/mcp/server_status')
+        notify(msg.method, msg.params);
+    const probe = of('engine-mcp.status')
+      .flatMap((event) => event.servers)
+      .filter((server) => server.name === 'probe-broken');
+    expect(probe).toEqual([
+      { name: 'probe-broken', state: 'disabled', scope: 'session' },
+      { name: 'probe-broken', state: 'starting', scope: 'session' },
+    ]);
+  });
+});
+
+describe('MCP server secrets in a published extension payload', () => {
+  test('env and header values are redacted; names, and a list without them, are kept', () => {
+    const { notify, of } = harness();
+    notify('_x.ai/mcp/servers_updated', {
+      sessionId: 's',
+      mcpServers: [
+        {
+          name: 'docs',
+          command: 'docs-mcp',
+          env: [{ name: 'DOCS_TOKEN', value: 'secret-env-value' }],
+          headers: [{ name: 'Authorization', value: 'Bearer secret-header' }],
+        },
+        { name: 'map', env: { MAP_KEY: 'secret-map-value' } },
+      ],
+    });
+    const [published] = of('extension.notification');
+    expect(JSON.stringify(published)).not.toMatch(/secret-/);
+    expect(published?.payload).toEqual({
+      sessionId: 's',
+      mcpServers: [
+        {
+          name: 'docs',
+          command: 'docs-mcp',
+          env: [{ name: 'DOCS_TOKEN', value: '[redacted]' }],
+          headers: [{ name: 'Authorization', value: '[redacted]' }],
+        },
+        { name: 'map', env: { MAP_KEY: '[redacted]' } },
+      ],
+    });
+    // The live list (no env) is published as the engine sent it.
+    const live = capture('fork-at-prompt').find(
+      (msg) => msg.method === '_x.ai/mcp/servers_updated',
+    );
+    expect(live).toBeDefined();
+    const other = harness();
+    other.notify(live!.method!, live!.params);
+    const forwarded = other.of('extension.notification');
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]?.payload).toEqual(live!.params);
+  });
 });
 
 describe('Grok turn cost', () => {

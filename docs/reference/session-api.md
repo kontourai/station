@@ -1974,8 +1974,13 @@ missing, empty or over 1,024 characters, or any other body key, is refused
 | `failed` | the engine's own refusal or error, with its message; or no answer within 30 seconds. Then nothing is marked rewound yet, and another rewind is refused `rewind-pending` until the engine answers or 5 more minutes pass. A late success with no turn since, within 5 minutes, is recorded as a rewind (the marker and rewound turns appear then); any other late success, or an engine process that exits or is relaunched with the request unanswered (not a requested stop, which is only logged), is a `runtime.warning` `acp.session-rewound-late`, drawn as its own marker row with nothing marked |
 
 A refusal sends nothing to the engine. Today only the ACP adapter declares a
-rewind, for an engine whose handshake declares it (Kiro's agent service; see
-[ACP](../guides/acp.md#engine-session-actions)).
+rewind, for an engine whose handshake declares it (Kiro's agent service, and
+Grok Build by its handshake identity; see
+[ACP](../guides/acp.md#engine-session-actions)). On Grok, `failed` also covers
+what Station checks before applying anything: the engine's rewind points not
+lining up with the turns, and files changed outside the engine since that
+turn, which a rewind would overwrite. The message names them, and nothing is
+changed.
 
 ### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
 

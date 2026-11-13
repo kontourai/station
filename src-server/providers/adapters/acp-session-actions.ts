@@ -5,6 +5,13 @@
  * a static claim about "ACP": the ACP adapter runs many engines, so its
  * adapter-level continuity stays `none` and these are per-session
  * observations ({@link acpSessionContinuity}).
+ *
+ * Engines name their rewind and fork points two ways. Kiro names a turn by
+ * the id it assigned the turn's user message; Grok Build names it by the
+ * prompt's index in the conversation (0-based, one per prompt the client
+ * sent: a wake turn or a steer gets none), listed by `x.ai/rewind/points`.
+ * Each binding says which, and the adapter resolves a Station turn to that
+ * point.
  */
 
 import {
@@ -51,15 +58,45 @@ function sessionCapability(
  * and everything after it from the model and restores files write tools
  * changed in that range.
  */
-const REWIND_BINDINGS = [
+const REWIND_BINDINGS: ReadonlyArray<
   {
-    namespace: 'kiro',
-    flag: 'checkpoints',
+    gate:
+      | { namespace: string; flag: string }
+      | { identity: AcpHandshakeIdentity };
+    evidence: string;
+  } & AcpRewindTarget
+> = [
+  {
+    gate: { namespace: 'kiro', flag: 'checkpoints' },
+    target: 'message-id',
     method: '_kiro/checkpoint/revertMultiple',
     evidence:
       'kiro-cli 3.3.0 `acp --agent-engine v3` live probe (2026-11-13): {sessionId, messageId} -> {success: true, affectedFiles: [], totalFiles: 0}; kirocrew acp/types.py METHOD_KAS_CHECKPOINT_REVERT',
   },
-] as const;
+  {
+    // Grok Build declares no rewind at `initialize`; its handshake identity
+    // is the key. `x.ai/rewind/execute {sessionId, targetPromptIndex, force,
+    // mode}` restores the state from before that prompt: `force: false` is a
+    // dry run naming the files it would restore and any changed outside the
+    // engine since (`conflicts`); `force: true` applies it, overwriting
+    // those. Its answer is `{success, reverted_files, conflicts, error}`.
+    gate: { identity: { initializeMetaFlag: 'grokShell' } },
+    target: 'prompt-index',
+    method: '_x.ai/rewind/execute',
+    pointsMethod: '_x.ai/rewind/points',
+    evidence:
+      'grok 1.0.77 live capture (grok-1.0.77-session-frames.jsonl `rewind-preview-commit`): points list one entry per client prompt (none for a wake or an interject); force:false answered success:false with clean_files and no conflicts; force:true answered success:true reverted_files and removed the file. xai-org/grok-build session/acp_session_impl/rewind.rs',
+  },
+];
+
+/**
+ * How a session's engine names the point a rewind or fork is taken at:
+ * `message-id` (the engine's id for a turn's user message) or
+ * `prompt-index` (the prompt's 0-based index, read from `pointsMethod`).
+ */
+export type AcpRewindTarget =
+  | { target: 'message-id'; method: string }
+  | { target: 'prompt-index'; method: string; pointsMethod: string };
 
 /**
  * Fork at a user message: core `session/fork` with the fork point in the
@@ -69,20 +106,26 @@ const REWIND_BINDINGS = [
  */
 const FORK_AT_MESSAGE_NAMESPACES = ['kiro'] as const;
 
-export interface AcpRewindBinding {
-  readonly method: string;
-  readonly evidence: string;
+export type AcpRewindBinding = AcpRewindTarget & { readonly evidence: string };
+
+function gateOpen(
+  handshake: Handshake | null | undefined,
+  gate:
+    | { namespace: string; flag: string }
+    | { identity: AcpHandshakeIdentity },
+): boolean {
+  if ('identity' in gate)
+    return !!handshake && matchesAcpHandshakeIdentity(handshake, gate.identity);
+  return vendorFlag(handshake, gate.namespace, gate.flag);
 }
 
 export function resolveAcpRewind(
   handshake: Handshake | null | undefined,
 ): AcpRewindBinding | undefined {
-  const binding = REWIND_BINDINGS.find(({ namespace, flag }) =>
-    vendorFlag(handshake, namespace, flag),
-  );
-  return binding
-    ? { method: binding.method, evidence: binding.evidence }
-    : undefined;
+  const binding = REWIND_BINDINGS.find(({ gate }) => gateOpen(handshake, gate));
+  if (!binding) return undefined;
+  const { gate: _gate, ...rest } = binding;
+  return rest;
 }
 
 /** Bound on one restored path the engine reports; a longer one is dropped. */
@@ -90,9 +133,10 @@ const REWIND_PATH_MAX_CHARS = 4096;
 
 /**
  * The engine's answer to a rewind: `{success, affectedFiles?, message?}`
- * (live: `{success: true, affectedFiles: [], totalFiles: 0}`). `affectedFiles`
- * is read only when it is an array: its count is the array's length, and at
- * most `pathsMax` of its string entries are kept. Anything else is not a
+ * (Kiro, live: `{success: true, affectedFiles: [], totalFiles: 0}`) or
+ * `{success, reverted_files?, error?}` (Grok, live). The restored files are
+ * read only when they are an array: their count is the array's length, and
+ * at most `pathsMax` of the string entries are kept. Anything else is not a
  * success.
  */
 export function readAcpRewindAnswer(
@@ -102,14 +146,16 @@ export function readAcpRewindAnswer(
   | { success: true; affectedFiles?: { count: number; paths: string[] } }
   | { success: false; message?: string } {
   if (!isRecord(result) || result.success !== true) {
+    const said = isRecord(result)
+      ? (result.message ?? result.error)
+      : undefined;
     const message =
-      isRecord(result) && typeof result.message === 'string'
-        ? result.message.slice(0, 1024)
-        : undefined;
+      typeof said === 'string' && said ? said.slice(0, 1024) : undefined;
     return { success: false, ...(message ? { message } : {}) };
   }
-  if (!Array.isArray(result.affectedFiles)) return { success: true };
-  const paths = result.affectedFiles
+  const restored = result.affectedFiles ?? result.reverted_files;
+  if (!Array.isArray(restored)) return { success: true };
+  const paths = restored
     .filter(
       (path): path is string =>
         typeof path === 'string' &&
@@ -119,12 +165,76 @@ export function readAcpRewindAnswer(
     .slice(0, pathsMax);
   return {
     success: true,
-    affectedFiles: { count: result.affectedFiles.length, paths },
+    affectedFiles: { count: restored.length, paths },
   };
 }
 
+/** Bound on the rewind points one answer is read for. */
+const REWIND_POINTS_MAX = 10_000;
+const REWIND_PREVIEW_MAX_CHARS = 1024;
+
+/**
+ * `x.ai/rewind/points` as the engine's prompts in order: `{rewind_points:
+ * [{prompt_index, prompt_preview?}]}`. Read only when the indexes run
+ * 0..n-1 in order, each once, since a turn is located by counting back from
+ * the last; anything else is unreadable (`undefined`).
+ */
+export function readAcpRewindPoints(
+  result: unknown,
+): Array<{ index: number; preview?: string }> | undefined {
+  if (!isRecord(result) || !Array.isArray(result.rewind_points))
+    return undefined;
+  const points = result.rewind_points;
+  if (points.length > REWIND_POINTS_MAX) return undefined;
+  const read: Array<{ index: number; preview?: string }> = [];
+  for (const [position, point] of points.entries()) {
+    if (!isRecord(point) || point.prompt_index !== position) return undefined;
+    const preview =
+      typeof point.prompt_preview === 'string' &&
+      point.prompt_preview.length <= REWIND_PREVIEW_MAX_CHARS
+        ? point.prompt_preview
+        : undefined;
+    read.push({ index: position, ...(preview ? { preview } : {}) });
+  }
+  return read;
+}
+
+/**
+ * Whether a point's preview is the start of `promptText`. The engine cuts a
+ * long prompt and marks the cut with `...`; a point with no preview, or a
+ * turn with no text, cannot be checked and does not match.
+ */
+export function acpRewindPointMatches(
+  point: { preview?: string },
+  promptText: string | undefined,
+): boolean {
+  if (!point.preview || !promptText) return false;
+  const preview = point.preview.endsWith('...')
+    ? point.preview.slice(0, -3)
+    : point.preview;
+  const text = promptText.trim();
+  return preview.length > 0 && text.startsWith(preview.trim());
+}
+
+/**
+ * A rewind dry run's answer: the files changed outside the engine since the
+ * point (`conflicts[{path}]`), which applying it would overwrite. An answer
+ * without a `conflicts` array is unreadable (`undefined`).
+ */
+export function readAcpRewindConflicts(result: unknown): string[] | undefined {
+  if (!isRecord(result) || !Array.isArray(result.conflicts)) return undefined;
+  return result.conflicts
+    .map((conflict) => (isRecord(conflict) ? conflict.path : undefined))
+    .filter(
+      (path): path is string =>
+        typeof path === 'string' &&
+        path.length > 0 &&
+        path.length <= REWIND_PATH_MAX_CHARS,
+    );
+}
+
 /** The `_meta` namespace the fork point goes under, when native fork-at-message is declared. */
-export function resolveAcpForkAtMessage(
+function resolveAcpForkAtMessage(
   handshake: Handshake | null | undefined,
 ): string | undefined {
   const fork = sessionCapability(handshake, 'fork');
@@ -138,6 +248,51 @@ export function resolveAcpForkAtMessage(
 }
 
 /**
+ * Fork at a prompt index: Grok Build's `x.ai/session/fork {sourceSessionId,
+ * sourceCwd, newCwd, targetPromptIndex}` copies the conversation through
+ * that prompt, inclusive, into a new session it answers as `newSessionId`,
+ * which a later `session/load` opens. Not declared at `initialize`, so keyed
+ * on the handshake identity.
+ */
+const FORK_AT_PROMPT_INDEX_ENGINES: ReadonlyArray<{
+  identity: AcpHandshakeIdentity;
+  method: string;
+  evidence: string;
+}> = [
+  {
+    identity: { initializeMetaFlag: 'grokShell' },
+    method: '_x.ai/session/fork',
+    evidence:
+      'grok 1.0.77 live capture (grok-1.0.77-session-frames.jsonl `fork-at-prompt`): a fork at index 0 of a two-prompt session loaded with one rewind point, at index 1 with two. xai-org/grok-build session/storage/jsonl/copy.rs ("the cut keeps the target prompt inclusive")',
+  },
+];
+
+/** How this session's engine forks after a turn, when it can. */
+export type AcpForkBinding =
+  | { kind: 'core-meta'; namespace: string }
+  | { kind: 'prompt-index'; method: string; pointsMethod: string };
+
+export function resolveAcpFork(
+  handshake: Handshake | null | undefined,
+): AcpForkBinding | undefined {
+  const namespace = resolveAcpForkAtMessage(handshake);
+  if (namespace) return { kind: 'core-meta', namespace };
+  const engine = handshake
+    ? FORK_AT_PROMPT_INDEX_ENGINES.find(({ identity }) =>
+        matchesAcpHandshakeIdentity(handshake, identity),
+      )
+    : undefined;
+  // The fork point is read from the same points list a rewind reads.
+  const rewind = resolveAcpRewind(handshake);
+  if (!engine || rewind?.target !== 'prompt-index') return undefined;
+  return {
+    kind: 'prompt-index',
+    method: engine.method,
+    pointsMethod: rewind.pointsMethod,
+  };
+}
+
+/**
  * This live session's continuity, as its own handshake declares it. Rewind
  * and fork are `none` unless the binding above applies.
  */
@@ -146,7 +301,7 @@ export function acpSessionContinuity(handshake: Handshake | null | undefined): {
   rewind: 'in-place' | 'none';
 } {
   return {
-    fork: resolveAcpForkAtMessage(handshake) ? 'native' : 'none',
+    fork: resolveAcpFork(handshake) ? 'native' : 'none',
     rewind: resolveAcpRewind(handshake) ? 'in-place' : 'none',
   };
 }
@@ -170,34 +325,56 @@ export function readAcpUserMessageId(update: unknown): string | undefined {
 }
 
 /**
- * Reconnect one MCP server the engine runs. Kiro's agent service answers
- * `_kiro/mcp/resetServer {sessionId, serverName, startOAuth}` without listing
- * it in `extensionMethods`; with `startOAuth: true` it keeps its OAuth
- * callback listener open for the attempt and sends the consent link as
- * `_kiro/openExternalUrl`. A server the session did not declare is refused
- * `-32602` naming it.
+ * Reconnect one MCP server the engine runs, two ways:
+ *
+ * - `reset-server`: Kiro's agent service answers `_kiro/mcp/resetServer
+ *   {sessionId, serverName, startOAuth}` without listing it in
+ *   `extensionMethods`; with `startOAuth: true` it keeps its OAuth callback
+ *   listener open for the attempt and sends the consent link as
+ *   `_kiro/openExternalUrl`. A server the session did not declare is refused
+ *   `-32602` naming it.
+ * - `replace-list`: Grok Build's `x.ai/session/update_mcp_servers
+ *   {sessionId, mcpServers}` replaces the servers the client passed. Sent
+ *   once without the server and once with the session's list again, it
+ *   stops and restarts that one server (live: `unavailable`
+ *   `config_removed`, then `initializing` `config_added`). Only a server
+ *   Station passed can be reconnected so; it has no OAuth step.
  */
 const MCP_RECONNECT_ENGINES: ReadonlyArray<{
   identity: AcpHandshakeIdentity;
+  kind: 'reset-server' | 'replace-list';
   method: string;
   vendor: string;
   evidence: string;
 }> = [
   {
     identity: { capabilityMetaNamespace: 'kiro' },
+    kind: 'reset-server',
     method: '_kiro/mcp/resetServer',
     vendor: 'Kiro',
     evidence:
       'kirocrew acp/types.py METHOD_KAS_MCP_RESET_SERVER; kiro-cli 3.3.0 v3 live probe (2026-11-13): an undeclared server answers -32602 McpServerNotDeclaredError',
   },
+  {
+    identity: { initializeMetaFlag: 'grokShell' },
+    kind: 'replace-list',
+    method: '_x.ai/session/update_mcp_servers',
+    vendor: 'Grok Build',
+    evidence:
+      'grok 1.0.77 live capture (grok-1.0.77-session-frames.jsonl `mcp-reconnect`): update without the server -> {ok: true} and server_status unavailable config_removed; with it again -> {ok: true} and server_status initializing config_added',
+  },
 ];
 
 export function resolveAcpMcpReconnect(
   handshake: AcpIdentityHandshake | null | undefined,
-): { method: string; vendor: string } | undefined {
+):
+  | { kind: 'reset-server' | 'replace-list'; method: string; vendor: string }
+  | undefined {
   if (!handshake) return undefined;
   const engine = MCP_RECONNECT_ENGINES.find(({ identity }) =>
     matchesAcpHandshakeIdentity(handshake, identity),
   );
-  return engine ? { method: engine.method, vendor: engine.vendor } : undefined;
+  return engine
+    ? { kind: engine.kind, method: engine.method, vendor: engine.vendor }
+    : undefined;
 }

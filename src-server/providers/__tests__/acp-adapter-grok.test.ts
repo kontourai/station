@@ -69,7 +69,12 @@ function renamed<T>(value: T, from: string, to: string): T {
 }
 
 async function startGrokSession(
-  options: { grok?: boolean; unattended?: boolean } = {},
+  options: {
+    grok?: boolean;
+    unattended?: boolean;
+    /** MCP servers Station passes the session (as an agent's tool servers). */
+    toolServers?: Array<{ id: string; command: string }>;
+  } = {},
 ) {
   let proc: FakeAcpProcess | undefined;
   const exits = new EventEmitter();
@@ -119,6 +124,19 @@ async function startGrokSession(
           }
         : {}),
     },
+    ...(options.toolServers
+      ? {
+          agent: {
+            slug: 'grok-agent',
+            toolServers: options.toolServers.map(({ id, command }) => ({
+              id,
+              transport: 'stdio' as const,
+              command,
+              args: [],
+            })),
+          },
+        }
+      : {}),
   });
   if (!proc?.client || !proc.sessionId)
     throw new Error('adapter did not build a Client and session');
@@ -835,6 +853,362 @@ describe('a failed prompt names the engine’s own reason', () => {
           'Internal error: API error (status 400 Bad Request): invalid_request_error: probe',
       }),
     ]);
+    await session.stop();
+  });
+});
+
+/**
+ * The capture's client requests (`method`, `params`) with the answer the
+ * live engine gave each, in the order they were sent.
+ */
+function liveExchanges(
+  capture: string,
+): Array<{ method: string; params: any; result: unknown }> {
+  const entries = readFileSync(
+    new URL(`../../../${GROK_LIVE_CAPTURE}`, import.meta.url),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.capture === capture);
+  const answers = new Map(
+    entries
+      .filter((entry) => entry.dir === 'E->C' && entry.msg.method === undefined)
+      .map((entry) => [entry.msg.id, entry.msg.result]),
+  );
+  return entries
+    .filter((entry) => entry.dir === 'C->E' && entry.msg.method)
+    .map((entry) => ({
+      method: entry.msg.method,
+      params: entry.msg.params,
+      result: answers.get(entry.msg.id),
+    }));
+}
+
+/** The live answers to `method` in `capture`, in order. */
+function liveAnswers(capture: string, method: string): unknown[] {
+  return liveExchanges(capture)
+    .filter((exchange) => exchange.method === method)
+    .map((exchange) => exchange.result);
+}
+
+/** The prompt texts the live capture sent, in order. */
+function livePrompts(capture: string): string[] {
+  return liveExchanges(capture)
+    .filter((exchange) => exchange.method === 'session/prompt')
+    .map((exchange) => exchange.params.prompt[0].text);
+}
+
+/** Run one Station turn the engine reports starting, as Grok does, and end it. */
+async function grokTurn(
+  session: Awaited<ReturnType<typeof startGrokSession>>,
+  input: string,
+  enginePromptId: string,
+): Promise<string> {
+  const turn = await session.adapter.sendTurn({
+    threadId: session.threadId,
+    input,
+  });
+  await session.agent.notify('_x.ai/queue/changed', {
+    sessionId: session.sessionId,
+    entries: [],
+    runningPromptId: enginePromptId,
+  });
+  await settle();
+  session.proc.resolvePrompt('end_turn');
+  await settle();
+  return turn.turnId;
+}
+
+describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
+  const capture = 'rewind-preview-commit';
+  const [points, ,] = liveAnswers(capture, '_x.ai/rewind/points');
+  const [preview, commit] = liveAnswers(capture, '_x.ai/rewind/execute');
+  const prompts = livePrompts(capture);
+
+  /** Three Station turns sent as the live session sent them. */
+  async function threeTurns(inputs = prompts.slice(0, 3)) {
+    const session = await startGrokSession();
+    const turns: string[] = [];
+    for (const [position, input] of inputs.entries())
+      turns.push(await grokTurn(session, input, `prompt-${position}`));
+    return { session, turns };
+  }
+
+  /** Answer each extension request with the next live answer for its method. */
+  function answerLive(
+    session: Awaited<ReturnType<typeof startGrokSession>>,
+    byMethod: Record<string, unknown[]>,
+  ) {
+    const queues = Object.fromEntries(
+      Object.entries(byMethod).map(([method, list]) => [method, [...list]]),
+    );
+    session.proc.extMethodHandler = (method) => {
+      const next = queues[method]?.shift();
+      if (next === undefined) throw new Error(`no live answer for ${method}`);
+      return next;
+    };
+  }
+
+  test('a Grok session declares rewind in place and native fork; another engine neither', async () => {
+    const grok = await startGrokSession();
+    expect(grok.adapter.sessionContinuity(grok.threadId)).toEqual({
+      live: true,
+      fork: 'native',
+      rewind: 'in-place',
+    });
+    await grok.stop();
+    const other = await startGrokSession({ grok: false });
+    expect(other.adapter.sessionContinuity(other.threadId)).toEqual({
+      live: true,
+      fork: 'none',
+      rewind: 'none',
+    });
+    await other.stop();
+  });
+
+  test('a rewind names the turn by its prompt index, previews, then applies', async () => {
+    const { session, turns } = await threeTurns();
+    answerLive(session, {
+      '_x.ai/rewind/points': [points],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    const outcome = await session.adapter.rewindSession(
+      session.threadId,
+      turns[1]!,
+    );
+    expect(outcome).toEqual({
+      kind: 'rewound',
+      beforeTurnId: turns[1],
+      hiddenTurnIds: [turns[1], turns[2]],
+      affectedFiles: { count: 1, paths: ['two.txt'] },
+    });
+    expect(
+      session.proc.extMethodCalls.map(({ method, params }) => [
+        method,
+        params.targetPromptIndex,
+        params.force,
+      ]),
+    ).toEqual([
+      ['_x.ai/rewind/points', undefined, undefined],
+      ['_x.ai/rewind/execute', 1, false],
+      ['_x.ai/rewind/execute', 1, true],
+    ]);
+    // The ledger is cut: the hidden turns are no longer rewind points.
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[2]!),
+    ).toEqual({ kind: 'refused', reason: 'unknown-turn' });
+    await session.stop();
+  });
+
+  test('a wake between turns is no rewind point, so the turns still line up', async () => {
+    const session = await startGrokSession();
+    const first = await grokTurn(session, prompts[0]!, 'prompt-0');
+    const second = await grokTurn(session, prompts[1]!, 'prompt-1');
+    // The engine wakes itself: a provider turn, not a client prompt.
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'task-completed-1',
+    });
+    await settle();
+    await session.agent.notify('_x.ai/session_notification', {
+      sessionId: session.sessionId,
+      update: {
+        sessionUpdate: 'turn_completed',
+        prompt_id: 'task-completed-1',
+        stop_reason: 'end_turn',
+      },
+    });
+    await settle();
+    const third = await grokTurn(session, prompts[2]!, 'prompt-2');
+    answerLive(session, {
+      '_x.ai/rewind/points': [points],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, second),
+    ).toMatchObject({ kind: 'rewound', hiddenTurnIds: [second, third] });
+    expect(session.proc.extMethodCalls[1]?.params.targetPromptIndex).toBe(1);
+    expect(first).toBeDefined();
+    await session.stop();
+  });
+
+  test('files changed outside the engine since then refuse the rewind before it is applied', async () => {
+    const { session, turns } = await threeTurns();
+    answerLive(session, {
+      '_x.ai/rewind/points': [points],
+      '_x.ai/rewind/execute': [
+        {
+          ...(preview as Record<string, unknown>),
+          clean_files: [],
+          conflicts: [
+            { path: 'two.txt', conflict_type: 'modified_externally' },
+          ],
+        },
+      ],
+    });
+    const outcome = await session.adapter.rewindSession(
+      session.threadId,
+      turns[1]!,
+    );
+    expect(outcome).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('two.txt'),
+    });
+    expect(
+      session.proc.extMethodCalls.filter(({ params }) => params.force === true),
+    ).toEqual([]);
+    await session.stop();
+  });
+
+  test('a turn whose text is not the point the count lands on rewinds nothing', async () => {
+    const { session, turns } = await threeTurns([
+      prompts[0]!,
+      'a different request',
+      prompts[2]!,
+    ]);
+    answerLive(session, { '_x.ai/rewind/points': [points] });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[1]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls.map(({ method }) => method)).toEqual([
+      '_x.ai/rewind/points',
+    ]);
+    await session.stop();
+  });
+
+  test('a points answer that is not 0..n-1 in order rewinds nothing', async () => {
+    const { session, turns } = await threeTurns();
+    const listed = (points as { rewind_points: unknown[] }).rewind_points;
+    answerLive(session, {
+      '_x.ai/rewind/points': [{ rewind_points: [...listed].reverse() }],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[1]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('cannot read'),
+    });
+    expect(session.proc.extMethodCalls).toHaveLength(1);
+    await session.stop();
+  });
+
+  test('a fork after a turn copies through that prompt into the session Grok names', async () => {
+    const [forkPoints] = liveAnswers('fork-at-prompt', '_x.ai/rewind/points');
+    const [forked] = liveAnswers('fork-at-prompt', '_x.ai/session/fork');
+    const forkPrompts = (
+      forkPoints as { rewind_points: Array<{ prompt_preview: string }> }
+    ).rewind_points.map(({ prompt_preview }) =>
+      prompt_preview.replace(/\.\.\.$/, ' and the rest of it'),
+    );
+    const session = await startGrokSession();
+    const first = await grokTurn(session, forkPrompts[0]!, 'prompt-0');
+    await grokTurn(session, forkPrompts[1]!, 'prompt-1');
+    answerLive(session, {
+      '_x.ai/rewind/points': [forkPoints],
+      '_x.ai/session/fork': [forked],
+    });
+    const outcome = await session.adapter.forkSession(session.threadId, first);
+    expect(outcome).toEqual({
+      resumeCursor: expect.objectContaining({
+        acpSessionId: (forked as { newSessionId: string }).newSessionId,
+      }),
+    });
+    expect(session.proc.extMethodCalls.at(-1)).toEqual({
+      method: '_x.ai/session/fork',
+      params: {
+        sourceSessionId: session.sessionId,
+        sourceCwd: '/tmp/project',
+        newCwd: '/tmp/project',
+        targetPromptIndex: 0,
+      },
+    });
+    await session.stop();
+  });
+
+  test('reconnecting a server Station passed drops it and passes it again', async () => {
+    const session = await startGrokSession({
+      toolServers: [
+        { id: 'docs', command: process.execPath },
+        { id: 'probe-broken', command: process.execPath },
+      ],
+    });
+    const [dropped, restored] = liveAnswers(
+      'mcp-reconnect',
+      '_x.ai/session/update_mcp_servers',
+    );
+    answerLive(session, {
+      '_x.ai/session/update_mcp_servers': [dropped, restored],
+    });
+    const outcome = await session.adapter.reconnectMcpServer(
+      session.threadId,
+      'probe-broken',
+      { startOAuth: false },
+    );
+    expect(outcome).toEqual({
+      kind: 'answered',
+      success: true,
+      text: "Grok Build restarted the MCP server 'probe-broken'.",
+    });
+    expect(
+      session.proc.extMethodCalls.map(({ params }) =>
+        (params.mcpServers as Array<{ name: string }>).map(({ name }) => name),
+      ),
+    ).toEqual([['docs'], ['docs', 'probe-broken']]);
+    await session.stop();
+  });
+
+  test("a server from Grok's own configuration, or a sign-in, is refused before anything is sent", async () => {
+    const session = await startGrokSession({
+      toolServers: [{ id: 'docs', command: process.execPath }],
+    });
+    expect(
+      await session.adapter.reconnectMcpServer(
+        session.threadId,
+        'example-docs',
+        { startOAuth: false },
+      ),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('own configuration'),
+    });
+    expect(
+      await session.adapter.reconnectMcpServer(session.threadId, 'docs', {
+        startOAuth: true,
+      }),
+    ).toEqual({ kind: 'failed', message: expect.stringContaining('sign-in') });
+    expect(session.proc.extMethodCalls).toEqual([]);
+    await session.stop();
+  });
+
+  test('when the second send fails the server is passed again and the failure reported', async () => {
+    const session = await startGrokSession({
+      toolServers: [{ id: 'docs', command: process.execPath }],
+    });
+    let sends = 0;
+    session.proc.extMethodHandler = () => {
+      sends += 1;
+      if (sends === 2) throw new Error('session closed');
+      return { result: { ok: true } };
+    };
+    expect(
+      await session.adapter.reconnectMcpServer(session.threadId, 'docs', {
+        startOAuth: false,
+      }),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('session closed'),
+    });
+    expect(
+      session.proc.extMethodCalls.map(({ params }) =>
+        (params.mcpServers as Array<{ name: string }>).map(({ name }) => name),
+      ),
+    ).toEqual([[], ['docs'], ['docs']]);
     await session.stop();
   });
 });

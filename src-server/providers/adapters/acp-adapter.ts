@@ -178,6 +178,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   ApprovalGovernanceRefusedError,
@@ -278,10 +279,13 @@ import {
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
+  acpRewindPointMatches,
   acpSessionContinuity,
   readAcpRewindAnswer,
+  readAcpRewindConflicts,
+  readAcpRewindPoints,
   readAcpUserMessageId,
-  resolveAcpForkAtMessage,
+  resolveAcpFork,
   resolveAcpMcpReconnect,
   resolveAcpRewind,
 } from './acp-session-actions.js';
@@ -929,7 +933,15 @@ export interface AcpSessionRecord {
     turnId: string;
     firstMessageId: string;
     lastMessageId: string;
+    /**
+     * The start of the turn's prompt text, kept where the engine names its
+     * rewind points by index (`prompt-index`), to check a point is this
+     * turn before anything is rewound.
+     */
+    promptText?: string;
   }>;
+  /** The start of the running Station turn's prompt text (see `turnMessages`). */
+  activePromptText?: string;
   /** Cursor's todo list as `cursor/create_plan`/`cursor/update_todos` left it. */
   cursorTodos?: CursorTodo[];
   /**
@@ -1094,6 +1106,8 @@ function mergeAcpConfigOption(
 
 /** Turns whose engine prompt ids one ACP session keeps for rewind and fork. */
 export const ACP_TURN_MESSAGES_MAX = 500;
+/** How much of a turn's prompt text the ledger keeps to check a rewind point. */
+const ACP_TURN_PROMPT_TEXT_MAX = 1024;
 
 /**
  * For a managed-runtime connection, the installed runtime readiness should
@@ -2920,6 +2934,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         'busy',
       );
     record.activeTurnId = turnId;
+    record.activePromptText = input.input?.slice(0, ACP_TURN_PROMPT_TEXT_MAX);
     record.turnsStarted = (record.turnsStarted ?? 0) + 1;
     record.activeTurnOrigin =
       input.invocationId === undefined
@@ -3592,8 +3607,16 @@ export class AcpAdapter implements ProviderAdapterShape {
   /** Remember the engine's id for the running turn's prompt. */
   private recordTurnMessage(record: AcpSessionRecord, update: unknown): void {
     const messageId = readAcpUserMessageId(update);
+    if (messageId) this.recordTurnPrompt(record, messageId);
+  }
+
+  /**
+   * Remember `messageId` as the engine's id for the running Station turn's
+   * prompt, in the ledger rewind and fork resolve a turn through.
+   */
+  private recordTurnPrompt(record: AcpSessionRecord, messageId: string): void {
     const turnId = record.activeTurnId;
-    if (!messageId || !turnId) return;
+    if (!turnId || record.providerTurn?.turnId === turnId) return;
     record.turnMessages ??= [];
     const known = record.turnMessages.find((entry) => entry.turnId === turnId);
     // The first id stays: it is the turn's own prompt, and a later one is a
@@ -3604,6 +3627,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         turnId,
         firstMessageId: messageId,
         lastMessageId: messageId,
+        ...(record.activePromptText !== undefined
+          ? { promptText: record.activePromptText }
+          : {}),
       });
       if (record.turnMessages.length > ACP_TURN_MESSAGES_MAX)
         record.turnMessages.splice(
@@ -3628,6 +3654,14 @@ export class AcpAdapter implements ProviderAdapterShape {
     const binding = resolveAcpMcpReconnect(record.process.initResult);
     const sessionId = record.process.sessionId;
     if (!binding || !sessionId) return { kind: 'not-declared' };
+    if (binding.kind === 'replace-list')
+      return this.reconnectByReplacingList(
+        record,
+        sessionId,
+        binding,
+        name,
+        options,
+      );
     try {
       return acpCommandAnswer(
         await record.process.extMethod(binding.method, {
@@ -3639,6 +3673,105 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       return acpCommandFailure(error);
     }
+  }
+
+  /**
+   * Reconnect a server on an engine whose only MCP call replaces the list
+   * the client passed (`replace-list`): send the list without the server,
+   * then the session's list again, and the engine stops and restarts that
+   * one. Only a server Station passed can be reconnected so, and there is
+   * no OAuth step to start. When the second send fails the first is undone
+   * as best it can be, and the failure is reported either way.
+   */
+  private async reconnectByReplacingList(
+    record: AcpSessionRecord,
+    sessionId: string,
+    binding: { method: string; vendor: string },
+    name: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    const servers = record.mcpServers ?? [];
+    if (!servers.some((server) => server.name === name))
+      return {
+        kind: 'failed',
+        message: `${binding.vendor} can restart only an MCP server Station passed to this session; '${name}' comes from its own configuration.`,
+      };
+    if (options.startOAuth)
+      return {
+        kind: 'failed',
+        message: `${binding.vendor} has no MCP sign-in Station can start; reconnect without it.`,
+      };
+    const send = (mcpServers: McpServer[]) =>
+      record.process.extMethod(binding.method, { sessionId, mcpServers });
+    try {
+      await send(servers.filter((server) => server.name !== name));
+    } catch (error) {
+      return acpCommandFailure(error);
+    }
+    try {
+      await send(servers);
+    } catch (error) {
+      await send(servers).catch(() => undefined);
+      return acpCommandFailure(error);
+    }
+    return {
+      kind: 'answered',
+      success: true,
+      text: `${binding.vendor} restarted the MCP server '${name}'.`,
+    };
+  }
+
+  /**
+   * Resolve a Station turn to the engine's prompt index, on an engine that
+   * names rewind and fork points by index. The ledger holds, in order, every
+   * prompt the engine started for this process's Station turns, and the
+   * engine lists one point per prompt a client sent (a wake or a steer gets
+   * none), so the ledger's last turn is the engine's last point and the rest
+   * count back from it. The turn's own prompt text must start as the point's
+   * preview does, or nothing is resolved.
+   */
+  private async promptIndexForTurn(
+    record: AcpSessionRecord,
+    process: ACPProcess,
+    sessionId: string,
+    pointsMethod: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    position: number,
+    read: <T>(answer: Promise<T>) => Promise<T | typeof ACP_REWIND_TIMED_OUT>,
+  ): Promise<{ index: number } | { failed: string }> {
+    const listed = await read(process.extMethod(pointsMethod, { sessionId }));
+    if (listed === ACP_REWIND_TIMED_OUT)
+      return {
+        failed: `${record.engineName} did not list its rewind points in time. Nothing was changed.`,
+      };
+    const points = readAcpRewindPoints(listed);
+    if (!points)
+      return {
+        failed: `${record.engineName} listed its rewind points in a shape Station cannot read. Nothing was changed.`,
+      };
+    const index = points.length - (turns.length - position);
+    const point = points[index];
+    if (!point || !acpRewindPointMatches(point, turns[position]?.promptText))
+      return {
+        failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
+      };
+    return { index };
+  }
+
+  /** Race `answer` against the rewind deadline; read-only steps only. */
+  private rewindRead<T>(
+    answer: Promise<T>,
+  ): Promise<T | typeof ACP_REWIND_TIMED_OUT> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      answer,
+      new Promise<typeof ACP_REWIND_TIMED_OUT>((resolve) => {
+        timer = setTimeout(
+          () => resolve(ACP_REWIND_TIMED_OUT),
+          this.options.rewindAnswerTimeoutMs ?? ACP_REWIND_ANSWER_TIMEOUT_MS,
+        );
+      }),
+    ]).finally(() => clearTimeout(timer));
   }
 
   /**
@@ -3679,10 +3812,53 @@ export class AcpAdapter implements ProviderAdapterShape {
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
       const sentTo = record.process;
-      const answered = sentTo.extMethod(binding.method, {
+      let params: Record<string, unknown> = {
         sessionId,
         messageId: point.firstMessageId,
-      });
+      };
+      if (binding.target === 'prompt-index') {
+        // Read-only steps first: which index this turn is, and whether
+        // applying the rewind would overwrite files changed outside the
+        // engine since. Either failing changes nothing.
+        const read = <T>(answer: Promise<T>) => this.rewindRead(answer);
+        const located = await this.promptIndexForTurn(
+          record,
+          sentTo,
+          sessionId,
+          binding.pointsMethod,
+          turns,
+          index,
+          read,
+        );
+        if ('failed' in located)
+          return { kind: 'failed', message: located.failed };
+        const target = {
+          sessionId,
+          targetPromptIndex: located.index,
+          mode: 'all',
+        };
+        const preview = await read(
+          sentTo.extMethod(binding.method, { ...target, force: false }),
+        );
+        if (preview === ACP_REWIND_TIMED_OUT)
+          return {
+            kind: 'failed',
+            message: `${record.engineName} did not answer the rewind preview in time. Nothing was changed.`,
+          };
+        const conflicts = readAcpRewindConflicts(preview);
+        if (!conflicts)
+          return {
+            kind: 'failed',
+            message: `${record.engineName} answered the rewind preview in a shape Station cannot read. Nothing was changed.`,
+          };
+        if (conflicts.length > 0)
+          return {
+            kind: 'failed',
+            message: `Files changed outside ${record.engineName} since that turn, and rewinding would overwrite them: ${conflicts.slice(0, 10).join(', ')}${conflicts.length > 10 ? `, and ${conflicts.length - 10} more` : ''}. Nothing was changed.`,
+          };
+        params = { ...target, force: true };
+      }
+      const answered = sentTo.extMethod(binding.method, params);
       // The request has no timeout of its own, and every send waits on this
       // one: an engine that never answers must not hold the session busy.
       const timedOut = new Promise<typeof ACP_REWIND_TIMED_OUT>((resolve) => {
@@ -3896,28 +4072,59 @@ export class AcpAdapter implements ProviderAdapterShape {
     atTurnId: string,
   ): Promise<{ resumeCursor: AcpResumeCursor } | { refused: string }> {
     const record = this.requireSession(threadId);
-    const namespace = resolveAcpForkAtMessage(record.process.initResult);
+    const binding = resolveAcpFork(record.process.initResult);
     const sessionId = record.process.sessionId;
     const cursor = record.session.resumeCursor;
-    if (!namespace || !sessionId || !isAcpResumeCursor(cursor))
+    if (!binding || !sessionId || !isAcpResumeCursor(cursor))
       return { refused: 'This engine declared no fork at a turn.' };
-    const point = record.turnMessages?.find(
-      (entry) => entry.turnId === atTurnId,
-    );
+    const turns = [...(record.turnMessages ?? [])];
+    const position = turns.findIndex((entry) => entry.turnId === atTurnId);
+    const point = turns[position];
     if (!point)
       return {
         refused:
           'That turn has no engine message id on this session, so it cannot be a fork point.',
       };
-    const forked = await record.process.forkSession(
+    if (binding.kind === 'core-meta') {
+      const forked = await record.process.forkSession(
+        sessionId,
+        record.session.cwd ?? '',
+        record.mcpServers ?? [],
+        { [binding.namespace]: { messageId: point.lastMessageId } },
+      );
+      return {
+        resumeCursor: { ...cursor, acpSessionId: forked.sessionId },
+      };
+    }
+    // The engine copies the conversation through the named prompt,
+    // inclusive, into a new session a resume then loads.
+    const located = await this.promptIndexForTurn(
+      record,
+      record.process,
       sessionId,
-      record.session.cwd ?? '',
-      record.mcpServers ?? [],
-      { [namespace]: { messageId: point.lastMessageId } },
+      binding.pointsMethod,
+      turns,
+      position,
+      (answer) => this.rewindRead(answer),
     );
-    return {
-      resumeCursor: { ...cursor, acpSessionId: forked.sessionId },
-    };
+    if ('failed' in located) return { refused: located.failed };
+    const cwd = record.session.cwd ?? '';
+    const forked = await record.process.extMethod(binding.method, {
+      sourceSessionId: sessionId,
+      sourceCwd: cwd,
+      newCwd: cwd,
+      targetPromptIndex: located.index,
+    });
+    const newSessionId = isRecord(forked) ? forked.newSessionId : undefined;
+    if (
+      typeof newSessionId !== 'string' ||
+      newSessionId.length === 0 ||
+      newSessionId.length > 256
+    )
+      return {
+        refused: `${record.engineName} answered the fork without a new session id.`,
+      };
+    return { resumeCursor: { ...cursor, acpSessionId: newSessionId } };
   }
 
   /**
@@ -5322,7 +5529,12 @@ export class AcpAdapter implements ProviderAdapterShape {
   ): void {
     if (record.stopping) return;
     if (record.activeTurnId) {
-      if (!record.providerTurn) rememberEnginePrompt(record, enginePromptId);
+      if (!record.providerTurn) {
+        rememberEnginePrompt(record, enginePromptId);
+        // The engine started this turn's prompt: it is a rewind and fork
+        // point, in the order the engine ran it.
+        this.recordTurnPrompt(record, enginePromptId);
+      }
       return;
     }
     if (record.knownEnginePromptIds?.includes(enginePromptId)) return;
