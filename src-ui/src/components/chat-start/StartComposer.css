@@ -590,4 +590,5 @@
 
 .start-composer {
   container-type: inline-size;
+  container-name: start-composer;
 }

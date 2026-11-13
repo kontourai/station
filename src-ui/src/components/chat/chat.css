@@ -3436,6 +3436,7 @@
 
 .chat-input {
   container-type: inline-size;
+  container-name: reply-composer;
 }
 
 .chat-input .chat-input__meta {
@@ -3675,4 +3676,10 @@
   :has(.chat-input__next-turn-notice, .chat-status-pill, .chat-scroll-to-bottom)
 ) {
   display: none;
+}
+
+@container (max-width: 450px) {
+  .chat-input .chat-controls-row {
+    gap: 0;
+  }
 }

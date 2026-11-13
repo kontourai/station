@@ -40,6 +40,7 @@ import {
   resolvedModelLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
+import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ApprovalModeChip } from '../badges/ApprovalModeChip';
 import { EngineApprovalDisclosureChip } from '../badges/EngineApprovalDisclosureChip';
@@ -1582,16 +1583,6 @@ export function ChatInputArea({
           )}
         </fieldset>
         <div className="chat-controls-row">
-          {secondaryActions && (
-            <ComposerActionsMenu
-              {...secondaryActions}
-              onOpenConversationReference={
-                mentionAuthority && mentionRequestScope?.isCurrent() === true
-                  ? () => setSessionReferencesOpen(true)
-                  : undefined
-              }
-            />
-          )}
           <React.Suspense fallback={null}>
             <FileAttachmentInput
               attachments={attachments}
@@ -1624,8 +1615,19 @@ export function ChatInputArea({
               onStop={onVoiceStop}
             />
           )}
+          {secondaryActions && (
+            <ComposerActionsMenu
+              {...secondaryActions}
+              onOpenConversationReference={
+                mentionAuthority && mentionRequestScope?.isCurrent() === true
+                  ? () => setSessionReferencesOpen(true)
+                  : undefined
+              }
+            />
+          )}
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
+              hideTrigger={isMobile}
               input={input}
               quotes={quoteContext}
               attachments={attachments}
@@ -1640,7 +1642,28 @@ export function ChatInputArea({
               }}
             />
           </React.Suspense>
-          {input && (
+          {isMobile && (
+            <ActionOverflowMenu
+              label="More draft options"
+              actions={[
+                {
+                  key: 'drafts',
+                  label: 'Saved drafts',
+                  onSelect: () => setPortableDraftsOpen(true),
+                },
+                ...(input
+                  ? [
+                      {
+                        key: 'clear',
+                        label: 'Clear message',
+                        onSelect: onClearInput,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          )}
+          {input && !isMobile && (
             <ComposerIconAction
               label="Clear message"
               className="chat-input__clear"

@@ -95,7 +95,23 @@
   font-weight: 400;
 }
 /* Use the available composer width, including a narrow desktop dock. */
-@container (max-width: 310px) {
+@container reply-composer (max-width: 380px) {
+  .composer-run-control .chat-input__chip-stack {
+    display: none;
+  }
+  .composer-choices > .choice-trigger.composer-run-control {
+    flex: none;
+  }
+}
+
+@container (max-width: 450px) {
+  .composer-choices > .choice-trigger.composer-run-control {
+    gap: 0;
+    padding-inline: var(--k-space-1);
+  }
+}
+
+@container start-composer (max-width: 310px) {
   .composer-run-control .chat-input__chip-stack {
     display: none;
   }

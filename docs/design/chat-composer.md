@@ -24,7 +24,8 @@ status/resync action stay above the box when present.
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight Agent · model label, and the shared caret. Safety warnings stay
 on the marks. The Agent name truncates first; in narrow composers the label
-hides, keeping marks and caret. The full summary remains in the accessible name
+hides, keeping marks and caret. On phones, More draft options groups Saved drafts
+and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
 
