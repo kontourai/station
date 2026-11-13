@@ -1,0 +1,7 @@
+{
+  "revision": "d9e9dc4c935794ec9166c427e8845493ee1e96a9",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Index entry for docs/design/connections-overhaul.md, carried onto this branch by cherry-pick; title and summary match the design record.","inputs":["docs/design/README.md"]}
+  ]
+}
