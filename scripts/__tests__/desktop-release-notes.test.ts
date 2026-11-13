@@ -508,36 +508,42 @@ test.each([
   },
 );
 
-test('large generated release bodies retain header and immutable compare under the publication budget', async () => {
-  const body =
-    '## What Changed\n' +
-    Array.from(
-      { length: 2000 },
-      (_, i) => `* Change ${i} ${'x'.repeat(150)}`,
-    ).join('\n');
-  expect(body.length).toBeGreaterThan(125000);
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url.includes('/releases?'))
-        return Response.json([{ tag_name: 'v0.1.10' }]);
-      if (url.includes('/commits/')) return Response.json({ sha: previous });
-      if (url.endsWith('/generate-notes')) return Response.json({ body });
-      throw new Error(url);
-    }),
-  );
-  const notes = await generateServerReleaseNotes({
-    tag: 'v0.1.11',
-    source,
-    repository: options.repository,
-    token: options.token,
-  });
-  expect(notes.length).toBeLessThan(50000);
-  expect(notes).toContain('## What Changed');
-  expect(notes).toContain('1900 changes omitted.');
-  expect(notes).toContain(`/compare/${previous}...${source}`);
-  expect((notes.match(/^\* Change/gm) ?? []).length).toBe(100);
-});
+test.each([
+  [2000, 150, 100],
+  [30, 6000, 8],
+])(
+  'large generated release bodies (%s entries, %s characters) retain header and immutable compare under the publication budget',
+  async (count, width, shown) => {
+    const body =
+      '## What Changed\n' +
+      Array.from(
+        { length: count },
+        (_, i) => `* Change ${i} ${'x'.repeat(width)}`,
+      ).join('\n');
+    expect(body.length).toBeGreaterThan(125000);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/releases?'))
+          return Response.json([{ tag_name: 'v0.1.10' }]);
+        if (url.includes('/commits/')) return Response.json({ sha: previous });
+        if (url.endsWith('/generate-notes')) return Response.json({ body });
+        throw new Error(url);
+      }),
+    );
+    const notes = await generateServerReleaseNotes({
+      tag: 'v0.1.11',
+      source,
+      repository: options.repository,
+      token: options.token,
+    });
+    expect(notes.length).toBeLessThan(50000);
+    expect(notes).toContain('## What Changed');
+    expect(notes).toContain(`${count - shown} changes omitted.`);
+    expect(notes).toContain(`/compare/${previous}...${source}`);
+    expect((notes.match(/^\* Change/gm) ?? []).length).toBe(shown);
+  },
+);
 
 test('fallback picks the newest older version across Releases and git tags', async () => {
   vi.stubGlobal(
