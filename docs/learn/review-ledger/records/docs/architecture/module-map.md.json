@@ -1742,7 +1742,9 @@
 
     "src-server/services/approvals/guardian-conversation.ts",
 
-    "src-server/services/orchestration/turn-authorship.ts"
+    "src-server/services/orchestration/turn-authorship.ts",
+
+    "src-server/providers/adapters/muse-serve-schema.ts"
   ],
 
   "checks": [
