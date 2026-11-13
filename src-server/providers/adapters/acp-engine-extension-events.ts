@@ -456,7 +456,7 @@ function childSummary(
 /**
  * A background task (`kind` `bash` or `monitor`) as a child. A monitor says
  * so by `kind`, by a `monitor_description`, or by a `[monitor]` display
- * command (T3 Code `grok_monitor`).
+ * command.
  */
 function grokTaskStart(
   task: Record<string, unknown>,
@@ -513,7 +513,7 @@ const GROK_TASK_ENDED_STATUSES: ReadonlySet<string> = new Set([
   'cancelled',
 ]);
 
-/** `subagent_finished.status` as child work (T3 Code reads exactly these three). */
+/** `subagent_finished.status` as child work; any other status settles `unresolved`. */
 const GROK_SUBAGENT_STATUSES: Readonly<
   Record<string, ChildWorkTerminalStatus>
 > = { completed: 'completed', failed: 'failed', cancelled: 'cancelled' };

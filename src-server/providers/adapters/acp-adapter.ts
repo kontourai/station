@@ -448,9 +448,8 @@ const ACP_FAILURE_DETAIL_MAX_CHARS = 1000;
 /**
  * A failed ACP request's text, with the engine's own detail when it put one
  * in the JSON-RPC error's `data.message`. Grok answers a failed prompt
- * `-32603 Internal error` and says why only there (live, T3 Code fixture
- * `grok_prompt_error`: `data.message` "API error (status 400 Bad
- * Request): ..."). The detail is one line, redacted and bounded.
+ * `-32603 Internal error` and says why only there (`data.message` "API
+ * error (status 400 Bad Request): ..."). The detail is one line, redacted and bounded.
  */
 function acpFailureMessage(error: unknown): string {
   const base = errorMessage(error);

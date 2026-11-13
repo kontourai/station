@@ -807,7 +807,7 @@ describe('a failed prompt names the engine’s own reason', () => {
   test('`error.data.message` is quoted after the JSON-RPC message', async () => {
     const session = await startGrokSession();
     await session.adapter.sendTurn({ threadId: session.threadId, input: 'x' });
-    // Grok's prompt failure (T3 Code `grok_prompt_error`, grok 1.0.44).
+    // Grok's prompt failure shape: -32603 with the reason in `data.message`.
     session.proc.rejectPrompt(
       Object.assign(new Error('Internal error'), {
         code: -32603,
