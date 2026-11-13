@@ -231,36 +231,6 @@ interface DockProjectNameInput {
 }
 
 /**
- * The dock badge's displayed project name (station#4525) — the single
- * derivation both the desktop badge (`ChatDockProjectContext`'s
- * `projectName`) and the mobile header's named trigger use, so the two can
- * never disagree (kontourai/station#793 already required them to agree; a
- * hand-duplicated ternary at each call site is exactly how they'd drift).
- *
- * A project chat-scope filter always wins with a plain lookup. Otherwise,
- * when the active session actually belongs to the dock's bound project,
- * this prefers the session's own richer name resolution
- * (`sessionProjectName` — see `useChatDockViewModel`, which folds in
- * project-record/session/slug fallbacks a plain projects-list lookup does
- * not run); when the session belongs to a DIFFERENT project (or there is no
- * active session at all), it falls back to a plain lookup by the BOUND
- * slug — never the session's own name, which would be the exact
- * badge-shows-a-fact-about-the-wrong-project defect this issue is about.
- */
-export function resolveDockBadgeProjectName(
-  input: DockProjectNameInput,
-): string | null {
-  if (input.scopedProjectSlug) {
-    return projectDisplayName(input.scopedProjectSlug, input.projects);
-  }
-  if (!input.dockProjectSlug) return null;
-  if (input.sessionProjectSlug === input.dockProjectSlug) {
-    return input.sessionProjectName || input.dockProjectSlug;
-  }
-  return projectDisplayName(input.dockProjectSlug, input.projects);
-}
-
-/**
  * station#4525 review MED-1 (owner design ruling): the badge always names
  * the dock's BOUND project (the owner's persistent-context design,
  * unchanged) — it never suppresses or substitutes the active session's own

@@ -132,8 +132,8 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   model. Setup, repair and read errors scroll above the composer.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
   **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
-  for a fork a message action started), and the header's project controls
-  stand down so the draft's Project chip is the one destination.
+  for a fork a message action started). The start composer's Project chip
+  is the single owner of destination choice; dock headers have no project picker.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start (and a fork's open) closes it as started before
@@ -1213,7 +1213,7 @@ screenshots.
 Conversation switching stays a direct phone-header action with a 44px target.
 Project selection belongs to the New chat composer's Project chip; it does not
 change an existing conversation's binding. The future-project switcher is absent
-from an active conversation's header. This reflects the October 30 product
+from every dock header, including empty and Inbox states. This reflects the October 30 product
 decision to remove a competing project hierarchy, while retaining project
 context in the conversation's session details.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
@@ -1232,19 +1232,13 @@ recorded open-turn start; without one, the row's compact time trails the status
 line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
 
-The **Projects** picker uses the same **+** component, named **New project**,
-and opens the canonical `/projects/new` flow. Its empty state explains the
-next action. Chosen Project icons and the accent palette match the sidebar;
-the workspace map uses initials tiles while picker fallbacks use accent marks. A checkmark
-identifies the selected project. Other rows show stacked switch arrows; the
-separate home icon opens the Project workspace. Hover, keyboard focus or a hold
-explains each action; the hold does not also perform it. Selecting an existing row changes the dock's
-binding, and its separate Open action shows the workspace.
+The start composer's **Project** chip opens **Choose project**. Choosing a
+Project changes the new-chat default without starting a chat or navigating.
 
 Selecting a workspace through the sidebar also sets the default project for
 new chats after navigation guards admit the route. It preserves the active
 chat and its original project. Opening an existing conversation also preserves
-this default. Project choice belongs to the start composer. Active conversation
+this default. Project choice belongs to the start composer. All dock
 headers omit the future-chat Project control; the conversation's own project
 remains in its session context card's Workspace row.
 

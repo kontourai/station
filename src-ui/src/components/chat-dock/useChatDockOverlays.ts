@@ -183,7 +183,7 @@ export function useChatDockOverlays({
   }, []);
 
   // Stable callback identities for the memoized dock subtree (
-  // ChatDockProjectContext / ChatDockContentArea): the dock re-renders every
+  // ChatDockContentArea): the dock re-renders every
   // rAF-coalesced frame while a resize drag is live, and inline arrow props
   // would defeat React.memo by changing identity on every one of those
   // renders even though the callbacks themselves never change behavior.

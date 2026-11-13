@@ -4,12 +4,10 @@ import type {
   RefObject,
 } from 'react';
 import { useContext, useId, useRef, useState } from 'react';
-import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
   ExpandGlyph,
-  FolderGlyph,
   InboxGlyph,
   MenuGlyph,
   NewChatGlyph,
@@ -20,7 +18,6 @@ import '../NewChatAction.css';
 import './ChatDockHeader.css';
 import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
-import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileDockHeaderLeadingContext } from './MobileDockHeaderLeading';
 import { MobileSheetPending } from './MobileSheetPending';
 
@@ -104,14 +101,6 @@ export interface ChatDockMobileOverflowActions {
   conversationStats?: ContextPercentageSource & { onOpen: () => void };
 }
 
-export interface ChatDockMobileProjectSwitcher {
-  projectSlug: string;
-  projectName: string;
-  projects: ProjectMetadata[];
-  onOpenProject: (projectSlug: string) => void;
-  onSwitchProject: (projectSlug: string, projectName: string) => void;
-}
-
 export interface ChatDockMobileDockToggle {
   state: 'collapsed' | 'open';
   onExpand: () => void;
@@ -143,7 +132,6 @@ interface ChatDockMobileHeaderProps {
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   projectScope?: { name: string; onClear: () => void };
-  projectSwitcher: ChatDockMobileProjectSwitcher | null;
   activeCount: number;
   unreadCount: number;
   inboxTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -169,7 +157,6 @@ export function ChatDockMobileHeader({
   sessionProjectMismatchLabel,
   agentIdentity,
   projectScope,
-  projectSwitcher,
   activeCount,
   unreadCount,
   inboxTriggerRef,
@@ -184,8 +171,6 @@ export function ChatDockMobileHeader({
 }: ChatDockMobileHeaderProps) {
   const hostLeading = useContext(MobileDockHeaderLeadingContext);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
-  const [isProjectOpen, setIsProjectOpen] = useState(false);
-  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
   const collapsedExtent =
@@ -271,53 +256,8 @@ export function ChatDockMobileHeader({
             )}
           </button>
         ) : null}
-        {projectSwitcher && !agentIdentity && (
-          <button
-            ref={projectTriggerRef}
-            type="button"
-            className="chat-dock__mobile-project"
-            // The name repeats the words on screen, caption included, so a
-            // spoken command matching the visible label reaches this control
-            // (WCAG 2.5.3); the icon-only width keeps the same name.
-            aria-label={`Switch project — ${inboxActive ? 'Project' : 'New chats'}, ${projectSwitcher.projectName}`}
-            aria-haspopup="dialog"
-            aria-expanded={isProjectOpen}
-            data-dock-drag-passthrough=""
-            onClick={() => setIsProjectOpen(true)}
-          >
-            {/* Too narrow for words (a long chat title takes the bar), the
-                control shows only its glyph; its aria-label still names the
-                project. The CSS container query decides which shows. */}
-            <span
-              className="chat-dock__mobile-project-glyph"
-              aria-hidden="true"
-            >
-              <FolderGlyph />
-            </span>
-            <span className="chat-dock__mobile-project-lines">
-              <span
-                className="chat-dock__mobile-project-caption"
-                aria-hidden="true"
-              >
-                {inboxActive ? 'Project' : 'New chats'}
-              </span>{' '}
-              <span className="chat-dock__mobile-project-name">
-                {projectSwitcher.projectName}
-              </span>
-            </span>
-          </button>
-        )}
       </div>
-      {isProjectOpen && projectSwitcher && (
-        <ProjectSwitcherOverlay
-          anchorRef={projectTriggerRef}
-          boundProjectSlug={projectSwitcher.projectSlug}
-          projects={projectSwitcher.projects}
-          onOpenProject={projectSwitcher.onOpenProject}
-          onSwitchProject={projectSwitcher.onSwitchProject}
-          onClose={() => setIsProjectOpen(false)}
-        />
-      )}
+
       <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
         {hasConversation || !inboxActive ? (
           <Button

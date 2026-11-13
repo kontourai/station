@@ -11,7 +11,6 @@ import {
   inboxPanelMounts,
   markDockFirstRunSeen,
   projectDisplayName,
-  resolveDockBadgeProjectName,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -302,103 +301,6 @@ describe('projectDisplayName', () => {
     expect(projectDisplayName(null, PROJECTS)).toBeNull();
     expect(projectDisplayName(undefined, PROJECTS)).toBeNull();
   });
-});
-
-describe('resolveDockBadgeProjectName (station#4525)', () => {
-  const PROJECTS = [
-    { slug: 'alpha', name: 'Alpha' },
-    { slug: 'beta', name: 'Beta' },
-  ];
-
-  const cases: {
-    name: string;
-    input: Parameters<typeof resolveDockBadgeProjectName>[0];
-    expected: string | null;
-  }[] = [
-    {
-      name: 'a project chat-scope filter always wins, plain lookup',
-      input: {
-        scopedProjectSlug: 'beta',
-        dockProjectSlug: 'alpha',
-        sessionProjectSlug: 'alpha',
-        sessionProjectName: 'Alpha (session)',
-        projects: PROJECTS,
-      },
-      expected: 'Beta',
-    },
-    {
-      name: 'no scope, no binding -> null (the "No project" state)',
-      input: {
-        scopedProjectSlug: null,
-        dockProjectSlug: null,
-        sessionProjectSlug: undefined,
-        sessionProjectName: undefined,
-        projects: PROJECTS,
-      },
-      expected: null,
-    },
-    {
-      name: 'no scope, bound, session belongs to the SAME project -> prefers the richer session-name resolution',
-      input: {
-        scopedProjectSlug: null,
-        dockProjectSlug: 'alpha',
-        sessionProjectSlug: 'alpha',
-        sessionProjectName: 'Alpha (via connection)',
-        projects: PROJECTS,
-      },
-      expected: 'Alpha (via connection)',
-    },
-    {
-      name: 'session matches but its richer name is blank -> falls back to the bound slug, not empty',
-      input: {
-        scopedProjectSlug: null,
-        dockProjectSlug: 'alpha',
-        sessionProjectSlug: 'alpha',
-        sessionProjectName: '',
-        projects: PROJECTS,
-      },
-      expected: 'alpha',
-    },
-    {
-      name: 'no scope, bound, session belongs to a DIFFERENT project -> plain lookup of the BOUND slug, never the session name',
-      input: {
-        scopedProjectSlug: null,
-        dockProjectSlug: 'alpha',
-        sessionProjectSlug: 'beta',
-        sessionProjectName: 'Beta (session)',
-        projects: PROJECTS,
-      },
-      expected: 'Alpha',
-    },
-    {
-      name: 'no scope, bound, no active session at all -> plain lookup of the bound slug',
-      input: {
-        scopedProjectSlug: null,
-        dockProjectSlug: 'alpha',
-        sessionProjectSlug: undefined,
-        sessionProjectName: undefined,
-        projects: PROJECTS,
-      },
-      expected: 'Alpha',
-    },
-    {
-      name: 'bound project not in the list -> falls back to the raw slug, never a session name',
-      input: {
-        scopedProjectSlug: null,
-        dockProjectSlug: 'ghost',
-        sessionProjectSlug: 'beta',
-        sessionProjectName: 'Beta (session)',
-        projects: PROJECTS,
-      },
-      expected: 'ghost',
-    },
-  ];
-
-  for (const { name, input, expected } of cases) {
-    test(name, () => {
-      expect(resolveDockBadgeProjectName(input)).toBe(expected);
-    });
-  }
 });
 
 describe('resolveSessionProjectMismatchLabel (station#4525 review MED-1)', () => {

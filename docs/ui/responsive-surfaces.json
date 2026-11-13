@@ -72,12 +72,6 @@
       "evidence": "tests/mobile-chat-composer.spec.ts"
     },
     {
-      "path": "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
-      "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/ChatDockProjectSwitcherSheet.test.tsx drives every row's Continue-in-<project> row action and demoted icon-only Open <project> action (#3319), the decorative Current flag, and empty state; src-ui/src/__tests__/ChatDockProjectContext.test.tsx and ChatDockMobileHeader.test.tsx cover the desktop-anchored and mobile-edge-sheet trigger sites; tests/cross-runtime-chat-switching.spec.ts proves the desktop anchored popover and mobile edge sheet in a real browser"
-    },
-    {
       "path": "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
@@ -285,7 +279,7 @@
     {
       "path": "src-ui/src/workspace-panes/device/DeviceToolsDrawer.tsx",
       "strategy": "covered",
-      "evidence": "#1971 Device Tools drawer. tests/device-pane.spec.ts \"Device Tools drawer at 390x844\" opens its Apps and Device settings views from the ⋯ menu in a real browser, unfolding every settings section, (session and read-back values supplied through page.route in the server's envelopes; the live surface unintercepted) and MEASURES it: it overlays the stage (data-layout overlay) inside the 390px viewport at no more than 288px, the document does not scroll sideways, and every button, input, select and textarea in the drawer (20+) is at least 44px tall and inside the drawer's right edge. src-ui/src/workspace-panes/__tests__/DeviceToolsDrawer.test.tsx drives the overlay/docked switch from the measured pane width, focus on open and its return to the ⋯ menu button, Escape, and every section."
+      "evidence": "#1971 Device Tools drawer. tests/device-pane.spec.ts \"Device Tools drawer at 390x844\" opens its Apps and Device settings views from the \u22ef menu in a real browser, unfolding every settings section, (session and read-back values supplied through page.route in the server's envelopes; the live surface unintercepted) and MEASURES it: it overlays the stage (data-layout overlay) inside the 390px viewport at no more than 288px, the document does not scroll sideways, and every button, input, select and textarea in the drawer (20+) is at least 44px tall and inside the drawer's right edge. src-ui/src/workspace-panes/__tests__/DeviceToolsDrawer.test.tsx drives the overlay/docked switch from the measured pane width, focus on open and its return to the \u22ef menu button, Escape, and every section."
     }
   ]
 }

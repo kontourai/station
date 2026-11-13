@@ -2640,29 +2640,6 @@
   margin-bottom: 0;
 }
 
-/* A long chat title leaves the phone header's project control 40px of content
-   width (measured at 320, 390 and 412px), where it only ever read "New ch… /
-   No …"; there it collapses to its folder glyph, and the button's aria-label
-   still names the project. The shortest title ("Chat") leaves 56px at 320px,
-   where "No pr…" still reads, so the cut sits between the two at 48px. The
-   base header rules live in index.css; these are parent-qualified so source
-   order cannot decide. */
-.chat-dock__mobile-header .chat-dock__mobile-project {
-  container: chat-dock-mobile-project / inline-size;
-}
-.chat-dock__mobile-project .chat-dock__mobile-project-glyph {
-  display: none;
-  color: var(--text-secondary);
-}
-@container chat-dock-mobile-project (max-width: 48px) {
-  .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
-    display: inline-flex;
-  }
-  .chat-dock__mobile-project .chat-dock__mobile-project-lines {
-    display: none;
-  }
-}
-
 /* Phone density: the transcript's own 16px gap separates rows; the base 16px
    margin on top of it doubled every step. A virtualized transcript positions
    rows absolutely, where the container gap does not apply, so the margin

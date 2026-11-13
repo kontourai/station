@@ -10,7 +10,6 @@ import {
   type ChatDockMobileDockToggle,
   type ChatDockMobileExtentToggle,
   ChatDockMobileHeader,
-  type ChatDockMobileProjectSwitcher,
 } from '../components/chat-dock/ChatDockMobileHeader';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
@@ -87,17 +86,6 @@ beforeEach(() => {
   );
 });
 
-const PROJECTS = [
-  {
-    id: 'p-kontour',
-    slug: 'kontour-ai',
-    name: 'Kontour AI',
-    hasWorkingDirectory: false,
-    layoutCount: 0,
-    hasKnowledge: false,
-  },
-];
-
 function renderHeader(
   overrides: {
     onClear?: ReturnType<typeof vi.fn<() => void>>;
@@ -106,7 +94,6 @@ function renderHeader(
     onOpenInventory?: (trigger: HTMLElement) => void;
     onToggleInbox?: ReturnType<typeof vi.fn<() => void>>;
     sessionProjectMismatchLabel?: string | null;
-    projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
     projectScope?: { name: string; onClear: () => void } | null;
     agentIdentity?: { name: string; slug: string; icon?: string } | null;
@@ -151,17 +138,6 @@ function renderHeader(
               state: 'open',
               onExpand: vi.fn(),
               onCollapse: vi.fn(),
-            }
-      }
-      projectSwitcher={
-        overrides.projectSwitcher !== undefined
-          ? overrides.projectSwitcher
-          : {
-              projectSlug: 'kontour-ai',
-              projectName: 'Kontour AI',
-              projects: PROJECTS,
-              onOpenProject: vi.fn(),
-              onSwitchProject: vi.fn(),
             }
       }
       agentIdentity={
@@ -214,7 +190,6 @@ function renderHeader(
 beforeAll(async () => {
   await Promise.all([
     import('../components/chat-dock/ChatDockMobileOverflowSheet'),
-    import('../components/chat-dock/ChatDockProjectSwitcherSheet'),
   ]);
 });
 
@@ -225,6 +200,25 @@ async function openActions() {
 }
 
 describe('mobile conversation focus', () => {
+  test.each([
+    { hasConversation: false },
+    { inboxActive: true },
+    { agentIdentity: null },
+    {},
+  ])('leaves project choice to the start composer: %j', (state) => {
+    renderHeader(state);
+    expect(
+      screen.queryByRole('button', {
+        name: /Switch project|New chats:|Choose a project/,
+      }),
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+    expect(
+      screen.getByText(state.inboxActive ? 'Inbox' : 'New chat', {
+        selector: '.chat-dock__mobile-title-text',
+      }),
+    ).toBeTruthy();
+  });
   test('puts chat actions before identity and full screen after identity', () => {
     renderHeader({ extentToggle: { maximized: false, onToggle: vi.fn() } });
     const actions = screen.getByRole('button', { name: 'Chat actions' });
@@ -283,34 +277,6 @@ describe('mobile conversation focus', () => {
     expect(trigger.querySelector('.chat-dock__mobile-activity-dot')).toBeNull();
   });
 
-  test.each([{ projects: PROJECTS }, { projects: [] }])(
-    'opens the canonical project creation route from the picker',
-    async ({ projects }) => {
-      renderHeader({
-        agentIdentity: null,
-        projectSwitcher: {
-          projectSlug: '',
-          projectName: 'Choose a project',
-          projects,
-          onOpenProject: vi.fn(),
-          onSwitchProject: vi.fn(),
-        },
-      });
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Switch project — New chats, Choose a project',
-        }),
-      );
-      fireEvent.click(
-        await screen.findByRole('button', {
-          name: 'New project',
-        }),
-      );
-      expect(window.location.pathname).toBe('/projects/new');
-      expect(screen.queryByRole('dialog', { name: 'Projects' })).toBeNull();
-    },
-  );
-
   test('keeps New chat callable from the actions sheet', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat });
@@ -344,25 +310,7 @@ describe('mobile conversation focus', () => {
     );
     expect(onClear).toHaveBeenCalledOnce();
   });
-  test('opening a project preserves the active conversation binding', async () => {
-    const onOpenProject = vi.fn();
-    const onSwitchProject = vi.fn();
-    renderHeader({
-      agentIdentity: null,
-      projectSwitcher: {
-        projectSlug: 'kontour-ai',
-        projectName: 'Kontour AI',
-        projects: PROJECTS,
-        onOpenProject,
-        onSwitchProject,
-      },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^Switch project/ }));
-    await screen.findByRole('dialog', { name: 'Projects' });
-    fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
-    expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
-    expect(onSwitchProject).not.toHaveBeenCalled();
-  });
+
   test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat, showConnection: false });
@@ -395,41 +343,6 @@ describe('mobile conversation focus', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand chat' }));
     expect(onExpand).toHaveBeenCalledOnce();
   });
-  test('does not invent attribution or geometry for an unbound fullscreen pane', () => {
-    renderHeader({
-      agentIdentity: null,
-      dockToggle: null,
-      projectSwitcher: null,
-    });
-    expect(
-      screen.getByText('New chat', {
-        selector: '.chat-dock__mobile-title-text',
-      }).textContent,
-    ).toBe('New chat');
-    expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
-  });
-});
-
-/** WCAG 2.5.3: each switcher's name contains the words it shows, in order. */
-describe('mobile switcher names include their visible text', () => {
-  const words = (text: string) =>
-    text
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .trim();
-  test.each([['the project switcher', /^Switch project/]])(
-    '%s',
-    (_label, name) => {
-      renderHeader({
-        agentIdentity: null,
-        sessionProjectMismatchLabel: 'This chat: Alpha',
-      });
-      const button = screen.getByRole('button', { name });
-      const visible = words(button.textContent ?? '');
-      expect(visible.length).toBeGreaterThan(0);
-      expect(words(button.getAttribute('aria-label') ?? '')).toContain(visible);
-    },
-  );
 });
 
 /** #928 C2b retires occupant switching; primary context actions remain direct. */

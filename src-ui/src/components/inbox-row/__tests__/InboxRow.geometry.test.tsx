@@ -257,7 +257,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           showConnection
           sessionTitle="Repository review"
           agentIdentity={null}
-          projectSwitcher={null}
           activeCount={1}
           unreadCount={0}
           inboxTriggerRef={createRef<HTMLButtonElement>()}
