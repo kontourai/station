@@ -585,9 +585,9 @@ Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 [acp-input-requests.ts](../../src-server/providers/adapters/acp-input-requests.ts)
 reads four wires into one `station.input-request/v1`, put to the person
 through the adapter's pending-request path (the request is cancelled when
-the turn that opened it ends, or the session stops; one opened outside any
-turn, such as the consent link an MCP reconnect asks for, stays open until it
-is answered or the session stops):
+the turn that opened it ends, is interrupted or is steered, or when the session
+stops; one opened outside any turn, such as the consent link an MCP reconnect
+asks for, stays open until it is answered or the session stops):
 
 | Wire | Request | Reply |
 |---|---|---|
@@ -861,6 +861,12 @@ slash command it receives as a prompt, and the forms left out change what it
 trusts (`/tools trust-all` would stop kiro-cli asking
 `session/request_permission`), what it reads (`/context add|rm|clear`) or what
 it knows (`/knowledge add|update|remove|clear`, `/memory` writes).
+Command names and subcommands match in any letter case, and a routed form takes
+no words beyond its subcommand (and its one argument, where it has one), since
+the whole argument text is forwarded: `/tools schema trust-all` is refused.
+On a session whose handshake identifies Kiro, `/tools trust|trust-all|untrust|reset`,
+`/context add|rm|remove|clear` and `/knowledge add|update|remove|rm|clear` are
+refused even where no entry routes the command (KAS declares no `/tools`).
 
 `declared` means the method is in the session's
 `_meta.kiro.extensionMethods`. kiro-cli's other commands stay prompt text:
@@ -1214,7 +1220,9 @@ kiro-cli 3.3 can answer `session/new` before its model list has loaded and send
 the `model` option in a `config_option_update` afterwards. A start that asked
 for a model therefore uses a model option such an update already delivered, or
 waits up to 5 seconds (`ACP_MODEL_ADVERTISEMENT_WAIT_MS`) for one, before it
-treats the model as not offered.
+treats the model as not offered. Only an engine that speaks config options (its
+`session/new` answer or an earlier update carried some) is waited on; one with
+neither config options nor a model list is refused at once.
 
 A new session on a model the engine's fresh `session/new` options did not offer
 is refused by the adapter with the `model_not_advertised` code

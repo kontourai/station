@@ -31,6 +31,7 @@ import {
   type AcpIdentityHandshake,
   declaredAcpExtensionMethods,
   matchesAcpHandshakeIdentity,
+  resolveAcpEngineVariant,
 } from '../../services/acp/acp-handshake-facts.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { isAcpMethodNotFound } from './acp-steer.js';
@@ -271,11 +272,38 @@ function entryTakes(
   entry: AcpCommandRouteEntry,
   invocation: AcpCommandInvocation,
 ): boolean {
-  if (entry.command !== invocation.name) return false;
-  const [subcommand = '', argument] = words(invocation.args);
-  if (!entry.subcommands.includes(subcommand)) return false;
+  if (entry.command !== invocation.name.toLowerCase()) return false;
+  const given = words(invocation.args);
+  const [subcommand = '', argument] = given;
+  if (!entry.subcommands.includes(subcommand.toLowerCase())) return false;
   if (entry.argumentKey && !argument) return false;
+  // The whole argument text is forwarded, so nothing beyond what the entry
+  // reads may ride along (`/tools schema trust-all`).
+  if (given.length > (entry.argumentKey ? 2 : 1)) return false;
   return true;
+}
+
+/**
+ * Kiro commands that change trust, context or knowledge. On a session whose
+ * handshake identifies Kiro, these are refused even where no entry routes the
+ * command (KAS declares no `tools` route), because the engine may run a slash
+ * command it receives as prompt text.
+ */
+const KIRO_MUTATING_SUBCOMMANDS: Readonly<Record<string, readonly string[]>> = {
+  tools: ['trust', 'trust-all', 'untrust', 'reset'],
+  context: ['add', 'rm', 'remove', 'clear'],
+  knowledge: ['add', 'update', 'remove', 'rm', 'clear'],
+};
+
+function kiroMutatingForm(
+  handshake: AcpIdentityHandshake,
+  invocation: AcpCommandInvocation,
+): boolean {
+  if (!resolveAcpEngineVariant(handshake)) return false;
+  const mutating = KIRO_MUTATING_SUBCOMMANDS[invocation.name.toLowerCase()];
+  if (!mutating) return false;
+  const given = words(invocation.args).map((word) => word.toLowerCase());
+  return given.some((word) => mutating.includes(word));
 }
 
 function entryApplies(
@@ -315,27 +343,35 @@ export function resolveAcpCommandRoute(
   const declared = new Set(
     declaredAcpExtensionMethods(handshake.agentCapabilities),
   );
+  const name = invocation.name.toLowerCase();
   const applicable = [
     ...DECLARED_COMMAND_ROUTES,
     ...UNDECLARED_COMMAND_ROUTES,
   ].filter(
     (candidate) =>
-      candidate.command === invocation.name &&
+      candidate.command === name &&
       entryApplies(candidate, handshake, declared),
   );
+
   const entry = applicable.find((candidate) =>
     entryTakes(candidate, invocation),
   );
   if (!entry) {
-    if (applicable.length === 0) return { route: PROMPT_TEXT };
+    if (applicable.length === 0)
+      return kiroMutatingForm(handshake, invocation)
+        ? {
+            route: PROMPT_TEXT,
+            refusal: `Station does not run this /${name}: it changes the engine's trust, context or knowledge. It was not sent to the engine.`,
+          }
+        : { route: PROMPT_TEXT };
     const allowed = [
       ...new Set(applicable.flatMap((candidate) => candidate.subcommands)),
     ]
-      .map((sub) => `/${invocation.name}${sub ? ` ${sub}` : ''}`)
+      .map((sub) => `/${name}${sub ? ` ${sub}` : ''}`)
       .join(', ');
     return {
       route: PROMPT_TEXT,
-      refusal: `Station runs only the read-only forms of /${invocation.name} (${allowed}); it did not send this one to the engine.`,
+      refusal: `Station runs only the read-only forms of /${name} (${allowed}); it did not send this one to the engine.`,
     };
   }
   const { route } = entry;

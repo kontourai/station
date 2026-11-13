@@ -488,6 +488,22 @@ describe('archive entry vetting', () => {
         { name: 'h', kind: 'hardlink', linkTarget: 'a/../b' },
       ]),
     ).toMatch(/links outside/);
+    // A case variant names the same directory on macOS and Windows.
+    expect(
+      vetArchiveEntries([
+        dir,
+        link('d/S', '..'),
+        { name: 'd/s/payload', kind: 'file' },
+      ]),
+    ).toMatch(/d\/s\/payload is reached through a link/);
+    // A hard link to a symlink re-homes the symlink's relative target.
+    expect(
+      vetArchiveEntries([
+        { name: 'a/b/c/', kind: 'directory' },
+        link('a/b/c/l', '../../../x'),
+        { name: 'h', kind: 'hardlink', linkTarget: 'a/b/c/l' },
+      ]),
+    ).toMatch(/h hard-links a symbolic link/);
   });
 
   test("accepts the pinned Node runtime's '..' links and a link to a link", () => {

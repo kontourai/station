@@ -145,6 +145,38 @@ describe('command routes', () => {
     ).toEqual({ route: { kind: 'prompt-text' } });
   });
 
+  test('a mutating form is refused whatever its case, extra words, or route table', () => {
+    for (const [handshake, name, args] of [
+      // Case variants of the command name or subcommand.
+      [v2.initialize, 'TOOLS', 'trust-all'],
+      [v2.initialize, 'Tools', 'TRUST-ALL'],
+      // KAS routes no `tools`, but the engine may still run it as text.
+      [v3.initialize, 'tools', 'trust-all'],
+      [v3.initialize, 'TOOLS', 'Trust-All'],
+      [v3.initialize, 'knowledge', 'clear'],
+      // A read-only subcommand followed by more words.
+      [v2.initialize, 'tools', 'schema trust-all'],
+      [v2.initialize, 'tools', 'schema\n/tools trust-all'],
+      [v2.initialize, 'context', 'show add foo'],
+      [v2.initialize, 'knowledge', 'status clear'],
+    ] as const) {
+      const refused = resolveAcpCommandRoute(handshake, { name, args });
+      expect(refused.params, `${name} ${args}`).toBeUndefined();
+      expect(refused.refusal, `${name} ${args}`).toBeDefined();
+    }
+    // The read-only form still routes in any case.
+    expect(
+      resolveAcpCommandRoute(v2.initialize, { name: 'TOOLS', args: '' }).params,
+    ).toBeDefined();
+    // A non-Kiro engine's `/tools trust-all` is its own prompt text.
+    expect(
+      resolveAcpCommandRoute(
+        { agentInfo: { name: 'Other Agent', version: '1' } } as never,
+        { name: 'tools', args: 'trust-all' },
+      ),
+    ).toEqual({ route: { kind: 'prompt-text' } });
+  });
+
   test('settings sends the observer the engine requires', () => {
     expect(
       resolveAcpCommandRoute(v3.initialize, {

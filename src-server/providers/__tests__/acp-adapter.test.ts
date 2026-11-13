@@ -4915,9 +4915,36 @@ describe('station#1182: runtime-reported model', () => {
     await adapter.stopAll();
   });
 
-  test('refuses a requested model when the fresh session has no model option, after a bounded wait', async () => {
-    const { adapter, processes } = createAdapter({
+  test('refuses at once a requested model on an engine with no config options and no model list', async () => {
+    const { adapter } = createAdapter({
       newSessionConfigOptions: [],
+      modelAdvertisementWaitMs: 5_000,
+    });
+    const started = Date.now();
+    await expect(
+      adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-model-no-options',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelId: 'model-b',
+      }),
+    ).rejects.toMatchObject({ code: 'model_not_advertised' });
+    // Nothing would ever send it a model option: no wait.
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  test('refuses a requested model when the fresh session has no model option, after a bounded wait', async () => {
+    // The engine speaks config options (a mode), so a model option may follow.
+    const { adapter, processes } = createAdapter({
+      newSessionConfigOptions: [
+        {
+          id: 'mode',
+          category: 'mode',
+          currentValue: 'vibe',
+          options: [{ value: 'vibe' }],
+        },
+      ],
       modelAdvertisementWaitMs: 200,
     });
 
@@ -7079,6 +7106,57 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
     await drained;
   });
+
+  test.each(['interrupt', 'steer'] as const)(
+    '%s settles only the cancelled turn’s requests; one opened between turns stays open',
+    async (action) => {
+      // `other-cli` declares no native steer, so a steer cancels and re-prompts.
+      const { adapter, processes } = createAdapter({
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+      });
+      const events: CanonicalRuntimeEvent[] = [];
+      const drained = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = `thread-acp-${action}-request-turns`;
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const client = processes[0]!.client;
+      const opened = () =>
+        events.filter((event) => event.method === 'request.opened');
+      const outside = requestPermission(client, 'tool-outside', 'write');
+      await vi.waitFor(() => expect(opened()).toHaveLength(1));
+      const outsideId = String((opened()[0] as any).requestId);
+      const turn = await adapter.sendTurn({ threadId, input: 'go' });
+      const inside = requestPermission(client, 'tool-inside', 'write');
+      await vi.waitFor(() => expect(opened()).toHaveLength(2));
+      const insideId = String((opened()[1] as any).requestId);
+
+      if (action === 'interrupt')
+        await adapter.interruptTurn(threadId, turn.turnId);
+      else await adapter.steerTurn(threadId, 'take this instead', turn.turnId);
+
+      await expect(inside).resolves.toEqual({
+        outcome: { outcome: 'cancelled' },
+      });
+      const resolved = events
+        .filter((event) => event.method === 'request.resolved')
+        .map((event) => (event as any).requestId);
+      expect(resolved).toContain(insideId);
+      expect(resolved).not.toContain(outsideId);
+      // The engine is still waiting on the request opened between turns.
+      await adapter.respondToRequest(threadId, outsideId, 'accept');
+      await expect(outside).resolves.toMatchObject({
+        outcome: { outcome: 'selected' },
+      });
+      await adapter.stopAll();
+      await drained;
+    },
+  );
 
   test('#2316: cancel-and-reprompt settles the open permission request; a late answer is refused and grants nothing', async () => {
     const { adapter, processes } = createAdapter({

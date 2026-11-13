@@ -261,14 +261,19 @@ export function vetArchiveEntry(
 export function vetArchiveEntries(
   entries: readonly ArchiveEntryListing[],
 ): string | undefined {
+  // Case-folded: on a case-insensitive file system (macOS, Windows) `d/S`
+  // and `d/s` are the same directory.
+  const key = (segments: readonly string[]) => segments.join('/').toLowerCase();
   const links = new Set<string>();
+  const symlinks = new Set<string>();
   for (const entry of entries) {
     if (entry.kind === 'symlink' || entry.kind === 'hardlink')
-      links.add(entrySegments(entry.name).join('/'));
+      links.add(key(entrySegments(entry.name)));
+    if (entry.kind === 'symlink') symlinks.add(key(entrySegments(entry.name)));
   }
   const throughLink = (segments: readonly string[]) => {
     for (let i = 1; i < segments.length; i++) {
-      if (links.has(segments.slice(0, i).join('/'))) return true;
+      if (links.has(key(segments.slice(0, i)))) return true;
     }
     return false;
   };
@@ -277,13 +282,20 @@ export function vetArchiveEntries(
     if (problem) return problem;
     const segments = entrySegments(entry.name);
     if (throughLink(segments)) return `${entry.name} is reached through a link`;
+    // A hard link to a symlink copies its relative target into a new
+    // directory, where it can point out of the install.
+    if (
+      entry.kind === 'hardlink' &&
+      symlinks.has(key(entrySegments(entry.linkTarget ?? '')))
+    )
+      return `${entry.name} hard-links a symbolic link`;
     if (entry.kind === 'symlink') {
       const walked = segments.slice(0, -1);
       const target = entrySegments(entry.linkTarget ?? '');
       for (const [index, segment] of target.entries()) {
         if (segment === '..') walked.pop();
         else walked.push(segment);
-        if (index < target.length - 1 && links.has(walked.join('/')))
+        if (index < target.length - 1 && links.has(key(walked)))
           return `${entry.name} links through another link`;
       }
     }

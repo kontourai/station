@@ -2144,11 +2144,17 @@ export class AcpAdapter implements ProviderAdapterShape {
         // kiro-cli 3.3 can answer session/new before its model list has
         // loaded and send the `model` option in a config_option_update
         // afterwards: use one that already came, or wait a bounded time for
-        // it, before refusing a requested model as not advertised.
+        // it, before refusing a requested model as not advertised. Only an
+        // engine that speaks config options at all is waited on; one with no
+        // options and no model list is refused at once, as before.
+        const speaksConfigOptions =
+          (sessionResult.configOptions?.length ?? 0) > 0 ||
+          (updatedBeforeAnswer?.length ?? 0) > 0;
         if (
           requestedModel &&
           !modelOption &&
-          sessionModelsObservation.kind === 'absent'
+          sessionModelsObservation.kind === 'absent' &&
+          speaksConfigOptions
         ) {
           modelOption =
             findAcpModelConfigOption(updatedBeforeAnswer) ??
@@ -2896,7 +2902,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // bounded redraw and close every live tool row before awaiting the child;
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
-    this.cancelPendingRequests(record, threadId);
+    this.settleRequestsAtPromptEnd(record, threadId, targetTurnId);
     await record.process.cancel();
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
@@ -3133,32 +3139,6 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * #2316: a cancelled prompt's open permission requests can never run their
-   * call (ACP answers an outstanding `session/request_permission` with
-   * `cancelled` after `session/cancel`). Settle them, so no later answer lands
-   * on a dead request and no session grant is minted for it.
-   */
-  private cancelPendingRequests(
-    record: AcpSessionRecord,
-    threadId: string,
-  ): void {
-    for (const [requestId, pending] of record.pendingRequests) {
-      pending.resolve('cancel');
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: new Date().toISOString(),
-        ...pending.origin,
-        requestId,
-        method: 'request.resolved',
-        status: mapAcpDecisionToApprovalStatus('cancel'),
-      });
-    }
-    record.pendingRequests.clear();
-  }
-
-  /**
    * An ACP permission request belongs to the prompt that raised it: once
    * `session/prompt` settles, the engine has stopped waiting and will never
    * read the answer. Left open, it stayed open everywhere that folds
@@ -3171,7 +3151,8 @@ export class AcpAdapter implements ProviderAdapterShape {
    *
    * Only the ending turn's own requests: one opened outside any turn (an MCP
    * sign-in link a reconnect asked for) or in another turn is still awaited
-   * by the engine, and stays open.
+   * by the engine, and stays open. Interrupt and steer settle the cancelled
+   * turn the same way: `session/cancel` ends that prompt, not the others.
    */
   private settleRequestsAtPromptEnd(
     record: AcpSessionRecord,
@@ -5060,7 +5041,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
-    this.cancelPendingRequests(record, threadId);
+    this.settleRequestsAtPromptEnd(record, threadId, turnId);
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();
