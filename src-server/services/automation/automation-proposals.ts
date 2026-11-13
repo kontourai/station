@@ -568,7 +568,7 @@ function untrustedPart(
     : {};
 }
 
-export function describeSourceProposal(
+function describeSourceProposal(
   source: AutomationSourceProposalInput,
   context: Pick<AutomationProposalPlanContext, 'projectName' | 'untrusted'>,
 ): AutomationProposalDescription {
@@ -596,7 +596,7 @@ export function describeSourceProposal(
   };
 }
 
-export function describeRuleProposal(
+function describeRuleProposal(
   rule: AutomationRuleProposalInput,
   source: { repository: string; pending: boolean } | undefined,
   context: Pick<AutomationProposalPlanContext, 'projectName' | 'untrusted'>,
