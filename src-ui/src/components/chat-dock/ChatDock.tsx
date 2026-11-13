@@ -3128,7 +3128,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const sessionContextActionsRef = useRef(sessionContextActions);
   sessionContextActionsRef.current = sessionContextActions;
   const sessionContextProjectSlug = activeSession?.projectSlug;
-  const sessionContextConversationId = activeSession?.conversationId ?? null;
+  // The card's pull-request and Scheduled rows read this Station's own
+  // per-conversation records; a chat another Station owns has none here.
+  const sessionContextConversationId = hostConversation
+    ? (activeSession?.conversationId ?? null)
+    : null;
   const sessionContextDetailsId =
     activeTaskItem?.orchestrationThreadId ??
     activeSession?.currentSessionId ??
