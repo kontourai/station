@@ -1114,12 +1114,16 @@ A saved `kiro` connection keeps its own arguments.
    recorded in Station, before fetching anything else. It then downloads the
    engine and the Node runtime the manifest names for this computer, checks
    each one's size and sha256, refuses any archive entry with an absolute
-   path, a `..` segment or a link out of the archive, checks the unpacked
-   files again, and installs them read-only under
-   `<Station home>/engines/kiro-kas/0.66.104/`. Nothing updates on its own: a
-   new version arrives with a Station release. Until it is installed, a chat
-   says "Kiro (KAS, no CLI) isn't installed yet". Installing needs
-   permission to operate Station on a paired device.
+   path, a `..` segment, a link out of the archive, or a path or link target
+   that passes through another link in the archive (a link target may still
+   use `..` inside the archive, as the Node runtime's `bin/npm` does), checks
+   the unpacked files again, and installs them read-only under
+   `<Station home>/engines/kiro-kas/0.66.104/`. A download that cannot be
+   written (a full disk, an unwritable directory) fails the install and
+   leaves nothing staged. Nothing updates on its own: a new version arrives
+   with a Station release. Until it is installed, a chat and the engine's
+   **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
+   Installing needs permission to operate Station on a paired device.
 2. **Sign in.** Choose **AWS Builder ID**, or **IAM Identity Center** with
    your company's start URL (`https://your-company.awsapps.com/start`) and
    region. The panel shows a code and a link; open the link on any device,
@@ -1129,14 +1133,19 @@ A saved `kiro` connection keeps its own arguments.
 3. **Use it.** When the engine asks for a token, Station gives it the access
    token and its expiry, never the refresh token, refreshing the token first
    when fewer than three minutes are left. Requests for one connection share
-   one refresh, even across Station processes, and at most 30 tokens an hour
-   are issued per connection.
+   one refresh, even across Station processes, and each request to AWS gives
+   up after 15 seconds. At most 30 issues an hour per connection may refresh
+   or hand out a new token; handing the engine the token it already has again
+   (every availability check and restart asks once) is not counted.
+   The sign-in is kept per connection, not per credential profile: a chat
+   started with another credential profile on this engine is refused.
 
 Station keeps this sign-in in `security/engine-host-auth.json` under the
 Station home (readable only by its owner), separate from engine keys, and
 records each sign-in, sign-out, issue and refusal without any value in
 `security/engine-host-auth-audit.jsonl`. The panel reads **Signed in**
-from that store without starting the engine. If Kiro stops accepting the
+from that store without starting the engine, and does not repeat that the
+engine keeps its own sign-in on the computer. If Kiro stops accepting the
 saved sign-in, the panel says to sign in again. **Sign out** removes it.
 Removing the connection removes its sign-in and the MCP sign-ins the engine
 asked Station to keep (`_kiro/secret/*`). A [managed policy](managed-policy.md#engines)

@@ -420,6 +420,11 @@ contract `@kontourai/station-contracts/engine-credential-provider`).
   the binding's `delegationArgv`.
 - The issuer is scoped to one connection and credential profile. It returns
   `{ accessToken, expiresAt, attributes? }` and never a refresh token.
+  Station keeps one sign-in per connection it signs in itself, under the
+  `default` profile: the sign-in routes, status, the probe and sessions all
+  use it. A session start asking for another profile on such a connection is
+  refused before launch with `engine-credential-profile-unsupported`
+  (`ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE`, kind `input_unsupported`).
 - A refusal answers `-32000` with fixed text. An issuer's own error message
   never reaches the engine.
 
@@ -432,11 +437,19 @@ registers the Kiro `getAccessToken` responder, and beside it the
 The launch facts come from the connection and the validated built-in table
 (`engineLaunchFactsFor` in
 [acp-engine-descriptors](../../src-server/services/acp/acp-engine-descriptors.ts)),
-never from the caller. The availability probe calls it too, because the
+never from the caller. `ACPProcess` tells the client it builds whether a
+managed policy pin replaced the command or arguments the connection resolves
+to (`ACPSpawnedLaunch.launchReplacedByPolicy`); the adapter and the probe then
+install no credential or secret responders, because those facts no longer
+describe the spawned process. The availability probe calls it too, because the
 bundle asks for its token before it answers `initialize`. The issuer reads
 the engine host-auth vault, shares one in-flight issue per connection,
-refreshes inside a cross-process lock, issues at most 30 tokens an hour and
-audits without values. An import-boundary test keeps the issuer, the
+refreshes inside a cross-process lock and audits without values. At most 30
+issues an hour that refresh or hand the engine a token it was not already
+handed are allowed; re-handing the unchanged cached token (each probe and
+relaunch asks once) is not counted. Each SSO-OIDC request is abandoned after
+15 seconds (`OIDC_REQUEST_TIMEOUT_MS`), so a stalled endpoint cannot hold the
+refresh lock; the issue is then refused `unavailable`. An import-boundary test keeps the issuer, the
 responder and the vault from reaching Station's own principals. See
 [Sign in to Kiro without kiro-cli](connections.md#sign-in-to-kiro-without-kiro-cli).
 
@@ -526,7 +539,12 @@ How the events behave:
   statistics when the engine reports no token pair; a token pair outranks it.
 - **MCP servers.** The conversation statistics list the engine's servers.
   A `needs-auth` server offers Sign in and a `failed` one Reconnect on a live
-  session. Both call
+  session whose engine can reconnect: the adapter marks an
+  `engine-mcp.status` report `reconnect: true` only when the session's engine
+  declares the reviewed reconnect binding, and the panel offers the actions
+  only then (Codex reports its servers without it). A handoff or a newly
+  opened conversation drops the predecessor session's server list along with
+  its live usage. Both actions call
   `POST /api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect`
   ([session API](../reference/session-api.md#engine-mcp-servers-sessionsthreadidmcp-servers)),
   Sign in with `startOAuth: true`, and the panel says what the engine
@@ -567,7 +585,9 @@ Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 [acp-input-requests.ts](../../src-server/providers/adapters/acp-input-requests.ts)
 reads four wires into one `station.input-request/v1`, put to the person
 through the adapter's pending-request path (the request is cancelled when
-the turn ends or the session stops):
+the turn that opened it ends, or the session stops; one opened outside any
+turn, such as the consent link an MCP reconnect asks for, stays open until it
+is answered or the session stops):
 
 | Wire | Request | Reply |
 |---|---|---|
@@ -618,7 +638,10 @@ Each needs a generic Station surface before anything can call it.
 - **Rewind** (`rewindSession(threadId, toTurnId)`) needs `_meta.kiro.checkpoints`.
   It sends `_kiro/checkpoint/revertMultiple { sessionId, messageId }`, where
   `messageId` is the prompt id of the turn after `toTurnId`. The engine
-  reported that id as `user_message_id_assigned`. It hides that turn and
+  reported that id as `user_message_id_assigned`. A steer that cancels and
+  re-prompts gets a second id in the same turn; the rewind uses the turn's
+  first (its own prompt), the fork its last. The adapter keeps these ids for
+  the last 500 turns (`ACP_TURN_MESSAGES_MAX`). It hides that turn and
   every later one from the model, and restores files the engine's write
   tools changed. A rewind is refused while a turn runs, and for a turn whose
   prompt id this engine process did not report. The transcript keeps every
@@ -820,15 +843,24 @@ when the session's `initialize` answer backs it:
 | Command | Request | Basis |
 |---|---|---|
 | `/compact` | `_kiro/session/compact` | declared |
-| `/context` | `_kiro/session/context` (`subcommand`, default `show`) | declared |
-| `/knowledge` | `_kiro/knowledge` (default `show`) | declared |
-| `/code` | `_kiro/codeIntelligence` (default `status`) | declared |
-| `/memory`, `/memory list`, `/memory get <id>` | `_kiro/memory/list`, `_kiro/memory/get` (read-only; any other subcommand stays prompt text) | declared |
+| `/context`, `/context show` | `_kiro/session/context` (`subcommand`, default `show`) | declared |
+| `/knowledge`, `/knowledge show` | `_kiro/knowledge` (default `show`) | declared |
+| `/code`, `/code status` | `_kiro/codeIntelligence` (default `status`) | declared |
+| `/memory`, `/memory list`, `/memory get <id>` | `_kiro/memory/list`, `_kiro/memory/get` | declared |
 | `/config-template` | `_kiro/config/template` | declared |
-| `/permissions` | `_kiro/permissions/presets/list` (read-only) | declared |
-| `/settings` | `_kiro/configuration/getState` with `observer: 'session'` (read-only) | declared |
+| `/permissions`, `/permissions list` | `_kiro/permissions/presets/list` | declared |
+| `/settings` | `_kiro/configuration/getState` with `observer: 'session'` | declared |
 | `/export` | `_kiro/session/export` | declared |
-| kiro-cli's `help`, `context`, `compact`, `usage`, `mcp`, `tools`, `knowledge`, `prompts`, `code`, `stats`, `guide` | `_kiro.dev/commands/execute { sessionId, command: { command, args } }` | `undeclared-engine`, keyed on `agentInfo.name` `Kiro CLI Agent` |
+| kiro-cli's `help`, `context` (`show`), `compact`, `usage`, `mcp`, `tools` (`schema`), `knowledge` (`show`, `status`), `prompts` (`list`), `code` (`status`), `stats`, `guide` | `_kiro.dev/commands/execute { sessionId, command: { command, args } }` | `undeclared-engine`, keyed on `agentInfo.name` `Kiro CLI Agent` |
+
+Each entry names its read-only subcommands (in brackets above; the bare
+command is always one). A subcommand outside them, on a session where the
+command routes, is refused on the turn ("Station runs only the read-only forms
+of /tools …") and sent nowhere, not even as prompt text: an engine may run a
+slash command it receives as a prompt, and the forms left out change what it
+trusts (`/tools trust-all` would stop kiro-cli asking
+`session/request_permission`), what it reads (`/context add|rm|clear`) or what
+it knows (`/knowledge add|update|remove|clear`, `/memory` writes).
 
 `declared` means the method is in the session's
 `_meta.kiro.extensionMethods`. kiro-cli's other commands stay prompt text:
@@ -1177,6 +1209,12 @@ start. The current model falls back to the list's `currentModelId` when the
 option reports none. `session/set_model` answers with no current
 value, so for that dialect the engine's success answer is the only confirmation
 Station gets. Either way the model is chosen at session start only.
+
+kiro-cli 3.3 can answer `session/new` before its model list has loaded and send
+the `model` option in a `config_option_update` afterwards. A start that asked
+for a model therefore uses a model option such an update already delivered, or
+waits up to 5 seconds (`ACP_MODEL_ADVERTISEMENT_WAIT_MS`) for one, before it
+treats the model as not offered.
 
 A new session on a model the engine's fresh `session/new` options did not offer
 is refused by the adapter with the `model_not_advertised` code
