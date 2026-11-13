@@ -103,6 +103,11 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    advertises `loadSession`. Any other resume failure fails the start rather
    than loading: the fallback is closed, so an unexplained resume failure is
    reported instead of hidden behind a replayed load.
+   The `session/resume` or `session/load` answer carries the same `modes`,
+   `configOptions` and `models` as `session/new`, and the adapter adopts them
+   by the same rule, so a reopened session can still change mode and effort.
+   A field the answer leaves out keeps what the session already holds. A
+   reattach applies no start mode, model or effort.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
@@ -199,7 +204,7 @@ There is no bespoke ACP SSE-chunk vocabulary anymore. The adapter emits the same
 | `tool.started` / `tool.progress` / `tool.completed` | Tool execution |
 | `request.opened` / `request.resolved` | Tool approval / permission requests |
 | `plan.updated` | The agent's current ordered plan, as a full replace (see Plan Rendering below) |
-| `token-usage.updated` | Context occupancy; an engine's own context reading (`contextPercent`) and cost in its own unit (`reportedCost`) |
+| `token-usage.updated` | Context occupancy (`usage_update`); per-turn token figures from the prompt answer's `usage` (input, output, cache read and write, thought, total; ACP is declared `per-turn`, and no cost is read); an engine's own context reading (`contextPercent`) and cost in its own unit (`reportedCost`) |
 | `model.rerouted` | The engine moved work to another model (see Kiro extensions below) |
 | `engine-mcp.status` | The engine's own MCP servers and their state |
 | `extension.notification` | Namespaced, app-specific payload (see Extension Rendering below) |
@@ -516,7 +521,7 @@ Each consumer is a generic Station mechanism any engine can feed:
 | Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
 | Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused. The entry's command is `station-managed:<installId>`; `ACPProcess` resolves it at launch to the installed runtime and the argv (refusing extra arguments, and failing before spawn when not installed). Descriptor lookups key it by install id, never by the runtime's executable name. Installs: [`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts) | the Kiro agent-service bundle (`kiro-kas-bundle`, install `kiro-kas` 0.66.104) |
 | Declared features | `declaredHandshake.engineVariant`, `declaredFeatures`, `logChannels` (names only; paths stay server-side) | `agentCapabilities._meta.kiro` |
-| Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises (or Kiro's `effortLevel` id), and read back. A session without one refuses `effort`, at start or for the turn, and never drops it | none on 2.35 or 3.3.0 with model `auto`; see below |
+| Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises (or Kiro's `effortLevel` id), and read back. A session without one refuses `effort`, at start or for the turn, and never drops it. The connection catalog offers that option's values, with the engine's names, as each model's effort levels (`supportsEffort`, `supportedEffortLevels`, `effortLabels`); an engine with no such option offers no effort field | none on 2.35 or 3.3.0 with model `auto`; see below |
 
 How the events behave:
 
@@ -736,10 +741,11 @@ and the scripted profile
   and a free-text `q1_other`) because Station announces `elicitation`.
   Without it the engine prints the question as text and takes the next
   prompt as the answer.
-- **Modes** (`default`, `accept-edits`, `auto`, `plan`), the `model` and
-  `thought_level` options, `available_commands_update`, `usage_update`
-  (context), images, cancel, `session/resume` and `session/load` are core
-  ACP and take the generic paths above. Its permission requests use string
+- **Modes** (`default`, `accept-edits`, `auto`, `plan`), the `model` option,
+  `thought_level` (offered as the effort picker), `available_commands_update`,
+  `usage_update` (context), the prompt answer's per-turn `usage`, images,
+  cancel, `session/resume` (whose answer re-advertises modes and options)
+  and `session/load` are core ACP and take the generic paths above. Its permission requests use string
   ids, which the SDK answers as sent.
 - **Steering** is a mid-turn prompt (`prompt-handoff`, above).
 
@@ -755,6 +761,7 @@ and the scripted profile
 | Text and data file attachments | The engine declares `embeddedContext` and answered from text sent as `resource` blocks (recorded). Station offers file input per adapter, not per engine, so every ACP engine refuses files today; offering them needs a per-connection gate in the composer and in orchestration. Images work. |
 | Signing out (`auth.logout`) | Station has no sign-out for any ACP engine. Run `agy`, then `/logout`, on the computer Station runs on. |
 | Usage limits and cost | ACP carries no quota or cost; Google's quota service is not a published contract. |
+| Engine-suggested titles (`session_info_update.title`) | Station has no event that carries an engine's title. Whether it may replace a Station-generated title, re-title itself, or title a continuation's root conversation is an open product decision. |
 | Text arriving after a turn's answer | 1.5.8 can send the last text chunk of a turn after answering its prompt. It has no message id to tell turns apart, so that chunk joins the next turn's reply. |
 | `/goal`, `/schedule`, `/swarm` and other engine commands | Offered as the engine lists them and sent as prompt text; their background work is the engine's own and is not tracked by Station. |
 | The older `agy_acp_server.par` | Superseded by `agy acp`. Add it as a custom engine if you still need it. |
