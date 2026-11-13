@@ -641,7 +641,9 @@ describe('HomeView', () => {
     expect(screen.queryByText(/Default Model/i)).toBeNull();
     // The Agent chip names what Start sends, and Start sends exactly it.
     expect(
-      screen.getByRole('button', { name: 'Agent: Codex · gpt-5.3-codex' }),
+      screen.getByRole('button', {
+        name: /^Run setup: Agent: Codex · gpt-5.3-codex/,
+      }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     expect(newChat).toHaveBeenCalledTimes(1);
@@ -958,14 +960,18 @@ describe('HomeView', () => {
     ['gpt-5.4', 'Agent: Codex · gpt-5.4'],
     ['Model not reported', 'Agent: Codex'],
   ])(
-    'the compact start composer names the default selection (%s) on its Agent chip',
+    'the compact start composer names the default selection (%s) on Run setup',
     (modelLabel, expected) => {
       fixtures.defaultModelLabel = modelLabel;
       fixtures.sessions = [workSession()];
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
       const form = screen.getByRole('form', { name: 'Start work' });
       expect(form.classList.contains('start-composer--compact')).toBe(true);
-      expect(within(form).getByRole('button', { name: expected })).toBeTruthy();
+      expect(
+        within(form)
+          .getByRole('button', { name: /^Run setup:/ })
+          .getAttribute('aria-label'),
+      ).toContain(expected);
     },
   );
 
@@ -991,7 +997,9 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const form = screen.getByRole('form', { name: 'Start work' });
     expect(
-      within(form).getByRole('button', { name: 'Agent: Choose an agent' }),
+      within(form).getByRole('button', {
+        name: /^Run setup: Agent: Choose an agent/,
+      }),
     ).toBeTruthy();
     fireEvent.change(
       within(form).getByRole('textbox', { name: 'What would you like done?' }),

@@ -1436,9 +1436,11 @@ describe('the start composer in the dock', () => {
   const startButton = () =>
     screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
   async function chooseInMenu(chip: string, slug: string) {
+    fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
     fireEvent.click(screen.getByRole('button', { name: chip }));
     await screen.findByRole('dialog', { name: 'Choose agent' });
     clickAgent(slug);
+    fireEvent.click(screen.getByRole('button', { name: 'Close run setup' }));
   }
 
   test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {
@@ -1451,7 +1453,7 @@ describe('the start composer in the dock', () => {
     expect(screen.queryByRole('dialog', { name: 'Choose agent' })).toBeNull();
     expect(message().value).toBe('Review this change');
     expect(
-      screen.getByRole('button', { name: 'Agent: Codex Agent' }),
+      screen.getByRole('button', { name: /^Run setup: Agent: Codex Agent/ }),
     ).toBeTruthy();
     fireEvent.click(startButton());
     fireEvent.submit(screen.getByRole('form', { name: 'Start work' }));
@@ -1515,7 +1517,7 @@ describe('the start composer in the dock', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Enable/ }));
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Agent: Codex Agent' }),
+        screen.getByRole('button', { name: /^Run setup: Agent: Codex Agent/ }),
       ).toBeTruthy(),
     );
     expect(onSelect).not.toHaveBeenCalled();
@@ -2030,6 +2032,7 @@ describe('the start composer in the dock', () => {
   test('Enter on an Agent that cannot start does not choose it', async () => {
     selectionModelState.agents = [AGENT, UNAVAILABLE_AGENT];
     start();
+    fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Agent: Assistant' }));
     const menu = await screen.findByRole('dialog', { name: 'Choose agent' });
     const search = within(menu).getByRole('textbox', { name: 'Search agents' });

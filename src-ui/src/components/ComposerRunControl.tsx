@@ -33,7 +33,17 @@ export function ComposerRunControl({
       return next;
     });
   }, []);
-  const labels = Object.values(summaries);
+  const sectionOrder = (value: string) =>
+    /^Agent:/.test(value)
+      ? 0
+      : /^(Approval|Permissions)/.test(value)
+        ? 2
+        : /^Session mode:/.test(value)
+          ? 3
+          : 1;
+  const labels = Object.values(summaries).sort(
+    (a, b) => sectionOrder(a) - sectionOrder(b),
+  );
   const summary = [
     ...labels,
     ...(!labels.some((value) => /^Agent:/.test(value))

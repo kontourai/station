@@ -334,7 +334,13 @@
 
     "src-ui/src/components/drafts/DiscardDraftButton.tsx",
 
-    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"
+    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts",
+
+    "src-ui/src/components/ComposerRunControl.tsx",
+
+    "src-ui/src/components/ComposerRunControl.css",
+
+    "src-ui/src/components/ComposerChoiceSummary.ts"
   ],
 
   "checks": [
