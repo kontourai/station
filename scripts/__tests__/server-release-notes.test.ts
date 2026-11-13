@@ -35,7 +35,9 @@ test.each(['v0.1.11-nightly.1', 'v0.1.11', 'v0.1.11-preview.1'])(
         '/fixture/notes.md',
         '\n\n## Installation\n\nInstall fixture\n',
       );
-      expect(warning).toHaveBeenCalledWith(expect.stringContaining('HTTP 503'));
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining('GitHub API was unavailable or rate limited.'),
+      );
     } else {
       await expect(run).rejects.toThrow('HTTP 503');
       expect(writeFileSync).not.toHaveBeenCalled();
@@ -121,8 +123,8 @@ test.each(['missing', 'self', 'empty', 'compare-only'])(
     expect(warning).toHaveBeenCalledWith(
       expect.stringContaining(
         mode === 'missing'
-          ? 'Previous server release is unavailable'
-          : 'No changes since v0.1.11-nightly.1.',
+          ? 'Previous server release is unavailable.'
+          : 'No changes since the previous server release.',
       ),
     );
   },
@@ -166,7 +168,7 @@ test('the server CLI keeps installation beneath an oversized generated changelog
   expect(body).toContain('## Installation\n\nInstall fixture');
 });
 
-test('the nightly fallback warning names the failed request without GitHub diagnostics', async () => {
+test('the nightly fallback warning logs a fixed reason without GitHub diagnostics', async () => {
   vi.resetModules();
   vi.mocked(writeFileSync).mockClear();
   vi.stubEnv('GITHUB_REPOSITORY', 'kontourai/station');
@@ -197,7 +199,7 @@ test('the nightly fallback warning names the failed request without GitHub diagn
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
   await import('../server-release-notes.mjs');
   const text = String(warning.mock.calls[0]?.[0]);
-  expect(text).toContain('GitHub API HTTP 502 for GET');
+  expect(text).toContain('GitHub API was unavailable or rate limited.');
   expect(text).not.toContain('repo, workflow');
   expect(text).not.toContain('upstream detail');
   expect(writeFileSync).toHaveBeenCalledExactlyOnceWith(

@@ -37,7 +37,7 @@ function github(repository, token) {
         if (!retrySafe || attempt)
           throw Object.assign(error, {
             releaseNotesUnavailable: true,
-            releaseNotesReason: `GitHub API ${error.name}`,
+            releaseNotesCode: 'network',
           });
         await new Promise((resolve) => setTimeout(resolve, 250));
         continue;
@@ -78,16 +78,14 @@ function github(repository, token) {
           (response.headers.get('x-ratelimit-remaining') === '0' ||
             response.headers.has('retry-after')));
       if (unavailable) {
-        // The nightly fallback logs this error, so it carries only the
-        // request line: never response bodies or token-scope headers.
-        const reason = `GitHub API HTTP ${response.status} for ${method} ${path}`;
         await response.body?.cancel();
         throw Object.assign(
           new Error(
             `GitHub release notes: HTTP ${response.status} ${method} ${path}`,
           ),
           {
-            releaseNotesReason: reason,
+            // The nightly fallback logs a fixed message for this code only.
+            releaseNotesCode: 'github-unavailable',
             releaseNotesUnavailable: true,
           },
         );
@@ -136,10 +134,10 @@ function boundedNotes(body, compareUrl) {
   return `${kept || '## What Changed'}\n\n${entries.length - shown} changes omitted.\n\n**Full changelog**: ${compareUrl}`;
 }
 
-function unavailable(message) {
+function unavailable(message, code) {
   return Object.assign(new Error(message), {
     releaseNotesUnavailable: true,
-    releaseNotesReason: message,
+    releaseNotesCode: code,
   });
 }
 
@@ -328,14 +326,21 @@ export async function generateServerReleaseNotes({
       if (tags.length < 100) break;
     }
   }
-  if (!previous) throw unavailable('Previous server release is unavailable');
+  if (!previous)
+    throw unavailable(
+      'Previous server release is unavailable',
+      'no-previous-release',
+    );
   const priorTag = previous.tag_name;
   const before = await api(`/commits/${priorTag}`);
   if (!/^[a-f0-9]{40}$/.test(before?.sha ?? ''))
-    throw unavailable('Previous server source is unavailable');
+    throw unavailable(
+      'Previous server source is unavailable',
+      'no-previous-source',
+    );
   const noChanges = () => {
     const message = `No changes since ${priorTag}.`;
-    if (ring === 'nightly') throw unavailable(message);
+    if (ring === 'nightly') throw unavailable(message, 'no-changes');
     return message;
   };
   if (before.sha === source) return noChanges();
