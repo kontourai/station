@@ -92,3 +92,13 @@
 .child-chat-trail {
   flex: 1 1 auto;
 }
+
+.chat-dock__mobile-header--child {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.chat-dock__mobile-header--child .chat-dock__mobile-actions {
+  min-width: 88px;
+}
+.chat-dock__mobile-header--child .child-chat-trail > button {
+  display: none;
+}

@@ -17,7 +17,10 @@ import {
   WORKSPACE_READINESS_PANE_DESCRIPTOR,
   WORKSPACE_TRUST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
-import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import {
+  parseWorkspacePaneInstance,
+  type WorkspacePaneDescriptor,
+} from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR,
@@ -275,11 +278,11 @@ test('Activity review renderer refuses forged declarations and mismatched occurr
     ...WORKSPACE_CHAT_PANE_DESCRIPTOR,
     id: 'pane:builtin:activity-review' as typeof WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
   };
-  const instance = {
+  const instance = parseWorkspacePaneInstance({
     ...createWorkspaceChatPaneInstance()!,
     descriptorId: descriptor.id,
     instanceId: `activity-review:${'b'.repeat(32)}`,
-  };
+  });
   if (!instance) throw new Error('Canonical review occurrence missing');
   expect(getBuiltinWorkspacePaneRenderer(descriptor, instance)).toBeNull();
   expect(

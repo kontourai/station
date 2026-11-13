@@ -4286,6 +4286,26 @@ function childChatScreens(): Screen[] {
               document.documentElement.setAttribute('data-theme', theme),
             theme,
           );
+          if (viewport.width < 600) {
+            for (const name of ['Chat actions', 'New chat']) {
+              const control = dock.getByRole('button', { name, exact: true });
+              const hittable = await control.evaluate((button) => {
+                const box = button.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                );
+                return (
+                  box.width >= 44 &&
+                  box.height >= 44 &&
+                  (hit === button || button.contains(hit))
+                );
+              });
+              expect(hittable, `${name} keeps a clear 44px phone target`).toBe(
+                true,
+              );
+            }
+          }
           const overflow = await dock.evaluate(
             (element) => element.scrollWidth > element.clientWidth + 1,
           );
