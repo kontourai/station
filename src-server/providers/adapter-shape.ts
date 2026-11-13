@@ -6,6 +6,7 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
+import type { EngineCommandRoute } from '@kontourai/station-contracts/engine-commands';
 import type {
   InputRequestContent,
   SessionGrantScope,
@@ -622,6 +623,11 @@ export interface ProviderAdapterShape {
       description: string;
       argumentHint?: string;
       passthrough: boolean;
+      /**
+       * How the command runs on the engine: prompt text, or the engine's own
+       * request where the live session declared one. Absent: prompt text.
+       */
+      route?: EngineCommandRoute;
     }>
   >;
   listModels?(options?: { signal?: AbortSignal; maxEntries?: number }): Promise<

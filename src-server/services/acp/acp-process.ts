@@ -784,6 +784,30 @@ export class ACPProcess extends EventEmitter {
     if (this._sessionId === sessionId) this._sessionId = null;
   }
 
+  /**
+   * Fork a stored session into a new one (`session/fork`, gated on
+   * `sessionCapabilities.fork`). `meta` carries the engine's fork point, such
+   * as Kiro's `{ kiro: { messageId } }`. The current session is unchanged;
+   * the caller loads the new one in a process of its own.
+   */
+  async forkSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers: McpServer[] = [],
+    meta?: Record<string, unknown>,
+  ): Promise<{ sessionId: string }> {
+    if (!this.connection) throw new Error('ACPProcess not started');
+    const result = (await this.connection.request(methods.agent.session.fork, {
+      sessionId,
+      cwd,
+      mcpServers,
+      ...(meta ? { _meta: meta } : {}),
+    })) as { sessionId?: unknown } | undefined;
+    if (typeof result?.sessionId !== 'string' || !result.sessionId)
+      throw new Error('session/fork answered without a session id');
+    return { sessionId: result.sessionId };
+  }
+
   /** Set the active mode for the current session. */
   async setMode(modeId: string): Promise<void> {
     if (!this.connection || !this._sessionId)

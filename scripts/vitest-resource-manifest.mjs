@@ -1355,6 +1355,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Launches the profile-driven fake engine through the real ACPProcess,
   // adapter and probe; the process boundary is the qualification claim.
   'src-server/providers/__tests__/acp-engine-qualification.process.test.ts',
+  // Kiro parity: the fake ACP agent, driven by recorded kiro-cli profiles,
+  // through the real adapter and ACPProcess; it records what Station
+  // announced and answered.
+  'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
   // #3924: runs the real `opencode` (when this host has one) with fresh XDG
   // directories against a planted project plugin; skips loudly where no
   // opencode binary resolves.

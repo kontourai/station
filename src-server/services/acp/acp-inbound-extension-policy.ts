@@ -283,12 +283,18 @@ export class AcpCredentialBridgingRefusedError extends Error {
  */
 export type AcpInboundExtensionRequestHandlerId =
   | 'cursor.ask-question'
-  | 'cursor.create-plan';
+  | 'cursor.create-plan'
+  | 'kiro.user-input'
+  | 'kiro.mcp-elicitation'
+  | 'kiro.open-external-url'
+  | 'client.terminal-facts';
 
 export interface AcpReviewedInboundExtensionRequest {
   /** Exact method name; no prefix or namespace matching. */
   readonly method: string;
   readonly handler: AcpInboundExtensionRequestHandlerId;
+  /** Where the request and the answer it takes were observed. */
+  readonly evidence?: string;
 }
 
 /**
@@ -307,6 +313,40 @@ export const REVIEWED_INBOUND_EXTENSION_REQUESTS: readonly AcpReviewedInboundExt
     Object.freeze({
       method: 'cursor/create_plan',
       handler: 'cursor.create-plan' as const,
+    }),
+    // Kiro's agent service sends these three only to a client that announced
+    // the matching `_meta.kiro` flag (`ACP_ANNOUNCED_CLIENT_META_FLAGS`), and
+    // the flag is announced only while the handler is registered. Each is
+    // answered from what a person decided, never with a JSON-RPC error
+    // (`acp-input-requests.ts`).
+    Object.freeze({
+      method: '_kiro/userInput',
+      handler: 'kiro.user-input' as const,
+      evidence:
+        'kirocrew acp/types.py METHOD_KAS_USER_INPUT and acp/elicitation.py (reply always `answered`)',
+    }),
+    Object.freeze({
+      method: '_kiro/mcp/elicitation',
+      handler: 'kiro.mcp-elicitation' as const,
+      evidence:
+        'kirocrew test/fixtures/acp_frames/kas/mcp-elicitation.jsonl (fields nested under params.elicitation)',
+    }),
+    Object.freeze({
+      method: '_kiro/openExternalUrl',
+      handler: 'kiro.open-external-url' as const,
+      evidence:
+        'kirocrew test/fixtures/acp_frames/kas/open-external-url-live.jsonl; answer `{success: true}`, refusal a -32000 error (acp/runtime_host_requests.py)',
+    }),
+    // `client.terminal-facts`: what Station's terminal bridge is. Kiro's agent
+    // service asks `{sessionId}` during session/new and reads `{shellType}`
+    // (a non-empty string) as the grammar for its shell-command policy; a
+    // -32601 falls back to `unknown` (KAS 0.66.102 acp-server.js
+    // `resolveShellTypeInfo`; live: v3-refuse-shell capture, kiro-cli 2.35).
+    Object.freeze({
+      method: '_kiro/terminal/shell_type',
+      handler: 'client.terminal-facts' as const,
+      evidence:
+        'live kiro-cli `acp --agent-engine v3` session/new (2026-11-13); answer shape read from @kiro/agent 0.66.102 resolveShellTypeInfo',
     }),
   ]);
 

@@ -719,6 +719,7 @@ describe('AcpAdapter', () => {
         description: 'Deploy the app',
         argumentHint: '<env>',
         passthrough: true,
+        route: { kind: 'prompt-text' },
       },
     ]);
 
@@ -3274,6 +3275,13 @@ describe('AcpAdapter', () => {
           category: 'model',
           currentValue: 'default-model',
           options: [{ value: 'claude-sonnet' }],
+        },
+        // `effort` applies only through an advertised thought_level option.
+        {
+          id: 'reasoning',
+          category: 'thought_level',
+          currentValue: 'high',
+          options: [{ value: 'high' }],
         },
       ],
     });

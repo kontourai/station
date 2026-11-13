@@ -271,14 +271,23 @@ describe('createAcpInboundExtensionRequestHandler', () => {
   });
 
   test('pins the reviewed inbound requests, each registrable and exact', () => {
-    expect(REVIEWED_INBOUND_EXTENSION_REQUESTS).toEqual([
+    expect(
+      REVIEWED_INBOUND_EXTENSION_REQUESTS.map(({ method, handler }) => ({
+        method,
+        handler,
+      })),
+    ).toEqual([
       { method: 'cursor/ask_question', handler: 'cursor.ask-question' },
       { method: 'cursor/create_plan', handler: 'cursor.create-plan' },
+      { method: '_kiro/userInput', handler: 'kiro.user-input' },
+      { method: '_kiro/mcp/elicitation', handler: 'kiro.mcp-elicitation' },
+      { method: '_kiro/openExternalUrl', handler: 'kiro.open-external-url' },
+      { method: '_kiro/terminal/shell_type', handler: 'client.terminal-facts' },
     ]);
     const registry = new AcpInboundExtensionRegistry();
     for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
       registry.register(entry.method, () => ({}));
-    expect(registry.size).toBe(2);
+    expect(registry.size).toBe(6);
     expect(registry.resolve('_cursor/ask_question')).toBeUndefined();
   });
 

@@ -36,12 +36,28 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
   identity: AcpHandshakeIdentity;
   channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>;
   methods: readonly string[];
+  /**
+   * Takes back every steer the running turn has not read yet. Listed only
+   * where the engine's own report of the drop names exactly the unread
+   * steers, so a caller can tell a dropped steer from a delivered one.
+   */
+  retract?: { method: string; observed: string };
   observed: string;
 }> = [
   {
     identity: { agentInfoName: 'Kiro CLI Agent' },
     channel: 'session-steer',
     methods: ['_session/steer'],
+    // Answered `{cleared: true}` either way; the drop itself is reported as
+    // `AgentExecutionUserMessageCleared` naming the unread steers. Kiro's
+    // agent service (`--agent-engine v3`) is deliberately not given one: its
+    // clear names steers the turn already read (kirocrew
+    // agent_sdk/backends_turns.py ACP_BACKENDS_STEER_RETRACT).
+    retract: {
+      method: '_session/steer/clear',
+      observed:
+        'kirocrew test/fixtures/acp_frames/kiro/steering-clear-live.jsonl (kiro-cli 2.33.1)',
+    },
     observed: 'kiro-cli 2.33.0 `acp`',
   },
   {
@@ -67,6 +83,8 @@ export interface AcpSteerSelection {
   /** Extension methods to try in order; empty for cancel + re-prompt. */
   methods: readonly string[];
   basis: 'declared' | 'undeclared-engine' | 'none';
+  /** The method that takes back unread steers, where the engine has one. */
+  retractMethod?: string;
 }
 
 type SteerHandshake = AcpIdentityHandshake;
@@ -103,6 +121,7 @@ export function resolveAcpSteerChannel(
       channel: engine.channel,
       methods: engine.methods,
       basis: 'undeclared-engine',
+      ...(engine.retract ? { retractMethod: engine.retract.method } : {}),
     };
   }
   return { channel: 'cancel-reprompt', methods: [], basis: 'none' };
