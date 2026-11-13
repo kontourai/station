@@ -10,7 +10,8 @@
  * 2. Each artifact must have exactly the manifest's size and sha256
  *    (`infra/pinned-artifact.ts`, shared with the Browser pane's Chromium).
  * 3. Every entry name is vetted before extraction: no absolute path, no `..`
- *    segment, no device or fifo, no link whose target leaves the root.
+ *    segment, no device or fifo, no link whose target leaves the root, and
+ *    no entry or link target that passes through another link entry.
  * 4. The extracted tree is walked again, symlinks resolved, after extraction.
  *
  * A runtime build named `electron-builtin` is refused: Station never runs an
@@ -196,9 +197,20 @@ export function defaultManagedInstallDeps(): ManagedInstallDeps {
   };
 }
 
+/** An entry name as POSIX segments, without `.` or empty segments. */
+function entrySegments(name: string): string[] {
+  return name
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((segment) => segment !== '' && segment !== '.');
+}
+
 /**
  * Why an entry may not be extracted, or undefined. A link may point only
  * inside the archive root, judged from the link's own directory.
+ *
+ * This judges one entry alone; {@link vetArchiveEntries} adds the checks
+ * that need the whole listing (a path through another link).
  */
 export function vetArchiveEntry(
   entry: ArchiveEntryListing,
@@ -213,8 +225,10 @@ export function vetArchiveEntry(
     const normalized = target.replace(/\\/g, '/');
     if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized))
       return `${entry.name} links outside the archive`;
-    // A hard link names another entry from the root; a symlink is relative to
-    // its own directory.
+    // A hard link names another member from the root, which never needs `..`.
+    if (entry.kind === 'hardlink' && unsafeArchiveEntry(normalized))
+      return `${entry.name} links outside the archive`;
+    // A symlink is relative to its own directory.
     const resolved =
       entry.kind === 'hardlink'
         ? posix.normalize(normalized)
@@ -226,6 +240,53 @@ export function vetArchiveEntry(
           );
     if (resolved === '..' || resolved.startsWith('../'))
       return `${entry.name} links outside the archive`;
+  }
+  return undefined;
+}
+
+/**
+ * Vet a whole listing. Besides each entry on its own:
+ *
+ * - no entry's path may pass through a link entry (`d/s -> ..` then
+ *   `d/s/t -> ..` then `d/s/t/payload`: each link looks contained judged
+ *   lexically, but extraction writes through them and climbs one level per
+ *   link);
+ * - no symlink's target may walk through a link entry before its last
+ *   segment, for the same reason on the read side.
+ *
+ * A symlink target may still contain `..`: the pinned Node runtime's own
+ * `bin/npm -> ../lib/node_modules/npm/bin/npm-cli.js` does, and that is
+ * contained once no path segment can be a link.
+ */
+export function vetArchiveEntries(
+  entries: readonly ArchiveEntryListing[],
+): string | undefined {
+  const links = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind === 'symlink' || entry.kind === 'hardlink')
+      links.add(entrySegments(entry.name).join('/'));
+  }
+  const throughLink = (segments: readonly string[]) => {
+    for (let i = 1; i < segments.length; i++) {
+      if (links.has(segments.slice(0, i).join('/'))) return true;
+    }
+    return false;
+  };
+  for (const entry of entries) {
+    const problem = vetArchiveEntry(entry);
+    if (problem) return problem;
+    const segments = entrySegments(entry.name);
+    if (throughLink(segments)) return `${entry.name} is reached through a link`;
+    if (entry.kind === 'symlink') {
+      const walked = segments.slice(0, -1);
+      const target = entrySegments(entry.linkTarget ?? '');
+      for (const [index, segment] of target.entries()) {
+        if (segment === '..') walked.pop();
+        else walked.push(segment);
+        if (index < target.length - 1 && links.has(walked.join('/')))
+          return `${entry.name} links through another link`;
+      }
+    }
   }
   return undefined;
 }
@@ -659,14 +720,12 @@ export class ManagedInstaller {
         'unsafe-entry-name',
         'The archive is empty.',
       );
-    for (const entry of entries) {
-      const problem = vetArchiveEntry(entry);
-      if (problem)
-        throw new ManagedInstallError(
-          'unsafe-entry-name',
-          `The archive has an entry Station will not extract: ${problem}.`,
-        );
-    }
+    const problem = vetArchiveEntries(entries);
+    if (problem)
+      throw new ManagedInstallError(
+        'unsafe-entry-name',
+        `The archive has an entry Station will not extract: ${problem}.`,
+      );
     mkdirSync(into, { recursive: true });
     try {
       await this.deps.extract(archive, into);

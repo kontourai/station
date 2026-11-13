@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -16,6 +18,7 @@ import {
   ManagedInstaller,
   managedInstallDir,
   parseTarListing,
+  vetArchiveEntries,
   vetArchiveEntry,
 } from '../managed-install.js';
 import {
@@ -314,6 +317,34 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
     expect(existsSync(managedInstallDir(f.home, f.definition.pin))).toBe(false);
   });
 
+  test('an artifact that cannot be written fails the install and removes staging', async () => {
+    const f = await fixture();
+    const parent = join(f.home, 'engines', 'kiro-kas');
+    // The staging directory exists by the time the artifact is fetched:
+    // lock its downloads directory so the archive cannot be created.
+    const lockingFetch = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      if (!String(url).endsWith('/manifest.json')) {
+        for (const name of readdirSync(parent)) {
+          if (name.startsWith('.staging'))
+            chmodSync(join(parent, name, 'downloads'), 0o500);
+        }
+      }
+      return f.server.fetch(url, init);
+    }) as typeof fetch;
+    const inst = await run(f, installer(f, { fetch: lockingFetch }));
+    expect(inst.state('kiro-kas')).toMatchObject({
+      kind: 'failed',
+      reason: 'download-failed',
+    });
+    expect(existsSync(managedInstallDir(f.home, f.definition.pin))).toBe(false);
+    expect(
+      readdirSync(parent).filter((name) => name.startsWith('.staging')),
+    ).toEqual([]);
+  });
+
   test('a path-traversal entry is refused before extraction writes anything', async () => {
     const f = await fixture({
       engine: [...engineEntries(), { name: '../escaped.txt', body: 'owned' }],
@@ -341,6 +372,53 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
       kind: 'failed',
       reason: 'unsafe-entry-name',
     });
+  });
+
+  // Each link resolves inside the archive on its own, judged lexically from
+  // its own directory; chained, extraction walks up one level per link and
+  // writes the payload into the Station home, outside every install root.
+  const chainedLinks: TarEntry[] = [
+    { name: 'd/', type: 'dir' },
+    { name: 'd/s', type: 'symlink', linkTarget: '..' },
+    { name: 'd/s/t', type: 'symlink', linkTarget: '..' },
+    { name: 'd/s/t/u', type: 'symlink', linkTarget: '..' },
+    { name: 'd/s/t/u/v', type: 'symlink', linkTarget: '..' },
+    { name: 'd/s/t/u/v/w', type: 'symlink', linkTarget: '..' },
+    { name: 'd/s/t/u/v/w/payload', body: 'owned' },
+  ];
+
+  test('chained links are refused before extraction writes through them', async () => {
+    const f = await fixture({ engine: [...engineEntries(), ...chainedLinks] });
+    const inst = await run(f);
+    expect(inst.state('kiro-kas')).toMatchObject({
+      kind: 'failed',
+      reason: 'unsafe-entry-name',
+    });
+    for (const dir of [
+      f.home,
+      join(f.home, 'engines'),
+      join(f.home, 'engines', 'kiro-kas'),
+    ])
+      expect(existsSync(join(dir, 'payload'))).toBe(false);
+  });
+
+  test("the pinned Node runtime's own '..' links still install", async () => {
+    // bin/npm, bin/npx and bin/corepack in node-v22.23.3-*.tar.xz point at
+    // ../lib/node_modules/...: a blanket '..' refusal would refuse every
+    // managed install.
+    const f = await fixture({
+      engine: [
+        ...engineEntries(),
+        { name: 'node_modules/@kiro/agent/bin/', type: 'dir' },
+        {
+          name: 'node_modules/@kiro/agent/bin/acp',
+          type: 'symlink',
+          linkTarget: '../dist/server/acp-server.js',
+        },
+      ],
+    });
+    const inst = await run(f);
+    expect(inst.state('kiro-kas')).toMatchObject({ kind: 'installed' });
   });
 
   test('a link that appears only after extraction fails the tree re-check', async () => {
@@ -372,6 +450,62 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
 });
 
 describe('archive entry vetting', () => {
+  test('refuses an entry reached through a link entry, and a target walked through one', () => {
+    const link = (name: string, linkTarget: string) => ({
+      name,
+      kind: 'symlink' as const,
+      linkTarget,
+    });
+    const dir = { name: 'd/', kind: 'directory' as const };
+    expect(
+      vetArchiveEntries([dir, link('d/s', '..'), link('d/s/t', '..')]),
+    ).toMatch(/d\/s\/t is reached through a link/);
+    expect(
+      vetArchiveEntries([
+        dir,
+        link('d/s', '..'),
+        { name: 'd/s/payload', kind: 'file' },
+      ]),
+    ).toMatch(/reached through a link/);
+    // Order does not matter: the link may be listed after the entry.
+    expect(
+      vetArchiveEntries([
+        { name: 'd/s/payload', kind: 'file' },
+        link('d/s', '..'),
+      ]),
+    ).toMatch(/reached through a link/);
+    // x/b -> .. is the root; x/a -> b/../.. is lexically x, really the
+    // root's parent.
+    expect(
+      vetArchiveEntries([
+        { name: 'x/', kind: 'directory' },
+        link('x/b', '..'),
+        link('x/a', 'b/../..'),
+      ]),
+    ).toMatch(/x\/a links through another link/);
+    expect(
+      vetArchiveEntries([
+        { name: 'h', kind: 'hardlink', linkTarget: 'a/../b' },
+      ]),
+    ).toMatch(/links outside/);
+  });
+
+  test("accepts the pinned Node runtime's '..' links and a link to a link", () => {
+    expect(
+      vetArchiveEntries([
+        { name: 'node/bin/', kind: 'directory' },
+        { name: 'node/bin/node', kind: 'file' },
+        {
+          name: 'node/bin/npm',
+          kind: 'symlink',
+          linkTarget: '../lib/node_modules/npm/bin/npm-cli.js',
+        },
+        { name: 'node/bin/npm2', kind: 'symlink', linkTarget: 'npm' },
+        { name: 'node/lib/node_modules/npm/bin/npm-cli.js', kind: 'file' },
+      ]),
+    ).toBeUndefined();
+  });
+
   test.each([
     [{ name: '/abs', kind: 'file' as const }],
     [{ name: 'a/../../b', kind: 'file' as const }],

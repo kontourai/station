@@ -18,6 +18,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 
 export type PinnedArtifactFailure =
   | 'download-failed'
@@ -85,32 +86,40 @@ export async function downloadPinnedArtifact(
   }
   const md5 = createHash('md5');
   const sha256 = createHash('sha256');
-  const file = createWriteStream(input.dest);
   let received = 0;
-  try {
-    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+  const pinned = input.bytes;
+  async function* checked(source: AsyncIterable<Uint8Array>) {
+    for await (const chunk of source) {
       received += chunk.byteLength;
       input.onProgress?.(received);
-      if (received > input.bytes) {
+      if (received > pinned) {
         throw new PinnedArtifactError(
           'size-mismatch',
-          `Archive exceeded the pinned ${input.bytes} bytes.`,
+          `Archive exceeded the pinned ${pinned} bytes.`,
         );
       }
       md5.update(chunk);
       sha256.update(chunk);
-      if (!file.write(chunk)) {
-        await new Promise<void>((resolve) => file.once('drain', resolve));
-      }
+      yield chunk;
     }
+  }
+  // pipeline owns the write stream's lifecycle: an open or write failure
+  // (missing or unwritable destination, full disk) rejects here instead of
+  // surfacing as an unhandled 'error' event, and a backpressure wait cannot
+  // outlive a failed stream. Either way the file is closed before we return,
+  // so the caller can remove its staging directory.
+  try {
+    await pipeline(
+      response.body as unknown as AsyncIterable<Uint8Array>,
+      checked,
+      createWriteStream(input.dest),
+    );
   } catch (error) {
     if (error instanceof PinnedArtifactError) throw error;
     throw new PinnedArtifactError(
       'download-failed',
       `The download from ${input.sourceName} stopped: ${(error as Error).message}`,
     );
-  } finally {
-    await new Promise<void>((resolve) => file.end(resolve));
   }
   if (received !== input.bytes) {
     throw new PinnedArtifactError(
