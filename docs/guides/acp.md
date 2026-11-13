@@ -756,8 +756,9 @@ A wake turn holds the session like any turn: a send while it runs is refused
 wakes again later. An ended or interrupted wake's prompt id is remembered, so
 Grok restating it never opens a second turn. A wake whose engine exits ends as
 a failed provider turn: its own end can no longer arrive. Credential-refusal
-recovery, which replaces the engine process, aborts an open wake
-(`engine-restarted`) as it does Station's own turn. A wake still open when the
+recovery, which replaces the engine process, aborts an open wake as it does
+Station's own turn (`engine-restarted`, or `stopped` when the session is
+stopping). A wake still open when the
 session stops ends with the session (`session.exited`). A turn cost that names
 no engine prompt is not published. An ACP session whose
 engine reports no child work (every engine but Grok today) publishes one

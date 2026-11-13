@@ -3039,8 +3039,11 @@ export class AcpAdapter implements ProviderAdapterShape {
     // cancelled wake reports later than this can enrich the next turn's
     // failure; waiting for the wake's own end instead could wait forever.
     const wake = record.providerTurn?.turnId === targetTurnId;
-    await record.process.cancel();
-    if (wake) record.quarantinedTurnIds.delete(targetTurnId);
+    try {
+      await record.process.cancel();
+    } finally {
+      if (wake) record.quarantinedTurnIds.delete(targetTurnId);
+    }
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
         outcome: 'target-mismatch',

@@ -666,6 +666,45 @@ describe('Grok wake turns are provider turns', () => {
     await session.stop();
   });
 
+  test('a wake whose cancel fails still lifts its quarantine', async () => {
+    const session = await startGrokSession();
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'notifications-cancel-fails',
+    });
+    await settle();
+    const wake = session.of('turn.started')[0]!;
+    session.proc.cancelPromise = Promise.reject(new Error('transport closed'));
+    session.proc.cancelPromise.catch(() => {});
+    await expect(
+      session.adapter.interruptTurn(session.threadId, wake.turnId),
+    ).rejects.toThrow('transport closed');
+    session.proc.cancelPromise = undefined;
+    // The wake ends on its own later.
+    await session.agent.notify('_x.ai/session_notification', {
+      sessionId: session.sessionId,
+      update: {
+        sessionUpdate: 'turn_completed',
+        prompt_id: 'notifications-cancel-fails',
+        stop_reason: 'cancelled',
+      },
+    });
+    await settle();
+    await session.adapter.sendTurn({ threadId: session.threadId, input: 'x' });
+    await session.agent.notify('_kiro.dev/error/rate_limit', {
+      sessionId: session.sessionId,
+      message: 'The monthly usage limit has been reached',
+    });
+    await settle();
+    session.proc.rejectPrompt(new Error('Internal error'));
+    await settle();
+    expect(session.of('runtime.error').at(-1)?.message).toContain(
+      'engine also reported during this turn',
+    );
+    await session.stop();
+  });
+
   test('a question a wake asked is settled when the wake ends', async () => {
     const session = await startGrokSession();
     await session.agent.notify('_x.ai/queue/changed', {
