@@ -21,6 +21,8 @@ const COMMON_PATHS: Array<[string, ProjectIconCandidate['source']]> = [
   ['favicon.png', 'favicon'],
   ['public/favicon.ico', 'favicon'],
   ['public/favicon.png', 'favicon'],
+  ['src-ui/public/favicon.ico', 'favicon'],
+  ['src-ui/public/favicon.png', 'favicon'],
   ['public/apple-touch-icon.png', 'app-icon'],
   ['apple-touch-icon.png', 'app-icon'],
   ['public/icon.png', 'app-icon'],
@@ -122,6 +124,7 @@ export async function discoverProjectIconCandidates(
       withFileTypes: true,
     }).catch(() => []);
     for (const entry of entries
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
       .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, 64)) {
       if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
