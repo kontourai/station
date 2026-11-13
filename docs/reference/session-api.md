@@ -1966,9 +1966,9 @@ missing, empty or over 1,024 characters, or any other body key, is refused
 | `rewound` | `beforeTurnId`, `hiddenTurnIds`, and `affectedFiles: { count, paths }` when the engine reported them (at most 50 paths; `count` is the engine's) |
 | `refused` `unsupported` | the Session's engine declared no in-place rewind, or its adapter has none |
 | `refused` `not-live` | no engine process holds the Session |
-| `refused` `turn-running` | a turn, or another rewind, is running; stop it first. While a rewind waits on the engine, a send to the Session is refused retryably |
+| `refused` `turn-running` | a turn, or another rewind, is running; stop it first. While a rewind waits on the engine, a send to the Session is refused retryably with `provider_turn_in_progress` |
 | `refused` `unknown-turn` | the engine never reported an id for that turn in this process: a turn from before a restart, one Station no longer keeps, or one an earlier rewind hid |
-| `failed` | the engine's own refusal or error, with its message |
+| `failed` | the engine's own refusal or error, with its message; or no answer within 30 seconds, when no turn is marked rewound but the engine may still apply the rewind |
 
 A refusal sends nothing to the engine. Today only the ACP adapter declares a
 rewind, for an engine whose handshake declares it (Kiro's agent service; see

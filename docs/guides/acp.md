@@ -578,8 +578,9 @@ How the events behave:
   its silence as nothing running. A roster restating a finished child settles
   it once. A roster with more than 64 running children
   (`CHILD_WORK_ITEMS_MAX_PER_REPORTER`) publishes no running set, since a cut
-  one would mark the rest ended, and is logged; an `agent-subtask` past 64
-  running is not tracked and is logged. No ACP subagent can be stopped on its own.
+  one would mark the rest ended; an `agent-subtask` past 64 running is not
+  tracked. Each is logged through the adapter's logger once per session while
+  it stays over the bound. No ACP subagent can be stopped on its own.
   The roster's opaque `extension.notification` stays host chrome. Neither wire
   has a live capture (kirocrew's live captures omit the roster because it names
   the host's agents); the shapes are kirocrew's test vectors.
@@ -664,8 +665,13 @@ session's own continuity, which
   report or an earlier rewind already hid (`unknown-turn`), on an engine that
   declared none (`unsupported`), and on a session no process holds
   (`not-live`). While the engine answers, the session starts no turn: a send
-  is refused retryably (`busy`), and a second rewind is refused
-  `turn-running`. The marker names only turns whose prompt id the engine
+  is refused retryably with `provider_turn_in_progress` ("Station is
+  rewinding this conversation; send again when it finishes."), which the
+  inbox holds and resends, and a second rewind is refused `turn-running`.
+  The wait is bounded at 30 seconds: an engine that has not answered by then
+  gets `failed` ("did not answer the rewind in time"), no turn is marked
+  rewound, and sends are accepted again. The engine may still apply that
+  rewind later. The marker names only turns whose prompt id the engine
   reported; a later turn with none (an engine that skipped the report) is
   still hidden by the engine but is not marked rewound in the transcript.
   The transcript keeps every turn. A `runtime.warning`
