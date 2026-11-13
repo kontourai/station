@@ -8,11 +8,10 @@
  * these tests reach the probe → spawn → parse → cancel path a caller drives.
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { appHomesRootDir } from '../../../providers/app-home/app-home-profiles.js';
 import { createCredentialProfileAppHomeEnvResolver } from '../../../providers/app-home/credential-profile-env.js';
 import { credentialProfileAppHomeDir } from '../../../providers/app-home/credential-profile-registry.js';
@@ -116,6 +115,8 @@ function museRoutes() {
   return { app, spawned, spawnLogin, verify, probe };
 }
 
+const makeTempDir = trackTempDirs();
+
 describe('Muse credential-profile sign-in (#1942)', () => {
   test('lists Muse accounts with the device-code login its CLI advertises', async () => {
     const { app } = museRoutes();
@@ -214,7 +215,7 @@ describe('Muse credential-profile sign-in (#1942)', () => {
 
   test('reports and imports the legacy Muse app home into its muse/ folder', async () => {
     const app = createAppHomeRoutes();
-    const xdg = await mkdtemp(join(tmpdir(), 'station-fake-xdg-'));
+    const xdg = makeTempDir('station-fake-xdg-');
     const previous = process.env.XDG_CONFIG_HOME;
     const previousKey = process.env.META_API_KEY;
     process.env.XDG_CONFIG_HOME = xdg;
@@ -254,7 +255,6 @@ describe('Muse credential-profile sign-in (#1942)', () => {
       else process.env.XDG_CONFIG_HOME = previous;
       if (previousKey === undefined) delete process.env.META_API_KEY;
       else process.env.META_API_KEY = previousKey;
-      await rm(xdg, { recursive: true, force: true });
     }
   });
 });
