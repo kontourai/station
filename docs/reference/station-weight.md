@@ -53,7 +53,7 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
 | `idleWakeups` | Not measured: see [Gaps](#gaps). |
 | `idleContextSwitches` | Linux only: voluntary plus involuntary context switches over the same window, from `/proc`. This is a proxy, not wakeups. |
-| `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: any process seen in the instance's tree during the run, and any process carrying the run's environment, however it detached. They are then killed. What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). A read of the tree that failed while following it makes the value `NOT_MEASURED`. |
+| `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: any process seen in the instance's tree during the run, and any process carrying the run's environment, however it detached. Only the kill-eligible ones are then killed; the rest are reported as left running (see [Ownership](#ownership-kill-eligible-and-report-only)). What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). A read of the tree that failed while following it makes the value `NOT_MEASURED`. |
 | `request.stationAddedTextBytes` | Text lines, blank lines included, in Station's first turn request that the control request lacks, sized from the text sent. |
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
@@ -66,35 +66,50 @@ Every turn is answered by the stub (`ok`). No real model is called.
   (pid plus birth token: pinned `lstart` on macOS, `/proc` start ticks plus
   boot id on Linux), plus every descendant by parent pid. A root whose pid
   now belongs to another process contributes nothing.
-- *Identities seen.* From the moment the instance record names its roots
-  until after the stop grace, the tree is read by ancestry every 250 ms, and
-  every pid plus birth token any read saw is the run's from then on
-  (`seenProcessCount`). This does not depend on the environment: a child
-  that detaches, or overwrites its environment (a long `process.title` on
-  macOS overwrites the area `ps` and the kernel read it from), is still
-  found if it stayed in the tree for one read.
+- *Identities seen.* The launcher writes the instance record right after it
+  spawns the roots, before the instance is ready. The run reads the record
+  every 250 ms while `station start` runs, and from the moment the record
+  names the roots until after the stop grace it reads the tree by ancestry,
+  nominally every 250 ms. Every pid plus birth token any read saw is counted
+  as the run's from then on (`seenProcessCount`). This does not depend on
+  the environment: a child that detaches, or overwrites its environment (a
+  long `process.title` on macOS overwrites the area `ps` and the kernel
+  read it from), is still found if it stayed in the tree for one read. The
+  reads share the event loop with the run's synchronous reads (memory
+  footprints, environment scans), so the real interval can be longer: the
+  result records the reads, the longest interval observed between the
+  starts of two of them (`follow.maxIntervalMs`), when each root was
+  learned (`follow.roots[].learnedAt`, against the record's
+  `follow.recordStartedAt`), and which roots the follower's own reads found
+  (`follow.rootsFollowed`).
 - *Environment.* Every process the instance starts inherits the run's
   `HOME`, `TMPDIR` and `STATION_WEIGHT_RUN` nonce, so a double-forked daemon
   or a child spawned during shutdown is found with no ancestry at all. Only
   whole environment entries count, never the arguments and never text
   inside another variable's value: exactly `STATION_WEIGHT_RUN=<nonce>`, or
-  `HOME` or `TMPDIR` whose value is the scratch root or a path under it. On
+  `HOME` or `TMPDIR` whose value lies inside the scratch root. Both sides of
+  that path test are resolved first (links followed, `.` and `..`
+  applied, a missing tail appended to its longest existing prefix), and
+  containment is by whole path segment, so `HOME=<scratch>/../outside` and
+  a link under the scratch root that points outside it do not count. On
   Linux the entries are the NUL-separated `/proc/<pid>/environ`. On macOS
   they are read with sysctl `KERN_PROCARGS2`, the kernel's NUL-separated
   copy of the process's arguments and environment, through a small
   `python3 -I` ctypes helper; `ps -E` joins the same entries with spaces, so
   `INNOCENT=before HOME=<scratch>/user` would look like a `HOME` entry. The
-  helper reads each process's start time around the read and drops a
-  process whose start changed or does not match its row. A process whose
-  entries cannot be read is never tagged, and if the helper cannot run at
-  all (no `python3`), the run fails rather than skipping the check. A
-  process that names the nonce in its arguments is excluded, because the
-  nonce is only ever passed through the environment. The process must also
-  run as the same effective user and have started after the run did, with
-  2 s of slack for whole-second birth times. The control engine shares the
-  environment but has its own `CLAUDE_CONFIG_DIR`, which excludes it. A run
-  records which pre-stop processes only ancestry found
-  (`beforeStopUntagged`). On macOS that list was empty.
+  helper reads each process's start time (microseconds) before and after
+  the read and drops a process whose start changed or does not match its
+  row. A process whose entries cannot be read is never tagged, and if the
+  helper cannot run at all (no `python3`), the run fails rather than
+  skipping the check. A process that names the nonce in its arguments is
+  excluded, because the nonce is only ever passed through the environment.
+  The process must also run as the same effective user and have started
+  after the run did, with 2 s of slack for whole-second birth times. The
+  control engine shares the environment but has its own
+  `CLAUDE_CONFIG_DIR`, which excludes it from the measurement. A run
+  records how each pre-stop process was found
+  (`beforeStopOwnership`: by the nonce, only by a scratch path, only by
+  ancestry).
 
 On Linux each process is read from `/proc` alone: one `stat` read gives its
 parent, CPU, birth and RSS, and `status` gives its uid and context switches.
@@ -104,12 +119,41 @@ another's parent. An environment read is likewise kept only if the pid still
 has the row's start ticks after it. On macOS one `ps` call reads every field
 of a process together.
 
-A process is signalled only after its birth token is read again and still
-matches, so a reused pid is never killed. The tests clean up the same way. A
-tree that is empty when sampled is `NOT_MEASURED`, never zero.
+A tree that is empty when sampled is `NOT_MEASURED`, never zero.
 
 A process that leaves the tree before any read saw it there and whose
 environment carries no run tag is not found (see [Gaps](#gaps)).
+
+### Ownership: kill-eligible and report-only
+
+Everything above counts toward the measurement. Only two kinds of process
+are ever signalled (SIGKILL after stop, and again when the run ends):
+
+- a process whose environment carries the exact entry
+  `STATION_WEIGHT_RUN=<nonce>`. The nonce is a random 128-bit value, so no
+  process carries it by accident;
+- a root the instance record names, while its birth is the recorded one.
+
+Every other process the run counts is *report-only*: one found only by
+ancestry, only because a read saw it in the tree, or only by a scratch
+`HOME` or `TMPDIR`. It counts toward `leftoverAfterStopMemoryBytes`, so the
+budget still fails, and is never signalled. The run lists what it left
+running with pid, birth and command line (`leftRunning` in the result,
+`LEFT RUNNING` lines in the output, and `reportOnly` beside the leftover
+value).
+
+A kill-eligible process is signalled only if its exact birth still holds
+when read immediately before the signal: the microsecond start time
+(`p_starttime`) on macOS, read by the same helper that then sends the signal
+in the same pass, and the `/proc` start ticks (1/`CLK_TCK` s) on Linux, read
+right before `kill`. A root's exact birth is read when the run learns the
+root, and kept only if it falls in the record's whole-second birth. What
+this guarantees: a pid that names another process when the recheck runs is
+never signalled, even one born in the same second. What it does not: POSIX
+has no call that signals a pid only while it names one process, so a pid
+freed and reused, with the same birth, between the recheck and the signal
+(microseconds on macOS) would be signalled. The tests clean up the same
+way.
 
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out
@@ -213,14 +257,26 @@ revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
   environment.** A process that leaves the instance tree before any read saw
   it there, and whose environment carries no run tag as an exact entry, is
   not found after stop. That needs both: a double fork that completes
-  within one 250 ms interval (or during `station start`, before the instance
-  record names its roots), and a child started with an environment that
-  drops the tag, `HOME` and `TMPDIR` (for example `env: {}`), or one that
-  overwrites its environment area before the next environment read.
-  macOS has no subreaper or cgroup to follow it. A process group or session
-  can be left with `setsid`, and its id can be reused once the group is
-  gone. The gap is written beside the value
+  between two reads of the tree, or before the run learned the roots from
+  the instance record, and a child started with an environment that drops
+  the tag, `HOME` and `TMPDIR` (for example `env: {}`), or one that
+  overwrites its environment area before the next environment read. The
+  reads are nominally 250 ms apart but share the event loop with the run's
+  synchronous reads, so the interval is not bounded: each run records the
+  longest it observed (`follow.maxIntervalMs`) and writes it into the gap
+  text. macOS has no subreaper or cgroup to follow it. A process group or
+  session can be left with `setsid`, and its id can be reused once the
+  group is gone. The gap is written beside the value
   (`leftoverAfterStopMemoryBytes.gap`).
+- **Report-only processes are left running.** A process the run counts but
+  may not signal (see [Ownership](#ownership-kill-eligible-and-report-only))
+  stays alive after the run. It is listed with pid, birth and command line;
+  ending it is the operator's call.
+- **A same-second pid reuse in the measurement.** A process remembered by
+  identity is matched by its table birth token, whole-second `lstart` on
+  macOS, so a pid freed and reused within the same second as a remembered
+  process would be counted as the run's. It is never signalled on that
+  basis.
 - **macOS needs `python3`** with `ctypes` on `PATH` (the Command Line Tools
   provide it) to read environments exactly. Without it the run fails.
 
@@ -244,8 +300,10 @@ can let a run pass.
 - The control isolates what Station adds. It does not measure the engine's own
   prompt, which changes with the bundled Claude Code version.
 - The end-to-end test runs the whole check with short windows, injects a
-  daemon that detaches during shutdown and asserts it is found and killed,
-  and fails when Station's request additions exceed the committed request
-  budgets. `scripts/__tests__/station-weight.process.test.ts` covers the
+  daemon that detaches during shutdown and asserts it is found, kill-eligible
+  and killed, asserts that following started from the instance record while
+  `station start` ran and that the follower's own reads found every
+  recorded root, and fails when Station's request additions exceed the
+  committed request budgets. `scripts/__tests__/station-weight.process.test.ts` covers the
   process mechanics (identity, leftovers, CPU sampling, launcher capture,
   git isolation and the exit status) in seconds.

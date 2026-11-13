@@ -1,12 +1,14 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
-import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  darwinProcessArguments,
+  endRunProcesses,
+  exactStarts,
   fixtureRepository,
   gitEnvironment,
   instanceSnapshot,
@@ -30,15 +32,15 @@ const ROOT = resolve(__dirname, '../..');
 const RUNNER = join(ROOT, 'scripts/bench/station-weight.mjs');
 const makeTempDir = trackTempDirs();
 const posix = ['darwin', 'linux'].includes(process.platform);
-const strays: Array<{ pid: number; started: string }> = [];
+const strays: Array<{ pid: number; exactStart: string }> = [];
 
 /**
- * Remembers `pid` with its birth token for cleanup, which signals it only
- * while the pid still has that birth: a pid reused since is never killed.
+ * Remembers `pid` with its exact birth for cleanup, which signals it only
+ * while the pid still has that birth.
  */
 function stray(pid: number) {
-  const started = lookupProcessBirthFingerprint(pid);
-  if (started) strays.push({ pid, started });
+  const exactStart = exactStarts([pid]).get(pid);
+  if (exactStart) strays.push({ pid, exactStart });
 }
 
 afterEach(() => {
@@ -157,7 +159,16 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     await exited(root);
     await wait(200);
     const left = leftoverAfterStop(beforeStop, processTable(), tagging);
-    expect(left.map((row) => row.pid)).toEqual([daemon]);
+    // It inherited the nonce entry, so the run may end it.
+    expect(left.map((row) => [row.pid, row.killEligible])).toEqual([
+      [daemon, true],
+    ]);
+    expect(endRunProcesses(left)).toMatchObject({
+      killed: [daemon],
+      leftRunning: [],
+    });
+    await wait(200);
+    expect(alive(daemon)).toBe(false);
   });
 
   test('a child spawned during shutdown, after the pre-stop snapshot, is a leftover', async () => {
@@ -291,12 +302,111 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
       expect(table.find((row) => row.pid === daemon)?.ppid).not.toBe(root.pid);
       // Neither ancestry nor environment finds it any more.
       expect(leftoverAfterStop([], table, tagging)).toEqual([]);
-      expect(ownership.leftover(table).map((row) => row.pid)).toEqual([daemon]);
+      const left = ownership.leftover(table);
+      expect(left.map((row) => [row.pid, row.killEligible])).toEqual([
+        [daemon, false],
+      ]);
       expect(ownership.followErrors()).toEqual([]);
+      // Counted, reported with its command line, and never signalled: only
+      // the follower ties it to the run.
+      const ended = endRunProcesses(left);
+      expect(ended.killed).toEqual([]);
+      expect(ended.leftRunning).toEqual([
+        expect.objectContaining({
+          pid: daemon,
+          command: expect.stringContaining('setInterval'),
+        }),
+      ]);
+      await wait(200);
+      expect(alive(daemon)).toBe(true);
     } finally {
       ownership.stop();
     }
   });
+
+  test('a process tied only by a scratch path is counted and never signalled; one outside the resolved root is not counted', async () => {
+    const real = makeTempDir('station-weight-scratch-');
+    const outside = makeTempDir('station-weight-outside-');
+    mkdirSync(join(real, 'user'));
+    symlinkSync(outside, join(real, 'link'));
+    const pathTagging = runTagging({ nonce, scratch: real, startedAtMs });
+    const withHome = (home: string) =>
+      start(idle, { ...process.env, HOME: home });
+    // The reviewer's probes: spelled under the scratch root, resolved
+    // outside it.
+    const dotDot = withHome(`${real}/../${outside.split('/').pop()}`);
+    const viaLink = withHome(`${real}/link`);
+    const pathOnly = withHome(`${real}/user`);
+    const withNonce = start(idle, {
+      ...process.env,
+      HOME: `${real}/user`,
+      STATION_WEIGHT_RUN: nonce,
+    });
+    await Promise.all(
+      [dotDot, viaLink, pathOnly, withNonce].map((entry) => entry.firstLine),
+    );
+    const table = processTable();
+    const tagged = taggedRows(table, pathTagging);
+    expect(
+      Object.fromEntries(tagged.map((row) => [String(row.pid), row.tag])),
+    ).toEqual({
+      [String(pathOnly.child.pid)]: 'path',
+      [String(withNonce.child.pid)]: 'nonce',
+    });
+    const left = leftoverAfterStop([], table, pathTagging);
+    const ended = endRunProcesses(left);
+    expect(ended.killed).toEqual([withNonce.child.pid]);
+    expect(ended.leftRunning.map((row) => row.pid)).toEqual([
+      pathOnly.child.pid,
+    ]);
+    await exited(withNonce.child);
+    expect(alive(pathOnly.child.pid as number)).toBe(true);
+    expect(alive(dotDot.child.pid as number)).toBe(true);
+    expect(alive(viaLink.child.pid as number)).toBe(true);
+  });
+
+  test('a signal is sent only while the exact birth holds, even within the same second', async () => {
+    const { child, firstLine } = start(idle, tagged);
+    await firstLine;
+    const pid = child.pid as number;
+    const exact = exactStarts([pid]).get(pid) as string;
+    // macOS microseconds, Linux start ticks.
+    expect(exact).toMatch(/^(darwin:\d+|linux:.+:\d+)$/);
+    const [, prefix, value] = exact.match(/^(.*:)(\d+)$/) as string[];
+    const nextTick = `${prefix}${Number(value) + 1}`;
+    expect(
+      signalIfSame(
+        [{ pid, exactStart: nextTick, killEligible: true }],
+        'SIGKILL',
+      ),
+    ).toEqual({ signalled: [], skipped: [pid] });
+    await wait(200);
+    expect(alive(pid)).toBe(true);
+    expect(
+      signalIfSame([{ pid, exactStart: exact, killEligible: true }], 'SIGKILL'),
+    ).toEqual({ signalled: [pid], skipped: [] });
+    await exited(child);
+    expect(child.signalCode).toBe('SIGKILL');
+  });
+
+  test.skipIf(process.platform !== 'darwin')(
+    'the macOS helper drops a process whose start changed between its reads',
+    async () => {
+      const { child, firstLine } = start(idle, tagged);
+      await firstLine;
+      const pid = child.pid as number;
+      expect(darwinProcessArguments([pid]).get(pid)?.env).toContain(
+        `STATION_WEIGHT_RUN=${nonce}`,
+      );
+      // The real helper reading the real process, with the start read after
+      // the block shifted as a replaced process's would be.
+      expect(
+        darwinProcessArguments([pid], undefined, { recheckOffsetUs: 1 }).has(
+          pid,
+        ),
+      ).toBe(false);
+    },
+  );
 
   test('a tagged process that names the nonce in its arguments too is not the run', async () => {
     // Not `--x=`: node would read a dashed argument after -e as its own option.

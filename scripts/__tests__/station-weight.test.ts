@@ -1,14 +1,24 @@
-import { readFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as wait } from 'node:timers/promises';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
-  carriesRunTag,
   contextSwitchDelta,
   hostFingerprint,
   hostFingerprintInputs,
   IDLE_CPU_GAP,
   idleCpuMetric,
+  killEligibility,
+  LEFTOVER_GAP,
   linuxProcessTable,
   ownedTree,
   parseFootprint,
@@ -16,7 +26,10 @@ import {
   processTable,
   recordedRoots,
   restMetric,
+  runOwnership,
   runTagging,
+  runTagKind,
+  sameBirth,
   sampleTreeCpu,
   signalIfSame,
   taggedRows,
@@ -24,6 +37,7 @@ import {
 } from '../bench/station-weight.mjs';
 import {
   evaluateBudgets,
+  formatValue,
   formatVerdicts,
   gateOutcome,
   recordBaseline,
@@ -516,6 +530,21 @@ describe('station-weight budgets', () => {
     }
   });
 
+  test('a non-finite value prints as null in memory, as it does once saved', () => {
+    expect(formatValue(Number.NaN)).toBe('null');
+    expect(formatValue(Number.POSITIVE_INFINITY)).toBe('null');
+    expect(formatValue(Number.NEGATIVE_INFINITY)).toBe('null');
+    expect(formatValue(null)).toBe('null');
+    expect(formatValue(1.234)).toBe(1.23);
+    const result = resultAtBaseline();
+    result.metrics.serverReadyMs.value = Number.NaN;
+    expect(
+      formatVerdicts(evaluateBudgets(result, FIXTURE_BASELINE)).join('\n'),
+    ).toContain(
+      'REPORTED serverReadyMs measured without a finite value (null)',
+    );
+  });
+
   test('host budgets compare only against the same host fingerprint; request budgets compare everywhere', () => {
     const result = resultAtBaseline(OTHER_HOST);
     const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
@@ -801,13 +830,29 @@ describe('station-weight process identity', () => {
     );
   });
 
-  test('a signal is sent only while the pid still has the recorded birth', () => {
+  test('a Linux signal is sent only to a kill-eligible row whose exact birth still holds', () => {
     const killed: number[] = [];
     const outcome = signalIfSame(
-      [row(7, 1, 'then'), row(8, 1, 'same')],
+      [
+        { pid: 7, exactStart: 'linux:boot:500', killEligible: true },
+        { pid: 8, exactStart: 'linux:boot:600', killEligible: true },
+        { pid: 9, exactStart: 'linux:boot:700', killEligible: false },
+        { pid: 10, killEligible: true },
+      ],
       'SIGKILL',
       {
-        birth: (pid: number) => (pid === 7 ? 'now' : 'same'),
+        platform: 'linux',
+        bootId: 'boot',
+        readFile: linux(
+          {
+            // pid 7 now has another birth: reused.
+            '/proc/7/stat': statLine(7, { start: 501 }),
+            '/proc/8/stat': statLine(8, { start: 600 }),
+            '/proc/9/stat': statLine(9, { start: 700 }),
+            '/proc/10/stat': statLine(10),
+          },
+          [],
+        ).readFile,
         kill: (pid: number) => {
           killed.push(pid);
           return true;
@@ -815,7 +860,140 @@ describe('station-weight process identity', () => {
       },
     );
     expect(killed).toEqual([8]);
-    expect(outcome).toEqual({ signalled: [8], skipped: [7] });
+    expect(outcome).toEqual({ signalled: [8], skipped: [9, 10, 7] });
+  });
+
+  test('a macOS signal goes through the helper with the microsecond birth', () => {
+    const calls: string[][] = [];
+    const outcome = signalIfSame(
+      [
+        { pid: 8, exactStart: 'darwin:1700000005250000', killEligible: true },
+        // A whole-second table token is not an exact birth.
+        { pid: 9, exactStart: 'Tue Nov 14 22:13:25 2023', killEligible: true },
+      ],
+      'SIGKILL',
+      {
+        platform: 'darwin',
+        run: (_command: string, args: string[]) => {
+          calls.push(args.slice(3));
+          return JSON.stringify({ signalled: [8], skipped: [] });
+        },
+      },
+    );
+    expect(calls).toEqual([['--signal=9', '8:1700000005250000']]);
+    expect(outcome).toEqual({ signalled: [8], skipped: [9] });
+  });
+
+  test('only the nonce entry or a recorded root with an exact birth is kill-eligible', () => {
+    const table = [
+      row(1, 0, 'root'),
+      row(2, 1, 'child'),
+      row(3, 0, 'nonce'),
+      row(4, 0, 'path'),
+    ];
+    const tagged = [
+      { ...row(3, 0, 'nonce'), tag: 'nonce' as const, exactStart: 'x3' },
+      { ...row(4, 0, 'path'), tag: 'path' as const, exactStart: 'x4' },
+    ];
+    const roots = [{ pid: 1, started: 'root', exactStart: 'x1' }];
+    expect(
+      killEligibility(
+        ownedTree(table, [...roots, ...tagged]),
+        tagged,
+        roots,
+      ).map((entry) => [entry.pid, entry.killEligible, entry.exactStart]),
+    ).toEqual([
+      [1, true, 'x1'],
+      [2, false, undefined],
+      [3, true, 'x3'],
+      [4, false, undefined],
+    ]);
+    // A root whose exact birth was never read is report-only.
+    expect(
+      killEligibility([row(1, 0, 'root')], [], [{ pid: 1, started: 'root' }]),
+    ).toEqual([{ ...row(1, 0, 'root'), killEligible: false }]);
+  });
+
+  test('a recorded root is kill-eligible only when its exact birth is the recorded one', () => {
+    const LSTART = 'Tue Nov 14 22:13:25 2023';
+    const secondUs = Date.UTC(2023, 10, 14, 22, 13, 25) * 1000;
+    expect(sameBirth(LSTART, `darwin:${secondUs + 999_999}`)).toBe(true);
+    expect(sameBirth(LSTART, `darwin:${secondUs + 1_000_000}`)).toBe(false);
+    expect(sameBirth('linux:boot:500', 'linux:boot:500')).toBe(true);
+    expect(sameBirth('linux:boot:500', 'linux:boot:501')).toBe(false);
+    const table = [row(50, 1, LSTART), row(51, 1, LSTART)];
+    const ownership = runOwnership(
+      runTagging({
+        nonce: '12'.repeat(16),
+        scratch: '/tmp/station-weight-v',
+        startedAtMs: 0,
+        uid: 501,
+      }),
+      {
+        intervalMs: 60_000,
+        read: () => table,
+        tagOptions: { platform: 'darwin', readArguments: () => new Map() },
+        // pid 51's exact birth is another second: not the recorded process.
+        starts: () =>
+          new Map([
+            [50, `darwin:${secondUs + 250_000}`],
+            [51, `darwin:${secondUs + 5_000_000}`],
+          ]),
+      },
+    );
+    try {
+      const roots = [
+        { pid: 50, started: LSTART },
+        { pid: 51, started: LSTART },
+      ];
+      expect(ownership.setRoots(roots)).toBe(2);
+      expect(ownership.setRoots(roots)).toBe(0);
+      expect(
+        ownership
+          .leftover(table)
+          .map((entry) => [entry.pid, entry.killEligible]),
+      ).toEqual([
+        [50, true],
+        [51, false],
+      ]);
+      // The follower's own first read found both roots.
+      expect(ownership.follow().rootsFollowed).toEqual(roots);
+    } finally {
+      ownership.stop();
+    }
+  });
+
+  test('the follower reports the longest interval between reads, a stalled event loop included', async () => {
+    const ownership = runOwnership(
+      runTagging({
+        nonce: '34'.repeat(16),
+        scratch: '/tmp/station-weight-u',
+        startedAtMs: 0,
+        uid: 501,
+      }),
+      {
+        intervalMs: 20,
+        read: () => [row(60, 1, 'x')],
+        starts: () => new Map(),
+      },
+    );
+    try {
+      ownership.setRoots([{ pid: 60, started: 'x' }]);
+      await wait(100);
+      // Synchronous work holds the follower's timer, as a footprint or
+      // environment read does in a run.
+      const until = performance.now() + 400;
+      while (performance.now() < until);
+      await wait(100);
+      const follow = ownership.follow();
+      expect(follow.reads).toBeGreaterThan(3);
+      expect(follow.maxIntervalMs).toBeGreaterThanOrEqual(400);
+      expect(LEFTOVER_GAP(follow)).toContain(
+        `the longest interval observed between the starts of two reads was ${Math.ceil(follow.maxIntervalMs)} ms`,
+      );
+    } finally {
+      ownership.stop();
+    }
   });
 
   /** proc(5) stat line: ppid, utime, stime, start ticks and RSS pages. */
@@ -949,28 +1127,67 @@ describe('station-weight process identity', () => {
       controlConfigDir: `${scratch}/claude-control`,
       uid: 501,
     });
-    const carries = (...entries: string[]) => carriesRunTag(entries, tagging);
-    expect(carries(`STATION_WEIGHT_RUN=${nonce}`)).toBe(true);
-    expect(carries(`HOME=${scratch}/user`)).toBe(true);
-    expect(carries(`TMPDIR=${scratch}/tmp/`)).toBe(true);
-    expect(carries(`HOME=${scratch}`)).toBe(true);
-    // The reviewer's cases: tag text inside another variable's value.
-    expect(carries(`INNOCENT=before HOME=${scratch}/user after`)).toBe(false);
-    expect(carries(`INNOCENT=before STATION_WEIGHT_RUN=${nonce} after`)).toBe(
-      false,
+    const kind = (...entries: string[]) => runTagKind(entries, tagging);
+    expect(kind(`STATION_WEIGHT_RUN=${nonce}`)).toBe('nonce');
+    expect(kind(`HOME=${scratch}/user`, `STATION_WEIGHT_RUN=${nonce}`)).toBe(
+      'nonce',
     );
-    // A sibling path that only shares the prefix, another variable, a
-    // longer nonce.
-    expect(carries(`HOME=${scratch}2/user`)).toBe(false);
-    expect(carries(`XDG_HOME=${scratch}/user`)).toBe(false);
-    expect(carries(`STATION_WEIGHT_RUN=${nonce}0`)).toBe(false);
+    expect(kind(`HOME=${scratch}/user`)).toBe('path');
+    expect(kind(`TMPDIR=${scratch}/tmp/`)).toBe('path');
+    expect(kind(`HOME=${scratch}`)).toBe('path');
+    // The reviewer's cases: tag text inside another variable's value.
+    expect(kind(`INNOCENT=before HOME=${scratch}/user after`)).toBe(null);
+    expect(kind(`INNOCENT=before STATION_WEIGHT_RUN=${nonce} after`)).toBe(
+      null,
+    );
+    // A sibling path that only shares the prefix, a relative path, another
+    // variable, a longer nonce.
+    expect(kind(`HOME=${scratch}2/user`)).toBe(null);
+    expect(kind('HOME=user')).toBe(null);
+    expect(kind(`XDG_HOME=${scratch}/user`)).toBe(null);
+    expect(kind(`STATION_WEIGHT_RUN=${nonce}0`)).toBe(null);
     // The control engine's own entry excludes it.
     expect(
-      carries(
+      kind(
         `STATION_WEIGHT_RUN=${nonce}`,
         `CLAUDE_CONFIG_DIR=${scratch}/claude-control`,
       ),
-    ).toBe(false);
+    ).toBe(null);
+  });
+
+  test('a scratch path counts only inside the resolved scratch root', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'station-weight-')));
+    try {
+      const scratch = join(base, 'scratch');
+      const outside = join(base, 'outside');
+      mkdirSync(join(scratch, 'user'), { recursive: true });
+      mkdirSync(outside);
+      symlinkSync(outside, join(scratch, 'link'));
+      // A link from outside to the scratch root is still the root.
+      symlinkSync(scratch, join(base, 'alias'));
+      const kind = (value: string) =>
+        runTagKind(
+          [`HOME=${value}`],
+          runTagging({
+            nonce: '56'.repeat(16),
+            scratch,
+            startedAtMs: 0,
+            uid: 501,
+          }),
+        );
+      // The reviewer's probes: both spell a path under the scratch root and
+      // resolve outside it.
+      expect(kind(`${scratch}/../outside`)).toBe(null);
+      expect(kind(`${scratch}/link`)).toBe(null);
+      expect(kind(`${scratch}/link/not-yet`)).toBe(null);
+      expect(kind(`${scratch}/user/../../outside`)).toBe(null);
+      // Positive controls: inside, existing or not, however spelled.
+      expect(kind(`${scratch}/user`)).toBe('path');
+      expect(kind(`${scratch}/./user/not-yet`)).toBe('path');
+      expect(kind(`${base}/alias/user`)).toBe('path');
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   test('a macOS environment counts only from a read of the row process', () => {

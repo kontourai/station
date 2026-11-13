@@ -233,13 +233,14 @@ export function formatVerdicts(verdicts) {
 }
 
 /**
- * A metric value for display: finite numbers to two decimals, anything else
- * (null from a serialized NaN or Infinity, a string) as written. Presentation
- * never throws on a value the gate already handled.
+ * A metric value for display: finite numbers to two decimals, a non-finite
+ * number as `null` (what JSON writes for it, so a value prints the same in
+ * memory and after a save), anything else as written. Presentation never
+ * throws on a value the gate already handled.
  * @param {unknown} value
  */
 export function formatValue(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value))
-    return String(value);
+  if (typeof value === 'number' && !Number.isFinite(value)) return 'null';
+  if (typeof value !== 'number') return String(value);
   return Number.isInteger(value) ? value : Number(value.toFixed(2));
 }

@@ -23,11 +23,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { cpus, loadavg, release, totalmem } from 'node:os';
+import { constants, cpus, loadavg, release, totalmem } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { acceptedTurnReply } from '../../tests/live/helpers/accepted-turn-reply.mjs';
 import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { findFreePortBlock, findFreePortOutside } from '../lib/free-ports.mjs';
@@ -112,8 +111,13 @@ export function repositoryState() {
  * `contextSwitches` (Linux) come with a table read; `memoryBytes` is attached
  * by withMemory.
  * @typedef {{ pid: number, ppid: number, uid?: number, rssBytes: number, cpuSeconds: number, started: string, startedAtMs?: number, contextSwitches?: number, command: string, memoryBytes?: number }} ProcessRow
- * @typedef {{ pid: number, started: string }} ProcessIdentity
- * @typedef {{ nonceEntry: string, scratchRoots: string[], excludeEntries: string[], argumentMarkers: string[], uid: number, notBeforeMs: number }} Tagging
+ * `started` is the birth token of the table read (whole-second lstart on
+ * macOS); `exactStart` is the finer one a signal is rechecked against (see
+ * exactStarts), known only for a kill-eligible process.
+ * @typedef {{ pid: number, started: string, exactStart?: string }} ProcessIdentity
+ * @typedef {{ nonceEntry: string, scratchRoot: string, excludeEntries: string[], argumentMarkers: string[], uid: number, notBeforeMs: number }} Tagging
+ * @typedef {ProcessRow & { tag: 'nonce' | 'path', exactStart?: string }} TaggedRow
+ * @typedef {ProcessRow & { killEligible: boolean, exactStart?: string }} OwnedRow
  * @typedef {(command: string, args: string[], options: object) => string} RunCommand
  * @typedef {{ status: string, value?: number, unit?: string, reason?: string, [detail: string]: any }} Metric
  */
@@ -353,13 +357,14 @@ export function recordedRoots(record) {
 
 /**
  * How a process is recognised as the run's by its environment, with no
- * ancestry. Station keeps PATH, HOME and TMPDIR for its children (an engine
- * needs PATH to find `claude`), so a process that detached from the tree
- * still carries the scratch HOME and TMPDIR; the nonce `STATION_WEIGHT_RUN`
- * is set for every process the instance starts. An environment entry
- * matches only as a whole NUL-separated entry: exactly
- * `STATION_WEIGHT_RUN=<nonce>`, or `HOME`/`TMPDIR` whose value is the scratch
- * root or a path under it. A process qualifies only if it runs as this user
+ * ancestry. Every process the instance starts inherits the run's
+ * `STATION_WEIGHT_RUN=<nonce>` entry; the nonce is a random 128-bit value, so
+ * a process carrying that exact entry is the run's and is the only kind of
+ * process, besides the instance's recorded roots, the run ever signals. A
+ * process that dropped the nonce but kept a `HOME` or `TMPDIR` inside the
+ * scratch root (by path segment, after resolving links on both sides) is
+ * counted as the run's, never signalled. An entry matches only as a whole
+ * NUL-separated entry. A process qualifies only if it runs as this user
  * (effective uid) and started after the run did, and a process naming the
  * nonce in its arguments is excluded: the nonce is only ever passed through
  * the environment. The slack absorbs whole-second birth times (macOS
@@ -378,17 +383,9 @@ export function runTagging({
 }) {
   assert(/^[0-9a-f]{32}$/.test(nonce), 'the run tag is a 128-bit hex nonce');
   assert(scratch.startsWith('/'), 'the scratch root is an absolute path');
-  const root = scratch.replace(/\/+$/, '');
-  let real = root;
-  try {
-    // macOS /tmp is a link to /private/tmp; a child may report either.
-    real = realpathSync(root);
-  } catch {
-    // Not created (unit tests): the spelled root is the only one.
-  }
   return {
     nonceEntry: `STATION_WEIGHT_RUN=${nonce}`,
-    scratchRoots: [...new Set([root, real])],
+    scratchRoot: canonicalPath(scratch),
     excludeEntries: controlConfigDir
       ? [`CLAUDE_CONFIG_DIR=${controlConfigDir}`]
       : [],
@@ -398,47 +395,87 @@ export function runTagging({
   };
 }
 
+/**
+ * `path` with every link resolved and every `.` and `..` applied, as the
+ * kernel would resolve it. A path that does not exist (yet, or any more)
+ * resolves its longest existing prefix and appends the rest, so
+ * `<scratch>/link/missing` still follows `link` out of the scratch root.
+ * @param {string} path an absolute path
+ * @returns {string}
+ */
+export function canonicalPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    const parent = dirname(path);
+    if (parent === path) return path;
+    return resolve(canonicalPath(parent), basename(path));
+  }
+}
+
+/** Whether canonical `path` is `root` or inside it, by whole path segment. */
+const within = (path, root) =>
+  path === root || path.startsWith(root.endsWith('/') ? root : `${root}/`);
+
 const SCRATCH_VARIABLES = new Set(['HOME', 'TMPDIR']);
 
 /**
- * Whether exact environment `entries` (one `NAME=value` string each, as the
- * kernel stores them) carry the run's tag and not an excluded entry. A tag
- * inside another variable's value (`INNOCENT=x HOME=/scratch/user`) is not
- * an entry, so it never matches.
+ * How exact environment `entries` (one `NAME=value` string each, as the
+ * kernel stores them) tie a process to the run: `'nonce'` for the exact
+ * `STATION_WEIGHT_RUN=<nonce>` entry, `'path'` for a `HOME` or `TMPDIR`
+ * whose resolved value lies inside the resolved scratch root, `null` for
+ * neither or for an excluded entry. A tag inside another variable's value
+ * (`INNOCENT=x HOME=/scratch/user`) is not an entry, so it never matches.
+ * `HOME=<scratch>/../outside` and a link under the scratch root that points
+ * outside it resolve outside, so neither matches.
  * @param {string[]} entries
  * @param {Tagging} tagging
+ * @returns {'nonce' | 'path' | null}
  */
-export function carriesRunTag(entries, tagging) {
-  let tagged = false;
+export function runTagKind(entries, tagging) {
+  let kind = null;
   for (const entry of entries) {
-    if (tagging.excludeEntries.includes(entry)) return false;
-    if (entry === tagging.nonceEntry) tagged = true;
+    if (tagging.excludeEntries.includes(entry)) return null;
+    if (entry === tagging.nonceEntry) {
+      kind = 'nonce';
+      continue;
+    }
     const equals = entry.indexOf('=');
-    if (equals <= 0 || !SCRATCH_VARIABLES.has(entry.slice(0, equals))) continue;
+    if (kind || equals <= 0 || !SCRATCH_VARIABLES.has(entry.slice(0, equals)))
+      continue;
     const value = entry.slice(equals + 1);
     if (
-      tagging.scratchRoots.some(
-        (root) => value === root || value.startsWith(`${root}/`),
-      )
+      value.startsWith('/') &&
+      within(canonicalPath(value), tagging.scratchRoot)
     )
-      tagged = true;
+      kind = 'path';
   }
-  return tagged;
+  return kind;
 }
 
 /**
- * Reads the exact argument and environment entries of `pids` on macOS with
- * sysctl KERN_PROCARGS2, the kernel's copy of the NUL-separated block a
- * process was started with (argc, executable path, argv, then environment
- * entries up to the first empty one). `ps -E` prints the same entries joined
- * by spaces, which cannot tell an entry from a space inside a value. Each
- * pid's start time (microseconds, KERN_PROC_PID) is read before and after;
- * a pid whose start changed, or that cannot be read (exited, another user's,
- * EPERM), is omitted, so it is never tagged. Bytes that are not UTF-8 are
- * kept as lone surrogates and never equal a tag.
+ * The macOS helper: sysctl through `python3 -I` ctypes, three modes.
+ *
+ * Read (default): the exact argument and environment entries of each pid
+ * from KERN_PROCARGS2, the kernel's copy of the NUL-separated block a process
+ * was started with (argc, executable path, argv, then environment entries up
+ * to the first empty one). `ps -E` prints the same entries joined by spaces,
+ * which cannot tell an entry from a space inside a value. Each pid's start
+ * time (p_starttime from KERN_PROC_PID, in microseconds) is read before and
+ * after; a pid whose start changed, or that cannot be read (exited, another
+ * user's, EPERM), is omitted, so it is never tagged. Bytes that are not UTF-8
+ * are kept as lone surrogates and never equal a tag.
+ * `--test-recheck-offset-us=<n>` shifts the start read after the block by
+ * `n`, so a test can drive a real read into the replaced-process branch.
+ *
+ * `--starts`: pid -> start time in microseconds.
+ *
+ * `--signal=<n> <pid>:<start>...`: sends signal `n` to each pid whose start
+ * time read immediately before is still `<start>` microseconds, and reports
+ * which were signalled and which were skipped (start changed, or gone).
  */
 const PROCARGS_SCRIPT = String.raw`
-import ctypes, json, struct, sys
+import ctypes, json, os, struct, sys
 libc = ctypes.CDLL(None, use_errno=True)
 libc.sysctl.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p, ctypes.c_size_t]
 def sysctl(mib, size):
@@ -448,7 +485,6 @@ def sysctl(mib, size):
     if libc.sysctl(names, len(mib), buffer, ctypes.byref(length), None, 0) != 0:
         return None
     return buffer.raw[:length.value]
-argmax = struct.unpack('i', sysctl([1, 8], 4))[0]
 def started(pid):
     info = sysctl([1, 14, 1, pid], 4096)
     if info is None or len(info) < 16:
@@ -465,35 +501,70 @@ def strings(block, index, count):
         found.append(block[index:end].decode('utf-8', 'surrogateescape'))
         index = end + 1
     return found, index
-out = {}
-for pid in map(int, sys.argv[1:]):
-    before = started(pid)
-    block = sysctl([1, 49, pid], argmax)
-    if before is None or block is None or len(block) < 4 or started(pid) != before:
-        continue
-    argc = struct.unpack_from('i', block, 0)[0]
-    index = block.find(b'\0', 4)
-    if index < 0:
-        continue
-    while index < len(block) and block[index] == 0:
-        index += 1
-    argv, index = strings(block, index, argc)
-    env, index = strings(block, index, None)
-    out[str(pid)] = {'startedUs': before, 'argv': argv, 'env': env}
+args = sys.argv[1:]
+mode, signal, offset = 'read', None, 0
+while args and args[0].startswith('--'):
+    flag = args.pop(0)
+    if flag == '--starts':
+        mode = 'starts'
+    elif flag.startswith('--signal='):
+        mode, signal = 'signal', int(flag.split('=', 1)[1])
+    elif flag.startswith('--test-recheck-offset-us='):
+        offset = int(flag.split('=', 1)[1])
+    else:
+        sys.exit('unknown flag ' + flag)
+if mode == 'starts':
+    out = {}
+    for pid in map(int, args):
+        start = started(pid)
+        if start is not None:
+            out[str(pid)] = start
+elif mode == 'signal':
+    out = {'signalled': [], 'skipped': []}
+    for item in args:
+        pid, want = map(int, item.split(':'))
+        if started(pid) != want:
+            out['skipped'].append(pid)
+            continue
+        try:
+            os.kill(pid, signal)
+            out['signalled'].append(pid)
+        except OSError:
+            out['skipped'].append(pid)
+else:
+    out = {}
+    argmax = struct.unpack('i', sysctl([1, 8], 4))[0]
+    for pid in map(int, args):
+        before = started(pid)
+        block = sysctl([1, 49, pid], argmax)
+        if before is None or block is None or len(block) < 4:
+            continue
+        after = started(pid)
+        if after is None or after + offset != before:
+            continue
+        argc = struct.unpack_from('i', block, 0)[0]
+        index = block.find(b'\0', 4)
+        if index < 0:
+            continue
+        while index < len(block) and block[index] == 0:
+            index += 1
+        argv, index = strings(block, index, argc)
+        env, index = strings(block, index, None)
+        out[str(pid)] = {'startedUs': before, 'argv': argv, 'env': env}
 json.dump(out, sys.stdout)
 `;
 
 /**
- * @param {number[]} pids
+ * Runs the macOS helper with `args` and parses its JSON answer. A helper that
+ * cannot run (no `python3` or `ctypes`) is an error, never an empty answer.
+ * @param {string[]} args
  * @param {RunCommand} run
- * @returns {Map<number, { startedUs: number, argv: string[], env: string[] }>}
  */
-export function darwinProcessArguments(pids, run) {
-  if (!pids.length) return new Map();
+function darwinHelper(args, run) {
   let text;
   try {
     // -I: no PYTHON* variables, user site or script directory on the path.
-    text = run('python3', ['-I', '-c', PROCARGS_SCRIPT, ...pids.map(String)], {
+    text = run('python3', ['-I', '-c', PROCARGS_SCRIPT, ...args], {
       encoding: 'utf8',
       windowsHide: true,
       env: PS_ENV,
@@ -503,12 +574,69 @@ export function darwinProcessArguments(pids, run) {
       `cannot read process environments exactly (python3 -I with ctypes, sysctl KERN_PROCARGS2): ${String(error?.message ?? error).split('\n')[0]}`,
     );
   }
+  return JSON.parse(text);
+}
+
+/**
+ * @param {number[]} pids
+ * @param {RunCommand} run
+ * @param {{ recheckOffsetUs?: number }} [testing]
+ * @returns {Map<number, { startedUs: number, argv: string[], env: string[] }>}
+ */
+export function darwinProcessArguments(
+  pids,
+  run = /** @type {RunCommand} */ (execFileSyncBounded),
+  { recheckOffsetUs = 0 } = {},
+) {
+  if (!pids.length) return new Map();
+  const flags = recheckOffsetUs
+    ? [`--test-recheck-offset-us=${recheckOffsetUs}`]
+    : [];
   return new Map(
-    Object.entries(JSON.parse(text)).map(([pid, entry]) => [
-      Number(pid),
-      entry,
-    ]),
+    Object.entries(darwinHelper([...flags, ...pids.map(String)], run)).map(
+      ([pid, entry]) => [Number(pid), entry],
+    ),
   );
+}
+
+/**
+ * pid -> the finest birth token the host offers, for rechecking a process
+ * right before it is signalled: `darwin:<p_starttime in microseconds>` on
+ * macOS, and on Linux the `/proc` start ticks the table already uses
+ * (`linux:<boot id>:<ticks>`, 1/CLK_TCK s). A pid that cannot be read is
+ * absent.
+ * @param {number[]} pids
+ * @param {{ platform?: string, run?: RunCommand, readFile?: (path: string, encoding: 'utf8') => string, bootId?: string }} [options]
+ * @returns {Map<number, string>}
+ */
+export function exactStarts(
+  pids,
+  {
+    platform: platformName = process.platform,
+    run = /** @type {RunCommand} */ (execFileSyncBounded),
+    readFile = readFileSync,
+    bootId,
+  } = {},
+) {
+  const starts = new Map();
+  if (!pids.length) return starts;
+  if (platformName === 'linux') {
+    bootId ??= defaultLinuxContext().bootId;
+    for (const pid of pids) {
+      try {
+        const stat = parseProcStat(readFile(`/proc/${pid}/stat`, 'utf8'));
+        if (stat) starts.set(pid, `linux:${bootId}:${stat.startTicks}`);
+      } catch {
+        // Exited: no birth to recheck against.
+      }
+    }
+    return starts;
+  }
+  for (const [pid, us] of Object.entries(
+    darwinHelper(['--starts', ...pids.map(String)], run),
+  ))
+    if (Number.isSafeInteger(us)) starts.set(Number(pid), `darwin:${us}`);
+  return starts;
 }
 
 /**
@@ -516,7 +644,8 @@ export function darwinProcessArguments(pids, run) {
  * still belongs to that row's process. Linux: `/proc/<pid>/environ` and
  * `cmdline`, accepted only if the pid still has the row's start ticks
  * afterwards. macOS: KERN_PROCARGS2 (see darwinProcessArguments), accepted
- * only if the start time read around it is the row's birth second. A
+ * only if the start time read around it is the row's birth second. Each
+ * entry carries the exact birth it was read under (see exactStarts). A
  * process whose entries cannot be read gets no entry, so it is never tagged.
  */
 function environments(rows, { run, platformName, readFile, readArguments }) {
@@ -542,6 +671,7 @@ function environments(rows, { run, platformName, readFile, readArguments }) {
       tests.set(row.pid, {
         env: entries.split('\0').filter(Boolean),
         argv: argv.split('\0').filter(Boolean),
+        exactStart: row.started,
       });
     }
     return tests;
@@ -556,24 +686,30 @@ function environments(rows, { run, platformName, readFile, readArguments }) {
     // lstart, and so the row, has whole seconds.
     if (Math.floor(entry.startedUs / 1_000_000) * 1000 !== row.startedAtMs)
       continue;
-    tests.set(row.pid, { env: entry.env, argv: entry.argv });
+    tests.set(row.pid, {
+      env: entry.env,
+      argv: entry.argv,
+      exactStart: `darwin:${entry.startedUs}`,
+    });
   }
   return tests;
 }
 
 /**
  * Rows of `table` that are the run's by environment (see runTagging): the
- * same effective uid, started after the run, carrying the run's tag as an
- * exact entry and none of `excludeEntries` (the control engine shares the
- * run's environment but is not Station's), with no argument naming the
- * nonce. These are found whatever their ancestry: a double-forked daemon or
- * a child spawned during shutdown has no path back to the roots.
+ * same effective uid, started after the run, carrying the run's nonce or a
+ * scratch path as an exact entry and none of `excludeEntries` (the control
+ * engine shares the run's environment but is not Station's), with no
+ * argument naming the nonce. These are found whatever their ancestry: a
+ * double-forked daemon or a child spawned during shutdown has no path back to
+ * the roots. Each row says how it was tagged (`tag`) and carries the exact
+ * birth its environment was read under (`exactStart`).
  */
 /**
  * @param {ProcessRow[]} table
  * @param {Tagging} tagging
  * @param {{ run?: RunCommand, platform?: string, readFile?: (path: string, encoding: 'utf8') => string, readArguments?: typeof darwinProcessArguments }} [options]
- * @returns {ProcessRow[]}
+ * @returns {TaggedRow[]}
  */
 export function taggedRows(
   table,
@@ -602,16 +738,21 @@ export function taggedRows(
     readFile,
     readArguments,
   });
-  return candidates.filter((row) => {
+  /** @type {TaggedRow[]} */
+  const tagged = [];
+  for (const row of candidates) {
     const entry = environment.get(row.pid);
-    return (
-      entry !== undefined &&
-      !argumentMarkers.some((marker) =>
+    if (
+      entry === undefined ||
+      argumentMarkers.some((marker) =>
         entry.argv.some((argument) => argument.includes(marker)),
-      ) &&
-      carriesRunTag(entry.env, tagging)
-    );
-  });
+      )
+    )
+      continue;
+    const tag = runTagKind(entry.env, tagging);
+    if (tag) tagged.push({ ...row, tag, exactStart: entry.exactStart });
+  }
+  return tagged;
 }
 
 /**
@@ -646,41 +787,109 @@ export function instanceSnapshot(table, roots, tagging, options) {
 }
 
 /**
+ * Whether `exact` (see exactStarts) is the birth of the process whose table
+ * birth token is `started`: equal on Linux, the same second on macOS, whose
+ * table and instance record carry whole-second lstart.
+ * @param {string} started
+ * @param {string | undefined} exact
+ */
+export function sameBirth(started, exact) {
+  if (!exact) return false;
+  if (started.startsWith('linux:')) return exact === started;
+  const parts = started.trim().split(/\s+/);
+  return (
+    exact.startsWith('darwin:') &&
+    parts.length === 5 &&
+    Math.floor(Number(exact.slice('darwin:'.length)) / 1_000_000) * 1000 ===
+      lstartMs(parts)
+  );
+}
+
+/**
+ * Which of `rows` the run may signal. Kill-eligible: a row tagged by the
+ * exact `STATION_WEIGHT_RUN=<nonce>` entry, with the exact birth its
+ * environment was read under, and a recorded root whose recorded birth still
+ * holds and whose exact birth was read when the run learned it. Every other
+ * row, found by ancestry, by an identity seen earlier or by a scratch `HOME`
+ * or `TMPDIR`, is report-only: it counts as the run's, and is never
+ * signalled.
+ * @param {ProcessRow[]} rows
+ * @param {TaggedRow[]} tagged
+ * @param {ProcessIdentity[]} [roots]
+ * @returns {OwnedRow[]}
+ */
+export function killEligibility(rows, tagged, roots = []) {
+  const exact = new Map();
+  for (const row of tagged)
+    if (row.tag === 'nonce' && row.exactStart)
+      exact.set(identityKey(row), row.exactStart);
+  for (const root of roots)
+    if (root.exactStart) exact.set(identityKey(root), root.exactStart);
+  return rows.map((row) => {
+    const exactStart = exact.get(identityKey(row));
+    return exactStart
+      ? { ...row, killEligible: true, exactStart }
+      : { ...row, killEligible: false };
+  });
+}
+
+/**
  * What lives on after stop: every process seen in the instance's tree during
  * the run that is still alive with the same birth token (see processLedger),
- * and every process still carrying the run's environment, whether it
- * detached or was spawned after the last read, plus their descendants.
+ * every recorded root, and every process still carrying the run's
+ * environment, whether it detached or was spawned after the last read, plus
+ * their descendants; each marked kill-eligible or report-only (see
+ * killEligibility).
  * @param {ProcessIdentity[]} seen
  * @param {ProcessRow[]} after
  * @param {Tagging} tagging
  * @param {Parameters<typeof taggedRows>[2]} [options]
+ * @param {ProcessIdentity[]} [roots]
  */
-export function leftoverAfterStop(seen, after, tagging, options) {
-  return ownedTree(after, [...seen, ...taggedRows(after, tagging, options)]);
+export function leftoverAfterStop(seen, after, tagging, options, roots = []) {
+  const tagged = taggedRows(after, tagging, options);
+  return killEligibility(
+    ownedTree(after, [...roots, ...seen, ...tagged]),
+    tagged,
+    roots,
+  );
 }
 
 /**
  * Every process identity (pid plus birth token) ever seen in the instance's
  * tree. Ownership by identity does not depend on the environment: a child
  * that rewrites its environment area (a long `process.title` on macOS) or
- * detaches is still the run's once a read saw it in the tree, and a pid
- * reused since never matches its birth token.
+ * detaches is still counted as the run's once a read saw it in the tree. It
+ * is never signalled on that basis (see killEligibility). Once following
+ * starts, it also measures the reads: how many, and the longest interval
+ * between the starts of two consecutive ones.
  */
 function processLedger() {
   /** @type {Map<string, ProcessIdentity>} */
   const seen = new Map();
   let lastAt = -Infinity;
+  let following = false;
+  let reads = 0;
+  let maxIntervalMs = 0;
   return {
     /**
      * @template {ProcessRow} T
      * @param {T[]} rows
+     * @param {number} [at] when the table the rows came from was read
      * @returns {T[]}
      */
-    remember(rows) {
+    remember(rows, at = performance.now()) {
       for (const row of rows)
         seen.set(identityKey(row), { pid: row.pid, started: row.started });
-      lastAt = performance.now();
+      if (following) {
+        if (reads > 0) maxIntervalMs = Math.max(maxIntervalMs, at - lastAt);
+        reads += 1;
+      }
+      lastAt = Math.max(lastAt, at);
       return rows;
+    },
+    follow() {
+      following = true;
     },
     /** @returns {ProcessIdentity[]} */
     identities: () => [...seen.values()],
@@ -690,6 +899,12 @@ function processLedger() {
     get lastAt() {
       return lastAt;
     },
+    get reads() {
+      return reads;
+    },
+    get maxIntervalMs() {
+      return maxIntervalMs;
+    },
   };
 }
 
@@ -697,19 +912,26 @@ function processLedger() {
  * Reads the tree by ancestry every `intervalMs` into `ledger`, from the
  * recorded roots and everything already seen, and skips a tick when another
  * read fed the ledger within the interval (the CPU window reads at the same
- * rate). A failed read is kept in `errors`: what it missed is unknown, so the
- * caller must not report the leftover check as complete.
+ * rate). The timer shares the event loop with every synchronous read the run
+ * makes (memory footprints, environment scans), so a tick can come late; the
+ * ledger measures the real intervals. A failed read is kept in `errors`: what
+ * it missed is unknown, so the caller must not report the leftover check as
+ * complete. Identities this follower itself read go into `followed`.
  * @param {ReturnType<typeof processLedger>} ledger
  * @param {() => ProcessIdentity[]} roots
- * @param {{ intervalMs: number, read?: () => ProcessRow[] }} options
+ * @param {Set<string>} followed
+ * @param {{ intervalMs: number, read: () => ProcessRow[] }} options
  */
-function followTree(ledger, roots, { intervalMs, read = processTable }) {
+function followTree(ledger, roots, followed, { intervalMs, read }) {
   /** @type {string[]} */
   const errors = [];
-  const tick = () => {
-    if (performance.now() - ledger.lastAt < intervalMs) return;
+  const tick = (force = false) => {
+    if (!force && performance.now() - ledger.lastAt < intervalMs) return;
     try {
-      ledger.remember(ownedTree(read(), [...roots(), ...ledger.identities()]));
+      const at = performance.now();
+      const rows = ownedTree(read(), [...roots(), ...ledger.identities()]);
+      ledger.remember(rows, at);
+      for (const row of rows) followed.add(identityKey(row));
     } catch (error) {
       errors.push(String(error?.message ?? error).split('\n')[0]);
     }
@@ -717,40 +939,90 @@ function followTree(ledger, roots, { intervalMs, read = processTable }) {
   const timer = setInterval(tick, intervalMs);
   return {
     errors,
+    tick,
     stop: () => clearInterval(timer),
   };
 }
 
 /**
  * The run's ownership of processes in one place: the recorded roots, every
- * identity seen in the tree since (followed every `intervalMs` once the roots
- * are known), and the environment tag. The runner reads the tree, the
- * leftovers and the cleanup set only through this.
+ * identity seen in the tree since (followed every `intervalMs` from the
+ * moment the first roots are known), and the environment tag. The runner
+ * reads the tree, the leftovers and the cleanup set only through this.
  * @param {Tagging} tagging
- * @param {{ intervalMs: number, read?: () => ProcessRow[], tagOptions?: Parameters<typeof taggedRows>[2] }} options
+ * @param {{ intervalMs: number, read?: () => ProcessRow[], tagOptions?: Parameters<typeof taggedRows>[2], starts?: (pids: number[]) => Map<number, string> }} options
  */
 export function runOwnership(
   tagging,
-  { intervalMs, read = processTable, tagOptions },
+  {
+    intervalMs,
+    read = processTable,
+    tagOptions,
+    starts = (pids) =>
+      exactStarts(pids, {
+        platform: tagOptions?.platform,
+        run: tagOptions?.run,
+        readFile: tagOptions?.readFile,
+      }),
+  },
 ) {
-  /** @type {ProcessIdentity[]} */
-  let roots = [];
+  /** @type {Map<string, ProcessIdentity & { learnedAt: string }>} */
+  const roots = new Map();
   const ledger = processLedger();
+  /** @type {Set<string>} */
+  const followed = new Set();
+  /** @type {WeakMap<ProcessRow[], number>} */
+  const readAt = new WeakMap();
   /** @type {ReturnType<typeof followTree> | undefined} */
   let follower;
-  const known = () => [...roots, ...ledger.identities()];
+  const rootList = () => [...roots.values()];
+  const known = () => [...rootList(), ...ledger.identities()];
+  const at = (table) => readAt.get(table) ?? performance.now();
   return {
     ledger,
-    /** @param {ProcessIdentity[]} next */
-    setRoots(next) {
-      roots = next;
-      follower?.stop();
-      follower = followTree(ledger, () => roots, { intervalMs, read });
+    /** One process table, timed for the ledger. */
+    readTable() {
+      const started = performance.now();
+      const table = read();
+      readAt.set(table, started);
+      return table;
     },
+    /**
+     * Adds the roots `next` names (an instance record's) and, the first
+     * time, starts following the tree, with one read right away. A root's
+     * exact birth is read now and kept only if it is the recorded one: that
+     * makes the root kill-eligible while its birth holds. Returns how many
+     * roots were new.
+     * @param {ProcessIdentity[]} next
+     */
+    setRoots(next) {
+      const fresh = next.filter((root) => !roots.has(identityKey(root)));
+      if (fresh.length) {
+        const exact = starts(fresh.map((root) => root.pid));
+        const learnedAt = new Date().toISOString();
+        for (const { pid, started } of fresh) {
+          const birth = exact.get(pid);
+          roots.set(identityKey({ pid, started }), {
+            pid,
+            started,
+            ...(sameBirth(started, birth) ? { exactStart: birth } : {}),
+            learnedAt,
+          });
+        }
+      }
+      if (!follower) {
+        ledger.follow();
+        follower = followTree(ledger, rootList, followed, { intervalMs, read });
+        follower.tick(true);
+      } else if (fresh.length) follower.tick(true);
+      return fresh.length;
+    },
+    roots: rootList,
     /** The tree now: roots, identities seen, tagged rows, descendants. */
-    tree(table = read()) {
+    tree(table = this.readTable()) {
       return ledger.remember(
         instanceSnapshot(table, known(), tagging, tagOptions),
+        at(table),
       );
     },
     /**
@@ -759,66 +1031,218 @@ export function runOwnership(
      * @param {ProcessRow[]} tagged
      */
     ancestry(table, tagged) {
-      return ledger.remember(instanceTree(table, known(), tagged));
+      return ledger.remember(instanceTree(table, known(), tagged), at(table));
     },
     /**
-     * What lives on after stop; ends the following.
+     * What lives on after stop, each row kill-eligible or report-only; ends
+     * the following.
      * @param {ProcessRow[]} after
      */
     leftover(after) {
       follower?.stop();
-      return leftoverAfterStop(ledger.identities(), after, tagging, tagOptions);
+      return ledger.remember(
+        leftoverAfterStop(
+          ledger.identities(),
+          after,
+          tagging,
+          tagOptions,
+          rootList(),
+        ),
+        at(after),
+      );
+    },
+    /**
+     * How the tree was followed: reads, the longest interval between them,
+     * every root with when it was learned and whether it is kill-eligible,
+     * and the roots the follower's own reads found alive.
+     */
+    follow() {
+      return {
+        nominalIntervalMs: intervalMs,
+        reads: ledger.reads,
+        maxIntervalMs: ledger.maxIntervalMs,
+        errors: [...(follower?.errors ?? [])],
+        roots: rootList().map(({ pid, started, exactStart, learnedAt }) => ({
+          pid,
+          started,
+          learnedAt,
+          killEligible: Boolean(exactStart),
+        })),
+        rootsFollowed: rootList()
+          .filter((root) => followed.has(identityKey(root)))
+          .map(({ pid, started }) => ({ pid, started })),
+      };
     },
     /** Reads of the tree that failed while following. */
     followErrors: () => follower?.errors ?? [],
     /**
-     * Everything still alive that is the run's to end: seen in the tree, or
-     * tagged, the control engine included.
+     * Everything still alive that is the run's, the control engine
+     * included, each kill-eligible or report-only.
      * @param {ProcessRow[]} table
      */
     strays(table) {
-      const found = new Map(
-        ownedTree(table, ledger.identities()).map((row) => [row.pid, row]),
-      );
-      for (const row of taggedRows(
+      return leftoverAfterStop(
+        ledger.identities(),
         table,
         { ...tagging, excludeEntries: [] },
         tagOptions,
-      ))
-        found.set(row.pid, row);
-      return [...found.values()];
+        rootList(),
+      );
     },
     stop: () => follower?.stop(),
   };
 }
 
 /**
- * Sends `signal` to each row only while its pid still has the recorded birth
- * token: a pid that now belongs to another process is never signalled.
+ * Sends `signal` to each kill-eligible row whose exact birth (see
+ * exactStarts) still holds when read immediately before the signal. On macOS
+ * the helper reads each start time and signals in one pass, so the recheck
+ * and the signal are microseconds apart; on Linux the `/proc` start ticks are
+ * read right before `process.kill`. A row that is not kill-eligible, or has
+ * no exact birth, is never signalled. No POSIX call signals a pid only if it
+ * still names one process, so the guarantee is this recheck, not more: a
+ * pid would have to be freed and reused, with the recorded birth, between
+ * the recheck and the signal.
+ * @param {Array<Partial<OwnedRow> & { pid: number, exactStart?: string }>} rows
+ * @param {NodeJS.Signals} signal
+ * @param {{ platform?: string, run?: RunCommand, readFile?: (path: string, encoding: 'utf8') => string, kill?: (pid: number, signal: NodeJS.Signals) => unknown, bootId?: string }} [options]
  */
 export function signalIfSame(
   rows,
   signal,
   {
-    birth = (pid) => lookupProcessBirthFingerprint(pid),
+    platform: platformName = process.platform,
+    run = /** @type {RunCommand} */ (execFileSyncBounded),
+    readFile = readFileSync,
     kill = process.kill,
+    bootId,
   } = {},
 ) {
+  /** @type {number[]} */
   const signalled = [];
+  /** @type {number[]} */
   const skipped = [];
-  for (const row of rows) {
-    if (birth(row.pid) !== row.started) {
-      skipped.push(row.pid);
-      continue;
+  const eligible = [];
+  for (const row of rows)
+    if (row.killEligible === false || !row.exactStart) skipped.push(row.pid);
+    else eligible.push(row);
+  if (platformName === 'linux') {
+    for (const row of eligible) {
+      const now = exactStarts([row.pid], {
+        platform: platformName,
+        readFile,
+        bootId,
+      }).get(row.pid);
+      if (now !== row.exactStart) {
+        skipped.push(row.pid);
+        continue;
+      }
+      try {
+        kill(row.pid, signal);
+        signalled.push(row.pid);
+      } catch {
+        // Exited between the check and the signal.
+        skipped.push(row.pid);
+      }
     }
-    try {
-      kill(row.pid, signal);
-      signalled.push(row.pid);
-    } catch {
-      // Exited between the check and the signal.
-    }
+    return { signalled, skipped };
   }
+  const darwin = [];
+  for (const row of eligible)
+    if (/^darwin:\d+$/.test(/** @type {string} */ (row.exactStart)))
+      darwin.push(row);
+    else skipped.push(row.pid);
+  if (!darwin.length) return { signalled, skipped };
+  const number = constants.signals[signal];
+  assert(Number.isInteger(number), `unknown signal ${signal}`);
+  const answer = darwinHelper(
+    [
+      `--signal=${number}`,
+      ...darwin.map(
+        (row) =>
+          `${row.pid}:${/** @type {string} */ (row.exactStart).slice('darwin:'.length)}`,
+      ),
+    ],
+    run,
+  );
+  signalled.push(...answer.signalled);
+  skipped.push(...answer.skipped);
   return { signalled, skipped };
+}
+
+/**
+ * The full command line of each row, for reporting what a run left running:
+ * `/proc/<pid>/cmdline` on Linux, the helper's argument read on macOS, the
+ * table's command name when neither can be read.
+ * @param {ProcessRow[]} rows
+ * @param {{ platform?: string, run?: RunCommand, readFile?: (path: string, encoding: 'utf8') => string }} [options]
+ * @returns {Array<{ pid: number, started: string, command: string }>}
+ */
+export function describeProcesses(
+  rows,
+  {
+    platform: platformName = process.platform,
+    run = /** @type {RunCommand} */ (execFileSyncBounded),
+    readFile = readFileSync,
+  } = {},
+) {
+  /** @type {Map<number, string[]>} */
+  const argv = new Map();
+  try {
+    if (platformName === 'linux')
+      for (const row of rows) {
+        try {
+          argv.set(
+            row.pid,
+            readFile(`/proc/${row.pid}/cmdline`, 'utf8')
+              .split('\0')
+              .filter(Boolean),
+          );
+        } catch {
+          // Exited: the table's command name stands.
+        }
+      }
+    else {
+      const born = new Map(rows.map((row) => [row.pid, row.startedAtMs]));
+      // Only a read of the row's own process (its birth second).
+      for (const [pid, entry] of darwinProcessArguments(
+        rows.map((row) => row.pid),
+        run,
+      ))
+        if (Math.floor(entry.startedUs / 1_000_000) * 1000 === born.get(pid))
+          argv.set(pid, entry.argv);
+    }
+  } catch {
+    // Unreadable: the table's command names stand.
+  }
+  return rows.map((row) => ({
+    pid: row.pid,
+    started: row.started,
+    command: (argv.get(row.pid)?.join(' ') || row.command).slice(0, 1000),
+  }));
+}
+
+/**
+ * Ends what the run may end and reports the rest: kill-eligible rows get
+ * SIGKILL through signalIfSame; report-only rows are never signalled and are
+ * returned with pid, birth and command line.
+ * @param {OwnedRow[]} rows
+ * @param {Parameters<typeof signalIfSame>[2]} [options]
+ */
+export function endRunProcesses(rows, options) {
+  const outcome = signalIfSame(
+    rows.filter((row) => row.killEligible),
+    'SIGKILL',
+    options,
+  );
+  return {
+    killed: outcome.signalled,
+    notSignalledBirthChanged: outcome.skipped,
+    leftRunning: describeProcesses(
+      rows.filter((row) => !row.killEligible),
+      options,
+    ),
+  };
 }
 
 const sum = (rows, key) => rows.reduce((total, row) => total + row[key], 0);
@@ -1540,12 +1964,14 @@ export function idleCpuMetric(sampled, intervalMs) {
 }
 
 /**
- * What the leftover check cannot find; reported with the metric. Nothing ties
- * such a process to the run: no subreaper or cgroup follows it on macOS, and
- * a process group or session can be left with setsid and its id reused.
+ * What the leftover check cannot find; reported with the metric, with the
+ * intervals this run actually observed. Nothing ties such a process to the
+ * run: no subreaper or cgroup follows it on macOS, and a process group or
+ * session can be left with setsid and its id reused.
+ * @param {{ nominalIntervalMs: number, maxIntervalMs: number }} follow
  */
-export const LEFTOVER_GAP =
-  'not found: a process that left the instance tree before any read saw it there (the tree is read every 250 ms from the instance record until after stop, so a double fork that completes between two reads, or one during station start before the record names its roots) and whose environment carries neither the run tag nor a scratch HOME or TMPDIR as an exact entry (started with env: {}, or with its environment area overwritten, as a long process.title does on macOS); neither a recorded identity, ancestry nor environment ties it to the run';
+export const LEFTOVER_GAP = ({ nominalIntervalMs, maxIntervalMs }) =>
+  `not found: a process that left the instance tree before any read saw it there and whose environment carries neither the run tag nor a scratch HOME or TMPDIR as an exact entry (started with env: {}, or with its environment area overwritten, as a long process.title does on macOS). The tree is read from the moment the instance record names its roots, while station start is still running, until after stop: nominally every ${nominalIntervalMs} ms, but the reads share the event loop with synchronous memory and environment reads, and the longest interval observed between the starts of two reads was ${Math.ceil(maxIntervalMs)} ms. A double fork that completes within one such interval, or before the run learned the roots (follow.roots[].learnedAt against follow.recordStartedAt), escapes ancestry; neither a recorded identity, ancestry nor environment then ties it to the run`;
 
 const median = (values) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -1710,7 +2136,8 @@ export async function runStationWeight({
   const ownership = runOwnership(tagging, {
     intervalMs: settings.cpuSampleIntervalMs,
   });
-  const treeNow = (table = processTable()) => ownership.tree(table);
+  const treeNow = (table = ownership.readTable()) => ownership.tree(table);
+  const recordPath = join(ROOT, '.station/instances', `${instance}.json`);
   try {
     // `station start --clean` rebuilds, so a ready time taken from it would
     // mostly measure the build. Build first (reported on its own), then the
@@ -1744,7 +2171,15 @@ export async function runStationWeight({
         });
       }
       started = true;
-      launches.push(await launchInstance(instance, ports, scratch, env));
+      launches.push(
+        await launchInstance(instance, ports, scratch, env, {
+          recordPath,
+          intervalMs: settings.cpuSampleIntervalMs,
+          // Following starts as soon as the record names the roots, while
+          // station start is still running.
+          onRecord: (record) => ownership.setRoots(recordedRoots(record)),
+        }),
+      );
     }
     result.metrics.serverReadyMs = measured(
       median(launches.map((launch) => launch.readyMs)),
@@ -1755,15 +2190,16 @@ export async function runStationWeight({
         launches,
       },
     );
-    const instanceRecord = JSON.parse(
-      readFileSync(
-        join(ROOT, '.station/instances', `${instance}.json`),
-        'utf8',
-      ),
-    );
-    // From here until after stop the tree is read every interval, so a
-    // child that detaches or rewrites its environment later is still known.
-    ownership.setRoots(recordedRoots(instanceRecord));
+    const instanceRecord = JSON.parse(readFileSync(recordPath, 'utf8'));
+    const instanceRoots = recordedRoots(instanceRecord);
+    // The roots were learned while station start ran (launchInstance), and
+    // the tree is read every interval from then until after stop. A root
+    // first learned here means the following started late; it is counted.
+    result.follow = {
+      recordStartedAt: instanceRecord.startedAt,
+      instanceRoots,
+      rootsLearnedAfterLaunch: ownership.setRoots(instanceRoots),
+    };
     await api.pair(instanceRecord.baseDir);
 
     progress('paired; settling');
@@ -1776,7 +2212,7 @@ export async function runStationWeight({
     // tagged at its start and every identity seen so far (a full environment
     // scan every 250 ms would be the heaviest thing on the host), and
     // rescans for tagged processes at its end.
-    const taggedAtStart = taggedRows(processTable(), tagging);
+    const taggedAtStart = taggedRows(ownership.readTable(), tagging);
     const linux = process.platform === 'linux';
     // Context switches are read from /proc when the window opens and when it
     // closes, not from the rows afterwards (both would then read the end).
@@ -1784,7 +2220,7 @@ export async function runStationWeight({
     let switchesEnd;
     const sampled = await sampleTreeCpu(
       (final) => {
-        const table = processTable();
+        const table = ownership.readTable();
         const rows = final
           ? treeNow(table)
           : ownership.ancestry(table, taggedAtStart);
@@ -1924,16 +2360,23 @@ export async function runStationWeight({
     // plus anything still carrying the run's environment however it got
     // there (a double-forked daemon, a child spawned during shutdown).
     progress('stopping');
-    const tableBeforeStop = processTable();
+    const tableBeforeStop = ownership.readTable();
     const beforeStop = treeNow(tableBeforeStop);
-    // Evidence that the environment alone ties every instance process to
-    // the run: what ancestry found that tagging did not.
-    const taggedBeforeStop = new Set(
-      taggedRows(tableBeforeStop, tagging).map((row) => row.pid),
+    // How each pre-stop process is the run's: by the nonce (kill-eligible),
+    // only by a scratch path, or only by ancestry (both report-only).
+    const tagBeforeStop = new Map(
+      taggedRows(tableBeforeStop, tagging).map((row) => [row.pid, row.tag]),
     );
-    const untaggedBeforeStop = beforeStop
-      .filter((row) => !taggedBeforeStop.has(row.pid))
-      .map((row) => row.command);
+    const beforeStopOwnership = {
+      runTag: beforeStop.filter((row) => tagBeforeStop.get(row.pid) === 'nonce')
+        .length,
+      pathOnly: beforeStop
+        .filter((row) => tagBeforeStop.get(row.pid) === 'path')
+        .map((row) => row.command),
+      ancestryOnly: beforeStop
+        .filter((row) => !tagBeforeStop.has(row.pid))
+        .map((row) => row.command),
+    };
     await hooks.beforeStop?.({ env, scratch });
     const stopStart = performance.now();
     await stationOk(['stop', `--instance=${instance}`], {
@@ -1943,20 +2386,29 @@ export async function runStationWeight({
     started = false;
     result.stopMs = performance.now() - stopStart;
     await wait(settings.stopGraceMs);
-    const left = withMemory(ownership.leftover(processTable()));
+    const left = withMemory(ownership.leftover(ownership.readTable()));
     const followErrors = ownership.followErrors();
-    const cleanup = signalIfSame(left, 'SIGKILL');
+    // Only kill-eligible processes are signalled; the rest are counted here
+    // and reported as left running.
+    const ended = endRunProcesses(left);
+    result.follow = { ...result.follow, ...ownership.follow() };
     const leftoverDetail = {
       basis: MEMORY_BASIS,
       processCount: left.length,
-      processes: processRows(left),
+      processes: left.map((row) => ({
+        ...processRows([row])[0],
+        started: row.started,
+        killEligible: row.killEligible,
+      })),
       afterSeconds: settings.stopGraceMs / 1000,
       beforeStopProcessCount: beforeStop.length,
-      beforeStopUntagged: untaggedBeforeStop,
+      beforeStopOwnership,
       seenProcessCount: ownership.ledger.size,
-      killed: cleanup.signalled,
-      notSignalledPidReused: cleanup.skipped,
-      gap: LEFTOVER_GAP,
+      killed: ended.killed,
+      notSignalledBirthChanged: ended.notSignalledBirthChanged,
+      reportOnly: ended.leftRunning,
+      maxReadIntervalMs: result.follow.maxIntervalMs,
+      gap: LEFTOVER_GAP(result.follow),
     };
     result.metrics.leftoverAfterStopMemoryBytes = !beforeStop.length
       ? notMeasured(
@@ -1982,13 +2434,19 @@ export async function runStationWeight({
         env,
         timeoutMs: 120_000,
       }).catch(() => undefined);
-    // Whatever was seen in the tree, or still carries the run's
-    // environment (Station's or the control's), is the run's to end;
-    // identity is rechecked per signal.
+    result.follow = { ...result.follow, ...ownership.follow() };
+    // A process carrying the run's nonce (Station's or the control's), or a
+    // recorded root, is the run's to end, its exact birth rechecked right
+    // before the signal. Anything else still alive that the run counted
+    // (seen in the tree, or with a scratch HOME or TMPDIR) is left running
+    // and reported, never signalled.
     try {
       const strays = ownership.strays(processTable());
-      if (strays.length)
-        result.cleanupKilled = signalIfSame(strays, 'SIGKILL').signalled;
+      if (strays.length) {
+        const ended = endRunProcesses(strays);
+        result.cleanupKilled = ended.killed;
+        result.leftRunning = ended.leftRunning;
+      }
     } catch (error) {
       result.cleanupError = String(error?.message ?? error);
     }
@@ -2007,9 +2465,49 @@ export async function runStationWeight({
 
 /**
  * One `station start` of the built instance: the time from launch until the
- * UI listener's readiness route answers `ready`.
+ * UI listener's readiness route answers `ready`. While it runs, the instance
+ * record at `recordPath` is read every `intervalMs`, and `onRecord` gets each
+ * record that names process fingerprints: the launcher writes the record
+ * right after spawning the roots, well before readiness, so the run can
+ * follow the tree from then on. A record left by an earlier launch names
+ * roots that have exited, which own nothing.
+ * @param {string} instance
+ * @param {{ server: number, ui: number }} ports
+ * @param {string} scratch
+ * @param {NodeJS.ProcessEnv} env
+ * @param {{ recordPath: string, intervalMs: number, onRecord: (record: any) => void }} follow
  */
-async function launchInstance(instance, ports, scratch, env) {
+async function launchInstance(
+  instance,
+  ports,
+  scratch,
+  env,
+  { recordPath, intervalMs, onRecord },
+) {
+  const watchRecord = () => {
+    let record;
+    try {
+      record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    } catch {
+      return; // Not written yet, or mid-write.
+    }
+    if (record?.serverFingerprint || record?.uiFingerprint) onRecord(record);
+  };
+  const recordTimer = setInterval(() => {
+    try {
+      watchRecord();
+    } catch (error) {
+      progress(`instance record not followed yet: ${error?.message ?? error}`);
+    }
+  }, intervalMs);
+  try {
+    return await launchAndWait(instance, ports, scratch, env);
+  } finally {
+    clearInterval(recordTimer);
+  }
+}
+
+async function launchAndWait(instance, ports, scratch, env) {
   const launch = performance.now();
   const startCommand = station(
     [
@@ -2088,6 +2586,11 @@ function printSummary(result) {
     );
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);
   for (const text of formatVerdicts(result.budgets ?? [])) console.log(text);
+  // What the run counted as its own but may not signal: left running.
+  for (const row of result.leftRunning ?? [])
+    line(
+      `LEFT RUNNING pid=${row.pid} birth=${JSON.stringify(row.started)} command=${JSON.stringify(row.command)}`,
+    );
   if (result.error) line(`ERROR ${result.error.split('\n')[0]}`);
   line(`host ${result.host?.label} fingerprint ${result.host?.fingerprint}`);
   line(result.gate.summary);

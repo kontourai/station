@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  exactStarts,
   LEFTOVER_GAP,
   runStationWeight,
   signalIfSame,
@@ -19,10 +19,10 @@ const BASELINE = JSON.parse(
     'utf8',
   ),
 );
-const strays: Array<{ pid: number; started: string }> = [];
+const strays: Array<{ pid: number; exactStart: string }> = [];
 
-// The run is expected to have ended the daemon already; a pid reused since
-// is never signalled.
+// The run is expected to have ended the daemon already; a pid whose exact
+// birth changed since is never signalled.
 afterEach(() => {
   signalIfSame(strays.splice(0), 'SIGKILL');
 });
@@ -47,8 +47,8 @@ function leakDuringShutdown(env: NodeJS.ProcessEnv) {
   return new Promise<number>((resolveDaemon) =>
     helper.stdout.once('data', (chunk) => {
       const pid = Number(String(chunk));
-      const started = lookupProcessBirthFingerprint(pid);
-      if (started) strays.push({ pid, started });
+      const exactStart = exactStarts([pid]).get(pid);
+      if (exactStart) strays.push({ pid, exactStart });
       helper.once('exit', () => resolveDaemon(pid));
     }),
   );
@@ -104,7 +104,24 @@ describe.skipIf(!posix)('station-weight end to end', () => {
       ).toContain(leaked);
       expect(leftover.value).toBeGreaterThan(0);
       expect(leftover.killed).toContain(leaked);
-      expect(leftover.gap).toBe(LEFTOVER_GAP);
+      expect(
+        leftover.processes.find((row: { pid: number }) => row.pid === leaked),
+      ).toMatchObject({ killEligible: true });
+      expect(leftover.gap).toBe(LEFTOVER_GAP(result.follow));
+      // The follower was connected while station start ran: it learned the
+      // record's roots before launch returned, and its own reads found each
+      // of them alive. Only following that started from the record can
+      // satisfy both.
+      expect(result.follow.instanceRoots.length).toBeGreaterThan(0);
+      expect(result.follow.rootsLearnedAfterLaunch).toBe(0);
+      expect(result.follow.rootsFollowed).toEqual(
+        expect.arrayContaining(result.follow.instanceRoots),
+      );
+      expect(result.follow.reads).toBeGreaterThan(2);
+      expect(result.follow.errors).toEqual([]);
+      expect(leftover.gap).toContain(
+        `${Math.ceil(result.follow.maxIntervalMs)} ms`,
+      );
       // Every process of the pre-stop tree, and more seen while the run was
       // followed, is remembered by identity, whatever its environment.
       expect(leftover.seenProcessCount).toBeGreaterThanOrEqual(
