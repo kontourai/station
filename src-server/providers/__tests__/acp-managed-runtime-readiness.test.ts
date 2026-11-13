@@ -265,44 +265,51 @@ test('a readiness read that never settles does not hold the inventory past an ab
   expect(Date.now() - started).toBeLessThan(5_000);
 });
 
-test('aborting the readiness read kills the runtime probe it started', async () => {
-  signedOutVault();
-  const dir = makeTempDir('managed-readiness-runtime-');
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-  const pidFile = join(dir, 'pid');
-  const runtime = join(dir, 'slow-runtime');
-  // A runtime whose `--version` never finishes on its own.
-  writeFileSync(runtime, `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`);
-  chmodSync(runtime, 0o755);
-  registerManagedRuntimeInstalls({
-    installed: (installId) =>
-      installId === 'kiro-kas'
-        ? { runtime, script: '/unused/acp-server.js' }
-        : undefined,
-  });
-  const controller = new AbortController();
-  const read = adapterFor(BUNDLE).getPrerequisites({
-    connectionId: BUNDLE.id,
-    signal: controller.signal,
-  });
-  read.catch(() => {});
-  await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true), {
-    timeout: 10_000,
-  });
-  const pid = Number(readFileSync(pidFile, 'utf8').trim());
-  const alive = () => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  cleanups.push(() => {
-    if (alive()) process.kill(pid, 'SIGKILL');
-  });
-  expect(alive()).toBe(true);
-  controller.abort(new Error('caller cancelled'));
-  await expect(read).rejects.toThrow();
-  await vi.waitFor(() => expect(alive()).toBe(false), { timeout: 3_000 });
-});
+// The fake runtime is a POSIX shell script, which Windows cannot spawn.
+test.skipIf(process.platform === 'win32')(
+  'aborting the readiness read kills the runtime probe it started',
+  async () => {
+    signedOutVault();
+    const dir = makeTempDir('managed-readiness-runtime-');
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const pidFile = join(dir, 'pid');
+    const runtime = join(dir, 'slow-runtime');
+    // A runtime whose `--version` never finishes on its own.
+    writeFileSync(
+      runtime,
+      `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`,
+    );
+    chmodSync(runtime, 0o755);
+    registerManagedRuntimeInstalls({
+      installed: (installId) =>
+        installId === 'kiro-kas'
+          ? { runtime, script: '/unused/acp-server.js' }
+          : undefined,
+    });
+    const controller = new AbortController();
+    const read = adapterFor(BUNDLE).getPrerequisites({
+      connectionId: BUNDLE.id,
+      signal: controller.signal,
+    });
+    read.catch(() => {});
+    await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true), {
+      timeout: 10_000,
+    });
+    const pid = Number(readFileSync(pidFile, 'utf8').trim());
+    const alive = () => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    cleanups.push(() => {
+      if (alive()) process.kill(pid, 'SIGKILL');
+    });
+    expect(alive()).toBe(true);
+    controller.abort(new Error('caller cancelled'));
+    await expect(read).rejects.toThrow();
+    await vi.waitFor(() => expect(alive()).toBe(false), { timeout: 3_000 });
+  },
+);

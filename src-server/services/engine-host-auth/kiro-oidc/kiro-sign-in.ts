@@ -469,6 +469,8 @@ export class KiroSignIn {
         timeoutMs,
       });
     } catch (error) {
+      // Cancelled while the listener was opening: it stays cancelled.
+      if (attempt.record.phase !== 'starting') return attempt.record;
       attempt.record = {
         ...attempt.record,
         phase: 'failed',

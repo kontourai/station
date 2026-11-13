@@ -284,6 +284,16 @@ describe('Kiro social sign-in against a stub portal and service', () => {
     expect(started.reason).toContain('AWS Builder ID or IAM Identity Center');
   });
 
+  test('cancelled while the listener is still opening: it stays cancelled, not failed', async () => {
+    const ports = await freePorts(2);
+    for (const port of ports) await occupy(port);
+    const { service } = await setup({ ports });
+    const pending = service.startLogin(SCOPE, { identity: 'social' });
+    expect(service.cancelLogin(SCOPE)?.phase).toBe('cancelled');
+    expect((await pending).phase).toBe('cancelled');
+    expect(service.login(SCOPE)?.phase).toBe('cancelled');
+  });
+
   test('no answer before the deadline: expired, and the listener closes', async () => {
     const { stub, service } = await setup({ timeoutMs: 150 });
     const { port } = await startSocial(service);
