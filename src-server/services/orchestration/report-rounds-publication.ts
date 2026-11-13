@@ -452,9 +452,9 @@ export async function withReportRoundsPublication<T>(
             await options.prepare?.(held.scope);
             const checkPreparation = options.assertPreparationCurrent;
             const assertPrepared = (): undefined => {
-              held.scope.current();
               if (checkPreparation)
                 held.scope.check(() => checkPreparation(held.scope));
+              else held.scope.current();
               return undefined;
             };
             let storeReturned = false;
