@@ -265,7 +265,7 @@ describe('published CLI bundle', () => {
     // it cannot be bundled; it is loaded only on Windows.
     expect(manifest.dependencies ?? {}).toEqual({
       '@napi-rs/keyring': '2.1.2',
-      koffi: '3.3.6',
+      koffi: '3.3.7',
       qrcode: '^1.5.4',
     });
     expect(optionalPeers).toContain('esbuild');

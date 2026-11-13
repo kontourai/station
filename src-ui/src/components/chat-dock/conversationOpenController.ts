@@ -266,7 +266,7 @@ export function conversationOpenPatch(
         ...(!changedChild && previous?.requestedModel && !keepRequested
           ? {
               error:
-                'The saved model choice is unavailable for this Session. The current engine model is selected.',
+                "The saved model isn't available for this chat. Using the engine's current model.",
             }
           : {}),
       }
@@ -289,7 +289,7 @@ export function conversationOpenPatch(
           approvalPosture: undefined,
           approvalPostureSequence: undefined,
           error:
-            'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
+            "This chat's agent isn't available. Reopen the chat before sending.",
         }
       : {};
   // #2309: the resolution's own activity read is fresher than the row's copy;

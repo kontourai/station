@@ -6091,7 +6091,15 @@ test('build gallery — capture key screens', async ({ page }) => {
           screen,
           file,
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          // Preserve the already bounded per-screen console/page errors when
+          // a render assertion fails; the fallback PNG alone cannot explain
+          // a lazy-boundary failure. Failure and capture counts stay intact.
+          error: [
+            error instanceof Error ? error.message : String(error),
+            ...(browserErrors.length
+              ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
+              : []),
+          ].join('\n'),
         });
       } finally {
         await screen.cleanup?.();

@@ -1,0 +1,11 @@
+{
+  "revision": "e7356ba85e57f20c9dad1fc435a5ea279f6470ab",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"#4828 fix round 2: re-read the persistence paragraph; it now says a git option that configures git or points it at another repository asks, matching gitConfigEffect, and the hooks folder is the one git reports.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/development.md","note":"#4828 fix round 2: acp-adapter.test.ts only gained verification probes for ACP persistence protection; this guide's test-workflow claims are unaffected.","inputs":["docs/guides/development.md","src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#4828 fix round 2: connections.md changed only its untrusted-content persistence paragraph; this guide's machine-relationship claims do not depend on it.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

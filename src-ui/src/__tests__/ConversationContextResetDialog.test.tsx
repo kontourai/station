@@ -7,6 +7,7 @@ import {
   type ConversationContextBoundaryEligibility,
   conversationContextBoundaryEligibility,
 } from '../components/chat-dock/conversationContextBoundaryEligibility';
+import { writeConversationContextBoundaryUiState } from '../components/chat-dock/conversationContextBoundaryUiState';
 
 const reserve = vi.fn();
 const cancel = vi.fn();
@@ -39,7 +40,7 @@ const reserveEligibility: ConversationContextBoundaryEligibility = {
 };
 const stopEligibility: ConversationContextBoundaryEligibility = {
   kind: 'stop-session',
-  reason: 'The current Session is ready but still open.',
+  reason: 'Stop the agent first.',
 };
 
 function renderDialog(
@@ -87,9 +88,9 @@ describe('ConversationContextResetDialog', () => {
       status: 'reserved',
     });
     renderDialog();
-    expect(screen.getByText(/engine-native history/)).toBeTruthy();
+    expect(screen.getByText(/loses its tool state and approvals/)).toBeTruthy();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Replace engine context' }),
+      screen.getByRole('button', { name: 'Reset agent context' }),
     );
     await vi.waitFor(() =>
       expect(reserve).toHaveBeenCalledWith(
@@ -136,7 +137,7 @@ describe('ConversationContextResetDialog', () => {
     reserve.mockRejectedValueOnce(refusal);
     renderDialog();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Replace engine context' }),
+      screen.getByRole('button', { name: 'Reset agent context' }),
     );
 
     await vi.waitFor(() =>
@@ -159,7 +160,7 @@ describe('ConversationContextResetDialog', () => {
     });
     const props = renderDialog(stopEligibility);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Stop current Session' }),
+      screen.getByRole('button', { name: 'Stop agent and reset' }),
     );
     await vi.waitFor(() =>
       expect(dispatchWithReceipt).toHaveBeenCalledWith(
@@ -173,9 +174,9 @@ describe('ConversationContextResetDialog', () => {
     );
     await vi.waitFor(() => expect(reserve).toHaveBeenCalledOnce());
     await vi.waitFor(() =>
-      expect(
-        screen.getByText(/Stop receipt stop-1 received/).textContent,
-      ).toContain('stop-1'),
+      expect(screen.getByText('Agent stopped.').getAttribute('role')).toBe(
+        'status',
+      ),
     );
   });
 
@@ -183,12 +184,12 @@ describe('ConversationContextResetDialog', () => {
     dispatchWithReceipt.mockRejectedValueOnce(new Error('timeout'));
     renderDialog(stopEligibility);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Stop current Session' }),
+      screen.getByRole('button', { name: 'Stop agent and reset' }),
     );
     await vi.waitFor(() =>
-      expect(
-        screen.getByText(/No context boundary was reserved/).textContent,
-      ).toContain('No context boundary was reserved'),
+      expect(screen.getByText(/Nothing was reset/).textContent).toContain(
+        "Station couldn't confirm the agent stopped",
+      ),
     );
     expect(reserve).not.toHaveBeenCalled();
   });
@@ -202,30 +203,122 @@ describe('ConversationContextResetDialog', () => {
       onStoppedSessionRefreshed: vi.fn().mockResolvedValue(null),
     });
     fireEvent.click(
-      screen.getByRole('button', { name: 'Stop current Session' }),
+      screen.getByRole('button', { name: 'Stop agent and reset' }),
     );
     await vi.waitFor(() =>
       expect(props.onStoppedSessionRefreshed).toHaveBeenCalledOnce(),
     );
-    expect(
-      screen.getByText(/No context boundary was reserved/).textContent,
-    ).toContain('No context boundary was reserved');
+    expect(screen.getByText(/Nothing was reset/).textContent).toContain(
+      "Station couldn't confirm the agent stopped",
+    );
+    expect(screen.queryByText('Agent stopped.')).toBeNull();
     expect(reserve).not.toHaveBeenCalled();
   });
 
   test('refuses an active turn or approval without exposing a reserve action', () => {
     renderDialog({
       kind: 'blocked',
-      reason:
-        'The current turn or approval is still active. Stop or finish it before replacing the engine context.',
+      reason: 'Stop or finish the current turn first.',
     });
-    expect(screen.getByRole('alert').textContent).toContain('approval');
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Stop or finish the current turn first.',
+    );
     expect(
-      screen.queryByRole('button', { name: 'Replace engine context' }),
+      screen.queryByRole('button', { name: 'Reset agent context' }),
     ).toBeNull();
     expect(
-      screen.queryByRole('button', { name: 'Stop current Session' }),
+      screen.queryByRole('button', { name: 'Stop agent and reset' }),
     ).toBeNull();
+  });
+
+  test('reopened after reserving a history reset, it says the agent continues rather than the default fresh start', () => {
+    writeConversationContextBoundaryUiState('k', {
+      boundaryId: 'b',
+      conversationId: 'c',
+      policy: 'continue-from-history',
+      status: 'reserved',
+      priorTranscriptInjected: true,
+    } as never);
+    renderDialog();
+    expect(screen.getByRole('status').textContent).toBe(
+      'Ready. On your next message the agent continues from chat history.',
+    );
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Continue with chat history',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+  });
+
+  test.each(['reserved', 'claimed', 'indeterminate', 'failed'] as const)(
+    'a held %s reservation locks the reset choice to the reserved policy',
+    (status) => {
+      writeConversationContextBoundaryUiState('k', {
+        boundaryId: 'b',
+        conversationId: 'c',
+        policy: 'continue-from-history',
+        status,
+        priorTranscriptInjected: true,
+      } as never);
+      renderDialog();
+      const history = screen.getByRole('radio', {
+        name: 'Continue with chat history',
+      }) as HTMLInputElement;
+      const fresh = screen.getByRole('radio', {
+        name: 'Start fresh (agent forgets this chat)',
+      }) as HTMLInputElement;
+      expect(history.checked).toBe(true);
+      expect(history.disabled).toBe(true);
+      expect(fresh.disabled).toBe(true);
+      if (status === 'reserved') {
+        expect(screen.getByRole('status').textContent).toBe(
+          'Ready. On your next message the agent continues from chat history.',
+        );
+      }
+      if (status === 'failed') {
+        // The retry resends the policy the held key was reserved with.
+        reserve.mockResolvedValueOnce({
+          boundaryId: 'b',
+          conversationId: 'c',
+          policy: 'continue-from-history',
+          status: 'reserved',
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Retry reset' }));
+        expect(reserve).toHaveBeenCalledWith(
+          'http://station.test',
+          'c',
+          expect.objectContaining({
+            policy: 'continue-from-history',
+            idempotencyKey: 'k',
+          }),
+        );
+      }
+    },
+  );
+
+  test('the status line reports the server-observed reserved policy', () => {
+    status.mockReturnValue({
+      data: {
+        boundaryId: 'b',
+        conversationId: 'c',
+        policy: 'continue-from-history',
+        status: 'reserved',
+        priorTranscriptInjected: true,
+      },
+    });
+    writeConversationContextBoundaryUiState('k', {
+      boundaryId: 'b',
+      conversationId: 'c',
+      policy: 'continue-from-history',
+      status: 'reserved',
+      priorTranscriptInjected: true,
+    } as never);
+    renderDialog();
+    expect(screen.getByRole('status').textContent).toBe(
+      'Ready. On your next message the agent continues from chat history.',
+    );
   });
 
   test('keeps a keyboard-reachable close control for mobile dialog surfaces', () => {
@@ -294,7 +387,7 @@ describe('conversationContextBoundaryEligibility', () => {
       }),
     ).toMatchObject({
       kind: 'blocked',
-      reason: expect.stringMatching(/turn or approval/i),
+      reason: 'Stop or finish the current turn first.',
     });
     expect(
       conversationContextBoundaryEligibility({
@@ -305,7 +398,7 @@ describe('conversationContextBoundaryEligibility', () => {
       }),
     ).toMatchObject({
       kind: 'blocked',
-      reason: expect.stringMatching(/turn or approval/i),
+      reason: 'Stop or finish the current turn first.',
     });
     expect(
       conversationContextBoundaryEligibility({
@@ -316,7 +409,7 @@ describe('conversationContextBoundaryEligibility', () => {
       }),
     ).toMatchObject({
       kind: 'blocked',
-      reason: expect.stringMatching(/queued or offline/i),
+      reason: 'Send or discard queued messages first.',
     });
   });
 });

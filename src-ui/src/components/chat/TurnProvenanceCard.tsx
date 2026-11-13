@@ -1,3 +1,4 @@
+import { isSummaryContextBoundary } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   isSupportedTurnProvenanceEnvelope,
   type TurnProvenanceEngine,
@@ -295,10 +296,14 @@ function contextBoundaryRow(
   const slot = envelope.contextBoundary;
   if (slot?.state !== 'observed') return undefined;
   return {
-    label: 'Conversation boundary',
-    value: slot.value.priorTranscriptInjected
-      ? 'Prior transcript re-anchored into this engine context'
-      : 'Prior transcript omitted from this engine context',
+    label: 'Context reset',
+    // A summary reset also reports no injected transcript, so the policy
+    // decides first.
+    value: isSummaryContextBoundary(slot.value.policy)
+      ? 'Continued from a summary'
+      : slot.value.priorTranscriptInjected
+        ? 'Continued from chat history'
+        : 'Started fresh without chat history',
     gap: null,
   };
 }

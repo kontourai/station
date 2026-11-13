@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). event-store.ts changes are confined to the windowed usage-rollup receipt query (optional connection columns/filter) and do not touch what this document describes. Checked the Receipt term and evidence/gate vocabulary; it describes evidence receipts, not usage receipts, so unaffected.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"BrowserPane.css change is comment-only (documents why the driving hint keeps its dark backing and blur over live page pixels); no rule changed. Checked the guide on the Agent/You driver chip and driving behavior: nothing stale.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.css"]}
+  ]
+}

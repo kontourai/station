@@ -44,6 +44,22 @@ describe('connection recovery decision table', () => {
     ).toEqual({ decision: 'retry-now', dueAt: '2026-07-29T11:59:00.000Z' });
   });
 
+  test('a proxy credential cooldown waits for reset instead of requiring sign-in', () => {
+    const failure = classifyConnectionFailure({
+      code: 'engine-turn-failed',
+      message:
+        "API Error: Request rejected (429) · All credentials for model claude-opus-5-5 are cooling down via provider claude (last error: rate_limit_error: This request would exceed your account's rate limit. Please try again later.)",
+      details: { retryAfterMs: 60_000, scope: 'account' },
+    });
+    expect(failure.kind).toBe('rate-limit');
+    expect(
+      decideConnectionRecovery({ capability: capable, failure, now }),
+    ).toEqual({
+      decision: 'wait-until-reset',
+      dueAt: '2026-07-29T12:01:00.000Z',
+    });
+  });
+
   test('#3157: an adapter usage-limit report is a rate limit whose reset decides the wait', () => {
     // Provider wording that matches none of the text patterns: only the
     // explicit flag classifies it.

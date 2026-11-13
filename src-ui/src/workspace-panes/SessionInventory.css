@@ -110,11 +110,7 @@
   border: 1px solid
     color-mix(in srgb, var(--accent-primary) 22%, var(--border-primary));
   border-radius: 0.9rem;
-  background: linear-gradient(
-    125deg,
-    color-mix(in srgb, var(--accent-primary) 9%, var(--bg-secondary)),
-    var(--bg-secondary) 58%
-  );
+  background: var(--k-panel);
 }
 
 .session-inventory__overview-copy {
