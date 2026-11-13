@@ -20,10 +20,10 @@
     ],
     "desktop-conversation-resync": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
-      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable \u2014 resync this conversation]",
+      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Open project \u2014 Project B]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable \u2014 open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
@@ -31,7 +31,7 @@
     ],
     "inventory-drilldown-older-host-dark-desktop": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable \u2014 open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-older-host-dark-mobile": [
@@ -41,7 +41,7 @@
     "inventory-drilldown-older-host-light-desktop": [
       "axe:color-contrast:span.sidebar__project-name",
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable \u2014 open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-older-host-light-mobile": [
@@ -50,7 +50,7 @@
     ],
     "inventory-drilldown-read-dark-desktop": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable \u2014 open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-read-dark-mobile": [
@@ -60,7 +60,7 @@
     "inventory-drilldown-read-light-desktop": [
       "axe:color-contrast:span.sidebar__project-name",
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable \u2014 open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-read-light-mobile": [
@@ -99,23 +99,23 @@
       "hit-target:small:summary[Details]"
     ],
     "mobile-agent-editor": [
-      "hit-target:overlap:button.button[New agent] / button.split-pane__back[\u2190 Back to list]",
-      "hit-target:small:button.split-pane__back[\u2190 Back to list]"
+      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
+      "hit-target:small:button.split-pane__back[← Back to list]"
     ],
     "mobile-agent-editor-project-control": [
-      "hit-target:overlap:button.button[New agent] / button.split-pane__back[\u2190 Back to list]",
+      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:overlap:button.editor-btn[Cancel] / select.editor-select[Model connection]",
-      "hit-target:overlap:button.split-pane__back[\u2190 Back to list] / input.editor-input[type=text][name=name][Name *]",
+      "hit-target:overlap:button.split-pane__back[← Back to list] / input.editor-input[type=text][name=name][Name *]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
-      "hit-target:small:button.split-pane__back[\u2190 Back to list]",
+      "hit-target:small:button.split-pane__back[← Back to list]",
       "hit-target:small:input[type=radio][name=ae-engine][Station]",
       "hit-target:small:summary[Delegated-child denials (# built-in)]"
     ],
     "mobile-agent-editor-save-footer": [
-      "hit-target:overlap:button.button[New agent] / button.split-pane__back[\u2190 Back to list]",
+      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:overlap:button.editor-btn[Cancel] / select.editor-select[Project]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
-      "hit-target:small:button.split-pane__back[\u2190 Back to list]",
+      "hit-target:small:button.split-pane__back[← Back to list]",
       "hit-target:small:input[type=radio][name=ae-engine][Station]",
       "hit-target:small:summary[Delegated-child denials (# built-in)]"
     ],
@@ -127,7 +127,7 @@
     ],
     "mobile-conversation-resync": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
-      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable \u2014 resync this conversation]",
+      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
@@ -206,10 +206,10 @@
     ],
     "overlay-dock-project-mismatch": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
-      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable \u2014 resync this conversation]",
+      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Open project \u2014 Project B]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable \u2014 open chat details]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Dismiss Mismatch demo chat from inbox]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
