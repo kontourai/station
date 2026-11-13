@@ -16,6 +16,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import {
   ChildChatContext,
+  ChildChatCoveredContext,
   type ChildChatTarget,
 } from './ChildChatNavigationContext';
 import './ChildChatNavigation.css';
@@ -36,11 +37,13 @@ export function ChildChatNavigation({
   children,
   initialChild,
   controllerRef,
+  onCoveredChange,
 }: {
   rootKey: string;
   title: string;
   children: ReactNode;
   initialChild?: ChildChatTarget;
+  onCoveredChange?: (covered: boolean) => void;
   controllerRef?: RefObject<((target: ChildChatTarget) => void) | null>;
 }) {
   const [state, setState] = useState<{
@@ -48,6 +51,10 @@ export function ChildChatNavigation({
     entries: ChildChatTarget[];
   }>({ root: rootKey, entries: initialChild ? [initialChild] : [] });
   const entries = state.root === rootKey ? state.entries : [];
+  const covered = entries.length > 0;
+  useLayoutEffect(() => {
+    onCoveredChange?.(covered);
+  }, [onCoveredChange, covered]);
   const root = useRef(rootKey);
   root.current = rootKey;
   const initial = useRef(initialChild);
@@ -106,7 +113,9 @@ export function ChildChatNavigation({
         hidden={entries.length > 0}
         inert={entries.length > 0}
       >
-        {children}
+        <ChildChatCoveredContext.Provider value={covered}>
+          {children}
+        </ChildChatCoveredContext.Provider>
       </div>
       {entries.length > 0 && (
         <div

@@ -1047,7 +1047,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setShowNewChatModalState,
   });
   const mobileInboxShown = isMobile && mobileInboxOpen;
-  const readerCovered = mobileInboxShown || showNewChatModal;
+  const [isChildReaderOpen, setIsChildReaderOpen] = useState(false);
+  const readerCovered =
+    mobileInboxShown || showNewChatModal || isChildReaderOpen;
   useEffect(() => {
     if (isMobile) setMobileInboxOpen(!activeChat);
   }, [activeChat, isMobile, setMobileInboxOpen]);
@@ -1742,7 +1744,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // New chat draft cover the transcript, so neither counts as viewing it.
   // #3075: the same answer decides which inbox row is being read.
   const activeChatOnScreen =
-    isPaneOpen && !(isMobile && mobileInboxOpen) && !showNewChatModal;
+    isPaneOpen &&
+    !(isMobile && mobileInboxOpen) &&
+    !showNewChatModal &&
+    !isChildReaderOpen;
   useAcknowledgeVisibleConversation(activeTaskItem, activeChatOnScreen);
   // #3075: every surface that draws a work row reads which one is on screen.
   usePublishConversationOnScreen(
@@ -2953,8 +2958,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // registered by `chrome` (`useDockShellChrome`), not here.
   useChatDockKeyboardShortcuts({
     sessions,
-    activeSessionId: importedSessionId ? null : activeSessionId,
-    activeSession: importedSessionId ? null : activeSession,
+    activeSessionId:
+      importedSessionId || isChildReaderOpen ? null : activeSessionId,
+    activeSession:
+      importedSessionId || isChildReaderOpen ? null : activeSession,
     onCloseCurrent: importedSessionId ? closeImportedSession : undefined,
     onNewChat: openNewChatDirect,
     setShowSessionPicker,
@@ -3537,6 +3544,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       title={presentationTitle}
       initialChild={initialChildChat}
       controllerRef={childChatController}
+      onCoveredChange={setIsChildReaderOpen}
     >
       <SessionReaderBindingProvider
         binding={{

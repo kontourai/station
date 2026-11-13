@@ -987,7 +987,8 @@ export const e2eManifest = [
     surface: 'Chat',
     tierTarget: 'full',
     primary: true,
-    rationale: 'Child transcript opens in Chat, breadcrumb restores its parent, and legacy Activity URLs open the exact session.',
+    rationale:
+      'Child transcript opens in Chat, breadcrumb restores its parent, and legacy Activity URLs open the exact session.',
     exceptions: [],
   },
 

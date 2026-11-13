@@ -17,6 +17,7 @@ import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
 } from './ChatDockHeaderMoreMenu';
+import { useIsChildChatCovered } from './ChildChatNavigationContext';
 import { inboxToggleLabel, workingChatsLabel } from './inbox-toggle-label';
 import {
   toggleSessionInventoryOccurrence,
@@ -180,6 +181,7 @@ export function ChatDockHeader({
   backgroundTasksBadgeHidden = false,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
+  const childCovered = useIsChildChatCovered();
   const slots = useRegionChromeSlots();
   // One hook for a variable number of per-session rows: `useShortcutDisplay`
   // is a hook and cannot be called inside the activity map.
@@ -500,6 +502,8 @@ export function ChatDockHeader({
   // A full-screen placement has no region bar and ignores a region's slots —
   // except a bar that names the pane itself (the Coding layout's
   // breadcrumb, #3046), which it joins: its own bar would repeat the title.
+  if (childCovered) return null;
+
   if (slots && (!fullscreen || slots.namesPane)) {
     return (
       <>

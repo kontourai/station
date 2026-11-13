@@ -38,3 +38,8 @@ export const ChildChatContext = createContext<
 export function useChildChatNavigation() {
   return useContext(ChildChatContext);
 }
+
+export const ChildChatCoveredContext = createContext(false);
+export function useIsChildChatCovered() {
+  return useContext(ChildChatCoveredContext);
+}

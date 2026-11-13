@@ -22,6 +22,7 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 import { SubagentTranscriptCard } from '../components/chat/SubagentTranscriptCard';
+import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { ChildChatNavigation } from '../components/chat-dock/ChildChatNavigation';
 import {
   childChatTarget,
@@ -29,6 +30,7 @@ import {
 } from '../components/chat-dock/ChildChatNavigationContext';
 import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
 import { PreviewProvider } from '../contexts/PreviewContext';
+import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
 
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('../contexts/ToastContext', () => ({
@@ -224,5 +226,48 @@ test('the mounted child transcript fits desktop and phone panes in both themes',
     }
   } finally {
     await browser.close();
+  }
+});
+
+test('a child hides the real parent header portals and restores them on return', async () => {
+  const leading = document.createElement('span');
+  const trailing = document.createElement('span');
+  document.body.append(leading, trailing);
+  const coverage = vi.fn();
+  try {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <PreviewProvider>
+          <ConversationConnectionProvider value={connection}>
+            <RegionChromeSlotsContext.Provider value={{ leading, trailing }}>
+              <ChildChatNavigation
+                rootKey="parent"
+                title="Parent chat"
+                onCoveredChange={coverage}
+              >
+                <ChatDockHeader
+                  chatIdentity={<span>Parent toolbar</span>}
+                  regionVisible
+                />
+                <Parent />
+              </ChildChatNavigation>
+            </RegionChromeSlotsContext.Provider>
+          </ConversationConnectionProvider>
+        </PreviewProvider>
+      </QueryClientProvider>,
+    );
+    expect(within(leading).getByText('Parent toolbar')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+    const trail = await screen.findByRole('navigation', {
+      name: 'Chat breadcrumb',
+    });
+    expect(within(leading).queryByText('Parent toolbar')).toBeNull();
+    expect(coverage).toHaveBeenLastCalledWith(true);
+    fireEvent.click(within(trail).getByRole('button', { name: 'Parent chat' }));
+    expect(within(leading).getByText('Parent toolbar')).toBeTruthy();
+    expect(coverage).toHaveBeenLastCalledWith(false);
+  } finally {
+    leading.remove();
+    trailing.remove();
   }
 });
