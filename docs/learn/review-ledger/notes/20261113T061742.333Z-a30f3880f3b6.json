@@ -1,0 +1,7 @@
+{
+  "revision": "8115cdc5695c87d7cf0334add8a627bca03e075f",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-reviewed final transport bytes after comment-only parsing terminology correction. HTML and XHTML responses cannot report credential recovery; response content remains readable; JSON recovery and request authority fences retain their existing behavior. SDK and app regression baseline/injected/restored receipts cover the behavioral guard; fixed APK remains unverified.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

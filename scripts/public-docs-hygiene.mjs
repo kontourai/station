@@ -186,6 +186,114 @@ export function marketingHygieneFindings(
   return findings;
 }
 
+// Issue #4689: the public promise reads the same, word for word, on every
+// in-repo first-impression surface. Its single source is the sentence in the
+// positioning record; each surface below is compared with it. The GitHub
+// repository description is a fifth surface that CI cannot read offline, so
+// docs/guides/documentation.md names its manual check.
+export const PUBLIC_PROMISE_SOURCE = 'docs/strategy/differentiators.md';
+const PUBLIC_PROMISE_SENTENCE = /The public promise is “([^”]+)”/g;
+
+/** The promise from its source record, or null when it is not stated once. */
+function readPublicPromise(
+  read = (file, encoding) => readFileSync(file, encoding),
+) {
+  const text = read(PUBLIC_PROMISE_SOURCE, 'utf8').replace(/\s+/g, ' ');
+  const matches = [...text.matchAll(PUBLIC_PROMISE_SENTENCE)];
+  return matches.length === 1 ? matches[0][1] : null;
+}
+
+const decodeHtml = (value) =>
+  value
+    .replace(/&(quot|#39|apos|lt|gt);/g, (_, name) => {
+      const named = { quot: '"', '#39': "'", apos: "'", lt: '<', gt: '>' };
+      return named[name];
+    })
+    .replaceAll('&amp;', '&');
+const htmlText = (html) =>
+  decodeHtml(html.replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** Each promise surface as [file, location, actual value or undefined, rule]. */
+function publicPromiseSurfaces(read) {
+  const surfaces = [];
+  const readme = read('README.md', 'utf8').split('\n');
+  const heading = readme.findIndex((line) => line.startsWith('# '));
+  const tagline =
+    heading === -1
+      ? undefined
+      : readme.slice(heading + 1).find((line) => line.trim() !== '');
+  surfaces.push(['README.md', 'tagline under the H1', tagline, 'bold']);
+
+  const page = read('docs/pages/index.html', 'utf8');
+  const meta = new Map();
+  for (const [, attributes] of page.matchAll(/<meta\b([^>]*)>/g)) {
+    const values = Object.fromEntries(
+      [...attributes.matchAll(/([\w:-]+)="([^"]*)"/g)].map(([, key, value]) => [
+        key,
+        decodeHtml(value),
+      ]),
+    );
+    const key = values.name ?? values.property;
+    if (key && !meta.has(key)) meta.set(key, values.content);
+  }
+  const title = page.match(/<title>([\s\S]*?)<\/title>/)?.[1];
+  const h1 = page.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1];
+  const html = 'docs/pages/index.html';
+  surfaces.push([html, '<title>', title && htmlText(title), 'title']);
+  for (const key of ['og:title', 'twitter:title'])
+    surfaces.push([html, `meta ${key}`, meta.get(key), 'title']);
+  for (const key of ['description', 'og:description', 'twitter:description'])
+    surfaces.push([html, `meta ${key}`, meta.get(key), 'lead']);
+  surfaces.push([html, 'hero <h1>', h1 && htmlText(h1), 'exact']);
+
+  let corpus = {};
+  try {
+    corpus = JSON.parse(read('corpus.json', 'utf8'));
+  } catch {
+    // Reported below as missing values rather than a crash.
+  }
+  for (const key of ['purpose', 'tagline'])
+    surfaces.push(['corpus.json', key, corpus[key], 'exact']);
+  return surfaces;
+}
+
+/**
+ * @param {(file: string, encoding: BufferEncoding) => string} [read]
+ */
+export function publicPromiseFindings(
+  read = (file, encoding) => readFileSync(file, encoding),
+) {
+  const promise = readPublicPromise(read);
+  if (!promise)
+    return [
+      `${PUBLIC_PROMISE_SOURCE} public-promise: state the promise exactly once as The public promise is “...”`,
+    ];
+  const expected = {
+    bold: `**${promise}**`,
+    title: `Station: ${promise}`,
+    exact: promise,
+  };
+  const findings = [];
+  for (const [file, location, actual, rule] of publicPromiseSurfaces(read)) {
+    const matches =
+      typeof actual === 'string' &&
+      (rule === 'lead'
+        ? actual === promise || actual.startsWith(`${promise} `)
+        : actual === expected[rule]);
+    if (matches) continue;
+    const wanted =
+      rule === 'lead' ? `to start with "${promise}"` : `"${expected[rule]}"`;
+    findings.push(
+      `${file} public-promise: ${location} is ${
+        typeof actual === 'string' ? `"${actual}"` : 'missing'
+      }; expected ${wanted} (source: ${PUBLIC_PROMISE_SOURCE})`,
+    );
+  }
+  return findings;
+}
+
 /**
  * @param {{
  *   documents?: { source: string }[],
@@ -201,10 +309,11 @@ export async function runPublicDocsHygiene({
     ...publicDocsHygieneFindings(documents, read),
     ...publicProjectionLinkFindings(documents, read),
     ...marketingHygieneFindings(MARKETING_FILES, read),
+    ...publicPromiseFindings(read),
   ];
   if (findings.length === 0) {
     console.log(
-      `Public documentation hygiene passed for ${documents.length} admitted documents and ${MARKETING_FILES.length} marketing surfaces.`,
+      `Public documentation hygiene passed for ${documents.length} admitted documents and ${MARKETING_FILES.length} marketing surfaces; the public promise matches ${PUBLIC_PROMISE_SOURCE}.`,
     );
     return 0;
   }

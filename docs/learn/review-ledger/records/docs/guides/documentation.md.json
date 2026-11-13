@@ -38,7 +38,9 @@
 
     "scripts/documentation-impact.mjs",
 
-    "package.json#/devDependencies/@kontourai~1corpus"
+    "package.json#/devDependencies/@kontourai~1corpus",
+
+    "scripts/public-docs-hygiene.mjs"
   ],
 
   "checks": [

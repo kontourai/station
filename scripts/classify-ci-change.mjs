@@ -63,7 +63,8 @@ const IOS_VERIFICATION_PREFIXES = Object.freeze([
  * the Windows PR floor, so a change outside this set cannot alter its verdict.
  * Beyond the crate itself: build.rs reads the root package.json's
  * engines.node, lib.rs `include_str!`s a CLI source file, the plugin bundle
- * protocol `include_str!`s the shell's capability installer, the Android keyring
+ * protocol `include_str!`s the shell's capability installer, the macOS startup
+ * cover `include_bytes!`s each channel's mark from src-ui/public, the Android keyring
  * patch is a path dependency cargo must resolve on every target, and
  * tauri.windows.conf.json bundles schemas/ as a resource tauri-build checks.
  * Any Cargo manifest, lockfile, toolchain file or `.cargo/` config anywhere
@@ -77,6 +78,10 @@ const DESKTOP_RUST_FILES = new Set([
   'package.json',
   'packages/cli/src/commands/profile-store.ts',
   'src-ui/src/platform/native/pluginBundleCapability.js',
+  'src-ui/public/favicon.png',
+  'src-ui/public/favicon-beta.png',
+  'src-ui/public/favicon-dev.png',
+  'src-ui/public/favicon-nightly.png',
   'scripts/prepare-desktop-rust-resources.mjs',
   'scripts/lib/desktop-node-runtime.mjs',
   'scripts/lib/portable-server-archive.mjs',

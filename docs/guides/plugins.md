@@ -569,9 +569,12 @@ Managing connected sources requires the Station operator and an
 `access:manage` credential. Standard paired clients can browse ordinary
 catalog items without gaining host source-management authority.
 
-The Registry's Add marketplace flow connects additional public GitHub Skill
-libraries, local Skill directories and local/HTTPS Station manifests without
-changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
+The Registry's Add marketplace flow connects additional sources without
+changing `registryUrl`. A source is a location, with an optional ref for a
+GitHub repository. Station detects what it provides from its content:
+`SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
+marketplace index or MCP definitions, which are recognized but not yet
+installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Sources persist separately, can be refreshed or disabled,
 and report offline/stale/error status independently. Offline plugin rows retain
 the current installed state from the local Library, even after an update or
 removal; cached catalog metadata cannot declare a package installed. Removing one preserves
@@ -1181,7 +1184,14 @@ module.exports = () => ({
 });
 ```
 
-Alternatively, point `module` at a JSON file and the server auto-wraps it with `JsonManifestRegistryProvider`.
+Alternatively, point `module` at a JSON file and the server auto-wraps it with
+`JsonManifestRegistryProvider`, whose agent view lists only the manifest's
+`type: "agent"` entries. Every registered agent registry is listed: rows carry
+`catalogSourceName`, and an ID that two registries offer is marked
+`ambiguous-source` and refused at install rather than taken from the first. A
+plain-ID install is also refused while any agent registry cannot be read, since
+it might offer the same ID. The same rule holds on the plugin install, preview
+and update paths for an ID that a readable registry offers as an agent.
 
 ### integrationRegistry
 

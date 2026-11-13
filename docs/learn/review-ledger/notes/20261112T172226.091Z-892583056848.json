@@ -1,0 +1,9 @@
+{
+  "revision": "27e55a10897f970e71e45c61f603eb926ec031b1",
+
+  "notes": [
+    {"path":"docs/guides/inbound-webhooks.md","note":"Fix round 1 of #4865: stage 4 (payload shape, target, start grant) now runs inside the webhook source's emit, before Telltale commits the replay key, and a refusal releases it, so a corrected grant accepts the same signed request (route test 'a forbidden start leaves its nonce unused'); turn_start_failed still uses the nonce (startTurn runs after commit). Added the token-id rule (format, no secret; refused at read and write, named by position) checked against assertTokenIds and its store tests, and 'other fields are ignored' (only agent, message and project are emitted; deep extension test returns 202). Log lines, audit contents and the response table re-checked against inbound-webhooks.ts.","inputs":["docs/guides/inbound-webhooks.md","src-server/routes/webhooks/inbound-webhooks.ts","src-server/services/webhooks/inbound-webhook-authorization.ts","src-server/services/webhooks/inbound-webhook-store.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Fix round 1 of #4865: the inbound-webhook bullet now says Station checks the payload shape and grants before Telltale commits the replay key, bound to the token its own lookup returned, emits only the fields it uses, and a refusal releases the key. Checked against inbound-webhooks.ts (decide in the wrapped emit, decisions keyed by the per-request record) and the store's legacy-entry migration; the poll section is unchanged.","inputs":["docs/design/automations.md","src-server/routes/webhooks/inbound-webhooks.ts","src-server/services/webhooks/inbound-webhook-store.ts"]}
+  ]
+}

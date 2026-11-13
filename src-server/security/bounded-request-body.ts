@@ -62,19 +62,34 @@ export type BoundedBodyBytesResult =
  * policy and decodes nothing. Those callers disagree on a declared length
  * (optional, ignored, or required and exact), so that rule stays with each of
  * them, as does what an absent body means.
+ *
+ * `signal` bounds the read in time: once it aborts, the stream is cancelled
+ * (so its source stops, and the request's reader is released) and the read
+ * answers `invalid`, never a partial body.
  */
 export async function readBoundedRequestBodyBytes(
   request: Pick<Request, 'body'>,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<BoundedBodyBytesResult> {
   const stream = request.body;
   if (!stream) return { status: 'no-body' };
   const reader = stream.getReader();
+  const cancel = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener('abort', cancel, { once: true });
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     while (true) {
+      if (signal?.aborted) {
+        cancel();
+        return { status: 'invalid' };
+      }
       const result = await reader.read();
+      // A cancel on abort ends a pending read as `done`: not a whole body.
+      if (signal?.aborted) return { status: 'invalid' };
       if (result.done) break;
       total += result.value.byteLength;
       if (total > maxBytes) {
@@ -87,6 +102,7 @@ export async function readBoundedRequestBodyBytes(
     await reader.cancel().catch(() => {});
     return { status: 'invalid' };
   } finally {
+    signal?.removeEventListener('abort', cancel);
     reader.releaseLock();
   }
   const bytes = new Uint8Array(total);

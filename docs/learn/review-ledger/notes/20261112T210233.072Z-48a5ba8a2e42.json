@@ -1,0 +1,17 @@
+{
+  "revision": "7c7e177463249c6df8b2855546f0415d4a49f202",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after the source-input refusal change: RegistrySourceInputError now carries a fixed reason field that the route serializes, and invalid input maps to fixed sentences. The RegistrySourceManager entry makes no claim about refusal text. No prose change.","inputs":["docs/architecture/module-map.md","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Re-checked after the source-input refusal change (a fixed reason field, field-specific fixed sentences). The Add marketplace paragraph's claims about location, ref, detection and bounds are unchanged. No prose change.","inputs":["docs/guides/plugins.md","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-checked the Manage marketplaces statement that an unusable location or ref is a 400 whose error says why. It still holds: the route now serializes RegistrySourceInputError.reason, a fixed sentence. No prose change.","inputs":["docs/reference/api.md","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-checked after the server's source-input refusal change; the SDK add input shape is unchanged. No prose change.","inputs":["docs/reference/sdk.md","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"examples/registry/README.md","note":"Re-checked after the route's refusal serialization change; the example's add-source description is unaffected. No prose change.","inputs":["examples/registry/README.md","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"examples/registry/integrations/README.md","note":"Re-checked after the source-input refusal change; the statements about detected and installable kinds are unaffected. No prose change.","inputs":["examples/registry/integrations/README.md","src-server/providers/registries/registry-source-configuration.ts","src-server/routes/plugins/registry.ts"]}
+  ]
+}

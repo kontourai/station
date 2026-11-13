@@ -1,0 +1,25 @@
+{
+  "revision": "b09034226945be88072fbafc703df67199ef07dc",
+
+  "notes": [
+    {"path":"docs/strategy/differentiators.md","note":"Re-read the positioning record. The public promise sentence is unchanged and now names itself as the single source for the README tagline, Pages title/descriptions/social tags/H1 and corpus.json purpose/tagline. Checked against publicPromiseFindings in scripts/public-docs-hygiene.mjs (run by docs:public:hygiene in docs:truth:gate), which parses this exact sentence and fails each drifted surface; the GitHub description stays a manual check per documentation.md#verify-the-change. Limits: the check compares strings only; it does not judge supporting copy.","inputs":["docs/strategy/differentiators.md","scripts/public-docs-hygiene.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed the new Verify-the-change paragraph against scripts/public-docs-hygiene.mjs: docs:public:hygiene compares the README, Pages home and corpus.json with the promise in docs/strategy/differentiators.md and makes no network call; the GitHub repository description is compared by hand with gh repo view and updated with gh repo edit. corpus.json changed only its purpose and tagline values (now the promise); the corpus.json/public-docs.json mirroring claims and docs-kit-manifest.test.ts coverage are unchanged.","inputs":["docs/guides/documentation.md","corpus.json","scripts/public-docs-hygiene.mjs"]},
+
+    {"path":"docs/pages/README.md","note":"corpus.json changed only its purpose and tagline strings to the public promise. This page's corpus.json claims (mirrors public-docs.json, README landing, docs-bundle.json publication and fail-open bundle step) remain accurate; no prose change needed.","inputs":["docs/pages/README.md","corpus.json"]},
+
+    {"path":".veritas/README.md","note":"docs/guides/documentation.md gained a paragraph on the public-promise check and manual GitHub description comparison under Verify the change. This README's link to the maintenance guide and its claims about tracing and the review ledger are unaffected; no prose change needed.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"docs/guides/documentation.md gained a public-promise check paragraph; corpus.json changed only purpose and tagline. This map's links to the documentation guide and its description of corpus.json as the allowlist mirror for docs-bundle.json remain accurate; no prose change needed.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"docs/guides/documentation.md added a paragraph under Verify the change; the cited #turn-findings-into-maintained-improvements section and anchor are unchanged (docs:links:check passes). No prose change needed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"docs/guides/documentation.md added a public-promise check paragraph under Verify the change; this guide's pointer to the maintenance guide for reviewing affected claims is unaffected. No prose change needed.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"docs/guides/documentation.md added a public-promise check paragraph under Verify the change; this guide's links to documentation maintenance and to the guide before adding a public page remain accurate. No prose change needed.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/guides/documentation.md added a public-promise check paragraph; this guide's reference to the documentation maintenance workflow is unaffected. No prose change needed.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"docs/guides/documentation.md added a public-promise check paragraph under Verify the change; this guide's link to the documentation maintenance workflow is unaffected. No prose change needed.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]}
+  ]
+}

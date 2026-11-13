@@ -1,6 +1,7 @@
-import type {
-  ProjectRoomChannelCreateInput,
-  ProjectRoomChannelUpdateInput,
+import {
+  PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
+  type ProjectRoomChannelCreateInput,
+  type ProjectRoomChannelUpdateInput,
 } from '@kontourai/station-contracts/project-room';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -73,6 +74,23 @@ export function projectRoomChannelsKey(
     scope.authorityKey,
     projectId,
   ] as const;
+}
+/**
+ * Most 25-message history windows a room keeps loaded (500 messages). Paging
+ * past it drops the newest window, so a caller looking for an older message
+ * stops here rather than lose what is on screen.
+ */
+export const PROJECT_ROOM_HISTORY_MAX_PAGES = 20;
+/**
+ * The room route said the Project itself is not on this Station (#4855):
+ * show "no such Project", never "unavailable" with a retry.
+ */
+export function isProjectRoomProjectMissing(error: unknown) {
+  return (
+    error instanceof StationHttpError &&
+    error.status === 404 &&
+    error.code === PROJECT_ROOM_PROJECT_NOT_FOUND_CODE
+  );
 }
 export function isProjectRoomAccessError(error: unknown) {
   return (
@@ -168,7 +186,7 @@ export function useProjectRoom(
     },
     getNextPageParam: (_last, _pages, { after }) =>
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
-    maxPages: 20,
+    maxPages: PROJECT_ROOM_HISTORY_MAX_PAGES,
   });
   const initialize = useMutation({
     retry: false,
@@ -186,6 +204,7 @@ export function useProjectRoom(
     discovery.error instanceof StationHttpError &&
     discovery.error.status === 404 &&
     discovery.error.code === 'project_room_not_found';
+  const projectMissing = isProjectRoomProjectMissing(discovery.error);
   const send = useMutation({
     retry: false,
     mutationFn: (input: ProjectRoomMessageIntent) =>
@@ -313,6 +332,7 @@ export function useProjectRoom(
     discovery,
     initialize,
     unprovisioned,
+    projectMissing,
     history,
     send,
     note,
@@ -330,7 +350,8 @@ export function useProjectRoom(
 }
 /**
  * A Project's channels plus create and update. `unsupported` means the host
- * predates channels (it answers 404 for the list); show only the default room.
+ * predates channels (a bare 404 for the list); show only the default room.
+ * `projectMissing` means the Project itself is not on this Station.
  * Mutations refresh the list; callers pass guards from the room they show.
  */
 export function useProjectRoomChannels(
@@ -356,8 +377,13 @@ export function useProjectRoomChannels(
     staleTime: 0,
     queryFn: ({ signal }) => listProjectRoomChannels(scope, slug, signal),
   });
+  // A bare 404 is a host that predates channels; the Project's own 404 is
+  // "no such Project", not an older host (#4855).
+  const projectMissing = isProjectRoomProjectMissing(list.error);
   const unsupported =
-    list.error instanceof StationHttpError && list.error.status === 404;
+    list.error instanceof StationHttpError &&
+    list.error.status === 404 &&
+    !projectMissing;
   const refresh = () => client.invalidateQueries({ queryKey: key });
   const create = useMutation({
     retry: false,
@@ -376,6 +402,6 @@ export function useProjectRoomChannels(
       updateProjectRoomChannel(scope, slug, channelId, input),
     onSuccess: refresh,
   });
-  return { list, unsupported, create, update };
+  return { list, unsupported, projectMissing, create, update };
 }
 export * from './projectRoomAgents';

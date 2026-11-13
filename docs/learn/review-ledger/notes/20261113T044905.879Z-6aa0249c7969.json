@@ -1,0 +1,7 @@
+{
+  "revision": "dd3e4a91f85d495e62ad5947d41758ccffa3171b",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Re-checked after TaskWorkspaceView.test.tsx's SDK mock gained useMarkReadMutation (the Task room marks itself read, #4795): a test-only stand-in; no workspace-surface or Task-room agent-request claim changed.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]}
+  ]
+}

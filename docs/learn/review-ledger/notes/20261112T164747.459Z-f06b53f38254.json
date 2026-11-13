@@ -1,0 +1,13 @@
+{
+  "revision": "57b41fa3f3d71cb8bcc04475156b0ab12d8137f3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"ProjectRoom.tsx's thread seek is now an effect keyed on each settled history read (dataUpdatedAt, isFetching, isError) that fetches the next window while the root is missing and nothing is fetching; the paragraph's 'one window per settled page, within PROJECT_ROOM_HISTORY_MAX_PAGES' and per-thread draft claims match it.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ProjectRoom.tsx's thread seek trigger changed (UI only); the read-marker section and Shared Project Room routes described here are unchanged.","inputs":["docs/reference/api.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"ProjectRoom.tsx's thread seek trigger changed (UI only); no contract shape described here changed.","inputs":["docs/reference/contracts.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-checked the Shared Project room paragraph against ProjectRoom.tsx's settled-read seek trigger: a thread whose root is older than the loaded history still pages back to it up to PROJECT_ROOM_HISTORY_MAX_PAGES windows, and an open thread keeps its own draft.","inputs":["docs/reference/sdk.md","src-ui/src/views/project-page/ProjectRoom.tsx"]}
+  ]
+}

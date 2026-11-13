@@ -1,0 +1,15 @@
+{
+  "revision": "a110fdd241876fb6cb5fb30dd24094caf651fbb7",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"ProjectPage changed for phones only (the Overview leads with the channel list; a channel opens full screen); the pictured 1440px Tasks section, its Backlog Task and section navigation are unchanged. The frame predates the sidebar's channel and Task-room list (#4794): the active Project row now also shows Channels and Tasks beneath it. The caption's claim (a saved Task in the Project backlog) still holds; the image is not recaptured.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"TaskWorkspaceView.css moved its Task-room phone rules to the mobile query and ProjectTaskRoomConversation gained mark-read, the shared thread summary and a phone thread page; none of this reaches the pictured 1440px Plan tab, which is unchanged.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"SplitPaneLayout gained an opt-in page presentation for a companion on a phone, used only by the Task room's thread; the pictured Models page does not use it and is unchanged.","inputs":["docs/learn/media/connections-models.png","src-ui/src/components/SplitPaneLayout.css","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Retained historical baseline captured at c5f0c9ec70. ProjectPage's phone Overview now leads with the channel list (#4795), which postdates and does not alter this before-image.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Retained historical composer-redesign comparison. ProjectPage's phone Overview now leads with the Project's channel list (#4795) above the start controls; the pictured start controls themselves are unchanged and the image is kept as the dated comparison, not as the current resting layout.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

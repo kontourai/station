@@ -1,0 +1,29 @@
+{
+  "revision": "a85f95db0c3442aa20af3067b24a093c958509a9",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/design/station-connection.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/guides/agent-development.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/guides/theming.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/patterns/backend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/patterns/frontend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/reference/api.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/reference/cli.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/reference/connect.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked against the http.ts change that reads response.headers?.get?.(\"content-type\") in reportAuthenticated. It only tolerates response-like objects without headers (custom fetch); no transport, SSE, auth, connection or SDK reference claim in this document describes that branch, so no claim changes.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/http.ts"]}
+  ]
+}

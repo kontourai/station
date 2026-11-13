@@ -127,6 +127,69 @@
   line-height: var(--k-leading-normal);
   overflow-wrap: anywhere;
 }
+/* A phone's full-screen conversation (#4795): back, name over topic, who is
+   here, ⋯. One line of name and one of topic, so the bar never grows. */
+.room-channel--screen {
+  gap: 0;
+}
+.room-channel__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.room-channel__bar-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+.room-channel__bar-button:first-child {
+  margin-inline-start: calc(-1 * var(--k-space-2));
+}
+.room-channel__bar-button:hover,
+.room-channel__bar-button[aria-expanded="true"] {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+.room-channel__bar-button:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: -2px;
+}
+.room-channel__bar-button svg {
+  width: 18px;
+  height: 18px;
+}
+.room-channel__bar-title {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.room-channel--screen .room-channel__name {
+  font-size: var(--k-text-md);
+  font-weight: 650;
+  line-height: var(--k-leading-tight);
+}
+.room-channel--screen .room-channel__label,
+.room-channel--screen .room-channel__topic {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+.room-channel--screen .room-channel__topic {
+  font-size: var(--k-text-sm);
+}
+.room-channel-list__item[data-tone="danger"] {
+  color: var(--k-negative);
+}
 .room-channel__notice {
   margin: 0;
   color: var(--k-negative);

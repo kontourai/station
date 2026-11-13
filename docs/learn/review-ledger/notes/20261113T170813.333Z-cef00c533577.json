@@ -1,0 +1,7 @@
+{
+  "revision": "83e027b0d6e64f61780247f73d801b826021e43a",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Test-only change: the broker request reuse fixture now resets accepted sockets to blocking mode (#4918). Production transport, pooling, and documented relay behavior are unchanged; no claim here describes the fixture.","inputs":["docs/design/native-capabilities.md","src-desktop/src/native_relay_redemption.rs"]}
+  ]
+}

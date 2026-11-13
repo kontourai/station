@@ -55,7 +55,7 @@ jobs:
     # (verify:static) parses `src-ui/src/fonts.css` and holds the declared
     # inventory in `scripts/ui-glyph-coverage-allowlist.json` (#1649).
     #
-    # Pinned by digest, not by tag: `v1.64.1-noble` can be republished, and a
+    # Pinned by digest, not by tag: a `vX.Y.Z-noble` tag can be republished, and a
     # rebuilt base image is a different renderer wearing the same name.
     # Bump this in lockstep with lock-resolved `@playwright/test` (1.65.0).
     # Review renderer differences separately; baseline changes need their own

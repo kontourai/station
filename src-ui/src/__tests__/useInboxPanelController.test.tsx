@@ -56,6 +56,7 @@ function Harness({
   failures,
   acknowledge,
   closeDuringOpen = false,
+  bindDuringOpen = false,
 }: {
   layout: 'desktop' | 'mobile';
   loadError: boolean;
@@ -63,7 +64,10 @@ function Harness({
   failures: (message: string) => void;
   acknowledge: (item: HomeWorkItem) => void;
   closeDuringOpen?: boolean;
+  /** Opening binds a dock chat to the row, as the dock does (#4814). */
+  bindDuringOpen?: boolean;
 }) {
+  const [rows, setRows] = useState(items);
   const [open, setOpen] = useState(true),
     [station, setStation] = useState('station-a'),
     [failed, setFailed] = useState(loadError);
@@ -79,6 +83,12 @@ function Harness({
     onFocusChat: (id: string) =>
       navigationStore.navigate('/projects/workshop', { chat: id }),
     onOpenConversation: (...args: Parameters<Open>) => {
+      if (bindDuringOpen)
+        setRows((current) =>
+          current.map((row) =>
+            row.id === args[0] ? { ...row, chatSessionId: 'dock-chat' } : row,
+          ),
+        );
       const outcome = openConversation(...args);
       if (closeDuringOpen) setOpen(false);
       return outcome;
@@ -120,7 +130,7 @@ function Harness({
       {layout === 'desktop' ? (
         <ChatDockInboxPanel
           {...common}
-          items={items}
+          items={rows}
           exiting={!open}
           onCloseChat={() => {}}
           onOpenHistory={() => {}}
@@ -133,7 +143,7 @@ function Harness({
       ) : (
         <MobileInboxPanel
           {...common}
-          tasks={items}
+          tasks={rows}
           open={open}
           triggerRef={triggerRef}
           onClose={() => setOpen(false)}
@@ -151,6 +161,7 @@ function mount(
   namespace = 'principal-a',
   loadError = false,
   closeDuringOpen = false,
+  bindDuringOpen = false,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -170,6 +181,7 @@ function mount(
           failures={failures}
           acknowledge={acknowledge}
           closeDuringOpen={closeDuringOpen}
+          bindDuringOpen={bindDuringOpen}
         />
       </AuthorityPersistenceContext.Provider>
     </QueryClientProvider>,
@@ -333,6 +345,50 @@ for (const layout of ['desktop', 'mobile'] as const) {
       expect(
         screen.queryByRole('button', { name: 'First selection, Workshop' }),
       ).toBeNull();
+    },
+  );
+
+  test(
+    layout +
+      ' keeps the selection current when the open binds a chat to its row (#4814)',
+    async () => {
+      // The dock binds its new chat to the row before focusing it; the
+      // row's chatSessionId changes under the selection.
+      const open = vi.fn<Open>(async (...args) => {
+        // Let the bind re-render the panel before the dock focuses.
+        await new Promise((settle) => setTimeout(settle, 20));
+        return args[7]?.beforeFocus?.() === false ? 'unavailable' : true;
+      });
+      const { failures, acknowledge } = mount(
+        layout,
+        open,
+        'principal-a',
+        false,
+        false,
+        true,
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'First selection, Workshop' }),
+      );
+      await waitFor(() => expect(acknowledge).toHaveBeenCalledOnce());
+      expect(acknowledge.mock.calls[0]?.[0]).toMatchObject({ id: 'first' });
+      expect(failures).not.toHaveBeenCalled();
+    },
+  );
+
+  test(
+    layout + ' reports an open that ends unavailable while still current',
+    async () => {
+      const { failures, acknowledge } = mount(
+        layout,
+        async () => 'unavailable' as const,
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'First selection, Workshop' }),
+      );
+      await waitFor(() => expect(failures).toHaveBeenCalledOnce());
+      expect(failures.mock.calls[0]?.[0]).toEqual(expect.any(String));
+      expect(acknowledge).not.toHaveBeenCalled();
     },
   );
 

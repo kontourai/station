@@ -1,0 +1,19 @@
+{
+  "revision": "4aa1629d339fdaf2282733cad4d0bf2ee708c408",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after merging main with #4809 squashed (d54b5a7): ProjectRoom.tsx keeps #4809's per-channel room, fallback to #general on a host without channels, and channel switcher, and adds this branch's route-owned channel and thread, phone screen bar and useMarkRoomRead. The Channel navigation paragraph and the read-markers row match the merged file.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md's read-marker paragraph names channel room ids and never-opened Task rooms as unavailable; nothing in this document depends on it.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md's read-marker paragraph gained the channel room id and unopened-Task-room notes on top of #4809's account-bound member wording; this guide's integration claims do not depend on either.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"After the main merge: the read-marker section keeps #4809's paired-device and account-bound member scopes and this branch's note that a Project room target's roomId is any channel id (#general included) and an unopened Task room is unavailable. Checked against room-version-sources.ts and ProjectRoom.tsx's mark-read call on the discovered checkpoint.","inputs":["docs/reference/api.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"ProjectRoom.tsx's merged changes are UI (route-owned channel and thread, threads from replyTo, mark read through the read-marker contract); no contract shape described here changed.","inputs":["docs/reference/contracts.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"The Shared Project room section's route-owned channel, thread, phone screen bar and mark-on-screen text matches the merged ProjectRoom.tsx props (routeChannel, onRouteChannel, thread, screen) alongside #4809's channel switcher and #general fallback.","inputs":["docs/reference/sdk.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"module-map.md's Channel navigation paragraph changed; this file's routing table into the module map and its owners are unchanged.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

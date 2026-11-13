@@ -1,10 +1,20 @@
 import { join } from 'node:path';
-import type { RegistryItem } from '@kontourai/station-contracts/catalog';
+import type {
+  RegistryCatalogSelection,
+  RegistryItem,
+} from '@kontourai/station-contracts/catalog';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import { readRegistryInstallAliases } from './registry-install-aliases.js';
 import { readRegistryCatalogSelection } from './registry-source-configuration.js';
 
-export function readRegistryCatalogInstalledState(home: string) {
+/**
+ * Marks the rows of one plugin-pipeline catalog (`plugins`, or a manifest's
+ * `agents`) that this Station installed from that exact source and kind.
+ */
+export function readRegistryCatalogInstalledState(
+  home: string,
+  kind: Exclude<RegistryCatalogSelection['kind'], 'skills'> = 'plugins',
+) {
   const installed = new Set(
     scanInstalledPluginInventory(join(home, 'plugins')).flatMap((item) =>
       item.state === 'valid' ? [item.manifest.name] : [],
@@ -25,7 +35,7 @@ export function readRegistryCatalogInstalledState(home: string) {
           return false;
         const selected = readRegistryCatalogSelection(id);
         return selected
-          ? selected.kind === 'plugins' &&
+          ? selected.kind === kind &&
               selected.sourceId === sourceId &&
               selected.itemId === item.catalog?.itemId
           : id === item.catalog?.itemId;
