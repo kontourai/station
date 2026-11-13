@@ -9,6 +9,7 @@ import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
+import { modelConnectionFixture } from './helpers/connection-fixtures';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -1725,6 +1726,7 @@ async function chooseGalleryNewChatProject(
 function withGalleryProjectsList(
   projects: GalleryProjectFixture[],
   assertions: (page: Page) => Promise<void>,
+  readyAgent = false,
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
@@ -1733,6 +1735,57 @@ function withGalleryProjectsList(
       cleanups = [
         await withRoute(page, '**/api/projects', projectsListFixture(projects)),
       ];
+      if (readyAgent) {
+        const connection = modelConnectionFixture({
+          id: 'gallery-model',
+          name: 'Gallery model',
+          config: {
+            defaultModel: 'gallery-model',
+            modelOptions: [
+              {
+                id: 'gallery-model',
+                name: 'Gallery model',
+                originalId: 'gallery-model',
+              },
+            ],
+          },
+        });
+        cleanups.push(
+          await withRoute(page, '**/api/agents', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: [
+                  {
+                    slug: 'station',
+                    name: 'Station',
+                    source: 'local',
+                    engineId: 'station-agent',
+                    engineDefault: true,
+                    available: true,
+                    model: 'gallery-model',
+                    toolsConfig: { mcpServers: [], autoApprove: [] },
+                  },
+                ],
+              },
+            }),
+          ),
+          await withRoute(page, '**/api/connections/models', (route) =>
+            route.fulfill({ json: { success: true, data: [connection] } }),
+          ),
+          await withRoute(page, '**/config/app', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: {
+                  defaultLLMProvider: connection.id,
+                  defaultModel: 'gallery-model',
+                },
+              },
+            }),
+          ),
+        );
+      }
       for (const project of projects) {
         cleanups.push(
           await withRoute(
@@ -5209,7 +5262,7 @@ const SCREENS: Screen[] = [
               .getByRole('button', { name: /^Model:/ })
               .click();
             const picker = page.getByRole('dialog', {
-              name: 'Engine & model',
+              name: /^(Model|Engine & model)$/,
               exact: true,
             });
             await expect(picker).toBeVisible();
@@ -5217,6 +5270,7 @@ const SCREENS: Screen[] = [
             expect(box!.x).toBeGreaterThanOrEqual(0);
             expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
           },
+          true,
         ),
       }),
     ),
