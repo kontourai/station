@@ -63,7 +63,7 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
           checks.length = 0;
           inspections = 0;
           scope.assertLifetimeCurrent();
-          assert.deepEqual(checks, []);
+          assert.equal(checks.length, 0);
           const result = {
             // biome-ignore lint/suspicious/noThenProperty: Exercise the caller-controlled then getter at the synchronous boundary.
             get then() {
