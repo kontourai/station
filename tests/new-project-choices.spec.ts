@@ -17,6 +17,25 @@ test('new project icon choices and Home scope render at desktop and phone widths
   for (const theme of ['dark', 'light']) {
     for (const width of [390, 412, 1440]) {
       await page.setViewportSize({ width, height: width === 1440 ? 900 : 915 });
+      await page.goto('/?dock=open');
+      const mobileInbox = page.getByRole('button', {
+        name: 'Inbox',
+        exact: true,
+      });
+      await expect
+        .poll(
+          async () =>
+            (await scope.isVisible()) ||
+            (await showInbox.isVisible()) ||
+            (await mobileInbox.isVisible()),
+        )
+        .toBe(true);
+      if (!(await scope.isVisible())) {
+        if (await showInbox.isVisible()) await showInbox.click();
+        else await mobileInbox.click();
+      }
+      await expect(scope).toBeVisible();
+      await expect(scope).toHaveValue('all');
       await page.evaluate(
         (value) => document.documentElement.setAttribute('data-theme', value),
         theme,
@@ -24,6 +43,7 @@ test('new project icon choices and Home scope render at desktop and phone widths
       await page.screenshot({
         path: testInfo.outputPath(`home-scope-${theme}-${width}.png`),
         fullPage: true,
+        animations: 'disabled',
       });
     }
   }
@@ -44,6 +64,7 @@ test('new project icon choices and Home scope render at desktop and phone widths
       await page.screenshot({
         path: testInfo.outputPath(`new-project-icon-${theme}-${width}.png`),
         fullPage: true,
+        animations: 'disabled',
       });
     }
   }
