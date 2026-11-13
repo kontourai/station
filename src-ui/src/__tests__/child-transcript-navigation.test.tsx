@@ -56,15 +56,17 @@ const history = vi.hoisted(() => ({
     },
   ] as ChildWorkTranscriptEntry[],
   error: undefined as Error | undefined,
+  refetch: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useChildWorkTranscriptQuery: vi.fn(() => ({
     data: { pages: [{ entries: history.entries }] },
-    isSuccess: true,
+    isSuccess: !history.error,
     isPending: false,
-    isError: false,
-    refetch: vi.fn(),
+    isError: Boolean(history.error),
+    error: history.error,
+    refetch: history.refetch,
     hasNextPage: false,
   })),
 }));
@@ -73,6 +75,7 @@ afterEach(() => {
   cleanup();
   history.entries = initialEntries;
   history.error = undefined;
+  history.refetch.mockClear();
 });
 const connection = { apiBase: 'https://station.test' };
 const item: ChildWorkItem = {
@@ -313,7 +316,6 @@ test('a failed refresh keeps recorded messages visible with a recovery action', 
     await screen.findByText('Could not refresh the transcript'),
   ).toBeTruthy();
   expect(screen.getByText('Inspect the child files')).toBeTruthy();
-  expect(
-    screen.getByRole('button', { name: 'Retry', exact: false }),
-  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(history.refetch).toHaveBeenCalledOnce();
 });
