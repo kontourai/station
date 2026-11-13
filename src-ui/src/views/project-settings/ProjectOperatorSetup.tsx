@@ -182,7 +182,7 @@ export function ProjectOperatorSetup({
           List every file that affects this command. Only these files, the
           folder it runs in and Git HEAD are checked for changes.
         </p>
-        <details>
+        <details className="editor-disclosure">
           <summary>About this check</summary>
           <ul>
             <li>Environment and remote dependency changes aren’t tracked.</li>

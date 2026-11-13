@@ -1080,7 +1080,7 @@ export function PersonalInsights() {
             </p>
           ) : null}
           <p>Each Station is counted separately; overlaps aren't removed.</p>
-          <details>
+          <details className="editor-disclosure">
             <summary>About these numbers</summary>
             <p>
               Two connections to the same Station can't be combined. A copied

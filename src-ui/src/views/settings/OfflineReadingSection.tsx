@@ -80,7 +80,7 @@ function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
         Saves recent chat text here for 24 hours, unencrypted. Anyone using this
         browser profile can read it, including pasted secrets.
       </p>
-      <details>
+      <details className="editor-disclosure">
         <summary>Details</summary>
         <ul>
           <li>Off by default.</li>

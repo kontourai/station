@@ -258,7 +258,7 @@ export function PluginPublishDialog({
             Read the file list before you publish; this is not a full secret
             scan. Files hidden only by .git/info/exclude are included.
           </p>
-          <details>
+          <details className="editor-disclosure">
             <summary>What gets checked</summary>
             <p className="editor-hint">
               Files your .gitignore excludes are left out. Station checks file
