@@ -296,7 +296,7 @@ export function executeOwnedProcess(
      * `nextTick`s that handler queues. libuv reaps every child that exited
      * in one pass before it runs their exit callbacks, so there this leader
      * may already be reaped with `exitCode` and `signalCode` still null,
-     * and its group id signalled after it could have been reused.
+     * and its group id signalled after it could have been reused (#4920).
      * @param {{ onlyWhileLeaderUnreaped?: boolean }} [options]
      */
     forceTerminate: (options) =>
