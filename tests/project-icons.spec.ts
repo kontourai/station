@@ -223,6 +223,7 @@ test.describe('project icons', () => {
     const png = genericIconPng();
     const expectedIcon = `data:image/png;base64,${png.toString('base64')}`;
     await page.goto(`/projects/${projectSlug}/edit`);
+    await page.getByRole('link', { name: 'Basic info', exact: true }).click();
     await page.getByRole('button', { name: 'Choose project icon' }).click();
     await page
       .getByTestId('project-settings-icon-upload')
