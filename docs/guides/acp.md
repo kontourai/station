@@ -453,6 +453,19 @@ refresh lock; the issue is then refused `unavailable`. An import-boundary test k
 responder and the vault from reaching Station's own principals. See
 [Sign in to Kiro without kiro-cli](connections.md#sign-in-to-kiro-without-kiro-cli).
 
+Observed on the pinned bundle (`@kiro/agent` 0.66.104, installed by Station
+and launched with its managed argv, 2026-11-13, signed out): the engine stays
+silent until `initialize`, then sends `_kiro/auth/getAccessToken` (params `{}`)
+before it answers it. Its `authMethods` are `aws-builder-id` and
+`aws-iam-identity-center`. With every token request refused (`-32000`,
+"Station has no signed-in credential for this engine"), `initialize` and
+`session/new` still succeed, so Station's readiness, not the handshake,
+holds a chat until the person signs in. The scrubbed frames are the
+`kas-bundle` scripted profile
+(`src-server/providers/__tests__/fixtures/acp-scripted-profiles/kas-bundle.json`).
+The engine reads custom agents from the launching user's `~/.kiro`, so its
+mode list includes them.
+
 Engine-held secrets use `registerSecretResponder(binding, store)` with an
 entry of `REVIEWED_ENGINE_SECRET_BINDINGS`
 (`@kontourai/station-contracts/engine-secret-storage`). For Kiro's MCP OAuth
@@ -544,7 +557,12 @@ How the events behave:
   declares the reviewed reconnect binding, and the panel offers the actions
   only then (Codex reports its servers without it). A handoff or a newly
   opened conversation drops the predecessor session's server list along with
-  its live usage. Both actions call
+  its live usage. A reopened conversation reads the list from its
+  statistics (`engineMcp`): the server folds the persisted reports with the
+  same reducer the live chat uses (`foldEngineMcpStatus`), starting again at
+  each Session of the lineage as a handoff does, and the reconnect bit comes
+  from the same report. Partial reports that arrive after the reopen update
+  that list; once a complete one arrives it replaces the list. Both actions call
   `POST /api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect`
   ([session API](../reference/session-api.md#engine-mcp-servers-sessionsthreadidmcp-servers)),
   Sign in with `startOAuth: true`, and the panel says what the engine

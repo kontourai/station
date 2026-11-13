@@ -1962,7 +1962,9 @@ Fetches app configuration.
 
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
-Fetches conversation stats. Disabled when either param is undefined.
+Fetches conversation stats. Disabled when either param is undefined. The
+response's `engineMcp`, when present, is the engine's folded MCP status, which
+a reopened conversation shows in place of the live list.
 
 ### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
 
@@ -6336,7 +6338,11 @@ sign-in runs; it carries the device code), `useEngineHostAuthLoginMutation`
 (start with a `HostAuthLoginRequest`, or cancel),
 `useEngineHostAuthSignOutMutation` and `useManagedEngineInstallMutation`
 (`{ consent: true }`) drive `/host-auth/login`, `/host-auth/sign-out` and
-`/managed-install`; the view polls while an install runs. Responses are parsed
+`/managed-install`; the view polls while an install runs. A
+`{ identity: 'social' }` start answers with `authorizationUrl`, Kiro's page to
+open on the Station's computer, and a failed attempt may carry `failure`. The
+view lists `social` only for a browser on that computer and otherwise carries
+`socialSignIn: 'needs-browser-on-host'`. Responses are parsed
 strictly against `@kontourai/station-contracts/engine-sign-in`, and every
 caller supplies a captured `ApiRequestScope`.
 

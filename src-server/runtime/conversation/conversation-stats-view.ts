@@ -1,4 +1,5 @@
 import type {
+  ConversationEngineMcpStatus,
   ConversationReportedCost,
   ConversationStatsMeasurement,
 } from '@kontourai/station-contracts/runtime';
@@ -29,6 +30,8 @@ export interface ConversationStats {
   contextPercent?: number;
   /** Engine-reported costs in their own units; never converted. */
   reportedCosts?: ConversationReportedCost[];
+  /** The engine's folded MCP status; only the engine-events path has one. */
+  engineMcp?: ConversationEngineMcpStatus;
   turns: number;
   toolCalls: number;
   estimatedCost?: number;
