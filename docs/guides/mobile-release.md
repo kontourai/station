@@ -303,7 +303,9 @@ in `src-desktop/.cargo/config.toml`, not a hand edit to generated Kotlin.
 `KeyboardImageIntake` wraps the Chromium input connection on API 25+ and
 advertises PNG, JPEG, GIF and WebP for multiline editors. It requests a
 keyboard URI grant when supplied and releases it after the bounded native
-read. The selection-menu callback also offers **Paste** for an image clipboard;
+read; the 30-second grant timer starts when the queued read begins. The
+selection-menu callback offers **Paste** only for an image-capable focused
+composer, and reuses Chromium's existing Paste item when present;
 ordinary text paste keeps Chromium's callback. A receive-content listener alone
 is insufficient to ensure Chromium's own input connection and selection menu
 reach the app, so both entry points are explicitly wrapped.
@@ -312,7 +314,10 @@ The media-intake plugin applies the same external-provider URI admission,
 image sniffing and count/byte limits as shared images. Its WebView bridge
 captures the focused composer before reading and dispatches files to that
 composer's existing paste handler. Blur, removal, disabling, navigation or a
-changed reply identity drops the pending delivery. A field without attachment
+changed reply identity drops the pending delivery. Query and hash changes alone
+do not retarget a composer. The bridge runs only on the packaged app origin,
+`http://tauri.localhost`; remote pages cannot capture or receive images.
+WebView attachment rebinds the process-lived plugin after activity recreation. A field without attachment
 support does not accept the native payload. These paths do not submit a message.
 
 Physical acceptance remains separate from JVM and DOM checks. On a connected

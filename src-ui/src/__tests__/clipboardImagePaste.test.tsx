@@ -90,6 +90,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   setClipboard(undefined);
 });
 
@@ -401,7 +402,18 @@ describe('Paste image in each composer', () => {
 function keyboardBridge() {
   class Transfer {
     files: File[] = [];
-    items = { add: (file: File) => this.files.push(file) };
+    items: { kind: string; type: string; getAsFile: () => File }[] & {
+      add?: (file: File) => void;
+    } = Object.assign([], {
+      add: (file: File) => {
+        this.files.push(file);
+        this.items.push({
+          kind: 'file',
+          type: file.type,
+          getAsFile: () => file,
+        });
+      },
+    });
   }
   class PasteEvent extends Event {
     clipboardData: unknown;
@@ -479,7 +491,11 @@ describe('Android keyboard image bridge into real composers', () => {
       if (change === 'scope')
         field.setAttribute('data-native-image-paste', 'other');
       if (change === 'disabled') field.disabled = true;
-      if (change === 'removed') cleanup();
+      if (change === 'removed') {
+        field.remove();
+        // Keep focus identity fixed so only isConnected can reject this delivery.
+        vi.spyOn(document, 'activeElement', 'get').mockReturnValue(field);
+      }
       expect(bridge.deliver('late', KEYBOARD_PAYLOAD)).toBe(false);
       expect(props.selectAttachmentFiles).not.toHaveBeenCalled();
     },
@@ -494,6 +510,34 @@ describe('Android keyboard image bridge into real composers', () => {
     expect(bridge.deliver('first', KEYBOARD_PAYLOAD)).toBe(true);
     expect(bridge.deliver('second', KEYBOARD_PAYLOAD)).toBe(true);
     expect(props.selectAttachmentFiles).toHaveBeenCalledTimes(2);
+  });
+
+  test('a reply without an attachment owner cannot capture images', () => {
+    renderChatInput({ selectAttachmentFiles: undefined });
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    expect(keyboardBridge().capture('unsupported')).toBe(false);
+  });
+
+  test('query and hash changes preserve a captured composer; pathname changes reject it', () => {
+    renderChatInput();
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    const bridge = keyboardBridge();
+    expect(bridge.capture('query')).toBe(true);
+    history.replaceState(null, '', '?image=1#draft');
+    expect(bridge.deliver('query', KEYBOARD_PAYLOAD)).toBe(true);
+    expect(bridge.capture('path')).toBe(true);
+    history.replaceState(null, '', '/elsewhere');
+    expect(bridge.deliver('path', KEYBOARD_PAYLOAD)).toBe(false);
+    history.replaceState(null, '', '/');
+  });
+
+  test('a full read queue reports busy separately from missing focus', () => {
+    renderChatInput();
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    const bridge = keyboardBridge();
+    for (let i = 0; i < 5; i++)
+      expect(bridge.capture(`queued-${i}`)).toBe(true);
+    expect(bridge.capture('overflow')).toBe('busy');
   });
 
   test('ordinary text fields cannot opt into native image reads', () => {
