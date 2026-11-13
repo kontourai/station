@@ -54,9 +54,6 @@ import {
 import { inputRequestFromMcpElicitation } from '@kontourai/station-shared/mcp-elicitation';
 
 export const CORE_ELICITATION_METHOD = 'elicitation/create';
-export const KIRO_MCP_ELICITATION_METHOD = '_kiro/mcp/elicitation';
-export const KIRO_USER_INPUT_METHOD = '_kiro/userInput';
-export const KIRO_OPEN_EXTERNAL_URL_METHOD = '_kiro/openExternalUrl';
 
 /** How the person answered, or that nobody could. */
 export type AcpInputDecision = 'accept' | 'decline' | 'cancel';
@@ -196,7 +193,7 @@ export function readKiroMcpElicitation(
 }
 
 /** The single field a `_kiro/userInput` question is drawn with. */
-export const KIRO_USER_INPUT_FIELD = 'answer';
+const KIRO_USER_INPUT_FIELD = 'answer';
 
 /**
  * `_kiro/userInput` as a form: one field. With options, a choice that also

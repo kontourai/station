@@ -74,7 +74,7 @@ function defaultSchedule(run: () => void, delayMs: number): () => void {
   return () => clearTimeout(timer);
 }
 
-export function normalizeEngineCredentialScope(
+function normalizeEngineCredentialScope(
   scope: EngineCredentialScope,
 ): EngineCredentialScope {
   return {

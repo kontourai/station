@@ -942,7 +942,7 @@ export const ACP_ADAPTER_CAPABILITIES = [
  * `session/new` (kiro-cli 3.3 loads its model list asynchronously), before
  * refusing a requested model as not advertised.
  */
-export const ACP_MODEL_ADVERTISEMENT_WAIT_MS = 5_000;
+const ACP_MODEL_ADVERTISEMENT_WAIT_MS = 5_000;
 
 /** `options` with `option` in place of the entry of the same id, or added. */
 function mergeAcpConfigOption(

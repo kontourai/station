@@ -25,7 +25,7 @@ import {
 import type { EngineSecretStore } from '../acp/acp-inbound-extension-policy.js';
 import type { EngineHostAuthVault } from './vault.js';
 
-export class EngineSecretRefusedError extends Error {
+class EngineSecretRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'EngineSecretRefusedError';

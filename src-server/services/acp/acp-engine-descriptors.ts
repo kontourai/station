@@ -363,7 +363,7 @@ export class ManagedRuntimeNotInstalledError extends Error {
 }
 
 /** A managed engine connection carrying arguments of its own. */
-export class ManagedRuntimeLaunchRefusedError extends Error {
+class ManagedRuntimeLaunchRefusedError extends Error {
   constructor(engineName: string, reason: string) {
     super(`${engineName} cannot be launched: ${reason}.`);
     this.name = 'ManagedRuntimeLaunchRefusedError';

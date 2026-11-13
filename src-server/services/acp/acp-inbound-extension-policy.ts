@@ -426,14 +426,14 @@ export const REVIEWED_ENGINE_SECRET_BINDINGS: readonly EngineSecretStorageBindin
   ]);
 
 /** Whether `binding` is one of the reviewed table's own objects. */
-export function isReviewedEngineCredentialBinding(
+function isReviewedEngineCredentialBinding(
   binding: EngineCredentialBinding,
 ): boolean {
   return REVIEWED_ENGINE_CREDENTIAL_BINDINGS.includes(binding);
 }
 
 /** Whether `binding` is one of the reviewed table's own objects. */
-export function isReviewedEngineSecretBinding(
+function isReviewedEngineSecretBinding(
   binding: EngineSecretStorageBinding,
 ): boolean {
   return REVIEWED_ENGINE_SECRET_BINDINGS.includes(binding);

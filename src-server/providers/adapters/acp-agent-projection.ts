@@ -37,7 +37,7 @@ import {
 import { isRecord } from '../../utils/is-record.js';
 
 /** The agent service's cap on `_meta.kiro.customAgents` (`z.array(...).max(50)`). */
-export const KIRO_CUSTOM_AGENTS_MAX = 50;
+const KIRO_CUSTOM_AGENTS_MAX = 50;
 
 /** Prefix that keeps a projected id off the engine's own mode ids. */
 const PROJECTED_AGENT_PREFIX = 'station-';
@@ -50,7 +50,7 @@ export interface KiroClientCustomAgent {
 }
 
 /** The id a Station agent is projected under. */
-export function kiroProjectedAgentId(agent: ResolvedAgentDefinition): string {
+function kiroProjectedAgentId(agent: ResolvedAgentDefinition): string {
   return `${PROJECTED_AGENT_PREFIX}${agent.slug}`;
 }
 

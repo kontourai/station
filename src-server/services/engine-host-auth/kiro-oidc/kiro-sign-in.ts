@@ -81,7 +81,7 @@ function safeLink(value: string): string | undefined {
 }
 
 /** An Identity Center start URL: https, no userinfo, query or fragment. */
-export function canonicalStartUrl(value: unknown): string | undefined {
+function canonicalStartUrl(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 512) return undefined;
   try {
     const url = new URL(value.trim());

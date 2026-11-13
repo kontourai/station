@@ -65,9 +65,9 @@ export interface EngineExtensionState {
 }
 
 /** Bound on the per-session maps above; the oldest entry goes first. */
-export const ENGINE_EXTENSION_STATE_MAX_ENTRIES = 256;
+const ENGINE_EXTENSION_STATE_MAX_ENTRIES = 256;
 /** Bound on MCP servers one status report may carry; the rest are dropped. */
-export const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
+const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
 const MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
 const MCP_ERROR_MAX_CHARS = 512;
 /** A model id as engines spell one: one token, at most 200 characters. */
@@ -457,7 +457,7 @@ const SESSION_INFO_NAMESPACES: readonly string[] = [
 ];
 
 /** The provider-tuple key an unbound session-info kind is logged under. */
-export function sessionInfoNoticeTuple(namespace: string, kind: string) {
+function sessionInfoNoticeTuple(namespace: string, kind: string) {
   return {
     namespace: `session_info_update._meta.${namespace}`,
     type: kind.slice(0, 64),
@@ -505,7 +505,7 @@ export function mapEngineSessionInfo(
  * each replayed update `_meta.kiro.replay: true` (kirocrew
  * `runtime_reader_loop.py`, frames `kas/mcp-live-apply-live.jsonl`).
  */
-export const ACP_REPLAY_MARKERS: readonly {
+const ACP_REPLAY_MARKERS: readonly {
   readonly namespace: string;
   readonly key: string;
 }[] = Object.freeze([Object.freeze({ namespace: 'kiro', key: 'replay' })]);

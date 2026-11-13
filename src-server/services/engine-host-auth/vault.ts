@@ -165,7 +165,7 @@ export interface VaultRead {
   readonly revision: string;
 }
 
-export function engineSecretBucketKey(scope: EngineCredentialScope): string {
+function engineSecretBucketKey(scope: EngineCredentialScope): string {
   const profile =
     scope.credentialProfileRef || ENGINE_CREDENTIAL_DEFAULT_PROFILE;
   if (!scope.connectionId || scope.connectionId.includes(':'))

@@ -59,7 +59,7 @@ export interface AcpAnnouncedClientMetaFlag {
   readonly evidence: string;
 }
 
-export const ACP_ANNOUNCED_CLIENT_META_FLAGS: readonly AcpAnnouncedClientMetaFlag[] =
+const ACP_ANNOUNCED_CLIENT_META_FLAGS: readonly AcpAnnouncedClientMetaFlag[] =
   Object.freeze([
     Object.freeze({
       namespace: 'kiro',
@@ -95,7 +95,7 @@ type AcpBaseClientCapabilities = NonNullable<
  * `elicitation` with the modes the client's handler takes. A `_meta` or
  * `elicitation` with nothing in it is left out.
  */
-export function announcedAcpClientCapabilities(
+function announcedAcpClientCapabilities(
   base: AcpBaseClientCapabilities,
   client: Pick<
     ACPClientCallbacks,

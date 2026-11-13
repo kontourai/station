@@ -25,14 +25,14 @@ export const BUILDER_ID_PROFILE_ARN =
   'arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX';
 export const BUILDER_ID_START_URL = 'https://view.awsapps.com/start';
 export const BUILDER_ID_REGION = 'us-east-1';
-export const OIDC_SCOPES = [
+const OIDC_SCOPES = [
   'codewhisperer:completions',
   'codewhisperer:analysis',
   'codewhisperer:conversations',
 ] as const;
-export const OIDC_CLIENT_NAME = 'Station';
+const OIDC_CLIENT_NAME = 'Station';
 /** A registration with less than this left is replaced at the next sign-in. */
-export const CLIENT_REUSE_MARGIN_SECONDS = 7 * 24 * 3600;
+const CLIENT_REUSE_MARGIN_SECONDS = 7 * 24 * 3600;
 const DEFAULT_TOKEN_TTL_SECONDS = 3600;
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 const LIST_PROFILES_TARGET = 'AmazonCodeWhispererService.ListAvailableProfiles';
@@ -117,7 +117,7 @@ export type DevicePoll =
  * runs with the vault's refresh lock held, so a stalled endpoint must not hold
  * it (and every issue for that scope) indefinitely.
  */
-export const OIDC_REQUEST_TIMEOUT_MS = 15_000;
+const OIDC_REQUEST_TIMEOUT_MS = 15_000;
 
 interface Http {
   fetch: typeof fetch;

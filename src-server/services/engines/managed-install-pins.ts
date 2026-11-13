@@ -22,8 +22,8 @@ import {
 } from './managed-install.js';
 
 export const KAS_INSTALL_ID = 'kiro-kas';
-export const KAS_PIN_VERSION = '0.66.104';
-export const KAS_PIN_MANIFEST_URL = `https://kas.crew.kiro.dev/kas/${KAS_PIN_VERSION}/manifest.json`;
+const KAS_PIN_VERSION = '0.66.104';
+const KAS_PIN_MANIFEST_URL = `https://kas.crew.kiro.dev/kas/${KAS_PIN_VERSION}/manifest.json`;
 export const KAS_PIN_MANIFEST_SHA256 =
   '263d3d1e59c2d32987d2a09cb066f650b6455cc9de94473693bd0a07aec151f4';
 

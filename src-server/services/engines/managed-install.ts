@@ -110,7 +110,7 @@ const INSTALL_RECORD = 'install.json';
 const MANIFEST_MAX_BYTES = 256 * 1024;
 const ARCHIVE_TIMEOUT_MS = 10 * 60 * 1000;
 
-export function managedEnginesRoot(stationHome: string): string {
+function managedEnginesRoot(stationHome: string): string {
   return join(stationHome, 'engines');
 }
 
@@ -304,7 +304,7 @@ export function vetArchiveEntries(
 }
 
 /** `<process.platform>-<arch>` as a pin names it. */
-export function hostInstallPlatform(
+function hostInstallPlatform(
   platform: NodeJS.Platform,
   arch: string,
 ): ManagedInstallPlatform | undefined {
