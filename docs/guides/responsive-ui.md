@@ -282,11 +282,13 @@ across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
-dock body (full screen on a phone). New-chat and running-chat selectors share [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) for their presentation. Its chips (in the dock's draft also the
-Project control, and **Run a task…** when there is more than one Station) wrap
-rather than overflow, and attach, mic and the overflow sit with Start, so a
-phone gets the chips first and [attach mic ⋯ … Start] on the next row with no
-viewport query; every target is 44px, and the chip menus are edge sheets on a phone with their own
+dock body (full screen on a phone). New-chat and running-chat controls share
+[ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
+Agent/model trigger opens Run setup, containing the existing
+[ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
+trigger labels truncate; the sheet owns the full choices. Attach, mic and Start
+share the phone action row. Targets remain at least 44px; picker menus are edge
+sheets on phones with their own
 scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
