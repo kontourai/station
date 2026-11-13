@@ -282,7 +282,7 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   requiredObservations: [
     ...[320, 390, 412].map((width) => ({
       path: 'tests/cross-runtime-chat-switching.spec.ts',
-      title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+      title: `mobile start composer owns project choice at ${width}x844 with touch-safe actions`,
     })),
     {
       path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
