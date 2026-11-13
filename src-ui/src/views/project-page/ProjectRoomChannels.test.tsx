@@ -509,8 +509,11 @@ test('on a touch phone a message in another channel opens More actions, and Repl
     name: /^More actions for Priya's message/,
   });
   fireEvent.click(more);
+  // A phone's actions are a labelled menu (#4796).
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Reply to Priya' }),
+    within(await screen.findByRole('menu')).getByRole('menuitem', {
+      name: 'Reply',
+    }),
   );
   const user = userEvent.setup();
   await user.type(composerField(), 'Shorter CTA please');
