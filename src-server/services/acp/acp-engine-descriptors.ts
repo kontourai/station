@@ -18,6 +18,7 @@ import {
 import type { IACPConnectionRegistryProvider } from '../../providers/provider-interfaces.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import { createLogger } from '../../utils/logger.js';
+import { managedRuntimeInstalls } from '../engines/managed-runtime-installs.js';
 
 const logger = createLogger({ name: 'acp-engine-descriptors' });
 
@@ -346,19 +347,6 @@ export class ManagedRuntimeLaunchRefusedError extends Error {
   }
 }
 
-/** What Station knows about installed managed runtimes; the engines service registers it. */
-export interface ManagedRuntimeInstalls {
-  installed(installId: string): { runtime: string; script: string } | undefined;
-}
-
-let managedInstalls: ManagedRuntimeInstalls | null = null;
-
-export function registerManagedRuntimeInstalls(
-  installs: ManagedRuntimeInstalls | null,
-): void {
-  managedInstalls = installs;
-}
-
 /**
  * The program and arguments a managed-runtime connection runs: the
  * install's runtime and the built-in entry's argv with `{script}` replaced.
@@ -382,7 +370,7 @@ export function resolveManagedRuntimeLaunch(connection: {
       entry.name,
       'a managed engine runs only with the arguments Station pins for it',
     );
-  const installed = managedInstalls?.installed(installId);
+  const installed = managedRuntimeInstalls()?.installed(installId);
   if (!installed)
     throw new ManagedRuntimeNotInstalledError(installId, entry.name);
   return {

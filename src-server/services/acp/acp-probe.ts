@@ -10,6 +10,7 @@ import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
+import { installEngineHostAuthResponders } from '../engine-host-auth/responder.js';
 import type { ACPClientCallbacks } from './acp-bridge-types.js';
 import { registryLaunchEnvFor } from './acp-engine-descriptors.js';
 import {
@@ -19,6 +20,7 @@ import {
 } from './acp-handshake-facts.js';
 import {
   type AcpInboundExtensionHandler,
+  AcpInboundExtensionRegistry,
   createAcpInboundExtensionRequestHandler,
 } from './acp-inbound-extension-policy.js';
 import {
@@ -698,7 +700,13 @@ export class ACPProbe {
       config: ACPConnectionConfig,
     ) => void,
   ) {
+    // This probe's own registry, shared with nobody. A built-in launch that
+    // delegates its sign-in to the host (the Kiro bundle) asks for a token
+    // before `initialize` answers, so the probe must answer it too.
+    const registry = new AcpInboundExtensionRegistry();
+    installEngineHostAuthResponders(registry, { connection: this.config });
     this.inboundExtensionPolicy = createAcpInboundExtensionRequestHandler({
+      registry,
       logger: this.logger,
       connectionId: `probe:${this.config.id}`,
     });

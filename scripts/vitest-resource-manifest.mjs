@@ -1349,6 +1349,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // Installs a fake Kiro agent service with the real installer and launches
+  // it through the real ACPProcess, managed and as a custom command.
+  'src-server/services/engine-host-auth/__tests__/engine-host-auth-launch.process.test.ts',
   // Two real processes race one expiring credential through the vault's
   // cross-process refresh lock against a local stub issuer.
   'src-server/services/engine-host-auth/__tests__/engine-host-auth-refresh-lock.process.test.ts',
