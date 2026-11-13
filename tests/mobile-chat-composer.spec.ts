@@ -2885,6 +2885,60 @@ test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
       await expect(textarea).toHaveValue('Landscape draft');
     });
   }
+  for (const theme of ['dark', 'light']) {
+    test(`landscape typing preserves the reconnecting pill in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 852, height: 393 });
+      // mockChatShell aborts /events: exercise the actual outage projection.
+      await mockChatShell(page);
+      const textarea = await openComposer(page, true);
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute('data-theme', theme),
+        theme,
+      );
+      const pill = page.locator('[data-chat-status-pill="reconnecting"]');
+      await expect(pill).toBeVisible();
+      await textarea.fill('Keep connection status visible while typing');
+      await expect(textarea).toBeFocused();
+      await expect(pill).toBeVisible();
+      await expect(pill).toContainText('Reconnecting');
+      const composer = page.locator('.chat-input');
+      const trigger = composer
+        .locator('.chat-controls-row')
+        .getByTestId('run-setup-trigger');
+      await expect(trigger).toBeVisible();
+      const send = composer.getByRole('button', { name: 'Send', exact: true });
+      const triggerBox = (await trigger.boundingBox())!;
+      const sendBox = (await send.boundingBox())!;
+      expect(
+        Math.abs(
+          triggerBox.y +
+            triggerBox.height / 2 -
+            (sendBox.y + sendBox.height / 2),
+        ),
+      ).toBeLessThanOrEqual(1);
+      await page.screenshot({
+        path: testInfo.outputPath(`landscape-pill-${theme}.png`),
+      });
+      await trigger.click();
+      await expect(
+        page.getByRole('dialog', { name: 'Run setup', exact: true }),
+      ).toBeVisible();
+      await closeRunSetup(page);
+      await expect(textarea).toHaveValue(
+        'Keep connection status visible while typing',
+      );
+      for (const width of [390, 412, 1440]) {
+        await page.setViewportSize({ width, height: 915 });
+        await textarea.focus();
+        await expect(pill).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath(`typing-pill-${width}-${theme}.png`),
+        });
+      }
+    });
+  }
   test('a landscape iPhone keeps the chat clear of its side insets', async ({
     page,
   }) => {
@@ -4395,6 +4449,15 @@ for (const width of [320, 390, 1280]) {
         exact: true,
       });
       await expect(clear).toBeVisible();
+      if (width === 1280) {
+        const clearBox = (await clear.boundingBox())!;
+        const sendBox = (await send.boundingBox())!;
+        expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(sendBox.x);
+        expect(
+          Math.min(clearBox.y + clearBox.height, sendBox.y + sendBox.height) -
+            Math.max(clearBox.y, sendBox.y),
+        ).toBeGreaterThan(0);
+      }
       if (width < 768) await page.keyboard.press('Escape');
       await textarea.focus();
       await expect(textarea).toHaveCSS('outline-style', 'none');

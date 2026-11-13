@@ -9727,12 +9727,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     pointer-events: none;
   }
 
-  /* Editing gets the limited height. Blurring the textarea restores the
-     model/agent selectors; input and Send keep their full touch targets. */
+  /* Empty metadata yields the limited height to editing. Keep connection
+     status, next-turn destinations and transcript navigation visible. */
   .app__main
     .chat-dock--bottom
     .chat-input:has(textarea:focus)
-    > .chat-input__meta {
+    > .chat-input__meta:not(
+      :has(
+        .chat-input__next-turn-notice,
+        .chat-status-pill,
+        .chat-scroll-to-bottom
+      )
+    ) {
     display: none;
   }
 }
