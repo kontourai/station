@@ -299,18 +299,9 @@
   width: 140px;
 }
 
-/* ── Chevron ── */
-.schedule__chevron {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-right: 6px;
-  vertical-align: middle;
-  transition: transform var(--motion-base) var(--ease-standard);
-  color: var(--text-muted);
-}
-.schedule__chevron--open {
-  transform: rotate(90deg);
+.schedule__history-toggle {
+  min-height: 44px;
+  max-width: 100%;
 }
 
 /* ── Status Indicator ── */

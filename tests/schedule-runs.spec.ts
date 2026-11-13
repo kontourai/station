@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const runId = 'schedule:built-in:daily-report:log-1';
@@ -16,8 +17,9 @@ async function mockScheduleRunsApi(
 ) {
   await page.route('**/api/**', async (route) => {
     if (await fulfillStationShellRead(route)) return;
-    await route.fallback();
+    await rejectUnexpectedFixtureRequest(route);
   });
+  await page.route('**/scheduler/**', rejectUnexpectedFixtureRequest);
   const job = {
     name: 'daily-report',
     provider: 'built-in',
@@ -131,32 +133,105 @@ test.describe('Schedule run history', () => {
     page,
   }) => {
     await mockScheduleRunsApi(page);
-    await page.goto('/automations');
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/automations');
 
-    await expect(
-      page.getByRole('heading', { name: 'Automations' }),
-    ).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByText('daily-report')).toBeVisible();
-    await expect(
-      page.getByLabel('Scheduler statistics').getByText('100%'),
-    ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Automations' }),
+      ).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByText('daily-report')).toBeVisible();
+      await expect(
+        page.getByLabel('Scheduler statistics').getByText('100%'),
+      ).toBeVisible();
 
-    await page.getByTestId('job-row-daily-report').click();
-    await expect(
-      page.locator('.schedule__detail-header').getByText('daily-report'),
-    ).toBeVisible();
-    await expect(
-      page.locator('.schedule__detail-header').getByText('Run History'),
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Output' })).toBeVisible();
+      const disclosure = page.getByRole('button', {
+        name: 'daily-report',
+        exact: true,
+      });
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+      for (
+        let step = 0;
+        step < 40 &&
+        !(await disclosure.evaluate(
+          (button) => button === button.ownerDocument.activeElement,
+        ));
+        step += 1
+      ) {
+        await page.keyboard.press('Tab');
+      }
+      await expect(disclosure).toBeFocused();
+      const controls = await disclosure.getAttribute('aria-controls');
+      expect(controls).toBeTruthy();
+      const history = page.locator(`[id="${controls}"]`);
+      await expect(history).toHaveCount(0);
+      await page.keyboard.press('Enter');
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await expect(history).toBeVisible();
+      await expect(
+        history.getByText('daily-report — Run History'),
+      ).toBeVisible();
+      await page.keyboard.press('Space');
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+      await expect(history).toHaveCount(0);
+      await expect(disclosure).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await expect(history).toBeVisible();
 
-    await page.getByRole('button', { name: 'Output' }).click();
-    await expect(page.getByText(/daily-report.*Run Output/)).toBeVisible();
-    await expect(
-      page.getByText('Daily report output from opaque run ref'),
-    ).toBeVisible();
+      await disclosure.evaluate(async (button) => {
+        await Promise.all(
+          button
+            .getAnimations({ subtree: true })
+            .filter(
+              (animation) =>
+                animation.playState === 'running' &&
+                animation.effect?.getTiming().iterations !== Infinity &&
+                animation.timeline === button.ownerDocument.timeline,
+            )
+            .map((animation) => animation.finished),
+        );
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+      });
+      const box = await disclosure.boundingBox();
+      expect(box).not.toBeNull();
+      if (!box) throw new Error('Automation history disclosure has no box');
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(
+        await disclosure.evaluate((button) => {
+          const bounds = button.getBoundingClientRect();
+          const hit = button.ownerDocument.elementFromPoint(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2,
+          );
+          return hit === button || (hit !== null && button.contains(hit));
+        }),
+      ).toBe(true);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+      await expect(history).toHaveCount(0);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await expect(history).toBeVisible();
+      await expect(
+        page.locator('.schedule__detail-header').getByText('daily-report'),
+      ).toBeVisible();
+      await expect(
+        page.locator('.schedule__detail-header').getByText('Run History'),
+      ).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Output' })).toBeVisible();
+
+      await page.getByRole('button', { name: 'Output' }).click();
+      await expect(page.getByText(/daily-report.*Run Output/)).toBeVisible();
+      await expect(
+        page.getByText('Daily report output from opaque run ref'),
+      ).toBeVisible();
+    }
   });
 
   test('deep-links to the exact run and opens its output', async ({ page }) => {

@@ -22,14 +22,27 @@
  * status or the body through the client fails here too.
  */
 
+import {
+  _setApiBase,
+  setClientCredentialResolver,
+  useRunsQuery as useRealRunsQuery,
+} from '@kontourai/station-sdk';
 import { listJobs } from '@kontourai/station-sdk/client';
 import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
+import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const schedulerHooks = vi.hoisted(() => ({
@@ -51,6 +64,7 @@ const schedulerHooks = vi.hoisted(() => ({
     error: unknown;
   },
   runs: [] as Array<Record<string, unknown>>,
+  runsQuery: vi.fn(),
 }));
 
 const runMutation = vi.hoisted(() => ({
@@ -64,7 +78,8 @@ const retryQueries = vi.hoisted(() => ({
   status: vi.fn(),
 }));
 
-vi.mock('../contexts/ApiBaseContext', () => ({
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
   useHostRequestAuthorityScope: () => null,
 }));
 
@@ -79,10 +94,7 @@ vi.mock('../hooks/useScheduler', () => ({
   }),
   useSchedulerStats: () => ({ data: undefined, isLoading: false }),
   useSchedulerProviders: () => ({ data: [] }),
-  useRunsQuery: () => ({
-    data: schedulerHooks.runs,
-    isLoading: false,
-  }),
+  useRunsQuery: schedulerHooks.runsQuery,
   useFetchRunOutputRef: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSchedulerEvents: () => ({
     isRunning: () => false,
@@ -167,6 +179,10 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/schedule');
     schedulerHooks.runs = [];
+    schedulerHooks.runsQuery.mockImplementation(() => ({
+      data: schedulerHooks.runs,
+      isLoading: false,
+    }));
     schedulerHooks.jobs = {
       data: [],
       isLoading: false,
@@ -411,6 +427,48 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     };
   }
 
+  test('opens, closes and reopens the selected job history from the keyboard', async () => {
+    seedTwoRunnableJobs();
+    const user = userEvent.setup();
+    render(<ScheduleView />);
+
+    const disclosure = screen.getByRole('button', { name: 'nightly-digest' });
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    for (
+      let step = 0;
+      step < 12 && document.activeElement !== disclosure;
+      step += 1
+    ) {
+      await user.tab();
+    }
+    expect(document.activeElement).toBe(disclosure);
+
+    await user.keyboard('{Enter}');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByText('nightly-digest — Run History', { exact: true }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('weekly-report — Run History', { exact: true }),
+    ).toBeNull();
+
+    await user.keyboard(' ');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByText('nightly-digest — Run History', { exact: true }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(disclosure);
+
+    await user.keyboard('{Enter}');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByText('nightly-digest — Run History', { exact: true }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('weekly-report — Run History', { exact: true }),
+    ).toBeNull();
+  });
+
   test('focuses exact Scheduler runs and follows same-view history changes', async () => {
     seedStarterJob();
     const first = starterRun('run-1');
@@ -451,22 +509,189 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     );
   });
 
-  test('does not substitute another run for a missing exact receipt', () => {
-    schedulerHooks.runs = [starterRun('other-run')];
-    window.history.replaceState(
-      {},
-      '',
-      '/schedule?run=schedule:built-in:station-starter-check:missing-run',
+  test('recovers an exact receipt read through keyboard Retry without substituting a missing target', async () => {
+    seedTwoRunnableJobs();
+    schedulerHooks.runsQuery.mockImplementation(useRealRunsQuery);
+    const target = starterRun('requested-run');
+    const other = starterRun('other-run');
+    const authority = {
+      apiBase: 'https://station.test',
+      authorityKey: 'parent-history-fixture:1',
+      isCurrent: () => true,
+    };
+    let resolveFirst!: (response: Response) => void;
+    const firstRead = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let resolveRetry!: (response: Response) => void;
+    const retryRead = new Promise<Response>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const response = (data: unknown, status = 200) =>
+      new Response(JSON.stringify(data), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    const unexpected: string[] = [];
+    let reads = 0;
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+    const user = userEvent.setup();
+    window.history.replaceState({}, '', `/schedule?run=${target.runId}`);
+    _setApiBase(authority.apiBase);
+    // Declared fixture authority precondition, not evidence of real authentication.
+    setClientCredentialResolver(() => ({
+      origin: authority.apiBase,
+      requestAuthority: authority,
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url,
+        );
+        const method = (
+          init?.method ?? (input instanceof Request ? input.method : 'GET')
+        ).toUpperCase();
+        if (
+          url.origin === authority.apiBase &&
+          method === 'GET' &&
+          !url.search &&
+          url.pathname === '/api/runs'
+        ) {
+          reads += 1;
+          if (reads === 1) return firstRead;
+          if (reads === 2) return retryRead;
+        }
+        const request = `${method} ${url.href}`;
+        unexpected.push(request);
+        throw new Error(
+          `Unexpected parent history fixture request: ${request}`,
+        );
+      }),
     );
-    render(<ScheduleView />);
-    expect(
-      screen.getByText(/That scheduled run isn’t available/i),
-    ).toBeTruthy();
-    // The promise this message exists for: no substitution (archive#3965).
-    expect(
-      screen.getByText(/won’t open a different one in its place/i),
-    ).toBeTruthy();
-    expect(document.querySelector('.schedule__log--focused')).toBeNull();
+    const wasOnline = onlineManager.isOnline();
+    try {
+      onlineManager.setOnline(false);
+      render(
+        <QueryClientProvider client={client}>
+          <section aria-label="Automation parent">
+            <ScheduleView />
+          </section>
+        </QueryClientProvider>,
+      );
+      const parent = screen.getByRole('region', { name: 'Automation parent' });
+      await waitFor(() =>
+        expect(client.getQueryState(['runs'])?.fetchStatus).toBe('paused'),
+      );
+      expect(reads).toBe(0);
+      expect(
+        within(parent).queryByText(/That scheduled run isn’t available/i),
+      ).toBeNull();
+      expect(
+        within(parent).getByLabelText('Loading scheduled run'),
+      ).toBeTruthy();
+      await act(async () => onlineManager.setOnline(true));
+      await waitFor(() => expect(reads).toBe(1));
+      expect(
+        within(parent).queryByText(/That scheduled run isn’t available/i),
+      ).toBeNull();
+      await act(async () => {
+        resolveFirst(
+          response(
+            { success: false, error: 'Run history storage unavailable' },
+            503,
+          ),
+        );
+      });
+      await waitFor(() =>
+        expect(client.getQueryState(['runs'])?.status).toBe('error'),
+      );
+      expect(
+        within(parent).queryByText(/That scheduled run isn’t available/i),
+      ).toBeNull();
+      expect(document.querySelector('.schedule__log--focused')).toBeNull();
+      const refusal = within(parent).getByRole('alert');
+      const retry = within(refusal).getByRole('button', { name: 'Retry' });
+      expect(new URLSearchParams(window.location.search).get('run')).toBe(
+        target.runId,
+      );
+      for (
+        let step = 0;
+        step < 20 && document.activeElement !== retry;
+        step += 1
+      ) {
+        await user.tab();
+      }
+      expect(document.activeElement).toBe(retry);
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(reads).toBe(2));
+      expect(within(parent).getByRole('alert')).toBe(refusal);
+      expect(within(refusal).getByRole('button', { name: 'Retry' })).toBe(
+        retry,
+      );
+      expect(
+        retry.hasAttribute('disabled') ||
+          retry.getAttribute('aria-busy') === 'true',
+      ).toBe(true);
+      expect(
+        within(parent).queryByText(/That scheduled run isn’t available/i),
+      ).toBeNull();
+      expect(new URLSearchParams(window.location.search).get('run')).toBe(
+        target.runId,
+      );
+      await act(async () => {
+        resolveRetry(response({ success: true, data: [target, other] }));
+      });
+      await waitFor(() =>
+        expect(document.activeElement?.getAttribute('data-run-id')).toBe(
+          target.runId,
+        ),
+      );
+      expect(within(parent).queryByRole('alert')).toBeNull();
+      expect(runMutation.mutate).not.toHaveBeenCalled();
+      expect(retryQueries.jobs).not.toHaveBeenCalled();
+      expect(retryQueries.status).not.toHaveBeenCalled();
+      expect(reads).toBe(2);
+      window.history.pushState(
+        {},
+        '',
+        '/schedule?run=schedule:built-in:station-starter-check:missing-run',
+      );
+      fireEvent(window, new PopStateEvent('popstate'));
+      expect(
+        within(parent).getByText(/That scheduled run isn’t available/i),
+      ).toBeTruthy();
+      expect(
+        within(parent).getByText(/won’t open a different one in its place/i),
+      ).toBeTruthy();
+      expect(document.querySelector('.schedule__log--focused')).toBeNull();
+      expect(unexpected).toEqual([]);
+    } finally {
+      cleanup();
+      resolveFirst(
+        response({ success: false, error: 'Fixture released' }, 503),
+      );
+      resolveRetry(
+        response({ success: false, error: 'Fixture released' }, 503),
+      );
+      await client.cancelQueries();
+      client.clear();
+      onlineManager.setOnline(wasOnline);
+      schedulerHooks.runsQuery.mockImplementation(() => ({
+        data: schedulerHooks.runs,
+        isLoading: false,
+      }));
+      setClientCredentialResolver(undefined);
+      _setApiBase('');
+      vi.unstubAllGlobals();
+      expect(unexpected).toEqual([]);
+    }
   });
 
   test.each([
