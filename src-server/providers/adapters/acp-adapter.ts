@@ -59,7 +59,9 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  ACP_SESSION_REWOUND_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_NOT_ADVERTISED_CODE,
@@ -138,6 +140,7 @@ import {
   STDERR_SETTLE_MS,
 } from '../../services/acp/probe-messages.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { installEngineHostAuthResponders } from '../../services/engine-host-auth/responder.js';
 import {
   commitEngineLaunch,
   engineSessionTmpDir,
@@ -232,10 +235,6 @@ import {
   readCursorCreatePlan,
 } from './acp-cursor-extensions.js';
 import {
-  acpLaunchIsBuiltinDescriptor,
-  installEngineHostAuthResponders,
-} from './acp-host-auth-seam.js';
-import {
   type AcpInputDecision,
   type AcpInputRequestRead,
   CORE_ELICITATION_METHOD,
@@ -273,7 +272,7 @@ import {
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
-import { acpTerminalShellType } from './acp-terminal-facts.js';
+import { acpTerminalFactsHandler } from './acp-terminal-facts.js';
 import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
@@ -3275,7 +3274,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       createdAt: new Date().toISOString(),
       method: 'runtime.warning',
       severity: 'warning',
-      code: 'acp.session-rewound',
+      code: ACP_SESSION_REWOUND_CODE,
       message: `${record.engineName} rewound this session to an earlier turn; the ${dropped.length === 1 ? 'later turn is' : `${dropped.length} later turns are`} hidden from the engine.`,
       details: {
         toTurnId,
@@ -3380,7 +3379,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       createdAt: new Date().toISOString(),
       method: 'runtime.warning',
       severity: 'warning',
-      code: 'acp.agent-projection-unapplied',
+      code: ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
       message: `${record.engineName} is running its own default agent, not this Station agent: ${reason}.`,
       details: { connectionId: record.connectionId },
     });
@@ -3398,14 +3397,18 @@ export class AcpAdapter implements ProviderAdapterShape {
     },
   ): ACPClientCallbacks {
     // This client's own registry: the reviewed requests, plus whatever
-    // credential responders host auth installs for this exact launch. Built
-    // before the process speaks, because an engine may ask for its token
-    // before `initialize` returns.
+    // credential and secret responders host auth installs for this exact
+    // launch. Host auth derives the launch facts (built-in descriptor,
+    // delegation argv) from the connection itself; nothing here asserts
+    // them. Built before the process speaks, because an engine may ask for
+    // its token before `initialize` returns.
     const registry = this.reviewedInboundRequests(record, context.logger);
+    const credentialProfileRef = record.recoveryStart.credentialProfileRef;
     installEngineHostAuthResponders(registry, {
-      connection: context.connection,
-      argv: context.connection.args ?? [],
-      builtinDescriptor: acpLaunchIsBuiltinDescriptor(context.connection),
+      connection: {
+        ...context.connection,
+        ...(credentialProfileRef ? { credentialProfileRef } : {}),
+      },
     });
     const client = createACPBridgeClient({
       cwd: context.cwd,
@@ -4245,7 +4248,6 @@ export class AcpAdapter implements ProviderAdapterShape {
     logger: AcpLogger,
   ): AcpInboundExtensionRegistry {
     const requester = { engineName: record.engineName };
-    const shellType = acpTerminalShellType();
     // A handler left out (undefined) is not registered, so the method is
     // refused and any client flag that promises it is not announced.
     const handlers: Record<
@@ -4279,7 +4281,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           readKiroOpenExternalUrl(params, requester),
           logger,
         ),
-      'client.terminal-facts': shellType ? () => ({ ...shellType }) : undefined,
+      'client.terminal-facts': acpTerminalFactsHandler(),
     };
     const registry = new AcpInboundExtensionRegistry();
     for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS) {

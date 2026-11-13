@@ -1020,8 +1020,20 @@ describe("ACPProbe's client does not fabricate extension answers", () => {
     await expect(
       client.extMethod('_kiro/auth/getAccessToken', {}),
     ).rejects.toMatchObject({ code: -32601 });
+    // `client.terminal-facts` is the one reviewed request the probe answers
+    // as the chat client does: Kiro's agent service asks it during the
+    // probe's own session/new. On Windows nothing truthful is answered.
+    if (globalThis.process.platform === 'win32')
+      await expect(
+        client.extMethod('_kiro/terminal/shell_type', {}),
+      ).rejects.toMatchObject({ code: -32601 });
+    else
+      await expect(
+        client.extMethod('_kiro/terminal/shell_type', {}),
+      ).resolves.toEqual({ shellType: 'sh' });
+    // Any other reviewed request needs a person or a session: still refused.
     await expect(
-      client.extMethod('_kiro/terminal/shell_type', {}),
+      client.extMethod('_kiro/userInput', {}),
     ).rejects.toMatchObject({ code: -32601 });
     expect(
       warn.mock.calls.some(

@@ -1,6 +1,8 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import {
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  ACP_SESSION_REWOUND_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -824,6 +826,12 @@ export function handleRuntimeErrorEvent(
 const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
   MUSE_SERVE_UNAVAILABLE_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  // What the engine now holds differs from what the transcript shows: an
+  // in-place rewind hid later turns from it, or it runs its own default
+  // agent rather than the one this chat was started with. Both read as
+  // part of the conversation, not as a passing toast.
+  ACP_SESSION_REWOUND_CODE,
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
 ]);
 
 /**

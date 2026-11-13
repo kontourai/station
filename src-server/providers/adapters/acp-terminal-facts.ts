@@ -26,3 +26,15 @@ export function acpTerminalShellType(
 ): { shellType: string } | undefined {
   return platform === 'win32' ? undefined : { shellType: 'sh' };
 }
+
+/**
+ * The `client.terminal-facts` handler both the chat adapter's client and the
+ * availability probe's client register: absent where nothing truthful can be
+ * answered, so the request is refused and the engine reads `unknown`.
+ */
+export function acpTerminalFactsHandler(
+  platform: NodeJS.Platform = process.platform,
+): (() => { shellType: string }) | undefined {
+  const shellType = acpTerminalShellType(platform);
+  return shellType ? () => ({ ...shellType }) : undefined;
+}

@@ -6,6 +6,7 @@ import {
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { acpTerminalFactsHandler } from '../../providers/adapters/acp-terminal-facts.js';
 import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
@@ -22,6 +23,7 @@ import {
   type AcpInboundExtensionHandler,
   AcpInboundExtensionRegistry,
   createAcpInboundExtensionRequestHandler,
+  REVIEWED_INBOUND_EXTENSION_REQUESTS,
 } from './acp-inbound-extension-policy.js';
 import {
   acquireProbeSession,
@@ -705,6 +707,15 @@ export class ACPProbe {
     // before `initialize` answers, so the probe must answer it too.
     const registry = new AcpInboundExtensionRegistry();
     installEngineHostAuthResponders(registry, { connection: this.config });
+    // Kiro's agent service asks `_kiro/terminal/shell_type` during the
+    // probe's own session/new, and a -32601 there fails it. The
+    // probe answers it as the chat client does; it is the only reviewed
+    // request that needs no person or session.
+    const terminalFacts = acpTerminalFactsHandler();
+    if (terminalFacts)
+      for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
+        if (entry.handler === 'client.terminal-facts')
+          registry.register(entry.method, terminalFacts);
     this.inboundExtensionPolicy = createAcpInboundExtensionRequestHandler({
       registry,
       logger: this.logger,

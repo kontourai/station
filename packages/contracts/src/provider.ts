@@ -834,6 +834,22 @@ export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
  */
 export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
 
+/**
+ * `RuntimeWarningEvent.code` an ACP engine session publishes after it moved
+ * back to an earlier turn in place (`rewindSession`): the later turns stay in
+ * the transcript but are hidden from the engine. `details.toTurnId` names
+ * the turn it went back to, `details.hiddenTurnIds` the turns it hid.
+ */
+export const ACP_SESSION_REWOUND_CODE = 'acp.session-rewound';
+
+/**
+ * `RuntimeWarningEvent.code` an ACP engine session publishes when the
+ * Station agent it was started for could not be applied to the engine, so
+ * the engine runs its own default agent instead.
+ */
+export const ACP_AGENT_PROJECTION_UNAPPLIED_CODE =
+  'acp.agent-projection-unapplied';
+
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 
