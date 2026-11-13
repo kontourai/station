@@ -3740,7 +3740,12 @@ describe('Muse parity: the model catalog through a short-lived host (#2266)', ()
       spawnHost: discoveryHost([
         [
           'model/list',
-          { providerId: 'meta', profileId: null, source: 'providerCatalog', models: [] },
+          {
+            providerId: 'meta',
+            profileId: null,
+            source: 'providerCatalog',
+            models: [],
+          },
         ],
       ]),
     });

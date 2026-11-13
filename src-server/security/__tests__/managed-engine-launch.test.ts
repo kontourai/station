@@ -257,14 +257,13 @@ describe('a Muse child under a credential profile does not inherit META_API_KEY'
 
   test('muse exec and muse serve', async () => {
     const engine = recordingEngine();
-    install({ instances: { muse: { locked: false, binaryPath: engine.binary } } });
+    install({
+      instances: { muse: { locked: false, binaryPath: engine.binary } },
+    });
     process.env.META_API_KEY = 'sk-ambient';
     const tmpDir = makeTempDir('station-muse-key-tmp-');
     const profile = { XDG_CONFIG_HOME: makeTempDir('station-muse-profile-') };
-    const run = async (spawned: {
-      process: unknown;
-      release?: () => void;
-    }) => {
+    const run = async (spawned: { process: unknown; release?: () => void }) => {
       await exited(spawned.process as never);
       spawned.release?.();
       return engine.read().env;
