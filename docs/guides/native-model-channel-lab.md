@@ -46,9 +46,10 @@ Run from a clean committed checkout:
 export CHILD_WORK_DOCKER_EXECUTABLE=/absolute/path/to/docker
 export CHILD_WORK_DOCKER_ENDPOINT=unix:///absolute/path/to/docker.sock
 export CHILD_WORK_NATIVE_LAB_SOURCE_HEAD="$(git rev-parse HEAD)"
-STATION_HEAVY_CHECK_SLOTS=1 node --import=tsx scripts/heavy-check-slot.mjs native-model-channel scripts/child-work-native-model-channel-lab.ts --run-real-local-lab
+STATION_HEAVY_CHECK_SLOTS=1 npm run lab:native-model-channel -- --run-real-local-lab
 ```
 
+The command acquires the normal host-wide heavy-check slot before execution.
 The explicit lab pulls a digest-pinned Node base and builds its owned worker
 image. It leaves image cache additions in place and removes only its confirmed
 owned container. Private artifacts retain source/input hashes, Docker identity,
