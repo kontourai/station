@@ -359,8 +359,9 @@ export function recordedRoots(record) {
  * How a process is recognised as the run's by its environment, with no
  * ancestry. Every process the instance starts inherits the run's
  * `STATION_WEIGHT_RUN=<nonce>` entry; the nonce is a random 128-bit value, so
- * a process carrying that exact entry is the run's and is the only kind of
- * process, besides the instance's recorded roots, the run ever signals. A
+ * a process carrying that exact entry is the run's and is the only process
+ * the run ever signals individually (the other signal is the launcher's own
+ * process group on a timeout; see runLauncher). A
  * process that dropped the nonce but kept a `HOME` or `TMPDIR` inside the
  * scratch root (by path segment, after resolving links on both sides) is
  * counted as the run's, never signalled. An entry matches only as a whole
@@ -463,10 +464,17 @@ export function runTagKind(entries, tagging) {
  * which cannot tell an entry from a space inside a value. Each pid's start
  * time (p_starttime from KERN_PROC_PID, in microseconds) is read before and
  * after; a pid whose start changed, or that cannot be read (exited, another
- * user's, EPERM), is omitted, so it is never tagged. Bytes that are not UTF-8
- * are kept as lone surrogates and never equal a tag.
+ * user's, EPERM), is omitted, so it is never tagged. A block that does not
+ * parse strictly is answered as `{ malformed: <reason> }`: its size must be
+ * 4 bytes to `kern.argmax`, `argc` must be 0 or more and no more than the
+ * block can hold, and the executable path, every argument and every
+ * environment entry must end with a NUL inside the returned size. A
+ * malformed block is never tagged and is counted as a read failure. Bytes
+ * that are not UTF-8 are kept as lone surrogates and never equal a tag.
  * `--test-recheck-offset-us=<n>` shifts the start read after the block by
  * `n`, so a test can drive a real read into the replaced-process branch.
+ * `--test-parse` parses the blocks given on stdin (JSON `{ pid: hex }`)
+ * with the same parser and limit instead of reading any process.
  *
  * `--starts`: pid -> start time in microseconds.
  *
@@ -491,22 +499,49 @@ def started(pid):
         return None
     seconds, micros = struct.unpack_from('qi', info, 0)
     return seconds * 1000000 + micros
-def strings(block, index, count):
-    found = []
-    while index < len(block) and (count is None or len(found) < count):
+def text(block, start, end):
+    return block[start:end].decode('utf-8', 'surrogateescape')
+def parse(block, limit):
+    # argc, the executable path, NUL padding, argc arguments, then
+    # environment entries up to an empty one. Returns (argv, env), or a
+    # reason string when any part is out of bounds or unterminated.
+    if len(block) < 4 or len(block) > limit:
+        return 'size %d outside 4..%d' % (len(block), limit)
+    argc = struct.unpack_from('i', block, 0)[0]
+    # Each argument takes at least its NUL, after the path's.
+    if argc < 0 or argc > len(block) - 5:
+        return 'argc %d inconsistent with a %d-byte block' % (argc, len(block))
+    end = block.find(b'\0', 4)
+    if end < 0:
+        return 'unterminated executable path'
+    index = end
+    while index < len(block) and block[index] == 0:
+        index += 1
+    argv = []
+    for _ in range(argc):
         end = block.find(b'\0', index)
-        end = len(block) if end < 0 else end
-        if count is None and end == index:
-            break
-        found.append(block[index:end].decode('utf-8', 'surrogateescape'))
+        if end < 0:
+            return 'unterminated argument %d of %d' % (len(argv), argc)
+        argv.append(text(block, index, end))
         index = end + 1
-    return found, index
+    env = []
+    while index < len(block):
+        end = block.find(b'\0', index)
+        if end < 0:
+            return 'unterminated environment entry %d' % len(env)
+        if end == index:
+            break
+        env.append(text(block, index, end))
+        index = end + 1
+    return argv, env
 args = sys.argv[1:]
 mode, signal, offset = 'read', None, 0
 while args and args[0].startswith('--'):
     flag = args.pop(0)
     if flag == '--starts':
         mode = 'starts'
+    elif flag == '--test-parse':
+        mode = 'parse'
     elif flag.startswith('--signal='):
         mode, signal = 'signal', int(flag.split('=', 1)[1])
     elif flag.startswith('--test-recheck-offset-us='):
@@ -534,23 +569,24 @@ elif mode == 'signal':
 else:
     out = {}
     argmax = struct.unpack('i', sysctl([1, 8], 4))[0]
-    for pid in map(int, args):
+    def answer(pid, startedUs, block):
+        parsed = parse(block, argmax)
+        if isinstance(parsed, str):
+            out[str(pid)] = {'malformed': parsed}
+        else:
+            out[str(pid)] = {'startedUs': startedUs, 'argv': parsed[0], 'env': parsed[1]}
+    if mode == 'parse':
+        for pid, hex in json.load(sys.stdin).items():
+            answer(int(pid), 0, bytes.fromhex(hex))
+    for pid in (map(int, args) if mode == 'read' else []):
         before = started(pid)
         block = sysctl([1, 49, pid], argmax)
-        if before is None or block is None or len(block) < 4:
+        if before is None or block is None:
             continue
         after = started(pid)
         if after is None or after + offset != before:
             continue
-        argc = struct.unpack_from('i', block, 0)[0]
-        index = block.find(b'\0', 4)
-        if index < 0:
-            continue
-        while index < len(block) and block[index] == 0:
-            index += 1
-        argv, index = strings(block, index, argc)
-        env, index = strings(block, index, None)
-        out[str(pid)] = {'startedUs': before, 'argv': argv, 'env': env}
+        answer(pid, before, block)
 json.dump(out, sys.stdout)
 `;
 
@@ -559,8 +595,9 @@ json.dump(out, sys.stdout)
  * cannot run (no `python3` or `ctypes`) is an error, never an empty answer.
  * @param {string[]} args
  * @param {RunCommand} run
+ * @param {string} [input] stdin, for `--test-parse`
  */
-function darwinHelper(args, run) {
+function darwinHelper(args, run, input) {
   let text;
   try {
     // -I: no PYTHON* variables, user site or script directory on the path.
@@ -568,6 +605,7 @@ function darwinHelper(args, run) {
       encoding: 'utf8',
       windowsHide: true,
       env: PS_ENV,
+      ...(input === undefined ? {} : { input }),
     });
   } catch (error) {
     throw new Error(
@@ -578,24 +616,38 @@ function darwinHelper(args, run) {
 }
 
 /**
+ * pid -> the process's exact argument and environment entries, or
+ * `{ malformed }` for a block that did not parse strictly (see
+ * PROCARGS_SCRIPT). A pid that could not be read at all is absent.
+ * `testing.blocks` (pid -> raw block) runs the same parser on given bytes
+ * instead of reading processes.
  * @param {number[]} pids
  * @param {RunCommand} run
- * @param {{ recheckOffsetUs?: number }} [testing]
- * @returns {Map<number, { startedUs: number, argv: string[], env: string[] }>}
+ * @param {{ recheckOffsetUs?: number, blocks?: Map<number, Buffer> }} [testing]
+ * @returns {Map<number, { startedUs: number, argv: string[], env: string[] } | { malformed: string }>}
  */
 export function darwinProcessArguments(
   pids,
   run = /** @type {RunCommand} */ (execFileSyncBounded),
-  { recheckOffsetUs = 0 } = {},
+  { recheckOffsetUs = 0, blocks } = {},
 ) {
-  if (!pids.length) return new Map();
+  if (!pids.length && !blocks?.size) return new Map();
   const flags = recheckOffsetUs
     ? [`--test-recheck-offset-us=${recheckOffsetUs}`]
     : [];
+  const answer = blocks
+    ? darwinHelper(
+        ['--test-parse'],
+        run,
+        JSON.stringify(
+          Object.fromEntries(
+            [...blocks].map(([pid, block]) => [pid, block.toString('hex')]),
+          ),
+        ),
+      )
+    : darwinHelper([...flags, ...pids.map(String)], run);
   return new Map(
-    Object.entries(darwinHelper([...flags, ...pids.map(String)], run)).map(
-      ([pid, entry]) => [Number(pid), entry],
-    ),
+    Object.entries(answer).map(([pid, entry]) => [Number(pid), entry]),
   );
 }
 
@@ -646,9 +698,13 @@ export function exactStarts(
  * afterwards. macOS: KERN_PROCARGS2 (see darwinProcessArguments), accepted
  * only if the start time read around it is the row's birth second. Each
  * entry carries the exact birth it was read under (see exactStarts). A
- * process whose entries cannot be read gets no entry, so it is never tagged.
+ * process whose entries cannot be read gets no entry, so it is never tagged;
+ * one whose block was malformed is also added to `readFailures`.
  */
-function environments(rows, { run, platformName, readFile, readArguments }) {
+function environments(
+  rows,
+  { run, platformName, readFile, readArguments, readFailures },
+) {
   const tests = new Map();
   if (platformName === 'linux') {
     for (const row of rows) {
@@ -682,6 +738,15 @@ function environments(rows, { run, platformName, readFile, readArguments }) {
   );
   for (const row of rows) {
     const entry = read.get(row.pid);
+    if (entry && 'malformed' in entry) {
+      readFailures?.push({
+        pid: row.pid,
+        started: row.started,
+        command: row.command,
+        reason: entry.malformed,
+      });
+      continue;
+    }
     if (!entry || !Number.isSafeInteger(entry.startedUs)) continue;
     // lstart, and so the row, has whole seconds.
     if (Math.floor(entry.startedUs / 1_000_000) * 1000 !== row.startedAtMs)
@@ -703,12 +768,14 @@ function environments(rows, { run, platformName, readFile, readArguments }) {
  * argument naming the nonce. These are found whatever their ancestry: a
  * double-forked daemon or a child spawned during shutdown has no path back to
  * the roots. Each row says how it was tagged (`tag`) and carries the exact
- * birth its environment was read under (`exactStart`).
+ * birth its environment was read under (`exactStart`). A process whose
+ * environment block was malformed is never tagged and is appended to
+ * `readFailures` when given.
  */
 /**
  * @param {ProcessRow[]} table
  * @param {Tagging} tagging
- * @param {{ run?: RunCommand, platform?: string, readFile?: (path: string, encoding: 'utf8') => string, readArguments?: typeof darwinProcessArguments }} [options]
+ * @param {{ run?: RunCommand, platform?: string, readFile?: (path: string, encoding: 'utf8') => string, readArguments?: typeof darwinProcessArguments, readFailures?: Array<{ pid: number, started: string, command: string, reason: string }> }} [options]
  * @returns {TaggedRow[]}
  */
 export function taggedRows(
@@ -719,6 +786,7 @@ export function taggedRows(
     platform: platformName = process.platform,
     readFile = readFileSync,
     readArguments = darwinProcessArguments,
+    readFailures,
   } = {},
 ) {
   const { argumentMarkers, uid, notBeforeMs } = tagging;
@@ -737,6 +805,7 @@ export function taggedRows(
     platformName,
     readFile,
     readArguments,
+    readFailures,
   });
   /** @type {TaggedRow[]} */
   const tagged = [];
@@ -787,44 +856,21 @@ export function instanceSnapshot(table, roots, tagging, options) {
 }
 
 /**
- * Whether `exact` (see exactStarts) is the birth of the process whose table
- * birth token is `started`: equal on Linux, the same second on macOS, whose
- * table and instance record carry whole-second lstart.
- * @param {string} started
- * @param {string | undefined} exact
- */
-export function sameBirth(started, exact) {
-  if (!exact) return false;
-  if (started.startsWith('linux:')) return exact === started;
-  const parts = started.trim().split(/\s+/);
-  return (
-    exact.startsWith('darwin:') &&
-    parts.length === 5 &&
-    Math.floor(Number(exact.slice('darwin:'.length)) / 1_000_000) * 1000 ===
-      lstartMs(parts)
-  );
-}
-
-/**
- * Which of `rows` the run may signal. Kill-eligible: a row tagged by the
+ * Which of `rows` the run may signal. Kill-eligible: only a row tagged by the
  * exact `STATION_WEIGHT_RUN=<nonce>` entry, with the exact birth its
- * environment was read under, and a recorded root whose recorded birth still
- * holds and whose exact birth was read when the run learned it. Every other
- * row, found by ancestry, by an identity seen earlier or by a scratch `HOME`
- * or `TMPDIR`, is report-only: it counts as the run's, and is never
- * signalled.
+ * environment was read under. Every other row, a recorded root without the
+ * entry included, found by ancestry, by an identity seen earlier or by a
+ * scratch `HOME` or `TMPDIR`, is report-only: it counts as the run's, and is
+ * never signalled.
  * @param {ProcessRow[]} rows
  * @param {TaggedRow[]} tagged
- * @param {ProcessIdentity[]} [roots]
  * @returns {OwnedRow[]}
  */
-export function killEligibility(rows, tagged, roots = []) {
+export function killEligibility(rows, tagged) {
   const exact = new Map();
   for (const row of tagged)
     if (row.tag === 'nonce' && row.exactStart)
       exact.set(identityKey(row), row.exactStart);
-  for (const root of roots)
-    if (root.exactStart) exact.set(identityKey(root), root.exactStart);
   return rows.map((row) => {
     const exactStart = exact.get(identityKey(row));
     return exactStart
@@ -851,7 +897,6 @@ export function leftoverAfterStop(seen, after, tagging, options, roots = []) {
   return killEligibility(
     ownedTree(after, [...roots, ...seen, ...tagged]),
     tagged,
-    roots,
   );
 }
 
@@ -950,21 +995,11 @@ function followTree(ledger, roots, followed, { intervalMs, read }) {
  * moment the first roots are known), and the environment tag. The runner
  * reads the tree, the leftovers and the cleanup set only through this.
  * @param {Tagging} tagging
- * @param {{ intervalMs: number, read?: () => ProcessRow[], tagOptions?: Parameters<typeof taggedRows>[2], starts?: (pids: number[]) => Map<number, string> }} options
+ * @param {{ intervalMs: number, read?: () => ProcessRow[], tagOptions?: Parameters<typeof taggedRows>[2] }} options
  */
 export function runOwnership(
   tagging,
-  {
-    intervalMs,
-    read = processTable,
-    tagOptions,
-    starts = (pids) =>
-      exactStarts(pids, {
-        platform: tagOptions?.platform,
-        run: tagOptions?.run,
-        readFile: tagOptions?.readFile,
-      }),
-  },
+  { intervalMs, read = processTable, tagOptions },
 ) {
   /** @type {Map<string, ProcessIdentity & { learnedAt: string }>} */
   const roots = new Map();
@@ -989,26 +1024,18 @@ export function runOwnership(
     },
     /**
      * Adds the roots `next` names (an instance record's) and, the first
-     * time, starts following the tree, with one read right away. A root's
-     * exact birth is read now and kept only if it is the recorded one: that
-     * makes the root kill-eligible while its birth holds. Returns how many
-     * roots were new.
+     * time, starts following the tree, with one read right away. A root is
+     * counted as the run's; it is kill-eligible only if its own environment
+     * carries the nonce entry (see killEligibility). Returns how many roots
+     * were new.
      * @param {ProcessIdentity[]} next
      */
     setRoots(next) {
       const fresh = next.filter((root) => !roots.has(identityKey(root)));
       if (fresh.length) {
-        const exact = starts(fresh.map((root) => root.pid));
         const learnedAt = new Date().toISOString();
-        for (const { pid, started } of fresh) {
-          const birth = exact.get(pid);
-          roots.set(identityKey({ pid, started }), {
-            pid,
-            started,
-            ...(sameBirth(started, birth) ? { exactStart: birth } : {}),
-            learnedAt,
-          });
-        }
+        for (const { pid, started } of fresh)
+          roots.set(identityKey({ pid, started }), { pid, started, learnedAt });
       }
       if (!follower) {
         ledger.follow();
@@ -1053,8 +1080,8 @@ export function runOwnership(
     },
     /**
      * How the tree was followed: reads, the longest interval between them,
-     * every root with when it was learned and whether it is kill-eligible,
-     * and the roots the follower's own reads found alive.
+     * every root with when it was learned, and the roots the follower's own
+     * reads found alive.
      */
     follow() {
       return {
@@ -1062,11 +1089,10 @@ export function runOwnership(
         reads: ledger.reads,
         maxIntervalMs: ledger.maxIntervalMs,
         errors: [...(follower?.errors ?? [])],
-        roots: rootList().map(({ pid, started, exactStart, learnedAt }) => ({
+        roots: rootList().map(({ pid, started, learnedAt }) => ({
           pid,
           started,
           learnedAt,
-          killEligible: Boolean(exactStart),
         })),
         rootsFollowed: rootList()
           .filter((root) => followed.has(identityKey(root)))
@@ -1098,12 +1124,13 @@ export function runOwnership(
  * exactStarts) still holds when read immediately before the signal. On macOS
  * the helper reads each start time and signals in one pass, so the recheck
  * and the signal are microseconds apart; on Linux the `/proc` start ticks are
- * read right before `process.kill`. A row that is not kill-eligible, or has
- * no exact birth, is never signalled. No POSIX call signals a pid only if it
+ * read right before `process.kill`. Only a row whose `killEligible` is
+ * exactly `true` (see killEligibility) and that has an exact birth is
+ * signalled; an omitted flag means not eligible. No POSIX call signals a pid only if it
  * still names one process, so the guarantee is this recheck, not more: a
  * pid would have to be freed and reused, with the recorded birth, between
  * the recheck and the signal.
- * @param {Array<Partial<OwnedRow> & { pid: number, exactStart?: string }>} rows
+ * @param {Array<Partial<OwnedRow> & { pid: number, killEligible: boolean, exactStart?: string }>} rows
  * @param {NodeJS.Signals} signal
  * @param {{ platform?: string, run?: RunCommand, readFile?: (path: string, encoding: 'utf8') => string, kill?: (pid: number, signal: NodeJS.Signals) => unknown, bootId?: string }} [options]
  */
@@ -1124,7 +1151,7 @@ export function signalIfSame(
   const skipped = [];
   const eligible = [];
   for (const row of rows)
-    if (row.killEligible === false || !row.exactStart) skipped.push(row.pid);
+    if (row.killEligible !== true || !row.exactStart) skipped.push(row.pid);
     else eligible.push(row);
   if (platformName === 'linux') {
     for (const row of eligible) {
@@ -1170,10 +1197,14 @@ export function signalIfSame(
   return { signalled, skipped };
 }
 
+/** Report lines carry at most this many characters of a command line. */
+const COMMAND_LINE_MAX_CHARS = 1000;
+
 /**
- * The full command line of each row, for reporting what a run left running:
- * `/proc/<pid>/cmdline` on Linux, the helper's argument read on macOS, the
- * table's command name when neither can be read.
+ * The command line of each row, cut to its first COMMAND_LINE_MAX_CHARS
+ * characters, for reporting what a run left running: `/proc/<pid>/cmdline`
+ * on Linux, the helper's argument read on macOS, the table's command name
+ * when neither can be read.
  * @param {ProcessRow[]} rows
  * @param {{ platform?: string, run?: RunCommand, readFile?: (path: string, encoding: 'utf8') => string }} [options]
  * @returns {Array<{ pid: number, started: string, command: string }>}
@@ -1209,7 +1240,10 @@ export function describeProcesses(
         rows.map((row) => row.pid),
         run,
       ))
-        if (Math.floor(entry.startedUs / 1_000_000) * 1000 === born.get(pid))
+        if (
+          'argv' in entry &&
+          Math.floor(entry.startedUs / 1_000_000) * 1000 === born.get(pid)
+        )
           argv.set(pid, entry.argv);
     }
   } catch {
@@ -1218,7 +1252,10 @@ export function describeProcesses(
   return rows.map((row) => ({
     pid: row.pid,
     started: row.started,
-    command: (argv.get(row.pid)?.join(' ') || row.command).slice(0, 1000),
+    command: (argv.get(row.pid)?.join(' ') || row.command).slice(
+      0,
+      COMMAND_LINE_MAX_CHARS,
+    ),
   }));
 }
 
@@ -1364,17 +1401,35 @@ export function contextSwitchDelta(start, end) {
 
 /** Generous: a build's output is large, but a runaway child is still refused. */
 const LAUNCHER_OUTPUT_MAX_BYTES = 16 * 1024 * 1024;
+/** How long a timed-out launcher's output may stay open after the signal. */
+const LAUNCHER_KILL_GRACE_MS = 5_000;
 
 /**
  * Runs one launcher command as an owned process group and returns its exit
  * status and output. Output that overflowed its capture bound or is not valid
  * UTF-8, and a process that could not run at all, are errors: an incomplete
  * capture is never taken as a complete success.
+ *
+ * A launcher that outlives `timeoutMs` is an error. Its process group, the
+ * one this spawn created, gets SIGKILL only while the launcher, the group's
+ * leader, has not been reaped (see forceTerminate in owned-process.mjs):
+ * until then the group id cannot name another group. Once the launcher has
+ * exited the group is not signalled, and whatever it left is found and
+ * reported by the run's leftover accounting instead.
+ * @param {string} executable
+ * @param {string[]} args
+ * @param {{ env: NodeJS.ProcessEnv, timeoutMs: number, cwd?: string, maxBytes?: number, killGraceMs?: number }} options
  */
 export async function runLauncher(
   executable,
   args,
-  { env, timeoutMs, cwd = ROOT, maxBytes = LAUNCHER_OUTPUT_MAX_BYTES },
+  {
+    env,
+    timeoutMs,
+    cwd = ROOT,
+    maxBytes = LAUNCHER_OUTPUT_MAX_BYTES,
+    killGraceMs = LAUNCHER_KILL_GRACE_MS,
+  },
 ) {
   const label = `${basename(executable)} ${args[0] ?? ''}`.trim();
   const owned = executeOwnedProcess(executable, args, undefined, label, {
@@ -1385,9 +1440,41 @@ export async function runLauncher(
   });
   const output = captureOwnedProcessOutput(owned, { maxBytes });
   progress(`${label} pid=${owned.child.pid}`);
-  const timer = setTimeout(() => void owned.forceTerminate(), timeoutMs);
+  /** @type {Promise<string> | undefined} */
+  let termination;
+  let timer;
+  const expired = new Promise((resolveExpired) => {
+    timer = setTimeout(() => {
+      termination = owned
+        .forceTerminate({ onlyWhileLeaderUnreaped: true })
+        .then(
+          (outcome) =>
+            outcome?.signalled === true
+              ? 'sent SIGKILL to the process group it created'
+              : 'did not signal its process group: the launcher had already exited, so the group id may name another group',
+          (error) =>
+            `failed to signal its process group: ${String(error?.message ?? error)}`,
+        );
+      resolveExpired(undefined);
+    }, timeoutMs);
+  });
   try {
-    const result = await owned.completion;
+    let result = await Promise.race([owned.completion, expired]);
+    if (result === undefined) {
+      const how = await termination;
+      result = await Promise.race([
+        owned.completion,
+        wait(killGraceMs).then(() => undefined),
+      ]);
+      if (result === undefined) {
+        // Something outside the group still holds the output open.
+        owned.child.stdout?.destroy();
+        owned.child.stderr?.destroy();
+      }
+      throw new Error(
+        `${label} did not finish within ${timeoutMs} ms; the run ${how}${result === undefined ? `, and its output was still open ${killGraceMs} ms later` : ''}`,
+      );
+    }
     const captured = output.finish();
     progress(`${label} exited status=${result.status} signal=${result.signal}`);
     if (result.error)
@@ -2132,9 +2219,15 @@ export async function runStationWeight({
   const ports = await allocatePorts();
   const api = client(ports.server);
   let started = false;
+  // Processes whose environment block did not parse: never kill-eligible,
+  // and reported.
+  /** @type {Array<{ pid: number, started: string, command: string, reason: string }>} */
+  const readFailures = [];
+  const tagOptions = { readFailures };
   // Every process seen in the tree is the run's by identity from then on.
   const ownership = runOwnership(tagging, {
     intervalMs: settings.cpuSampleIntervalMs,
+    tagOptions,
   });
   const treeNow = (table = ownership.readTable()) => ownership.tree(table);
   const recordPath = join(ROOT, '.station/instances', `${instance}.json`);
@@ -2365,7 +2458,10 @@ export async function runStationWeight({
     // How each pre-stop process is the run's: by the nonce (kill-eligible),
     // only by a scratch path, or only by ancestry (both report-only).
     const tagBeforeStop = new Map(
-      taggedRows(tableBeforeStop, tagging).map((row) => [row.pid, row.tag]),
+      taggedRows(tableBeforeStop, tagging, tagOptions).map((row) => [
+        row.pid,
+        row.tag,
+      ]),
     );
     const beforeStopOwnership = {
       runTag: beforeStop.filter((row) => tagBeforeStop.get(row.pid) === 'nonce')
@@ -2435,11 +2531,11 @@ export async function runStationWeight({
         timeoutMs: 120_000,
       }).catch(() => undefined);
     result.follow = { ...result.follow, ...ownership.follow() };
-    // A process carrying the run's nonce (Station's or the control's), or a
-    // recorded root, is the run's to end, its exact birth rechecked right
-    // before the signal. Anything else still alive that the run counted
-    // (seen in the tree, or with a scratch HOME or TMPDIR) is left running
-    // and reported, never signalled.
+    // Only a process carrying the run's nonce (Station's or the control's)
+    // is the run's to end, its exact birth rechecked right before the
+    // signal. Anything else still alive that the run counted (a recorded
+    // root without the nonce, seen in the tree, or with a scratch HOME or
+    // TMPDIR) is left running and reported, never signalled.
     try {
       const strays = ownership.strays(processTable());
       if (strays.length) {
@@ -2450,6 +2546,15 @@ export async function runStationWeight({
     } catch (error) {
       result.cleanupError = String(error?.message ?? error);
     }
+    // One entry per process, however many reads met its malformed block.
+    result.environmentReadFailures = [
+      ...new Map(
+        readFailures.map((failure) => [
+          `${failure.pid} ${failure.started}`,
+          failure,
+        ]),
+      ).values(),
+    ];
     writeFileSync(
       join(outputDir, 'requests.json'),
       `${JSON.stringify(stub.requests, null, 2)}\n`,
@@ -2590,6 +2695,10 @@ function printSummary(result) {
   for (const row of result.leftRunning ?? [])
     line(
       `LEFT RUNNING pid=${row.pid} birth=${JSON.stringify(row.started)} command=${JSON.stringify(row.command)}`,
+    );
+  for (const row of result.environmentReadFailures ?? [])
+    line(
+      `ENVIRONMENT UNREADABLE pid=${row.pid} birth=${JSON.stringify(row.started)} reason=${JSON.stringify(row.reason)}`,
     );
   if (result.error) line(`ERROR ${result.error.split('\n')[0]}`);
   line(`host ${result.host?.label} fingerprint ${result.host?.fingerprint}`);

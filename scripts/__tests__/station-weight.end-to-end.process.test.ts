@@ -4,10 +4,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
-  exactStarts,
+  endRunProcesses,
+  killEligibility,
   LEFTOVER_GAP,
+  processTable,
   runStationWeight,
-  signalIfSame,
+  runTagging,
+  taggedRows,
 } from '../bench/station-weight.mjs';
 import { STATION_WEIGHT_BUDGETS } from '../bench/station-weight-budgets.mjs';
 
@@ -19,12 +22,15 @@ const BASELINE = JSON.parse(
     'utf8',
   ),
 );
-const strays: Array<{ pid: number; exactStart: string }> = [];
+let leakedCleanup: (() => void) | undefined;
 
-// The run is expected to have ended the daemon already; a pid whose exact
-// birth changed since is never signalled.
+// The run is expected to have ended the daemon already. Cleanup follows the
+// run's own rule (contract A): the daemon is signalled only if its exact
+// environment entry is still the run's nonce, its exact birth rechecked
+// right before the signal.
 afterEach(() => {
-  signalIfSame(strays.splice(0), 'SIGKILL');
+  leakedCleanup?.();
+  leakedCleanup = undefined;
 });
 
 /**
@@ -32,7 +38,11 @@ afterEach(() => {
  * the run's environment after the pre-stop snapshot, it detaches a daemon and
  * exits, so nothing but the inherited environment ties the daemon to the run.
  */
-function leakDuringShutdown(env: NodeJS.ProcessEnv) {
+function leakDuringShutdown(
+  env: NodeJS.ProcessEnv,
+  scratch: string,
+  startedAtMs: number,
+) {
   const helper = spawn(
     process.execPath,
     [
@@ -47,8 +57,17 @@ function leakDuringShutdown(env: NodeJS.ProcessEnv) {
   return new Promise<number>((resolveDaemon) =>
     helper.stdout.once('data', (chunk) => {
       const pid = Number(String(chunk));
-      const exactStart = exactStarts([pid]).get(pid);
-      if (exactStart) strays.push({ pid, exactStart });
+      const tagging = runTagging({
+        nonce: String(env.STATION_WEIGHT_RUN),
+        scratch,
+        startedAtMs,
+      });
+      leakedCleanup = () => {
+        const daemon = taggedRows(processTable(), tagging).filter(
+          (row) => row.pid === pid && row.tag === 'nonce',
+        );
+        endRunProcesses(killEligibility(daemon, daemon));
+      };
       helper.once('exit', () => resolveDaemon(pid));
     }),
   );
@@ -62,6 +81,7 @@ describe.skipIf(!posix)('station-weight end to end', () => {
     'measures an isolated instance, finds a process leaked during shutdown, and keeps request overhead within budget',
     async () => {
       const out = makeTempDir('station-weight-test-');
+      const startedAtMs = Date.now();
       let leaked: number | undefined;
       const result = await runStationWeight({
         out,
@@ -77,8 +97,14 @@ describe.skipIf(!posix)('station-weight end to end', () => {
           readyLaunches: 1,
         },
         hooks: {
-          beforeStop: async ({ env }: { env: NodeJS.ProcessEnv }) => {
-            leaked = await leakDuringShutdown(env);
+          beforeStop: async ({
+            env,
+            scratch,
+          }: {
+            env: NodeJS.ProcessEnv;
+            scratch: string;
+          }) => {
+            leaked = await leakDuringShutdown(env, scratch, startedAtMs);
           },
         },
       });

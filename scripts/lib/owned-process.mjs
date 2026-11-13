@@ -116,13 +116,38 @@ export function runWindowsTaskkill(
   });
 }
 
+/**
+ * Whether Node has reaped `child`. libuv reaps the children that exited in
+ * one pass and then runs each one's exit callback, which records the status,
+ * so from a timer or I/O callback a child with no status recorded is not
+ * reaped. Only code running inside another child's exit callback of the same
+ * pass could see a reaped child without its status. Until it is reaped the
+ * pid, and so the process group the child leads, cannot be reused.
+ */
+const leaderReaped = (child) =>
+  child.exitCode != null || child.signalCode != null;
+
 async function sendTreeSignal(
   child,
   signal,
   force,
   processLabel,
   runtime = { platform: process.platform },
+  { onlyWhileLeaderUnreaped = false } = {},
 ) {
+  if (onlyWhileLeaderUnreaped) {
+    // The group was created by this spawn (detached: setsid on POSIX, so its
+    // id is the leader's pid). A session leader cannot change its group, and
+    // its pid stays allocated while it is a zombie, so while Node has not
+    // reaped it the group id still names the group this spawn created. Once
+    // reaped, the group may have ended and its id been reused by an
+    // unrelated process group, and no POSIX call signals a group only if it
+    // is still a given one, so nothing is signalled.
+    if (child.pid === undefined || leaderReaped(child))
+      return { signalled: false, reason: 'leader-reaped' };
+    await sendTreeSignal(child, signal, force, processLabel, runtime);
+    return { signalled: true };
+  }
   if (child.pid === undefined)
     throw new Error(`${processLabel} child has no pid`);
   if (runtime.platform === 'win32') {
@@ -258,8 +283,16 @@ export function executeOwnedProcess(
     },
     terminate: () =>
       sendTreeSignal(child, 'SIGTERM', false, processLabel, runtime),
-    forceTerminate: () =>
-      sendTreeSignal(child, 'SIGKILL', true, processLabel, runtime),
+    /**
+     * SIGKILL to the group this spawn created. With `onlyWhileLeaderUnreaped`
+     * it signals only while Node has not reaped the leader, so the group id
+     * cannot have been reused, and resolves `{ signalled }`; otherwise it
+     * signals the group id whatever happened to the leader (descendants
+     * that outlive it are the point of a tree kill), and resolves undefined.
+     * @param {{ onlyWhileLeaderUnreaped?: boolean }} [options]
+     */
+    forceTerminate: (options) =>
+      sendTreeSignal(child, 'SIGKILL', true, processLabel, runtime, options),
   };
 }
 

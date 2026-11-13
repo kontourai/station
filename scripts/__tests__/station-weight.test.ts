@@ -29,7 +29,6 @@ import {
   runOwnership,
   runTagging,
   runTagKind,
-  sameBirth,
   sampleTreeCpu,
   signalIfSame,
   taggedRows,
@@ -838,6 +837,8 @@ describe('station-weight process identity', () => {
         { pid: 8, exactStart: 'linux:boot:600', killEligible: true },
         { pid: 9, exactStart: 'linux:boot:700', killEligible: false },
         { pid: 10, killEligible: true },
+        // An omitted flag is not eligible, even with a birth that holds.
+        { pid: 11, exactStart: 'linux:boot:800' } as never,
       ],
       'SIGKILL',
       {
@@ -850,6 +851,7 @@ describe('station-weight process identity', () => {
             '/proc/8/stat': statLine(8, { start: 600 }),
             '/proc/9/stat': statLine(9, { start: 700 }),
             '/proc/10/stat': statLine(10),
+            '/proc/11/stat': statLine(11, { start: 800 }),
           },
           [],
         ).readFile,
@@ -860,7 +862,7 @@ describe('station-weight process identity', () => {
       },
     );
     expect(killed).toEqual([8]);
-    expect(outcome).toEqual({ signalled: [8], skipped: [9, 10, 7] });
+    expect(outcome).toEqual({ signalled: [8], skipped: [9, 10, 11, 7] });
   });
 
   test('a macOS signal goes through the helper with the microsecond birth', () => {
@@ -884,7 +886,7 @@ describe('station-weight process identity', () => {
     expect(outcome).toEqual({ signalled: [8], skipped: [9] });
   });
 
-  test('only the nonce entry or a recorded root with an exact birth is kill-eligible', () => {
+  test('only the nonce entry is kill-eligible; a recorded root without it is report-only', () => {
     const table = [
       row(1, 0, 'root'),
       row(2, 1, 'child'),
@@ -895,32 +897,21 @@ describe('station-weight process identity', () => {
       { ...row(3, 0, 'nonce'), tag: 'nonce' as const, exactStart: 'x3' },
       { ...row(4, 0, 'path'), tag: 'path' as const, exactStart: 'x4' },
     ];
-    const roots = [{ pid: 1, started: 'root', exactStart: 'x1' }];
+    const roots = [{ pid: 1, started: 'root' }];
     expect(
-      killEligibility(
-        ownedTree(table, [...roots, ...tagged]),
-        tagged,
-        roots,
-      ).map((entry) => [entry.pid, entry.killEligible, entry.exactStart]),
+      killEligibility(ownedTree(table, [...roots, ...tagged]), tagged).map(
+        (entry) => [entry.pid, entry.killEligible, entry.exactStart],
+      ),
     ).toEqual([
-      [1, true, 'x1'],
+      [1, false, undefined],
       [2, false, undefined],
       [3, true, 'x3'],
       [4, false, undefined],
     ]);
-    // A root whose exact birth was never read is report-only.
-    expect(
-      killEligibility([row(1, 0, 'root')], [], [{ pid: 1, started: 'root' }]),
-    ).toEqual([{ ...row(1, 0, 'root'), killEligible: false }]);
   });
 
-  test('a recorded root is kill-eligible only when its exact birth is the recorded one', () => {
+  test('a recorded root is counted and followed but is not kill-eligible without the nonce', () => {
     const LSTART = 'Tue Nov 14 22:13:25 2023';
-    const secondUs = Date.UTC(2023, 10, 14, 22, 13, 25) * 1000;
-    expect(sameBirth(LSTART, `darwin:${secondUs + 999_999}`)).toBe(true);
-    expect(sameBirth(LSTART, `darwin:${secondUs + 1_000_000}`)).toBe(false);
-    expect(sameBirth('linux:boot:500', 'linux:boot:500')).toBe(true);
-    expect(sameBirth('linux:boot:500', 'linux:boot:501')).toBe(false);
     const table = [row(50, 1, LSTART), row(51, 1, LSTART)];
     const ownership = runOwnership(
       runTagging({
@@ -933,12 +924,6 @@ describe('station-weight process identity', () => {
         intervalMs: 60_000,
         read: () => table,
         tagOptions: { platform: 'darwin', readArguments: () => new Map() },
-        // pid 51's exact birth is another second: not the recorded process.
-        starts: () =>
-          new Map([
-            [50, `darwin:${secondUs + 250_000}`],
-            [51, `darwin:${secondUs + 5_000_000}`],
-          ]),
       },
     );
     try {
@@ -953,11 +938,14 @@ describe('station-weight process identity', () => {
           .leftover(table)
           .map((entry) => [entry.pid, entry.killEligible]),
       ).toEqual([
-        [50, true],
+        [50, false],
         [51, false],
       ]);
       // The follower's own first read found both roots.
       expect(ownership.follow().rootsFollowed).toEqual(roots);
+      expect(ownership.follow().roots).toEqual(
+        roots.map((root) => ({ ...root, learnedAt: expect.any(String) })),
+      );
     } finally {
       ownership.stop();
     }
@@ -974,7 +962,6 @@ describe('station-weight process identity', () => {
       {
         intervalMs: 20,
         read: () => [row(60, 1, 'x')],
-        starts: () => new Map(),
       },
     );
     try {

@@ -1,9 +1,16 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   darwinProcessArguments,
@@ -32,20 +39,32 @@ const ROOT = resolve(__dirname, '../..');
 const RUNNER = join(ROOT, 'scripts/bench/station-weight.mjs');
 const makeTempDir = trackTempDirs();
 const posix = ['darwin', 'linux'].includes(process.platform);
-const strays: Array<{ pid: number; exactStart: string }> = [];
 
-/**
- * Remembers `pid` with its exact birth for cleanup, which signals it only
- * while the pid still has that birth.
- */
-function stray(pid: number) {
-  const exactStart = exactStarts([pid]).get(pid);
-  if (exactStart) strays.push({ pid, exactStart });
-}
+// Cleanup never signals a process by pid alone. Children this file spawned
+// are killed through their own ChildProcess handles, which Node signals only
+// until it has reaped them. Detached daemons, which have no handle here, exit
+// on their own once the test's lease file is gone.
+const children: ChildProcess[] = [];
+let lease = '';
+
+beforeEach(() => {
+  // Not under a temp dir whose name a test asserts on, and never naming a
+  // run nonce: a daemon's arguments carry it.
+  lease = join(
+    tmpdir(),
+    `station-weight-lease-${randomBytes(8).toString('hex')}`,
+  );
+  writeFileSync(lease, '');
+});
 
 afterEach(() => {
-  signalIfSame(strays.splice(0), 'SIGKILL');
+  for (const child of children.splice(0)) child.kill('SIGKILL');
+  rmSync(lease, { force: true });
 });
+
+/** An idle daemon body that exits within 100 ms of its lease file going. */
+const daemonSource = () =>
+  `const lease = ${JSON.stringify(lease)}; setInterval(() => { try { require('node:fs').statSync(lease); } catch { process.exit(0); } }, 100);`;
 
 const identity = (pid: number) => {
   const row = processTable().find((entry) => entry.pid === pid);
@@ -64,9 +83,7 @@ function start(
     stdio: ['ignore', 'pipe', 'ignore'],
     windowsHide: true,
   });
-  // Read synchronously after spawn: the child is not reaped before the event
-  // loop turns, so its pid cannot have been reused yet.
-  stray(child.pid as number);
+  children.push(child);
   const firstLine = new Promise<string>((resolveLine) =>
     child.stdout.once('data', (chunk) => resolveLine(String(chunk).trim())),
   );
@@ -87,10 +104,13 @@ const alive = (pid: number) => {
   }
 };
 
-/** Spawns a detached, unreferenced node child that idles; prints its pid. */
-const DETACH = `const { spawn } = require('node:child_process');
+/**
+ * Source defining `detach()`: spawns a detached, unreferenced node daemon
+ * that idles until the lease goes, and returns its pid.
+ */
+const detachSource = () => `const { spawn } = require('node:child_process');
   const detach = () => {
-    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', windowsHide: true });
+    const child = spawn(process.execPath, ['-e', ${JSON.stringify(daemonSource())}], { detached: true, stdio: 'ignore', windowsHide: true });
     child.unref();
     return child.pid;
   };`;
@@ -98,10 +118,9 @@ const DETACH = `const { spawn } = require('node:child_process');
 describe.skipIf(!posix)('station-weight process tree ownership', () => {
   test('finds a grandchild that outlives its parent by recorded identity', async () => {
     const { child: parent, firstLine } = start(
-      `${DETACH} process.stdout.write(detach() + '\\n'); setInterval(() => {}, 1000);`,
+      `${detachSource()} process.stdout.write(detach() + '\\n'); setInterval(() => {}, 1000);`,
     );
     const childPid = Number(await firstLine);
-    stray(childPid);
     const root = identity(parent.pid as number);
     const before = ownedTree(processTable(), [root]);
     expect(before.map((row) => row.pid).sort()).toEqual(
@@ -141,14 +160,13 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     const { child: root, firstLine } = start(
       `const { spawn } = require('node:child_process');
        const helper = spawn(process.execPath, ['-e', ${JSON.stringify(
-         `${DETACH} process.stdout.write(detach() + '\\n');`,
+         `${detachSource()} process.stdout.write(detach() + '\\n');`,
        )}], { stdio: ['ignore', 'pipe', 'ignore'] });
        helper.stdout.once('data', (chunk) => helper.once('exit', () => process.stdout.write(String(chunk))));
        setInterval(() => {}, 1000);`,
       tagged,
     );
     const daemon = Number(await firstLine);
-    stray(daemon);
     await wait(200);
     const roots = [identity(root.pid as number)];
     const beforeStop = instanceSnapshot(processTable(), roots, tagging);
@@ -173,7 +191,7 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
 
   test('a child spawned during shutdown, after the pre-stop snapshot, is a leftover', async () => {
     const { child: root, firstLine } = start(
-      `${DETACH}
+      `${detachSource()}
        process.on('SIGTERM', () => { process.stdout.write(detach() + '\\n'); setTimeout(() => process.exit(0), 50); });
        process.stdout.write('ready\\n');
        setInterval(() => {}, 1000);`,
@@ -188,7 +206,6 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     );
     root.kill('SIGTERM');
     const spawnedDuringShutdown = await late;
-    stray(spawnedDuringShutdown);
     await exited(root);
     await wait(200);
     expect(alive(spawnedDuringShutdown)).toBe(true);
@@ -279,14 +296,13 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     const ownership = runOwnership(tagging, { intervalMs: 50 });
     const { child: root, firstLine } = start(
       `const { spawn } = require('node:child_process');
-       const daemon = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', env: {}, windowsHide: true });
+       const daemon = spawn(process.execPath, ['-e', ${JSON.stringify(daemonSource())}], { detached: true, stdio: 'ignore', env: {}, windowsHide: true });
        daemon.unref();
        process.stdout.write(daemon.pid + '\\n');
        setInterval(() => {}, 1000);`,
       tagged,
     );
     const daemon = Number(await firstLine);
-    stray(daemon);
     ownership.setRoots([identity(root.pid as number)]);
     try {
       let seen = false;
@@ -319,6 +335,44 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
       ]);
       await wait(200);
       expect(alive(daemon)).toBe(true);
+    } finally {
+      ownership.stop();
+    }
+  });
+
+  test('a recorded root without the nonce is counted and never signalled', async () => {
+    const ownership = runOwnership(tagging, { intervalMs: 50 });
+    // Both roots are the instance record's; only one carries the nonce.
+    const plain = start(idle);
+    const withNonce = start(idle, tagged);
+    await Promise.all([plain.firstLine, withNonce.firstLine]);
+    const plainPid = plain.child.pid as number;
+    const noncePid = withNonce.child.pid as number;
+    try {
+      ownership.setRoots([identity(plainPid), identity(noncePid)]);
+      const left = ownership.leftover(processTable());
+      expect(
+        left
+          .map((row) => [row.pid, row.killEligible])
+          .sort((a, b) => Number(a[0]) - Number(b[0])),
+      ).toEqual(
+        [
+          [plainPid, false],
+          [noncePid, true],
+        ].sort((a, b) => Number(a[0]) - Number(b[0])),
+      );
+      const ended = endRunProcesses(left);
+      expect(ended.killed).toEqual([noncePid]);
+      expect(ended.leftRunning.map((row) => row.pid)).toEqual([plainPid]);
+      await exited(withNonce.child);
+      // The run's final cleanup set treats it the same way.
+      expect(
+        ownership
+          .strays(processTable())
+          .map((row) => [row.pid, row.killEligible]),
+      ).toEqual([[plainPid, false]]);
+      await wait(200);
+      expect(alive(plainPid)).toBe(true);
     } finally {
       ownership.stop();
     }
@@ -380,6 +434,16 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
         'SIGKILL',
       ),
     ).toEqual({ signalled: [], skipped: [pid] });
+    // The exact birth holds, but eligibility must be stated: an omitted
+    // flag, or anything but `true`, is not eligible.
+    for (const row of [
+      { pid, exactStart: exact },
+      { pid, exactStart: exact, killEligible: 1 },
+    ])
+      expect(signalIfSame([row as never], 'SIGKILL')).toEqual({
+        signalled: [],
+        skipped: [pid],
+      });
     await wait(200);
     expect(alive(pid)).toBe(true);
     expect(
@@ -395,7 +459,8 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
       const { child, firstLine } = start(idle, tagged);
       await firstLine;
       const pid = child.pid as number;
-      expect(darwinProcessArguments([pid]).get(pid)?.env).toContain(
+      const read = darwinProcessArguments([pid]).get(pid);
+      expect(read && 'env' in read ? read.env : []).toContain(
         `STATION_WEIGHT_RUN=${nonce}`,
       );
       // The real helper reading the real process, with the start read after
@@ -405,6 +470,95 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
           pid,
         ),
       ).toBe(false);
+    },
+  );
+
+  describe.skipIf(process.platform !== 'darwin')(
+    'the macOS KERN_PROCARGS2 parser',
+    () => {
+      const entry = `STATION_WEIGHT_RUN=${nonce}`;
+      /** argc, then NUL-joined `text` exactly as given (no added NULs). */
+      const block = (argc: number, text: string) => {
+        const head = Buffer.alloc(4);
+        head.writeInt32LE(argc);
+        return Buffer.concat([head, Buffer.from(text, 'binary')]);
+      };
+      const argmax = Number(
+        spawnSync('sysctl', ['-n', 'kern.argmax'], { encoding: 'utf8' }).stdout,
+      );
+      const cases = new Map<number, Buffer>([
+        // Well formed: path, padding, one argument, one entry, terminator.
+        [1, block(1, `/bin/x\0\0\0x\0${entry}\0\0`)],
+        // The reviewer's cases: a negative argc moved the argument into the
+        // environment; an unterminated final entry; a huge argc.
+        [2, block(-1, `/bin/x\0${entry}\0\0`)],
+        [3, block(0, `/bin/x\0${entry}`)],
+        [4, block(0x7fffffff, `/bin/x\0x\0${entry}\0\0`)],
+        // argc larger than the arguments present, within the bound.
+        [5, block(3, `/bin/x\0x\0${entry}`)],
+        // An unterminated executable path.
+        [6, block(0, '/bin/x')],
+        // Past kern.argmax by one byte (4 of them are argc).
+        [7, block(0, `/bin/x\0${entry}\0\0`.padEnd(argmax - 3, '\0'))],
+      ]);
+
+      test('accepts a well-formed block and refuses each malformed one', () => {
+        const parsed = darwinProcessArguments([], undefined, {
+          blocks: cases,
+        });
+        expect(parsed.get(1)).toEqual({
+          startedUs: 0,
+          argv: ['x'],
+          env: [entry],
+        });
+        expect(
+          Object.fromEntries(
+            [2, 3, 4, 5, 6, 7].map((pid) => [pid, parsed.get(pid)]),
+          ),
+        ).toEqual({
+          2: { malformed: expect.stringMatching(/^argc -1 /) },
+          3: { malformed: 'unterminated environment entry 0' },
+          4: { malformed: expect.stringMatching(/^argc 2147483647 /) },
+          5: { malformed: 'unterminated argument 1 of 3' },
+          6: { malformed: 'unterminated executable path' },
+          7: { malformed: `size ${argmax + 1} outside 4..${argmax}` },
+        });
+      });
+
+      test('a malformed block is never tagged and is counted as a read failure', () => {
+        const rows = [...cases.keys()].map((pid) => ({
+          pid,
+          ppid: 1,
+          uid: tagging.uid,
+          rssBytes: 0,
+          cpuSeconds: 0,
+          started: `born-${pid}`,
+          // The parse mode answers startedUs 0: the epoch second.
+          startedAtMs: 0,
+          command: `p${pid}`,
+        }));
+        const readFailures: Array<{
+          pid: number;
+          started: string;
+          command: string;
+          reason: string;
+        }> = [];
+        const tagged = taggedRows(
+          rows,
+          { ...tagging, notBeforeMs: -2_000 },
+          {
+            platform: 'darwin',
+            readArguments: (pids, run) =>
+              darwinProcessArguments(pids, run, { blocks: cases }),
+            readFailures,
+          },
+        );
+        // Only the well-formed block carries the entry.
+        expect(tagged.map((row) => [row.pid, row.tag])).toEqual([[1, 'nonce']]);
+        expect(readFailures.map((failure) => failure.pid)).toEqual([
+          2, 3, 4, 5, 6, 7,
+        ]);
+      });
     },
   );
 
@@ -504,6 +658,59 @@ describe.skipIf(!posix)('station-weight launcher capture', () => {
     await expect(
       node(`process.stdout.write('x'.repeat(4096))`, 1024),
     ).rejects.toThrow(/past the 1024-byte capture bound/);
+  });
+
+  /**
+   * A launcher that starts an untagged grandchild in its own process group,
+   * writes the grandchild's pid to `pidFile`, then either idles or exits.
+   * The grandchild holds the launcher's output open.
+   */
+  const launcherWithGrandchild = (pidFile: string, exitAtOnce: boolean) =>
+    `const { spawn } = require('node:child_process');
+     const grandchild = spawn(process.execPath, ['-e', ${JSON.stringify(daemonSource())}], { stdio: 'inherit', env: {} });
+     require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(grandchild.pid));
+     ${exitAtOnce ? 'process.exit(0);' : 'setInterval(() => {}, 1000);'}`;
+
+  test('a launcher past its timeout has the process group it created killed, untagged members included', async () => {
+    const pidFile = join(makeTempDir('station-weight-launcher-'), 'pid');
+    await expect(
+      runLauncher(
+        process.execPath,
+        ['-e', launcherWithGrandchild(pidFile, false)],
+        {
+          env: process.env,
+          timeoutMs: 1_500,
+          killGraceMs: 5_000,
+        },
+      ),
+    ).rejects.toThrow(
+      /did not finish within 1500 ms; the run sent SIGKILL to the process group it created$/,
+    );
+    const grandchild = Number(readFileSync(pidFile, 'utf8'));
+    await wait(200);
+    expect(alive(grandchild)).toBe(false);
+  });
+
+  test('a launcher that already exited is not group-signalled on a timeout; what it left is reported', async () => {
+    const pidFile = join(makeTempDir('station-weight-launcher-'), 'pid');
+    await expect(
+      runLauncher(
+        process.execPath,
+        ['-e', launcherWithGrandchild(pidFile, true)],
+        {
+          env: process.env,
+          timeoutMs: 1_500,
+          killGraceMs: 500,
+        },
+      ),
+    ).rejects.toThrow(
+      /did not signal its process group: the launcher had already exited.*output was still open 500 ms later/,
+    );
+    // The group still exists (the grandchild is in it), but the run cannot
+    // prove its id was not reused, so it was left alone; it exits with the
+    // lease.
+    const grandchild = Number(readFileSync(pidFile, 'utf8'));
+    expect(alive(grandchild)).toBe(true);
   });
 
   test('refuses a launcher that did not run', async () => {
