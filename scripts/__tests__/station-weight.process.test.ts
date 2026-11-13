@@ -332,10 +332,14 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
       ...process.env,
       INNOCENT: `before STATION_WEIGHT_RUN=${nonce} after`,
     });
-    // Positive controls: genuine entries, one behind a 190,000-byte argument
-    // and one a HOME under the scratch root.
+    // Positive controls: genuine entries, one behind 190,000 bytes of arguments
+    // and one a HOME under the scratch root. The arguments are two strings
+    // because Linux refuses any single one over 128 KiB (MAX_ARG_STRLEN).
     const genuine = start(idle, tagged);
-    const longArgument = start(idle, tagged, ['x'.repeat(190_000)]);
+    const longArgument = start(idle, tagged, [
+      'x'.repeat(95_000),
+      'y'.repeat(95_000),
+    ]);
     const nestedHome = start(idle, {
       ...process.env,
       HOME: `${scratch}/user/nested`,
