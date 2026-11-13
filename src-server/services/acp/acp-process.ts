@@ -108,6 +108,8 @@ export interface ACPProcessOptions {
    * short-lived sign-in process sets it, to show links the engine prints.
    */
   onStderr?: (text: string) => void;
+  /** Called once the piped stderr has ended (only with `onStderr`). */
+  onStderrEnd?: () => void;
   terminateProcess?: (proc: ChildProcess) => Promise<void>;
   resolveCommand?: (command: string) => Promise<string | null>;
   /**
@@ -482,6 +484,8 @@ export class ACPProcess extends EventEmitter {
       proc.stderr?.setEncoding('utf8');
       proc.stderr?.on('data', (chunk: string) => onStderr(chunk));
       proc.stderr?.on('error', () => undefined);
+      const onStderrEnd = this.opts.onStderrEnd;
+      if (onStderrEnd) proc.stderr?.once('close', () => onStderrEnd());
     }
     // Kept independently of `proc`, which destroy() nulls: this is the only
     // thing left to ask the kernel about afterwards (archive#3422).

@@ -786,6 +786,19 @@ in: some engines refuse only at the first prompt. An `auth_required` refusal
 engine's sign-in panel but never gate readiness, because only a later answered
 prompt clears a refusal.
 
+Some engines refuse to start at all when signed out: Kiro CLI prints "Not
+logged in. … run `kiro-cli login` first." on stderr and exits before
+answering `initialize`, so it never handshakes and never appears as an Agent.
+The probe and a chat launch pipe the engine's stderr (still passed through to
+Station's own) and, when the connection closes before `initialize` is
+answered, wait up to half a second for stderr to end. The failure then quotes
+the engine's last non-empty stderr line: "Kiro CLI stopped before it finished
+starting. It said: …" instead of "closed the connection". When that line
+contains the built-in descriptor's `statusRule.signedOutText`, it is recorded
+as a sign-in refusal like `auth_required`, and a chat start fails with
+`engine-sign-in-required`
+([probe-messages.ts](../../src-server/services/acp/probe-messages.ts)).
+
 The sign-in handshake is a separate short-lived process that advertises
 `clientCapabilities.auth.terminal`, so an engine may list `type: "terminal"`
 methods; their `args` and `env` stay on the server. A terminal method is never

@@ -67,6 +67,7 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
 import { TURN_ENGINE_DISPLAY_NAME_METADATA_KEY } from '@kontourai/station-contracts/turn-provenance';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
 import {
   delegatedApprovalDenial,
@@ -106,6 +107,7 @@ import {
   engineStatusCheckable,
   isAcpAuthRequired,
   recordEngineSignInRefused,
+  stderrSaysSignedOut,
 } from '../../services/acp/engine-auth-status.js';
 import { engineCredentialEnvFor } from '../../services/acp/engine-credentials.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
@@ -124,6 +126,11 @@ import {
   openCodeEditNeedsPerson,
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
+import {
+  createStderrTail,
+  engineFacingProbeMessage,
+  STDERR_SETTLE_MS,
+} from '../../services/acp/probe-messages.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
   commitEngineLaunch,
@@ -1305,6 +1312,8 @@ export class AcpAdapter implements ProviderAdapterShape {
     // Resolved once: a relaunch onto another approval floor keeps the same
     // session directory.
     const tmpDir = engineSessionTmpDir(input.threadId);
+    // Shared by relaunches: the start's failure quotes whichever launch spoke last.
+    const stderrTail = createStderrTail();
     const launchProcess = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
@@ -1340,6 +1349,13 @@ export class AcpAdapter implements ProviderAdapterShape {
             logger,
           }),
         logger,
+        // Piped rather than inherited so a start that dies can quote the
+        // engine; still passed through to Station's own stderr as before.
+        onStderr: (chunk: string) => {
+          stderrTail.push(chunk);
+          globalThis.process.stderr.write(chunk);
+        },
+        onStderrEnd: stderrTail.end,
       });
     // chat-host-images: an engine that exits on its own publishes no
     // session.exited, so the launch's temp root is released when that
@@ -2108,13 +2124,33 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (caught) {
       // The engine's own "not signed in" answer is a refusal with a typed
       // code, so a surface can say "sign in" instead of showing raw text.
-      if (isAcpAuthRequired(caught)) recordEngineSignInRefused(config);
-      const error = isAcpAuthRequired(caught)
+      const closedBeforeStart =
+        errorMessage(caught) === 'ACP connection closed';
+      if (closedBeforeStart) await stderrTail.settled(STDERR_SETTLE_MS);
+      const lastStderrLine = stderrTail.lastLine();
+      // Kiro CLI signed out never sends `auth_required`: it prints its
+      // vendor's signed-out text and exits before answering `initialize`.
+      const signedOutOnStderr =
+        closedBeforeStart && stderrSaysSignedOut(config, lastStderrLine);
+      const signInRequired = isAcpAuthRequired(caught) || signedOutOnStderr;
+      if (signInRequired) recordEngineSignInRefused(config);
+      const error = signInRequired
         ? new SessionStartRefusedError(
-            `${config.name} needs you to sign in before it can start a chat. ${errorMessage(caught)}`,
+            `${config.name} needs you to sign in before it can start a chat. ${
+              signedOutOnStderr
+                ? redactSecrets(lastStderrLine ?? '')
+                : errorMessage(caught)
+            }`,
             ENGINE_SIGN_IN_REQUIRED_CODE,
           )
-        : caught;
+        : closedBeforeStart && lastStderrLine
+          ? new Error(
+              redactSecrets(
+                engineFacingProbeMessage(caught, config, lastStderrLine),
+              ),
+              { cause: caught },
+            )
+          : caught;
       record.startFailure = error;
       // A Stop that landed while `session/new` was in flight ends the start
       // as a stop whatever the engine then said: the user asked for it, so a

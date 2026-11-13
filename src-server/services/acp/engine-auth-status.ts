@@ -158,6 +158,26 @@ export function resetEngineAuthStatus(): void {
   engineEvidence.clear();
 }
 
+/**
+ * Whether an engine's own last words before it stopped are its vendor's
+ * documented signed-out text: the descriptor's `statusRule.signedOutText`,
+ * the same fragments its status command is read by. Kiro CLI signed out
+ * refuses to start with "Not logged in. … run `kiro-cli login` first." on
+ * stderr rather than an ACP `auth_required`, so this is the only refusal it
+ * gives. An engine with no declared text never matches.
+ */
+export function stderrSaysSignedOut(
+  connection: ConnectionLike,
+  line: string | undefined,
+): boolean {
+  if (!line) return false;
+  const fragments = registryAuthFor(connection)?.auth.statusRule?.signedOutText;
+  const lower = line.toLowerCase();
+  return (fragments ?? []).some((fragment) =>
+    lower.includes(fragment.toLowerCase()),
+  );
+}
+
 /** The engine refused a chat because it needs a sign-in. */
 export function recordEngineSignInRefused(connection: ConnectionLike): void {
   engineEvidence.set(connection.id, {
