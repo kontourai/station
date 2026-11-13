@@ -1,0 +1,7 @@
+{
+  "revision": "1c249eec27300e9057925878365f300c210eab54",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Added engines/ to the update-backup and home-backup exclusion lists, verified against STATION_HOME_ROOTS (engines: external) and STATION_HOME_EXTERNAL_PATHS; other listed exclusions unchanged.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}
