@@ -146,7 +146,11 @@ test('in-app changelogs omit installation instructions but retain later change s
 
 const legacyBody =
   "Portable server Nightly 0.1.11-nightly.2026111300 from 76c30c3b8dbaf4b36795ec4b0ed73902b3674509. Install with: curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh (this release's install.sh and install.ps1 are the installers at 76c30c3b8dbaf4b36795ec4b0ed73902b3674509). These assets are immutable.";
-test.each(['\n\n## Installation\n\nInstall fixture\n', legacyBody])(
+test.each([
+  '\n\n## Installation\n\nInstall fixture\n',
+  legacyBody,
+  'Portable server Nightly 0.1.11-nightly.247504 from f5e21369361e6edf855dc9a2671f68aa3473556f. Install through the signed rolling manifest (portable-nightly); these assets are immutable.',
+])(
   'install-only published bodies show the missing changelog state: %s',
   async (body) => {
     vi.stubGlobal(
@@ -177,3 +181,31 @@ test('legacy stripping preserves ordinary installation discussion', async () => 
     ),
   ).toBeTruthy();
 });
+
+test.each([false, true])(
+  'long notes show fifty entries and a full release link (fallback=%s)',
+  async (fallback) => {
+    const body =
+      '## What Changed\n' +
+      Array.from({ length: 2000 }, (_, i) => `- Entry ${i + 1}`).join('\n');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fallback
+          ? new Response('', { status: 404 })
+          : Response.json(release('v0.1.11', body)),
+      ),
+    );
+    mount(
+      <ReleaseNotes version="0.1.11" notes={fallback ? body : undefined} />,
+    );
+    await screen.findByText('Entry 50');
+    expect(screen.queryByText('Entry 51')).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(50);
+    expect(
+      screen
+        .getByRole('link', { name: 'See all changes' })
+        .getAttribute('href'),
+    ).toBe('https://github.com/kontourai/station/releases/tag/v0.1.11');
+  },
+);

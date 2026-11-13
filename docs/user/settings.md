@@ -296,6 +296,7 @@ The circle around the sidebar update icon fills as a download progresses.
 After an app or connected-server upgrade, its changelog opens once on this device.
 A browser served by the updated server shows one popup for that upgrade.
 In-app changelogs omit installation instructions; those remain on GitHub.
+Long lists show the first 50 changes. **See all changes** opens the full release.
 Server versions are remembered separately for each server. To turn that
 off, clear **Show changelog after updates** in the dialog, Updates, or
 **Settings → System**. Release history stays available. The first launch on a

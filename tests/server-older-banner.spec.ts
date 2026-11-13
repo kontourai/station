@@ -180,13 +180,19 @@ const VIEWPORTS = {
   phone: { width: 390, height: 844 },
 } as const;
 
-async function installReleaseFixtures(page: Page) {
+async function installReleaseFixtures(page: Page, longNotes = false) {
   const history = [
     {
       tag_name: 'v0.1.11-nightly.246500',
       name: 'Available server release',
       draft: false,
-      body: '- Available server improvements.',
+      body: longNotes
+        ? '## What Changed\n' +
+          Array.from(
+            { length: 2000 },
+            (_, i) => `- Release improvement ${i + 1}`,
+          ).join('\n')
+        : '- Available server improvements.',
     },
     {
       tag_name: 'v0.1.11-nightly.246303',
@@ -223,7 +229,7 @@ async function mount(
   scenario: 'update' | 'manual',
   scene = 'updates',
 ) {
-  await installReleaseFixtures(page);
+  await installReleaseFixtures(page, scene === 'long-notes');
   await page.setViewportSize(VIEWPORTS[viewport]);
   await page.setContent(
     `<!doctype html><html data-theme="${theme}"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
@@ -521,6 +527,44 @@ for (const theme of ['light', 'dark'] as const) {
       await page.screenshot({
         path: testInfo.outputPath(`install-only-${theme}-${viewport}.png`),
       });
+    });
+  }
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const viewport of ['desktop', 'phone', 'ownerPhone'] as const) {
+    test(`long changelog is bounded (${theme}, ${viewport})`, async ({
+      page,
+    }, testInfo) => {
+      await mount(page, theme, viewport, 'update', 'long-notes');
+      await page
+        .getByRole('button', { name: 'Review updates', exact: true })
+        .click();
+      await expect(
+        page.getByText('Release improvement 50', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Release improvement 51', { exact: true }),
+      ).toHaveCount(0);
+      const all = page.getByRole('link', {
+        name: 'See all changes',
+        exact: true,
+      });
+      await expect(all).toHaveAttribute(
+        'href',
+        'https://github.com/kontourai/station/releases/tag/v0.1.11-nightly.246500',
+      );
+      await all.scrollIntoViewIfNeeded();
+      await expect(all).toBeVisible();
+      await expectNoHorizontalScroll(page);
+      const path = testInfo.outputPath(`long-notes-${theme}-${viewport}.png`);
+      await page.screenshot({ path });
+      const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e');
+      mkdirSync(retained, { recursive: true });
+      copyFileSync(
+        path,
+        resolve(retained, `long-notes-${theme}-${viewport}.png`),
+      );
     });
   }
 }

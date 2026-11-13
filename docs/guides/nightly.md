@@ -316,7 +316,8 @@ preference; the app prompt appears first if both are pending. Browser clients
 suppress the server popup when it shares the bundle version or origin.
 In-app changelogs omit the Installation section and the legacy install-only
 Nightly template; GitHub retains them. An install-only body shows **Release
-notes unavailable**.
+notes unavailable**. In-app lists show the first 50 changes, with **See all
+changes** linking to the versioned release.
 
 Nightly desktop planning generates GitHub release notes from the previous
 `nightly-desktop` source to the planned source. The generated notes travel
@@ -331,17 +332,22 @@ Earlier Nightlies without a versioned changelog are not reconstructed.
 Portable server Nightly publication and stable/preview draft assembly generate
 notes against a previous published server `v*` tag, keeping install instructions.
 They select the highest older version in the same release channel. A new
-channel falls back to the highest release from a preceding base version, not
-its own prerelease. If no preceding Release exists, it uses the highest older
-plain version git tag. Desktop and rolling tags are excluded. The generator
-refuses absent predecessors, moved tags, identical source bounds and notes
-containing only a comparison link. Comparison links retain commit bounds.
+channel falls back to the highest older version across preceding-base Releases
+and plain stable git tags. Desktop and rolling tags are excluded. Moved tags
+stop publication. Missing predecessors or source commits, identical source bounds,
+and empty change notes are availability failures for Nightly: publication warns
+with the reason and retains installation instructions alone. Stable and preview
+still refuse missing predecessors, but identical sources or empty changes produce
+a clear “No changes since” line. Comparison links retain commit bounds.
+Generated notes retain at most 100 entries and stay below 50,000 characters,
+leaving room for installation instructions. Truncated bodies report the omitted
+change count and keep a full comparison link.
+
 Reads and note generation retry transient API failures once, honoring
-Retry-After up to 30 seconds (otherwise a short backoff). After an availability
-failure, Nightly warns with the error and publishes installation instructions
-alone. Configuration and invalid-history errors stop all channels; stable and preview
-draft assembly stop so reviewed releases retain their changelog. This source wiring does not qualify an end-to-end
-publication, and existing release bodies are not rewritten.
+Retry-After or the rate-limit reset time up to 30 seconds (otherwise a short
+backoff). Configuration and invalid-history errors stop all channels.
+Stable and preview also stop on API availability errors. This source wiring does
+not qualify an end-to-end publication, and existing release bodies are not rewritten.
 
 Archive publication checks the Git tag reference before resolving its commit:
 GitHub's commit endpoint returns HTTP 422 for a missing tag. An existing tag

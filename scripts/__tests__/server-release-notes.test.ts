@@ -74,3 +74,94 @@ test.each(['token', 'tag', 'permission'])(
     expect(writeFileSync).not.toHaveBeenCalled();
   },
 );
+
+test.each(['missing', 'self', 'empty', 'compare-only'])(
+  'Nightly falls back with a reason for %s content',
+  async (mode) => {
+    vi.resetModules();
+    vi.mocked(writeFileSync).mockClear();
+    vi.stubEnv('GITHUB_REPOSITORY', 'kontourai/station');
+    vi.stubEnv('GH_TOKEN', 'fixture-token');
+    process.argv = [
+      'node',
+      'server-release-notes.mjs',
+      'v0.1.11-nightly.2',
+      'a'.repeat(40),
+      '/fixture/notes.md',
+      'Install fixture',
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/releases?'))
+          return Response.json(
+            mode === 'missing' ? [] : [{ tag_name: 'v0.1.11-nightly.1' }],
+          );
+        if (url.includes('/tags?')) return Response.json([]);
+        if (url.includes('/commits/'))
+          return Response.json({
+            sha: (mode === 'self' ? 'a' : 'b').repeat(40),
+          });
+        if (url.endsWith('/generate-notes'))
+          return Response.json({
+            body:
+              mode === 'empty'
+                ? ''
+                : '## What Changed\n**Full Changelog**: https://github.com/a/b/compare/a...b',
+          });
+        throw new Error(url);
+      }),
+    );
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await import('../server-release-notes.mjs');
+    expect(writeFileSync).toHaveBeenCalledExactlyOnceWith(
+      '/fixture/notes.md',
+      '\n\n## Installation\n\nInstall fixture\n',
+    );
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        mode === 'missing'
+          ? 'Previous server release is unavailable'
+          : 'No changes since v0.1.11-nightly.1.',
+      ),
+    );
+  },
+);
+
+test('the server CLI keeps installation beneath an oversized generated changelog', async () => {
+  vi.resetModules();
+  vi.mocked(writeFileSync).mockClear();
+  vi.stubEnv('GITHUB_REPOSITORY', 'kontourai/station');
+  vi.stubEnv('GH_TOKEN', 'fixture-token');
+  process.argv = [
+    'node',
+    'server-release-notes.mjs',
+    'v0.1.11',
+    'a'.repeat(40),
+    '/fixture/notes.md',
+    'Install fixture',
+  ];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.includes('/releases?'))
+        return Response.json([{ tag_name: 'v0.1.10' }]);
+      if (url.includes('/commits/'))
+        return Response.json({ sha: 'b'.repeat(40) });
+      if (url.endsWith('/generate-notes'))
+        return Response.json({
+          body:
+            '## What Changed\n' +
+            ('* Change ' + 'x'.repeat(200) + '\n').repeat(2000),
+        });
+      throw new Error(url);
+    }),
+  );
+  await import('../server-release-notes.mjs');
+  const body = vi.mocked(writeFileSync).mock.calls[0][1] as string;
+  expect(body.length).toBeLessThan(60000);
+  expect(body).toContain('1900 changes omitted.');
+  expect(body).toContain('## What Changed');
+  expect(body).toContain('/compare/' + 'b'.repeat(40) + '...' + 'a'.repeat(40));
+  expect(body).toContain('## Installation\n\nInstall fixture');
+});

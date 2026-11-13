@@ -48,9 +48,13 @@ function github(repository, token) {
       if (!retrySafe || attempt || !transient) break;
       const retryAfter = response.headers.get('retry-after');
       const seconds = retryAfter === null ? NaN : Number(retryAfter);
-      const requested = Number.isFinite(seconds)
-        ? seconds * 1000
-        : Date.parse(retryAfter ?? '') - Date.now();
+      const reset = response.headers.get('x-ratelimit-reset');
+      const requested =
+        retryAfter === null && reset !== null
+          ? Number(reset) * 1000 - Date.now()
+          : Number.isFinite(seconds)
+            ? seconds * 1000
+            : Date.parse(retryAfter ?? '') - Date.now();
       const delay = Number.isFinite(requested)
         ? Math.min(30_000, Math.max(0, requested))
         : 250;
@@ -101,6 +105,21 @@ function github(repository, token) {
   };
 }
 
+// Leave room for the CLI's installation section beneath GitHub's 125k limit.
+function boundedNotes(body, compareUrl) {
+  const entries = [...body.matchAll(/^(?:[-*+] |\d+\. )/gm)];
+  if (body.length <= 50_000 && entries.length <= 100) return body;
+  const cutoff = Math.min(49_000, entries[100]?.index ?? body.length);
+  const prefix = body.slice(0, cutoff);
+  const kept = prefix.slice(0, prefix.lastIndexOf('\n')).trim();
+  const shown = [...kept.matchAll(/^(?:[-*+] |\d+\. )/gm)].length;
+  return `${kept || '## What Changed'}\n\n${entries.length - shown} changes omitted.\n\n**Full changelog**: ${compareUrl}`;
+}
+
+function unavailable(message) {
+  return Object.assign(new Error(message), { releaseNotesUnavailable: true });
+}
+
 export async function generateDesktopReleaseNotes({ plan, repository, token }) {
   const { tag, source } = identity(plan);
   const api = github(repository, token);
@@ -118,9 +137,12 @@ export async function generateDesktopReleaseNotes({ plan, repository, token }) {
   if (typeof generated?.body !== 'string' || !generated.body.trim())
     throw new Error('GitHub generated no release notes');
   // The rolling marker moves on publication; retain a usable historical range.
-  return generated.body.replaceAll(
-    `/compare/nightly-desktop...${tag}`,
-    `/compare/${previous.sha}...${source}`,
+  return boundedNotes(
+    generated.body.replaceAll(
+      `/compare/nightly-desktop...${tag}`,
+      `/compare/${previous.sha}...${source}`,
+    ),
+    `https://github.com/${repository}/compare/${previous.sha}...${source}`,
   );
 }
 
@@ -265,9 +287,9 @@ export async function generateServerReleaseNotes({
     }
     if (releases.length < 100) break;
   }
-  previous ??= fallback;
-  // Older stable versions may exist only as git tags, without a Release.
+  // Combine Release-derived fallback and plain stable tags before choosing.
   if (!previous) {
+    previous = fallback;
     for (let page = 1; ; page++) {
       const tags = await api(`/tags?per_page=100&page=${page}`);
       if (!Array.isArray(tags)) throw new Error('Invalid tag history');
@@ -283,13 +305,17 @@ export async function generateServerReleaseNotes({
       if (tags.length < 100) break;
     }
   }
-  if (!previous) throw new Error('Previous server release is unavailable');
+  if (!previous) throw unavailable('Previous server release is unavailable');
   const priorTag = previous.tag_name;
   const before = await api(`/commits/${priorTag}`);
   if (!/^[a-f0-9]{40}$/.test(before?.sha ?? ''))
-    throw new Error('Previous server source is unavailable');
-  if (before.sha === source)
-    throw new Error('Server release would compare its source to itself');
+    throw unavailable('Previous server source is unavailable');
+  const noChanges = () => {
+    const message = `No changes since ${priorTag}.`;
+    if (ring === 'nightly') throw unavailable(message);
+    return message;
+  };
+  if (before.sha === source) return noChanges();
   const generated = await api('/releases/generate-notes', {
     tag_name: tag,
     target_commitish: source,
@@ -299,14 +325,17 @@ export async function generateServerReleaseNotes({
   if (after?.sha !== before.sha)
     throw new Error('Server release moved while generating notes');
   if (typeof generated?.body !== 'string' || !generated.body.trim())
-    throw new Error('GitHub generated no release notes');
+    return noChanges();
   const changes = generated.body
     .replace(/^.*(?:Full Changelog|\/compare\/).*$/gm, '')
     .replace(/^#+.*$/gm, '')
     .trim();
-  if (!changes) throw new Error('GitHub generated no change notes');
-  return generated.body.replaceAll(
-    `/compare/${priorTag}...${tag}`,
-    `/compare/${before.sha}...${source}`,
+  if (!changes) return noChanges();
+  return boundedNotes(
+    generated.body.replaceAll(
+      `/compare/${priorTag}...${tag}`,
+      `/compare/${before.sha}...${source}`,
+    ),
+    `https://github.com/${repository}/compare/${before.sha}...${source}`,
   );
 }

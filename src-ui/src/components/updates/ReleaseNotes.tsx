@@ -22,11 +22,18 @@ function changelogBody(body: string) {
         /^Portable server Nightly (\d+\.\d+\.\d+-nightly\.\d+(?:\.\d+)?) from ([a-f0-9]{40})\. Install with: curl -fsSL https:\/\/raw\.githubusercontent\.com\/kontourai\/station\/main\/install\.sh \| STATION_CHANNEL=nightly sh \(this release's install\.sh and install\.ps1 are the installers at \2\)\. These assets are immutable\.\s*$/,
         '',
       )
+      .replace(
+        /^Portable server Nightly \d+\.\d+\.\d+-nightly\.\d+(?:\.\d+)? from [a-f0-9]{40}\. Install through the signed rolling manifest \(portable-nightly\); these assets are immutable\.\s*$/,
+        '',
+      )
       .trim()
   );
 }
 
-function NotesBody({ body }: { body: string }) {
+function NotesBody({ body, url }: { body: string; url: string }) {
+  const entries = [...body.matchAll(/^(?:[-*+] |\d+\. )/gm)];
+  const truncated = entries.length > 50;
+  const visible = truncated ? body.slice(0, entries[50].index).trim() : body;
   return (
     <div className="release-notes__body">
       <ReactMarkdown
@@ -47,8 +54,13 @@ function NotesBody({ body }: { body: string }) {
           img: ({ alt }) => <span>{alt}</span>,
         }}
       >
-        {body}
+        {visible}
       </ReactMarkdown>
+      {truncated && (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          See all changes
+        </a>
+      )}
     </div>
   );
 }
@@ -77,7 +89,7 @@ function PublishedNotes({
   const body = changelogBody(release.body);
   return (
     <article className="content-stack">
-      {body ? <NotesBody body={body} /> : <MissingNotes />}
+      {body ? <NotesBody body={body} url={release.url} /> : <MissingNotes />}
       <footer className="release-notes__links">
         <a href={release.url} target="_blank" rel="noopener noreferrer">
           View this release on GitHub
@@ -139,7 +151,12 @@ export function ReleaseNotes({
             <PublishedNotes release={query.data} />
           ) : (
             <>
-              {fallback && <NotesBody body={fallback} />}
+              {fallback && (
+                <NotesBody
+                  body={fallback}
+                  url={`${STATION_RELEASE_HISTORY_URL}/tag/${nativeApp && version.includes('-nightly.') ? 'desktop-' : ''}v${encodeURIComponent(version)}`}
+                />
+              )}
               {query.isFetching && !fallback && (
                 <SkeletonBlock count={1} label="Loading release notes" />
               )}
