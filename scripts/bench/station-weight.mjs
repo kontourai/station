@@ -113,39 +113,85 @@ const lstartToken = ([weekday, month, day, clock, year]) =>
   `${weekday} ${month} ${day.padStart(2, ' ')} ${clock} ${year}`;
 
 /**
+ * Linux identity and CPU from `/proc/<pid>/stat`: the birth token in the
+ * format `lookupProcessBirthFingerprint` and the instance record use
+ * (`linux:<boot id>:<start ticks>`), and utime + stime in seconds. procps
+ * prints `time` in whole seconds, which rounds a quiet tree's CPU to zero.
+ * `null` once the process has exited.
+ */
+export function linuxProcStat(pid, { readFile = readFileSync, bootId, hz }) {
+  try {
+    const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
+    const fields = stat
+      .slice(stat.lastIndexOf(')') + 1)
+      .trim()
+      .split(/\s+/);
+    const [utime, stime, startTime] = [fields[11], fields[12], fields[19]];
+    if (![utime, stime, startTime].every((field) => /^\d+$/.test(field ?? '')))
+      return null;
+    return {
+      started: `linux:${bootId}:${startTime}`,
+      cpuSeconds: (Number(utime) + Number(stime)) / hz,
+    };
+  } catch {
+    return null;
+  }
+}
+
+let clockTicks;
+const linuxClockTicks = () => {
+  clockTicks ??= Number(
+    execFileSyncBounded('getconf', ['CLK_TCK'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim(),
+  );
+  assert(Number.isInteger(clockTicks) && clockTicks > 0, 'getconf CLK_TCK');
+  return clockTicks;
+};
+
+/**
  * One `ps` snapshot. `started` is the process birth token in the format the
  * instance record and `lookupProcessBirthFingerprint` use (pinned lstart on
  * macOS, `/proc` start ticks plus boot id on Linux), so pid plus `started` is
  * the process identity and a reused pid is never mistaken for the same one.
+ * On Linux, CPU comes from `/proc` too (see linuxProcStat).
  */
 export function processTable(
   run = execFileSyncBounded,
-  { platform: platformName = process.platform, birth } = {},
+  { platform: platformName = process.platform, procStat } = {},
 ) {
   const text = run('ps', ['-A', '-o', 'pid=,ppid=,rss=,time=,lstart=,comm='], {
     encoding: 'utf8',
     windowsHide: true,
     env: PS_ENV,
   });
-  const linuxBirth =
-    birth ??
-    ((pid) => lookupProcessBirthFingerprint(pid, { platform: 'linux' }));
+  let readStat = procStat;
+  if (platformName === 'linux' && !readStat) {
+    const context = {
+      bootId: readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(),
+      hz: linuxClockTicks(),
+    };
+    readStat = (pid) => linuxProcStat(pid, context);
+  }
   const rows = [];
   for (const line of text.split('\n')) {
     const parts = line.trim().split(/\s+/);
     if (parts.length < 10) continue;
     const [pid, ppid, rss, time, ...rest] = parts;
-    const started =
-      platformName === 'linux'
-        ? linuxBirth(Number(pid))
-        : lstartToken(rest.slice(0, 5));
-    // A Linux process that exited before its birth was read is gone.
-    if (!started) continue;
+    let started = lstartToken(rest.slice(0, 5));
+    let cpuSeconds = parseCpuTime(time);
+    if (platformName === 'linux') {
+      const stat = readStat(Number(pid));
+      // A Linux process that exited before its stat was read is gone.
+      if (!stat) continue;
+      ({ started, cpuSeconds } = stat);
+    }
     rows.push({
       pid: Number(pid),
       ppid: Number(ppid),
       rssBytes: Number(rss) * 1024,
-      cpuSeconds: parseCpuTime(time),
+      cpuSeconds,
       started,
       command: basename(rest.slice(5).join(' ')),
     });

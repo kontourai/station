@@ -7,6 +7,7 @@ import {
   hostFingerprintInputs,
   IDLE_CPU_GAP,
   idleCpuMetric,
+  linuxProcStat,
   ownedTree,
   parseFootprint,
   processTable,
@@ -681,6 +682,33 @@ describe('station-weight process identity', () => {
     );
     expect(killed).toEqual([8]);
     expect(outcome).toEqual({ signalled: [8], skipped: [7] });
+  });
+
+  test('Linux identity and CPU come from /proc, not the whole-second ps time', () => {
+    // utime 37 + stime 14 ticks at 100 Hz, start tick 123456 (fields 14, 15, 22).
+    const stat =
+      '4242 (node worker) S 1 4242 4242 0 -1 4194560 100 0 0 0 37 14 0 0 20 0 11 0 123456 1000 200';
+    expect(
+      linuxProcStat(4242, { readFile: () => stat, bootId: 'boot', hz: 100 }),
+    ).toEqual({ started: 'linux:boot:123456', cpuSeconds: 0.51 });
+    const table = processTable(
+      () =>
+        '  4242     1  2048 00:00:00 Mon Nov  2 08:05:09 2026 node\n  4243     1  2048 00:00:00 Mon Nov  2 08:05:09 2026 gone\n',
+      {
+        platform: 'linux',
+        procStat: (pid: number) =>
+          pid === 4242
+            ? { started: 'linux:boot:123456', cpuSeconds: 0.51 }
+            : null,
+      },
+    );
+    expect(table).toEqual([
+      expect.objectContaining({
+        pid: 4242,
+        started: 'linux:boot:123456',
+        cpuSeconds: 0.51,
+      }),
+    ]);
   });
 
   test('macOS birth tokens keep lstart day padding, matching the instance record', () => {

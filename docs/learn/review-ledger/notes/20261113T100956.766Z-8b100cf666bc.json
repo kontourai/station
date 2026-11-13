@@ -1,0 +1,7 @@
+{
+  "revision": "5f1eae7495c1da2cd13ffdb9055ee36f28d1dc09",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked against the vitest-resource-manifest change: it adds a station-weight process-heavy test file only; this document's process-heavy claim names turn-retention.process.test.ts, which is unchanged and still classified process-heavy.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
