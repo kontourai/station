@@ -5,6 +5,7 @@ import { contentImpact, readContentManifest } from '@kontourai/corpus/content';
 import {
   compileStationDocs,
   STATION_DOCS_INPUT_PATHS,
+  STATION_DOCS_TOPIC_INPUT_PATHS,
 } from './generate-station-docs.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
@@ -220,7 +221,10 @@ export function readDocumentationImpact({
     ? historicalLedgers(root, ledgerRevisionsSince(root, mergeBase))
     : [];
   ledgers.push(readReviewState(root).ledger);
-  const [manual, catalog, modules, atlas] = STATION_DOCS_INPUT_PATHS.map(read);
+  // Only the topic sources: impact maps changed files to topic ids and never
+  // needs the bundle, so it does not read corpus.json.
+  const [manual, catalog, modules, atlas] =
+    STATION_DOCS_TOPIC_INPUT_PATHS.map(read);
   const topics = compileStationDocs(
     manual,
     JSON.parse(catalog),

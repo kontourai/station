@@ -526,6 +526,20 @@ describe('documentation impact', () => {
       readDocumentationImpact({ root, changedPaths: ['code.ts'] }),
     ).toThrow();
   });
+  it('maps topics without reading corpus.json, yet still asks to regenerate the bundle when corpus.json changes', () => {
+    // #4831: corpus.json feeds the shipped bundle's identity and synonyms,
+    // not its topics. This fixture has no corpus.json, as most repositories
+    // impact runs on do not need one.
+    const { root } = fixture();
+    const regenerate =
+      'Regenerate shipped MCP topics with npm run docs:mcp:generate after reviewing the canonical inputs.';
+    expect(
+      readDocumentationImpact({ root, changedPaths: ['corpus.json'] }).actions,
+    ).toContain(regenerate);
+    expect(
+      readDocumentationImpact({ root, changedPaths: ['code.ts'] }).actions,
+    ).not.toContain(regenerate);
+  });
   it('runs the real CLI catch-up against changed code without editing evidence', () => {
     const { root, write } = fixture();
     const before = ledgerFiles(root);

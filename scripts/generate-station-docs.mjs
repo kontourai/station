@@ -15,12 +15,23 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputPath = 'src-server/tools/station-docs-content.ts';
 
-export const STATION_DOCS_INPUT_PATHS = Object.freeze([
+/**
+ * The sources compileStationDocs reads, in its argument order. Callers that
+ * need only the topics (documentation-impact.mjs maps changed sources to topic
+ * ids) read these and nothing else.
+ */
+export const STATION_DOCS_TOPIC_INPUT_PATHS = Object.freeze([
   'docs/reference/station-docs.md',
   'docs/learn/mcp-topics.json',
   'docs/architecture/module-map.md',
   'docs/learn/atlas.json',
+]);
+
+/** Every input of the shipped bundle: a change to any of them means regenerating it. */
+export const STATION_DOCS_INPUT_PATHS = Object.freeze([
+  ...STATION_DOCS_TOPIC_INPUT_PATHS,
   // Bundle identity (product, title, purpose, builtOn) and search synonyms.
+  // Required: a bundle without it would ship without its identity.
   'corpus.json',
 ]);
 
@@ -115,9 +126,10 @@ export function compileStationDocs(manual, catalog, moduleSource, atlas) {
 
 async function readInputs() {
   const read = (file) => readFile(path.join(root, file), 'utf8');
-  const [manual, catalog, modules, atlas, manifest] = await Promise.all(
-    STATION_DOCS_INPUT_PATHS.map(read),
-  );
+  const [[manual, catalog, modules, atlas], manifest] = await Promise.all([
+    Promise.all(STATION_DOCS_TOPIC_INPUT_PATHS.map(read)),
+    read('corpus.json'),
+  ]);
   return {
     topics: compileStationDocs(
       manual,
