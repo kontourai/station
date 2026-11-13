@@ -190,7 +190,7 @@ class KeyboardImageIntakeTest {
     receive[view]!!(listOf(uri), ImageReadGrant { releases++ })
     executor.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS)
     shadowOf(Looper.getMainLooper()).idle()
-    assertTrue(scripts.any { it.contains(".deliver(") && it.contains("image/png") })
+    assertTrue(scripts.last() + " toast=" + org.robolectric.shadows.ShadowToast.getTextOfLatestToast(), scripts.any { it.contains(".deliver(") && it.contains("pasted-image-1.png") })
     assertEquals(2, releases)
     shadowOf(next.contentResolver).registerInputStream(uri, java.io.ByteArrayInputStream(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)))
     @Suppress("UNCHECKED_CAST")
@@ -199,7 +199,7 @@ class KeyboardImageIntakeTest {
     plugin.takeSharedImages(invoke)
     executor.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS)
     assertEquals(2, responses.size)
-    assertTrue(responses[1].contains("image/png"))
+    assertEquals("image/png", org.json.JSONObject(responses[1]).getJSONArray("files").getJSONObject(0).getString("mimeType"))
     KeyboardImageIntake.detached(view)
     KeyboardImageIntake.bind = null
   }

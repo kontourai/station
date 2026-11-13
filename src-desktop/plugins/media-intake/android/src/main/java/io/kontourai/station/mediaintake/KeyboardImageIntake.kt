@@ -86,6 +86,11 @@ object KeyboardImageIntake {
     object : ActionMode.Callback2() {
       private var eligible = false
       private var alive = true
+      private var imagePasteItem: MenuItem? = null
+      private fun removeImagePaste(menu: Menu) {
+        imagePasteItem?.let { if (menu.findItem(it.itemId) === it) menu.removeItem(it.itemId) }
+        imagePasteItem = null
+      }
       private fun isPaste(item: MenuItem) = item.itemId == android.R.id.paste ||
         item.title?.toString() == view.context.getString(android.R.string.paste)
       private fun offerImagePaste(mode: ActionMode, menu: Menu): Boolean {
@@ -94,14 +99,14 @@ object KeyboardImageIntake {
         view.evaluateJavascript("$bridge;window.__stationImagePaste?.eligible() === true") { result ->
           if (alive && eligible != (result == "true")) {
             eligible = result == "true"
-            if (!eligible) menu.removeItem(android.R.id.paste)
+            if (!eligible) removeImagePaste(menu)
             mode.invalidate()
           }
         }
         val clipboard = view.context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         if (!eligible || clipboard?.primaryClipDescription?.hasMimeType("image/*") != true) return false
         if ((0 until menu.size()).any { isPaste(menu.getItem(it)) }) return false
-        menu.add(Menu.NONE, android.R.id.paste, Menu.NONE, android.R.string.paste)
+        imagePasteItem = menu.add(Menu.NONE, android.R.id.paste, Menu.NONE, android.R.string.paste)
         return true
       }
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
