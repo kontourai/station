@@ -1186,8 +1186,10 @@ async function reportAuthenticated(
   // with status 200. That is not evidence that it accepted this credential.
   // Recovering here would re-key the authority gate before JSON parsing
   // rejects the page, repeating the startup/401/recovery cycle indefinitely.
+  // Custom `fetch` implementations may return response-like objects without
+  // headers; those carry no HTML evidence, so they keep the recovery path.
   const mediaType = response.headers
-    .get('content-type')
+    ?.get?.('content-type')
     ?.split(';')[0]
     ?.trim()
     .toLowerCase();
