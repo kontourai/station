@@ -2141,7 +2141,7 @@ describe('MCPToolUIFrame', () => {
               theme: 'dark',
               styles: expect.objectContaining({
                 variables: expect.objectContaining({
-                  '--color-background-primary': 'rgb(8, 16, 24)',
+                  '--color-background-primary': 'rgb(8,16,24)',
                 }),
               }),
             }),
@@ -2171,7 +2171,7 @@ describe('MCPToolUIFrame', () => {
       getComputedStyle(document.documentElement)
         .getPropertyValue('--bg-primary')
         .trim(),
-    ).toBe('rgb(255, 252, 241)');
+    ).toBe('rgb(255,252,241)');
     await waitFor(() =>
       expect(postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -2180,7 +2180,7 @@ describe('MCPToolUIFrame', () => {
             theme: 'light',
             styles: expect.objectContaining({
               variables: expect.objectContaining({
-                '--color-background-primary': 'rgb(255, 252, 241)',
+                '--color-background-primary': 'rgb(255,252,241)',
               }),
             }),
           }),
@@ -2225,7 +2225,7 @@ describe('MCPToolUIFrame', () => {
           params: expect.objectContaining({
             styles: expect.objectContaining({
               variables: expect.objectContaining({
-                '--color-background-primary': 'rgb(239, 241, 245)',
+                '--color-background-primary': 'rgb(239,241,245)',
               }),
             }),
           }),
