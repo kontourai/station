@@ -491,7 +491,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await expect(page.getByRole('option', { name: /alpha\.ts/ })).toBeVisible();
   await page.getByRole('option', { name: /alpha\.ts/ }).click();
   await page.getByRole('button', { name: 'Composer actions' }).click();
-  await page.getByRole('menuitem', { name: 'Reference conversation…' }).click();
+  await page.getByRole('menuitem', { name: 'Reference chat…' }).click();
   const referenceOption = page.getByRole('option', { name: /Earlier work/ });
   await expect(referenceOption).toBeVisible();
   expect(
@@ -504,7 +504,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   ).toBe('static');
   await referenceOption.dragTo(composer);
   await expect(
-    page.getByRole('dialog', { name: 'Reference a conversation' }),
+    page.getByRole('dialog', { name: 'Reference a chat' }),
   ).toBeHidden();
   await expect(composer).toBeFocused();
   await expect(composer).toHaveValue('Review @alpha.ts @Earlier work ');
@@ -2955,10 +2955,10 @@ for (const viewport of [
       .getByRole('menuitem', { name: 'Chat settings' })
       .click();
     await expect(
-      page.getByText('Chat Settings', { exact: true }),
+      page.getByText('Chat settings', { exact: true }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByText('Chat Settings', { exact: true })).toBeHidden();
+    await expect(page.getByText('Chat settings', { exact: true })).toBeHidden();
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     const selectedModel = page.locator('.chat-input__model-name');

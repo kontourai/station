@@ -169,7 +169,7 @@ export function ConversationHistory({
         ) : visibleConversations.length === 0 ? (
           <Empty
             variant="compact"
-            label="No conversations yet"
+            label="No chats yet"
             action={
               <button
                 type="button"

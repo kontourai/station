@@ -1105,6 +1105,13 @@ alone does not override that result. **Refresh models** refreshes the catalog.
 
 Model requests use the proxy; the engine and its tools still run on this Station.
 
+A proxy's HTTP 429 or rate-limit cooldown does not mean its key is invalid and
+does not create a retained sign-in failure. Wait for the provider's reset or
+repair the proxy, then retry. If Station has already retained a sign-in failure,
+fix the credentials or proxy and run **Check connection** on the engine page.
+Only a successful chat turn clears that failure; refreshing the model catalog
+or running the CLI's prerequisite-only `connections test` does not prove recovery.
+
 A routed connection authenticates with that proxy key: readiness reports the
 saved key as the engine's credential (shown as **Proxy key**) and does not
 require the CLI's own login. Without a route the engine's CLI login is the
@@ -1842,6 +1849,45 @@ carried safely; see the
 An unconfirmed MCP prompt send is not automatically replayed; inspect the
 conversation before running it again. Prompt receipts expire after ten minutes
 or a Station restart, so an expired prompt must be run again.
+
+Reading the web counts too. A conversation is marked when Claude Code's
+`WebFetch` or `WebSearch` returns, when Codex completes a web search, when an
+ACP engine runs a tool it labels as a fetch, when the Station engine's HTTP
+request returns, and when an agent reads or drives a page with Station's
+browser tools. muse web reads are not seen, and no engine's shell downloads
+(`curl`, `wget`) are. `GET /api/integrations/untrusted-content/coverage`
+lists this per engine.
+
+After the mark, Station denies writes to known instruction-file and git-hook
+locations by path, as a best-effort early check. In that conversation and the
+conversations it delegates to, it refuses writes, moves and copies into:
+
+- `AGENTS.md`, `CLAUDE.md` and their local or override forms, at any depth;
+- anything under `.agents/`, `.claude/` or `.codex/`;
+- `.mcp.json`;
+- a repository's hooks and configuration (`.git/hooks`, `.git/config`,
+  `.githooks`, `.husky`, and the folder git reports as `core.hooksPath`).
+
+A shell command that names one of these, changes git configuration, or gives
+git an option that configures it or points it at another repository asks you
+first. A delegated agent that reads the web marks the agent that delegated to
+it when its result comes back. To make such a change yourself, edit the file
+directly or clear the mark.
+
+**This does not contain git hook execution.** Each of these ways around it has
+run a planted hook after a mark:
+
+- a `core.hooksPath` that points outside the repository;
+- a bare repository;
+- a repository nested inside a hooks folder;
+- a hooks folder reached through a symlink;
+- a writable `[include]` file that changes `core.hooksPath`;
+- git run inside a quoted `sh -c "…"` command or through a shell alias.
+
+Codex's own file edits and commands are not checked at all. Enforcement at the
+operating-system level is tracked in
+[#4860](https://github.com/kontourai/station/issues/4860); see the
+[coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
 
 ## Connect an OAuth MCP server to an Agent
 
