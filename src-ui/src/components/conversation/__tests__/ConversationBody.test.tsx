@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -497,7 +500,7 @@ test.each([
               route="host"
               sessionFacts={{
                 orchestrationProvider: provider,
-                agentConnectionId: connection,
+                agentConnectionId: engineConnectionId(connection),
               }}
             />
           </PreviewProvider>
@@ -507,8 +510,9 @@ test.each([
         expect(
           screen
             .getByTestId('run-setup-trigger')
-            .querySelector(`[data-brand-key="${expected}"]`),
-        ).not.toBeNull(),
+            .querySelectorAll('[data-brand-key]')[1]
+            ?.getAttribute('data-brand-key'),
+        ).toBe(expected),
       );
     } finally {
       for (const key of Object.keys(agent))

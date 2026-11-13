@@ -530,6 +530,7 @@ export function StartComposer({
               label={[
                 agentText || 'Choose agent',
                 onOpenModel &&
+                agent.status === 'ready' &&
                 agent.modelLabel &&
                 agent.modelLabel !== MODEL_NOT_REPORTED
                   ? agent.modelLabel
