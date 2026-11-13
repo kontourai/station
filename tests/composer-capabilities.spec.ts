@@ -513,7 +513,6 @@ for (const [label, width] of [
             testInfo,
             `steering-${phase}-${width}-${theme}.png`,
           );
-          await closeRunSetup(page);
           await page.keyboard.press('Escape');
           await expect(mode).toBeHidden();
         }
@@ -684,10 +683,8 @@ for (const [label, viewport] of [
       name: 'Microphone unavailable',
     });
     await expect(dialog).toBeFocused();
-    await closeRunSetup(page);
     await page.keyboard.press('Shift+Tab');
     await expect(dialog.locator(':focus')).toHaveCount(1);
-    await closeRunSetup(page);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
     await expect(mic).toBeFocused();
@@ -970,7 +967,6 @@ test.describe('on a touch phone', () => {
     expect(reasonBox!.x + reasonBox!.width).toBeLessThanOrEqual(390);
     expect(reasonBox!.y + reasonBox!.height).toBeLessThanOrEqual(844);
     await evidence(page, testInfo, 'touch-microphone-reason-phone.png');
-    await closeRunSetup(page);
     await page.keyboard.press('Escape');
     await field.tap();
     await closeRunSetup(page);

@@ -1128,7 +1128,6 @@ async function expectChatProject(page: Page, project: string) {
   await chip.click();
   const sheet = page.getByRole('dialog', { name: 'This chat' });
   await expect(sheet).toContainText(project);
-  await closeRunSetup(page);
   await page.keyboard.press('Escape');
   await expect(sheet).toBeHidden();
 }

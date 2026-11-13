@@ -863,11 +863,7 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   const projectChip = startComposer(page).getByRole('button', {
     name: /^Project: /,
   });
-  const agentChip = await runSetupControl(startComposer(page), (panel) =>
-    panel.getByRole('button', {
-      name: /^Agent:/,
-    }),
-  );
+  const agentChip = startComposer(page).getByTestId('run-setup-trigger');
   const start = startComposer(page).getByRole('button', {
     name: 'Start',
     exact: true,

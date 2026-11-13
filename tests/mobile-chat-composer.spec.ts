@@ -1757,7 +1757,6 @@ test('switches between mobile tasks and restores the exact active chat context',
     exact: true,
   });
   await compactDialog.getByRole('combobox', { name: 'Inbox scope' }).focus();
-  await closeRunSetup(page);
   await page.keyboard.press('Shift+Tab');
   await expect(
     page
@@ -2297,7 +2296,6 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   // Escape straight away: the sheet closes and the route is untouched.
   await switcher.click();
   await expect(menu).toBeVisible();
-  await closeRunSetup(page);
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(switcher).toBeFocused();
@@ -2321,7 +2319,6 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   // The whole URL, not one param: a history entry consumed by Escape shows up
   // as the address reverting to the chat that was open before the switch.
   const urlBeforeEscape = page.url();
-  await closeRunSetup(page);
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(switcher).toBeVisible();
@@ -2970,7 +2967,6 @@ for (const viewport of [
     const dockClassBeforeEscape = await page
       .locator('.chat-dock')
       .getAttribute('class');
-    await closeRunSetup(page);
     await page.keyboard.press('Escape');
     await expect(mobileActions).toBeHidden();
     await expect(moreActions).toBeFocused();
@@ -3437,7 +3433,6 @@ test('drags the mobile dock bar between half and full without stealing taps', as
   // it must not inherit the prior gesture's click-suppression guard.
   await page.getByRole('button', { name: 'Chat actions' }).click();
   await expect(page.getByRole('menu', { name: 'Chat actions' })).toBeVisible();
-  await closeRunSetup(page);
   await page.keyboard.press('Escape');
 
   const fullHeaderBox = await header.boundingBox();
@@ -3610,7 +3605,6 @@ test('right-dock composer spans the dock width (#1006)', async ({ page }) => {
   for (let i = 0; i < 3; i++) {
     const cls = (await chatDock.getAttribute('class')) ?? '';
     if (/chat-dock--right/.test(cls)) break;
-    await closeRunSetup(page);
     await page.keyboard.press('Meta+Shift+M');
     await expect
       .poll(async () => (await chatDock.getAttribute('class')) ?? '')
@@ -3819,7 +3813,6 @@ for (const theme of ['dark', 'light'] as const) {
         `${sheet.name} background-color=${surface.color} (${theme})`,
       ).toBe(1);
 
-      await closeRunSetup(page);
       await page.keyboard.press('Escape');
       await expect(panel, sheet.name).toBeHidden();
     }
@@ -3939,7 +3932,6 @@ for (const theme of ['dark', 'light'] as const) {
       'opt-out wrapper draws no ring',
     ).toBe('0px');
 
-    await closeRunSetup(page);
     await page.keyboard.press('Escape');
     await expect(panel, 'model picker').toBeHidden();
   });
@@ -4155,7 +4147,9 @@ for (const width of [320, 390, 600]) {
       ),
     );
     await expect(controls).toHaveCount(3);
-    const railBox = await rail.boundingBox();
+    const railBox = await page
+      .getByRole('dialog', { name: 'Run setup', exact: true })
+      .boundingBox();
     expect(railBox).not.toBeNull();
     for (const control of await controls.all()) {
       await expect(control).toBeVisible();
@@ -4269,7 +4263,9 @@ for (const width of [320, 390, 1280]) {
         /^Model: Claude — Selected Test Model/,
       );
       const rail = activeComposer.locator('.chat-input__meta');
-      const bounds = (await rail.boundingBox())!;
+      const bounds = (await page
+        .getByRole('dialog', { name: 'Run setup', exact: true })
+        .boundingBox())!;
       const approval = await runSetupControl(page, (panel) =>
         panel.getByRole('button', { name: /^Approval mode:/ }),
       );
@@ -4322,7 +4318,6 @@ for (const width of [320, 390, 1280]) {
       await expect(model).toBeFocused();
       await model.press('Enter');
       await expect(picker).toBeVisible();
-      await closeRunSetup(page);
       await page.keyboard.press('Escape');
       await expect(picker).toBeHidden();
       await expect(model).toBeFocused();
@@ -4332,6 +4327,7 @@ for (const width of [320, 390, 1280]) {
         ),
       ).toBeGreaterThanOrEqual(2);
 
+      await closeRunSetup(page);
       await drafts.click();
       const draftsDialog = page.getByRole('dialog', {
         name: 'Portable drafts',

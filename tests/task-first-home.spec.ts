@@ -1682,11 +1682,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const launcherShortcut =
       process.platform === 'darwin' ? 'Meta+Shift+L' : 'Control+Shift+L';
     const dockShortcut = process.platform === 'darwin' ? 'Meta+D' : 'Control+D';
-    await closeRunSetup(page);
     await page.keyboard.press(launcherShortcut);
     const launcher = page.getByRole('dialog', { name: 'Command launcher' });
     await expect(launcher).toBeVisible();
-    await closeRunSetup(page);
     await page.keyboard.press(launcherShortcut);
     await expect(launcher).toHaveCount(1);
     await expect(
@@ -1716,14 +1714,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(trigger).toBeFocused();
     await expect(page.locator('.chat-dock textarea')).toHaveValue('');
     expect(sentIntents).toHaveLength(0);
-    await closeRunSetup(page);
     await page.keyboard.press(dockShortcut);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
-    await closeRunSetup(page);
     await page.keyboard.press(dockShortcut);
     await expect(page.locator('.chat-dock')).not.toHaveClass(/is-collapsed/);
 
-    await closeRunSetup(page);
     await page.keyboard.press(launcherShortcut);
     await expect(launcher).toBeVisible();
     await launcher
@@ -2457,10 +2452,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
         launcher.getByRole('region', { name: 'Command preview' }),
       ).toContainText('Review the current work');
       await confirmLauncher.focus();
-      await closeRunSetup(page);
       await page.keyboard.press('Tab');
       await expect(closeLauncher).toBeFocused();
-      await closeRunSetup(page);
       await page.keyboard.press('Shift+Tab');
       await expect(confirmLauncher).toBeFocused();
       const launcherGeometry = await launcher.evaluate((element) => {
@@ -2493,12 +2486,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await expect(
         page.getByRole('button', { name: 'Close task context' }),
       ).toBeFocused();
-      await closeRunSetup(page);
       await page.keyboard.press('Shift+Tab');
       await expect(
         page.getByRole('button', { name: 'Open project context' }),
       ).toBeFocused();
-      await closeRunSetup(page);
       await page.keyboard.press('Tab');
       await expect(
         page.getByRole('button', { name: 'Close task context' }),
@@ -2581,7 +2572,6 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await expect(
         dockMenu.getByRole('menuitem', { name: 'Full screen', exact: true }),
       ).toBeVisible();
-      await closeRunSetup(page);
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'Collapse chat' }).click();
       await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);

@@ -224,7 +224,6 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       // From the keyboard: the card folds as the inventory opens, taking
       // the focused button with it, so focus must move into the panel.
       await card.getByRole('button', { name: 'Chat inventory' }).focus();
-      await closeRunSetup(page);
       await page.keyboard.press('Enter');
       const aside = dock.locator('.session-inventory-compact--aside');
       await expect(aside).toBeVisible();
