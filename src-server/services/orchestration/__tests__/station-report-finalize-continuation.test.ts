@@ -418,6 +418,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       (historical) => historical.group,
     );
     assert.equal(replay.result.replayed, true);
+    phase('stale-finalize-refusal');
     await assert.rejects(
       h.custody.finalizeContinuation(
         h.f.context(requestFor(h, 'POST')),
@@ -435,6 +436,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       { code: 'rounds_continuation_already_completed' },
     );
     assert.deepEqual(readFileSync(winnerPath), winnerBytes);
+    phase('read-after-first-finalization');
     assert.equal(
       flowRunHead((await loadRun(flow.runId, h.f.repo)).state),
       flowRunHead(flowAfterLoss.state),
@@ -445,6 +447,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       authorityBefore.invocations,
     );
     const reappraised = await loadRun(flow.runId, h.f.repo);
+    phase('retry-context-retention');
     const retryCheckpoint = await persistence.retainReportContext(
       groupId,
       'retry checkpoint',
@@ -474,10 +477,12 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         },
       },
     };
+    phase('retry-authorization-with-retention-fault');
     await assert.rejects(
       controller.authorizeRetry(retry),
       /injected receipt retention outage/,
     );
+    phase('cancel-after-retry');
     const beforeCancel = await controller.get(groupId);
     await assert.rejects(
       controller.cancel({
@@ -489,6 +494,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       }),
       /unexpected execution/,
     );
+    phase('read-pending-retry');
     const retryHeld = await controller.get(groupId);
     assert.equal(retryHeld.cancellation, 'pending');
     const retryFlow = await loadRun(flow.runId, h.f.repo);
@@ -497,6 +503,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       expectedRevision: retryHeld.revision,
       continuationOperationKey: retry.operationKey,
     };
+    phase('close-original-preparation');
     h.owner.close(handle);
     await assert.rejects(
       finalizeReportGroupContinuation(
@@ -530,6 +537,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         return remove(path, options);
       });
     syncBuiltinESMExports();
+    phase('retry-finalize-with-release-fault');
     try {
       await assert.rejects(
         h.custody.finalizeContinuation(
@@ -556,6 +564,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       retainedSpy.mockRestore();
       syncBuiltinESMExports();
     }
+    phase('retry-recovery-runtime');
     await runtime.shutdown();
     runtime = createFinalizerRuntime({ projectHomeDir: h.f.home }, signal);
     participant = Reflect.get(
@@ -563,6 +572,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       'runtimePublicationParticipant',
     ) as RuntimePublicationParticipant;
     setParticipant(participant);
+    phase('retry-replay-finalize');
     const retryReplay = await h.custody.finalizeContinuation(
       h.f.context(requestFor(h, 'POST')),
       groupId,
@@ -579,6 +589,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       flowRunHead((await loadRun(flow.runId, h.f.repo)).state),
       flowRunHead(retryFlow.state),
     );
+    phase('corrupt-winner-refusal');
     writeFileSync(winnerPath, '{}');
     try {
       await assert.rejects(
@@ -600,6 +611,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     } finally {
       writeFileSync(winnerPath, winnerBytes);
     }
+    phase('missing-winner-refusal');
     unlinkSync(winnerPath);
     try {
       await assert.rejects(
@@ -621,6 +633,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     } finally {
       writeFileSync(winnerPath, winnerBytes);
     }
+    phase('corrupt-source-refusal');
     const locatorPath = join(
       h.f.store,
       `snapshot-${prepared.envelopes[0].execution_binding.source.source_admission_receipt.id}.json`,
@@ -648,6 +661,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     } finally {
       writeFileSync(locatorPath, locatorBytes);
     }
+    phase('missing-source-refusal');
     unlinkSync(locatorPath);
     try {
       await assert.rejects(
@@ -669,6 +683,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     } finally {
       writeFileSync(locatorPath, locatorBytes);
     }
+    phase('revoked-credential-refusal');
     h.f.environment.devicePairing.revokeDevice(
       h.f.paired.device.id,
       'operator-credential',
@@ -737,7 +752,9 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       { code: 'group_custody_unavailable' },
     );
     assert.deepEqual(readFileSync(winnerPath), winnerBytes);
+    phase('scenario-complete');
   } finally {
+    phase('scenario-cleanup');
     h.owner.close(handle);
     await runtime.shutdown();
   }
