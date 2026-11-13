@@ -312,7 +312,9 @@ working local storage and a release identity; an unstamped development UI
 never triggers the app prompt. A connected server version increase can open
 **Updated server …** separately, remembered per endpoint and instance. A newly
 observed server only establishes its baseline. App and server prompts share the
-preference; the app prompt appears first if both are pending.
+preference; the app prompt appears first if both are pending. Browser clients
+suppress the server popup when it shares the bundle version or origin.
+In-app changelogs omit the Installation section; GitHub retains it.
 
 Nightly desktop planning generates GitHub release notes from the previous
 `nightly-desktop` source to the planned source. The generated notes travel
@@ -326,10 +328,14 @@ Earlier Nightlies without a versioned changelog are not reconstructed.
 
 Portable server Nightly publication and stable/preview draft assembly generate
 notes against a previous published server `v*` tag, keeping install instructions.
-They prefer the same release channel and can use an older server release to
-establish a new channel’s baseline. Desktop and rolling tags are excluded. The
-generator refuses absent predecessors, moved tags and empty notes; comparison
-links retain commit bounds. This source wiring does not qualify an end-to-end
+They select the highest older version in the same release channel. A new
+channel falls back to the highest release from a preceding base version, not
+its own prerelease. Desktop and rolling tags are excluded. The generator
+refuses absent predecessors, moved tags, identical source bounds and notes
+containing only a comparison link. Comparison links retain commit bounds.
+Reads and note generation retry transient API failures once. After that,
+Nightly warns and publishes installation instructions alone; stable and preview
+draft assembly stop so reviewed releases retain their changelog. This source wiring does not qualify an end-to-end
 publication, and existing release bodies are not rewritten.
 
 Archive publication checks the Git tag reference before resolving its commit:
