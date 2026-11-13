@@ -297,15 +297,27 @@ test.describe('project icons', () => {
 
     // --- The dock's project switcher --------------------------------------
     await page.goto(`/projects/${projectSlug}?dock=open`);
-    await page.locator('.chat-dock__project-badge').first().click();
-    const switcher = page.getByRole('dialog', { name: 'Projects' });
+    await page
+      .locator('#chat-dock')
+      .getByRole('button', { name: 'New chat', exact: true })
+      .first()
+      .click();
+    const draft = page.getByRole('region', { name: 'New chat', exact: true });
+    await expect(draft).toBeVisible();
+    await draft.getByRole('button', { name: /^Project: / }).click();
+    const switcher = page.getByRole('dialog', {
+      name: 'Choose project',
+      exact: true,
+    });
     await expect(switcher).toBeVisible();
-    const switcherRow = switcher
-      .locator('.chat-dock__project-switcher-row')
-      .filter({ hasText: projectName });
-    await expect(
-      switcherRow.locator('.chat-dock__project-switcher-icon img'),
-    ).toHaveAttribute('src', expectedIcon);
+    const switcherRow = switcher.getByRole('button', {
+      name: projectName,
+      exact: true,
+    });
+    await expect(switcherRow.locator('img')).toHaveAttribute(
+      'src',
+      expectedIcon,
+    );
     await page.keyboard.press('Escape');
     await expect(switcher).toBeHidden();
 
