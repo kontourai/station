@@ -173,7 +173,8 @@ function assertCore(core: Core): void {
     throw new HomeWriterUnavailableError('identity-unavailable');
 }
 
-function synchronous<T>(body: () => T): T {
+/** Completion validation only; callers separately own physical Home admission. */
+export function runSynchronousHomeCallback<T>(body: () => T): T {
   const result = body();
   if (
     result !== null &&
@@ -295,14 +296,14 @@ export class HomeWriterOwner {
     if (existing) {
       if (!existing.active || existing.lease !== lease)
         throw new HomeWriterUnavailableError('borrow-unavailable');
-      return synchronous(body);
+      return runSynchronousHomeCallback(body);
     }
     const span: Span = { lease, active: true };
     const current = new Map(spans.getStore());
     current.set(this.#core, span);
     try {
       return spans.run(current, () => {
-        const result = synchronous(body);
+        const result = runSynchronousHomeCallback(body);
         try {
           this.assertCurrent();
           lease.assertCurrent();

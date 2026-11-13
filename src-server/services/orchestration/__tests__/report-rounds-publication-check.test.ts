@@ -146,6 +146,16 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
             }),
           );
           assert.equal(afterAsyncGuard, false);
+          let thenInvocations = 0;
+          current.mockReturnValueOnce({
+            // biome-ignore lint/suspicious/noThenProperty: Rejected guard results must never be assimilated.
+            then() {
+              thenInvocations++;
+            },
+          });
+          assert.throws(() => scope.check(() => 42), TypeError);
+          await Promise.resolve();
+          assert.equal(thenInvocations, 0);
           const mutation = join(
             owner.homeDir,
             'security',
