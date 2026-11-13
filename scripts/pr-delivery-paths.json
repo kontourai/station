@@ -39,6 +39,7 @@
     "docs/learn/mcp-topics.json",
     "docs/architecture/module-map.md",
     "docs/learn/atlas.json",
+    "corpus.json",
     "install.sh",
     "install.ps1",
     "schemas/**",

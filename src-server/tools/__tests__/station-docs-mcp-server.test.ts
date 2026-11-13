@@ -5,17 +5,25 @@ import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-p
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
 import {
-  readStationDocsInputs,
+  readStationDocsBundle,
   stationDocsDigest,
 } from '../../../scripts/generate-station-docs.mjs';
 import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
-import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
+import { STATION_DOCS_BUNDLE } from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
   findStationDocsTopic,
+  listStationDocsTopics,
   STATION_DOCS_VERSION,
+  type StationDocsTopic,
   searchStationDocs,
 } from '../station-docs-mcp-server.js';
+
+// Every topic as get_station_docs_topic serves it: the bundle mapped back to
+// the fields the tools have always returned.
+const STATION_DOCS_TOPICS: StationDocsTopic[] = listStationDocsTopics().map(
+  (summary) => findStationDocsTopic(summary.id)!,
+);
 
 /**
  * archive#1547. Two things are being proven here, and they are different:
@@ -531,7 +539,8 @@ describe('station-docs lookup and search', () => {
 
     expect(searchStationDocs('station', 2).length).toBeLessThanOrEqual(2);
     expect(searchStationDocs('   ')).toEqual([]);
-    expect(searchStationDocs('a-string-that-appears-in-no-topic')).toEqual([]);
+    // Ranked search matches words, so the miss has to be a word no topic uses.
+    expect(searchStationDocs('xyzzyplugh')).toEqual([]);
   });
 });
 
@@ -594,6 +603,31 @@ describe('station-docs MCP server', () => {
     expect(payload.kind).toBe('shipped-documentation');
   });
 
+  test('the manual and architecture roots are topics, and parentId lists their children', async () => {
+    const all = await callTool('list_station_docs_topics', {});
+    const roots = all.topics.filter(
+      (topic: { parentId?: string }) => topic.parentId === undefined,
+    );
+    expect(roots.map((topic: { id: string }) => topic.id)).toEqual([
+      'manual',
+      'architecture',
+    ]);
+    const manual = await callTool('list_station_docs_topics', {
+      parentId: 'manual',
+    });
+    expect(manual.topics.map((topic: { id: string }) => topic.id)).toContain(
+      'station-overview',
+    );
+    expect(
+      manual.topics.every(
+        (topic: { sourcePath: string }) =>
+          topic.sourcePath === 'docs/reference/station-docs.md',
+      ),
+    ).toBe(true);
+    const root = await callTool('get_station_docs_topic', { id: 'manual' });
+    expect(root.topic.body).toContain('parentId manual');
+  });
+
   test('navigates the same architecture tree and identifies its compiled content', async () => {
     const roots = await callTool('list_station_docs_topics', {
       parentId: 'architecture',
@@ -601,7 +635,7 @@ describe('station-docs MCP server', () => {
     expect(roots.topics).toHaveLength(10);
     expect(
       roots.topics.every(
-        (topic: { parentId: string }) => topic.parentId === 'architecture',
+        (topic: { parentId?: string }) => topic.parentId === 'architecture',
       ),
     ).toBe(true);
     const children = await callTool('list_station_docs_topics', {
@@ -622,10 +656,13 @@ describe('station-docs MCP server', () => {
     // digest over the canonical sources and change when the content does.
     expect(topic.documentationDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(topic.documentationDigest).toBe(
-      stationDocsDigest(await readStationDocsInputs()),
+      stationDocsDigest(await readStationDocsBundle()),
     );
     expect(topic.documentationDigest).not.toBe(
-      stationDocsDigest(STATION_DOCS_TOPICS.slice(1)),
+      stationDocsDigest({
+        ...STATION_DOCS_BUNDLE,
+        topics: STATION_DOCS_BUNDLE.topics.slice(1),
+      }),
     );
     expect(
       (await callTool('list_station_docs_topics', { parentId: 'missing' }))
@@ -688,6 +725,12 @@ describe('station-docs structural properties (AC2)', () => {
     const allowed = new Set([
       '@modelcontextprotocol/server',
       '@modelcontextprotocol/server/stdio',
+      // Corpus's offline search entry only. Corpus guarantees it imports
+      // nothing with file, network, process, or timer access, and
+      // station-docs-bundle.test.ts proves the built server bundle still
+      // holds. The root `@kontourai/corpus` entry reads files when it loads,
+      // so it stays off this list.
+      '@kontourai/corpus/search',
       'zod',
       '../../package.json',
       './station-docs-content.js',

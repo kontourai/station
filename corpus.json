@@ -31,7 +31,7 @@
         "@kontourai/corpus-store",
         "@kontourai/corpus"
       ],
-      "for": "Store private memory records and create proposals through Corpus Store contracts; route external documentation impact through the public Corpus content contract."
+      "for": "Store private memory records and create proposals through Corpus Store contracts; route external documentation impact through the public Corpus content contract; rank shipped Station Docs search with Corpus search."
     },
     {
       "product": "datum",

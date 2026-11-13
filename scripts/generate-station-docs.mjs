@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bundleDigest, bundleShapeError } from '@kontourai/corpus';
 import {
   documentSections,
   extractModules,
@@ -14,11 +15,24 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputPath = 'src-server/tools/station-docs-content.ts';
 
-export const STATION_DOCS_INPUT_PATHS = Object.freeze([
+/**
+ * The sources compileStationDocs reads, in its argument order. Callers that
+ * need only the topics (documentation-impact.mjs maps changed sources to topic
+ * ids) read these and nothing else.
+ */
+export const STATION_DOCS_TOPIC_INPUT_PATHS = Object.freeze([
   'docs/reference/station-docs.md',
   'docs/learn/mcp-topics.json',
   'docs/architecture/module-map.md',
   'docs/learn/atlas.json',
+]);
+
+/** Every input of the shipped bundle: a change to any of them means regenerating it. */
+export const STATION_DOCS_INPUT_PATHS = Object.freeze([
+  ...STATION_DOCS_TOPIC_INPUT_PATHS,
+  // Bundle identity (product, title, purpose, builtOn) and search synonyms.
+  // Required: a bundle without it would ship without its identity.
+  'corpus.json',
 ]);
 
 export function compileStationDocs(manual, catalog, moduleSource, atlas) {
@@ -110,26 +124,172 @@ export function compileStationDocs(manual, catalog, moduleSource, atlas) {
   return topics;
 }
 
-export async function readStationDocsInputs() {
+async function readInputs() {
   const read = (file) => readFile(path.join(root, file), 'utf8');
-  const [manual, catalog, modules, atlas] = await Promise.all(
-    STATION_DOCS_INPUT_PATHS.map(read),
-  );
-  return compileStationDocs(
-    manual,
-    JSON.parse(catalog),
-    modules,
-    JSON.parse(atlas),
-  );
+  const [[manual, catalog, modules, atlas], manifest] = await Promise.all([
+    Promise.all(STATION_DOCS_TOPIC_INPUT_PATHS.map(read)),
+    read('corpus.json'),
+  ]);
+  return {
+    topics: compileStationDocs(
+      manual,
+      JSON.parse(catalog),
+      modules,
+      JSON.parse(atlas),
+    ),
+    manifest: JSON.parse(manifest),
+  };
 }
 
-export function stationDocsDigest(topics) {
-  return createHash('sha256').update(JSON.stringify(topics)).digest('hex');
+export async function readStationDocsInputs() {
+  return (await readInputs()).topics;
 }
+
+// The two roots the compiled topics hang from. Corpus refuses a parentId that
+// names no topic in the bundle, and list_station_docs_topics filters on these
+// ids, so they are topics of their own. Their text is deliberately short and
+// lists no children: a root that repeated every child's title would compete
+// with those children in search. Children are listed by parentId instead.
+const ROOT_TOPICS = Object.freeze([
+  {
+    id: 'manual',
+    title: 'Station manual',
+    summary:
+      'How Station works in general: its concepts, surfaces, and what its tools can and cannot do.',
+    markdown:
+      "Station's shipped manual. It describes the product in general, not this Station's live state. List its topics with list_station_docs_topics and parentId manual.",
+    tags: ['manual', 'index'],
+    sourcePath: 'docs/reference/station-docs.md',
+  },
+  {
+    id: 'architecture',
+    title: 'Architecture learning tree',
+    summary:
+      "Reading paths through Station's architecture module map, grouped by responsibility.",
+    markdown:
+      'Reading paths through the architecture module map. This is shipped documentation, not live state or a completed semantic audit. List its branches with list_station_docs_topics and parentId architecture.',
+    tags: ['architecture', 'index'],
+    sourcePath: 'docs/learn/atlas.json',
+  },
+]);
+
+/**
+ * The compiled topics as one Corpus docs bundle (schemaVersion 2), the only
+ * shipped documentation artifact: list, get, and search in
+ * station-docs-mcp-server.ts all read it.
+ *
+ * It is committed and byte-compared by docs:mcp:check, so it must not change
+ * unless its sources do. It therefore records no build: `sha` is null and
+ * `builtAt` is empty. Topic URLs use `blob/HEAD`, which is what Corpus's own
+ * builder writes for a bundle-only document when there is no sha. Corpus's
+ * `digest` is left out for the reason the server computes its digest at
+ * runtime: a committed digest line conflicts between every pair of
+ * docs-touching branches. validateStationDocsBundle adds it before Corpus
+ * checks the shape.
+ */
+export function stationDocsBundle(topics, manifest) {
+  const url = (sourcePath, anchor) =>
+    `https://github.com/${manifest.repo}/blob/HEAD/${sourcePath}${anchor ? `#${encodeURIComponent(anchor)}` : ''}`;
+  const corpusTopic = ({
+    id,
+    title,
+    summary,
+    tags,
+    parentId,
+    sourcePath,
+    sourceAnchor = '',
+    markdown,
+  }) => ({
+    id,
+    title,
+    source: sourceAnchor ? `${sourcePath}#${sourceAnchor}` : sourcePath,
+    url: url(sourcePath, sourceAnchor),
+    markdown,
+    summary,
+    tags: [...tags],
+    ...(parentId ? { parentId } : {}),
+  });
+  return {
+    schemaVersion: 2,
+    product: manifest.product,
+    title: manifest.title,
+    tagline: manifest.tagline,
+    purpose: manifest.purpose,
+    repo: manifest.repo,
+    sha: null,
+    builtAt: '',
+    siteUrl: `https://kontourai.github.io/${manifest.product}/`,
+    builtOn: manifest.builtOn,
+    documents: [],
+    topics: [
+      ...ROOT_TOPICS.map(corpusTopic),
+      ...topics.map(({ body, ...topic }) =>
+        corpusTopic({ ...topic, markdown: body }),
+      ),
+    ],
+    ...(manifest.synonyms ? { synonyms: manifest.synonyms } : {}),
+  };
+}
+
+/** Refuse a bundle Corpus would refuse, with Corpus's own reason. */
+export function validateStationDocsBundle(bundle) {
+  const problem = bundleShapeError({
+    ...bundle,
+    digest: bundleDigest(bundle.documents, bundle.topics),
+  });
+  if (problem)
+    throw new Error(`Invalid shipped documentation bundle: ${problem}`);
+  return bundle;
+}
+
+export async function readStationDocsBundle() {
+  const { topics, manifest } = await readInputs();
+  return validateStationDocsBundle(stationDocsBundle(topics, manifest));
+}
+
+export function stationDocsDigest(bundle) {
+  return createHash('sha256').update(JSON.stringify(bundle)).digest('hex');
+}
+
+const GENERATED_TYPES = `export interface StationDocsBundleTopic {
+  readonly id: string;
+  readonly title: string;
+  readonly source: string;
+  readonly url: string;
+  readonly markdown: string;
+  readonly summary: string;
+  readonly tags: readonly string[];
+  readonly parentId?: string;
+}
+
+export interface StationDocsBuiltOn {
+  readonly product: string;
+  readonly via: string | readonly string[];
+  readonly for: string;
+  readonly evidence?: 'cli';
+  readonly bin?: string;
+}
+
+/** A Corpus docs bundle (schemaVersion 2) without its build-only fields. */
+export interface StationDocsBundle {
+  readonly schemaVersion: 2;
+  readonly product: string;
+  readonly title: string;
+  readonly tagline: string;
+  readonly purpose: string;
+  readonly repo: string;
+  readonly sha: null;
+  readonly builtAt: string;
+  readonly siteUrl: string;
+  readonly builtOn: readonly StationDocsBuiltOn[];
+  readonly documents: readonly never[];
+  readonly topics: readonly StationDocsBundleTopic[];
+  readonly synonyms?: readonly (readonly string[])[];
+}`;
 
 export async function generateStationDocs({ check = false } = {}) {
-  const topics = await readStationDocsInputs();
-  const source = `// Generated by npm run docs:mcp:generate. Edit the canonical Markdown and catalogs.\n// Static data only: the credential-free MCP must not acquire live-state access.\n\nexport interface StationDocsTopic {\n  readonly id: string;\n  readonly title: string;\n  readonly summary: string;\n  readonly body: string;\n  readonly tags: readonly string[];\n  readonly parentId: string;\n  readonly sourcePath: string;\n  readonly sourceAnchor: string;\n}\n\nexport const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = ${JSON.stringify(topics, null, 2)};\n`;
+  const bundle = await readStationDocsBundle();
+  const source = `// Generated by npm run docs:mcp:generate. Edit the canonical Markdown and catalogs.\n// Static data only: the credential-free MCP must not acquire live-state access.\n\n${GENERATED_TYPES}\n\nexport const STATION_DOCS_BUNDLE: StationDocsBundle = ${JSON.stringify(bundle, null, 2)};\n`;
   const formatted = execFileSync(
     process.execPath,
     [
@@ -153,7 +313,7 @@ export async function generateStationDocs({ check = false } = {}) {
       );
   } else await writeFile(path.join(root, outputPath), formatted);
   console.log(
-    `${check ? 'Validated' : 'Generated'} ${topics.length} shipped documentation topics; digest ${stationDocsDigest(topics)}.`,
+    `${check ? 'Validated' : 'Generated'} a Corpus bundle of ${bundle.topics.length} shipped documentation topics; digest ${stationDocsDigest(bundle)}.`,
   );
 }
 

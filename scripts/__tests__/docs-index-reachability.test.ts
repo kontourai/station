@@ -1,11 +1,13 @@
+/// <reference path="../../src-server/corpus-search.d.ts" />
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { join } from 'node:path';
+import { searchBundles } from '@kontourai/corpus/search';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { STATION_DOCS_TOPICS } from '../../src-server/tools/station-docs-content.js';
+import { STATION_DOCS_BUNDLE } from '../../src-server/tools/station-docs-content.js';
 import {
   buildLearningGuide,
   learningHref,
@@ -15,8 +17,10 @@ import { checkMarkdownLinks } from '../check-markdown-links.mjs';
 import { renderLedgerMarkdown } from '../deploy-ledger.mjs';
 import {
   compileStationDocs,
-  readStationDocsInputs,
+  readStationDocsBundle,
+  stationDocsBundle,
   stationDocsDigest,
+  validateStationDocsBundle,
 } from '../generate-station-docs.mjs';
 import {
   assertDocumentationFresh,
@@ -922,16 +926,115 @@ describe('learning atlas', () => {
     expect(documentSections(source)[0].body).toContain('## Example only');
   });
   it('ships the exact canonical prose and tree through the credential-free MCP', async () => {
-    const compiled = await readStationDocsInputs();
-    expect(STATION_DOCS_TOPICS).toEqual(compiled);
+    const compiled = await readStationDocsBundle();
+    expect(STATION_DOCS_BUNDLE).toEqual(compiled);
     // The digest is not committed (station-docs-mcp-server.ts computes it
-    // from STATION_DOCS_TOPICS); it must still track the content.
-    expect(stationDocsDigest(STATION_DOCS_TOPICS)).toBe(
+    // from STATION_DOCS_BUNDLE); it must still track the content.
+    expect(stationDocsDigest(STATION_DOCS_BUNDLE)).toBe(
       stationDocsDigest(compiled),
     );
     const changed = structuredClone(compiled);
-    changed[0].body += '\nChanged behavior.';
+    changed.topics[0].markdown += '\nChanged behavior.';
     expect(stationDocsDigest(changed)).not.toBe(stationDocsDigest(compiled));
+  });
+
+  it('ships one Corpus bundle under two root topics, carrying corpus.json synonyms into search', () => {
+    const catalog = {
+      version: 1,
+      source: 'docs/reference/station-docs.md',
+      topics: [
+        {
+          id: 'start',
+          title: 'Start',
+          section: 'Start',
+          summary: 'Starting',
+          tags: ['start'],
+        },
+      ],
+    };
+    const atlas = {
+      version: 1,
+      groups: [
+        {
+          id: 'execution',
+          title: 'Execution',
+          summary: 'Run work',
+          docs: ['docs/architecture/module-map.md'],
+          modules: ['StartBoundary'],
+          questions: ['Who owns start?'],
+        },
+      ],
+    };
+    const topics = compileStationDocs(
+      '## Start\n\nAn automation runs work on its own.',
+      catalog,
+      '## StartBoundary\n\nAccepts or refuses a start.',
+      atlas,
+    );
+    // The fields generate-station-docs.mjs reads from the real corpus.json.
+    const manifest = {
+      product: 'station',
+      title: 'Station',
+      tagline: 'Tagline',
+      purpose: 'Purpose',
+      repo: 'kontourai/station',
+      builtOn: [],
+    };
+    const plain = validateStationDocsBundle(
+      stationDocsBundle(topics, manifest),
+    );
+    expect(
+      plain.topics.map((topic: { id: string; parentId?: string }) => [
+        topic.id,
+        topic.parentId,
+      ]),
+    ).toEqual([
+      ['manual', undefined],
+      ['architecture', undefined],
+      ['start', 'manual'],
+      ['architecture-execution', 'architecture'],
+      ['architecture-startboundary', 'architecture-execution'],
+    ]);
+    expect(plain.topics[2]).toMatchObject({
+      source: 'docs/reference/station-docs.md#start',
+      url: 'https://github.com/kontourai/station/blob/HEAD/docs/reference/station-docs.md#start',
+      markdown: 'An automation runs work on its own.',
+    });
+    // "chore" is in no topic and no Corpus suite synonym group, so only the
+    // product's own synonyms can make it find the automation topic.
+    expect(plain.synonyms).toBeUndefined();
+    expect(searchBundles([plain], 'chore')).toEqual([]);
+    const withSynonyms = validateStationDocsBundle(
+      stationDocsBundle(topics, {
+        ...manifest,
+        synonyms: [['chore', 'automation']],
+      }),
+    );
+    expect(withSynonyms.synonyms).toEqual([['chore', 'automation']]);
+    expect(
+      searchBundles([withSynonyms], 'chore').map(
+        (hit: { kind: string; id?: string }) => hit.kind === 'topic' && hit.id,
+      ),
+    ).toEqual(['start']);
+  });
+
+  it('refuses a bundle Corpus would refuse, with Corpus’s reason', async () => {
+    const bundle = await readStationDocsBundle();
+    expect(() =>
+      validateStationDocsBundle({
+        ...bundle,
+        topics: [
+          ...bundle.topics,
+          { ...bundle.topics[2], id: 'orphan', parentId: 'missing' },
+        ],
+      }),
+    ).toThrow('parentId "missing" is not a topic id in this bundle');
+    expect(() =>
+      validateStationDocsBundle({
+        ...bundle,
+        topics: [...bundle.topics, bundle.topics[2]],
+      }),
+    ).toThrow('is used more than once');
   });
 
   it('rejects missing or uncatalogued shipped prose instead of silently omitting it', () => {
