@@ -293,8 +293,7 @@ describe('ProjectService', () => {
   });
 
   test('repository display isolates corrupt and invalid manifests and caches unchanged records', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-display-'));
-    tmpHomes.push(home);
+    const home = makeTempDir('station-display-');
     const adapter = new FileStorageAdapter(home);
     const manifests = new ProjectManifestStore(home, adapter, {
       readRemotes: async () => ({
