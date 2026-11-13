@@ -1035,6 +1035,23 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test('prompts from before this process count from the last point back, not from the first', async () => {
+    // The live session's first prompt predates this process (a resume): the
+    // ledger holds only the later two, yet they are points 1 and 2.
+    const session = await startGrokSession();
+    const second = await grokTurn(session, prompts[1]!, 'prompt-1');
+    const third = await grokTurn(session, prompts[2]!, 'prompt-2');
+    answerLive(session, {
+      '_x.ai/rewind/points': [points],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, second),
+    ).toMatchObject({ kind: 'rewound', hiddenTurnIds: [second, third] });
+    expect(session.proc.extMethodCalls[1]?.params.targetPromptIndex).toBe(1);
+    await session.stop();
+  });
+
   test('files changed outside the engine since then refuse the rewind before it is applied', async () => {
     const { session, turns } = await threeTurns();
     answerLive(session, {

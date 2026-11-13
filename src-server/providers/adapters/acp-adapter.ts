@@ -3616,7 +3616,7 @@ export class AcpAdapter implements ProviderAdapterShape {
    */
   private recordTurnPrompt(record: AcpSessionRecord, messageId: string): void {
     const turnId = record.activeTurnId;
-    if (!turnId || record.providerTurn?.turnId === turnId) return;
+    if (!turnId) return;
     record.turnMessages ??= [];
     const known = record.turnMessages.find((entry) => entry.turnId === turnId);
     // The first id stays: it is the turn's own prompt, and a later one is a
