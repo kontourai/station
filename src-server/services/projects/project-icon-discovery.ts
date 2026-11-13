@@ -199,10 +199,12 @@ export async function withDiscoveredProjectIcon<
     workingDirectory?: string;
   },
 >(project: T): Promise<T> {
-  if (project.icon || project.iconDisabled || !project.workingDirectory)
-    return project;
+  if (project.icon || project.iconDisabled) return project;
   try {
-    const root = resolve(expandTilde(project.workingDirectory));
+    const root = project.workingDirectory
+      ? resolve(expandTilde(project.workingDirectory))
+      : undefined;
+    if (!root) return project;
     // A folder containing several repositories is not one repository.
     await stat(resolve(root, '.git'));
     const [candidate] = await discoverProjectIconCandidates(
