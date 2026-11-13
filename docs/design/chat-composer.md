@@ -77,6 +77,8 @@ through one anchored popup outside the composer, so no composer clipping can cut
 them off. The `@` list closes when the input loses focus (pressing inside the
 list does not take focus) and reopens when focus returns with the caret in an
 `@` query. Child transcripts use the chat pane and its ancestor breadcrumb.
+While a child covers its parent, the parent retains its draft but publishes no
+header controls or active-reader shortcuts.
 
 The [working-chat focus owner](../../src-ui/src/hooks/useWorkingChatFocus.ts)
 requests composer focus once after selection, when the conversation

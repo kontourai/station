@@ -195,7 +195,10 @@ export function ChatDockHeader({
   const absorbRegionActions = regionMenu?.absorb;
   // While this toolbar is in the bar, the region's commands are rows of its
   // More menu and the bar drops its own buttons for them.
-  useEffect(() => absorbRegionActions?.(), [absorbRegionActions]);
+  useEffect(
+    () => (childCovered ? undefined : absorbRegionActions?.()),
+    [absorbRegionActions, childCovered],
+  );
   const showInboxToggle = Boolean(workspaceControls?.showInboxToggle);
   const inventory = workspaceControls?.sessionInventory;
   const inventoryOccurrence = useSessionInventoryOccurrence(

@@ -234,12 +234,16 @@ test('a child hides the real parent header portals and restores them on return',
   const trailing = document.createElement('span');
   document.body.append(leading, trailing);
   const coverage = vi.fn();
+  const release = vi.fn();
+  const absorb = vi.fn(() => release);
   try {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <PreviewProvider>
           <ConversationConnectionProvider value={connection}>
-            <RegionChromeSlotsContext.Provider value={{ leading, trailing }}>
+            <RegionChromeSlotsContext.Provider
+              value={{ leading, trailing, regionMenu: { actions: [], absorb } }}
+            >
               <ChildChatNavigation
                 rootKey="parent"
                 title="Parent chat"
@@ -263,6 +267,7 @@ test('a child hides the real parent header portals and restores them on return',
     });
     expect(within(leading).queryByText('Parent toolbar')).toBeNull();
     expect(coverage).toHaveBeenLastCalledWith(true);
+    expect(release).toHaveBeenCalledOnce();
     fireEvent.click(within(trail).getByRole('button', { name: 'Parent chat' }));
     expect(within(leading).getByText('Parent toolbar')).toBeTruthy();
     expect(coverage).toHaveBeenLastCalledWith(false);
