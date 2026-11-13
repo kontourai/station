@@ -96,6 +96,11 @@ export interface ProjectConfig {
   name: string;
   slug: string;
   icon?: string;
+  /** Read-only, detected artwork; never a saved icon. */
+  derivedIcon?: string;
+  iconDisabled?: boolean;
+  /** Full canonical remote of the manifest primary git resource. */
+  repositoryDisplay?: string;
   description?: string;
   workingDirectory?: string;
   repositorySource?: ProjectRepositorySource;
@@ -160,6 +165,11 @@ export interface ProjectMetadata {
   slug: string;
   name: string;
   icon?: string;
+  /** Read-only, detected artwork; never a saved icon. */
+  derivedIcon?: string;
+  iconDisabled?: boolean;
+  /** Full canonical remote of the manifest primary git resource. */
+  repositoryDisplay?: string;
   description?: string;
   hasWorkingDirectory: boolean;
   workingDirectory?: string;

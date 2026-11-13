@@ -149,6 +149,7 @@ export class FileStorageAdapter implements IStorageAdapter {
           slug: config.slug,
           name: config.name,
           icon: config.icon,
+          iconDisabled: config.iconDisabled,
           repositorySource: config.repositorySource,
           description: config.description,
           hasWorkingDirectory: !!config.workingDirectory,

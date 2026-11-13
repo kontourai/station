@@ -461,6 +461,18 @@
     "room-channels-light-mobile": [
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "new-chat-dark-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "new-chat-light-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "active-chat-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
     ]
   }
 }

@@ -1,11 +1,23 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   discoverProjectIconCandidates,
   withDiscoveredProjectIcon,
 } from '../project-icon-discovery.js';
+
+const { reads } = vi.hoisted(() => ({ reads: [] as string[] }));
+vi.mock('node:fs/promises', async (original) => {
+  const fs = await original<typeof import('node:fs/promises')>();
+  return {
+    ...fs,
+    readFile: (...args: Parameters<typeof fs.readFile>) => {
+      reads.push(String(args[0]));
+      return fs.readFile(...args);
+    },
+  };
+});
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 
@@ -66,13 +78,56 @@ describe('project icon discovery', () => {
     expect(await withDiscoveredProjectIcon(project)).toBe(project);
     mkdirSync(join(root, '.git'));
     const displayed = await withDiscoveredProjectIcon(project);
-    expect(displayed.icon).toBe(
+    expect(displayed.derivedIcon).toBe(
       `data:image/png;base64,${PNG.toString('base64')}`,
     );
+    expect(displayed).not.toHaveProperty('icon');
     expect(project).not.toHaveProperty('icon');
+    expect(
+      await withDiscoveredProjectIcon({ ...project, iconDisabled: true }),
+    ).not.toHaveProperty('derivedIcon');
+    writeFileSync(
+      join(root, 'apps', 'web', 'public', 'favicon.png'),
+      Buffer.concat([PNG, Buffer.from('changed')]),
+    );
+    expect((await withDiscoveredProjectIcon(project)).derivedIcon).not.toBe(
+      displayed.derivedIcon,
+    );
     expect(await withDiscoveredProjectIcon({ ...project, icon: '🐈' })).toEqual(
       { ...project, icon: '🐈' },
     );
+  });
+
+  test('automatic display stops at the first small valid candidate and reuses unchanged bytes', async () => {
+    const root = workspace();
+    mkdirSync(join(root, '.git'));
+    writeFileSync(join(root, 'favicon.png'), PNG);
+    writeFileSync(join(root, 'logo.png'), PNG);
+    const project = { workingDirectory: root };
+    reads.length = 0;
+    const first = await withDiscoveredProjectIcon(project);
+    expect(first.derivedIcon).toBeTruthy();
+    expect(reads.filter((path) => path.endsWith('.png'))).toEqual([
+      realpathSync(join(root, 'favicon.png')),
+    ]);
+    reads.length = 0;
+    expect((await withDiscoveredProjectIcon(project)).derivedIcon).toBe(
+      first.derivedIcon,
+    );
+    expect(reads.filter((path) => path.endsWith('.png'))).toEqual([]);
+  });
+
+  test('automatic display caps artwork bytes while the explicit picker keeps the stored-image bound', async () => {
+    const root = workspace();
+    mkdirSync(join(root, '.git'));
+    const large = Buffer.alloc(13 * 1024);
+    PNG.copy(large);
+    writeFileSync(join(root, 'favicon.png'), large);
+    const project = { workingDirectory: root };
+    expect(await withDiscoveredProjectIcon(project)).not.toHaveProperty(
+      'derivedIcon',
+    );
+    expect(await discoverProjectIconCandidates(root)).toHaveLength(1);
   });
 
   test('fails without leaking filesystem details for inaccessible paths', async () => {

@@ -73,7 +73,12 @@ export const NO_PROJECT_LABEL = 'No project';
  * the engine: `'home'` or `'managed'`.
  */
 export type NewChatWorkspaceHint =
-  | { kind: 'project'; path: string; repository?: string }
+  | {
+      kind: 'project';
+      path: string;
+      repository?: string;
+      repositoryRemote?: string;
+    }
   | { kind: 'connection'; path: string }
   | { kind: 'home' }
   | { kind: 'managed' }
@@ -266,14 +271,16 @@ export function resolveNewChatWorkspaceHint({
   }
   const projectDirectory = project ? projectRunDirectory(project) : undefined;
   if (projectDirectory) {
-    const remote = project?.repositorySource?.canonicalRemote;
+    const remote =
+      project?.repositoryDisplay ?? project?.repositorySource?.canonicalRemote;
     const repository = remote
       ?.replace(/^https?:\/\//, '')
-      .replace(/\.git$/, '');
+      .replace(/\.git$/, '')
+      .replace(/^github\.com\//, '');
     return {
       kind: 'project',
       path: projectDirectory,
-      ...(repository ? { repository } : {}),
+      ...(repository ? { repository, repositoryRemote: remote } : {}),
     };
   }
 
@@ -431,6 +438,7 @@ export interface NewChatModalContextOption {
   /** The directory the project's chats run in, when the project has one. */
   workingDirectory?: string;
   repository?: string;
+  repositoryRemote?: string;
   /** Why a chat cannot start in this project here (#3370); absent when it can. */
   unavailable?: string;
   /** Why the folder was not checked this time; not a refusal. */
@@ -545,7 +553,9 @@ export function buildContextOptions(
     if (!project) {
       continue;
     }
-    const icon = displayableProjectIcon(project.icon);
+    const icon = displayableProjectIcon(
+      project.icon ?? (project.iconDisabled ? undefined : project.derivedIcon),
+    );
     options.push({
       value: project.slug,
       label: project.name,
@@ -553,11 +563,19 @@ export function buildContextOptions(
       // or path as an <img>, and a legacy stored link must not load here.
       ...(icon ? { icon } : { glyph: 'folder' as const }),
       workingDirectory: projectRunDirectory(project),
-      ...(project.repositorySource?.canonicalRemote
+      ...((project.repositoryDisplay ??
+      project.repositorySource?.canonicalRemote)
         ? {
-            repository: project.repositorySource.canonicalRemote
+            repository: (
+              project.repositoryDisplay ??
+              project.repositorySource!.canonicalRemote
+            )
               .replace(/^https?:\/\//, '')
-              .replace(/\.git$/, ''),
+              .replace(/\.git$/, '')
+              .replace(/^github\.com\//, ''),
+            repositoryRemote:
+              project.repositoryDisplay ??
+              project.repositorySource?.canonicalRemote,
           }
         : {}),
       ...(project.runsAt?.kind === 'unavailable'

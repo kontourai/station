@@ -6,6 +6,7 @@ import {
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { useProjects } from '../../contexts/ProjectsContext';
 import {
   readSnoozes,
   snoozesVersion,
@@ -28,6 +29,7 @@ export function useInboxScope(
     snoozesVersion,
     snoozesVersion,
   );
+  const { projects } = useProjects();
   const { inboxScope } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   // #4405 (A36): the project page on screen, for the default scope.
@@ -47,8 +49,10 @@ export function useInboxScope(
                 !item.environmentId &&
                 !facts?.get(item.id)?.station &&
                 item.projectSlug === routeProject,
-            )?.projectLabel ?? routeProject)
-          : 'All work',
+            )?.projectLabel ??
+            projects.find((project) => project.slug === routeProject)?.name ??
+            'Current project')
+          : 'Follow project page',
       ],
       ['all', 'All work'],
       ['station:local', 'This Station'],
@@ -117,6 +121,7 @@ export function useInboxScope(
     };
   }, [
     items,
+    projects,
     visible,
     now,
     facts,

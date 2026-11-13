@@ -284,7 +284,13 @@ export function StartProjectMenu({
         <p className="start-menu__hint start-menu__hint--path">
           <span className="start-menu__hint-lead">Runs in</span>
           {workspaceHint.kind === 'project' && workspaceHint.repository ? (
-            <span title={workspaceHint.path}>{workspaceHint.repository}</span>
+            <span
+              title={[workspaceHint.repositoryRemote, workspaceHint.path]
+                .filter(Boolean)
+                .join(' · ')}
+            >
+              {workspaceHint.repository}
+            </span>
           ) : (
             <CwdBreadcrumb path={workspaceHint.path} />
           )}

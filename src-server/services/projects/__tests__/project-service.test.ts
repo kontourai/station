@@ -265,6 +265,13 @@ describe('ProjectService', () => {
     const sidecar = projectManifestPath(home, project.slug);
     expect(existsSync(sidecar)).toBe(true);
     const record = JSON.parse(readFileSync(sidecar, 'utf-8'));
+    expect(project.repositorySource).toBeUndefined();
+    expect(svc.listProjects()[0].repositoryDisplay).toBe(
+      'github.com/kontourai/station',
+    );
+    expect(svc.getProject(project.slug).repositoryDisplay).toBe(
+      'github.com/kontourai/station',
+    );
     expect(record.schemaVersion).toBe(1);
     expect(record.id).toMatch(/^prj_/);
     // NOT the local project id: the manifest's id is the portable join key.

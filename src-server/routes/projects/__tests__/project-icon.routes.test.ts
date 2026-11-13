@@ -181,16 +181,22 @@ describe('POST / applies the same rule at creation', () => {
 
 describe('GET / derives repository artwork', () => {
   test('returns the same derived artwork in list and detail without persisting it', async () => {
-    const { app, stored } = await harness();
+    const { app, stored, put } = await harness();
     const directory = stored().workingDirectory as string;
     mkdirSync(join(directory, '.git'));
     writeFileSync(join(directory, 'favicon.png'), Buffer.from(PNG_SIGNATURE));
     const response = await app.request('/');
     expect(response.status).toBe(200);
     const body = await json(response);
-    expect(body.data[0].icon).toBe(pngDataUrl(8));
+    expect(body.data[0].derivedIcon).toBe(pngDataUrl(8));
     const detail = await json(await app.request('/demo'));
-    expect(detail.data.icon).toBe(body.data[0].icon);
+    expect(detail.data.derivedIcon).toBe(body.data[0].derivedIcon);
     expect(stored().icon).toBeUndefined();
+    expect(body.data[0].icon).toBeUndefined();
+    await put({ icon: '' });
+    expect(stored().iconDisabled).toBe(true);
+    expect(
+      (await json(await app.request('/demo'))).data.derivedIcon,
+    ).toBeUndefined();
   });
 });

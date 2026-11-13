@@ -1435,6 +1435,8 @@ type GalleryProjectFixture = {
   slug: string;
   name: string;
   workingDirectory?: string;
+  repositoryDisplay?: string;
+  derivedIcon?: string;
 };
 
 /** `GET /api/projects` fixture — the list shape `ProjectMetadata[]` (station-contracts). */
@@ -1449,6 +1451,9 @@ function projectsListFixture(
           id: `p-${project.slug}`,
           slug: project.slug,
           name: project.name,
+          workingDirectory: project.workingDirectory,
+          repositoryDisplay: project.repositoryDisplay,
+          derivedIcon: project.derivedIcon,
           hasWorkingDirectory: Boolean(project.workingDirectory),
           layoutCount: 0,
           hasKnowledge: false,
@@ -1469,8 +1474,10 @@ function projectDetailFixture(
           id: `p-${project.slug}`,
           slug: project.slug,
           name: project.name,
-          hasWorkingDirectory: Boolean(project.workingDirectory),
           workingDirectory: project.workingDirectory,
+          repositoryDisplay: project.repositoryDisplay,
+          derivedIcon: project.derivedIcon,
+          hasWorkingDirectory: Boolean(project.workingDirectory),
           layoutCount: 0,
           hasKnowledge: false,
           agents: [],
@@ -2620,7 +2627,7 @@ function taskCapabilityScreens(): Screen[] {
       let pageForCleanup: Page | undefined;
       let projectCreated = false;
       const screen: Screen = {
-        name: `task-capabilities-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        name: `task-capabilities-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
         title: `Task capabilities — ${theme}, ${viewport.width}px`,
         path: '/',
         viewport,
@@ -3074,7 +3081,7 @@ function projectRepositorySourceScreens(): Screen[] {
         let created = false;
         let previousPreview = false;
         return {
-          name: `project-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+          name: `project-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
           title: `Project repository sources — ${theme}, ${viewport.width}px`,
           path: `/projects/${slug}/edit?section=resources`,
           viewport,
@@ -5101,14 +5108,23 @@ const SCREENS: Screen[] = [
   // those states would be invisible in the build gallery. These
   // three make them visible.
   ...(['dark', 'light'] as const).flatMap((theme) =>
-    [DESKTOP, MOBILE].map(
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
       (viewport): Screen => ({
-        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
         title: `New chat — ${theme}, ${viewport.width}px`,
         path: '/?dock=open',
         viewport,
         ...withGalleryProjectsList(
-          [{ slug: 'demo-project', name: 'Demo Project' }],
+          [
+            {
+              slug: 'demo-project',
+              name: 'Demo Project',
+              workingDirectory: '/work/station',
+              repositoryDisplay: 'github.com/kontourai/station',
+              derivedIcon:
+                'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==',
+            },
+          ],
           async (page) => {
             const draft = await openGalleryNewChatDraft(page);
             await chooseGalleryNewChatProject(page, draft, 'Demo Project');
@@ -5170,6 +5186,13 @@ const SCREENS: Screen[] = [
     viewport,
     ...overlayDockProjectMismatchHooks(true),
   })),
+  {
+    name: 'active-chat-phone',
+    title: 'Active chat header — actions and Station identity',
+    path: '/?dock=open&chat=gallery-mismatch-conversation',
+    viewport: { width: 412, height: 915 },
+    ...overlayDockProjectMismatchHooks(true),
+  },
   {
     name: 'overlay-project-switcher-populated',
     title: 'New chat — Populated Project picker',

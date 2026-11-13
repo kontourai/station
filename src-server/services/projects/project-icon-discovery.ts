@@ -8,6 +8,13 @@ import {
 import { expandTilde } from '../../utils/paths.js';
 
 const MAX_CANDIDATES = 8;
+const MAX_DERIVED_BYTES = 12 * 1024;
+// Bound retained image bytes as well as entry count; stat every use so edits
+// invalidate the cache without a watcher or stale process-lifetime snapshot.
+const imageCache = new Map<
+  string,
+  { stamp: string; candidate: ProjectIconCandidate }
+>();
 // The stored-icon bound: every candidate offered is one the routes accept.
 const MAX_IMAGE_BYTES = PROJECT_ICON_MAX_IMAGE_BYTES;
 const MANIFEST_PATHS = [
@@ -21,8 +28,6 @@ const COMMON_PATHS: Array<[string, ProjectIconCandidate['source']]> = [
   ['favicon.png', 'favicon'],
   ['public/favicon.ico', 'favicon'],
   ['public/favicon.png', 'favicon'],
-  ['src-ui/public/favicon.ico', 'favicon'],
-  ['src-ui/public/favicon.png', 'favicon'],
   ['public/apple-touch-icon.png', 'app-icon'],
   ['apple-touch-icon.png', 'app-icon'],
   ['public/icon.png', 'app-icon'],
@@ -54,6 +59,7 @@ async function readCandidate(
   root: string,
   candidatePath: string,
   source: ProjectIconCandidate['source'],
+  maxBytes: number,
 ): Promise<ProjectIconCandidate | null> {
   try {
     const canonicalPath = await realpath(candidatePath);
@@ -62,15 +68,22 @@ async function readCandidate(
     const relativePath = safeRelativePath(root, canonicalPath);
     if (!relativePath) return null;
     const info = await stat(canonicalPath);
-    if (!info.isFile() || info.size < 1 || info.size > MAX_IMAGE_BYTES)
-      return null;
+    if (!info.isFile() || info.size < 1 || info.size > maxBytes) return null;
+    const stamp = `${info.mtimeMs}:${info.ctimeMs}:${info.size}`;
+    const cached = imageCache.get(canonicalPath);
+    if (cached?.stamp === stamp)
+      return { ...cached.candidate, relativePath, source };
     const bytes = await readFile(canonicalPath);
     const dataUrl = `data:${mediaType};base64,${bytes.toString('base64')}`;
     // The stored-icon rule, not a second copy of it: it checks the signature
     // and re-checks the size against the bytes actually read (the file can
     // grow between the stat and the read).
     if (projectIconProblem(dataUrl)) return null;
-    return { relativePath, dataUrl, mediaType, source };
+    const candidate = { relativePath, dataUrl, mediaType, source };
+    if (imageCache.size >= 128)
+      imageCache.delete(imageCache.keys().next().value!);
+    imageCache.set(canonicalPath, { stamp, candidate });
+    return candidate;
   } catch {
     return null;
   }
@@ -103,6 +116,8 @@ async function manifestPaths(root: string): Promise<string[]> {
 
 export async function discoverProjectIconCandidates(
   workspacePath: string,
+  limit = MAX_CANDIDATES,
+  maxBytes = MAX_IMAGE_BYTES,
 ): Promise<ProjectIconCandidate[]> {
   const requestedRoot = resolve(expandTilde(workspacePath));
   const root = await realpath(requestedRoot);
@@ -159,24 +174,43 @@ export async function discoverProjectIconCandidates(
     const relativePath = safeRelativePath(root, candidatePath);
     if (!relativePath || seen.has(relativePath)) continue;
     seen.add(relativePath);
-    const candidate = await readCandidate(root, candidatePath, source);
-    if (candidate) candidates.push(candidate);
-    if (candidates.length >= MAX_CANDIDATES) break;
+    const candidate = await readCandidate(
+      root,
+      candidatePath,
+      source,
+      maxBytes,
+    );
+    if (
+      candidate &&
+      Buffer.byteLength(candidate.dataUrl.split(',')[1], 'base64') <= maxBytes
+    )
+      candidates.push(candidate);
+    if (candidates.length >= limit) break;
   }
   return candidates;
 }
 
 /** Derived display metadata only: the stored Project is never mutated. */
 export async function withDiscoveredProjectIcon<
-  T extends { icon?: string; workingDirectory?: string },
+  T extends {
+    icon?: string;
+    iconDisabled?: boolean;
+    derivedIcon?: string;
+    workingDirectory?: string;
+  },
 >(project: T): Promise<T> {
-  if (project.icon || !project.workingDirectory) return project;
+  if (project.icon || project.iconDisabled || !project.workingDirectory)
+    return project;
   try {
     const root = resolve(expandTilde(project.workingDirectory));
     // A folder containing several repositories is not one repository.
     await stat(resolve(root, '.git'));
-    const [candidate] = await discoverProjectIconCandidates(root);
-    return candidate ? { ...project, icon: candidate.dataUrl } : project;
+    const [candidate] = await discoverProjectIconCandidates(
+      root,
+      1,
+      MAX_DERIVED_BYTES,
+    );
+    return candidate ? { ...project, derivedIcon: candidate.dataUrl } : project;
   } catch {
     return project;
   }

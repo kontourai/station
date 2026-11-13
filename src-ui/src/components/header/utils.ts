@@ -22,7 +22,7 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
     {
       label: 'What needs my attention?',
       prompt:
-        'Use list_active_work to name what is running on my Station, what is waiting on me, and any recorded blockers.',
+        'Use list_active_work to summarize work visible to this conversation, what is waiting on me, and recorded blockers. State the scope and any gaps.',
     },
     {
       label: 'Check my Station',
@@ -37,7 +37,7 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
     return [
       {
         label: 'What is happening in this project?',
-        prompt: `Use list_active_work for project ${JSON.stringify(projectSlug)} and read_conversation for details. Summarize progress and blockers.`,
+        prompt: `Use list_active_work and read_conversation to summarize work visible to this conversation. Report whether its scope includes project ${JSON.stringify(projectSlug)}; do not imply a Station-wide inventory.`,
       },
       ...common,
     ];

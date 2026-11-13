@@ -12,7 +12,10 @@ import {
   PROJECT_CHAT_DEFAULT_RECORD_FIELDS,
   type ProjectChatDefaultRecordField,
 } from '@kontourai/station-contracts/project-chat-defaults';
-import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
+import {
+  type ProjectPortableIdentity,
+  selectPrimaryResource,
+} from '@kontourai/station-contracts/project-identity';
 import {
   PROJECT_OVERRIDE_RECORD_FIELDS,
   type ProjectOverrideRecordField,
@@ -372,7 +375,8 @@ export class ProjectService {
    */
   constructor(
     private storageAdapter: IStorageAdapter,
-    private manifests?: Pick<ProjectManifestStore, 'ensureProjectManifest'>,
+    private manifests?: Pick<ProjectManifestStore, 'ensureProjectManifest'> &
+      Partial<Pick<ProjectManifestStore, 'readRecord'>>,
     private stationDefaultWorkspaceIsolation?: () => Promise<
       WorkspaceIsolationMode | undefined
     >,
@@ -410,11 +414,29 @@ export class ProjectService {
   }
 
   listProjects(): ProjectMetadata[] {
-    return this.storageAdapter.listProjects();
+    return this.storageAdapter
+      .listProjects()
+      .map((project) => this.withRepositoryDisplay(project));
   }
 
   getProject(slug: string): ProjectConfig {
-    return this.storageAdapter.getProject(slug);
+    return this.withRepositoryDisplay(this.storageAdapter.getProject(slug));
+  }
+
+  private withRepositoryDisplay<
+    T extends { slug: string; repositorySource?: { canonicalRemote: string } },
+  >(project: T): T {
+    const manifest = this.manifests?.readRecord?.(project.slug);
+    const primary = manifest
+      ? selectPrimaryResource(parseProjectPortableIdentity(manifest).repos)
+      : undefined;
+    const remote =
+      primary?.ok && primary.resource.kind === 'git'
+        ? primary.resource.canonicalRemote
+        : manifest
+          ? undefined
+          : project.repositorySource?.canonicalRemote;
+    return remote ? { ...project, repositoryDisplay: remote } : project;
   }
 
   async createProject(
@@ -607,6 +629,7 @@ export class ProjectService {
     const updated: ProjectConfig = withoutClearedIcon({
       ...existing,
       ...updates,
+      ...(updates.icon !== undefined ? { iconDisabled: !updates.icon } : {}),
       updatedAt: new Date().toISOString(),
     }) as ProjectConfig;
     // #2144 slice 2: `null` on a settings-override field DROPS the override

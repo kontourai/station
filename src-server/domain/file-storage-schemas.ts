@@ -54,6 +54,7 @@ const projectSchema = z
     name: nonEmptyString,
     slug: nonEmptyString,
     icon: optionalString,
+    iconDisabled: z.boolean().optional(),
     description: optionalString,
     workingDirectory: optionalString,
     repositorySource: z

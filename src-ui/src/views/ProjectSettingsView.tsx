@@ -466,7 +466,12 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               actions={
                 <div className="project-settings__identity-preview">
                   <ProjectIcon
-                    project={{ name: form.name, icon: form.icon }}
+                    project={{
+                      name: form.name,
+                      icon: form.icon || undefined,
+                      derivedIcon: project?.derivedIcon,
+                      iconDisabled: form.iconDisabled,
+                    }}
                     size={46}
                     fallback="initials"
                   />
@@ -541,7 +546,12 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                       onClick={() => setIconPickerOpen((open) => !open)}
                     >
                       <ProjectIcon
-                        project={{ name: form.name, icon: form.icon }}
+                        project={{
+                          name: form.name,
+                          icon: form.icon || undefined,
+                          derivedIcon: project?.derivedIcon,
+                          iconDisabled: form.iconDisabled,
+                        }}
                         size={40}
                         fallback="initials"
                       />
@@ -561,12 +571,25 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                       one.
                     </p>
                   )}
+                  {project?.derivedIcon &&
+                    !project.iconDisabled &&
+                    !form.icon && (
+                      <p className="project-settings__icon-notice">
+                        Detected icon · Choose None to hide it.
+                      </p>
+                    )}
                   {iconPickerOpen && (
                     <ProjectIconPicker
                       idPrefix="project-settings-icon"
                       name={form.name}
                       value={legacyIcon ? '' : (form.icon ?? '')}
-                      onChange={(icon) => setField('icon', icon)}
+                      onChange={(icon) => {
+                        setForm((current) =>
+                          current
+                            ? { ...current, icon, iconDisabled: !icon }
+                            : current,
+                        );
+                      }}
                       candidates={iconCandidates.data ?? []}
                       fetching={iconCandidates.isFetching}
                     />

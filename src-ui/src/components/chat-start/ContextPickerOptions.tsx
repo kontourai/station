@@ -103,7 +103,9 @@ export function ContextPickerOptions({
               {opt.workingDirectory && (
                 <span
                   className="new-chat-modal__dropdown-item-dir"
-                  title={opt.workingDirectory}
+                  title={[opt.repositoryRemote, opt.workingDirectory]
+                    .filter(Boolean)
+                    .join(' · ')}
                 >
                   {opt.repository ?? (
                     <CwdBreadcrumb path={opt.workingDirectory} />

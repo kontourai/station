@@ -16,7 +16,12 @@ export function displayableProjectIcon(
 }
 
 interface ProjectIconProps {
-  project: { name: string; icon?: string };
+  project: {
+    name: string;
+    icon?: string;
+    derivedIcon?: string;
+    iconDisabled?: boolean;
+  };
   /** Edge length of the icon, in px. */
   size: number;
   /**
@@ -59,7 +64,9 @@ export function ProjectIcon({
   swatchClassName,
   label,
 }: ProjectIconProps) {
-  const icon = displayableProjectIcon(project.icon);
+  const icon = displayableProjectIcon(
+    project.icon ?? (project.iconDisabled ? undefined : project.derivedIcon),
+  );
   const classes = (...names: Array<string | undefined | false>) =>
     names.filter(Boolean).join(' ');
   const a11y = label

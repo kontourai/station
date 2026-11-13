@@ -201,15 +201,23 @@ available; removing the Home card does not enable, disable or restart them.
 
 ## Project display identity
 
-For operator Project list and detail reads, a Project without an explicit icon uses the first
-valid discovered image when its working directory is a repository root
-(including a worktree with a `.git` file). This is derived display metadata;
-Station does not save the discovered icon into the Project record. Discovery
-checks root artwork, then bounded shallow `*/public`, `apps/*/public`, and
-`packages/*/public` paths, with the existing file size and real-path bounds.
-SVG remains unsupported by the image contract.
+Operator Project list and detail reads return detected repository artwork as
+`derivedIcon`, separate from the saved `icon`. Shared display controls use it
+only when there is no saved icon and detection is enabled. Settings labels it
+as detected; choosing **None** saves `iconDisabled` and suppresses detection.
+Choosing an icon enables display again. Detection requires a repository root
+(including a worktree with a `.git` file), stops at the first valid image under
+12 KiB, and caches decoded candidates by real path, size and modification time.
+The explicit picker retains the larger stored-icon bound and multiple choices.
+Discovery includes bounded shallow `*/public`, `apps/*/public`, and
+`packages/*/public` paths. SVG remains unsupported.
 
-Workspace labels prefer verified `repositorySource.canonicalRemote` where
-present; the working directory remains in the tooltip. Projects without that
-acquisition identity retain their folder label. This display choice does not
-match Projects across Stations or change delegation by slug.
+Workspace labels use `repositoryDisplay`, the portable manifest's primary Git
+resource, including Projects added by path. With no manifest, verified acquisition
+metadata remains a compatibility fallback. GitHub labels omit `github.com/`;
+other hosts remain visible. Tooltips retain the full remote and folder.
+These labels do not match Projects across Stations or change delegation by slug.
+
+An unchosen Inbox scope follows the current Project page and uses its display
+name. Outside Project pages it includes all work. Explicit scope choices,
+including **All work**, remain selected across navigation.

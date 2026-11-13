@@ -26,6 +26,11 @@ import {
 } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [{ slug: 'alpha', name: 'Alpha' }] }),
+}));
+
 import { FOLD_FIXTURES } from '../../../tests/helpers/session-summary-fold-fixtures';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import {
@@ -424,7 +429,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(screen.queryByText('No work in this filter.')).toBeNull();
   });
 
-  it('defaults to all work; a chosen Current project follows the project page on screen (#4405 A36)', () => {
+  it('defaults to the project page and respects explicit All work (#4405 A36)', () => {
     const items = [
       workItem({
         id: 'alpha-chat',
@@ -459,11 +464,8 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         screen.getByRole('combobox', {
           name: 'Inbox scope',
         }) as HTMLSelectElement;
-      // Unchosen, every open chat stays listed: the open conversation is
-      // never filtered out of its own Inbox.
-      expect(scope().value).toBe('all');
-      expect(screen.getByText('No project chat')).toBeTruthy();
-      fireEvent.change(scope(), { target: { value: 'current-project' } });
+      // With no stored setting a project route scopes the inbox.
+      expect(scope().value).toBe('current-project');
       expect(scope().selectedOptions[0].textContent).toBe('Alpha');
       expect(screen.getByText('Alpha project work')).toBeTruthy();
       expect(screen.queryByText('No project chat')).toBeNull();

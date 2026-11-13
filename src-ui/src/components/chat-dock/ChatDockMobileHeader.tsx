@@ -228,22 +228,16 @@ export function ChatDockMobileHeader({
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
             aria-label={
-              collapsedExtent
-                ? 'Full screen chat'
-                : dockToggle.state === 'collapsed'
-                  ? 'Expand chat'
-                  : 'Collapse chat'
+              dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
             }
             data-no-dock-drag=""
             onClick={
-              collapsedExtent
-                ? collapsedExtent.onToggle
-                : dockToggle.state === 'collapsed'
-                  ? dockToggle.onExpand
-                  : dockToggle.onCollapse
+              dockToggle.state === 'collapsed'
+                ? dockToggle.onExpand
+                : dockToggle.onCollapse
             }
           >
-            {collapsedExtent ? <ExpandGlyph /> : <ArrowDownGlyph />}
+            <ArrowDownGlyph />
           </button>
         ) : null}
         {hasConversation || showConnection ? (
@@ -305,7 +299,7 @@ export function ChatDockMobileHeader({
                 className="chat-dock__mobile-project-caption"
                 aria-hidden="true"
               >
-                New chats
+                {inboxActive ? 'Inbox' : 'New chats'}
               </span>{' '}
               <span className="chat-dock__mobile-project-name">
                 {projectSwitcher.projectName}

@@ -1674,26 +1674,18 @@ describe('new-chat-modal-utils', () => {
       slug: 'repository',
       name: 'Repository',
       workingDirectory: '/work/station',
-      repositorySource: {
-        acquisitionId: 'acquisition',
-        attempt: 1,
-        sourceUrl: 'https://github.com/kontourai/station.git',
-        canonicalRemote: 'github.com/kontourai/station',
-        resolvedCommit: 'a'.repeat(40),
-        acquiredAt: '2026-10-01T00:00:00.000Z',
-      },
+      repositoryDisplay: 'github.com/kontourai/station',
     };
     const hint = resolveNewChatWorkspaceHint({
       project,
       agent: undefined,
       acpConnections: [],
     });
-    expect(workspaceHintText(hint)).toBe(
-      'Runs in github.com/kontourai/station',
-    );
+    expect(workspaceHintText(hint)).toBe('Runs in kontourai/station');
     expect(hint).toMatchObject({ path: '/work/station' });
     expect(buildContextOptions([project])[1]).toMatchObject({
-      repository: 'github.com/kontourai/station',
+      repository: 'kontourai/station',
+      repositoryRemote: 'github.com/kontourai/station',
       workingDirectory: '/work/station',
     });
   });
