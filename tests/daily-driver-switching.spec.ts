@@ -157,6 +157,7 @@ async function selectComposerModel(page: Page, optionName: RegExp) {
   await expect(picker).toBeVisible({ timeout: 5_000 });
   await picker.getByRole('option', { name: optionName }).click();
   await expect(picker).toBeHidden({ timeout: 5_000 });
+  await closeRunSetup(page);
 }
 
 /**

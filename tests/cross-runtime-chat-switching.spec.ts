@@ -1500,6 +1500,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await alphaAgents.press('Escape');
     await expect(alphaAgents).toHaveCount(0);
 
+    await closeRunSetup(page);
     await dockComposer(page)
       .getByRole('button', { name: /^Project: / })
       .click();
