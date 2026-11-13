@@ -1173,6 +1173,38 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test('a repeated prompt that matches its neighbour still refuses when a later turn is out of step', async () => {
+    // "continue" twice, then a slash command Grok ran without a point: the
+    // second "continue" lines up with the first one's point by text alone.
+    const session = await startGrokSession();
+    await grokTurn(session, 'continue', 'p-0');
+    const second = await grokTurn(session, 'continue', 'p-1');
+    await grokTurn(session, '/compact', 'p-2');
+    const [live] = (points as { rewind_points: Record<string, unknown>[] })
+      .rewind_points;
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        {
+          rewind_points: [0, 1].map((index) => ({
+            ...live,
+            prompt_index: index,
+            prompt_preview: 'continue',
+          })),
+        },
+      ],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, second),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls.map(({ method }) => method)).toEqual([
+      '_x.ai/rewind/points',
+    ]);
+    await session.stop();
+  });
+
   test("a point whose preview is only the start of the turn's text is not that turn", async () => {
     const session = await startGrokSession();
     const turn = await grokTurn(session, 'yes, apply the migration', 'p-0');
