@@ -76,18 +76,9 @@
             "_kiro/sourceProviders/list",
             "_kiro/sourceProviders/listResources"
           ],
-          "sessionSources": [
-            "local",
-            "remote"
-          ],
-          "sessionListScopes": [
-            "workspace",
-            "user"
-          ],
-          "executionTargets": [
-            "local",
-            "cloud-sandbox"
-          ],
+          "sessionSources": ["local", "remote"],
+          "sessionListScopes": ["workspace", "user"],
+          "executionTargets": ["local", "cloud-sandbox"],
           "sourceProviders": true,
           "replayMarking": true,
           "autoCompactionThreshold": {
