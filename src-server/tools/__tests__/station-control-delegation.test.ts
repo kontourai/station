@@ -787,7 +787,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
         engineId: runtimeId,
       }),
       now: () => Date.parse('2026-11-13T00:00:00.000Z'),
-    }).inspect({ kind: 'runtime-capability-inventory' })) as {
+    }).inspect({ kind: 'runtime-capability-inventory' })) as unknown as {
       connections: Array<Record<string, unknown>>;
     };
     const view = inspection.connections[0]!;
