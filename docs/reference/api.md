@@ -3186,7 +3186,8 @@ statement or complete provider-wide usage. See [measurement coverage](../guides/
 `GET /api/analytics/usage-rollup` reads authorized canonical observations, with
 an exact 7-, 14-, or 30-day Station-observation window. `days` defaults to 14;
 `from` and `to` can supply the exact window. `groupBy` accepts `provider`,
-`model`, `station`, `conversation`, `task`, or `day`. `pageSize` accepts 1–100;
+`model`, `station`, `conversation`, `task`, `day`, `connection`, or
+`modelConnection`. `pageSize` accepts 1–100;
 `cursor` advances the receipt drilldown without changing the aggregate.
 `localOnly=1` excludes configured peer Stations. The normal response is
 `{success: true, data: {window, rows, coverage, receipts, nextCursor?}}`.
@@ -6674,9 +6675,31 @@ attributed account receipts before aggregation. An empty `credentialProfileRef`
 selects the default profile; omitting it includes all accounts. An engine filter
 is required. Older/source-home usage without `accountKey` remains unattributed.
 
-`GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
-for engine activity. Filtering precedes folding and pagination, while coverage
-remains explicit. Without a credential-profile filter, this is Station engine
+`GET /api/analytics/usage-rollup` accepts `provider` and `localOnly=1` for
+engine activity. `provider` must be a provider kind with declared usage
+semantics (`claude`, `codex`, `bedrock`, `ollama`, `muse`, `opencode`, or
+`acp`); any other value is a 400. A declared kind with no receipts in the
+window answers empty rows with `unknown` coverage. ACP reports context
+occupancy only, so it has no receipts and its provider coverage says so.
+Filtering precedes folding and pagination, while coverage remains explicit.
+
+Provider filters narrow inside the bounded selection, so provider-filtered
+totals and coverage describe that provider rather than the Station's first 500
+observations.
+
+`connectionId` (the engine connection last recorded in the current process run) and
+`modelConnectionId` (the accepted Station-resolved launch plan in effect at that
+usage event; the session view keeps the first accepted plan, so after a model switch the two can differ) narrow to receipts with that attribution, both scoped to the
+process run since the latest `session.started`; `groupBy=connection|modelConnection` groups by
+it. Connection ids belong to this Station, so these require `localOnly=1` (400
+otherwise). A `connectionId` that is not a valid engine connection id, or a
+`modelConnectionId` that is not a bounded printable key, is also a 400. Sessions that recorded no connection stay unattributed and are
+never inferred from the engine. Because capture counts are per engine, a
+connection-filtered read is at most `partial`. Provider and connection filters
+apply inside the bounded 500-observation selection. Connection attribution is
+omitted from the `includeAggregate` peer transfer and from usage export pages.
+Hosts advertise this through the `usageConnectionFilters` capability; older
+hosts ignore the connection filters. Without a credential-profile filter, this is Station engine
 history across accounts. A profile filter selects attributed receipts and
 excludes unattributed usage; neither view is a provider billing statement.
 
