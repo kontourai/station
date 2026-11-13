@@ -3436,7 +3436,7 @@
 
 .chat-input {
   container-type: inline-size;
-  container-name: reply-composer;
+  --composer-label-collapse: 380px;
 }
 
 .chat-input .chat-input__meta {
@@ -3678,8 +3678,6 @@
   display: none;
 }
 
-@container (max-width: 450px) {
-  .chat-input .chat-controls-row {
-    gap: 0;
-  }
+.chat-input .chat-controls-row {
+  gap: clamp(0px, calc((100cqw - 450px) * 1000), var(--k-space-2));
 }

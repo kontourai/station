@@ -94,28 +94,21 @@
 .composer-run-control .composer-choice__value {
   font-weight: 400;
 }
-/* Use the available composer width, including a narrow desktop dock. */
-@container reply-composer (max-width: 380px) {
-  .composer-run-control .chat-input__chip-stack {
-    display: none;
-  }
-  .composer-choices > .choice-trigger.composer-run-control {
-    flex: none;
-  }
+/* Intrinsic sizing uses the existing composer container. Once the available
+   width falls below the surface's label budget, only marks and caret remain. */
+.composer-run-control .chat-input__chip-stack {
+  max-width: clamp(
+    0px,
+    calc((100cqw - var(--composer-label-collapse, 380px)) * 1000),
+    32rem
+  );
+  overflow: hidden;
 }
-
-@container (max-width: 450px) {
-  .composer-choices > .choice-trigger.composer-run-control {
-    gap: 0;
-    padding-inline: var(--k-space-1);
-  }
-}
-
-@container start-composer (max-width: 310px) {
-  .composer-run-control .chat-input__chip-stack {
-    display: none;
-  }
-  .composer-choices > .choice-trigger.composer-run-control {
-    flex: none;
-  }
+.composer-choices > .choice-trigger.composer-run-control {
+  gap: clamp(0px, calc((100cqw - 450px) * 1000), var(--k-space-2));
+  padding-inline: clamp(
+    var(--k-space-1),
+    calc((100cqw - 450px) * 1000),
+    var(--k-space-2)
+  );
 }

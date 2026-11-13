@@ -590,5 +590,5 @@
 
 .start-composer {
   container-type: inline-size;
-  container-name: start-composer;
+  --composer-label-collapse: 310px;
 }
