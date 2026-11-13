@@ -159,6 +159,42 @@ const VIEWPORTS = {
   phone: { width: 390, height: 844 },
 } as const;
 
+async function installReleaseFixtures(page: Page) {
+  const history = [
+    {
+      tag_name: 'v0.1.11-nightly.246500',
+      name: 'Available server release',
+      draft: false,
+      body: '- Available server improvements.',
+    },
+    {
+      tag_name: 'v0.1.11-nightly.246303',
+      name: 'Installed server release',
+      draft: false,
+      body: '## Server changes\n- Restores connections after a server restart.\n- Shows the installed server changelog.',
+    },
+    {
+      tag_name: 'v0.1.10',
+      name: 'Earlier server release',
+      draft: false,
+      body: '- Earlier server changes.',
+    },
+  ];
+  await page.route(
+    'https://api.github.com/repos/kontourai/station/releases**',
+    (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/releases') && url.search === '?per_page=100')
+        return route.fulfill({ json: history });
+      const tag = decodeURIComponent(url.pathname.split('/').at(-1) ?? '');
+      const release = history.find((entry) => entry.tag_name === tag);
+      return release
+        ? route.fulfill({ json: release })
+        : rejectUnexpectedFixtureRequest(route);
+    },
+  );
+}
+
 async function mount(
   page: Page,
   theme: 'light' | 'dark',
@@ -166,6 +202,7 @@ async function mount(
   scenario: 'update' | 'manual',
   scene = 'updates',
 ) {
+  await installReleaseFixtures(page);
   await page.setViewportSize(VIEWPORTS[viewport]);
   await page.setContent(
     `<!doctype html><html data-theme="${theme}"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
@@ -270,29 +307,6 @@ for (const theme of ['light', 'dark'] as const) {
     test(`installed server changelog (${theme}, ${viewport})`, async ({
       page,
     }, testInfo) => {
-      await page.route(
-        'https://api.github.com/repos/kontourai/station/releases/**',
-        (route) => {
-          const installed = route
-            .request()
-            .url()
-            .endsWith('/tags/v0.1.11-nightly.246303');
-          return route.fulfill({
-            json: {
-              tag_name: installed
-                ? 'v0.1.11-nightly.246303'
-                : 'v0.1.11-nightly.246500',
-              name: installed
-                ? 'Installed server release'
-                : 'Available server release',
-              body: installed
-                ? '## Server changes\n- Restores connections after a server restart.\n- Shows the installed server changelog.'
-                : '- Available server improvements.',
-              draft: false,
-            },
-          });
-        },
-      );
       await mount(page, theme, viewport, 'update');
       await page
         .getByRole('button', { name: 'Review updates', exact: true })
@@ -357,39 +371,6 @@ for (const capture of [
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.route(
-      'https://api.github.com/repos/kontourai/station/releases**',
-      (route) => {
-        const history = [
-          {
-            tag_name: 'v0.1.11-nightly.246500',
-            name: 'Available server release',
-            draft: false,
-            body: '- Available server improvements.',
-          },
-          {
-            tag_name: 'v0.1.11-nightly.246303',
-            name: 'Installed server release',
-            draft: false,
-            body: '## Server changes\n- Restores connections after a server restart.\n- Shows the installed server changelog.',
-          },
-          {
-            tag_name: 'v0.1.10',
-            name: 'Earlier server release',
-            draft: false,
-            body: '- Earlier server changes.',
-          },
-        ];
-        if (new URL(route.request().url()).search)
-          return route.fulfill({ json: history });
-        const tag = decodeURIComponent(
-          new URL(route.request().url()).pathname.split('/').at(-1)!,
-        );
-        const release = history.find((entry) => entry.tag_name === tag);
-        if (!release) return rejectUnexpectedFixtureRequest(route);
-        return route.fulfill({ json: release });
-      },
-    );
     await mount(page, capture.theme, capture.viewport, 'update', capture.scene);
     if (capture.scene !== 'notes') {
       await page
