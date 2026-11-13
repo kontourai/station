@@ -170,7 +170,9 @@ describe('Connection Routes', () => {
     service.listRuntimeConnectionCatalog.mockResolvedValue(listed);
     // The full list and the single read carry engine rows too.
     service.listConnections.mockResolvedValue(listed);
-    service.getConnection.mockResolvedValue(listed[0]);
+    const getConnection = vi.fn(
+      async (_id: string, _options?: object) => listed[0],
+    );
     const presenting = (
       scope: string | undefined,
       principal?: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
@@ -182,7 +184,10 @@ describe('Connection Routes', () => {
           setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
         await next();
       });
-      outer.route('/', createConnectionRoutes(service as any));
+      outer.route(
+        '/',
+        createConnectionRoutes({ ...service, getConnection } as any),
+      );
       return outer;
     };
     const origins = async (app: Hono, path: string) =>
@@ -246,7 +251,7 @@ describe('Connection Routes', () => {
       source: 'station',
     });
     expect((await single('access:manage')).origin).toBe('https://gw.example');
-    expect(service.getConnection).toHaveBeenCalledWith('claude', {
+    expect(getConnection).toHaveBeenCalledWith('claude', {
       withAllowanceEvidence: true,
     });
   });

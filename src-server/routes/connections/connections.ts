@@ -362,7 +362,7 @@ export function createConnectionRoutes(
  *   without the account.
  */
 function forViewer<
-  T extends {
+  T extends ConnectionConfig & {
     routeObservation?: EngineRouteObservation;
     allowanceEvidence?: EngineAllowanceEvidence[];
   },
