@@ -754,9 +754,18 @@ function foldUsageEventsInner(
   let perTurnCostUsd: number | undefined;
   /** `reportedCost` in the engine's own units (never USD-converted). */
   const engineCosts = new EngineReportedCostTotals();
+  /** The Session whose engine reported `aggregate.engineMcp`. */
+  let engineMcpThread: string | undefined;
 
   for (const event of events) {
     if (event.provider) aggregate.provider = event.provider;
+    // A lineage folds its Sessions one after another. The next Session's
+    // engine is another process: its predecessor's MCP servers go, as a
+    // handoff drops them from the live chat.
+    if (engineMcpThread !== undefined && event.threadId !== engineMcpThread) {
+      delete aggregate.engineMcp;
+      engineMcpThread = undefined;
+    }
     observations?.observe(event);
     switch (event.method) {
       case 'token-usage.updated': {
@@ -941,6 +950,7 @@ function foldUsageEventsInner(
       }
       case 'engine-mcp.status': {
         aggregate.engineMcp = foldEngineMcpStatus(aggregate.engineMcp, event);
+        engineMcpThread = event.threadId;
         break;
       }
       default:

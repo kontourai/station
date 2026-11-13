@@ -973,6 +973,36 @@ describe('foldUsageEvents — engine MCP status', () => {
     });
   });
 
+  it('the next Session in a lineage drops its predecessor engine’s servers, as a handoff does', () => {
+    const next = (event: CanonicalRuntimeEvent): CanonicalRuntimeEvent => ({
+      ...event,
+      threadId: 't2',
+    });
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'old', state: 'ready', scope: 'session' }], true, true),
+        next(ev({ method: 'turn.completed', provider: 'acp' })),
+      ]),
+    ).not.toHaveProperty('engineMcp');
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'old', state: 'ready', scope: 'session' }], true, true),
+        next(
+          mcp([{ name: 'new', state: 'starting', scope: 'session' }], false),
+        ),
+      ]).engineMcp,
+    ).toEqual({
+      servers: [{ name: 'new', state: 'starting', scope: 'session' }],
+    });
+    // The same Session's later events keep it.
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'kept', state: 'ready', scope: 'session' }], true),
+        ev({ method: 'turn.completed', provider: 'acp' }),
+      ]).engineMcp?.servers.map(({ name }) => name),
+    ).toEqual(['kept']);
+  });
+
   it('a report without reconnect clears the bit, and no report leaves the field absent', () => {
     expect(
       foldUsageEvents([
