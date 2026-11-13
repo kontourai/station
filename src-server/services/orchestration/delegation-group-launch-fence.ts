@@ -10,7 +10,10 @@ import {
   type DelegationAuthorityStore,
   type DelegationInvocationAmounts,
 } from '@kontourai/flow-agents/delegation-authority-service';
-import type { DelegationAuthorityStoreV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
+import {
+  type DelegationAuthorityStoreV3,
+  validateDelegationAuthorityLedgerV3,
+} from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
   type DelegationEnvelopeV2,
   delegationEnvelopeDigestV2,
@@ -37,6 +40,7 @@ import {
   assertSynchronous,
   type FileFinalWireIntentStore,
   type FinalWireIntentIdentity,
+  type SingleFinalWireIntentIdentity,
   type WireFinalizer,
   WireIntentRefusal,
   wireIdentityDigest,
@@ -53,6 +57,171 @@ function requireLaunch(value: unknown): asserts value {
 }
 const same = (a: unknown, b: unknown): boolean =>
   canonicalJson(a) === canonicalJson(b);
+
+/** One reserved physical request without a synthetic group/controller/seat.
+ * Host authentication, qualified wire/pricing and native confinement remain owner inputs.
+ * The response stays observable when a later store commit or unlock fails. */
+export class SingleDelegationFinalFetchLaunchFence {
+  readonly response: Promise<Response>;
+  readonly authorities: DelegationAuthorityStoreV3;
+  #resolveResponse!: (response: Response | PromiseLike<Response>) => void;
+  #rejectResponse!: (error: unknown) => void;
+  #started = false;
+  #invoked = false;
+
+  constructor(
+    private readonly owners: LaunchOwners & {
+      authorities: DelegationAuthorityStoreV3;
+      scope: ReportRoundsScope;
+    },
+  ) {
+    this.response = new Promise((resolve, reject) => {
+      this.#resolveResponse = resolve;
+      this.#rejectResponse = reject;
+    });
+    outsideStationServerScope(() => {
+      void this.response.catch(() => {});
+    });
+    this.authorities = {
+      transact: (id, body) => {
+        forbidNestedOwner();
+        return owners.authorities.transact(id, body);
+      },
+    };
+  }
+
+  get invoked(): boolean {
+    return this.#invoked;
+  }
+
+  async start(
+    bindingInput: SingleReservedWireBinding,
+    wireInput: FinalWire,
+    signal: AbortSignal,
+  ): Promise<SingleFinalWireIntentIdentity> {
+    if (this.#started)
+      throw new WireIntentRefusal('single_launch_already_started');
+    this.#started = true;
+    const scope = { active: true };
+    try {
+      forbidNestedOwner();
+      const binding = structuredClone(bindingInput);
+      const wire = snapshotFinalWire(wireInput);
+      requireLaunch(wireIdentityDigest(wire) === binding.expectedWireDigest);
+      signal.throwIfAborted();
+      this.owners.scope.current();
+      this.owners.scope.check(() =>
+        assertSynchronous(this.owners.finalizeCurrent),
+      );
+      return await launchContext.run(scope, () =>
+        this.owners.authorities.transact(
+          binding.authority.id,
+          async (ledger) => {
+            if (!ledger) throw new WireIntentRefusal('authority_missing');
+            validateDelegationAuthorityLedgerV3(ledger);
+            const epoch = ledger.epochs.at(-1);
+            requireLaunch(
+              epoch &&
+                ledger.origins.some(
+                  (origin) =>
+                    origin.invocationId === binding.invocationId &&
+                    origin.epoch === ledger.epochs.length - 1,
+                ),
+            );
+            const current: DelegationAuthorityLedger = {
+              root: epoch.root,
+              envelopes: epoch.envelopes,
+              cancelled: ledger.cancelled,
+              invocations: ledger.invocations,
+            };
+            const host = this.owners.host;
+            const scopedHost: DelegationAuthorityHost = {
+              now: () => host.now(),
+              authorize: (...args) =>
+                this.owners.scope.check(() => ({
+                  value: host.authorize(...args),
+                })).value,
+              confirmExecution: (...args) =>
+                this.owners.scope.check(() => ({
+                  value: host.confirmExecution(...args),
+                })).value,
+            };
+            const { envelope, reservation } = await admitReservedInvocation(
+              { host: scopedHost },
+              current,
+              binding,
+            );
+            const identity: SingleFinalWireIntentIdentity = {
+              scope: 'single-delegation/v1',
+              root: rootAuthorityReferenceV2(current.root),
+              envelope: structuredClone(binding.envelope),
+              executionId: envelope.execution_id,
+              invocationId: binding.invocationId,
+              effect: binding.effect,
+              allocation: structuredClone(reservation.allocation),
+              executionBindingDigest: wireIdentityDigest(
+                envelope.execution_binding,
+              ),
+              principalDigest: current.root.authenticated_principal_ref.digest,
+              subjectDigest: current.root.authenticated_subject_ref.digest,
+              finalWireDigest: wireIdentityDigest(wire),
+            };
+            const finalChecks = (): undefined =>
+              this.owners.scope.check(() => {
+                signal.throwIfAborted();
+                const chain: DelegationEnvelopeV2[] = [];
+                let cursor = envelope;
+                for (;;) {
+                  chain.unshift(cursor);
+                  if (!cursor.parent) break;
+                  const parent = current.envelopes.find(
+                    (candidate) => candidate.envelope_id === cursor.parent?.id,
+                  );
+                  requireLaunch(
+                    parent && chain.length <= current.envelopes.length,
+                  );
+                  cursor = parent;
+                }
+                validateDelegationAncestryV2(
+                  current.root,
+                  chain,
+                  this.owners.host.now(),
+                );
+                assertSynchronous(this.owners.finalizeCurrent);
+                return undefined;
+              });
+            await this.owners.intents.consumeSingle(identity, finalChecks);
+            this.owners.scope.check(() => {
+              finalChecks();
+              this.#invoked = true;
+              try {
+                this.#resolveResponse(
+                  this.owners.fetch(wire.url, {
+                    method: wire.method,
+                    headers: wire.headers.map(([name, value]) => [name, value]),
+                    body: wire.body,
+                    redirect: 'error',
+                    signal,
+                  }),
+                );
+              } catch (error) {
+                this.#rejectResponse(error);
+                throw error;
+              }
+            });
+            return { ledger, result: identity };
+          },
+        ),
+      );
+    } catch (error) {
+      if (!this.#invoked) this.#rejectResponse(error);
+      throw error;
+    } finally {
+      scope.active = false;
+    }
+  }
+}
+
 export type FinalWire = {
   url: string;
   method: 'POST';
@@ -72,6 +241,15 @@ export type ReservedWireBinding = {
   /** Captured from the actual Flow controller callback, never a route input. */
   flowClaim?: FlowDurableStepClaim;
 };
+export type SingleReservedWireBinding = Pick<
+  ReservedWireBinding,
+  | 'authority'
+  | 'envelope'
+  | 'invocationId'
+  | 'effect'
+  | 'allocation'
+  | 'expectedWireDigest'
+>;
 export function snapshotFinalWire(input: FinalWire): FinalWire {
   if (
     input.method !== 'POST' ||
@@ -160,7 +338,10 @@ export type PreparedReservedFinalFetchOwners =
 async function admitReservedInvocation(
   owners: Pick<LaunchOwners, 'host'>,
   current: DelegationAuthorityLedger,
-  binding: ReservedWireBinding,
+  binding: Pick<
+    SingleReservedWireBinding,
+    'authority' | 'envelope' | 'invocationId' | 'effect' | 'allocation'
+  >,
 ): Promise<{
   envelope: DelegationEnvelopeV2;
   reservation: DelegationAuthorityLedger['invocations'][number];

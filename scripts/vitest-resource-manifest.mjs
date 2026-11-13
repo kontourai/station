@@ -159,6 +159,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/station-report-answer-recovery-publication.test.ts',
   'src-server/services/orchestration/__tests__/station-report-custody-publication.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-persistence.test.ts',
+  // Uses real Git/SDK source fixtures and durable authority/intent stores for single-execution replay.
+  'src-server/services/orchestration/__tests__/single-delegation-wire-intent.test.ts',
   'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',
   'src-server/services/orchestration/__tests__/station-report-credential-sharing.test.ts',
   'src-server/services/orchestration/__tests__/google-sealed-preparation.test.ts',

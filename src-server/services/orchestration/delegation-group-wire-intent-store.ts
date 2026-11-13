@@ -36,40 +36,71 @@ const id = z
   .regex(/^[^\p{Cc}]+$/u);
 const integer = z.number().int().nonnegative().safe();
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const invocationIdentity = {
+  root: z.object({ id, authority_epoch: integer, digest }).strict(),
+  envelope: z.object({ id, generation: integer, digest }).strict(),
+  executionId: id,
+  invocationId: id,
+  effect: id,
+  allocation: z
+    .object({
+      inputTokens: integer,
+      outputTokens: integer,
+      costMicros: integer,
+    })
+    .strict(),
+  executionBindingDigest: digest,
+  principalDigest: digest,
+  subjectDigest: digest,
+  finalWireDigest: digest,
+};
 const identitySchema = z
   .object({
     groupId: id,
     controller: z.object({ id, generation: integer }).strict(),
     seatId: id,
-    root: z.object({ id, authority_epoch: integer, digest }).strict(),
-    envelope: z.object({ id, generation: integer, digest }).strict(),
-    executionId: id,
-    invocationId: id,
-    effect: id,
-    allocation: z
-      .object({
-        inputTokens: integer,
-        outputTokens: integer,
-        costMicros: integer,
-      })
-      .strict(),
-    executionBindingDigest: digest,
-    principalDigest: digest,
-    subjectDigest: digest,
-    finalWireDigest: digest,
+    ...invocationIdentity,
   })
   .strict();
 export type FinalWireIntentIdentity = z.infer<typeof identitySchema>;
+const singleIdentitySchema = z
+  .object({
+    scope: z.literal('single-delegation/v1'),
+    ...invocationIdentity,
+  })
+  .strict();
+export type SingleFinalWireIntentIdentity = z.infer<
+  typeof singleIdentitySchema
+>;
+type StoredIdentity = FinalWireIntentIdentity | SingleFinalWireIntentIdentity;
 const recordSchema = z
   .object({
     identity: identitySchema,
     state: z.literal('send-intent'),
   })
   .strict();
-const ledgerSchema = z
+const legacyLedgerSchema = z
   .object({ version: z.literal(1), records: z.array(recordSchema).max(1024) })
   .strict();
-type Ledger = z.infer<typeof ledgerSchema>;
+const storedRecordSchema = z
+  .object({
+    identity: z.union([identitySchema, singleIdentitySchema]),
+    state: z.literal('send-intent'),
+  })
+  .strict();
+const ledgerSchema = z.discriminatedUnion('version', [
+  legacyLedgerSchema,
+  z
+    .object({
+      version: z.literal(2),
+      records: z.array(storedRecordSchema).max(1024),
+    })
+    .strict(),
+]);
+type Ledger = {
+  version: 1 | 2;
+  records: Array<z.infer<typeof storedRecordSchema>>;
+};
 const MAX_BYTES = 4 * 1024 * 1024;
 const key = (
   identity: Pick<FinalWireIntentIdentity, 'root' | 'invocationId'>,
@@ -204,7 +235,18 @@ export class FileFinalWireIntentStore {
     identity: FinalWireIntentIdentity,
     finalizeCurrent: WireFinalizer,
   ): Promise<void> {
-    const snapshot = identitySchema.parse(identity);
+    return this.#consume(identitySchema.parse(identity), finalizeCurrent);
+  }
+  async consumeSingle(
+    identity: SingleFinalWireIntentIdentity,
+    finalizeCurrent: WireFinalizer,
+  ): Promise<void> {
+    return this.#consume(singleIdentitySchema.parse(identity), finalizeCurrent);
+  }
+  async #consume(
+    snapshot: StoredIdentity,
+    finalizeCurrent: WireFinalizer,
+  ): Promise<void> {
     return this.#locked(finalizeCurrent, async (ledger) => {
       const existing = ledger.records.find(
         (record) => key(record.identity) === key(snapshot),
@@ -217,6 +259,7 @@ export class FileFinalWireIntentStore {
         );
       if (ledger.records.length >= 1024)
         throw new WireIntentRefusal('wire_intent_capacity');
+      if ('scope' in snapshot) ledger.version = 2;
       ledger.records.push({ identity: snapshot, state: 'send-intent' });
       await publishJsonFileWithOwnedLock(this.#file, ledger, {
         indent: null,
@@ -247,6 +290,34 @@ export class FileFinalWireIntentStore {
     invocationId: string,
     finalizeCurrent: WireFinalizer,
   ): Promise<FinalWireIntentIdentity | undefined> {
+    const identity = await this.#lookup(
+      authorityId,
+      invocationId,
+      finalizeCurrent,
+    );
+    if (identity && 'scope' in identity)
+      throw new WireIntentRefusal('wire_intent_kind_mismatch');
+    return identity;
+  }
+  async lookupSingle(
+    authorityId: string,
+    invocationId: string,
+    finalizeCurrent: WireFinalizer,
+  ): Promise<SingleFinalWireIntentIdentity | undefined> {
+    const identity = await this.#lookup(
+      authorityId,
+      invocationId,
+      finalizeCurrent,
+    );
+    if (identity && !('scope' in identity))
+      throw new WireIntentRefusal('wire_intent_kind_mismatch');
+    return identity;
+  }
+  async #lookup(
+    authorityId: string,
+    invocationId: string,
+    finalizeCurrent: WireFinalizer,
+  ): Promise<StoredIdentity | undefined> {
     id.parse(authorityId);
     id.parse(invocationId);
     return this.#locked(finalizeCurrent, async (ledger) =>
