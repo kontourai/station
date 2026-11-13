@@ -1,5 +1,7 @@
 import {
   CONVERSATION_REPORTED_COST_UNITS_MAX,
+  type ConversationEngineMcpStatus,
+  foldEngineMcpStatus,
   isReportedCostUnit,
 } from '@kontourai/station-contracts/runtime';
 import {
@@ -83,6 +85,11 @@ export interface SessionUsageAggregate {
   reportedCosts?: EngineReportedCostTotal[];
   /** The engine's latest own context reading, 0-100; never derived from tokens. */
   contextPercent?: number;
+  /**
+   * The engine's MCP servers as its `engine-mcp.status` events left them
+   * (`foldEngineMcpStatus`). Absent when no event reported any.
+   */
+  engineMcp?: ConversationEngineMcpStatus;
   /**
    * Provider id observed on the folded events (`event.provider`), or
    * `undefined` when the stream was empty. Lets a consumer say WHICH
@@ -930,6 +937,10 @@ function foldUsageEventsInner(
       case 'session.configured': {
         const model = readSessionConfiguredModel(event);
         if (model) aggregate.lastModelId = model;
+        break;
+      }
+      case 'engine-mcp.status': {
+        aggregate.engineMcp = foldEngineMcpStatus(aggregate.engineMcp, event);
         break;
       }
       default:

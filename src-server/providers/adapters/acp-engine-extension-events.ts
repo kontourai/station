@@ -17,7 +17,9 @@
  */
 import crypto from 'node:crypto';
 import {
+  ENGINE_MCP_ERROR_MAX_CHARS,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  ENGINE_MCP_STATUS_MAX_SERVERS,
   type EngineMcpServerState,
   type EngineMcpServerStatus,
   type EngineReportedCost,
@@ -66,10 +68,8 @@ export interface EngineExtensionState {
 
 /** Bound on the per-session maps above; the oldest entry goes first. */
 const ENGINE_EXTENSION_STATE_MAX_ENTRIES = 256;
-/** Bound on MCP servers one status report may carry; the rest are dropped. */
-const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
 const MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
-const MCP_ERROR_MAX_CHARS = 512;
+const MCP_ERROR_MAX_CHARS = ENGINE_MCP_ERROR_MAX_CHARS;
 /** A model id as engines spell one: one token, at most 200 characters. */
 const MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
 /** A cost unit as engines spell one (`USD`, `EUR`, `credit`). */

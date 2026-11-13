@@ -1,4 +1,5 @@
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
+import { foldEngineMcpStatus } from '@kontourai/station-contracts/runtime';
 import {
   StationHttpError,
   useConversationUsageTreeQuery,
@@ -126,6 +127,21 @@ export function ConversationStats({
     }
   }, [messageCount, refetch]);
 
+  // The stats carry every report folded on the server; a reopened
+  // conversation's live state is empty, or holds only the partial reports
+  // that arrived since. Live servers update the stored list as a partial
+  // report would. The reconnect bit is the live one when there is one.
+  const liveMcp = engineMcpServers !== undefined;
+  const mcpServers = liveMcp
+    ? stats?.engineMcp
+      ? foldEngineMcpStatus(stats.engineMcp, { servers: engineMcpServers })
+          .servers
+      : engineMcpServers
+    : stats?.engineMcp?.servers;
+  const mcpReconnectable = liveMcp
+    ? engineMcpReconnect === true
+    : stats?.engineMcp?.reconnect === true;
+
   const reconnect = useReconnectEngineMcpServerMutation(apiBase);
   const [mcpReconnect, setMcpReconnect] = useState<{
     pendingServer?: string;
@@ -182,9 +198,9 @@ export function ConversationStats({
         usageTreeLoading:
           usageTree.isPending && usageTree.fetchStatus !== 'idle',
         usageTreeError: usageTreeMissing ? undefined : usageTree.error,
-        engineMcpServers,
+        engineMcpServers: mcpServers,
         ...(engineName ? { engineName } : {}),
-        ...(executionThreadId && engineMcpReconnect
+        ...(executionThreadId && mcpReconnectable
           ? { onReconnectMcpServer }
           : {}),
         mcpReconnectPendingServer: mcpReconnect.pendingServer,
