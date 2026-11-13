@@ -92,6 +92,8 @@ export interface EngineExtensionState extends AcpChildWorkState {
   engineTurnCosts?: Map<string, number>;
   /** Engine prompt ids whose usage was published (`grok.turn-completed`). */
   engineTurnUsage?: Map<string, true>;
+  /** Station turn id → the cost published for it so far, summed over engine prompts. */
+  turnCostSums?: Map<string, number>;
   /**
    * The MCP servers Station passed on `session/new`, by name. An engine that
    * does not say where a server came from (Grok calls every server `local`)
@@ -332,54 +334,41 @@ const GROK_MCP_STATES: Readonly<Record<string, EngineMcpServerState>> = {
 const GROK_COST_TICKS_PER_USD = 1e10;
 
 /**
- * One engine prompt's usage from Grok's `turn_completed.usage`, published
- * once per prompt: tokens and its cost in one event. Grok's `inputTokens` is
- * the whole prompt, cache included (live: `totalTokens` = input + output), so
- * the prompt tokens are what is left after the cache reads and writes. Its
- * cost is `costUsdTicks`; Grok writes 0 when a model's price is unknown or
- * withheld, so zero is no report rather than a free turn. A frame repeated
- * for the same prompt is not new usage.
+ * One engine prompt's cost from Grok's `turn_completed.usage.costUsdTicks`,
+ * scope `turn`. Grok writes 0 when a model's price is unknown or withheld,
+ * so zero is no report rather than a free turn. A frame repeated for the same
+ * engine prompt is not new spend. When more than one engine prompt lands in
+ * one Station turn (a wake that ran while Station's turn was open), the
+ * turn's figure is their sum: the usage fold keeps the last turn-scope
+ * figure per turn, so each publish states the whole turn so far.
+ *
+ * Grok's token counts are not published: usage scope is declared per
+ * provider (`usage-semantics.ts`), and `acp` is context-occupancy-only for
+ * every engine it runs.
  */
-function publishGrokTurnUsage(
+function publishGrokTurnCost(
   ctx: EngineExtensionContext,
   usage: Record<string, unknown>,
   promptId: string | undefined,
 ) {
+  const ticks = finiteNonNegative(usage.costUsdTicks);
+  if (!ticks) return;
   if (promptId && ctx.state) {
     ctx.state.engineTurnUsage ??= new Map();
     if (ctx.state.engineTurnUsage.has(promptId)) return;
     setBounded(ctx.state.engineTurnUsage, promptId, true);
   }
-  const input = finiteNonNegative(usage.inputTokens);
-  const output = finiteNonNegative(usage.outputTokens);
-  const total = finiteNonNegative(usage.totalTokens);
-  const cacheRead = finiteNonNegative(usage.cachedReadTokens);
-  const cacheWrite = finiteNonNegative(usage.cacheCreationTokens);
-  const reasoning = finiteNonNegative(usage.reasoningTokens);
-  const ticks = finiteNonNegative(usage.costUsdTicks);
-  const prompt =
-    input === undefined
-      ? undefined
-      : Math.max(0, input - (cacheRead ?? 0) - (cacheWrite ?? 0));
-  const figures = {
-    ...(prompt !== undefined ? { promptTokens: prompt } : {}),
-    ...(output !== undefined ? { completionTokens: output } : {}),
-    ...(total !== undefined ? { totalTokens: total } : {}),
-    ...(cacheRead !== undefined ? { cacheReadTokens: cacheRead } : {}),
-    ...(cacheWrite !== undefined ? { cacheWriteTokens: cacheWrite } : {}),
-    ...(reasoning !== undefined ? { reasoningTokens: reasoning } : {}),
-    ...(ticks
-      ? {
-          reportedCost: {
-            amount: ticks / GROK_COST_TICKS_PER_USD,
-            unit: 'USD',
-            scope: 'turn' as const,
-          },
-        }
-      : {}),
-  };
-  if (Object.keys(figures).length === 0) return;
-  ctx.publish({ ...base(ctx), method: 'token-usage.updated', ...figures });
+  let amount = ticks / GROK_COST_TICKS_PER_USD;
+  if (ctx.activeTurnId && ctx.state) {
+    ctx.state.turnCostSums ??= new Map();
+    amount += ctx.state.turnCostSums.get(ctx.activeTurnId) ?? 0;
+    setBounded(ctx.state.turnCostSums, ctx.activeTurnId, amount);
+  }
+  ctx.publish({
+    ...base(ctx),
+    method: 'token-usage.updated',
+    reportedCost: { amount, unit: 'USD', scope: 'turn' },
+  });
 }
 
 function mcpServerScope(
@@ -584,10 +573,8 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
         : undefined;
     const title = childTitle(update.description);
     const kindLabel = childTitle(update.subagent_type);
-    // Frames are this session's own (the adapter drops another session's),
-    // so a parent that names this session is a top-level spawn.
-    const parentSession = engineId(update.parent_session_id);
-    const ownSession = engineId(params.sessionId);
+    // No depth: a subagent's own spawns stream on its session, which the
+    // adapter drops, so Station cannot tell a child from a grandchild.
     return startAcpChild(ctx, {
       childId,
       workKind: 'agent',
@@ -596,7 +583,6 @@ const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
       ...(model
         ? { model: { id: model, source: 'spawn-result' as const } }
         : {}),
-      ...(parentSession && parentSession === ownSession ? { depth: 1 } : {}),
       ...(ctx.activeTurnId ? { parent: { turnId: ctx.activeTurnId } } : {}),
     });
   },
@@ -688,7 +674,7 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
     const update = isRecord(params.update) ? params.update : undefined;
     const promptId = engineId(update?.prompt_id);
     const usage = isRecord(update?.usage) ? update.usage : undefined;
-    if (usage) publishGrokTurnUsage(ctx, usage, promptId);
+    if (usage) publishGrokTurnCost(ctx, usage, promptId);
     if (!promptId) return;
     ctx.engineTurns?.ended(
       promptId,

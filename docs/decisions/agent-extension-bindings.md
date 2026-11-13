@@ -95,8 +95,9 @@ host paths, session ids and private agent names, are the repository fixtures
 ## 4. Live grok 1.0.77 evidence
 
 grok 1.0.77 (`grok agent stdio`) was run signed in on 2026-11-13, with a
-background command, a background subagent, a monitor, an MCP server Station
-passed that fails, and a model question answered, declined and refused. The
+background command, a background subagent, a monitor (with a wake cancelled
+mid-run), an MCP server Station passed that fails, and a model question
+answered, declined and refused. The
 frames, scrubbed of host paths, ids and private names, are
 `src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl`.
 
@@ -112,14 +113,16 @@ frames, scrubbed of host paths, ids and private names, are
   Kiro's two child-work rows carry `pending` (test-vector evidence only, and
   tool-call `_meta` kinds are not dispatched), so they still bind nothing.
 - **One frame, several facts.** A row may name `also` consumers it feeds.
-  Grok's `turn_completed` ends a turn and states that turn's tokens and cost,
-  so its row is `session.turn-boundary` with `also` `usage.reported-cost` and
-  `usage.tokens`. A row runs only when every consumer it names is
-  implemented.
+  Grok's `turn_completed` ends a turn and states that turn's cost, so its row
+  is `session.turn-boundary` with `also` `usage.reported-cost`. A row runs
+  only when every consumer it names is implemented. Grok's token counts are
+  not published: usage scope is declared per provider, and `acp` stays
+  context-occupancy-only.
 - **Engine-opened turns.** `session.turn-boundary` is implemented: a prompt
   the engine runs while no turn is open, and that Station never sent, opens a
   `PROVIDER_TURN_TRIGGER` turn. `_x.ai/session/prompt_complete` follows only
-  Station's own prompts, so it does not close one.
+  Station's own prompts, so it does not close one. A wake whose process exits
+  or is replaced is ended by the adapter, since its own end cannot arrive.
 - **Another session's frames are not this session's.** A Grok subagent
   streams as its own session on the same connection. The adapter drops any
   session-scoped frame naming another session than its process's own.

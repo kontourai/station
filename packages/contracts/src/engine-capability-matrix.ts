@@ -1280,7 +1280,9 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // reads as "nothing running" for an engine that cannot say.
     subagentObservability: {
       state: 'declared',
-      signals: ['lifecycle', 'progress', 'usage', 'result', 'nesting'],
+      // No `nesting`: a Grok subagent's own subagents stream on the child's
+      // session, which is not this session's, so depth is unobserved.
+      signals: ['lifecycle', 'progress', 'usage', 'result'],
       evidence:
         'grok 1.0.77 live capture (src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl): subagent_spawned / subagent_progress / subagent_finished, _x.ai/task_backgrounded, background_tasks, _x.ai/task_completed, _x.ai/monitor_event',
       adapterModule: 'acp-child-work.ts',

@@ -409,8 +409,38 @@ function isForeignAcpSessionFrame(
   return own !== null && frameSessionId !== own;
 }
 
-/** Bound on the engine prompt ids a session remembers as its own sends'. */
-const ACP_OWN_ENGINE_PROMPTS_MAX = 64;
+/** Bound on the engine prompt ids a session remembers as already turned. */
+const ACP_KNOWN_ENGINE_PROMPTS_MAX = 64;
+
+function rememberEnginePrompt(
+  record: Pick<AcpSessionRecord, 'knownEnginePromptIds'>,
+  enginePromptId: string,
+): void {
+  const known = (record.knownEnginePromptIds ??= []);
+  if (known.includes(enginePromptId)) return;
+  known.push(enginePromptId);
+  if (known.length > ACP_KNOWN_ENGINE_PROMPTS_MAX) known.shift();
+}
+
+/** `metadata.trigger` for a terminal that ends the open provider turn `turnId`. */
+function providerTurnMetadata(
+  record: Pick<AcpSessionRecord, 'providerTurn'>,
+  turnId: string,
+): { metadata?: { trigger: typeof PROVIDER_TURN_TRIGGER } } {
+  return record.providerTurn?.turnId === turnId
+    ? { metadata: { trigger: PROVIDER_TURN_TRIGGER } }
+    : {};
+}
+
+/** Clears the open provider turn `turnId`, remembering its engine prompt. */
+function forgetProviderTurn(
+  record: Pick<AcpSessionRecord, 'providerTurn' | 'knownEnginePromptIds'>,
+  turnId: string,
+): void {
+  if (record.providerTurn?.turnId !== turnId) return;
+  rememberEnginePrompt(record, record.providerTurn.enginePromptId);
+  record.providerTurn = undefined;
+}
 
 /** Bound on the engine's own failure detail quoted into a turn failure. */
 const ACP_FAILURE_DETAIL_MAX_CHARS = 1000;
@@ -830,11 +860,14 @@ export interface AcpSessionRecord {
    */
   providerTurn?: { turnId: string; enginePromptId: string };
   /**
-   * Engine prompt ids seen running while Station's own send was the active
-   * turn, most recent last (bounded): a late repeat of one never opens a
-   * provider turn.
+   * Engine prompt ids that already had a turn: ones seen running while
+   * Station's own send was the active turn, and provider turns that ended or
+   * were stopped. Most recent last, bounded. Grok restates a running prompt,
+   * so a late repeat of one never opens a provider turn.
    */
-  ownEnginePromptIds?: string[];
+  knownEnginePromptIds?: string[];
+  /** Whether a frame naming another session was dropped (logged once). */
+  droppedForeignFrame?: boolean;
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
   suppressSessionUpdates?: boolean;
   configOptions?: unknown[];
@@ -1582,6 +1615,14 @@ export class AcpAdapter implements ProviderAdapterShape {
           record.process === engine
         )
           record.exitedDuringRelaunch = true;
+        // A turn the engine opened itself has no prompt to fail with it.
+        if (
+          !record.relaunching &&
+          !record.stopping &&
+          this.sessions.get(input.threadId) === record &&
+          record.process === engine
+        )
+          this.endProviderTurnWithProcess(record, 'exited');
         if (
           acpEngineExitEndsLaunch({
             current: this.sessions.get(input.threadId) === record,
@@ -3008,12 +3049,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       ...this.turnOrigin(record, targetTurnId),
       method: 'turn.aborted',
       reason: 'interrupted',
-      ...(record.providerTurn?.turnId === targetTurnId
-        ? { metadata: { trigger: PROVIDER_TURN_TRIGGER } }
-        : {}),
+      ...providerTurnMetadata(record, targetTurnId),
     });
-    if (record.providerTurn?.turnId === targetTurnId)
-      record.providerTurn = undefined;
+    forgetProviderTurn(record, targetTurnId);
     record.activeTurnId = undefined;
     record.session.status = 'ready';
     record.session.updatedAt = new Date().toISOString();
@@ -3697,14 +3735,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       getActiveWriter: () => null,
       nextTerminalId: context.nextTerminalId,
       onSessionUpdate: async (params: SessionNotification) => {
-        if (isForeignAcpSessionFrame(record, params.sessionId)) return;
+        if (this.dropForeignFrame(record, params.sessionId, context.logger))
+          return;
         this.recordTurnMessage(record, params.update);
         this.handleSessionUpdate(record, params.update);
         if (params.update.sessionUpdate === 'config_option_update')
           for (const wake of [...(record.configOptionWaiters ?? [])]) wake();
       },
       onExtNotification: (method, params) => {
-        if (isForeignAcpSessionFrame(record, params?.sessionId)) return;
+        if (this.dropForeignFrame(record, params?.sessionId, context.logger))
+          return;
         this.handleExtensionNotification(record, method, params);
       },
       // Unrecognized inbound extension REQUESTS get a spec-conformant
@@ -4103,6 +4143,8 @@ export class AcpAdapter implements ProviderAdapterShape {
 
     record.process = next;
     record.approvalFloor = floor;
+    // The replaced process ran the open wake; the new one never ends it.
+    this.endProviderTurnWithProcess(record, 'engine-restarted');
     await previous.destroy().catch((error: unknown) => {
       logger.warn?.(
         { threadId: record.session.threadId },
@@ -4491,7 +4533,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           reason: this.isCurrentGeneration(threadId, record.generation)
             ? 'engine-restarted'
             : 'stopped',
+          ...providerTurnMetadata(record, turnId),
         });
+        forgetProviderTurn(record, turnId);
         record.activeTurnId = undefined;
       }
     }
@@ -4911,6 +4955,30 @@ export class AcpAdapter implements ProviderAdapterShape {
     });
   }
 
+  /**
+   * Whether a frame names another session than this one, and is dropped
+   * (`isForeignAcpSessionFrame`). The first drop per session is logged, so
+   * an engine that renamed its own session would not go silently dark.
+   */
+  private dropForeignFrame(
+    record: AcpSessionRecord,
+    frameSessionId: unknown,
+    logger: AcpLogger,
+  ): boolean {
+    if (!isForeignAcpSessionFrame(record, frameSessionId)) return false;
+    if (!record.droppedForeignFrame) {
+      record.droppedForeignFrame = true;
+      logger.warn?.(
+        'Dropped ACP frames naming another engine session (a subagent of its own, or a renamed session)',
+        {
+          threadId: record.session.threadId,
+          connectionId: record.connectionId,
+        },
+      );
+    }
+    return true;
+  }
+
   private handleExtensionNotification(
     record: AcpSessionRecord,
     method: string,
@@ -4934,6 +5002,48 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
+   * The process that ran an open provider turn is gone (it exited, or a
+   * relaunch replaced it), so that turn's own end will never arrive. A
+   * Station turn ends through its prompt; this one is ended here.
+   */
+  private endProviderTurnWithProcess(
+    record: AcpSessionRecord,
+    why: 'exited' | 'engine-restarted',
+  ): void {
+    const turn = record.providerTurn;
+    if (!turn) return;
+    record.providerTurn = undefined;
+    rememberEnginePrompt(record, turn.enginePromptId);
+    if (record.activeTurnId !== turn.turnId) return;
+    const threadId = record.session.threadId;
+    record.turnErrorNotifications = undefined;
+    this.settleRequestsAtPromptEnd(record, threadId, turn.turnId);
+    const base = {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      turnId: turn.turnId,
+      metadata: { trigger: PROVIDER_TURN_TRIGGER },
+    } as const;
+    if (why === 'exited') {
+      this.publish({
+        ...base,
+        method: 'runtime.error',
+        ...providerFailure('provider_error'),
+        severity: 'error',
+        message: `${record.engineName} exited during a turn it started itself.`,
+      } satisfies ProviderRuntimeErrorEvent);
+      record.session.status = 'error';
+    } else {
+      this.publish({ ...base, method: 'turn.aborted', reason: why });
+      record.session.status = 'ready';
+    }
+    record.session.updatedAt = new Date().toISOString();
+    record.activeTurnId = undefined;
+  }
+
+  /**
    * The engine is running prompt `enginePromptId`. While Station's own send
    * is the active turn, that is the send's prompt and is remembered. With no
    * turn open, a prompt Station never sent is one the engine opened itself
@@ -4945,15 +5055,11 @@ export class AcpAdapter implements ProviderAdapterShape {
     enginePromptId: string,
   ): void {
     if (record.stopping) return;
-    const own = (record.ownEnginePromptIds ??= []);
     if (record.activeTurnId) {
-      if (!record.providerTurn && !own.includes(enginePromptId)) {
-        own.push(enginePromptId);
-        if (own.length > ACP_OWN_ENGINE_PROMPTS_MAX) own.shift();
-      }
+      if (!record.providerTurn) rememberEnginePrompt(record, enginePromptId);
       return;
     }
-    if (own.includes(enginePromptId)) return;
+    if (record.knownEnginePromptIds?.includes(enginePromptId)) return;
     const turnId = `provider:${crypto.randomUUID()}`;
     record.providerTurn = { turnId, enginePromptId };
     record.activeTurnId = turnId;
@@ -4981,7 +5087,15 @@ export class AcpAdapter implements ProviderAdapterShape {
     const turn = record.providerTurn;
     if (!turn || turn.enginePromptId !== enginePromptId) return;
     record.providerTurn = undefined;
+    rememberEnginePrompt(record, enginePromptId);
     if (record.activeTurnId !== turn.turnId) return;
+    record.turnErrorNotifications = undefined;
+    // A request the wake opened (a permission, a question) ends with it.
+    this.settleRequestsAtPromptEnd(
+      record,
+      record.session.threadId,
+      turn.turnId,
+    );
     const base = {
       eventId: crypto.randomUUID(),
       provider: this.provider,

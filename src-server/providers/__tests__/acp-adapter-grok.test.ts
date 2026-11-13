@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import {
   agent as agentApp,
@@ -71,17 +72,24 @@ async function startGrokSession(
   options: { grok?: boolean; unattended?: boolean } = {},
 ) {
   let proc: FakeAcpProcess | undefined;
+  const exits = new EventEmitter();
+  const warnings: unknown[][] = [];
   const adapter = new AcpAdapter({
     getConnections: async () => CONNECTIONS,
     logger: {
       debug: () => {},
-      warn: () => {},
+      warn: (...args: unknown[]) => warnings.push(args),
       error: () => {},
       info: () => {},
     },
     managedWorkspaceHomeDir: makeTempDir('station-acp-grok-test-'),
     processFactory: (opts) => {
       proc = new FakeAcpProcess(opts);
+      // The adapter listens for the engine's own exit through `once`.
+      Object.assign(proc, {
+        once: (event: string, listener: () => void) =>
+          exits.once(event, listener),
+      });
       if (options.grok !== false)
         proc.initResult!._meta = { ...GROK_INITIALIZE_META };
       return proc as unknown as ACPProcess;
@@ -171,6 +179,12 @@ async function startGrokSession(
     threadId,
     waitFor,
     replay,
+    warnings,
+    /** The engine process exits on its own (a crash, an OOM kill). */
+    exit: () => {
+      fake.sessionId = null;
+      exits.emit('exit');
+    },
     of: <M extends CanonicalRuntimeEvent['method']>(method: M) =>
       events.filter(
         (event): event is Extract<CanonicalRuntimeEvent, { method: M }> =>
@@ -341,7 +355,6 @@ describe('Grok child work and its own session', () => {
           kindLabel: 'general-purpose',
           title: 'Reply exact text sub-ok',
           model: { id: 'grok-4.5', source: 'spawn-result' },
-          depth: 1,
           parent: { turnId: turn.turnId },
         }),
       ],
@@ -413,16 +426,44 @@ describe('Grok child work and its own session', () => {
       status: 'completed',
       result: { summary: 'bg-finished', source: 'tool-return' },
     });
-    // The turn's live usage, tokens and cost together, once.
-    expect(session.of('token-usage.updated')).toEqual([
+    // The turn's live cost, once; its token counts are not published.
+    const usage = session.of('token-usage.updated');
+    expect(usage).toEqual([
       expect.objectContaining({
-        promptTokens: 21927,
-        completionTokens: 309,
-        cacheReadTokens: 65536,
-        reasoningTokens: 127,
         reportedCost: { amount: 0.022225392, unit: 'USD', scope: 'turn' },
       }),
     ]);
+    expect(usage[0]).not.toHaveProperty('promptTokens');
+    await session.stop();
+  });
+});
+
+describe('frames naming another session', () => {
+  test('are dropped for any ACP engine, and the first drop is logged once', async () => {
+    const session = await startGrokSession({ grok: false });
+    await session.adapter.sendTurn({ threadId: session.threadId, input: 'x' });
+    const chunk = (sessionId: string, text: string) =>
+      session.agent.notify('session/update', {
+        sessionId,
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+        },
+      });
+    await chunk(session.sessionId, 'own');
+    await chunk('another-session', 'foreign one');
+    await chunk('another-session', 'foreign two');
+    await settle();
+    expect(
+      session
+        .of('content.text-delta')
+        .map((event) => (event as { delta?: string }).delta),
+    ).toEqual(['own']);
+    expect(
+      session.warnings.filter((args) =>
+        String(args[0]).includes('another engine session'),
+      ),
+    ).toHaveLength(1);
     await session.stop();
   });
 });
@@ -509,6 +550,76 @@ describe('Grok wake turns are provider turns', () => {
     await settle();
     expect(session.of('turn.started').map((event) => event.turnId)).toEqual([
       turn.turnId,
+    ]);
+    await session.stop();
+  });
+
+  test('a wake whose engine exits ends as a failed provider turn, and the session takes the next send', async () => {
+    const session = await startGrokSession();
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'notifications-crash',
+    });
+    await settle();
+    const opened = session.of('turn.started')[0];
+    expect(opened?.metadata).toEqual({ trigger: 'provider' });
+    session.exit();
+    await settle();
+    expect(session.of('runtime.error')).toEqual([
+      expect.objectContaining({
+        turnId: opened?.turnId,
+        metadata: { trigger: 'provider' },
+        message: 'Grok Lab exited during a turn it started itself.',
+      }),
+    ]);
+    await expect(
+      session.adapter.sendTurn({ threadId: session.threadId, input: 'again' }),
+    ).resolves.toMatchObject({ turnId: expect.any(String) });
+    await session.stop();
+  });
+
+  test('a wake Grok restates after it was interrupted does not open a second turn', async () => {
+    const session = await startGrokSession();
+    const running = {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'notifications-restated',
+    };
+    await session.agent.notify('_x.ai/queue/changed', running);
+    await settle();
+    const opened = session.of('turn.started')[0]!;
+    await session.adapter.interruptTurn(session.threadId, opened.turnId);
+    await session.agent.notify('_x.ai/queue/changed', running);
+    await settle();
+    expect(session.of('turn.started')).toHaveLength(1);
+    await session.stop();
+  });
+
+  test('a question a wake asked is settled when the wake ends', async () => {
+    const session = await startGrokSession();
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'task-completed-q',
+    });
+    await settle();
+    const response = session.agent.request(
+      '_x.ai/ask_user_question',
+      liveQuestion(session.sessionId),
+    );
+    await session.waitFor(isRequestOpened, 'request.opened');
+    await session.agent.notify('_x.ai/session_notification', {
+      sessionId: session.sessionId,
+      update: {
+        sessionUpdate: 'turn_completed',
+        prompt_id: 'task-completed-q',
+        stop_reason: 'end_turn',
+      },
+    });
+    await expect(within(response)).resolves.toEqual({ outcome: 'cancelled' });
+    expect(session.of('turn.completed')).toEqual([
+      expect.objectContaining({ metadata: { trigger: 'provider' } }),
     ]);
     await session.stop();
   });

@@ -220,7 +220,22 @@ describe('Grok turn cost', () => {
     expect(engineTurns.ended).toHaveBeenCalledTimes(3);
   });
 
-  test('tokens: the prompt is what is left of the input after the cache', () => {
+  test('two engine prompts in one Station turn state the turn as their sum', () => {
+    const { notify, of } = harness();
+    notify(
+      '_x.ai/session_notification',
+      turnCompleted({ costUsdTicks: 10_000_000_000 }, 'p-1'),
+    );
+    notify(
+      '_x.ai/session_notification',
+      turnCompleted({ costUsdTicks: 20_000_000_000 }, 'p-2'),
+    );
+    expect(
+      of('token-usage.updated').map((event) => event.reportedCost?.amount),
+    ).toEqual([1, 3]);
+  });
+
+  test('token counts are not published: acp usage is context-occupancy-only', () => {
     const { notify, of } = harness();
     notify(
       '_x.ai/session_notification',
@@ -228,23 +243,15 @@ describe('Grok turn cost', () => {
         inputTokens: 87463,
         outputTokens: 309,
         totalTokens: 87772,
-        cachedReadTokens: 65536,
-        cacheCreationTokens: 0,
-        reasoningTokens: 127,
         costUsdTicks: 222253920,
       }),
     );
     expect(of('token-usage.updated')).toEqual([
       expect.objectContaining({
-        promptTokens: 21927,
-        completionTokens: 309,
-        totalTokens: 87772,
-        cacheReadTokens: 65536,
-        cacheWriteTokens: 0,
-        reasoningTokens: 127,
         reportedCost: { amount: 0.022225392, unit: 'USD', scope: 'turn' },
       }),
     ]);
+    expect(of('token-usage.updated')[0]).not.toHaveProperty('promptTokens');
   });
 
   test('a repeated turn figure is not counted twice', () => {
@@ -343,5 +350,43 @@ describe('Grok engine turns', () => {
     expect(new Set(started).size).toBe(4);
     expect(started.some((id) => id.startsWith('notifications-'))).toBe(true);
     expect(started.some((id) => id.startsWith('task-completed-'))).toBe(true);
+  });
+
+  test('a session/cancel sent during a wake ends that wake cancelled (live)', () => {
+    // The interrupt of a provider turn sends session/cancel; live, Grok ended
+    // the running wake at once and kept the monitor running.
+    const { notify, engineTurns } = harness();
+    const both = readFileSync(
+      new URL(`../../../${GROK_LIVE_CAPTURE}`, import.meta.url),
+      'utf8',
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((entry) => entry.capture === 'wake-cancelled');
+    const cancelAt = both.findIndex(
+      (entry) => entry.dir === 'C->E' && entry.msg.method === 'session/cancel',
+    );
+    expect(cancelAt).toBeGreaterThan(0);
+    let running: string | undefined;
+    for (const [index, entry] of both.entries()) {
+      if (entry.dir !== 'E->C' || entry.msg.id !== undefined) continue;
+      const { method, params } = entry.msg as Frame;
+      if (
+        method === '_x.ai/queue/changed' &&
+        params.runningPromptId &&
+        index < cancelAt
+      )
+        running = params.runningPromptId;
+      if (method) notify(method, params);
+    }
+    expect(running).toMatch(/^notifications-/);
+    expect(engineTurns.ended).toHaveBeenCalledWith(
+      running,
+      'cancelled',
+      undefined,
+    );
+    // The monitor kept running: later wakes still came.
+    expect(engineTurns.ended.mock.calls.length).toBeGreaterThan(2);
   });
 });

@@ -515,7 +515,7 @@ Each consumer is a generic Station mechanism any engine can feed:
 | Form and choice input requests | existing `form` body | `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/userInput` (always answered `answered`, with explicit text for decline or no person); Grok `_x.ai/ask_user_question` |
 | Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` (full; `failedAuthorization` reads `needs-auth`, `_meta.kiro.resource.source.origin: client` reads scope `session`); Codex `mcpServer/startupStatus/updated` (partial); Grok `_x.ai/mcp/server_status` (partial) |
 | Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope`, `childWorkId?` | v2 `_kiro.dev/session/update` `model_fallback` (the hop is scope `turn`; the `promoted: true` notice is scope `session`); v3 `model_fallback` kind (declared by `modelFallbackReporting`); Codex `model/rerouted` (scope `turn`, trigger `other`) |
-| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`), `session_usage` (scope `session`), `context_usage`; v2 `_kiro.dev/metadata` `contextUsagePercentage`; core ACP `usage_update.cost` (scope `session`, unit = its `currency`); Grok `turn_completed` (USD, scope `turn`, with the turn's token counts) |
+| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`), `session_usage` (scope `session`), `context_usage`; v2 `_kiro.dev/metadata` `contextUsagePercentage`; core ACP `usage_update.cost` (scope `session`, unit = its `currency`); Grok `turn_completed` (USD, scope `turn`) |
 | Child work | `child-work.updated` (subagents, background commands, monitors); a session whose engine reports none states `not-reported` once at start | Grok's subagent, background-task and monitor frames; see [Grok Build extensions](#grok-build-extensions) |
 | Engine-opened turns | `turn.started` / its terminal with `metadata.trigger: 'provider'` (`PROVIDER_TURN_TRIGGER`) | Grok's wake prompts (`_x.ai/queue/changed` `runningPromptId`, ended by `turn_completed`) |
 | Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
@@ -719,11 +719,11 @@ notification the engine sent there is bound.
 
 | Grok wire (engine to client) | Station mechanism |
 |---|---|
-| `_x.ai/session_notification` `subagent_spawned`, `subagent_progress`, `subagent_finished` | Child work: one `agent` child per `subagent_id`, with its type, description, model (`spawn-result`) and depth 1; progress carries its tokens, tool calls, duration and latest tool; the end carries `completed`, `failed` or `cancelled` (anything else is `unresolved`) and its output as the result |
+| `_x.ai/session_notification` `subagent_spawned`, `subagent_progress`, `subagent_finished` | Child work: one `agent` child per `subagent_id`, with its type, description and model (`spawn-result`), and no depth (a subagent's own subagents stream on its session, so nesting is unobserved); progress carries its tokens, tool calls, duration and latest tool; the end carries `completed`, `failed` or `cancelled` (anything else is `unresolved`) and its output as the result |
 | `_x.ai/task_backgrounded`, `background_tasks`, `_x.ai/task_completed` | Child work: one backgrounded `command` (or `monitor`) child per `task_id`, parented to the tool call that started it; exit 0 is `completed`, a non-zero exit or a signal `failed`, a kill `cancelled`, anything else `unresolved`; the output, redacted and cut to 4,000 characters, is the result |
 | `_x.ai/monitor_event` | That monitor child's progress line |
 | `_x.ai/queue/changed` `runningPromptId` | A prompt Station did not send, run while no turn is open, opens a provider turn: Grok wakes itself after a monitor line (`notifications-<id>`) or a finished task or subagent (`task-completed-<id>`, `subagent-completed-<id>`) |
-| `_x.ai/session_notification` `turn_completed` | Ends that prompt's provider turn (`end_turn` completes it, `cancelled` aborts it, `error` fails it with the engine's `agent_result`), and states its usage once: tokens and `costUsdTicks` (10^10 ticks to the dollar; 0 means the price is unknown, not free). The turn's figure includes its subagents' calls |
+| `_x.ai/session_notification` `turn_completed` | Ends that prompt's provider turn (`end_turn` completes it, `cancelled` aborts it, `error` fails it with the engine's `agent_result`, and a request the wake opened is settled), and states its cost once: `costUsdTicks`, 10^10 ticks to the dollar, scope `turn`; 0 means the price is unknown, not free. The figure includes its subagents' calls; two engine prompts in one Station turn publish their sum |
 | `_x.ai/mcp/server_status` | `engine-mcp.status` for that server: `ready`, or `unavailable` as `failed` with Grok's `detail`. Grok calls every server `local`, so a server Station passed on `session/new` is scope `session` by name |
 | `_x.ai/session/setup`, `_x.ai/session/interjection`, `_x.ai/models/update`, `_x.ai/settings/update`, `_x.ai/announcements/update`, `_x.ai/sessions/changed`, `_x.ai/session/prompt_complete`, the other `_x.ai/session_notification` kinds | Host chrome: forwarded as `extension.notification`, no fact derived |
 | `_x.ai/mcp/init_progress`, `_x.ai/mcp_initialized`, `_x.ai/mcp/servers_updated` | Host chrome for the MCP status display (counts only; no per-server state) |
@@ -740,7 +740,9 @@ Grok streams that child's prompt, replies and usage there under the child's
 `sessionId`. The adapter drops any session-scoped frame naming another
 session than its process's own, for every ACP engine, so a child's
 transcript and spend never land in the parent; the child reaches Station only
-through the parent's child-work frames.
+through the parent's child-work frames. The first such drop in a session is
+logged as a warning, so an engine that renamed its own session would not go
+silently dark.
 
 A failed Grok prompt answers `-32603 Internal error` and puts the reason in
 the JSON-RPC error's `data.message`. Station quotes `data.message`, redacted
@@ -748,7 +750,13 @@ and bounded to 1,000 characters, after the error's own message for every ACP
 engine.
 
 A wake turn holds the session like any turn: a send while it runs is refused
-`busy`, and an interrupt aborts it as a provider turn. An ACP session whose
+`busy`, and an interrupt aborts it as a provider turn. Live, the
+`session/cancel` an interrupt sends ends the running wake at once
+(`turn_completed` `cancelled`) and leaves its background task running, so it
+wakes again later. An ended or interrupted wake's prompt id is remembered, so
+Grok restating it never opens a second turn. A wake whose engine exits ends as
+a failed provider turn, and one whose process a relaunch replaced is aborted
+`engine-restarted`: their own end can no longer arrive. An ACP session whose
 engine reports no child work (every engine but Grok today) publishes one
 `child-work.updated` `not-reported` at start, so the ACP capability cell can
 be `declared` without any other engine reading "nothing running".
@@ -765,6 +773,8 @@ be `declared` without any other engine reading "nothing running".
 | `_meta.yoloMode`, `_meta.autoMode` on `session/new`; the `/always-approve` command | They let the engine approve calls without asking, bypassing Station's `requestPermission` policy. |
 | `x.ai/feedback`, `x.ai/telemetry/*` | Telemetry to xAI; no Station consumer. |
 | A context reading | Grok reports no context occupancy for the session; deriving one from `totalTokens` and a model's `totalContextTokens` would be Station's claim, not the engine's. |
+| Token counts (`turn_completed.usage` `inputTokens`, `outputTokens`, ...) | Usage scope is declared per provider (`usage-semantics.ts`), and `acp` is context-occupancy-only for every engine it runs. Declaring `acp` per-turn would be a claim about every other ACP engine. |
+| Subagent nesting | A subagent's own subagents stream on the child's session, which the adapter drops, so Station cannot tell a child from a grandchild. Child work carries no depth. |
 | Grok's own prompt queue (`_x.ai/queue/changed` `entries`) | Station queues its own sends; only the running prompt is read, to find wake turns. |
 
 ## Tool Execution
