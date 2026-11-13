@@ -2421,8 +2421,10 @@ records, and context occupancy comes from the newest one. Without a stored
 record, the orchestration usage fold runs over every authorized Session's
 events in lineage order.
 
-`contextWindowPercentage` is absent when the model's context window cannot be
-resolved. Render that as unavailable. See the
+`contextWindowPercentage` comes from context tokens and the model's context
+window; when the window cannot be resolved it is the engine's own context
+reading where the engine reported one, and otherwise absent. Render an absent
+value as unavailable. See the
 [stats owner](../../src-server/runtime/conversation/conversation-manager.ts)
 and [response contract](../../packages/contracts/src/runtime.ts).
 
@@ -6597,7 +6599,8 @@ engine activity. `provider` must be a provider kind with declared usage
 semantics (`claude`, `codex`, `bedrock`, `ollama`, `muse`, `opencode`, or
 `acp`); any other value is a 400. A declared kind with no receipts in the
 window answers empty rows with `unknown` coverage. ACP reports context
-occupancy only, so it has no receipts and its provider coverage says so.
+occupancy and at most a cost in the engine's own unit, never token totals, so it
+has no receipts and its provider coverage says so.
 Filtering precedes folding and pagination, while coverage remains explicit.
 
 Provider filters narrow inside the bounded selection, so provider-filtered

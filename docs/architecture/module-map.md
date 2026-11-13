@@ -2950,8 +2950,10 @@ against (the scrubbed kiro-cli 2.35.0 capture in
 `src-server/services/acp/__tests__/fixtures/`, or a kirodotdev/kirocrew
 fixture path) and its consumer. A row's notification tuple binds only once
 `ENGINE_EXTENSION_CONSUMERS` marks its consumer implemented, and never over a
-tuple the table above already binds; today that is the three v3 notifications
-bound as `acp.host-chrome`. The notification table carries no promotion
+tuple the table above already binds. Today eleven bind: Kiro v2's
+`mcp/server_initialized` and `mcp/server_init_failure` (`engine-mcp.status`)
+and `metadata` (`usage.context-percent`), v3's `_kiro/mcp/status`
+(`engine-mcp.status`), and seven v3 notifications bound as `acp.host-chrome`. The notification table carries no promotion
 metadata: a tuple's binding says nothing about which canonical event, if any,
 should replace it.
 
