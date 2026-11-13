@@ -359,7 +359,9 @@ function publishGrokTurnCost(
     setBounded(ctx.state.engineTurnUsage, promptId, true);
   }
   let amount = ticks / GROK_COST_TICKS_PER_USD;
-  if (ctx.activeTurnId && ctx.state) {
+  // Only a figure that names its engine prompt is summed: one without an id
+  // cannot be told from its own repeat, so it stands alone (last-wins).
+  if (promptId && ctx.activeTurnId && ctx.state) {
     ctx.state.turnCostSums ??= new Map();
     amount += ctx.state.turnCostSums.get(ctx.activeTurnId) ?? 0;
     setBounded(ctx.state.turnCostSums, ctx.activeTurnId, amount);

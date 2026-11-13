@@ -755,8 +755,8 @@ A wake turn holds the session like any turn: a send while it runs is refused
 (`turn_completed` `cancelled`) and leaves its background task running, so it
 wakes again later. An ended or interrupted wake's prompt id is remembered, so
 Grok restating it never opens a second turn. A wake whose engine exits ends as
-a failed provider turn, and one whose process a relaunch replaced is aborted
-`engine-restarted`: their own end can no longer arrive. An ACP session whose
+a failed provider turn: its own end can no longer arrive. A wake still open
+when the session stops ends with the session (`session.exited`). An ACP session whose
 engine reports no child work (every engine but Grok today) publishes one
 `child-work.updated` `not-reported` at start, so the ACP capability cell can
 be `declared` without any other engine reading "nothing running".

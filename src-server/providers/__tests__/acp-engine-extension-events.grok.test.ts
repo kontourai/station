@@ -235,6 +235,22 @@ describe('Grok turn cost', () => {
     ).toEqual([1, 3]);
   });
 
+  test('a figure with no engine prompt id stands alone, so its repeat is not summed', () => {
+    const { notify, of } = harness();
+    const frame = {
+      sessionId: 's',
+      update: {
+        sessionUpdate: 'turn_completed',
+        usage: { costUsdTicks: 10_000_000_000 },
+      },
+    };
+    notify('_x.ai/session_notification', frame);
+    notify('_x.ai/session_notification', frame);
+    expect(
+      of('token-usage.updated').map((event) => event.reportedCost?.amount),
+    ).toEqual([1, 1]);
+  });
+
   test('token counts are not published: acp usage is context-occupancy-only', () => {
     const { notify, of } = harness();
     notify(

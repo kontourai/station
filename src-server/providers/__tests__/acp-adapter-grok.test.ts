@@ -554,7 +554,7 @@ describe('Grok wake turns are provider turns', () => {
     await session.stop();
   });
 
-  test('a wake whose engine exits ends as a failed provider turn, and the session takes the next send', async () => {
+  test('a wake whose engine exits ends as a failed provider turn and no longer holds the session', async () => {
     const session = await startGrokSession();
     await session.agent.notify('_x.ai/queue/changed', {
       sessionId: session.sessionId,
@@ -593,6 +593,31 @@ describe('Grok wake turns are provider turns', () => {
     await session.agent.notify('_x.ai/queue/changed', running);
     await settle();
     expect(session.of('turn.started')).toHaveLength(1);
+    await session.stop();
+  });
+
+  test('an interrupted wake does not leave later turns unable to quote a co-reported cause', async () => {
+    const session = await startGrokSession();
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'notifications-quarantine',
+    });
+    await settle();
+    const wake = session.of('turn.started')[0]!;
+    await session.adapter.interruptTurn(session.threadId, wake.turnId);
+    await session.adapter.sendTurn({ threadId: session.threadId, input: 'x' });
+    // The one evidenced cause notification (`acp.turn-error-cause`).
+    await session.agent.notify('_kiro.dev/error/rate_limit', {
+      sessionId: session.sessionId,
+      message: 'The monthly usage limit has been reached',
+    });
+    await settle();
+    session.proc.rejectPrompt(new Error('Internal error'));
+    await settle();
+    expect(session.of('runtime.error').at(-1)?.message).toContain(
+      'engine also reported during this turn: The monthly usage limit has been reached',
+    );
     await session.stop();
   });
 

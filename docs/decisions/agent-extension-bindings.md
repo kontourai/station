@@ -122,7 +122,7 @@ frames, scrubbed of host paths, ids and private names, are
   the engine runs while no turn is open, and that Station never sent, opens a
   `PROVIDER_TURN_TRIGGER` turn. `_x.ai/session/prompt_complete` follows only
   Station's own prompts, so it does not close one. A wake whose process exits
-  or is replaced is ended by the adapter, since its own end cannot arrive.
+  is ended by the adapter, since its own end cannot arrive.
 - **Another session's frames are not this session's.** A Grok subagent
   streams as its own session on the same connection. The adapter drops any
   session-scoped frame naming another session than its process's own.

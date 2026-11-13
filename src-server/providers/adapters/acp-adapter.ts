@@ -3051,6 +3051,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       reason: 'interrupted',
       ...providerTurnMetadata(record, targetTurnId),
     });
+    if (record.providerTurn?.turnId === targetTurnId) {
+      // No prompt settles a provider turn, so nothing else would lift its
+      // quarantine, and every later turn would start suppressed.
+      record.quarantinedTurnIds?.delete(targetTurnId);
+    }
     forgetProviderTurn(record, targetTurnId);
     record.activeTurnId = undefined;
     record.session.status = 'ready';
