@@ -770,7 +770,7 @@ be `declared` without any other engine reading "nothing running".
 | Extension | Why not |
 |---|---|
 | Rewind and fork (`x.ai/rewind/*`, `x.ai/session/fork`, `_meta.cancelRewind`) | Grok does not declare `sessionCapabilities.fork`, and no request or answer shape was observed. Station has no caller for engine rewind or fork either (see [Engine session actions](#engine-session-actions)). |
-| `x.ai/exit_plan_mode` | Not observed in a live capture, so neither the request nor the answer Grok reads is evidenced. A plan approval needs evidence of the request and the answer Grok reads before it is bound. |
+| `x.ai/exit_plan_mode` | Not observed in a live capture. A plan approval needs evidence of the request and the answer Grok reads before it is bound. |
 | `x.ai/fs/*`, `x.ai/git/*`, `x.ai/git/worktree/*`, `x.ai/search/*`, `x.ai/terminal/*`, `x.ai/fs_notify`, `x.ai/fs/index` | Client-side services for Grok's own IDE clients. Station announces none of them, and its own terminal bridge, file tools and worktrees govern the host. |
 | `x.ai/auth/get_url`, `x.ai/auth/submit_code` | Station signs Grok in through ACP `authenticate`; it never relays a sign-in code or token. |
 | `x.ai/hooks` (`agentCapabilities._meta`) | Station's tool-policy seam governs instead of engine hooks. |
