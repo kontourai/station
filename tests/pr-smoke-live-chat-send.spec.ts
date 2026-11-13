@@ -14,6 +14,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 /**
  * archive#4537 item 2: a real chat send inside pr-smoke's own gate.
@@ -166,7 +167,11 @@ test.describe('pr-smoke live chat send', () => {
     // Home's start composer is the one way to start a chat: choose the
     // Agent on its chip, then Start sends through the dock.
     const draft = page.getByRole('form', { name: 'Start work' });
-    await draft.getByRole('button', { name: /^Agent:/ }).click({
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click({
       timeout: 20_000,
     });
     const agentRow = page
@@ -177,6 +182,7 @@ test.describe('pr-smoke live chat send', () => {
     await expect(
       page.getByRole('dialog', { name: 'Choose agent' }),
     ).toHaveCount(0);
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('pr-smoke real send.');

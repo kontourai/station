@@ -26,6 +26,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 const REPLY = 'The retained Basis answer survives restart.';
@@ -122,11 +123,16 @@ test('inspect before Keep, retain the exact answer, restart, and revoke its asse
       .getByRole('dialog', { name: 'Choose project' })
       .locator('[data-context-value="basis-lifecycle"]')
       .click();
-    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     await page
       .getByRole('dialog', { name: 'Choose agent' })
       .locator('[data-agent-slug="basis-lifecycle"]')
       .click();
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('Retain this exact answer.');

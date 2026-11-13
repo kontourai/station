@@ -111,6 +111,16 @@ export function StartApprovalSummary({
     return (
       <ComposerChoice
         className="start-composer__chip"
+        safetyLabel={
+          [
+            startMode === 'never' ? 'Full access' : '',
+            resolved.source === 'session override'
+              ? 'Conversation override'
+              : '',
+          ]
+            .filter(Boolean)
+            .join('; ') || undefined
+        }
         caption="Permissions"
         value={label}
         aria-label={`${visible}. ${title}`}
@@ -128,6 +138,16 @@ export function StartApprovalSummary({
         aria-label={`${visible}. ${title}`}
         title={title}
         onClick={() => setIsSheetOpen((open) => !open)}
+        safetyLabel={
+          [
+            startMode === 'never' ? 'Full access' : '',
+            resolved.source === 'session override'
+              ? 'Conversation override'
+              : '',
+          ]
+            .filter(Boolean)
+            .join('; ') || undefined
+        }
         caption="Permissions"
         value={label}
       />

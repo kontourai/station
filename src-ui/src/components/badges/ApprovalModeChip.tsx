@@ -292,6 +292,19 @@ function ApprovalModeChipContent({
     <>
       <ComposerChoice
         ref={triggerRef}
+        safetyLabel={
+          [
+            displayedMode === 'never' ? 'Full access' : '',
+            isRefused
+              ? 'Approval refused'
+              : isPendingApply || isPendingRestrict || notApplied
+                ? 'Approval pending'
+                : '',
+            isOverride ? 'Conversation override' : '',
+          ]
+            .filter(Boolean)
+            .join('; ') || undefined
+        }
         className={`chat-input__approval-chip ${
           isPendingApply || isPendingRestrict || isRefused || notApplied
             ? 'chat-input__approval-chip--pending'

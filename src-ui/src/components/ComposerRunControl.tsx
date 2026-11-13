@@ -23,44 +23,37 @@ export function ComposerRunControl({
   const contentId = useId();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
-  const publish = useCallback((id: string, label: string | undefined) => {
-    setSummaries((current) => {
-      if (current[id] === label) return current;
-      const next = { ...current };
-      if (label === undefined) delete next[id];
-      else next[id] = label;
-      return next;
-    });
-  }, []);
-  const sectionOrder = (value: string) =>
-    /^Agent:/.test(value)
-      ? 0
-      : /^(Approval|Permissions)/.test(value)
-        ? 2
-        : /^Session mode:/.test(value)
-          ? 3
-          : 1;
-  const labels = Object.values(summaries).sort(
-    (a, b) => sectionOrder(a) - sectionOrder(b),
+  const [summaries, setSummaries] = useState<
+    Record<string, { label: string; safety?: string }>
+  >({});
+  const publish = useCallback(
+    (id: string, label: string | undefined, safety?: string) => {
+      setSummaries((current) => {
+        if (current[id]?.label === label && current[id]?.safety === safety)
+          return current;
+        const next = { ...current };
+        if (label === undefined) delete next[id];
+        else next[id] = { label, safety };
+        return next;
+      });
+    },
+    [],
   );
-  const summary = [
-    ...labels,
-    ...(!labels.some((value) => /^Agent:/.test(value))
-      ? ['Agent: current selection']
-      : []),
-    ...(!labels.some((value) =>
-      /^(Model:|Engine & model:|.*model:)/i.test(value),
+  const choices = Object.values(summaries);
+  const details = choices
+    .filter(
+      ({ label }) =>
+        /^(Approval|Permissions|Session mode):/.test(label) ||
+        /^Approval mode:/.test(label),
     )
-      ? [`Model: ${label}`]
-      : []),
-    ...(!labels.some((value) => /^(Approval|Permissions)/.test(value))
-      ? ['Approval: engine default']
-      : []),
-    ...(!labels.some((value) => /^Session mode:/.test(value))
-      ? ['Mode: engine default']
-      : []),
-  ].join('; ');
+    .map(({ label }) =>
+      label
+        .replace(/^[^:]+:\s*/, '')
+        .split(/[.—]/)[0]
+        .trim(),
+    );
+  const safety = choices.flatMap(({ safety }) => (safety ? [safety] : []));
+  const summary = [label, ...details, ...safety].join('; ');
   return (
     <>
       {loadingLabel ? (
@@ -71,10 +64,23 @@ export function ComposerRunControl({
         <ComposerChoice
           ref={trigger}
           className="composer-run-control"
-          caption="Run setup"
+          caption={null}
           value={label}
-          icon={icon}
-          aria-label={`Run setup: ${summary}`}
+          icon={
+            <>
+              {icon}
+              {safety.length > 0 && (
+                <span
+                  className="composer-run-control__safety"
+                  aria-hidden="true"
+                >
+                  ⚠
+                </span>
+              )}
+            </>
+          }
+          aria-label={summary}
+          data-testid="run-setup-trigger"
           aria-haspopup="dialog"
           aria-controls={contentId}
           aria-expanded={open}

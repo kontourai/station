@@ -27,10 +27,10 @@ test('one setup button names current choices, opens every picker, and tracks cha
     </ComposerRunControl>
   );
   const result = render(view('Ask'));
-  const trigger = screen.getByRole('button', { name: /^Run setup:/ });
+  const trigger = screen.getByTestId('run-setup-trigger');
   expect(screen.getAllByRole('button')).toHaveLength(1);
   expect(trigger.getAttribute('aria-label')).toContain(
-    'Agent: Writer; Model: Sonnet; Approval: Ask; Session mode: Plan',
+    'Writer · Sonnet; Ask; Plan',
   );
   fireEvent.click(trigger);
   expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
@@ -46,8 +46,40 @@ test('one setup button names current choices, opens every picker, and tracks cha
   fireEvent.click(screen.getByRole('button', { name: 'Close run setup' }));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.getAllByRole('button')).toHaveLength(1);
-  expect(trigger.getAttribute('aria-label')).toContain(
-    'Approval: Set by engine',
+  expect(trigger.getAttribute('aria-label')).toContain('Set by engine');
+  expect(trigger.getAttribute('aria-label')).not.toContain('; Ask');
+});
+
+test('omits absent controls and keeps the visible label first', () => {
+  render(
+    <ComposerRunControl label="Choose agent" icon={null}>
+      <span />
+    </ComposerRunControl>,
   );
-  expect(trigger.getAttribute('aria-label')).not.toContain('Approval: Ask');
+  expect(
+    screen.getByTestId('run-setup-trigger').getAttribute('aria-label'),
+  ).toBe('Choose agent');
+  expect(screen.getByTestId('run-setup-trigger').textContent).toBe(
+    'Choose agent',
+  );
+});
+test('exposes exceptional safety state on the closed trigger', () => {
+  const view = (safetyLabel?: string) => (
+    <ComposerRunControl label="Writer" icon={null}>
+      <ComposerChoice
+        caption="Approval"
+        value="Ask"
+        aria-label="Approval: Ask"
+        safetyLabel={safetyLabel}
+      />
+    </ComposerRunControl>
+  );
+  const result = render(view('Approval pending; Conversation override'));
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.textContent).toContain('⚠');
+  expect(trigger.getAttribute('aria-label')).toContain(
+    'Approval pending; Conversation override',
+  );
+  result.rerender(view());
+  expect(trigger.textContent).not.toContain('⚠');
 });

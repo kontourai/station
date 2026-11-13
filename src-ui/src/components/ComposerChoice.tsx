@@ -18,11 +18,13 @@ type ComposerChoiceProps = Omit<
   value: ReactNode;
   icon?: ReactNode;
   valueClassName?: string;
+  safetyLabel?: string;
 };
 
 /** Shared presentation; the caller owns the selected value and picker. */
 export function ComposerChoice({
   caption,
+  safetyLabel,
   value,
   icon,
   valueClassName,
@@ -33,9 +35,9 @@ export function ComposerChoice({
   const id = useId();
   const label = props['aria-label'];
   useLayoutEffect(() => {
-    publish?.(id, label);
+    publish?.(id, label, safetyLabel);
     return () => publish?.(id, undefined);
-  }, [publish, id, label]);
+  }, [publish, id, label, safetyLabel]);
   return (
     <button
       type="button"
@@ -48,7 +50,7 @@ export function ComposerChoice({
         </span>
       )}
       <span className="chat-input__chip-stack" aria-hidden="true">
-        <span className="chat-input__chip-caption">{caption}</span>{' '}
+        {caption && <span className="chat-input__chip-caption">{caption}</span>}{' '}
         <span className={`composer-choice__value ${valueClassName ?? ''}`}>
           {value}
         </span>

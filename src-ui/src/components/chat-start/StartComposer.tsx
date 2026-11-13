@@ -26,7 +26,7 @@ import { Button } from '../Button';
 import { ComposerChoice } from '../ComposerChoice';
 import { ComposerRunControl } from '../ComposerRunControl';
 import { AgentIcon } from '../icons/AgentIcon';
-import { BrandIcon } from '../icons/BrandIcon';
+import { BrandIcon, hasBundledEngineMark } from '../icons/BrandIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
@@ -175,7 +175,7 @@ export interface StartContextItem {
 /** Visible text of the Agent chip: "Agent · Model". */
 function startAgentChipText(chip: StartAgentChip): string {
   if (chip.status === 'loading') return '';
-  if (!chip.agent) return 'Choose an agent';
+  if (!chip.agent) return 'Choose agent';
   return chip.modelLabel && chip.modelLabel !== MODEL_NOT_REPORTED
     ? `${chip.agent.name} · ${chip.modelLabel}`
     : chip.agent.name;
@@ -339,7 +339,7 @@ export function StartComposer({
   }, [compact, prompt]);
   const agentText =
     onOpenModel && agent.status === 'ready'
-      ? (agent.agent?.name ?? 'Choose an agent')
+      ? (agent.agent?.name ?? 'Choose agent')
       : startAgentChipText(agent);
   const draft = layout === 'draft';
   const projectControl = (
@@ -527,24 +527,30 @@ export function StartComposer({
                   ? 'Checking which Agent will start'
                   : undefined
               }
-              label={agentText || 'Checking setup'}
+              label={[
+                agentText || 'Choose agent',
+                onOpenModel &&
+                agent.modelLabel &&
+                agent.modelLabel !== MODEL_NOT_REPORTED
+                  ? agent.modelLabel
+                  : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
               icon={
                 agent.status === 'ready' && (
                   <>
                     {agent.agent && (
                       <AgentIcon agent={agent.agent} size="small" />
                     )}
-                    <BrandIcon
-                      name="Engine"
-                      engineId={
-                        parseEngineId(
-                          (agent.executionAgent ?? agent.agent)?.engineId ??
-                            (agent.executionAgent ?? agent.agent)?.execution
-                              ?.agentConnectionId,
-                        ) ?? undefined
-                      }
-                      size={20}
-                    />
+                    {(() => {
+                      const engine = parseEngineId(
+                        (agent.executionAgent ?? agent.agent)?.engineId,
+                      );
+                      return engine && hasBundledEngineMark(engine) ? (
+                        <BrandIcon name="" engineId={engine} size={20} />
+                      ) : null;
+                    })()}
                   </>
                 )
               }

@@ -50,7 +50,7 @@ import {
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
-import { BrandIcon } from '../icons/BrandIcon';
+import { BrandIcon, hasBundledEngineMark } from '../icons/BrandIcon';
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
@@ -224,6 +224,7 @@ interface ChatInputAreaProps {
    */
   modelProviderLabel?: string;
   executionEngineLabel?: string;
+  executionEngineId?: string;
   /**
    * The engine this chat's Agent is configured for now, when it differs from
    * the engine `executionEngineLabel` names for the live Session.
@@ -495,6 +496,7 @@ export function ChatInputArea({
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
+  executionEngineId,
   agentEngineMove,
   fontSize,
   dockHeight,
@@ -1163,15 +1165,21 @@ export function ChatInputArea({
         )}
         <div className="composer-choices chat-input__settings">
           <ComposerRunControl
-            label={`${agentLabel ?? 'Current Agent'} · ${modelLabel}`}
+            label={[
+              agentLabel ?? 'Current Agent',
+              modelLabel !== 'Model' ? modelLabel : undefined,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             icon={
               <>
                 {agentIcon}
-                <BrandIcon
-                  name={executionEngineLabel ?? 'Engine'}
-                  engineId={parseEngineId(approvalEngineId) ?? undefined}
-                  size={20}
-                />
+                {(() => {
+                  const engine = parseEngineId(executionEngineId);
+                  return engine && hasBundledEngineMark(engine) ? (
+                    <BrandIcon name="" engineId={engine} size={20} />
+                  ) : null;
+                })()}
               </>
             }
           >

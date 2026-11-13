@@ -642,7 +642,7 @@ describe('HomeView', () => {
     // The Agent chip names what Start sends, and Start sends exactly it.
     expect(
       screen.getByRole('button', {
-        name: /^Run setup: Agent: Codex · gpt-5.3-codex/,
+        name: /^Codex · gpt-5.3-codex/,
       }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
@@ -956,9 +956,9 @@ describe('HomeView', () => {
     eventCount: 3,
   });
   test.each([
-    ['gpt-5.3-codex', 'Agent: Codex · gpt-5.3-codex'],
-    ['gpt-5.4', 'Agent: Codex · gpt-5.4'],
-    ['Model not reported', 'Agent: Codex'],
+    ['gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
+    ['gpt-5.4', 'Codex · gpt-5.4'],
+    ['Model not reported', 'Codex'],
   ])(
     'the compact start composer names the default selection (%s) on Run setup',
     (modelLabel, expected) => {
@@ -969,7 +969,7 @@ describe('HomeView', () => {
       expect(form.classList.contains('start-composer--compact')).toBe(true);
       expect(
         within(form)
-          .getByRole('button', { name: /^Run setup:/ })
+          .getByTestId('run-setup-trigger')
           .getAttribute('aria-label'),
       ).toContain(expected);
     },
@@ -998,7 +998,7 @@ describe('HomeView', () => {
     const form = screen.getByRole('form', { name: 'Start work' });
     expect(
       within(form).getByRole('button', {
-        name: /^Run setup: Agent: Choose an agent/,
+        name: /^Choose agent/,
       }),
     ).toBeTruthy();
     fireEvent.change(

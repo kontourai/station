@@ -31,6 +31,7 @@ import {
   seedActiveChats,
 } from './helpers/orchestration';
 import { chooseChatRegionRow } from './helpers/region-placement';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { setVisualViewport } from './helpers/visual-viewport';
@@ -125,11 +126,15 @@ async function openComposer(
   await expect(textarea).toBeVisible({ timeout: 15_000 });
   if (agentSlug === 'claude') {
     await expect(
-      page.getByRole('button', { name: /^Approval mode:/ }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', { name: /^Approval mode:/ }),
+      ),
     ).toBeVisible();
-    await expect(page.locator('.chat-input__model-btn')).toContainText(
-      'Selected Test Model',
-    );
+    await expect(
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-btn'),
+      ),
+    ).toContainText('Selected Test Model');
   }
   // The dock settles its height before geometry is compared; compare boxes
   // from one frame, not from a transition.
@@ -191,7 +196,11 @@ for (const [slug, name] of [
     await dismissSetupLauncher(page);
     const draft = page.getByRole('form', { name: 'Start work' });
     await expect(draft).toBeVisible({ timeout: 15_000 });
-    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const agents = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(agents).toBeVisible();
     await agents
@@ -199,15 +208,18 @@ for (const [slug, name] of [
       .click();
     await expect(agents).toHaveCount(0);
     await expect(
-      draft.getByRole('button', {
-        name: new RegExp(`^Agent: ${name}(?: · [^,]+)?$`),
-      }),
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', {
+          name: new RegExp(`^Agent: ${name}(?: · [^,]+)?$`),
+        }),
+      ),
     ).toBeVisible();
     // Choosing the Agent did not start anything.
     await expect(
       page.locator('textarea[placeholder*="Type a message"]'),
     ).toHaveCount(0);
     expect(dispatched).toHaveLength(0);
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill('Start from the draft.');
@@ -487,6 +499,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await expect(
     page.getByRole('region', { name: 'Quoted context' }),
   ).toContainText(quote.excerpt);
+  await closeRunSetup(page);
   await composer.fill('Review @alpha');
   await expect(page.getByRole('option', { name: /alpha\.ts/ })).toBeVisible();
   await page.getByRole('option', { name: /alpha\.ts/ }).click();
@@ -772,7 +785,9 @@ test('virtualizes a long real transcript while preserving reader controls on mob
     () => (window as any).__mockOrchestrationSse?.count?.() === 1,
   );
   const composer = page.locator('textarea[placeholder*="Type a message"]');
+  await closeRunSetup(page);
   await composer.fill('Live question');
+  await closeRunSetup(page);
   await composer.press('Enter');
   await expect(
     transcript.getByText('Live question', { exact: true }),
@@ -1209,6 +1224,7 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
   const textarea = await openComposer(page);
+  await closeRunSetup(page);
   await textarea.fill('Review the attached notes');
 
   const attach = page
@@ -1360,6 +1376,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
   });
 
   const textarea = await openComposer(page);
+  await closeRunSetup(page);
   await textarea.fill('Send the staged attachment');
   await page.locator('#chat-dock .attachment-input').setInputFiles({
     name: 'staged-notes.txt',
@@ -1424,6 +1441,7 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   });
 
   const textarea = await openComposer(page, false, 'station');
+  await closeRunSetup(page);
   await textarea.fill('what is in this screenshot?');
 
   // A real clipboard paste, synthesized as the browser delivers one: a
@@ -1603,6 +1621,7 @@ test('switches between mobile tasks and restores the exact active chat context',
       expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
 
       await expect(textarea).toBeEnabled();
+      await closeRunSetup(page);
       await textarea.fill('return to this draft');
 
       // The sheet's own dismiss control. The Escape path is the same claim through
@@ -1628,9 +1647,11 @@ test('switches between mobile tasks and restores the exact active chat context',
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
-  await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'Model Selected',
-  );
+  await expect(
+    await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-name'),
+    ),
+  ).toHaveText('Model Selected');
 
   await switcher.click();
   await page.evaluate(() => (window as any).__setChatViewport(480, 120));
@@ -1684,9 +1705,11 @@ test('switches between mobile tasks and restores the exact active chat context',
   ).toBeVisible();
   await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
   await expect(menu).toBeHidden();
-  await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'Model Selected',
-  );
+  await expect(
+    await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-name'),
+    ),
+  ).toHaveText('Model Selected');
 
   await page.setViewportSize({ width: 320, height: 568 });
   await page.evaluate(() => (window as any).__setChatViewport(568, 0));
@@ -1733,6 +1756,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     exact: true,
   });
   await compactDialog.getByRole('combobox', { name: 'Inbox scope' }).focus();
+  await closeRunSetup(page);
   await page.keyboard.press('Shift+Tab');
   await expect(
     page
@@ -2272,6 +2296,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   // Escape straight away: the sheet closes and the route is untouched.
   await switcher.click();
   await expect(menu).toBeVisible();
+  await closeRunSetup(page);
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(switcher).toBeFocused();
@@ -2295,6 +2320,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   // The whole URL, not one param: a history entry consumed by Escape shows up
   // as the address reverting to the chat that was open before the switch.
   const urlBeforeEscape = page.url();
+  await closeRunSetup(page);
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(switcher).toBeVisible();
@@ -2943,6 +2969,7 @@ for (const viewport of [
     const dockClassBeforeEscape = await page
       .locator('.chat-dock')
       .getAttribute('class');
+    await closeRunSetup(page);
     await page.keyboard.press('Escape');
     await expect(mobileActions).toBeHidden();
     await expect(moreActions).toBeFocused();
@@ -2961,12 +2988,15 @@ for (const viewport of [
     await expect(page.getByText('Chat Settings', { exact: true })).toBeHidden();
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    const selectedModel = page.locator('.chat-input__model-name');
-    await expect(selectedModel).toHaveText('Selected Test Model');
-    await expect(page.locator('.chat-input__model-btn')).toHaveAttribute(
-      'aria-label',
-      /agent default/,
+    const selectedModel = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-name'),
     );
+    await expect(selectedModel).toHaveText('Selected Test Model');
+    await expect(
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-btn'),
+      ),
+    ).toHaveAttribute('aria-label', /agent default/);
     const selectedModelLabel = 'Selected Test Model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
     await expect(page.locator('.chat-dock__mobile-title-text')).toHaveText(
@@ -2985,6 +3015,7 @@ for (const viewport of [
           ),
       );
       await expect(textarea).toBeEnabled();
+      await closeRunSetup(page);
       await textarea.fill('one\ntwo\nthree\nfour\nfive\nsix\nseven\neight');
       await textarea.focus();
       const openHeight = Math.round(
@@ -3158,11 +3189,15 @@ for (const viewport of [
     expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(
       viewport.width,
     );
-    const modelButton = page.locator('.chat-input__model-btn');
-    await expect(modelButton).toBeVisible();
-    await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
-      'Selected Test Model',
+    const modelButton = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-btn'),
     );
+    await expect(modelButton).toBeVisible();
+    await expect(
+      await runSetupControl(modelButton, (panel) =>
+        panel.locator('.chat-input__model-name'),
+      ),
+    ).toHaveText('Selected Test Model');
     await expect(modelButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
@@ -3193,9 +3228,11 @@ for (const viewport of [
     });
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
-    const railControlBox = await page
-      .locator('.chat-input__agent-btn')
-      .boundingBox();
+    const railControlBox = await (
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__agent-btn'),
+      )
+    ).boundingBox();
     expect(reconnectBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
     expect(railControlBox).not.toBeNull();
@@ -3242,7 +3279,9 @@ for (const viewport of [
         join(evidenceRoot, screenshotName),
       );
     }
-    const agentButton = page.locator('.chat-input__agent-btn');
+    const agentButton = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__agent-btn'),
+    );
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
       'Agent: Claude. Can’t change Agent yet. Send a message first.',
@@ -3397,6 +3436,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
   // it must not inherit the prior gesture's click-suppression guard.
   await page.getByRole('button', { name: 'Chat actions' }).click();
   await expect(page.getByRole('menu', { name: 'Chat actions' })).toBeVisible();
+  await closeRunSetup(page);
   await page.keyboard.press('Escape');
 
   const fullHeaderBox = await header.boundingBox();
@@ -3569,6 +3609,7 @@ test('right-dock composer spans the dock width (#1006)', async ({ page }) => {
   for (let i = 0; i < 3; i++) {
     const cls = (await chatDock.getAttribute('class')) ?? '';
     if (/chat-dock--right/.test(cls)) break;
+    await closeRunSetup(page);
     await page.keyboard.press('Meta+Shift+M');
     await expect
       .poll(async () => (await chatDock.getAttribute('class')) ?? '')
@@ -3607,7 +3648,13 @@ const OPAQUE_SHEETS = [
   {
     name: 'approval-mode sheet',
     open: async (page: Page) =>
-      page.locator('.chat-input__approval-chip').first().click(),
+      (
+        await runSetupControl(page, (panel) =>
+          panel.locator('.chat-input__approval-chip'),
+        )
+      )
+        .first()
+        .click(),
     panel: '.composer-mode-sheet',
   },
   {
@@ -3678,7 +3725,9 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   const activeComposer = textarea.locator(
     'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
   );
-  const modelButton = activeComposer.locator('.chat-input__model-btn');
+  const modelButton = await runSetupControl(activeComposer, (panel) =>
+    panel.locator('.chat-input__model-btn'),
+  );
   const modelButtonBox = await modelButton.boundingBox();
   expect(modelButtonBox).not.toBeNull();
   expect(modelButtonBox!.y).toBeGreaterThanOrEqual(0);
@@ -3769,6 +3818,7 @@ for (const theme of ['dark', 'light'] as const) {
         `${sheet.name} background-color=${surface.color} (${theme})`,
       ).toBe(1);
 
+      await closeRunSetup(page);
       await page.keyboard.press('Escape');
       await expect(panel, sheet.name).toBeHidden();
     }
@@ -3847,7 +3897,11 @@ for (const theme of ['dark', 'light'] as const) {
       `${theme} theme is actually applied`,
     ).toBe(theme === 'light' ? '#f5f4ef' : '#0a0e13');
 
-    const trigger = page.locator('.chat-input__model-btn').first();
+    const trigger = (
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-btn'),
+      )
+    ).first();
     await expect(trigger).toBeEnabled();
     await trigger.click();
 
@@ -3884,6 +3938,7 @@ for (const theme of ['dark', 'light'] as const) {
       'opt-out wrapper draws no ring',
     ).toBe('0px');
 
+    await closeRunSetup(page);
     await page.keyboard.press('Escape');
     await expect(panel, 'model picker').toBeHidden();
   });
@@ -4093,8 +4148,10 @@ for (const width of [320, 390, 600]) {
     await openComposer(page);
     const rail = page.locator('.chat-input__meta');
     await expect(rail).toBeVisible();
-    const controls = rail.locator(
-      '.chat-input__agent-btn, .chat-input__model-btn, .chat-input__approval-chip',
+    const controls = await runSetupControl(rail, (panel) =>
+      panel.locator(
+        '.chat-input__agent-btn, .chat-input__model-btn, .chat-input__approval-chip',
+      ),
     );
     await expect(controls).toHaveCount(3);
     const railBox = await rail.boundingBox();
@@ -4144,6 +4201,7 @@ test('profiles switching between authoritative conversations', async ({
         await expect(menu).toBeHidden();
         if (state === 'Waiting on you') {
           await expect(textarea).toBeEnabled();
+          await closeRunSetup(page);
           await textarea.fill('profile draft');
         }
       }
@@ -4167,6 +4225,7 @@ for (const width of [320, 390, 1280]) {
         (theme) => document.documentElement.setAttribute('data-theme', theme),
         theme,
       );
+      await closeRunSetup(page);
       await textarea.fill('Ask a question or describe a task…');
       await expect(
         page.getByRole('button', { name: 'Send', exact: true }),
@@ -4185,26 +4244,34 @@ for (const width of [320, 390, 1280]) {
       const activeComposer = textarea.locator(
         'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
       );
-      const agent = activeComposer.getByRole('button', {
-        name: /^Agent: Claude/,
-      });
-      const model = activeComposer.getByRole('button', {
-        name: /^Model: Claude — Selected Test Model/,
-      });
+      const agent = await runSetupControl(activeComposer, (panel) =>
+        panel.getByRole('button', {
+          name: /^Agent: Claude/,
+        }),
+      );
+      const model = await runSetupControl(activeComposer, (panel) =>
+        panel.getByRole('button', {
+          name: /^Model: Claude — Selected Test Model/,
+        }),
+      );
       await expect(agent.locator('.chat-input__agent-name')).toHaveText(
         'Claude',
       );
       await expect(agent).toHaveCSS('opacity', '1');
-      await expect(model.locator('.chat-input__model-name')).toHaveText(
-        'Selected Test Model',
-      );
+      await expect(
+        await runSetupControl(model, (panel) =>
+          panel.locator('.chat-input__model-name'),
+        ),
+      ).toHaveText('Selected Test Model');
       await expect(model).toHaveAttribute(
         'title',
         /^Model: Claude — Selected Test Model/,
       );
       const rail = activeComposer.locator('.chat-input__meta');
       const bounds = (await rail.boundingBox())!;
-      const approval = page.getByRole('button', { name: /^Approval mode:/ });
+      const approval = await runSetupControl(page, (panel) =>
+        panel.getByRole('button', { name: /^Approval mode:/ }),
+      );
       for (const control of [agent, model, approval]) {
         const box = (await control.boundingBox())!;
         expect(box.height).toBeGreaterThanOrEqual(width < 769 ? 44 : 32);
@@ -4254,6 +4321,7 @@ for (const width of [320, 390, 1280]) {
       await expect(model).toBeFocused();
       await model.press('Enter');
       await expect(picker).toBeVisible();
+      await closeRunSetup(page);
       await page.keyboard.press('Escape');
       await expect(picker).toBeHidden();
       await expect(model).toBeFocused();
@@ -4322,6 +4390,7 @@ for (const width of [320, 431]) {
       .locator('.chat-dock__mobile-title-text')
       .boundingBox())!;
     expect(title.width).toBeGreaterThan(0);
+    await closeRunSetup(page);
     await input.fill('/');
     const menu = page.getByRole('listbox', { name: 'Suggestions' });
     await expect(menu).toBeVisible();
@@ -4342,6 +4411,7 @@ for (const width of [320, 431]) {
         );
       }),
     ).toBe(true);
+    await closeRunSetup(page);
     await input.fill('/stats');
     await expect(menu.getByText('Platform', { exact: true })).toBeVisible();
     await menu.getByRole('option').click();
@@ -4382,6 +4452,7 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   );
 
   const textarea = await openComposer(page, false, 'station');
+  await closeRunSetup(page);
   await textarea.fill(
     'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
   );
@@ -4804,6 +4875,7 @@ async function queueSendForRetry(
     page.getByRole('button', { name: /^Choose Station — Connected/ }),
   ).toHaveCount(0, { timeout: 30_000 });
   if (options.maximize) await expandMobileDock(page);
+  await closeRunSetup(page);
   await textarea.fill('Message that has to be retried');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   // The transcript keeps the notice whether or not a short dock shows it.

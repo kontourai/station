@@ -17,6 +17,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
@@ -191,13 +192,16 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     await page.setViewportSize({ width: WIDTH, height: HEIGHT });
     await page.goto(baseURL);
     const draft = page.getByRole('form', { name: 'Start work' });
-    await draft
-      .getByRole('button', { name: /^Agent:/ })
-      .click({ timeout: 30_000 });
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click({ timeout: 30_000 });
     await page
       .getByRole('dialog', { name: 'Choose agent' })
       .locator(`.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`)
       .click({ timeout: 30_000 });
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill(PROMPT);

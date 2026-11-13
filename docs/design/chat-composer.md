@@ -829,8 +829,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 ### 3.1 Provider and model picker
 
 - Chat replies, Home and dock starts share one **Run setup** button, with the
-  Agent and engine marks and a compact Agent/model label. Its accessible name
-  includes Agent, Model, Approval and Mode values. It opens a sheet on phones
+  Agent and engine marks and a compact Agent/model label. Its accessible name starts with the visible Agent/model label and adds only
+  available approval and mode values. The trigger has no setup caption. Full access,
+  pending or refused approval changes, and conversation overrides add a visible
+  warning glyph with matching accessible text. Unknown engines omit the engine mark. It opens a sheet on phones
   and a popover on desktop containing the existing Agent, Model, Approval and
   advertised Mode controls. Picker ownership, unavailable reasons, pending
   approval states and engine-owned approval disclosures are preserved.

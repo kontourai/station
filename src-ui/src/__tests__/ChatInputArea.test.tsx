@@ -129,7 +129,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 
   render(<ChatInputArea {...props} />);
   if (props.modelQuery === null)
-    fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
   return props;
 }
 
@@ -1140,7 +1140,7 @@ describe('ChatInputArea', () => {
     }
 
     render(<OfflineComposer />);
-    fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
@@ -1605,7 +1605,7 @@ describe('ChatInputArea', () => {
     // Start an escalation on session A — opens the mode sheet and picks full
     // access, which must land on the confirm step rather than applying.
     if (!screen.queryByRole('dialog', { name: 'Run setup' }))
-      fireEvent.click(screen.getByRole('button', { name: /^Run setup:/ }));
+      fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
     await screen.findByRole('radiogroup', { name: 'Approval mode' });
