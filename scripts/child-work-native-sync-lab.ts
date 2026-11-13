@@ -35,6 +35,13 @@ if (!process.argv.includes('--run-real-local-lab'))
   throw new Error(
     'Pass --run-real-local-lab to start isolated native CLI processes.',
   );
+assert.ok(
+  !(
+    process.argv.includes('--exercise-plugin') &&
+    process.argv.includes('--exercise-settings')
+  ),
+  'Run plugin and settings cohorts separately within the existing request cap.',
+);
 if (process.platform !== 'darwin' || process.arch !== 'arm64')
   throw new Error(
     'This bounded lab currently binds the darwin-arm64 executable.',
@@ -55,11 +62,15 @@ const artifacts = mkdtempSync(join(tmpdir(), 'child-work-native-sync-lab-'));
 const workspace = join(artifacts, 'workspace');
 const home = join(artifacts, 'home');
 const registry = join(artifacts, 'owned-processes');
+const plugin = join(artifacts, 'plugin');
+const pluginToken = randomUUID();
+const pluginCalls: { method: string; phase?: string }[] = [];
+const pluginToolName = 'mcp__plugin_child-work-probe_probe__mark';
 for (const directory of [workspace, home, registry])
   mkdirSync(directory, { recursive: true, mode: 0o700 });
 
 type Phase = {
-  kind: 'write' | 'sdk-mcp';
+  kind: 'write' | 'sdk-mcp' | 'plugin-mcp';
   restricted: boolean;
   marker: string;
   requests: number;
@@ -99,6 +110,7 @@ const receipt: Record<string, unknown> = {
   providerBillingQualified: false,
   portableAuthorityQualified: false,
   requests,
+  pluginCalls,
   processes,
   observations,
 };
@@ -128,6 +140,63 @@ const server = createServer(async (request, response) => {
       chunks.push(Buffer.from(chunk));
     }
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+    if (path === '/mcp') {
+      if (request.method !== 'POST') {
+        response.writeHead(405).end();
+        return;
+      }
+      assert.equal(request.headers.authorization, `Bearer ${pluginToken}`);
+      const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (pluginCalls.length >= 48)
+        throw new Error('native_plugin_request_limit');
+      pluginCalls.push({ method: value.method, phase: phase?.marker });
+      if (value.id === undefined) {
+        response.writeHead(202).end();
+        return;
+      }
+      let result: unknown;
+      switch (value.method) {
+        case 'initialize':
+          result = {
+            protocolVersion: value.params.protocolVersion,
+            capabilities: { tools: {} },
+            serverInfo: { name: 'child-work-probe', version: '1.0.0' },
+          };
+          break;
+        case 'ping':
+          result = {};
+          break;
+        case 'tools/list':
+          result = {
+            tools: [
+              {
+                name: 'mark',
+                description: 'Write the isolated plugin conformance marker',
+                inputSchema: {
+                  type: 'object',
+                  properties: {},
+                  additionalProperties: false,
+                },
+              },
+            ],
+          };
+          break;
+        case 'tools/call':
+          assert.equal(phase?.kind, 'plugin-mcp');
+          assert.equal(value.params.name, 'mark');
+          assert.ok(phase);
+          writeFileSync(phase.marker, 'native plugin effect\n');
+          result = {
+            content: [{ type: 'text', text: 'plugin marker written' }],
+          };
+          break;
+        default:
+          throw new Error(`unexpected_plugin_method:${value.method}`);
+      }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: value.id, result }));
+      return;
+    }
     if (path === '/v1/messages/count_tokens') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ input_tokens: 1 }));
@@ -152,7 +221,12 @@ const server = createServer(async (request, response) => {
       ? {
           type: 'tool_use',
           id: `tool-${randomUUID()}`,
-          name: phase.kind === 'write' ? 'Write' : 'mcp__probe__mark',
+          name:
+            phase.kind === 'write'
+              ? 'Write'
+              : phase.kind === 'plugin-mcp'
+                ? pluginToolName
+                : 'mcp__probe__mark',
           input: {},
         }
       : { type: 'text', text: '' };
@@ -275,6 +349,9 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
         settingSources: [],
+        ...(input.kind === 'plugin-mcp'
+          ? { plugins: [{ type: 'local' as const, path: plugin }] }
+          : {}),
         maxTurns: 3,
         abortController: controller,
         systemPrompt:
@@ -330,7 +407,9 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
     // tools that a caller subsequently adds through SDK MCP.
     const initialized = await session.initializationResult();
     assert.equal(initialized.claude_code_version, manifest.version);
-    const mcp = await session.setMcpServers({ probe: sdkMcp });
+    const mcp = await session.setMcpServers(
+      input.kind === 'plugin-mcp' ? {} : { probe: sdkMcp },
+    );
     assert.deepEqual(mcp.errors, {});
     switch (input.change) {
       case 'replace-permissions':
@@ -417,8 +496,33 @@ try {
     .digest('hex');
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  mkdirSync(join(plugin, '.claude-plugin'), { recursive: true, mode: 0o700 });
+  writeFileSync(
+    join(plugin, '.claude-plugin/plugin.json'),
+    JSON.stringify({
+      name: 'child-work-probe',
+      version: '1.0.0',
+      description: 'Isolated native conformance fixture',
+    }),
+  );
+  writeFileSync(
+    join(plugin, '.mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        probe: {
+          type: 'http',
+          url: `http://127.0.0.1:${address.port}/mcp`,
+          headers: { Authorization: `Bearer ${pluginToken}` },
+        },
+      },
+    }),
+  );
   const nativeSessions = new Map<Phase['kind'], string>();
-  for (const kind of ['write', 'sdk-mcp'] as const) {
+  const kinds: Phase['kind'][] = ['write', 'sdk-mcp'];
+  if (process.argv.includes('--exercise-plugin')) kinds.push('plugin-mcp');
+  for (const kind of kinds) {
     const native = await runPhase({
       kind,
       restricted: false,
