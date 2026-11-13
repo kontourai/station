@@ -1,4 +1,8 @@
 import crypto from 'node:crypto';
+import type {
+  InputRequestContent,
+  InputRequestForm,
+} from '@kontourai/station-contracts/input-request';
 import {
   type ApprovalMode,
   ENGINE_TURN_FAILED_CODE,
@@ -18,6 +22,7 @@ import {
   type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
+import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
@@ -25,11 +30,13 @@ import type { Logger } from '../../utils/logger.js';
 import {
   type ProviderInterruptTurnResult,
   type ProviderTaskStopResult,
+  ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
+import { museAnswers, museInputRequest } from './harness-questions.js';
 import {
   createMuseServeChildWorkState,
   type MuseServeChildWorkContext,
@@ -52,8 +59,9 @@ import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 /**
  * #2452: one Station session driven through a `muse serve` (MSP) host.
  *
- * What the live probe (Muse Code 1.3.0-R3401.1) established, and what this
- * module relies on (captures in `__tests__/fixtures/muse-serve-1.3.0-*`):
+ * What the live probes (Muse Code 1.3.0-R3401.1, re-checked against 1.4.18)
+ * established, and what this module relies on (captures in
+ * `__tests__/fixtures/muse-serve-1.3.0-*` and `muse-serve-1.4.18-*`):
  *
  * - Handshake: `initialize` (the reply carries the stable-surface schema
  *   fingerprint) → `initialized` → `session/start {commandId, workspaceRoot,
@@ -63,8 +71,10 @@ import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
  * - Sessions are durable: a fresh host re-attaches with `session/resume`
  *   and keeps context. `--no-session-log` never delivers turn or item
  *   events, so it is never passed.
- * - Every approval arrives as an `approval/requested` NOTIFICATION (never a
- *   server request), a subagent's with `subagentOrigin`. One command can
+ * - Every approval arrives as an `approval/requested` NOTIFICATION, a
+ *   subagent's with `subagentOrigin`; 1.4 also presents it as an
+ *   `approval/request` server REQUEST, answered with an empty presentation
+ *   receipt and folded into the same approval by its id. One command can
  *   need several stages: `approval/decide` answers `terminal: false` and an
  *   `approval/updated` names the next `currentRequirementId`. The outcome is
  *   `approval/resolved`. The host NEVER times an unanswered approval out, so
@@ -73,19 +83,32 @@ import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
  *   own, with a turn id no client minted. It is adopted as a provider turn
  *   (`metadata.trigger: 'provider'`, #2324), and a send is refused while it
  *   runs rather than queued into it.
+ * - 1.4.18: the model's `request_user_input` tool asks the user through a
+ *   `userInput/request` server REQUEST plus a `userInput/requested`
+ *   notification with the same params (one Station request, keyed by
+ *   `userInputId`). The answer is the `userInput/answer` command (`{status:
+ *   'accepted'}`), the decline `userInput/cancel`, and the outcome
+ *   `userInput/settled`. `approval/listPending` lists open prompts as
+ *   `userInputs` (full request params) for a re-hosted session.
+ * - 1.4.18: `turn/steer {expectedTurnId}` joins input to the running turn
+ *   (`{status: 'accepted', turnId}`); with no such run it is refused
+ *   -32030 `commandRejected` (`missing_run`).
  */
 
 type MuseServeLogger = Pick<Logger, 'warn' | 'info'>;
 
 /**
  * Schema fingerprints of the MSP stable surface this adapter was verified
- * against (`muse schema generate-json-schema`, Muse Code 1.3.0-R3401.1). A
+ * against (`muse schema generate-json-schema`): Muse Code 1.3.0-R3401.1,
+ * and 1.4.18, whose schema was re-checked for every request, result and
+ * notification shape this module reads (only additive members changed). A
  * host reporting any other fingerprint speaks a protocol nobody checked this
  * mapping against, so the session falls back to `muse exec` (and says so)
  * rather than guessing at approval and child-work shapes.
  */
 const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> = new Set([
   'sha256:7469c9e352e67def4a59df7e439984d7194fa351e1c8b7abb34060fd977ced81',
+  'sha256:77dda18550adef14e257b015fe4e6490b722723f7d526df5ba4867939fff68a3',
 ]);
 
 /**
@@ -114,6 +137,12 @@ const APPROVAL_STAGES_MAX = 32;
 /** Bound on settled turns remembered (workflow items outlive their turn). */
 const SETTLED_TURNS_MAX = 32;
 const TITLE_COMMAND_MAX_CHARS = 160;
+/** Bound on user-input ids remembered as settled (or unpresentable). */
+const SETTLED_USER_INPUTS_MAX = 256;
+/** MSP command refusal (`commandRejected`): the command had no effect. */
+const MSP_COMMAND_REJECTED = -32030;
+/** MSP `userInputNotFound` / `userInputAlreadySettled`. */
+const MSP_USER_INPUT_GONE = new Set([-32055, -32056]);
 const TURN_ERROR_MESSAGE_MAX_CHARS = 500;
 
 export type MuseServeApprovalModeWire =
@@ -255,6 +284,22 @@ interface ServeTurn {
   settled: boolean;
   settledPromise: Promise<void>;
   resolveSettled: () => void;
+}
+
+/** A Muse `request_user_input` prompt Station put to the user. */
+interface PendingUserInput {
+  userInputId: string;
+  requestId: string;
+  form: InputRequestForm;
+  /** The `request.opened` event the answer must name. */
+  openedEventId: string;
+  /** A Station turn the prompt belongs to. */
+  turnId?: string;
+  /** A `userInput/answer` or `userInput/cancel` is in flight. */
+  answering: boolean;
+  /** When Station's decision was admitted, in ms (see `request.delivery`). */
+  decidedAtMs?: number;
+  resolvedPublished: boolean;
 }
 
 interface ApprovalStage {
@@ -430,6 +475,15 @@ export class MuseServeSession {
    * escalate, re-host and reopen.
    */
   private readonly escalatedApprovalIds = new Set<string>();
+  /** Open `request_user_input` prompts, by `userInputId`. */
+  private readonly userInputs = new Map<string, PendingUserInput>();
+  /**
+   * Prompts muse settled, or Station could not present (bounded, oldest
+   * first): a later re-issue of one is not put to the user again.
+   */
+  private readonly settledUserInputIds = new Set<string>();
+  /** Prompts whose request Station resolved once (a re-issue gets a new id). */
+  private readonly resolvedUserInputIds = new Set<string>();
   private readonly childWork: MuseServeChildWorkContext;
 
   constructor(private readonly deps: MuseServeSessionDeps) {
@@ -680,6 +734,154 @@ export class MuseServeSession {
     );
   }
 
+  /**
+   * Joins `text` to the running turn `turnId` (`turn/steer`, whose
+   * `expectedTurnId` keeps it from landing in any other turn). Refused with
+   * {@link ProviderTurnEndedError} — no effect — when that turn is not the
+   * one running, here or in muse (`commandRejected`, e.g. `missing_run`).
+   */
+  async steer(turnId: string, text: string): Promise<void> {
+    const turn = this.turns.get(turnId);
+    const connection = this.host?.connection;
+    if (
+      this.stopped ||
+      !turn ||
+      turn.settled ||
+      !turn.startPublished ||
+      this.liveTurn() !== turn ||
+      !connection ||
+      connection.isClosed
+    ) {
+      throw new ProviderTurnEndedError();
+    }
+    let result: unknown;
+    try {
+      result = await connection.request(
+        'turn/steer',
+        {
+          commandId: this.deps.newCommandId(),
+          sessionId: this.requireMuseSessionId(),
+          expectedTurnId: turnId,
+          input: [{ type: 'text', text }],
+        },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    } catch (error) {
+      if (
+        error instanceof MuseServeRpcError &&
+        error.code === MSP_COMMAND_REJECTED
+      ) {
+        throw new ProviderTurnEndedError();
+      }
+      // A timeout or a vanished host is indeterminate: the input may be in.
+      throw error;
+    }
+    if (isRecord(result) && readString(result.turnId) !== turnId) {
+      throw new Error('Muse reported the steer joined a different turn.');
+    }
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      turnId,
+      method: 'turn.started',
+      prompt: text,
+      inputKind: 'steer',
+    });
+  }
+
+  /** Whether `requestId` is an open Muse question (not an approval). */
+  hasUserInput(requestId: string): boolean {
+    return [...this.userInputs.values()].some(
+      (pending) => pending.requestId === requestId,
+    );
+  }
+
+  /**
+   * Answers an open question: `accept` sends the validated answers as
+   * `userInput/answer`, anything else declines it with `userInput/cancel`.
+   * The request resolves once muse admits the command; muse's own
+   * `userInput/settled` then acknowledges it (`request.delivery`). A refused
+   * command leaves the question open and throws, except when muse says the
+   * prompt is gone, which closes it.
+   */
+  async answerUserInput(
+    requestId: string,
+    decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context: {
+      inputContent?: InputRequestContent;
+      expectedRequestEventId?: string;
+    } = {},
+  ): Promise<void> {
+    const pending = [...this.userInputs.values()].find(
+      (candidate) => candidate.requestId === requestId,
+    );
+    if (!pending || pending.resolvedPublished || pending.answering) {
+      throw new Error('This Muse question is not open.');
+    }
+    if (
+      context.expectedRequestEventId !== pending.openedEventId ||
+      decision === 'acceptForSession'
+    ) {
+      throw new Error('Inspect this question before answering it.');
+    }
+    if (decision !== 'accept' && context.inputContent !== undefined) {
+      throw new Error('A cancelled question cannot carry answers.');
+    }
+    const answers =
+      decision === 'accept'
+        ? museAnswers(
+            pending.form,
+            validateInputRequestContent(pending.form, context.inputContent),
+          )
+        : undefined;
+    const connection = this.requireConnection();
+    const sessionId = this.requireMuseSessionId();
+    pending.answering = true;
+    try {
+      await connection.request(
+        answers ? 'userInput/answer' : 'userInput/cancel',
+        {
+          commandId: this.deps.newCommandId(),
+          sessionId,
+          userInputId: pending.userInputId,
+          ...(answers
+            ? { answers }
+            : {
+                reason:
+                  decision === 'decline'
+                    ? 'The user declined to answer in Station.'
+                    : 'The question was cancelled in Station.',
+              }),
+        },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    } catch (error) {
+      pending.answering = false;
+      if (
+        error instanceof MuseServeRpcError &&
+        MSP_USER_INPUT_GONE.has(error.code) &&
+        this.userInputs.get(pending.userInputId) === pending
+      ) {
+        this.rememberSettledUserInput(pending.userInputId);
+        this.closeUserInput(pending, { reason: 'closed-by-engine' });
+        throw new Error('This Muse question is no longer open.');
+      }
+      throw error;
+    }
+    pending.answering = false;
+    // Settled meanwhile (muse's `userInput/settled` can precede the reply).
+    if (pending.resolvedPublished) return;
+    pending.decidedAtMs = this.deps.now().getTime();
+    this.publishUserInputResolved(
+      pending,
+      answers ? 'approved' : decision === 'decline' ? 'denied' : 'cancelled',
+      undefined,
+      MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT,
+    );
+  }
+
   async stopChild(childId: string): Promise<ProviderTaskStopResult> {
     if (!museServeChildIsRunning(this.childWork, childId)) {
       return { outcome: 'no-active-task', taskId: childId };
@@ -721,6 +923,7 @@ export class MuseServeSession {
         this.settleUnanswered(pending, 'cancelled');
       }
       this.approvals.clear();
+      this.abandonUserInputs();
       for (const turn of this.turns.values()) {
         if (turn.settled) continue;
         this.closeOpenTools(turn);
@@ -767,6 +970,8 @@ export class MuseServeSession {
       connection: new MuseServeConnection(spawned.process, {
         onNotification: (method, params) =>
           this.handleNotification(epoch, method, params),
+        onServerRequest: (method, params) =>
+          this.handleServerRequest(epoch, method, params),
         onClose: (info) => this.handleHostClose(epoch, info),
         onProtocolNoise: (detail) =>
           this.deps.logger?.warn('Muse host wrote an unexpected frame', {
@@ -890,6 +1095,15 @@ export class MuseServeSession {
     for (const approval of approvals) {
       if (isRecord(approval)) this.onApprovalRequested(approval);
     }
+    // Prompts still open in the session: put to the user again (the host also
+    // re-issues them as `userInput/request`; both fold by `userInputId`).
+    const userInputs =
+      isRecord(listed) && Array.isArray(listed.userInputs)
+        ? listed.userInputs
+        : [];
+    for (const userInput of userInputs) {
+      if (isRecord(userInput)) this.onUserInputRequested(userInput);
+    }
   }
 
   /**
@@ -966,6 +1180,7 @@ export class MuseServeSession {
       this.settleUnanswered(pending, 'cancelled');
     }
     this.approvals.clear();
+    this.abandonUserInputs();
     settleOpenMuseChildren(this.childWork, { close: false });
   }
 
@@ -1041,9 +1256,43 @@ export class MuseServeSession {
       case 'approval/resolved':
         this.onApprovalResolved(params);
         return;
+      case 'userInput/requested':
+        this.onUserInputRequested(params);
+        return;
+      case 'userInput/settled':
+        this.onUserInputSettled(params);
+        return;
       default:
         return;
     }
+  }
+
+  /**
+   * MSP server requests: a presentation request (`approval/request`,
+   * `userInput/request`) is folded into the same record its notification
+   * twin opens, and answered with the empty presentation receipt
+   * (`RequestReceipt`). The decision travels later as its own command. Any
+   * other request is refused (`undefined`).
+   */
+  private handleServerRequest(
+    epoch: number,
+    method: string,
+    params: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
+    if (method !== 'approval/request' && method !== 'userInput/request')
+      return undefined;
+    // A stale host or a stopped session cannot present anything.
+    if (epoch !== this.hostEpoch || this.stopped) return undefined;
+    const sessionId = readString(params.sessionId);
+    if (
+      sessionId &&
+      this.museSessionIdValue &&
+      sessionId !== this.museSessionIdValue
+    )
+      return undefined;
+    if (method === 'approval/request') this.onApprovalRequested(params);
+    else this.onUserInputRequested(params);
+    return {};
   }
 
   /** agentMessage/reasoning item id → its turn, for deltas (which omit it). */
@@ -1297,6 +1546,209 @@ export class MuseServeSession {
       ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
       ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
     });
+  }
+
+  // ---------------------------------------------------------- user input
+
+  /**
+   * A `request_user_input` prompt (`userInput/request` or its
+   * `userInput/requested` twin, or a `listPending` entry): one Station
+   * request per `userInputId`. A prompt Station cannot render is declined
+   * at once, so the turn waiting on it continues instead of hanging.
+   */
+  private onUserInputRequested(params: Record<string, unknown>): void {
+    const userInputId = readString(params.userInputId);
+    if (!userInputId || this.stopped) return;
+    if (
+      this.userInputs.has(userInputId) ||
+      this.settledUserInputIds.has(userInputId)
+    )
+      return;
+    const form = museInputRequest(params);
+    if (!form) {
+      this.rememberSettledUserInput(userInputId);
+      this.deps.logger?.warn('Muse asked a question Station cannot present', {
+        threadId: this.deps.threadId,
+        userInputId,
+      });
+      const connection = this.host?.connection;
+      const sessionId = this.museSessionIdValue;
+      if (connection && !connection.isClosed && sessionId) {
+        void connection
+          .request(
+            'userInput/cancel',
+            {
+              commandId: this.deps.newCommandId(),
+              sessionId,
+              userInputId,
+              reason: 'Station cannot present this question.',
+            },
+            { timeoutMs: this.deps.requestTimeoutMs },
+          )
+          .catch((error: unknown) => {
+            this.deps.logger?.warn('Muse userInput/cancel was not admitted', {
+              threadId: this.deps.threadId,
+              userInputId,
+              error: errorMessage(error),
+            });
+          });
+      }
+      return;
+    }
+    const turnId = readString(params.turnId);
+    const turn = turnId ? this.turns.get(turnId) : undefined;
+    // Only a live turn is named: one that settled (a host loss, then a
+    // re-hosted session re-listing its prompt) is not the turn waiting now.
+    const ownTurn = turn && !turn.settled ? turn.turnId : undefined;
+    const requestId = this.resolvedUserInputIds.has(userInputId)
+      ? `${userInputId}:${crypto.randomUUID()}`
+      : userInputId;
+    const eventId = crypto.randomUUID();
+    const pending: PendingUserInput = {
+      userInputId,
+      requestId,
+      form,
+      openedEventId: eventId,
+      ...(ownTurn ? { turnId: ownTurn } : {}),
+      answering: false,
+      resolvedPublished: false,
+    };
+    this.userInputs.set(userInputId, pending);
+    // Muse times an unengaged prompt out itself, per question.
+    const perQuestionMs = params.autoResolutionMs;
+    const expiresAt =
+      typeof perQuestionMs === 'number' &&
+      Number.isFinite(perQuestionMs) &&
+      perQuestionMs > 0
+        ? new Date(
+            this.deps.now().getTime() + perQuestionMs * form.body.fields.length,
+          ).toISOString()
+        : undefined;
+    const publish = () =>
+      this.deps.publish({
+        eventId,
+        provider: 'muse',
+        threadId: this.deps.threadId,
+        createdAt: this.nowIso(),
+        ...(ownTurn ? { turnId: ownTurn } : {}),
+        requestId,
+        method: 'request.opened',
+        requestType: 'approval',
+        title: form.message,
+        payload: {
+          toolName: readString(params.toolName) ?? 'request_user_input',
+          ...(readString(params.toolCallId)
+            ? { toolCallId: params.toolCallId }
+            : {}),
+          inputRequest: form,
+          ...(expiresAt ? { expiresAt } : {}),
+        },
+      });
+    this.routeTurnFrame(ownTurn, publish);
+  }
+
+  private onUserInputSettled(params: Record<string, unknown>): void {
+    const userInputId = readString(params.userInputId);
+    if (!userInputId) return;
+    this.rememberSettledUserInput(userInputId);
+    const pending = this.userInputs.get(userInputId);
+    if (!pending) return;
+    this.userInputs.delete(userInputId);
+    const outcome = readString(params.outcome);
+    const engineStatus: ApprovalStatus =
+      outcome === 'answered' || outcome === 'clarified'
+        ? 'approved'
+        : outcome === 'timedOut'
+          ? 'expired'
+          : 'cancelled';
+    if (pending.decidedAtMs !== undefined && pending.resolvedPublished) {
+      this.deps.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'muse',
+        threadId: this.deps.threadId,
+        createdAt: this.nowIso(),
+        requestId: pending.requestId,
+        method: 'request.delivery',
+        outcome: 'acknowledged',
+        waitedMs: Math.max(0, this.deps.now().getTime() - pending.decidedAtMs),
+        engineStatus,
+      });
+      return;
+    }
+    this.publishUserInputResolved(pending, engineStatus, {
+      ...(outcome ? { outcome } : {}),
+    });
+  }
+
+  /**
+   * Station stops offering `pending` without muse having settled it (its
+   * turn ended, the host went away, the session stopped). A decision Station
+   * already recorded was never acknowledged; otherwise the request resolves
+   * cancelled.
+   */
+  private closeUserInput(
+    pending: PendingUserInput,
+    response?: Record<string, unknown>,
+  ): void {
+    if (this.userInputs.get(pending.userInputId) === pending)
+      this.userInputs.delete(pending.userInputId);
+    if (pending.decidedAtMs !== undefined && pending.resolvedPublished) {
+      const decidedAtMs = pending.decidedAtMs;
+      pending.decidedAtMs = undefined;
+      this.deps.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'muse',
+        threadId: this.deps.threadId,
+        createdAt: this.nowIso(),
+        requestId: pending.requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: Math.max(0, this.deps.now().getTime() - decidedAtMs),
+      });
+      return;
+    }
+    this.publishUserInputResolved(pending, 'cancelled', response);
+  }
+
+  private abandonUserInputs(): void {
+    for (const pending of [...this.userInputs.values()])
+      this.closeUserInput(pending);
+  }
+
+  private publishUserInputResolved(
+    pending: PendingUserInput,
+    status: ApprovalStatus,
+    response?: Record<string, unknown>,
+    acknowledgement?: ApprovalAcknowledgement,
+  ): void {
+    if (pending.resolvedPublished) return;
+    pending.resolvedPublished = true;
+    this.resolvedUserInputIds.add(pending.userInputId);
+    if (this.resolvedUserInputIds.size > SETTLED_USER_INPUTS_MAX) {
+      const oldest = this.resolvedUserInputIds.values().next().value;
+      if (oldest !== undefined) this.resolvedUserInputIds.delete(oldest);
+    }
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      requestId: pending.requestId,
+      method: 'request.resolved',
+      status,
+      ...(response && Object.keys(response).length > 0 ? { response } : {}),
+      ...(acknowledgement ? { acknowledgement } : {}),
+    });
+  }
+
+  private rememberSettledUserInput(userInputId: string): void {
+    this.settledUserInputIds.delete(userInputId);
+    this.settledUserInputIds.add(userInputId);
+    if (this.settledUserInputIds.size > SETTLED_USER_INPUTS_MAX) {
+      const oldest = this.settledUserInputIds.values().next().value;
+      if (oldest !== undefined) this.settledUserInputIds.delete(oldest);
+    }
   }
 
   // ------------------------------------------------------------ approvals
@@ -2173,6 +2625,11 @@ export class MuseServeSession {
   ): void {
     if (turn.settled) return;
     turn.settled = true;
+    // A prompt its turn was waiting on cannot be answered once the turn is
+    // over; muse settles it itself, and Station stops offering it now.
+    for (const pending of [...this.userInputs.values()]) {
+      if (pending.turnId === turn.turnId) this.closeUserInput(pending);
+    }
     const metadata =
       turn.kind === 'provider' ? { trigger: PROVIDER_TURN_TRIGGER } : undefined;
     const base = {

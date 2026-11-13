@@ -9,7 +9,10 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { EXTERNAL_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  EXTERNAL_ENGINE_DURABILITY,
+  STEERING_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ApprovalMode,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -64,6 +67,7 @@ import {
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderTaskStopResult,
+  ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
@@ -950,6 +954,12 @@ export class MuseAdapter implements ProviderAdapterShape {
     // cannot ask (`muse-serve-unavailable`).
     this.metadata = {
       ...MuseAdapter.baseMetadata,
+      // Mid-turn input rides `turn/steer`, which only `muse serve` carries;
+      // an exec-only adapter cannot steer at all, and a serve adapter's
+      // exec-fallback session says so per session (`canSteerTurn`).
+      durability: options.serve
+        ? STEERING_ENGINE_DURABILITY
+        : EXTERNAL_ENGINE_DURABILITY,
       description: options.serve
         ? 'Muse Code runtime over the local muse CLI: one `muse serve` host per session, `muse exec` per turn as the fallback.'
         : 'Muse Code runtime over the local muse CLI, one `muse exec` per turn.',
@@ -1703,6 +1713,39 @@ export class MuseAdapter implements ProviderAdapterShape {
     return record.serve.stopChild(taskId);
   }
 
+  /**
+   * Only a serve session has a mid-turn input channel (`turn/steer`); one on
+   * the `muse exec` fallback runs one prompt per process.
+   */
+  canSteerTurn(threadId: string): boolean {
+    return this.sessions.get(threadId)?.serve !== undefined;
+  }
+
+  /**
+   * #1952: adds `input` to the running serve turn (`turn/steer` with that
+   * turn as `expectedTurnId`), published as `turn.started` with `inputKind:
+   * 'steer'` like every steering engine. A turn that is not running is
+   * refused with {@link ProviderTurnEndedError}; an exec session is refused
+   * before any effect.
+   */
+  async steerTurn(
+    threadId: string,
+    input: string,
+    turnId: string,
+  ): Promise<void> {
+    const record = this.requireSession(threadId);
+    if (!record.serve) {
+      throw new SendTurnRefusedError(
+        'This Muse session runs on `muse exec`, which cannot take input mid-turn. Send the message as a new turn.',
+        'input_unsupported',
+      );
+    }
+    const text = input.trim();
+    if (!text) throw new Error('Steer input is empty.');
+    if (record.stopped) throw new ProviderTurnEndedError();
+    await record.serve.steer(turnId, text);
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.requireSession(threadId);
     if (record.serve) return record.serve.interrupt(turnId);
@@ -1739,8 +1782,10 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Serve sessions (#2452) answer the engine's own approval: see
-   * `MuseServeSession.respond`. `muse exec` exposes no approval channel, so
+   * Serve sessions (#2452) answer the engine's own approval (see
+   * `MuseServeSession.respond`) or question (`request_user_input`, answered
+   * with the form content in `context`; see
+   * `MuseServeSession.answerUserInput`). `muse exec` exposes no channel, so
    * an exec session never publishes `request.opened` and there is nothing to
    * resolve against the engine. Publish-only there, mirroring the Ollama
    * adapter: a caller that resolves an unknown request still gets a matching
@@ -1750,9 +1795,23 @@ export class MuseAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const serve = this.sessions.get(threadId)?.serve;
     if (serve) {
+      if (serve.hasUserInput(requestId)) {
+        await serve.answerUserInput(requestId, decision, {
+          ...(context?.inputContent !== undefined
+            ? { inputContent: context.inputContent }
+            : {}),
+          ...(context?.expectedRequestEventId !== undefined
+            ? { expectedRequestEventId: context.expectedRequestEventId }
+            : {}),
+        });
+        return;
+      }
+      if (context?.inputContent !== undefined)
+        throw new Error('This request does not accept question answers.');
       await serve.respond(requestId, decision);
       return;
     }

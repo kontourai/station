@@ -11094,7 +11094,8 @@ export class OrchestrationService {
           if (
             !durability ||
             durability.steerPlacement.state === 'none' ||
-            !adapter.steerTurn
+            !adapter.steerTurn ||
+            adapter.canSteerTurn?.(command.threadId) === false
           ) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',

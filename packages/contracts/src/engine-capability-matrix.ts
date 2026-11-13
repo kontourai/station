@@ -1103,7 +1103,10 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   muse: {
     engineId: toEngineId('muse'),
-    durability: EXTERNAL_ENGINE_DURABILITY,
+    // Steering is native on `muse serve` (see `midTurnSteer` below); the
+    // Station runtime runs every Muse session there unless its host cannot
+    // be used, and that exec-fallback session refuses a steer itself.
+    durability: STEERING_ENGINE_DURABILITY,
     // Slice 1 is deliberately narrow. `muse exec` is a one-prompt-per-process
     // headless runner; nothing in its flag surface or its observed JSONL
     // stream delivers an authored system prompt, MCP tool servers, skills, or
@@ -1140,8 +1143,16 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'declared',
     },
-    // One prompt is bound to one muse process; there is no live input channel.
-    midTurnSteer: false,
+    // #1952: `muse serve` (MSP) `turn/steer {expectedTurnId}` joins input to
+    // the running turn. Live against Muse Code 1.4.18: a steer sent while a
+    // turn ran a shell command was admitted (`{status:'accepted', turnId}`),
+    // appeared as a `userMessage` item in that same turn, and changed its
+    // final answer; with no running turn it is refused (`commandRejected`,
+    // `missing_run`). `MuseAdapter.steerTurn` sends it; pinned by
+    // `muse-serve-adapter.test.ts` (fixture `muse-serve-1.4.18-steer`). A
+    // session on the `muse exec` fallback (one prompt per process) has no
+    // such channel and refuses (`MuseAdapter.canSteerTurn`).
+    midTurnSteer: true,
     // #2452, live `muse serve` (MSP) captures against Muse Code
     // 1.3.0-R3401.1 (committed as
     // `src-server/providers/__tests__/fixtures/muse-serve-1.3.0-*`). A

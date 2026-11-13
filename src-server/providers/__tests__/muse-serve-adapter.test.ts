@@ -38,7 +38,11 @@ import {
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
-import { ProviderTurnInProgressError } from '../adapter-shape.js';
+import {
+  ProviderTurnEndedError,
+  ProviderTurnInProgressError,
+  SendTurnRefusedError,
+} from '../adapter-shape.js';
 import {
   buildMuseServeArgs,
   MuseAdapter,
@@ -2173,3 +2177,685 @@ test.each(['live', 'departed'] as const)(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// Muse Code 1.4.18 (`fixtures/muse-serve-1.4.18-*.jsonl`, live captures).
+
+const SESSION_1418 = '00000000-0000-7000-8000-000000000002';
+const TURN_1418 = '00000000-0000-7000-8000-000000000005';
+const USER_INPUT_1418 = '00000000-0000-7000-8000-000000000015';
+const STEER_TEXT =
+  'Change of plan: after the command finishes, reply with exactly the word BRAVO instead of ALPHA.';
+
+function startServe(h: Harness) {
+  return firstHost(h, () =>
+    h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      cwd: '/workspace/probe/repo',
+    }),
+  );
+}
+
+/** The adapter's own replies to the host's server requests. */
+function repliesTo(host: FakeMuseServeHost, id: number | string) {
+  return host.sent.filter(
+    (frame) => frame.method === undefined && frame.id === id,
+  );
+}
+
+/**
+ * Replays `user-input` with the adapter answering the question as
+ * `answer` returns, read from the `request.opened` the adapter published.
+ */
+async function runUserInput(
+  h: Harness,
+  answer: (
+    opened: Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>,
+  ) => Promise<unknown>,
+  stopAt?: number,
+): Promise<SentFrame[]> {
+  const host = await startServe(h);
+  const driven = await replayMuseServeCapture(
+    host,
+    loadMuseServeCapture('user-input'),
+    {
+      ...(stopAt !== undefined ? { stopAt } : {}),
+      onDrivenRequest: (method) => {
+        if (method === 'turn/start')
+          return h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+        if (method === 'userInput/answer' || method === 'userInput/cancel')
+          return (async () => {
+            await settle();
+            return answer(of(h.events, 'request.opened')[0]);
+          })();
+        return undefined;
+      },
+    },
+  );
+  await settle();
+  return driven;
+}
+
+describe('Muse Code 1.4.18 serve host', () => {
+  test('its schema fingerprint is verified: the session runs on serve, not the exec fallback', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    await replayMuseServeCapture(host, loadMuseServeCapture('user-input'), {
+      stopAt: captureIndex('user-input', (msg) => msg.method === 'turn/start'),
+    });
+    await settle();
+    expect(
+      (
+        loadMuseServeCapture('user-input')[2].msg.result as {
+          schema: { fingerprint: string };
+        }
+      ).schema.fingerprint,
+    ).toBe(
+      'sha256:77dda18550adef14e257b015fe4e6490b722723f7d526df5ba4867939fff68a3',
+    );
+    expect(
+      of(h.events, 'runtime.warning').filter(
+        (event) => event.code === MUSE_SERVE_UNAVAILABLE_CODE,
+      ),
+    ).toEqual([]);
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museTransport: 'serve',
+      museSessionId: SESSION_1418,
+    });
+    expect(host.stdinEnded).toBe(false);
+    expect(h.adapter.canSteerTurn(THREAD)).toBe(true);
+  });
+});
+
+describe('#1952 Muse Code 1.4.18: steering a running serve turn', () => {
+  test('turn/steer targets the running turn, publishes a steer turn.started, and the turn ends with the steered answer', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    let sent: Promise<{ turnId: string }> | undefined;
+    const driven = await replayMuseServeCapture(
+      host,
+      loadMuseServeCapture('steer'),
+      {
+        onDrivenRequest: (method) => {
+          if (method === 'turn/start') {
+            sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+            return sent;
+          }
+          if (method === 'turn/steer')
+            return (async () => {
+              const { turnId } = await sent!;
+              return h.adapter.steerTurn(THREAD, `  ${STEER_TEXT}\n`, turnId);
+            })();
+          return undefined;
+        },
+      },
+    );
+    await settle();
+    await expect(sent).resolves.toMatchObject({ turnId: TURN_1418 });
+    const steer = driven.find((frame) => frame.method === 'turn/steer');
+    expect(steer?.params).toEqual({
+      commandId: expect.any(String),
+      sessionId: SESSION_1418,
+      expectedTurnId: TURN_1418,
+      input: [{ type: 'text', text: STEER_TEXT }],
+    });
+    const started = of(h.events, 'turn.started');
+    expect(started).toHaveLength(2);
+    expect(started[0]).toMatchObject({ turnId: TURN_1418, prompt: 'go' });
+    expect(started[0]).not.toHaveProperty('inputKind');
+    expect(started[1]).toMatchObject({
+      turnId: TURN_1418,
+      prompt: STEER_TEXT,
+      inputKind: 'steer',
+    });
+    // One turn, ended once, with the answer the steer asked for.
+    const completed = of(h.events, 'turn.completed');
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({
+      turnId: TURN_1418,
+      finishReason: 'stop',
+      outputText: expect.stringMatching(/BRAVO$/),
+    });
+  });
+
+  test('muse refusing the steer (no such run) is a no-active-turn refusal with nothing published', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    let sent: Promise<{ turnId: string }> | undefined;
+    await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/steer'),
+      onDrivenRequest: (method) => {
+        if (method !== 'turn/start') return undefined;
+        sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+        return sent;
+      },
+    });
+    const { turnId } = await sent!;
+    const steering = h.adapter.steerTurn(THREAD, STEER_TEXT, turnId);
+    const request = await host.nextRequest('turn/steer', new Set());
+    // Muse 1.4.18's own refusal, captured live against an idle session.
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      error: {
+        code: -32030,
+        message: `turn/steer command ${String(request.params?.commandId)} rejected: missing_run`,
+        data: {
+          kind: 'commandRejected',
+          retryable: false,
+          reason: 'missing_run',
+        },
+      },
+    });
+    await expect(steering).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    await settle();
+    expect(
+      of(h.events, 'turn.started').filter(
+        (event) => event.inputKind === 'steer',
+      ),
+    ).toEqual([]);
+  });
+
+  test('a steer naming a turn that is not running is refused before anything reaches muse', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/start'),
+    });
+    await expect(
+      h.adapter.steerTurn(THREAD, STEER_TEXT, TURN_1418),
+    ).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    expect(host.sent.filter((frame) => frame.method === 'turn/steer')).toEqual(
+      [],
+    );
+  });
+
+  test('a session on the muse exec fallback cannot steer: orchestration refuses it as unsupported, and the adapter never reaches a host', async () => {
+    const h = harness({
+      spawnHost: (args) => {
+        const host = new FakeMuseServeHost(args);
+        setImmediate(() => host.exit(2));
+        return host;
+      },
+    });
+    await h.adapter.startSession({ provider: 'muse', threadId: THREAD });
+    await settle();
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museTransport: 'exec',
+    });
+    expect(h.adapter.canSteerTurn(THREAD)).toBe(false);
+    await expect(
+      h.adapter.steerTurn(THREAD, STEER_TEXT, 'turn-exec'),
+    ).rejects.toBeInstanceOf(SendTurnRefusedError);
+
+    const store = new EventStore(
+      join(makeCascadeHome('muse-steer-exec-'), 'events.sqlite'),
+    );
+    const service = new OrchestrationService({
+      eventStore: store,
+      eventBus: new EventBus(),
+      adapterRegistry: {
+        register() {},
+        list: () => [h.adapter],
+        get: (provider) => (provider === 'muse' ? h.adapter : undefined),
+      },
+      logger: { debug() {}, warn() {} },
+    });
+    try {
+      store.appendEvent({
+        eventId: 'exec:start',
+        threadId: THREAD,
+        sessionId: THREAD,
+        provider: 'muse',
+        method: 'session.started',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      // A turn the exec session is running, so only the session's own
+      // capability can refuse the steer.
+      store.appendEvent({
+        eventId: 'exec:turn',
+        threadId: THREAD,
+        provider: 'muse',
+        method: 'turn.started',
+        turnId: 'turn-exec',
+        createdAt: '2026-01-01T00:00:01.000Z',
+      });
+      service.initialize();
+      await service.whenSessionRecoveryCompleted();
+      service.seedSessionRecord({
+        threadId: THREAD,
+        provider: 'muse',
+        status: 'running',
+      });
+      await expect(
+        service.dispatch({
+          type: 'steerTurn',
+          threadId: THREAD,
+          input: STEER_TEXT,
+        }),
+      ).resolves.toMatchObject({
+        outcome: 'unsupported-engine',
+        threadId: THREAD,
+      });
+    } finally {
+      await service.shutdown();
+      adapters.splice(adapters.indexOf(h.adapter), 1);
+      store.close();
+    }
+  });
+});
+
+describe('Muse Code 1.4.18: server requests are presented, once', () => {
+  test('userInput/request gets the empty presentation receipt and its userInput/requested twin opens no second request', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'user-input',
+      (msg) => msg.method === 'userInput/answer',
+    );
+    await runUserInput(h, async () => undefined, stopAt);
+    const host = h.hosts[0];
+    expect(repliesTo(host, 1)).toEqual([{ jsonrpc: '2.0', id: 1, result: {} }]);
+    const opened = of(h.events, 'request.opened');
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({
+      requestId: USER_INPUT_1418,
+      turnId: TURN_1418,
+      requestType: 'approval',
+      payload: {
+        toolName: 'request_user_input',
+        inputRequest: {
+          source: 'harness:muse',
+          requester: 'Muse',
+          body: {
+            kind: 'form',
+            fields: [
+              {
+                name: 'color',
+                kind: 'choice',
+                header: 'Color',
+                title: 'Which color do you prefer?',
+                options: [
+                  { value: '0', label: 'Red' },
+                  { value: '1', label: 'Blue' },
+                ],
+                allowCustom: true,
+              },
+            ],
+          },
+        },
+      },
+    });
+    // Nothing answered it yet: the request is still open.
+    expect(of(h.events, 'request.resolved')).toEqual([]);
+  });
+
+  test('approval/request is folded into the approval its notification opens, and any other server request is still refused', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'workflow-child-approve',
+      (msg) => msg.method === 'approval/requested',
+    );
+    await run(h, 'workflow-child-approve', { approvalMode: 'ask', stopAt });
+    const host = h.hosts[0];
+    const approval = loadMuseServeCapture('workflow-child-approve')[stopAt].msg
+      .params as Record<string, unknown>;
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: 'srv-approval',
+      method: 'approval/request',
+      params: approval,
+    });
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/requested',
+      params: approval,
+    });
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: 'srv-other',
+      method: 'workspace/askSomething',
+      params: {},
+    });
+    await settle();
+    expect(repliesTo(host, 'srv-approval')).toEqual([
+      { jsonrpc: '2.0', id: 'srv-approval', result: {} },
+    ]);
+    expect(repliesTo(host, 'srv-other')).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 'srv-other',
+        error: {
+          code: -32601,
+          message: 'Station does not serve workspace/askSomething.',
+        },
+      },
+    ]);
+    expect(of(h.events, 'request.opened')).toEqual([
+      expect.objectContaining({
+        requestId: APPROVAL,
+        title: expect.any(String),
+      }),
+    ]);
+  });
+});
+
+describe('Muse Code 1.4.18: request_user_input questions', () => {
+  test('an accepted answer is sent as userInput/answer by option label, resolves on admission, and settled acknowledges it', async () => {
+    const h = harness();
+    const driven = await runUserInput(h, (opened) =>
+      h.adapter.respondToRequest(THREAD, opened.requestId, 'accept', {
+        expectedRequestEventId: opened.eventId,
+        inputContent: { color: '1' },
+      }),
+    );
+    const answer = driven.find((frame) => frame.method === 'userInput/answer');
+    const captured = loadMuseServeCapture('user-input').find(
+      (frame) => frame.msg.method === 'userInput/answer',
+    )?.msg.params as Record<string, unknown>;
+    // Exactly what the live probe sent and muse accepted.
+    expect(answer?.params).toEqual({
+      ...captured,
+      commandId: expect.any(String),
+    });
+    expect(answer?.params?.answers).toEqual([
+      { questionId: 'color', selectedLabel: 'Blue' },
+    ]);
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({
+        requestId: USER_INPUT_1418,
+        status: 'approved',
+        acknowledgement: 'engine',
+      }),
+    ]);
+    expect(of(h.events, 'request.delivery')).toEqual([
+      expect.objectContaining({
+        requestId: USER_INPUT_1418,
+        outcome: 'acknowledged',
+        engineStatus: 'approved',
+      }),
+    ]);
+    expect(of(h.events, 'turn.completed')).toEqual([
+      expect.objectContaining({
+        turnId: TURN_1418,
+        finishReason: 'stop',
+        outputText: expect.stringMatching(/Blue$/),
+      }),
+    ]);
+  });
+
+  test('an answer is refused unless the question was inspected and the content fits the form; nothing reaches muse', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'user-input',
+      (msg) => msg.method === 'userInput/answer',
+    );
+    await runUserInput(h, async () => undefined, stopAt);
+    const opened = of(h.events, 'request.opened')[0];
+    await expect(
+      h.adapter.respondToRequest(THREAD, opened.requestId, 'accept', {
+        inputContent: { color: '1' },
+      }),
+    ).rejects.toThrow('Inspect this question before answering it.');
+    await expect(
+      h.adapter.respondToRequest(THREAD, opened.requestId, 'accept', {
+        expectedRequestEventId: opened.eventId,
+        inputContent: { color: '7' },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      h.adapter.respondToRequest(THREAD, opened.requestId, 'acceptForSession', {
+        expectedRequestEventId: opened.eventId,
+        inputContent: { color: '1' },
+      }),
+    ).rejects.toThrow('Inspect this question before answering it.');
+    expect(
+      h.hosts[0].sent.filter((frame) =>
+        String(frame.method).startsWith('userInput/'),
+      ),
+    ).toEqual([]);
+    expect(of(h.events, 'request.resolved')).toEqual([]);
+  });
+
+  test('declining sends userInput/cancel and resolves denied', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'user-input',
+      (msg) => msg.method === 'userInput/answer',
+    );
+    await runUserInput(h, async () => undefined, stopAt);
+    const host = h.hosts[0];
+    const opened = of(h.events, 'request.opened')[0];
+    const declining = h.adapter.respondToRequest(
+      THREAD,
+      opened.requestId,
+      'decline',
+      { expectedRequestEventId: opened.eventId },
+    );
+    const cancel = await host.nextRequest('userInput/cancel', new Set());
+    expect(cancel.params).toEqual({
+      commandId: expect.any(String),
+      sessionId: SESSION_1418,
+      userInputId: USER_INPUT_1418,
+      reason: 'The user declined to answer in Station.',
+    });
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: cancel.id,
+      result: {
+        commandId: cancel.params?.commandId,
+        status: 'accepted',
+        userInputId: USER_INPUT_1418,
+      },
+    });
+    await declining;
+    await settle();
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({
+        requestId: USER_INPUT_1418,
+        status: 'denied',
+      }),
+    ]);
+  });
+
+  test('several questions: a bounded multiple answers selectedLabels and a single answered in own words answers freeText', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'user-input',
+      (msg) => msg.method === 'userInput/request',
+    );
+    await runUserInput(h, async () => undefined, stopAt);
+    const host = h.hosts[0];
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'userInput/request',
+      params: {
+        sessionId: SESSION_1418,
+        userInputId: 'ui-multi',
+        turnId: TURN_1418,
+        itemId: 'ui-multi',
+        toolCallId: 'call_multi',
+        toolName: 'request_user_input',
+        viewCursor: 'v',
+        questions: [
+          {
+            id: 'langs',
+            header: 'Languages',
+            question: 'Which languages?',
+            selection: { mode: 'multiple', minSelections: 2, maxSelections: 2 },
+            options: [{ label: 'Rust' }, { label: 'Go' }, { label: 'Zig' }],
+          },
+          {
+            id: 'name',
+            header: 'Name',
+            question: 'What name?',
+            selection: { mode: 'single' },
+            options: [{ label: 'Alpha' }, { label: 'Beta' }],
+          },
+        ],
+      },
+    });
+    await settle();
+    const opened = of(h.events, 'request.opened')[0];
+    expect(opened.payload).toMatchObject({
+      inputRequest: {
+        body: {
+          fields: [
+            { name: 'langs', kind: 'multi-choice', minItems: 2, maxItems: 2 },
+            { name: 'name', kind: 'choice', allowCustom: true },
+          ],
+        },
+      },
+    });
+    expect(
+      (opened.payload as { inputRequest: { body: { fields: object[] } } })
+        .inputRequest.body.fields[0],
+    ).not.toHaveProperty('allowCustom');
+    // Muse's bound holds: one language is not enough.
+    await expect(
+      h.adapter.respondToRequest(THREAD, 'ui-multi', 'accept', {
+        expectedRequestEventId: opened.eventId,
+        inputContent: { langs: ['0'], name: '1' },
+      }),
+    ).rejects.toThrow();
+    const answering = h.adapter.respondToRequest(THREAD, 'ui-multi', 'accept', {
+      expectedRequestEventId: opened.eventId,
+      inputContent: { langs: ['0', '2'], name: { custom: 'Gamma' } },
+    });
+    const answer = await host.nextRequest('userInput/answer', new Set());
+    expect(answer.params?.answers).toEqual([
+      { questionId: 'langs', selectedLabels: ['Rust', 'Zig'] },
+      { questionId: 'name', freeText: 'Gamma' },
+    ]);
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: answer.id,
+      result: { commandId: 'x', status: 'accepted', userInputId: 'ui-multi' },
+    });
+    await answering;
+    await settle();
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ requestId: 'ui-multi', status: 'approved' }),
+    ]);
+  });
+
+  test('a question muse settles on its own (timed out) resolves expired; one muse says is gone closes instead of hanging', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'user-input',
+      (msg) => msg.method === 'userInput/answer',
+    );
+    await runUserInput(h, async () => undefined, stopAt);
+    const host = h.hosts[0];
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'userInput/settled',
+      params: {
+        sessionId: SESSION_1418,
+        userInputId: USER_INPUT_1418,
+        outcome: 'timedOut',
+        answers: [],
+        clarification: null,
+        reason: null,
+        decidedByCommandId: null,
+        decidedAt: null,
+      },
+    });
+    await settle();
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({
+        requestId: USER_INPUT_1418,
+        status: 'expired',
+      }),
+    ]);
+    // A re-issue of a settled prompt is not put to the user again.
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'userInput/requested',
+      params: loadMuseServeCapture('user-input').find(
+        (frame) => frame.msg.method === 'userInput/requested',
+      )?.msg.params,
+    });
+    await settle();
+    expect(of(h.events, 'request.opened')).toHaveLength(1);
+  });
+
+  test('a host that dies mid-question cancels it; the re-hosted session reopens it from listPending under a new request id, once', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'user-input',
+      (msg) => msg.method === 'userInput/answer',
+    );
+    await runUserInput(h, async () => undefined, stopAt);
+    const params = loadMuseServeCapture('user-input').find(
+      (frame) => frame.msg.method === 'userInput/requested',
+    )?.msg.params as Record<string, unknown>;
+    h.hosts[0].exit(3);
+    await settle();
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({
+        requestId: USER_INPUT_1418,
+        status: 'cancelled',
+      }),
+    ]);
+    const sending = h.adapter.sendTurn({ threadId: THREAD, input: 'again' });
+    for (let attempt = 0; attempt < 100 && !h.hosts[1]; attempt += 1)
+      await new Promise((resolve) => setImmediate(resolve));
+    const host = h.hosts[1];
+    const answer = async (method: string, result: unknown) => {
+      const request = await host.nextRequest(method, new Set());
+      host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+    };
+    await answer(
+      'initialize',
+      (loadMuseServeCapture('user-input')[2].msg as { result: unknown }).result,
+    );
+    await answer('session/resume', {
+      session: { sessionId: SESSION_1418, approvalMode: { mode: 'onRequest' } },
+      viewCursor: '',
+      history: {},
+      pendingRequests: [{ kind: 'userInput', userInputId: USER_INPUT_1418 }],
+    });
+    // The host re-issues the prompt after the resume, and lists it too.
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'userInput/request',
+      params,
+    });
+    await answer('approval/listPending', {
+      approvals: [],
+      userInputs: [params],
+    });
+    await answer('turn/start', {
+      status: 'accepted',
+      disposition: 'started',
+      turnId: 'turn-after-rehost',
+    });
+    await sending;
+    await settle();
+    const opened = of(h.events, 'request.opened');
+    expect(opened).toHaveLength(2);
+    expect(opened[1].requestId).not.toBe(USER_INPUT_1418);
+    expect(opened[1].requestId.startsWith(`${USER_INPUT_1418}:`)).toBe(true);
+    expect(repliesTo(host, 1)).toEqual([{ jsonrpc: '2.0', id: 1, result: {} }]);
+  });
+
+  test('stopping the session resolves an open question cancelled', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'user-input',
+      (msg) => msg.method === 'userInput/answer',
+    );
+    await runUserInput(h, async () => undefined, stopAt);
+    await h.adapter.stopSession(THREAD);
+    await settle();
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({
+        requestId: USER_INPUT_1418,
+        status: 'cancelled',
+      }),
+    ]);
+  });
+});
