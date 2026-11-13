@@ -2786,8 +2786,8 @@ freshness it did not observe, or route-level mapping of inspection failure.
 
 **Interface.** [`MuseAdapter`](../../src-server/providers/adapters/muse-adapter.ts)
 is the provider Adapter for Muse Code. The Station runtime builds it with
-`serve: {}`, the shared credential-profile resolver (#1942) and the engine MCP
-reader, so each Session runs one `muse serve` host
+`serve` (and the schema export runner), the shared credential-profile resolver
+(#1942) and the engine MCP reader, so each Session runs one `muse serve` host
 ([session](../../src-server/providers/adapters/muse-serve-session.ts),
 [RPC](../../src-server/providers/adapters/muse-serve-rpc.ts),
 [child work](../../src-server/providers/adapters/muse-serve-child-work.ts)) and
@@ -2797,6 +2797,10 @@ falls back to a `muse exec` process per turn when that host cannot be used.
 [`muse-serve-discovery.ts`](../../src-server/providers/adapters/muse-serve-discovery.ts)
 runs a session-less query on a short-lived host (`model/list`, `usage/read`)
 and terminates it before the read settles.
+[`muse-serve-schema.ts`](../../src-server/providers/adapters/muse-serve-schema.ts)
+decides which hosts are used: a verified schema fingerprint, or an unknown one
+whose own `muse schema` export still declares the required surface Station
+uses.
 [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts)
 is the engine-neutral slash-command half shared with the ACP Adapter: parsing
 the invocation, finding an `adapter-action` route in the Adapter's own listing,
@@ -2811,7 +2815,8 @@ credential-profile runs.
 **Behavior and limits.** The [contracts reference](../reference/contracts.md#muse-code-on-muse-serve)
 lists what a serve Session supports and what is deliberately left out.
 **Evidence.** [`muse-serve-adapter.test.ts`](../../src-server/providers/__tests__/muse-serve-adapter.test.ts)
-replays scrubbed live Muse Code 1.4.18 captures and schema-built frames;
+replays scrubbed live Muse Code 1.4.18 and 1.4.20 captures and schema-built
+frames, and drives the schema check with a stand-in export runner;
 [`muse-adapter.test.ts`](../../src-server/providers/__tests__/muse-adapter.test.ts)
 covers exec, and [`app-home-muse.routes.test.ts`](../../src-server/routes/connections/__tests__/app-home-muse.routes.test.ts)
 the profile routes. They do not qualify an installed release or a completed
