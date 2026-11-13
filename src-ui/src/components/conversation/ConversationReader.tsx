@@ -19,7 +19,6 @@ import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSession
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChatMessage, ChatSession } from '../../types';
 import { describeStationFailure } from '../../utils/stationFailure';
-import { useActivityWorkspacePaneBinding } from '../../views/activity/ActivityWorkspacePaneBinding';
 import { Button } from '../Button';
 import { describeStationControlCall } from '../chat/agent-message/station-control-calls';
 import { ChatMessageList } from '../chat/ChatMessageList';
@@ -33,6 +32,7 @@ import {
   useConversationConnection,
   useOptionalConversationConnection,
 } from './ConversationConnectionContext';
+import { useSessionReaderBinding } from './SessionReaderBinding';
 
 export interface ConversationReaderProps {
   apiBase?: string;
@@ -194,7 +194,7 @@ export const ConversationReader = memo(function ConversationReader({
     session.assignedAgentSlug,
     requestsReadOnly,
   ]);
-  const activityBinding = useActivityWorkspacePaneBinding();
+  const activityBinding = useSessionReaderBinding();
   const anchor = useMemo(
     () =>
       activityBinding?.sessionId &&

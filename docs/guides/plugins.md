@@ -2047,7 +2047,7 @@ selector. Grant `agents.invoke` in Library, configure the native model or extern
 engine connection, and make the Agent available in the Project before running it.
 
 The host confirms that a conversation was accepted and offers **Open
-conversation**. If delivery is uncertain, inspect Activity; the host does not
+conversation**. If delivery is uncertain, inspect the Chat inbox; the host does not
 retry a possibly started action. Revoked permissions, changed packages, missing
 Agents, and unavailable execution modes remain visible failures.
 

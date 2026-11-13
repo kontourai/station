@@ -123,9 +123,7 @@ describe('an interrupted subagent', () => {
         expanded: false,
       }),
     );
-    expect(
-      screen.getByRole('button', { name: 'View transcript' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open chat' })).toBeTruthy();
   });
 
   test('a batch counts interrupted children by name', () => {

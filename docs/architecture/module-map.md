@@ -1685,7 +1685,7 @@ cause disclosure, while desktop incoming bubbles keep their sender treatment.
 Exact send/receive navigation uses the recorded request key, reads at most
 20 older pages to rule out ambiguity, and focuses a uniquely resolved record.
 Missing, ambiguous and page-limit outcomes remain visible. The public
-`SessionMessageAnchor` travels through the existing region outbox and Activity
+`SessionMessageAnchor` travels through the existing region outbox and Chat
 binding as one consumed intent, with repeat activations keyed by its token.
 Its parser requires a matching Session of 1–512 characters, sent/received
 direction and a request key of 1–128 characters; invalid anchors grant
@@ -4077,10 +4077,10 @@ starts from exact authorized account/Session/correlation identity. The active
 row does not yet have a routing receipt; settlement adds the sealed receipt ID
 before terminal publication. [Tracking helpers](../../src-server/services/operations/action-operation-tracker.ts)
 use stable handoff identities and catch observation-storage failures so those
-failures do not replace the wrapped domain result. The SDK/Activity UI consume
+failures do not replace the wrapped domain result. The SDK/Monitoring UI consume
 these browser-safe records, not the private file store.
 
-The [Activity section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
+The [Monitoring section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
 keeps platform actions separate from filtered sessions: operation records have
 account and optional machine/Session scope, without the Project or client-origin
 attribution those filters need. Its disclosure shows running and attention counts,
@@ -4838,7 +4838,7 @@ JS fixtures do not establish installed-shell qualification.
 [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx),
 [useConversationController](../../src-ui/src/components/conversation/useConversationController.ts)
 and the [transport](../../src-ui/src/components/conversation/conversation-transport.ts)
-own the dock, Activity, attached-session and coding-tab conversation composition.
+own the dock, attached-session and coding-tab conversation composition.
 Record density changes framing; the adapters retain read-only access and explicit
 continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
 receives owner/member/guest history projections and paging ports without changing

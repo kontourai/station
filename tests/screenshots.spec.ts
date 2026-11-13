@@ -686,7 +686,7 @@ function fulfillAgentsEmptyFixture(route: Route): Promise<void> {
  * later `page.unroute` removes only this handler, leaving the global one
  * intact for every other screen.
  */
-async function fulfillSessionsFilteredEmptyFixture(
+async function _fulfillSessionsFilteredEmptyFixture(
   route: Route,
 ): Promise<void> {
   // `ProviderSession`/`OrchestrationSessionSummary`'s minimal wire-valid
@@ -4151,35 +4151,6 @@ const SCREENS: Screen[] = [
       },
     };
   }),
-  {
-    name: 'mobile-activity-compact',
-    title: 'Mobile — Activity opened over Chat (#2549)',
-    path: '/?surface=activity',
-    viewport: MOBILE,
-    waitFor: '.activity-filters, .split-pane__list',
-    afterGoto: async (page) => {
-      for (const control of [
-        page.getByRole('button', { name: 'New Task', exact: true }),
-      ]) {
-        await expect(control).toBeVisible();
-        expect(
-          await control.evaluate((node) => {
-            const box = node.getBoundingClientRect();
-            return (
-              box.top >= 0 &&
-              box.bottom <= window.innerHeight &&
-              node.contains(
-                document.elementFromPoint(
-                  box.x + box.width / 2,
-                  box.y + box.height / 2,
-                ),
-              )
-            );
-          }),
-        ).toBe(true);
-      }
-    },
-  },
   ...[320, 390].flatMap((width): Screen[] => [
     {
       name: `mobile-http-consent-${width}`,
@@ -4393,12 +4364,6 @@ const SCREENS: Screen[] = [
   // Flow reviews, review evidence) this spec does not stub, so pointing the
   // same entry at it would photograph an empty state under a name that claims
   // otherwise. A real capture is new work with its own fixtures.
-  {
-    name: 'sessions',
-    title: 'Activity',
-    path: '/?surface=activity',
-    viewport: DESKTOP,
-  },
   { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
   (() => {
     let cleanup: () => Promise<void> = async () => {};
@@ -4621,69 +4586,6 @@ const SCREENS: Screen[] = [
     // `.settings__search` (SettingsView.tsx:599) exists only once the loaded
     // branch renders, which is the state this screen exists to capture.
     waitFor: '.settings__search',
-  },
-  {
-    name: 'sessions-filtered-empty',
-    title: 'Activity — filtered empty',
-    path: '/?surface=activity',
-    viewport: DESKTOP,
-    // archive#4501 ("the honest FilteredEmpty derivation"): `SplitPaneLayout`
-    // gained `collectionEmpty` so a typed search over a collection that was
-    // ALREADY empty renders the plain `Empty` state, never `FilteredEmpty` —
-    // deliberately (SplitPaneLayout.tsx:962-967's own comment: "a typed query
-    // over an ALREADY-empty collection is not what emptied it"), so a search
-    // can never misattribute "nothing here" to itself, and never offers a
-    // "Clear filter" that would fix nothing. `SessionsView.tsx:737` wires
-    // `collectionEmpty={projectFiltered.length === 0}`, i.e. the RAW
-    // (pre-search) session list. This screen exists to capture the
-    // FilteredEmpty branch itself, which is genuinely reachable only when
-    // the raw collection is non-empty and the typed search matches none of
-    // it — the suite's own global read-model mock (an empty array, a
-    // truthful default for a fresh temp-home) can no longer reach it after
-    // archive#4501. Override it here with a few real-shaped sessions so
-    // `collectionEmpty` is false and "missing-session" filters an actual
-    // collection down to zero.
-    beforeGoto: async (page) => {
-      await page.route(
-        '**/api/orchestration/sessions/read-model',
-        fulfillSessionsFilteredEmptyFixture,
-      );
-    },
-    afterGoto: async (page) => {
-      try {
-        await page.getByPlaceholder('Search activity…').fill('missing-session');
-        // The margin here covers the read-model fetch's own latency (>6s
-        // wall-clock has been observed under host load — that signal is
-        // archive#4466, not something this timeout fixes); a repeat-500
-        // still fails loudly via the error branch rather than at this
-        // timeout.
-        await expect(
-          page.getByText('No activity matches “missing-session”'),
-        ).toBeVisible({ timeout: 15_000 });
-        await expect(
-          page.getByRole('button', { name: 'Clear search and filters' }),
-        ).toBeVisible();
-      } finally {
-        // `page.route` handlers persist across `page.goto()` for the
-        // page's lifetime (see the resource-posture mock's doc comment in
-        // the main test body). `ProjectSidebar` (chrome-wide) reads this
-        // SAME endpoint for its own "N open chats" derivation, so leaving
-        // this fixture registered would leak 3 phantom open chats into the
-        // sidebar of every screen captured after this one in the run.
-        // Unregister regardless of whether the assertions above passed —
-        // WITH the same handler reference passed to `page.route` above, so
-        // this removes only this fixture and leaves the main test body's
-        // global empty-array mock for the same URL pattern intact (see
-        // `fulfillSessionsFilteredEmptyFixture`'s doc comment: omitting the
-        // handler argument here once tore out that global mock too, and
-        // every later screen's request fell through to the real, 500ing
-        // dev server).
-        await page.unroute(
-          '**/api/orchestration/sessions/read-model',
-          fulfillSessionsFilteredEmptyFixture,
-        );
-      }
-    },
   },
   // archive#192 converged empty-state screens — both should render the shared
   // Console Kit `Empty` visual (dashed-border card), not bespoke markup.
@@ -4949,7 +4851,7 @@ const SCREENS: Screen[] = [
       // both of which the retired offer menu could not show at all.
       await expect(menu.getByRole('menuitem', { name: /^Chat/ })).toBeVisible();
       await expect(
-        menu.getByRole('menuitem', { name: /^Activity/ }),
+        menu.getByRole('menuitem', { name: /^Agents/ }),
       ).toBeVisible();
       // The hold must not ALSO have toggled the region under the panel.
       await expect(trigger).toHaveAttribute('aria-pressed', 'false');

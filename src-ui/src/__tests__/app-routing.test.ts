@@ -11,14 +11,14 @@ import type { NavigationView } from '../types';
 const LEGACY_PATH_CASES = [
   // #928: Activity's standalone placement is gone, so both retired spellings
   // land on the surface's canonical deep link. `extra`/`anything` are dropped
-  // rather than pasted onto `/`: the canonical link carries `session` and
-  // `focus` and nothing else, and the retired route never read the rest.
-  ['/sessions', '/?surface=activity'],
-  ['/sessions/', '/?surface=activity'],
-  ['/sessions/?session=x&extra=y', '/?surface=activity&session=x'],
-  ['/sessions?session=x&anything=y', '/?surface=activity&session=x'],
-  ['/activity', '/?surface=activity'],
-  ['/activity/', '/?surface=activity'],
+  // rather than pasted onto `/`: only the meaningful session, focus,
+  // notification-read and dock/chat state survives the legacy redirect.
+  ['/sessions', '/notifications'],
+  ['/sessions/', '/notifications'],
+  ['/sessions/?session=x&extra=y', '/?surface=chat&session=x'],
+  ['/sessions?session=x&anything=y', '/?surface=chat&session=x'],
+  ['/activity', '/notifications'],
+  ['/activity/', '/notifications'],
   // #2182: the `station-config` section this named was dissolved into six
   // others, and a redirect cannot pick one of them. It lands on Settings'
   // overview, which shows all of them.
@@ -834,19 +834,19 @@ describe('app-shell routing', () => {
  */
 describe('retired Activity route (#928)', () => {
   test.each([
-    ['/activity', '/?surface=activity'],
-    ['/activity/', '/?surface=activity'],
-    ['/sessions', '/?surface=activity'],
-    ['/sessions/', '/?surface=activity'],
-    ['/activity?session=thread-1', '/?surface=activity&session=thread-1'],
-    ['/sessions?session=thread-1', '/?surface=activity&session=thread-1'],
+    ['/activity', '/notifications'],
+    ['/activity/', '/notifications'],
+    ['/sessions', '/notifications'],
+    ['/sessions/', '/notifications'],
+    ['/activity?session=thread-1', '/?surface=chat&session=thread-1'],
+    ['/sessions?session=thread-1', '/?surface=chat&session=thread-1'],
     [
       '/activity?session=thread-1&focus=evidence',
-      '/?surface=activity&session=thread-1&focus=evidence',
+      '/?surface=chat&session=thread-1&focus=evidence',
     ],
     [
       '/sessions?session=thread-1&focus=evidence',
-      '/?surface=activity&session=thread-1&focus=evidence',
+      '/?surface=chat&session=thread-1&focus=evidence',
     ],
     // Ids that need encoding: the stored links are minted by
     // `activityDeepLink` from raw thread ids, so a redirect that pasted the
@@ -854,21 +854,34 @@ describe('retired Activity route (#928)', () => {
     // query parameter.
     [
       '/activity?session=thread%2Falpha',
-      '/?surface=activity&session=thread%2Falpha',
+      '/?surface=chat&session=thread%2Falpha',
     ],
-    ['/activity?session=a%20b', '/?surface=activity&session=a%20b'],
-    ['/activity?session=x%26y%3Dz', '/?surface=activity&session=x%26y%3Dz'],
+    [
+      '/projects/my-project?surface=activity&session=a%20b&focus=evidence&openedNotification=n%201&dock=max&chat=c%201&extra=y',
+      '/projects/my-project?surface=chat&session=a%20b&focus=evidence&openedNotification=n%201&dock=max&chat=c%201',
+    ],
+    [
+      '/activity?openedNotification=n%201&dock=open&chat=c%201&focus=bogus&extra=y',
+      '/notifications?openedNotification=n%201&dock=open&chat=c%201',
+    ],
+    ['/activity?session=a%20b', '/?surface=chat&session=a%20b'],
+    [
+      '/?surface=activity&session=t1&messageSession=t1&messageDirection=sent&messageRequest=r1&extra=y',
+      '/?surface=chat&session=t1&messageSession=t1&messageDirection=sent&messageRequest=r1',
+    ],
+    ['/activity?session=%20%20&messageRequest=r1', '/notifications'],
+    ['/activity?session=x%26y%3Dz', '/?surface=chat&session=x%26y%3Dz'],
     [
       '/sessions?session=thread%2Falpha&focus=evidence',
-      '/?surface=activity&session=thread%2Falpha&focus=evidence',
+      '/?surface=chat&session=thread%2Falpha&focus=evidence',
     ],
     // `focus` without a session names nothing, on both sides of the redirect.
-    ['/activity?focus=evidence', '/?surface=activity'],
+    ['/activity?focus=evidence', '/notifications'],
     // Any other value of `focus` is ignored rather than carried, exactly as
     // the retired route's own parser ignored it.
     [
       '/activity?session=thread-1&focus=bogus',
-      '/?surface=activity&session=thread-1',
+      '/?surface=chat&session=thread-1',
     ],
   ])('redirects %s to %s', (legacy, canonical) => {
     expect(getLegacyPathRedirect(legacy)).toBe(canonical);
@@ -901,7 +914,9 @@ describe('retired Activity route (#928)', () => {
     ]) {
       const redirect = getLegacyPathRedirect(legacy);
       expect(redirect).not.toBeNull();
-      expect(resolveViewFromPath(redirect!)).toEqual({ type: 'home' });
+      expect(resolveViewFromPath(redirect!)).toEqual({
+        type: legacy === '/activity' ? 'notifications' : 'home',
+      });
     }
   });
 
