@@ -87,6 +87,10 @@ function requireProviderCapacity(value: number): number {
 
 const AUTH_CODE_PATTERN =
   /(?:^|_)(?:401|invalid_grant|unauthenticated|unauthorized|authentication_(?:error|failed|required)|invalid_(?:api_key|token|credentials?))(?:$|_)/;
+const RATE_LIMIT_CODE_PATTERN =
+  /(?:^|_)(?:429|rate_limit(?:ed|_error)?|too_many_requests)(?:$|_)/;
+const RATE_LIMIT_MESSAGE_PATTERN =
+  /\b(?:429|rate[\s_-]*limit(?:ed|s|ing|_error)?|too[\s_-]+many[\s_-]+requests)\b/i;
 const AUTH_MESSAGE_PATTERNS = [
   /\b(?:unauthenticated|unauthorized)\b/i,
   /\bplease\s+(?:log\s*in|login|sign\s*in)\b/i,
@@ -222,6 +226,13 @@ export function isRuntimeAuthenticationFailure(error: {
   }
   if (INTERRUPTION_MESSAGE_PATTERN.test(error.message)) return false;
   if (normalizedCode && AUTH_CODE_PATTERN.test(normalizedCode)) return true;
+  // Proxy cooldowns can say "Request rejected ... All credentials ...".
+  // Capacity rejection must not become a durable sign-in failure merely
+  // because those words also match the legacy authentication text fallback.
+  if (normalizedCode && RATE_LIMIT_CODE_PATTERN.test(normalizedCode)) {
+    return false;
+  }
+  if (RATE_LIMIT_MESSAGE_PATTERN.test(error.message)) return false;
   return AUTH_MESSAGE_PATTERNS.some((pattern) => pattern.test(error.message));
 }
 

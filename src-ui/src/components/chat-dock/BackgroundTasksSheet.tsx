@@ -167,8 +167,7 @@ export function BackgroundTasksSheet({
         )}
       </div>
       <footer className="background-tasks-sheet__footer">
-        Recent activity only; closed-chat history may be missing. Find remote
-        delegations in Activity.
+        Recent tasks only. Remote tasks are in Activity.
       </footer>
     </ResponsiveDialogSurface>
   );

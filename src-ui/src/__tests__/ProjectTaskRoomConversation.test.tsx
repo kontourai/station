@@ -32,8 +32,11 @@ const mocks = vi.hoisted(() => ({
   failedAnswer: false,
   contextText: '',
   requestRecords: [] as { sessionId: string; prompt: string }[],
+  markRead: vi.fn(),
+  throughSeq: undefined as number | undefined,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useMarkReadMutation: () => ({ mutate: mocks.markRead }),
   useTaskTurnReferencesQuery: () => ({ data: [] }),
   useCreateTaskReferenceMutation: () => ({
     mutateAsync: mocks.keep,
@@ -89,7 +92,24 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
     },
   }),
   useProjectTaskRoomHistoryQuery: () => ({
-    data: { pages: [{ kind: 'available', records: mocks.records }] },
+    data: {
+      pages: [
+        {
+          kind: 'available',
+          records: mocks.records,
+          ...(mocks.throughSeq === undefined
+            ? {}
+            : {
+                checkpoint: {
+                  throughSeq: mocks.throughSeq,
+                  checkpointDigest: 'c'.repeat(64),
+                  retainedAnchorSeq: 0,
+                  retainedAnchorDigest: 'd'.repeat(64),
+                },
+              }),
+        },
+      ],
+    },
     error: mocks.historyError,
     isFetching: mocks.historyFetching,
     hasNextPage: mocks.historyHasNext,
@@ -206,6 +226,31 @@ beforeEach(() => {
   mocks.continue.mockReset().mockResolvedValue({ sessionId: 'session-1' });
   mocks.openConversation.mockReset().mockResolvedValue(true);
   mocks.stop.mockReset().mockResolvedValue({});
+  mocks.markRead.mockReset();
+  mocks.throughSeq = undefined;
+});
+test('marks the room read through its checkpoint once every page is shown (#4794)', async () => {
+  mocks.records = [record(1), record(2)];
+  mocks.throughSeq = 7;
+  // A page still to read: nothing is marked past what is on screen.
+  mocks.historyHasNext = true;
+  const rendered = mount();
+  expect(mocks.markRead).not.toHaveBeenCalled();
+  mocks.historyHasNext = false;
+  rendered.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(mocks.markRead).toHaveBeenCalledOnce());
+  expect(mocks.markRead.mock.calls[0]?.[0]).toEqual({
+    target: { kind: 'task-room', taskId: 'task-1' },
+    version: 7,
+  });
 });
 test('continues reading toward the newest history after a concurrent refresh settles', async () => {
   mocks.records = [record(1)];

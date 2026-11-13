@@ -71,18 +71,28 @@ export function useRoomDraftValue<T>(
     loaded.current = key;
     setDraftState(read(key));
   }, [key, read]);
+  // A setter belongs to the key it was made for. Called after the view
+  // moved to another key (a late acknowledgement from a thread the reader
+  // left), it updates that key's own stored draft and leaves the active one
+  // alone: the active draft is never written under a retired key (#4855).
   const setDraft = useCallback(
     (value: T | ((current: T) => T)) => {
+      const apply = (current: T) =>
+        typeof value === 'function'
+          ? (value as (current: T) => T)(current)
+          : value;
+      if (loaded.current !== key) {
+        const next = apply(read(key));
+        writeRaw(key, codec.isEmpty(next) ? undefined : codec.encode(next));
+        return;
+      }
       setDraftState((current) => {
-        const next =
-          typeof value === 'function'
-            ? (value as (current: T) => T)(current)
-            : value;
+        const next = apply(current);
         writeRaw(key, codec.isEmpty(next) ? undefined : codec.encode(next));
         return next;
       });
     },
-    [key, codec],
+    [key, codec, read],
   );
   return [loaded.current === key ? draft : read(key), setDraft] as const;
 }

@@ -1709,7 +1709,7 @@ describe('ConnectionService', () => {
       config: {
         readinessState: 'missing_prerequisites',
         readinessReason: expect.stringContaining(
-          'rejected a real runtime request',
+          'Sign in again, then run Check connection on this engine to prove recovery.',
         ),
       },
       capabilityInventory: {

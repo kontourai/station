@@ -402,6 +402,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/chat-replay.spec.ts',
     'tests/transcript-load-stability.spec.ts',
     'tests/chat-history-reopen.spec.ts',
+    // Every API read is a route of mockChatShell and the spec's own fixtures.
+    'tests/chat-dock-inbox-open.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
@@ -456,6 +458,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   ],
   sharedInstanceExclusive: [
     'tests/station-connection-chat.spec.ts',
+    // Creates real Projects, channels and read markers on the instance.
+    'tests/project-channel-navigation.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
@@ -1181,6 +1185,26 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-channel-navigation.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4794/#4795 on a real Station: server read markers drive sidebar bold and clear for a second client; keyboard Up/Down/Enter; phone channel list pushes a full-screen channel, send, thread page, Back restores the list scroll; no horizontal scroll at 390 and 360.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-dock-inbox-open.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      '#4814: a stored conversation with no open chat opens its transcript from the dock inbox; the selection survives the bind that sets the row chatSessionId.',
     exceptions: [],
   },
   {

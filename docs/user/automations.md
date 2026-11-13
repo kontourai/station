@@ -36,9 +36,33 @@ later:
 - automations that run in the chat,
 - check-backs the agent scheduled (`schedule_wake_up`): one follow-up at most
   a day ahead, at most 3 waiting and 20 per hour per chat,
-- automations the agent proposed (`propose_job`), waiting for your approval.
+- automations the agent proposed (`propose_job`), waiting for your approval,
+- GitHub Automation sources and rules the agent proposed
+  (`propose_automation_source`, `propose_automation_rule`), waiting for you
+  to confirm.
 
 An approved proposal runs in the chat that proposed it.
+
+A GitHub source or rule proposal is a card that says, in Station's words,
+what it watches, what it opens, which agent it wakes, and with what limits.
+What the agent wrote (its name for it, its conditions, its reason, and the
+complete instructions a rule gives) is shown apart, under **Written by the
+agent**. Open **Instructions the agent will be given** to read them in full.
+If the chat had read content written by others, such as email, before the
+agent proposed this or at any time since, the card says so first.
+Confirming checks again that the agent's chat could still start that work,
+and refuses if an Agent it names has moved, changed or been removed. **Confirm** creates it, and only the Station operator can confirm.
+A confirmed source starts disabled and a confirmed rule starts observing: it
+records what it would do but starts nothing. Tick **Turn it on now** to
+enable the source, or set the rule live, in the same step. **Decline**
+creates nothing. Proposals are meant to come only from a message you typed
+into Station's chat. Work that an automation, another agent's result, the
+CLI or another Station started is refused. Station works out which message
+the agent is answering from the chat's state, and a known timing race
+(a steer sent while another agent's result is starting) can let an agent's
+continuation create a card. Nothing is created unless you confirm it, so
+read each card before confirming. The fix is tracked in
+[#4882](https://github.com/kontourai/station/issues/4882).
 
 ## Failures, missed runs and turning off
 

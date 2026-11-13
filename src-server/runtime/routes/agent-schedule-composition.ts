@@ -28,8 +28,16 @@ import {
   type AgentScheduleRoutesDeps,
   createJobProposalApproval,
 } from '../../routes/orchestration/agent-schedule.js';
+import type {
+  AutomationProposalOperator,
+  AutomationProposalRoutesDeps,
+} from '../../routes/orchestration/automation-proposals.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  type AutomationProposalStore,
+  agentDefinitionDigest,
+} from '../../services/automation/automation-proposals.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type AgentScheduleStore,
@@ -95,10 +103,31 @@ export interface AgentScheduleCompositionDeps {
     conversationId: string,
     context: Context,
   ): Promise<readonly ConversationAutomation[]>;
+  /** #4830: agent-proposed Automation sources and rules. */
+  readonly automationProposals?: AutomationProposalCompositionDeps;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
   now?: () => number;
+}
+
+/** What #4830's proposals need beyond the schedule's own reads. */
+export interface AutomationProposalCompositionDeps {
+  /** Absent (hosted, or no event store): proposals are unavailable. */
+  readonly store: AutomationProposalStore | undefined;
+  readonly automations: AutomationProposalRoutesDeps['automations'];
+  /** The slug of the Project with this `ProjectConfig.id`, if any. */
+  projectSlugForId(projectId: string): string | undefined;
+  projectName(projectId: string): string | undefined;
+  /**
+   * The Agent's whole stored definition, read once per check; its `project`
+   * is the Agent's own Project slug. Throws when there is no such Agent.
+   */
+  agentDefinition(agentSlug: string): Promise<{ readonly project?: string }>;
+  /** `proposingTurnId` over the Session's inferred calling turn (#4882). */
+  proposingTurn(sessionId: string): string | undefined;
+  untrustedContent(conversationId: string): Promise<boolean>;
+  operator(request: Request): Promise<AutomationProposalOperator | undefined>;
 }
 
 /** The conversation a recorded wake-up belongs to; the guard's read. */
@@ -131,6 +160,8 @@ export interface AgentScheduleComposition {
     jobs: readonly SchedulerJob[],
   ): (run: RunSummary) => boolean;
   readonly delivery: AgentWakeUpDelivery | undefined;
+  /** What `createAutomationProposalRoutes` is mounted with. */
+  readonly automationProposalRouteDeps: AutomationProposalRoutesDeps;
   /** For the guard's `wake-up-stays-in-own-conversation` rule. */
   wakeUpConversation(wakeUpId: string): string | undefined;
   person(c: Context): AgentSchedulePerson | undefined;
@@ -339,6 +370,102 @@ export function composeAgentSchedule(
       remote: false,
     });
   };
+  const proposals = deps.automationProposals;
+  const proposalStore = deps.hosted ? undefined : proposals?.store;
+  if (proposalStore) {
+    const startedAt = deps.now?.() ?? Date.now();
+    try {
+      const automations = proposals?.automations;
+      // An object an interrupted Confirm created is adopted; otherwise the
+      // proposal is open again. Unreadable configuration reconciles nothing.
+      const configuration = automations?.read();
+      const settled = configuration
+        ? proposalStore.reconcileInterrupted(
+            startedAt,
+            startedAt,
+            (createdId) =>
+              configuration.sources.some(({ id }) => id === createdId) ||
+              configuration.rules.some(({ id }) => id === createdId),
+          )
+        : { confirmed: 0, reopened: 0 };
+      if (settled.confirmed + settled.reopened > 0)
+        deps.logger.warn(
+          'settled automation proposals a restart left confirming',
+          settled,
+        );
+    } catch (error) {
+      deps.logger.warn('could not reopen interrupted automation proposals', {
+        error: errorMessage(error),
+      });
+    }
+  }
+  /**
+   * #4830: the Project/Agent pair resolved when the proposing chat could
+   * start work for this Agent in this Project itself: the same scope rule a
+   * dispatch answers, for the Project (with `execute`) and for the Agent's own
+   * Project, as its recorded owner. An operator's bound caller reaches every
+   * Project, so the Project and the Agent must also exist. The Agent is read
+   * once, and pinned by its own Project and a digest of its definition, so
+   * Confirm can tell a moved, deleted or replaced Agent from the same one.
+   */
+  const bindAutomationTarget: AutomationProposalRoutesDeps['bind'] = async (
+    caller,
+    projectId,
+    agentId,
+  ) => {
+    if (!proposals) return undefined;
+    const ownerId = caller.principal?.elevationEligible
+      ? caller.principal.id
+      : undefined;
+    const projectSlug = proposals.projectSlugForId(projectId);
+    if (ownerId === undefined || projectSlug === undefined) return undefined;
+    const projectTarget = deps.scope?.target(
+      { kind: 'new', ownerId, projectSlug, remote: false },
+      'execute',
+    );
+    if (stationControlScopeRefusal(caller, projectTarget)) return undefined;
+    // Throws when the Agent does not exist, which refuses.
+    const definition = await proposals.agentDefinition(agentId);
+    const agentProject = definition.project ?? null;
+    const agentTarget =
+      agentProject === null
+        ? {
+            ownerId,
+            scope: { kind: 'global' as const },
+            host: false,
+            remote: false,
+          }
+        : deps.scope?.target({
+            kind: 'new',
+            ownerId,
+            projectSlug: agentProject,
+            remote: false,
+          });
+    if (stationControlScopeRefusal(caller, agentTarget)) return undefined;
+    return {
+      projectId,
+      projectSlug,
+      agentId,
+      agentProject,
+      agentDigest: agentDefinitionDigest(definition),
+    };
+  };
+  const automationProposalRouteDeps: AutomationProposalRoutesDeps = {
+    isInternalRequest: deps.isInternalRequest,
+    store: proposalStore,
+    automations: proposals?.automations,
+    hosted: deps.hosted,
+    bind: bindAutomationTarget,
+    // Unwired, fail closed: no caller may propose.
+    proposingTurn: (sessionId) => proposals?.proposingTurn(sessionId),
+    untrustedContent: async (conversationId) =>
+      (await proposals?.untrustedContent(conversationId)) ?? true,
+    projectName: (projectId) => proposals?.projectName(projectId),
+    person,
+    operator: async (request) => proposals?.operator(request),
+    logger: deps.logger,
+    ...(deps.now ? { now: deps.now } : {}),
+  };
   const routeDeps: AgentScheduleRoutesDeps = {
     isInternalRequest: deps.isInternalRequest,
     scope: deps.scope,
@@ -348,6 +475,28 @@ export function composeAgentSchedule(
     person,
     jobAgentTarget,
     hosted: deps.hosted,
+    ...(proposalStore
+      ? {
+          // The mark as it is now beside the one recorded at proposal time:
+          // a chat marked after its agent proposed still warns (#4830 review).
+          // An unreadable mark reads as marked.
+          automationProposals: async (conversationId: string) => {
+            const open = proposalStore.openProposals(conversationId);
+            if (open.length === 0) return open;
+            let marked: boolean;
+            try {
+              marked =
+                (await proposals?.untrustedContent(conversationId)) ?? true;
+            } catch {
+              marked = true;
+            }
+            return open.map((proposal) => ({
+              ...proposal,
+              untrustedContentNow: marked,
+            }));
+          },
+        }
+      : {}),
     ...(deps.conversationAutomations
       ? { conversationAutomations: deps.conversationAutomations }
       : {}),
@@ -373,6 +522,7 @@ export function composeAgentSchedule(
   const composition: AgentScheduleComposition = {
     routeDeps,
     delivery,
+    automationProposalRouteDeps,
     person,
     admitAutomationTarget: admitAutomationTargetFor(deps, person),
     admitAutomationJob: admitAutomationJobFor(person),

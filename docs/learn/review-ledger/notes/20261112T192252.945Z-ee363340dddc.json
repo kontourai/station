@@ -1,0 +1,7 @@
+{
+  "revision": "27d59a0356495b9498154482b44174ab30d8429b",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the Workspace Surfaces composition and DiffPanel's actual caller against the Pierre 1.6.2 and installed 1.6.4 parser APIs. Adaptation changes only the second argument from the existing string cache prefixes to ParsePatchOptions.cacheKeyPrefix; prefixes, parser/error defaults, controlled CodeView item versions, theme handling, navigation, authorities and comment wiring remain unchanged. All 24 real DiffPanel/CodeView tests and reference UI typechecking passed after the owning Connect build. Extended the existing audited annotation fixture to four 390/1440 light/dark views without dropping assertions or changing deadlines; E2E typechecking and fixture policy passed. Local capture was refused on ENOSPC before any server/browser started or candidate was promoted; screenshots, layout and actual browser qualification remain NOT_VERIFIED pending exact-source hosted evidence. The current context explanation remains accurate for this API-only frontier; no broader product, device or provider recertification is claimed.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/components/coding-layout/DiffPanel.tsx"]}
+  ]
+}

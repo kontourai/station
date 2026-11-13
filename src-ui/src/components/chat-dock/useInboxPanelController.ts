@@ -119,14 +119,16 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     const generation = selection.current.generation;
     const abort = new AbortController();
     selection.current.abort = abort;
+    // The row's stable identity: where it lives and which row it is. Not
+    // `chatSessionId` or the chat binding, which the open itself writes when
+    // it binds a dock chat to the row; keyed on those, the selection stopped
+    // being current mid-open and the open was dropped without a word (#4814).
     const rowKey = (row: HomeWorkItem, facts = workFacts) =>
       JSON.stringify([
         authorityKey,
         row.environmentId,
         facts?.get(row.id)?.station?.id,
-        facts?.get(row.id)?.chatBinding?.affinity,
         row.id,
-        row.chatSessionId,
       ]);
     const selectedKey = rowKey(item);
     const current = () =>

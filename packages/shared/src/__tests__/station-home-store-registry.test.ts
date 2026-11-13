@@ -44,8 +44,11 @@ const NOT_STATION_HOME_ROOTS: Readonly<Record<string, string>> = {
     'Bitwarden SSH agent socket the bubblewrap sandbox hides (OS user home)',
   '.claude': "Claude Code's home under the OS user home",
   '.codex': "Codex's home under the OS user home",
-  '.config': "OpenCode's XDG fallback under the OS user home, not Station home",
+  '.config':
+    "XDG config folder under the OS user home (OpenCode's fallback; git's global config the untrusted-content check reads), not Station home",
   '.docker': 'Docker client folder the bubblewrap sandbox hides (OS user home)',
+  '.gitconfig':
+    "the user's global git config the untrusted-content check reads to find core.hooksPath when git cannot answer (OS user home)",
   '.local':
     'XDG data folder the bubblewrap sandbox hides keyrings in (OS user home)',
   '.Xauthority': 'X11 cookie the bubblewrap sandbox hides (OS user home)',

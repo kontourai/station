@@ -961,8 +961,8 @@ and time formatting (`utils/child-work-display.ts`).
 
 **Child-work retention and result amendment (2026-11-05).** The pane and
 background sheet show retained work, not a complete lifetime inventory.
-Recent activity bounds settled tool rows and closed-chat history; counts marked
-“shown” count retained rows. Running work survives chat closure. The “All”
+The sheet's “Recent tasks only” footer marks the bound on settled tool rows
+and closed-chat history; counts marked “shown” count retained rows. Running work survives chat closure. The “All”
 child registry and completion notices are scoped to the Station connection;
 a foreign Station with the same reported child IDs cannot replace a notice.
 Missing snapshot evidence leaves an outcome unknown.

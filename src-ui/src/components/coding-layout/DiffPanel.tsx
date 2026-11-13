@@ -168,9 +168,9 @@ function parseDiffFiles(patch: string): FileDiffMetadata[] {
   const normalized = patch.trim();
   if (normalized.length === 0) return [];
   try {
-    return parsePatchFiles(normalized, 'coding-diff-panel').flatMap(
-      (parsed) => parsed.files,
-    );
+    return parsePatchFiles(normalized, {
+      cacheKeyPrefix: 'coding-diff-panel',
+    }).flatMap((parsed) => parsed.files);
   } catch {
     return [];
   }
