@@ -28,16 +28,79 @@ export interface RegistryCatalogSelection {
   sourceId: string;
   itemId: string;
   revision: string;
-  kind: 'skills' | 'plugins';
+  /**
+   * The catalog this item was selected from. `agents` is additive: an agent
+   * entry from a source's Station manifest, installed through the plugin
+   * pipeline like any manifest entry.
+   */
+  kind: 'skills' | 'plugins' | 'agents';
+}
+
+/**
+ * Everything a source can be recognized as providing. `integrations` is
+ * reported by detection but has no catalog selection yet.
+ */
+export type RegistrySourceKind =
+  | RegistryCatalogSelection['kind']
+  | 'integrations';
+
+/** One kind a source's content was recognized as providing. */
+export interface RegistrySourceDetectedKind {
+  kind: RegistrySourceKind;
+  count: number;
+  /** The detector that recognized it, such as `station-manifest` or `skill-md`. */
+  via: string;
+  /** Whether Station can list and install these items from this source. */
+  installable: boolean;
+  /** Why the items are listed as recognized but not installable. */
+  note?: string;
+  /** The managed policy refuses this kind from this source. */
+  managedDenial?: string;
+}
+
+/**
+ * What Station recognized in a source's content. The kinds follow from the
+ * content's structure, never from a type the person chose.
+ */
+export interface RegistrySourceDetection {
+  /**
+   * `nothing-recognized` is a successful read that found nothing Station
+   * knows; `refused` is a read Station stopped at a bound; `unavailable` is a
+   * read that failed.
+   */
+  state: 'detected' | 'nothing-recognized' | 'refused' | 'unavailable';
+  kinds: RegistrySourceDetectedKind[];
+  /** The source's revision when it was last read: a commit, or a content digest. */
+  revision?: string;
+  checkedAt?: string;
+  /** When a read last found a different revision from the one before it. */
+  changedAt?: string;
+  /** The root index that decided the kinds it declares, when there is one. */
+  index?: string;
+  /** The sentence for `refused` and `unavailable`. */
+  reason?: string;
 }
 
 export interface RegistrySource {
+  /**
+   * The source's primary catalog kind, kept for older clients. A source can
+   * provide several kinds; `detection.kinds` lists them all.
+   */
   kind: RegistryCatalogSelection['kind'];
   id: string;
   displayName: string;
   origin: 'station' | 'configured' | 'user' | 'plugin';
   location?: string;
+  /** Branch, tag or commit of a repository source; absent means its default branch. */
+  ref?: string;
+  /**
+   * How Station reads the location. For a person's own source this is derived
+   * from the location, not chosen, and does not decide what the source
+   * provides.
+   */
   adapter: 'manifest' | 'directory' | 'github' | 'provider';
+  /** Present on a person's own sources. */
+  detection?: RegistrySourceDetection;
   enabled: boolean;
   owner?: string;
   status: 'ready' | 'stale' | 'error' | 'disabled' | 'unknown';

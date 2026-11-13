@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from 'react';
 import { SectionNavigation } from '../../components/SectionNavigation';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
@@ -6,28 +5,45 @@ import { ProjectSearch } from './ProjectSearch';
 import {
   type ProjectDestination,
   projectDestination,
+  projectRoomAddress,
 } from './project-navigation';
-
-function subscribeDestination(listener: () => void) {
-  const unsubscribe = navigationStore.subscribe(listener);
-  window.addEventListener('popstate', listener);
-  return () => {
-    unsubscribe();
-    window.removeEventListener('popstate', listener);
-  };
-}
+import {
+  openProjectRoom,
+  projectPath,
+  useProjectSearch,
+} from './project-room-navigation';
 
 export function useProjectDestination(slug: string) {
   const { navigate } = useNavigation();
-  const search = useSyncExternalStore(
-    subscribeDestination,
-    () => window.location.search,
-  );
+  const search = useProjectSearch();
   const destination = projectDestination(search);
+  const room = projectRoomAddress(search);
+  /**
+   * Open a thread, or leave it for its channel (#4795). Each is a pushed
+   * entry to the address it names, so the device's Back retraces it. The
+   * in-room back buttons name their parent rather than calling
+   * `history.back()`: a same-path query traversal is replayed through the
+   * room's navigation guards and is not a reliable way back.
+   */
+  function openThread(rootId: string | undefined) {
+    navigate(projectPath(slug), { section: 'room', thread: rootId ?? null });
+  }
+  /** A phone's room screen back to the Project's channel list. */
+  function leaveRoom() {
+    navigate(projectPath(slug), {
+      section: null,
+      channel: null,
+      thread: null,
+    });
+  }
   function selectDestination(next: ProjectDestination) {
     if (next === destination) return;
     const open = () =>
-      navigate(`/projects/${encodeURIComponent(slug)}`, { section: next });
+      navigate(projectPath(slug), {
+        section: next,
+        // The room's address belongs to the room destination.
+        ...(next === 'room' ? {} : { channel: null, thread: null }),
+      });
     // Overview and Room share one mounted editor; keep its draft on expansion.
     if (
       (destination === 'overview' || destination === 'room') &&
@@ -39,7 +55,15 @@ export function useProjectDestination(slug: string) {
     // Same-path query navigation otherwise leaves an editor's visible surface.
     navigationStore.runNavigationGuards(open);
   }
-  return { destination, selectDestination };
+  return {
+    destination,
+    selectDestination,
+    room,
+    openRoom: (channelId: string | undefined) =>
+      openProjectRoom(slug, channelId),
+    openThread,
+    leaveRoom,
+  };
 }
 
 /** Project settings is its own page; the rail links to it beside the sections. */
@@ -56,11 +80,11 @@ export function ProjectNavigation({
 }) {
   const { destination, selectDestination } = useProjectDestination(slug);
   const { navigate } = useNavigation();
-  const projectPath = `/projects/${encodeURIComponent(slug)}`;
+  const path = projectPath(slug);
   const section = (key: ProjectDestination, label: string) => ({
     key,
     label,
-    href: `${projectPath}?section=${key}`,
+    href: `${path}?section=${key}`,
   });
   // The same section navigation Settings and Project settings use: a rail
   // beside the page on desktop, a picker on a phone.
@@ -72,7 +96,7 @@ export function ProjectNavigation({
       ? []
       : [
           section('sources', 'Files & connections'),
-          { key: SETTINGS_KEY, label: 'Settings', href: `${projectPath}/edit` },
+          { key: SETTINGS_KEY, label: 'Settings', href: `${path}/edit` },
         ]),
   ];
   return (
@@ -82,7 +106,7 @@ export function ProjectNavigation({
       items={items}
       activeKey={destination}
       onNavigate={(key) => {
-        if (key === SETTINGS_KEY) navigate(`${projectPath}/edit`);
+        if (key === SETTINGS_KEY) navigate(`${path}/edit`);
         else selectDestination(key as ProjectDestination);
       }}
     >

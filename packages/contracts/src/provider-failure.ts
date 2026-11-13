@@ -23,6 +23,7 @@ import {
 } from './orchestration.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
+import { PROJECT_ROOM_PROJECT_NOT_FOUND_CODE } from './project-room.js';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -203,6 +204,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
+  // No such Project on this Station (#4855): like `stage_not_found`, an
+  // absent target, not an outage; a retry cannot find it.
+  [PROJECT_ROOM_PROJECT_NOT_FOUND_CODE]: 'input_unsupported',
   [MODEL_OVERRIDE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MODEL_NOT_ADVERTISED_CODE]: 'model_unavailable',
   [SESSION_REATTACH_CONFLICT_CODE]: 'conflict',
