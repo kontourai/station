@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EngineHostAuthPolicy } from '@kontourai/station-contracts/engine-credential-provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   AcpInboundExtensionRegistry,
   createAcpInboundExtensionRequestHandler,
@@ -14,6 +14,8 @@ import { BUILDER_ID_PROFILE_ARN } from '../kiro-oidc/oidc.js';
 import { installEngineHostAuthResponders } from '../responder.js';
 import { EngineHostAuthService, registerEngineHostAuth } from '../service.js';
 import { type OidcStub, startOidcStub } from './fixtures/oidc-stub.js';
+
+const makeTempDir = trackTempDirs();
 
 const KIRO = REVIEWED_ENGINE_CREDENTIAL_BINDINGS.find(
   (binding) => binding.id === 'kiro.get-access-token',
@@ -40,7 +42,7 @@ async function setup(
   options: { policy?: () => EngineHostAuthPolicy; now?: () => number } = {},
 ) {
   const stub: OidcStub = await startOidcStub();
-  const home = mkdtempSync(join(tmpdir(), 'engine-host-auth-'));
+  const home = makeTempDir('engine-host-auth-');
   cleanups.push(() => stub.close());
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
   const delays: number[] = [];

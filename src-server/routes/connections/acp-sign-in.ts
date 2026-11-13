@@ -66,7 +66,10 @@ import {
   EngineSignInError,
   type EngineSignInService,
 } from '../../services/acp/engine-sign-in.js';
-import { HostAuthLoginRefusedError } from '../../services/engine-host-auth/kiro-oidc/kiro-sign-in.js';
+import {
+  HOST_AUTH_LOGIN_REFUSAL_TEXT,
+  HostAuthLoginRefusedError,
+} from '../../services/engine-host-auth/kiro-oidc/kiro-sign-in.js';
 import { engineHostAuth } from '../../services/engine-host-auth/service.js';
 import {
   ManagedInstallConsentRequiredError,
@@ -486,7 +489,10 @@ export function createACPSignInRoutes(input: {
       });
     } catch (error) {
       if (error instanceof HostAuthLoginRefusedError)
-        return c.json({ success: false, error: error.message }, error.status);
+        return c.json(
+          { success: false, error: HOST_AUTH_LOGIN_REFUSAL_TEXT[error.code] },
+          400,
+        );
       return failure(c, error);
     }
   });
@@ -558,7 +564,13 @@ export function createACPSignInRoutes(input: {
       return c.json({ success: true, data: installStateView(state) });
     } catch (error) {
       if (error instanceof ManagedInstallConsentRequiredError)
-        return c.json({ success: false, error: error.message }, 400);
+        return c.json(
+          {
+            success: false,
+            error: 'Installing an engine needs your explicit go-ahead.',
+          },
+          400,
+        );
       return failure(c, error);
     }
   });

@@ -1,15 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import {
   existsSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   defaultManagedInstallDeps,
   ManagedInstallConsentRequiredError,
@@ -31,6 +30,8 @@ import {
   type TarEntry,
   tarGz,
 } from './fixtures/managed-install-fixture.js';
+
+const makeTempDir = trackTempDirs();
 
 const VERSION = '9.9.9';
 const BASE = `https://kas.test/kas/${VERSION}`;
@@ -125,7 +126,7 @@ async function fixture(
   };
   const manifestBytes = `${JSON.stringify(manifest, null, 2)}\n`;
   server.put(`/kas/${VERSION}/manifest.json`, manifestBytes);
-  const home = mkdtempSync(join(tmpdir(), 'managed-install-'));
+  const home = makeTempDir('managed-install-');
   const definition: ManagedInstallDefinition = {
     pin: {
       installId: 'kiro-kas',
@@ -214,7 +215,7 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
   });
 
   test('installs an xz-compressed engine archive, as the published builds are', async (context) => {
-    const source = mkdtempSync(join(tmpdir(), 'managed-install-xz-'));
+    const source = makeTempDir('managed-install-xz-');
     cleanups.push(() => rmSync(source, { recursive: true, force: true }));
     const server = join(source, 'node_modules/@kiro/agent/dist/server');
     execFileSync('mkdir', ['-p', server]);

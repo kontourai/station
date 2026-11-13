@@ -12,11 +12,11 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { managedRuntimeCommand } from '@kontourai/station-contracts/managed-engine-install';
 import { afterEach, beforeEach, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BuiltinACPConnectionRegistryProvider } from '../../../providers/llm/defaults.js';
 import {
   clearAll,
@@ -48,6 +48,8 @@ import { registerManagedRuntimeInstalls } from '../../engines/managed-runtime-in
 import { installEngineHostAuthResponders } from '../responder.js';
 import { EngineHostAuthService, registerEngineHostAuth } from '../service.js';
 
+const makeTempDir = trackTempDirs();
+
 const FAKE_ENGINE = readFileSync(
   join(import.meta.dirname, 'fixtures', 'fake-kas-engine.mjs'),
   'utf8',
@@ -61,7 +63,7 @@ let home: string;
 let service: EngineHostAuthService;
 
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), 'engine-host-auth-launch-'));
+  home = makeTempDir('engine-host-auth-launch-');
   cleanups.push(() => {
     try {
       execFileSync('chmod', ['-R', 'u+w', home]);

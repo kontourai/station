@@ -4,8 +4,7 @@
  * Kiro sign-in, read its code, sign out and install, and what the sign-in
  * view shows. The OIDC endpoints are a local stub; nothing is installed.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -16,6 +15,7 @@ import {
 import { managedRuntimeCommand } from '@kontourai/station-contracts/managed-engine-install';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BUILTIN_ACP_ENGINES } from '../../../providers/llm/builtin-acp-engines.js';
 import {
   clearAll,
@@ -44,6 +44,8 @@ import {
 } from '../../../tools/station-control-shared.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createACPSignInRoutes } from '../acp-sign-in.js';
+
+const makeTempDir = trackTempDirs();
 
 const cleanups: Array<() => unknown> = [];
 beforeEach(() => {
@@ -79,7 +81,7 @@ const CLI: ACPConnectionConfig = {
 
 async function fixture() {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
-  const root = mkdtempSync(join(tmpdir(), 'engine-host-auth-routes-'));
+  const root = makeTempDir('engine-host-auth-routes-');
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const stub = await startOidcStub();
   cleanups.push(() => stub.close());

@@ -5,13 +5,15 @@
  * first one stored. Real processes, a real stub issuer over HTTP.
  */
 import { execFile } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { rmSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EngineHostAuthService } from '../service.js';
 import { startOidcStub } from './fixtures/oidc-stub.js';
+
+const makeTempDir = trackTempDirs();
 
 const run = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '../../../..');
@@ -42,7 +44,7 @@ afterEach(async () => {
 
 test('two processes refreshing one credential call the issuer once and both issue the refreshed token', async () => {
   const stub = await startOidcStub();
-  const home = mkdtempSync(join(tmpdir(), 'engine-host-auth-race-'));
+  const home = makeTempDir('engine-host-auth-race-');
   cleanups.push(() => stub.close());
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
 

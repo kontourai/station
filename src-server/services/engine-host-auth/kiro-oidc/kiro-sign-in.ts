@@ -44,12 +44,24 @@ export interface KiroSignInDeps {
   onSignedIn?: (scope: EngineCredentialScope) => void;
 }
 
+/** Why a sign-in request was refused before anything was sent. */
+export type HostAuthLoginRefusal = 'start-url' | 'region' | 'identity';
+
+/** The fixed text a refusal shows; the request's own values never appear in it. */
+export const HOST_AUTH_LOGIN_REFUSAL_TEXT: Record<
+  HostAuthLoginRefusal,
+  string
+> = {
+  'start-url':
+    "Enter your company's AWS access portal URL, like https://your-company.awsapps.com/start.",
+  region: 'Enter an AWS region, like us-east-1.',
+  identity:
+    'Station signs in to Kiro with AWS Builder ID or IAM Identity Center.',
+};
+
 export class HostAuthLoginRefusedError extends Error {
-  constructor(
-    message: string,
-    readonly status: 400 | 409 = 400,
-  ) {
-    super(message);
+  constructor(readonly code: HostAuthLoginRefusal) {
+    super(HOST_AUTH_LOGIN_REFUSAL_TEXT[code]);
     this.name = 'HostAuthLoginRefusedError';
   }
 }
@@ -153,21 +165,13 @@ export class KiroSignIn {
       startUrl = BUILDER_ID_START_URL;
     } else if (request.identity === 'identity-center') {
       const canonical = canonicalStartUrl(request.startUrl);
-      if (!canonical)
-        throw new HostAuthLoginRefusedError(
-          "Enter your company's AWS access portal URL, like https://your-company.awsapps.com/start.",
-        );
+      if (!canonical) throw new HostAuthLoginRefusedError('start-url');
       region = request.region;
       startUrl = canonical;
     } else {
-      throw new HostAuthLoginRefusedError(
-        'Station signs in to Kiro with AWS Builder ID or IAM Identity Center.',
-      );
+      throw new HostAuthLoginRefusedError('identity');
     }
-    if (!isAwsRegion(region))
-      throw new HostAuthLoginRefusedError(
-        'Enter an AWS region, like us-east-1.',
-      );
+    if (!isAwsRegion(region)) throw new HostAuthLoginRefusedError('region');
 
     const startedAt = this.deps.now();
     const attempt: Attempt = {
