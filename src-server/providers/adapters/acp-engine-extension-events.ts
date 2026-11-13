@@ -350,18 +350,19 @@ function publishGrokTurnCost(
   ctx: EngineExtensionContext,
   usage: Record<string, unknown>,
   promptId: string | undefined,
-) {
+): void {
   const ticks = finiteNonNegative(usage.costUsdTicks);
-  if (!ticks) return;
-  if (promptId && ctx.state) {
+  // A figure that names no engine prompt cannot be told from its own repeat
+  // or added to the turn's sum, so it is not published (live, every
+  // `turn_completed` names its prompt).
+  if (!ticks || !promptId) return;
+  if (ctx.state) {
     ctx.state.engineTurnUsage ??= new Map();
     if (ctx.state.engineTurnUsage.has(promptId)) return;
     setBounded(ctx.state.engineTurnUsage, promptId, true);
   }
   let amount = ticks / GROK_COST_TICKS_PER_USD;
-  // Only a figure that names its engine prompt is summed: one without an id
-  // cannot be told from its own repeat, so it stands alone (last-wins).
-  if (promptId && ctx.activeTurnId && ctx.state) {
+  if (ctx.activeTurnId && ctx.state) {
     ctx.state.turnCostSums ??= new Map();
     amount += ctx.state.turnCostSums.get(ctx.activeTurnId) ?? 0;
     setBounded(ctx.state.turnCostSums, ctx.activeTurnId, amount);

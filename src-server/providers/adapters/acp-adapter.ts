@@ -3033,7 +3033,14 @@ export class AcpAdapter implements ProviderAdapterShape {
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, targetTurnId);
+    // A provider turn has no prompt whose settlement lifts its quarantine,
+    // so it is lifted here once the cancel is sent, on every path: kept, it
+    // would suppress every later turn. Accepted trade-off: a cause the
+    // cancelled wake reports later than this can enrich the next turn's
+    // failure; waiting for the wake's own end instead could wait forever.
+    const wake = record.providerTurn?.turnId === targetTurnId;
     await record.process.cancel();
+    if (wake) record.quarantinedTurnIds.delete(targetTurnId);
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
         outcome: 'target-mismatch',
@@ -3051,11 +3058,6 @@ export class AcpAdapter implements ProviderAdapterShape {
       reason: 'interrupted',
       ...providerTurnMetadata(record, targetTurnId),
     });
-    if (record.providerTurn?.turnId === targetTurnId) {
-      // No prompt settles a provider turn, so nothing else would lift its
-      // quarantine, and every later turn would start suppressed.
-      record.quarantinedTurnIds?.delete(targetTurnId);
-    }
     forgetProviderTurn(record, targetTurnId);
     record.activeTurnId = undefined;
     record.session.status = 'ready';
