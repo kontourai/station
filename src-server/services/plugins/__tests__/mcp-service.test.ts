@@ -540,7 +540,7 @@ describe('MCPService', () => {
   });
 
   test('a saved probe digests each tool, so a schema change under the same name changes it', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-probe-digest-'));
+    const home = makeAppPolicyTempDir('station-probe-digest-');
     const loader = new ConfigLoader({ projectHomeDir: home });
     try {
       await loader.saveIntegration('digest', {
@@ -581,7 +581,6 @@ describe('MCPService', () => {
       expect(second?.toolsDigest).not.toBe(first?.toolsDigest);
     } finally {
       await loader.dispose();
-      rmSync(home, { recursive: true, force: true });
     }
   });
 

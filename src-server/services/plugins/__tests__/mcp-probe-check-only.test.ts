@@ -5,17 +5,16 @@
  * check (the default) still begins a sign-in, which proves the fixture reaches
  * the authorization branch.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { MCPService } from '../mcp-service.js';
 import { ToolServerCredentialStore } from '../tool-server-credential-store.js';
 import { StationToolServerOAuthProvider } from '../tool-server-oauth.js';
 
 const ORIGIN = 'https://check-only-fixture.example';
+const makeHome = trackTempDirs();
 let home: string;
 let loader: ConfigLoader;
 let custody: MCPLocalConnectionCustody;
@@ -32,7 +31,7 @@ const oauthChallenge = () =>
   });
 
 beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), 'station-probe-check-only-'));
+  home = makeHome('station-probe-check-only-');
   loader = new ConfigLoader({ projectHomeDir: home });
   custody = new MCPLocalConnectionCustody({ waitMs: 5 });
   const logger = {
@@ -111,7 +110,6 @@ afterEach(async () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     await loader.dispose();
-    await rm(home, { recursive: true, force: true });
   }
 });
 

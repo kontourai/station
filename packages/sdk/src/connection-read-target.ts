@@ -43,6 +43,7 @@ export function captureConnectionReadTarget(
 export function invalidateConnectionUsedBy(queryClient: QueryClient) {
   return queryClient.invalidateQueries({
     predicate: ({ queryKey }) =>
-      queryKey[0] === 'connections' && queryKey.at(-1) === 'used-by',
+      queryKey[0] === 'connections' &&
+      queryKey[queryKey.length - 1] === 'used-by',
   });
 }
