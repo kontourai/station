@@ -5,7 +5,7 @@ import { chromium } from '@playwright/test';
 import { cleanup, render } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { resolveCssImports } from '../../../../../tests/helpers/css-cascade-fixture';
-import { InboxRowStatusLine } from '../../inbox-row/InboxRowStatusLine';
+import { InboxRowStatusLine } from '../../inbox-row/InboxRowStatus';
 import { ChatStatusPill } from '../ChatStatusPill';
 import { deriveChatStatus } from '../chatStatus';
 

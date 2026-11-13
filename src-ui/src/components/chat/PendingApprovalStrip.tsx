@@ -2,6 +2,7 @@ import { inputRequestSummary } from '@kontourai/station-shared/input-request';
 import { toolRequestDisplayName } from '@kontourai/station-shared/tool-request-preview';
 import { useEffect, useRef, useState } from 'react';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
+import { attentionWord } from '../../views/home/work-status';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
@@ -66,8 +67,8 @@ function useNewApprovalAnnouncement(
         : toolRequestDisplayName(request.toolName || request.name) || 'a tool',
     );
     const label = fresh.some((request) => !request.inputRequest)
-      ? 'Needs approval'
-      : 'Needs answer';
+      ? attentionWord('approval')
+      : attentionWord('answer');
     setAnnouncement((previous) => ({
       id: previous.id + 1,
       text:

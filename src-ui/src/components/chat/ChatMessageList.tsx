@@ -32,6 +32,7 @@ import {
   requestAttentionKind,
   requestsWaitingOnUser,
 } from '../../utils/waiting-approvals';
+import { attentionWord } from '../../views/home/work-status';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -2173,8 +2174,8 @@ function ChatMessageListComponent({
                               // nothing here.
                               waitingApprovalCount > 0
                               ? requestAttentionKind(activeSession) === 'answer'
-                                ? 'Needs answer'
-                                : 'Needs approval'
+                                ? attentionWord('answer')
+                                : attentionWord('approval')
                               : 'Waiting on you'
                             : undefined
                         }

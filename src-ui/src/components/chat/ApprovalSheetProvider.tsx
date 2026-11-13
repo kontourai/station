@@ -8,6 +8,7 @@ import {
 } from 'react';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
 import {
   REVEAL_APPROVAL_EVENT,
@@ -178,9 +179,9 @@ export function ApprovalSheetProvider({
             title={
               requests.length === 1
                 ? requests[0]?.inputRequest
-                  ? 'Needs answer'
-                  : 'Needs approval'
-                : `${requests.some((request) => !request.inputRequest) ? 'Needs approval' : 'Needs answer'} (${requests.length})`
+                  ? attentionWord('answer')
+                  : attentionWord('approval')
+                : `${requests.some((request) => !request.inputRequest) ? attentionWord('approval') : attentionWord('answer')} (${requests.length})`
             }
             subtitle={undefined}
             returnFocusTarget={returnFocusTarget.current}
