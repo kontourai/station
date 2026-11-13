@@ -349,17 +349,37 @@ async function bundle() {
   return result;
 }
 
+// The render evidence must come from the exact Chromium build the locked
+// Playwright ships, never another cached or system browser. Derive that build
+// from playwright-core's own browsers.json (as scripts/lib/pinned-vitest-
+// chromium.mjs does) so a Playwright bump moves the pin with it.
+function pinnedChromium() {
+  const metadata = resolve(
+    dirname(require.resolve('playwright-core/package.json')),
+    'browsers.json',
+  );
+  const { browsers } = JSON.parse(readFileSync(metadata, 'utf8')) as {
+    browsers: Array<{ name: string; revision: string; browserVersion: string }>;
+  };
+  const entry = browsers.find((candidate) => candidate.name === 'chromium');
+  if (!entry || !/^\d+$/.test(entry.revision) || !entry.browserVersion)
+    throw new Error('BLOCKED: Playwright does not identify its Chromium');
+  return entry;
+}
+
 beforeAll(async () => {
   const executable = chromium.executablePath();
+  const pinned = pinnedChromium();
   if (
-    require('playwright-core/package.json').version !== '1.64.1' ||
-    !normalized(executable).includes('/chromium-1248/') ||
+    !normalized(executable).includes(`/chromium-${pinned.revision}/`) ||
     !existsSync(executable)
   )
-    throw new Error('BLOCKED: configured Chromium1248 prerequisite');
+    throw new Error(
+      `BLOCKED: configured Chromium${pinned.revision} prerequisite`,
+    );
   files = await bundle();
   browser = await chromium.launch({ executablePath: executable });
-  expect(browser.version()).toBe('156.0.8078.4');
+  expect(browser.version()).toBe(pinned.browserVersion);
   observations.push({ executable, browserVersion: browser.version() });
 }, 180_000);
 function cleanupOwnedCache() {
