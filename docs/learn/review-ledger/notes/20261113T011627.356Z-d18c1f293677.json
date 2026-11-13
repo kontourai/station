@@ -1,0 +1,13 @@
+{
+  "revision": "3ab2992967c43cc747e29776845bfe9b18179e66",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"registry-source-manager.ts now names default local skill folders by engine and owner (localSkillFolderName). The RegistrySourceManager entry describes composition, detection, bounds and confinement, none of which changed. No prose change.","inputs":["docs/architecture/module-map.md","src-server/providers/registries/registry-source-manager.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Re-checked after default skill folders gained distinguishing names (Codex skills · user and so on). The Add source paragraph claims none of the old 'Local skills' naming. No prose change on this branch; the UI branch updates the card description.","inputs":["docs/guides/plugins.md","src-server/providers/registries/registry-source-manager.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Added that default local skill folders are named for their engine and owner (localSkillFolderName in registry-source-manager.ts, pinned by a test). Other source-row fields are unchanged.","inputs":["docs/reference/api.md","src-server/providers/registries/registry-source-manager.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-checked after the server's default-name change; the SDK hooks and add input are unchanged. No prose change.","inputs":["docs/reference/sdk.md","src-server/providers/registries/registry-source-manager.ts"]}
+  ]
+}
