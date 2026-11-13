@@ -1118,6 +1118,7 @@ non-retryable.
 | `muse-model-route-unserved` | `warning` | `false` |
 | `muse-sandbox-unavailable` | `warning` | `false` |
 | `muse-serve-host-exited` | `engine_crashed` | `true` |
+| `muse-serve-schema-unverified-compatible` | `warning` | `false` |
 | `muse-serve-stop-unconfirmed` | `warning` | `false` |
 | `muse-serve-unavailable` | `warning` | `false` |
 | `muse-spawn-failed` | `unavailable` | `true` |
@@ -1710,15 +1711,42 @@ different evidence.
 
 The [Muse adapter](../../src-server/providers/adapters/muse-adapter.ts) and its
 [serve session](../../src-server/providers/adapters/muse-serve-session.ts)
-accept a `muse serve` (MSP) host whose `initialize` reports one of two verified
-schema fingerprints: Muse Code 1.3.0 and 1.4.18. Any other fingerprint runs the
-session on `muse exec` with a `muse-serve-unavailable` warning. The evidence is
-adapter tests replaying scrubbed live 1.4.18 captures
-(`src-server/providers/__tests__/fixtures/muse-serve-1.4.18-*.jsonl`) and the
+drive a `muse serve` (MSP) host by the stable-schema fingerprint its
+`initialize` reports. The [schema policy](../../src-server/providers/adapters/muse-serve-schema.ts)
+decides which hosts are used:
+
+- **Verified fingerprint.** Muse Code 1.3.0, 1.4.18 and 1.4.20 are accepted
+  as they are.
+- **Unknown fingerprint, `schema.version` 1.** The Muse launcher updates
+  itself, so a new release reaches a machine within hours. Station runs
+  `muse --version`, `muse schema generate-json-schema` (offline) into a
+  private temporary folder, and `muse --version` again. These run under the
+  host's own profile environment with `MUSE_NO_AUTO_UPDATE=1` and
+  `MUSE_LOGIN=0`, bounded at 15 seconds. The export counts only when both
+  version runs name the version the host reported in `serverInfo.version`;
+  otherwise the launcher may have swapped binaries in between. The export
+  must still declare every method, notification and server request Station
+  uses, and for each schema definition Station builds or reads: the
+  properties it sends, the required properties it relies on, the optional
+  ones it reads, and the enum members it maps. The required-surface manifest
+  sits beside the session code. If the export passes, the session runs on
+  serve and publishes one `muse-serve-schema-unverified-compatible` warning
+  naming the fingerprint and version. The check is structural: a member that
+  kept its name but changed its meaning is not caught.
+- **Anything else** runs the session on `muse exec` with a
+  `muse-serve-unavailable` warning whose reason names the gap. That covers
+  another schema version, a missing member (the first six are named), a
+  failed or mismatched export, and a Station configured without the export
+  runner. Model-catalog and allowance reads judge their host the same way.
+
+A definitive verdict is cached per fingerprint for the adapter's lifetime. A
+failed export is not cached, so the next host checks again. The evidence is
+adapter tests replaying scrubbed live 1.4.18 and 1.4.20 captures
+(`src-server/providers/__tests__/fixtures/muse-serve-1.4.*.jsonl`) and the
 evidence comments on the Muse entry of the
 [capability matrix](../../packages/contracts/src/engine-capability-matrix.ts).
-Mappings marked schema-only below were built from the 1.4.18 schema; the probed
-account never emitted them.
+Mappings marked schema-only below were built from the 1.4.18 schema; no probed
+account emitted them.
 
 On a serve session:
 
@@ -1759,7 +1787,9 @@ On a serve session:
   when Muse marks it `partial: false`. A partial cost is a lower bound that
   `reportedCost` cannot mark, so it is not published. `session/contextUsage`
   becomes `contextTokens`, plus `contextWindowTokens` when Muse's basis has a
-  window. Live 1.4.18 sent no cost; context is schema-only.
+  window. Live 1.4.20 on a priced provider sent both: a `partial: false`
+  cost and a context window (`muse-serve-1.4.20-cost-context`). Live 1.4.18
+  on the probed provider sent no cost.
 - **Plan, model changes and retries** (schema-only).
   `session/todoListChanged` is a full-replace `plan.updated`; cancelled and
   unknown-status items are left out, because `PlanEntryStatus` has no
