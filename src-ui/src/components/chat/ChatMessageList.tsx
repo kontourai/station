@@ -89,6 +89,7 @@ import {
   type ChildTranscriptRow,
   foldTranscriptChildren,
   projectTranscriptChildRows,
+  type TranscriptChild,
   TranscriptChildrenContext,
   TranscriptTurnContext,
 } from './transcript-child-work';
@@ -619,9 +620,11 @@ function ChatMessageListComponent({
     [submitForm, formScope, target, activeSession.replay, activeSession],
   );
 
-  const messages = useMemo(() => {
+  // The children the loaded transcript draws as their own card: anchored to
+  // a loaded row, to the turn streaming now, or standalone.
+  const cardedChildren = useMemo(() => {
     const loaded = activeSession.messages || EMPTY_MESSAGES;
-    const represented = new Set<string>();
+    const represented = new Map<string, TranscriptChild>();
     for (const [key, child] of transcriptChildren) {
       const inLoadedRow = loaded.some(
         (message) =>
@@ -639,8 +642,13 @@ function ChatMessageListComponent({
         activeSession.currentSessionId === child.item.reporterThreadId &&
         activeSession.openTurnId === child.spawn?.turnId;
       if (child.spawn?.standalone || inLoadedRow || inStreamingRow)
-        represented.add(key);
+        represented.set(key, child);
     }
+    return represented;
+  }, [activeSession, suppressStreamingRow, transcriptChildren]);
+  const messages = useMemo(() => {
+    const loaded = activeSession.messages || EMPTY_MESSAGES;
+    const represented = cardedChildren;
     const visible = loaded.filter((message) => {
       const key = message.childWorkKey
         ? visibleChildWorkNoticeKey(message.childWorkKey, apiBase)
@@ -648,7 +656,17 @@ function ChatMessageListComponent({
       return key !== null && (!key || !represented.has(key));
     });
     return visible.length === loaded.length ? loaded : visible;
-  }, [activeSession, apiBase, suppressStreamingRow, transcriptChildren]);
+  }, [activeSession, apiBase, cardedChildren]);
+  // A running task the transcript already draws as a card (with its own
+  // activity and elapsed time) is not listed again under the banner.
+  const cardedTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const child of cardedChildren.values()) {
+      ids.add(child.item.childId);
+      if (child.item.parent?.toolCallId) ids.add(child.item.parent.toolCallId);
+    }
+    return ids;
+  }, [cardedChildren]);
   // archive#3300: the turn fold, not the session flags — a settled turn must
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
@@ -2241,6 +2259,7 @@ function ChatMessageListComponent({
                     <ChatRunningBackgroundTasks
                       chatThreadId={activeSession.id}
                       source={apiBase}
+                      cardedTaskIds={cardedTaskIds}
                     />
                   )}
               </>
