@@ -595,6 +595,9 @@ describe('recorded refusals read from the event store', () => {
     expect(check()).toBe('none');
     expect(read()).toHaveLength(1);
     acceptTurn('busy', 'busy-cap', 'stop');
+    // Exactly the cap, all read: a complete answer, still shown.
+    expect(check()).toBe('none');
+    expect(read()).toHaveLength(1);
     acceptTurn('busy', 'busy-past-cap', 'stop');
     // Past it the read stops at the cap and the refusal is not shown.
     expect(check()).toBe('scan-capped');
@@ -717,6 +720,15 @@ describe('engine connection listing', () => {
     ).connections;
     expect(listAllowanceRefusals).toHaveBeenCalledTimes(1);
     expect(served?.allowanceEvidence).toHaveLength(1);
+    // A plain single read stays free of it; the engine page's read carries it.
+    expect(await service.getConnection('claude')).not.toHaveProperty(
+      'allowanceEvidence',
+    );
+    expect(listAllowanceRefusals).toHaveBeenCalledTimes(1);
+    const detail = (await service.getConnection('claude', {
+      withAllowanceEvidence: true,
+    })) as { allowanceEvidence?: unknown[] } | null;
+    expect(detail?.allowanceEvidence).toHaveLength(1);
   });
 
   test('the engine view carries the evidence its source records, per the active account', async () => {

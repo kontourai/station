@@ -8464,10 +8464,10 @@ export class EventStore {
    * on any connection; an ACP adapter records no key and runs one account
    * per connection, so its account is its connection.
    *
-   * Bounded: it examines at most `ALLOWANCE_SUPERSESSION_SCAN_LIMIT`
+   * Bounded: it examines at most `ALLOWANCE_SUPERSESSION_SCAN_LIMIT` + 1
    * `turn.completed` rows since the refusal, newest first, over
    * `idx_events_usage_observed`, and runs the per-thread epoch lookups only
-   * on those. When the cap is reached without a match the answer is
+   * on those. When rows remain past the cap without a match the answer is
    * `scan-capped`, which the caller treats as superseded: past the cap the
    * refusal is not shown, so a busy Station can lose a true "Usage limit
    * reached", never gain a false one.
@@ -8507,7 +8507,9 @@ export class EventStore {
       )
       .get(
         refusal.observedAt,
-        ALLOWANCE_SUPERSESSION_SCAN_LIMIT,
+        // One past the cap: reading exactly the cap and finding nothing is a
+        // complete answer ('none'); only a row beyond it means more were left.
+        ALLOWANCE_SUPERSESSION_SCAN_LIMIT + 1,
         refusal.provider,
         refusal.globalSequence,
         ...proven,
@@ -8516,7 +8518,7 @@ export class EventStore {
           : refusal.account.connectionId,
       ) as { examined: number | bigint; found: number | bigint } | undefined;
     if (row?.found === 1 || row?.found === 1n) return 'accepted-turn';
-    return Number(row?.examined ?? 0) >= ALLOWANCE_SUPERSESSION_SCAN_LIMIT
+    return Number(row?.examined ?? 0) > ALLOWANCE_SUPERSESSION_SCAN_LIMIT
       ? 'scan-capped'
       : 'none';
   }

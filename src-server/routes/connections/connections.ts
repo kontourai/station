@@ -87,7 +87,7 @@ export function createConnectionRoutes(
       const data = await connectionService.listConnections();
       return c.json({
         success: true,
-        data: data.map(redactConnectionSecrets),
+        data: forViewer(c, data).map(redactConnectionSecrets),
       });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
@@ -216,13 +216,18 @@ export function createConnectionRoutes(
 
   app.get('/:id', async (c) => {
     try {
-      const connection = await connectionService.getConnection(param(c, 'id'));
+      // The engine page reads its engine here, so it carries the same
+      // evidence and viewer rules as the engine listings.
+      const connection = await connectionService.getConnection(param(c, 'id'), {
+        withAllowanceEvidence: true,
+      });
       if (!connection) {
         return c.json({ success: false, error: 'Connection not found' }, 404);
       }
+      const [shown] = forViewer(c, [connection]);
       return c.json({
         success: true,
-        data: redactConnectionSecrets(connection),
+        data: redactConnectionSecrets(shown ?? connection),
       });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);

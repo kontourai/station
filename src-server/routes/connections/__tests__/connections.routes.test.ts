@@ -115,7 +115,9 @@ describe('Connection Routes', () => {
       success: true,
       data: { id: 'codex', name: 'Codex' },
     });
-    expect(service.getConnection).toHaveBeenCalledWith('codex');
+    expect(service.getConnection).toHaveBeenCalledWith('codex', {
+      withAllowanceEvidence: true,
+    });
   });
 
   test('GET / returns projected connections', async () => {
@@ -166,6 +168,9 @@ describe('Connection Routes', () => {
       failures: [],
     });
     service.listRuntimeConnectionCatalog.mockResolvedValue(listed);
+    // The full list and the single read carry engine rows too.
+    service.listConnections.mockResolvedValue(listed);
+    service.getConnection.mockResolvedValue(listed[0]);
     const presenting = (
       scope: string | undefined,
       principal?: Parameters<typeof setRuntimeAuthenticatedRequestPrincipal>[1],
@@ -188,7 +193,7 @@ describe('Connection Routes', () => {
         ],
       );
 
-    for (const path of ['/agents', '/agents/catalog']) {
+    for (const path of ['/', '/agents', '/agents/catalog']) {
       expect(await origins(presenting('orchestration:read'), path)).toEqual([
         ['station', undefined],
         ['policy', undefined],
@@ -232,6 +237,18 @@ describe('Connection Routes', () => {
         ['policy', undefined],
       ]);
     }
+    // The engine page's own read: same rule, and it asks for the evidence.
+    const single = async (scope: string) =>
+      (await json(await presenting(scope).request('/claude'))).data
+        .routeObservation;
+    expect(await single('orchestration:read')).toEqual({
+      kind: 'ambient',
+      source: 'station',
+    });
+    expect((await single('access:manage')).origin).toBe('https://gw.example');
+    expect(service.getConnection).toHaveBeenCalledWith('claude', {
+      withAllowanceEvidence: true,
+    });
   });
 
   test('a refusal reads below access:manage without naming its account', async () => {
