@@ -4148,6 +4148,30 @@ describe('Muse parity: /compact is session/compact', () => {
     ).toBe(false);
   });
 
+  test('/compact on a muse exec fallback session is refused before anything runs, never sent as prompt text', async () => {
+    const h = harness({
+      spawnHost: (args) => {
+        const host = new FakeMuseServeHost(args);
+        setImmediate(() => host.exit(2));
+        return host;
+      },
+    });
+    await h.adapter.startSession({ provider: 'muse', threadId: THREAD });
+    await settle();
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museTransport: 'exec',
+    });
+    await expect(
+      h.adapter.sendTurn({ threadId: THREAD, input: ' /compact ' }),
+    ).rejects.toMatchObject({
+      name: 'SendTurnRefusedError',
+      kind: 'input_unsupported',
+      message: expect.stringContaining('muse exec'),
+    });
+    expect(h.execSpawns).toEqual([]);
+    expect(of(h.events, 'turn.started')).toEqual([]);
+  });
+
   test("muse's own run_active refusal is a retryable busy refusal", async () => {
     const h = harness();
     const host = await idleSession(h);

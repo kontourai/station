@@ -1669,6 +1669,23 @@ export class MuseAdapter implements ProviderAdapterShape {
       );
     }
     if (record.serve) return this.sendServeTurn(record, record.serve, input);
+    // A command this adapter lists runs as a serve request
+    // (`MUSE_SERVE_COMMANDS`); `muse exec` has none, and as prompt text it
+    // would reach the model as an ordinary message. The listing is
+    // provider-wide, so this exec-fallback session refuses it instead.
+    const listedCommand =
+      this.getCommands && !input.attachments?.length
+        ? readSlashCommandInvocation(input.input)
+        : undefined;
+    if (listedCommand && adapterActionFor(MUSE_SERVE_COMMANDS, listedCommand)) {
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError(
+          `Muse's /${listedCommand.name} runs only on a \`muse serve\` session, and this session runs on \`muse exec\`. Nothing was sent.`,
+          'input_unsupported',
+        ),
+      );
+    }
     // The slot is held until the child EXITS, not until the turn settles: two
     // `muse exec` processes must never run concurrently against one
     // `--session-id`. #2300: the server frees a turn at its
