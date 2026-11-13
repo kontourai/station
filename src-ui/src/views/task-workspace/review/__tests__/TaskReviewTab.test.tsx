@@ -669,7 +669,7 @@ test('lists Task clips without reading video, then releases the opened clip on c
   };
   const fixture = setup(false, undefined, { 'task-1': [deviceClip] });
   const entry = await screen.findByRole('button', {
-    name: /Checkout tour.*aaaaaaa.*13s/,
+    name: /Checkout tour.*aaaaaaa.*12s/,
   });
   expect(fixture.reads.filter((path) => path.endsWith('/video'))).toEqual([]);
   fireEvent.click(entry);
