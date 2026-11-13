@@ -1,10 +1,15 @@
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
+import {
+  parseResourceDetailPath,
+  resourceDetailPath,
+} from '../components/resource-hub/resource-detail-route';
 import type { DeveloperTab, NavigationView } from '../types';
 import {
   CONNECTION_SECTIONS,
   canonicalConnectionPath,
+  ENGINE_DETAIL_TABS,
 } from '../views/connections-hub/connection-sections';
 import { boardPath, parseBoardPath } from './board-route';
 import { APP_DESTINATION_REGISTRY } from './destination-registry';
@@ -371,9 +376,18 @@ export function resolveViewFromPath(
     if (providerId) return { type: 'connections-engine-new', providerId };
   }
   if (path.startsWith('/connections/engines/')) {
-    const id = path.split('/')[3];
-    if (id) {
-      return { type: 'connections-engine-edit', id };
+    const detail = parseResourceDetailPath(
+      path,
+      '/connections/engines',
+      ENGINE_DETAIL_TABS,
+    );
+    if (detail && 'notFound' in detail) return { type: 'not-found', path };
+    if (detail) {
+      return {
+        type: 'connections-engine-edit',
+        id: detail.id,
+        ...(detail.tab ? { tab: detail.tab } : {}),
+      };
     }
   }
   if (path === '/connections/engines') {
@@ -589,7 +603,7 @@ export function getPathForView(view: NavigationView): string | null {
     case 'connections-engines':
       return '/connections/engines';
     case 'connections-engine-edit':
-      return `/connections/engines/${view.id}`;
+      return resourceDetailPath('/connections/engines', view.id, view.tab);
     case 'connections-engine-new':
       return `/connections/engines/new/${encodeURIComponent(view.providerId)}`;
     case 'connections-tools':
