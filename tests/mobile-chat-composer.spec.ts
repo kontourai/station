@@ -4262,7 +4262,6 @@ for (const width of [320, 390, 1280]) {
         'title',
         /^Model: Claude — Selected Test Model/,
       );
-      const rail = activeComposer.locator('.chat-input__meta');
       const bounds = (await page
         .getByRole('dialog', { name: 'Run setup', exact: true })
         .boundingBox())!;
