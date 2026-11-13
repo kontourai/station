@@ -458,6 +458,87 @@ describe('Kiro social sign-in against a stub portal and service', () => {
     expect(await accepting(port!)).toBe(false);
   });
 
+  test('on a host without IPv6 loopback the listener is IPv4 only, and works', async () => {
+    const [port] = await freePorts(1);
+    let created = 0;
+    const listener = await openSocialCallbackListener({
+      ports: [port!],
+      state: 'abc',
+      timeoutMs: 60_000,
+      serverFactory: ((handler: Parameters<typeof createServer>[0]) => {
+        const server = createServer(handler);
+        if (++created === 2)
+          // The ::1 bind, as a host with no IPv6 answers it.
+          server.listen = (() => {
+            process.nextTick(() =>
+              server.emit(
+                'error',
+                Object.assign(new Error('no ::1'), { code: 'EADDRNOTAVAIL' }),
+              ),
+            );
+            return server;
+          }) as never;
+        return server;
+      }) as typeof createServer,
+    });
+    cleanups.push(() => listener.cancel());
+    expect(listener.port).toBe(port);
+    expect(listener.addresses).toEqual(['127.0.0.1']);
+    await browserCallback(
+      port!,
+      '/oauth/callback?login_option=github&code=c4&state=abc',
+    );
+    await expect(listener.result).resolves.toMatchObject({ code: 'c4' });
+    await listener.closed;
+    expect(await accepting(port!)).toBe(false);
+  });
+
+  test('an IPv4 socket error while the ::1 bind is still pending ends the attempt, not the process', async () => {
+    const [port] = await freePorts(1);
+    const servers: Server[] = [];
+    let releaseV6!: () => void;
+    const v6Gate = new Promise<void>((resolve) => {
+      releaseV6 = resolve;
+    });
+    let v6Listening!: () => void;
+    const v6Pending = new Promise<void>((resolve) => {
+      v6Listening = resolve;
+    });
+    const opening = openSocialCallbackListener({
+      ports: [port!],
+      state: 'abc',
+      timeoutMs: 60_000,
+      serverFactory: ((handler: Parameters<typeof createServer>[0]) => {
+        const server = createServer(handler);
+        servers.push(server);
+        if (servers.length === 2) {
+          const listen = server.listen.bind(server);
+          server.listen = ((...args: Parameters<typeof listen>) => {
+            v6Listening();
+            void v6Gate.then(() => listen(...args));
+            return server;
+          }) as never;
+        }
+        return server;
+      }) as typeof createServer,
+    });
+    await v6Pending;
+    // With no 'error' listener this emit would throw here.
+    servers[0]!.emit(
+      'error',
+      Object.assign(new Error('EMFILE'), { code: 'EMFILE' }),
+    );
+    releaseV6();
+    const listener = await opening;
+    cleanups.push(() => listener.cancel());
+    await expect(listener.result).rejects.toMatchObject({
+      code: 'listener-error',
+    });
+    await listener.closed;
+    expect(await accepting(port!)).toBe(false);
+    expect(await accepting(port!, '::1')).toBe(false);
+  });
+
   test('removing the connection during the code exchange keeps no credential', async () => {
     const { stub, service } = await setup();
     stub.exchangeAnswers.push({

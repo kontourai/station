@@ -336,9 +336,15 @@ export async function openSocialCallbackListener(input: {
   let servers: Server[] = [];
   let closing: Promise<void> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let markClosed!: () => void;
+  // Settles when `close` has closed every bound server, however a server
+  // came to be closed first (its own error, say).
+  const closed = new Promise<void>((resolve) => {
+    markClosed = resolve;
+  });
   function close(): Promise<void> {
     if (timer) clearTimeout(timer);
-    closing ??= Promise.all(servers.map(closeServer)).then(() => undefined);
+    closing ??= Promise.all(servers.map(closeServer)).then(markClosed);
     return closing;
   }
 
@@ -350,8 +356,22 @@ export async function openSocialCallbackListener(input: {
       const server = makeServer(onRequest);
       server.unref();
       const outcome = await listenOn(server, host, candidate);
-      if (outcome === 'listening') bound.push(server);
-      else if (outcome === 'busy' || host === '127.0.0.1') {
+      if (outcome === 'listening') {
+        // From here a socket error (EMFILE on accept, say) would otherwise
+        // be an 'error' event with no listener, which throws in the Station
+        // process: end the attempt instead, even mid-way through binding.
+        server.on('error', () => {
+          fail(
+            'listener-error',
+            'Station stopped being able to listen for the sign-in on this computer.',
+          );
+          void closeServer(server);
+          // Mid-binding, `close` would settle before the servers it must
+          // close are known; the outcome above closes them once they are.
+          if (servers.includes(server)) void close();
+        });
+        bound.push(server);
+      } else if (outcome === 'busy' || host === '127.0.0.1') {
         free = false;
         break;
       }
@@ -369,18 +389,6 @@ export async function openSocialCallbackListener(input: {
       "Every port Kiro's Google and GitHub sign-in can return to is in use on this computer.",
     );
 
-  // A listening socket can still fail (EMFILE on accept, say). An 'error'
-  // event with no listener would throw in the Station process: end the
-  // attempt instead.
-  for (const server of servers)
-    server.on('error', () => {
-      fail(
-        'listener-error',
-        'Station stopped being able to listen for the sign-in on this computer.',
-      );
-      void close();
-    });
-
   timer = setTimeout(() => {
     fail(
       'timeout',
@@ -393,12 +401,6 @@ export async function openSocialCallbackListener(input: {
   // Close as soon as an outcome is known, even if the response is still
   // being written; `close` waits for it.
   void result.then(close, close);
-  const closed = Promise.all(
-    servers.map(
-      (server) =>
-        new Promise<void>((resolve) => server.once('close', () => resolve())),
-    ),
-  ).then(() => undefined);
 
   return {
     port,

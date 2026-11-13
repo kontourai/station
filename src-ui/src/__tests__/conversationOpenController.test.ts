@@ -750,6 +750,7 @@ test('a changed child drops the predecessor engine’s usage and MCP servers', (
       { name: 'docs', state: 'ready' as const, scope: 'session' as const },
     ],
     engineMcpReconnect: true as const,
+    engineMcpComplete: true as const,
   };
   const resolution: ConversationOpenResolution = {
     ...resolved(),
@@ -770,4 +771,5 @@ test('a changed child drops the predecessor engine’s usage and MCP servers', (
   expect(merged.liveUsage).toBeUndefined();
   expect(merged.engineMcpServers).toBeUndefined();
   expect(merged.engineMcpReconnect).toBeUndefined();
+  expect(merged.engineMcpComplete).toBeUndefined();
 });

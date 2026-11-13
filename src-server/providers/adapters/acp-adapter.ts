@@ -3262,7 +3262,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           command: config.command,
           displayName: config.name,
           versionArgs: ['--version'],
-          ...(managed ? { findBinary: () => managed.runtime } : {}),
+          ...(managed
+            ? { findBinary: () => managed.runtime, runtime: 'managed' as const }
+            : {}),
+          ...(ownsSignIn ? { signIn: 'station' as const } : {}),
+          ...(options?.signal ? { signal: options.signal } : {}),
           // #1940: no generic engine command proves sign-in (a `--version`
           // exit 0 used to read as signed in), and a handshake does not
           // either: some engines refuse only at the first prompt. Only the

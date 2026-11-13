@@ -394,6 +394,7 @@ export class KiroSignIn {
         signedInAt: new Date(this.deps.now()).toISOString(),
       };
       await this.deps.vault.write(KIRO_CREDENTIAL_KIND, scope, credential);
+      if (await this.#cancelledDuringWrite(attempt, scope, credential)) return;
       // Completed only once the vault gives the credential back.
       const landed = this.deps.vault.read(KIRO_CREDENTIAL_KIND, scope);
       if (landed?.credential.accessToken !== credential.accessToken) {
@@ -409,6 +410,24 @@ export class KiroSignIn {
           : 'The sign-in finished but Station could not keep the credential.',
       );
     }
+  }
+
+  /**
+   * The attempt was cancelled (sign-out, or the connection was removed) while
+   * its credential was being written: take that credential back out, and the
+   * attempt neither completes nor reports a sign-in. Only this attempt's own
+   * token is removed, never a credential written after it.
+   */
+  async #cancelledDuringWrite(
+    attempt: Attempt,
+    scope: EngineCredentialScope,
+    credential: StoredEngineCredential,
+  ): Promise<boolean> {
+    if (attempt.record.phase === 'verifying') return false;
+    const stored = this.deps.vault.read(KIRO_CREDENTIAL_KIND, scope);
+    if (stored?.credential.accessToken === credential.accessToken)
+      await this.deps.vault.remove(KIRO_CREDENTIAL_KIND, scope);
+    return true;
   }
 
   /**
@@ -549,6 +568,7 @@ export class KiroSignIn {
         signedInAt: new Date(this.deps.now()).toISOString(),
       };
       await this.deps.vault.write(KIRO_CREDENTIAL_KIND, scope, credential);
+      if (await this.#cancelledDuringWrite(attempt, scope, credential)) return;
       const landed = this.deps.vault.read(KIRO_CREDENTIAL_KIND, scope);
       if (landed?.credential.accessToken !== credential.accessToken) {
         fail('The sign-in finished but Station could not keep the credential.');

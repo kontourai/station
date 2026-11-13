@@ -117,6 +117,11 @@ test('an installed bundle reads its runtime, and a signed-out vault gates the ch
   const auth = prerequisites.find((item) => item.id.endsWith('-auth'));
   expect(cli?.status).toBe('installed');
   expect(auth).toMatchObject({ status: 'missing', category: 'required' });
+  // A no-CLI engine Station signs in: neither row calls it a CLI.
+  expect(cli?.name).toBe('Kiro (KAS, no CLI) runtime');
+  expect(auth?.description).toBe(
+    'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Connections.',
+  );
   expect(auth?.installGuide?.steps).toEqual([
     'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Connections.',
   ]);
@@ -166,4 +171,96 @@ test('signed in, the same bundle reads Ready', async () => {
     },
   );
   expect((await engineRow())?.status).toBe('ready');
+});
+
+/** An ACP adapter whose readiness read the test scripts. */
+function scriptedAcpAdapter(getPrerequisites: () => Promise<never>) {
+  return {
+    provider: 'acp',
+    metadata: {
+      displayName: 'ACP',
+      description: 'test',
+      capabilities: [],
+      engineId: 'acp',
+    },
+    getPrerequisites,
+  } as never;
+}
+
+const CUSTOM: ACPConnectionConfig = {
+  id: 'custom-engine',
+  name: 'Custom engine',
+  command: 'custom-engine-cli',
+  args: ['acp'],
+  enabled: true,
+};
+
+function inventory(acpAdapter: never, signal?: AbortSignal) {
+  return createConnectionInspector({
+    adapters: () => [acpAdapter],
+    appConfig: () => ({}) as never,
+    acpConnections: () => [BUNDLE, CUSTOM],
+    acpStatus: () =>
+      ({
+        connections: [
+          { id: BUNDLE.id, status: 'available' },
+          { id: CUSTOM.id, status: 'available' },
+        ],
+      }) as never,
+    publicConnection: (runtimeId) => ({
+      id: engineConnectionId(String(runtimeId)),
+      engineId: runtimeId,
+    }),
+    now: () => Date.now(),
+  }).inspect({
+    kind: 'runtime-capability-inventory',
+    ...(signal ? { signal } : {}),
+  });
+}
+
+test('a readiness read that throws costs only that engine’s row: it reads could-not-verify, the rest still list', async () => {
+  const outcome = await inventory(
+    scriptedAcpAdapter(async () => {
+      throw new Error('loadACPConfig failed');
+    }),
+  );
+  expect(outcome.kind).toBe('inspected');
+  const rows = outcome.connections.filter((row) => row.type === 'acp');
+  expect(rows.map((row) => row.name).sort()).toEqual([
+    'Custom engine',
+    'Kiro (KAS, no CLI)',
+  ]);
+  const bundle = rows.find((row) => row.name === 'Kiro (KAS, no CLI)');
+  expect(bundle?.status).toBe('missing_prerequisites');
+  expect(bundle?.prerequisites).toContainEqual(
+    expect.objectContaining({ id: 'kiro-kas-bundle-inspection' }),
+  );
+  expect(rows.find((row) => row.name === 'Custom engine')?.status).toBe(
+    'ready',
+  );
+});
+
+test('a readiness read that never settles does not hold the inventory past an abort', async () => {
+  const controller = new AbortController();
+  const started = Date.now();
+  setTimeout(() => controller.abort(new Error('caller cancelled')), 100);
+  const outcome = await inventory(
+    scriptedAcpAdapter(() => new Promise<never>(() => {})),
+    controller.signal,
+  );
+  expect(outcome.kind).toBe('aborted');
+  expect(Date.now() - started).toBeLessThan(5_000);
+});
+
+test('the readiness read passes its abort to the runtime probe', async () => {
+  signedOutVault();
+  installedBundle();
+  const controller = new AbortController();
+  controller.abort(new Error('caller cancelled'));
+  await expect(
+    adapterFor(BUNDLE).getPrerequisites({
+      connectionId: BUNDLE.id,
+      signal: controller.signal,
+    }),
+  ).rejects.toThrow();
 });

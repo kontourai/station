@@ -216,7 +216,36 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     );
     const acpSettings = runtimeSettingsFor(appConfig, 'acp');
     const acpAdapter = adapters.find((adapter) => adapter.provider === 'acp');
-    for (const config of this.dependencies.acpConnections()) {
+    const acpConnections = this.dependencies.acpConnections();
+    // An engine Station signs in answers its handshake signed out, so the
+    // handshake cannot say it is ready: its required rows (installed
+    // runtime, Station's sign-in) come from the same readiness a chat is
+    // gated on. Each read runs the installed runtime's `--version`, so the
+    // reads share the inventory's concurrency bound; there are as many as
+    // such engines (one today), and nothing is cached across inventories.
+    const gated =
+      acpAdapter && request.includePrerequisites !== false
+        ? acpConnections.filter(
+            (config) =>
+              (acpSettings.enabled ?? true) &&
+              config.enabled !== false &&
+              stationOwnsEngineSignIn(config),
+          )
+        : [];
+    const gateRows = new Map<string, Prerequisite[]>(
+      await mapWithConcurrency(
+        gated,
+        request.concurrency ?? 4,
+        async (config) =>
+          [
+            config.id,
+            await this.signInGateRows(acpAdapter!, config, request.signal),
+          ] as const,
+        request.signal,
+      ),
+    );
+    throwIfAborted(request.signal);
+    for (const config of acpConnections) {
       const engineIdValue = engineId(config.id);
       const identity = this.dependencies.publicConnection(engineIdValue);
       if (!identity) continue;
@@ -224,25 +253,8 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         .acpStatus()
         .connections?.find((connection) => connection.id === config.id);
       const enabled = (acpSettings.enabled ?? true) && config.enabled !== false;
-      // An engine Station signs in answers its handshake signed out, so the
-      // handshake cannot say it is ready: its required rows (installed
-      // runtime, Station's sign-in) come from the same readiness a chat is
-      // gated on, and one missing reads as setup required.
-      const requiredMissing =
-        enabled &&
-        request.includePrerequisites !== false &&
-        stationOwnsEngineSignIn(config) &&
-        acpAdapter?.getPrerequisites
-          ? (
-              await acpAdapter.getPrerequisites({
-                ...(request.signal ? { signal: request.signal } : {}),
-                connectionId: config.id,
-              })
-            ).filter(
-              (row) =>
-                row.category === 'required' && row.status !== 'installed',
-            )
-          : [];
+      // One missing required row reads as setup required (see `gated`).
+      const requiredMissing = enabled ? (gateRows.get(config.id) ?? []) : [];
       const status = !enabled
         ? 'disabled'
         : requiredMissing.length > 0
@@ -511,6 +523,43 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           name: `${adapter.metadata.displayName} inspection`,
           description:
             'Station could not verify this connection’s prerequisites. Retry inspection before using it.',
+          status: 'missing',
+          category: 'required',
+        },
+      ];
+    }
+  }
+
+  /**
+   * The required rows still missing for an engine Station signs in, read from
+   * the ACP adapter's readiness for that one connection. A read that fails
+   * or never settles costs only this row: it reads "could not verify", and
+   * an abort still ends the inventory.
+   */
+  private async signInGateRows(
+    acpAdapter: ProviderAdapterShape,
+    config: ACPConnectionConfig,
+    signal: AbortSignal | undefined,
+  ): Promise<Prerequisite[]> {
+    try {
+      const rows = await raceWithSignal(
+        acpAdapter.getPrerequisites?.({
+          ...(signal ? { signal } : {}),
+          connectionId: config.id,
+        }) ?? Promise.resolve([]),
+        signal,
+      );
+      return rows.filter(
+        (row) => row.category === 'required' && row.status !== 'installed',
+      );
+    } catch {
+      throwIfAborted(signal);
+      return [
+        {
+          id: `${config.id}-inspection`,
+          name: `${config.name || config.id} inspection`,
+          description:
+            'Station could not verify this engine’s prerequisites. Retry inspection before using it.',
           status: 'missing',
           category: 'required',
         },
