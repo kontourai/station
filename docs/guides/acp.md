@@ -353,8 +353,9 @@ is a request with params `{sessionId}`, sent during `session/new`. Answered
 longer a blocker. The chat adapter now answers it `{ shellType: 'sh' }`
 through the reviewed `client.terminal-facts` entry, the grammar Station's
 terminal bridge reads (see
-[Engine questions and links](#engine-questions-and-links)); the availability
-probe still refuses it. With
+[Engine questions and links](#engine-questions-and-links)). The availability
+probe answers it the same way, through the same handler, since it is asked
+during the probe's own `session/new`. With
 `--auth-method cli`, kiro-cli keeps its own credential and sends no
 `_kiro/auth/getAccessToken`. The frames are in
 `src-server/services/acp/__tests__/fixtures/kiro-v3-2.35.0-session-frames.jsonl`.
@@ -494,7 +495,7 @@ Each consumer is a generic Station mechanism any engine can feed:
 
 | Mechanism | Contract | Kiro wire shapes |
 |---|---|---|
-| URL input request | `station.input-request/v1` body `{ kind: 'url', url, purpose, elicitationId? }`, answered `{ action: 'opened' \| 'cancel' }`; https only, no user info, at most 2,048 characters, never opened automatically | `_kiro.dev/mcp/oauth_request`, `_kiro/openExternalUrl` |
+| URL input request | `station.input-request/v1` body `{ kind: 'url', url, purpose, elicitationId? }`, answered `{ action: 'accept' \| 'cancel' }` (the same words as every other answer; the transcript records an accepted link as `opened`); https only, no user info, at most 2,048 characters, never opened automatically | `_kiro.dev/mcp/oauth_request`, `_kiro/openExternalUrl` |
 | Form and choice input requests | existing `form` body | `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/userInput` (always answered `answered`, with explicit text for decline or no person) |
 | Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` (full; `failedAuthorization` reads `needs-auth`, `_meta.kiro.resource.source.origin: client` reads scope `session`); Codex `mcpServer/startupStatus/updated` (partial) |
 | Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope`, `childWorkId?` | v2 `_kiro.dev/session/update` `model_fallback` (the hop is scope `turn`; the `promoted: true` notice is scope `session`); v3 `model_fallback` kind (declared by `modelFallbackReporting`); Codex `model/rerouted` (scope `turn`, trigger `other`) |
@@ -524,9 +525,14 @@ How the events behave:
 - **Context reading.** `contextPercent` feeds the context meter and the
   statistics when the engine reports no token pair; a token pair outranks it.
 - **MCP servers.** The conversation statistics list the engine's servers.
-  A `needs-auth` server offers Sign in and a `failed` one Reconnect, when the
-  session has a reconnect action; the engine's own sign-in link is never
-  shown, because its callback listener has already closed.
+  A `needs-auth` server offers Sign in and a `failed` one Reconnect on a live
+  session. Both call
+  `POST /api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect`
+  ([session API](../reference/session-api.md#engine-mcp-servers-sessionsthreadidmcp-servers)),
+  Sign in with `startOAuth: true`, and the panel says what the engine
+  answered. The engine's own sign-in link is never shown, because its
+  callback listener has already closed; the new consent link arrives as a
+  URL input request in the chat.
 - **Replayed history.** An update marked `_meta.kiro.replay: true` (Kiro's
   `replayMarking`) is dropped whole, so a `session/load` replay never
   republishes a cost, a reroute or a tool call.
@@ -601,6 +607,14 @@ The ACP adapter's `metadata.continuity` stays `none` because most ACP engines
 declare neither action. `sessionContinuity(threadId)` reports a session's
 own continuity.
 
+Only the MCP reconnect has a Station caller today (the generic route above).
+Rewind, fork, delete and steer retract are adapter methods with no caller:
+no other engine rewinds or forks natively (Claude and Codex declare both
+`none`; conversation fork is a Station replay seed for every engine),
+deleting a runtime conversation's history is refused rather than routed to
+its engine, and no surface withdraws a steer the engine already holds.
+Each needs a generic Station surface before anything can call it.
+
 - **Rewind** (`rewindSession(threadId, toTurnId)`) needs `_meta.kiro.checkpoints`.
   It sends `_kiro/checkpoint/revertMultiple { sessionId, messageId }`, where
   `messageId` is the prompt id of the turn after `toTurnId`. The engine
@@ -608,8 +622,9 @@ own continuity.
   every later one from the model, and restores files the engine's write
   tools changed. A rewind is refused while a turn runs, and for a turn whose
   prompt id this engine process did not report. The transcript keeps every
-  turn. A `runtime.warning` (`code: acp.session-rewound`) records the rewind,
-  with `hiddenTurnIds`.
+  turn. A `runtime.warning` (`code: acp.session-rewound`,
+  `ACP_SESSION_REWOUND_CODE`) records the rewind, with `hiddenTurnIds`; the
+  chat shows it as a transcript notice, not a toast.
 - **Fork** (`forkSession(threadId, atTurnId)`) needs
   `sessionCapabilities.fork._meta.kiro.messageId`. It sends core
   `session/fork` with `_meta.kiro.messageId`, and the fork keeps that turn
@@ -644,8 +659,9 @@ and `modeId` ([acp-agent-projection.ts](../../src-server/providers/adapters/acp-
 The session must report the mode as `_meta.kiro.resource.source.origin`
 `client`. If the engine started in a mode of that id with another origin (for
 example `bundled`), the start is refused. If the engine did not take the
-agent at all, a `runtime.warning` (`code: acp.agent-projection-unapplied`)
-says it runs its own default agent.
+agent at all, a `runtime.warning` (`code: acp.agent-projection-unapplied`,
+`ACP_AGENT_PROJECTION_UNAPPLIED_CODE`) says it runs its own default agent,
+shown as a transcript notice in the chat.
 
 ### Kiro extensions Station does not support
 
