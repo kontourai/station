@@ -1,3 +1,4 @@
+/// <reference path="../corpus-search.d.ts" />
 import { searchBundles } from '@kontourai/corpus/search';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';

@@ -1,3 +1,4 @@
+/// <reference path="../../src-server/corpus-search.d.ts" />
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
