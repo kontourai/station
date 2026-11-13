@@ -413,6 +413,23 @@ contract `@kontourai/station-contracts/engine-credential-provider`).
 - A refusal answers `-32000` with fixed text. An issuer's own error message
   never reaches the engine.
 
+The server side is `src-server/services/engine-host-auth/`. Every client
+that builds a registry for an engine process calls
+`installEngineHostAuthResponders(registry, { connection })`
+([responder](../../src-server/services/engine-host-auth/responder.ts)). It
+registers the Kiro `getAccessToken` responder, and beside it the
+`_kiro/secret/*` responders, only when the connection's launch qualifies.
+The launch facts come from the connection and the validated built-in table
+(`engineLaunchFactsFor` in
+[acp-engine-descriptors](../../src-server/services/acp/acp-engine-descriptors.ts)),
+never from the caller. The availability probe calls it too, because the
+bundle asks for its token before it answers `initialize`. The issuer reads
+the engine host-auth vault, shares one in-flight issue per connection,
+refreshes inside a cross-process lock, issues at most 30 tokens an hour and
+audits without values. An import-boundary test keeps the issuer, the
+responder and the vault from reaching Station's own principals. See
+[Sign in to Kiro without kiro-cli](connections.md#sign-in-to-kiro-without-kiro-cli).
+
 Engine-held secrets use `registerSecretResponder(binding, store)` with an
 entry of `REVIEWED_ENGINE_SECRET_BINDINGS`
 (`@kontourai/station-contracts/engine-secret-storage`). For Kiro's MCP OAuth
@@ -469,7 +486,7 @@ Each consumer is a generic Station mechanism any engine can feed:
 | Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope` | v2 `_kiro.dev/session/update` `model_fallback`; v3 `model_fallback` kind (declared by `modelFallbackReporting`) |
 | Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`, assigned, not summed across reports), `session_usage` (scope `session`), `context_usage` |
 | Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
-| Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused | the Kiro agent-service bundle |
+| Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused. The entry's command is `station-managed:<installId>`; `ACPProcess` resolves it at launch to the installed runtime and the argv (refusing extra arguments, and failing before spawn when not installed). Descriptor lookups key it by install id, never by the runtime's executable name. Installs: [`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts) | the Kiro agent-service bundle (`kiro-kas-bundle`, install `kiro-kas` 0.66.104) |
 | Declared features | `declaredHandshake.engineVariant`, `declaredFeatures`, `logChannels` (names only; paths stay server-side) | `agentCapabilities._meta.kiro` |
 | Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises | none on 2.35; see below |
 

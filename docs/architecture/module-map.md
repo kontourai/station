@@ -2955,6 +2955,19 @@ bound as `acp.host-chrome`. The notification table carries no promotion
 metadata: a tuple's binding says nothing about which canonical event, if any,
 should replace it.
 
+Engines Station installs and signs in itself have two owners.
+[`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts)
+installs a reviewed pin with consent (the manifest digest first, then each
+artifact, entry names and the unpacked tree) under
+`<STATION_HOME>/engines/<installId>/<version>/`, and `ACPProcess` resolves a
+`station-managed:<installId>` command to it at launch.
+[`services/engine-host-auth/`](../../src-server/services/engine-host-auth/service.ts)
+holds the vault (`security/engine-host-auth.json`), the issuer, the
+`_kiro/secret/*` store and the Kiro device sign-in, and
+`installEngineHostAuthResponders` registers the reviewed responders on a
+session or probe registry. Its import graph never reaches Station's own
+principals; launch facts are injected at bootstrap.
+
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
 Observation and pinned SDK contract tags are evidence pointers, not a fresh provider run.
@@ -5663,7 +5676,8 @@ itself. Internal credentials do not become human Pane authority.
 `/api/browser-agent` and `/api/live-surfaces` on personal hosts.
 `chromium-acquisition.ts` prefers installed browsers, otherwise requires
 operator consent before fetching a pinned archive with size/SHA-256 and path
-checks. `hosts/chromium-server-host.ts` launches through `spawnOwnedChild`, with
+checks, shared with managed engine installs through
+[`services/infra/pinned-artifact.ts`](../../src-server/services/infra/pinned-artifact.ts). `hosts/chromium-server-host.ts` launches through `spawnOwnedChild`, with
 an allowlisted environment, a private CDP pipe and the profile's egress proxy.
 `egress-policy.ts` refuses known Station listeners and ordinary DNS names that
 resolve to private addresses. Operator profiles otherwise have broad reach;
