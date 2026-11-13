@@ -5560,7 +5560,7 @@ describe('Muse serve: which schema fingerprints a host may report', () => {
     // The launcher swapped binaries between the host start and the export.
     const muse = fakeSchemaMuse({ versions: ['1.4.98', '1.4.98'] });
     const h = harness({ schemaCommandRunner: muse.runner });
-    await startReporting(
+    const host = await startReporting(
       h,
       THREAD,
       steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
@@ -5571,6 +5571,7 @@ describe('Muse serve: which schema fingerprints a host may report', () => {
       `the host reported Muse ${UNKNOWN_VERSION}, but the installed muse is 1.4.98`,
     );
     expect(compatibleWarnings(h)).toEqual([]);
+    expect(host.sent.map((frame) => frame.method)).toEqual(['initialize']);
     // ... including a swap DURING the export.
     const during = fakeSchemaMuse({
       versions: [UNKNOWN_VERSION, '1.4.98'],
@@ -5591,7 +5592,7 @@ describe('Muse serve: which schema fingerprints a host may report', () => {
   test('a failed export falls back to exec, and is not remembered: the next host exports again', async () => {
     const muse = fakeSchemaMuse({ exportCode: 3 });
     const h = harness({ schemaCommandRunner: muse.runner });
-    await startReporting(
+    const host = await startReporting(
       h,
       THREAD,
       steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
@@ -5600,6 +5601,7 @@ describe('Muse serve: which schema fingerprints a host may report', () => {
     expect(transportOf(h, THREAD)).toBe('exec');
     expect(unavailableReason(h, THREAD)).toContain('muse schema exited 3');
     expect(compatibleWarnings(h)).toEqual([]);
+    expect(host.sent.map((frame) => frame.method)).toEqual(['initialize']);
     await startReporting(
       h,
       'thread-muse-serve-2',
@@ -5607,6 +5609,43 @@ describe('Muse serve: which schema fingerprints a host may report', () => {
       'refused',
     );
     expect(muse.exports()).toHaveLength(2);
+  });
+
+  test('two hosts checked at once share one export, and its failure refuses both rather than throwing', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const muse = fakeSchemaMuse({ exportCode: 3 });
+    const runner: MuseSchemaCommandRunner = async (input) => {
+      if (input.args[0] === 'schema') await gate;
+      return muse.runner(input);
+    };
+    const h = harness({ schemaCommandRunner: runner });
+    const first = startReporting(
+      h,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    // The first check ran `--version`; its export is held at the gate.
+    await vi.waitFor(() => expect(muse.runs).toHaveLength(1));
+    await settle();
+    const second = startReporting(
+      h,
+      'thread-muse-serve-2',
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    await vi.waitFor(() => expect(h.hosts).toHaveLength(2));
+    await settle();
+    release();
+    await Promise.all([first, second]);
+    expect(muse.exports()).toHaveLength(1);
+    for (const thread of [THREAD, 'thread-muse-serve-2']) {
+      expect(transportOf(h, thread)).toBe('exec');
+      expect(unavailableReason(h, thread)).toContain('muse schema exited 3');
+    }
   });
 
   test('another schema version, or no export runner, refuses an unknown fingerprint without exporting', async () => {

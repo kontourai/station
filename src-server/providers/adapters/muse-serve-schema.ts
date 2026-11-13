@@ -809,12 +809,15 @@ export class MuseServeSchemaVerifier {
         ? { ...verdict, museVersion }
         : verdict;
     }
-    const pending = this.exportAndCheck(fingerprint, museVersion, env);
-    this.remember(fingerprint, pending);
-    try {
-      return await pending;
-    } catch (error) {
-      this.verdicts.delete(fingerprint);
+    // Never rejects: a check that shares this one gets the same refusal.
+    const pending: Promise<MuseServeSchemaVerdict> = this.exportAndCheck(
+      fingerprint,
+      museVersion,
+      env,
+    ).catch((error: unknown) => {
+      // A failed export says nothing about the schema: not remembered.
+      if (this.verdicts.get(fingerprint) === pending)
+        this.verdicts.delete(fingerprint);
       return {
         kind: 'refused',
         reason: `unverified MSP schema fingerprint ${fingerprintLabel(fingerprint)}: ${
@@ -823,7 +826,9 @@ export class MuseServeSchemaVerifier {
             : 'its schema could not be exported'
         }`,
       };
-    }
+    });
+    this.remember(fingerprint, pending);
+    return pending;
   }
 
   private remember(
