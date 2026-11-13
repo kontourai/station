@@ -3322,7 +3322,9 @@ for (const viewport of [
       'Claude',
     );
     await expect(agentButton.locator('.choice-caret')).toHaveCount(1);
-    await expect(agentButton.locator('.composer-choice__icon svg')).toHaveCount(1);
+    await expect(agentButton.locator('.composer-choice__icon svg')).toHaveCount(
+      1,
+    );
     await closeRunSetup(page);
     const attach = page
       .locator('#chat-dock')
