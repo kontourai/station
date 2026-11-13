@@ -128,7 +128,7 @@ test('engine calls join their own results across page boundaries without extra a
       kind: 'tool-call',
       toolCallId: 'a',
       name: 'Read',
-      input: 'one.ts',
+      input: '{"file_path":"one.ts"}',
     },
     {
       message: 0,
@@ -154,6 +154,7 @@ test('engine calls join their own results across page boundaries without extra a
   expect(messages).toHaveLength(2);
   expect(messages[0].contentParts?.[0]).toMatchObject({
     toolCallId: 'a',
+    input: { file_path: 'one.ts' },
     state: 'output-available',
     output: 'export const ok = true;',
   });

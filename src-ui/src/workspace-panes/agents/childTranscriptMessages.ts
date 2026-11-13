@@ -1,6 +1,17 @@
 import type { ChildWorkTranscriptEntry } from '@kontourai/station-contracts/child-work';
 import type { ChatMessage } from '../../types';
 
+/** Bounded JSON arguments use the same structured input as live chat rows. */
+function transcriptToolInput(input: string | undefined): unknown {
+  if (input === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(input);
+    return parsed !== null && typeof parsed === 'object' ? parsed : input;
+  } catch {
+    return input;
+  }
+}
+
 /** Join only engine-issued call identities; legacy unkeyed results remain readable. */
 export function childTranscriptMessages(
   entries: readonly ChildWorkTranscriptEntry[],
@@ -50,7 +61,7 @@ export function childTranscriptMessages(
               type: 'tool-invocation',
               toolCallId: entry.toolCallId ?? id,
               toolName: entry.name,
-              input: entry.input,
+              input: transcriptToolInput(entry.input),
               state: result
                 ? result.isError
                   ? 'output-error'

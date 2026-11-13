@@ -2846,11 +2846,7 @@ function taskCapabilityScreens(): Screen[] {
           await page.keyboard.press('ArrowLeft');
           await expect(page).toHaveURL(/taskView=review/);
           await page.goto(screen.path);
-          const beforeBack = page.url();
           await page.goBack();
-          expect(page.url(), 'child Back retains the parent URL').toBe(
-            beforeBack,
-          );
           await expect(page).toHaveURL(/taskView=review/);
           await expect(review).toHaveAttribute('aria-selected', 'true');
           await page.goForward();
@@ -4270,7 +4266,11 @@ function childChatScreens(): Screen[] {
           reopen.searchParams.set('session', parent);
           reopen.searchParams.set('child', child);
           reopen.searchParams.set('childTitle', 'Review files');
+          const beforeBack = page.url();
           await page.goBack();
+          await expect(page, 'child Back retains the parent URL').toHaveURL(
+            beforeBack,
+          );
           await expect(
             dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
           ).toBeHidden();
