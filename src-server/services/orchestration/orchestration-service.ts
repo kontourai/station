@@ -5758,14 +5758,37 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * The engine's durability profile; with `threadId`, that session's. A
+   * session its adapter says cannot steer (`canSteerTurn`, e.g. Muse on the
+   * `muse exec` fallback) reports no steering, so a client composer offers
+   * queueing instead of a steer that `steerTurn` would refuse.
+   */
   readonly durabilityProfileForProvider = (
     provider: string | undefined,
-  ): ProviderDurabilityProfile | undefined =>
-    readProviderDurabilityProfile(
+    threadId?: string,
+  ): ProviderDurabilityProfile | undefined => {
+    const adapter =
       provider === undefined
         ? undefined
-        : this.options.adapterRegistry.get(provider)?.metadata,
-    );
+        : this.options.adapterRegistry.get(provider);
+    const profile = readProviderDurabilityProfile(adapter?.metadata);
+    if (
+      !profile ||
+      threadId === undefined ||
+      profile.steerPlacement.state === 'none' ||
+      adapter?.canSteerTurn?.(threadId) !== false
+    )
+      return profile;
+    return {
+      ...profile,
+      steerPlacement: {
+        state: 'none',
+        detail:
+          'This session has no live input channel; additional input waits for the next turn.',
+      },
+    };
+  };
 
   recordPostToolSteer(input: {
     threadId: string;

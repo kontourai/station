@@ -31,6 +31,7 @@ import {
   type CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
@@ -2562,6 +2563,17 @@ describe('#1952 Muse Code 1.4.18: steering a running serve turn', () => {
         outcome: 'unsupported-engine',
         threadId: THREAD,
       });
+      // The session's own summary says so, so a composer offers a queued
+      // follow-up instead of a steer this refusal would meet. The engine's
+      // profile still steers (a serve session can).
+      expect(h.adapter.metadata.durability?.steerPlacement.state).toBe(
+        'native',
+      );
+      const detail = await service.readSession(
+        THREAD,
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      expect(detail?.session.durability?.steerPlacement.state).toBe('none');
     } finally {
       await service.shutdown();
       adapters.splice(adapters.indexOf(h.adapter), 1);
