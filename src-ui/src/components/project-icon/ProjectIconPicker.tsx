@@ -135,7 +135,9 @@ export function ProjectIconPicker({
           <span id={hintId}>
             {fetching
               ? 'Looking for artwork in the project folder…'
-              : 'Optional. Without one, Station shows the project’s colour or initials.'}
+              : candidates.length > 0
+                ? 'Choose artwork, an emoji, or No icon.'
+                : 'Optional. Without one, Station shows the project’s colour or initials.'}
           </span>
         </div>
         <button
@@ -151,6 +153,7 @@ export function ProjectIconPicker({
         <button
           type="button"
           className="editor-btn editor-btn--small"
+          aria-pressed={value === '' && !iconDisabled}
           onClick={onUseDetected}
         >
           Use detected icon

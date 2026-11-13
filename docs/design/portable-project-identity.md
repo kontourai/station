@@ -308,7 +308,7 @@ already-resolved path (not a read of the field).
 | R2 | `project-manifest-store.ts:547-554` | Backfill derivation | R | write path |
 | C1 | `TerminalPanel.tsx:118` | Sends `cwd` from the coding-layout config | C | client-side; downstream of A9 |
 | C2 | `useGitActions.ts:56-166`, `useGitStatus.ts:3-11` | Supply `?path=` to the already-path-keyed git route family | C | client-side; §2.2 already records the plan |
-| C3 | `new-chat-modal-utils.ts:72,286`; `NewChatModal.tsx:581-587`; `useChatDockViewModel.ts:87`; `ChatDockProjectContext.tsx`; `useActiveProject.ts:32` | Display the cwd a chat will use | C | display-only |
+| C3 | `new-chat-modal-utils.ts:72,286`; `NewChatModal.tsx:581-587`; `useChatDockViewModel.ts:87`; `useActiveProject.ts:32` | Display the cwd a chat will use | C | display-only |
 | C4 | `TaskWorkspaceView.tsx:55-98,411` | Displays the *persisted* `TaskWorkspaceBinding.workingDirectory` | C | display-only; not a `ProjectConfig` read |
 | P | `flow-agents-work-item-provider.ts:326-383`; `provider-interfaces.ts:133`; `work-items.ts:50` | Consume a cwd already resolved by S2 | P | not a read of the field |
 

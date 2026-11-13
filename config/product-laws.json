@@ -8,9 +8,7 @@
       "module": "Chat queue drain",
       "interface": "drainQueuedMessageOnTurnCompleted",
       "remediationOwner": "station#613",
-      "affectedPaths": [
-        "src-ui/src/hooks/orchestration/queueDrain.ts"
-      ],
+      "affectedPaths": ["src-ui/src/hooks/orchestration/queueDrain.ts"],
       "observation": {
         "kind": "vitest-file",
         "testFile": "src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts",
@@ -29,9 +27,7 @@
       "module": "Flow run service",
       "interface": "FlowRunService.evaluate",
       "remediationOwner": "station#1555",
-      "affectedPaths": [
-        "src-server/services/flow/flow-run-service.ts"
-      ],
+      "affectedPaths": ["src-server/services/flow/flow-run-service.ts"],
       "observation": {
         "kind": "vitest-file",
         "testFile": "src-server/services/flow/__tests__/flow-run-service.test.ts",
@@ -50,9 +46,7 @@
       "module": "Approval inbox",
       "interface": "ApprovalInboxService",
       "remediationOwner": "station#1284",
-      "affectedPaths": [
-        "src-server/services/approvals/approval-inbox.ts"
-      ],
+      "affectedPaths": ["src-server/services/approvals/approval-inbox.ts"],
       "observation": {
         "kind": "vitest-file",
         "testFile": "src-server/services/approvals/__tests__/approval-inbox.test.ts",
@@ -71,9 +65,7 @@
       "module": "Home role pane",
       "interface": "HomeRolePane",
       "remediationOwner": "station#3122",
-      "affectedPaths": [
-        "src-ui/src/views/home/HomeRolePane.tsx"
-      ],
+      "affectedPaths": ["src-ui/src/views/home/HomeRolePane.tsx"],
       "observation": {
         "kind": "vitest-file",
         "testFile": "src-ui/src/views/home/__tests__/HomeRolePane.test.tsx",
@@ -92,9 +84,7 @@
       "module": "Release artifact inventory",
       "interface": "validateReleaseInventory",
       "remediationOwner": "station#818",
-      "affectedPaths": [
-        "scripts/lib/release-artifacts.mjs"
-      ],
+      "affectedPaths": ["scripts/lib/release-artifacts.mjs"],
       "observation": {
         "kind": "vitest-file",
         "testFile": "scripts/__tests__/release-artifacts.test.ts",
@@ -109,7 +99,7 @@
     {
       "id": "station.mobile-context.primary-actions",
       "family": "mobile-context",
-      "invariant": "Conversation switching stays direct in the mobile header. Project choice belongs to starting a chat; an active conversation keeps its binding when a Project is opened.",
+      "invariant": "Conversation switching stays direct in the mobile header. The active chat header does not offer a Project picker; Project choice belongs to starting a chat.",
       "module": "Mobile chat dock header",
       "interface": "ChatDockMobileHeader",
       "remediationOwner": "station#1540",

@@ -471,6 +471,11 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.click(screen.getByLabelText('Choose project icon'));
     fireEvent.click(screen.getByLabelText('Use public/favicon.png'));
     fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
+    expect(
+      screen
+        .getByRole('button', { name: 'No icon' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>

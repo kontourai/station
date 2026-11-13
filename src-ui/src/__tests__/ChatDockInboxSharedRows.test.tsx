@@ -422,9 +422,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         now={NOW}
       />,
     );
-    fireEvent.change(screen.getByRole('combobox', { name: 'Inbox scope' }), {
-      target: { value: 'current-project' },
-    });
+
     expect(screen.getByText('No chats yet.')).toBeTruthy();
     expect(screen.queryByText('No work in this filter.')).toBeNull();
   });
@@ -475,13 +473,32 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       mounted.rerender(panel());
       expect(screen.getByText('No project chat')).toBeTruthy();
       expect(screen.getByText('Alpha project work')).toBeTruthy();
+      expect(scope().selectedOptions[0].textContent).toBe('All work');
+      expect(
+        [...scope().options].filter((option) => option.text === 'All work'),
+      ).toHaveLength(1);
+      expect(screen.queryByRole('option', { name: 'Follow page' })).toBeNull();
+
       // Back on a project page the chosen scope filters again; "All work"
       // undoes it.
       act(() => navigationStore.navigate('/projects/alpha'));
       mounted.rerender(panel());
       expect(screen.queryByText('No project chat')).toBeNull();
+      expect(
+        screen.getByRole('option', { name: 'Always Alpha · This Station' }),
+      ).toBeTruthy();
+      fireEvent.change(scope(), {
+        target: { value: 'project:["station:local","alpha"]' },
+      });
+      act(() => navigationStore.navigate('/'));
+      mounted.rerender(panel());
+      expect(screen.queryByText('No project chat')).toBeNull();
       fireEvent.change(scope(), { target: { value: 'all' } });
       expect(screen.getByText('No project chat')).toBeTruthy();
+      expect(scope().selectedOptions[0].textContent).toBe('All work');
+      expect(
+        [...scope().options].filter((option) => option.text === 'All work'),
+      ).toHaveLength(1);
     } finally {
       act(() => navigationStore.navigate('/'));
     }

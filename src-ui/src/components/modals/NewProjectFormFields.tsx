@@ -160,6 +160,7 @@ export function NewProjectIdentityField({
           idPrefix="new-project-icon"
           name={name || derivedName || 'New Project'}
           value={icon}
+          iconDisabled={icon === ''}
           onChange={onIconChange}
           candidates={candidates}
           fetching={iconCandidatesFetching}

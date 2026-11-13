@@ -40,7 +40,7 @@ export function useInboxScope(
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: snooze version invalidates the persisted map read
   return useMemo(() => {
-    const options = new Map([
+    const options = new Map<string, string>([
       [
         INBOX_SCOPE_CURRENT_PROJECT,
         routeProject
@@ -54,9 +54,9 @@ export function useInboxScope(
               projects.find((project) => project.slug === routeProject)?.name ??
               'Current project'
             }`
-          : 'Follow page',
+          : 'All work',
       ],
-      ['all', 'All work'],
+      ...(routeProject ? [['all', 'All work'] as [string, string]] : []),
       ['station:local', 'This Station'],
     ]);
     const stationKey = (item: HomeWorkItem) => {
@@ -85,12 +85,16 @@ export function useInboxScope(
       if (key)
         options.set(
           key,
-          `Keep ${item.projectLabel} · ${options.get(stationById.get(item.id)!)}`,
+          `Always ${item.projectLabel ?? projects.find((project) => project.slug === item.projectSlug)?.name ?? item.projectSlug} · ${options.get(stationById.get(item.id)!)}`,
         );
     }
     // A saved scope absent from this snapshot stays selected: an outage must
     // not silently change the user's filter or pretend another Station is it.
-    if (!options.has(inboxScope))
+    if (!routeProject) {
+      options.delete(INBOX_SCOPE_CURRENT_PROJECT);
+      options.set('all', 'All work');
+    }
+    if (!options.has(inboxScope) && inboxScope !== INBOX_SCOPE_CURRENT_PROJECT)
       options.set(inboxScope, 'Saved scope (unavailable)');
     // The default follows the project page on screen; anywhere else it is
     // all work. Only this Station's projects have pages here.
@@ -116,7 +120,10 @@ export function useInboxScope(
     return {
       items: filtered,
       options,
-      value: inboxScope,
+      value:
+        inboxScope === INBOX_SCOPE_CURRENT_PROJECT && !routeProject
+          ? 'all'
+          : inboxScope,
       effectiveValue: scope,
       hiddenAttention,
       onChange: (value: string) => setDeviceSetting('inboxScope', value),

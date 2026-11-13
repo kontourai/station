@@ -571,17 +571,15 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                       one.
                     </p>
                   )}
-                  {project?.derivedIcon &&
-                    !project.iconDisabled &&
-                    !form.icon && (
-                      <p className="project-settings__icon-notice">
-                        Detected icon · Choose No icon to hide it.
-                      </p>
-                    )}
+                  {project?.derivedIcon && !form.iconDisabled && !form.icon && (
+                    <p className="project-settings__icon-notice">
+                      Detected icon · Choose No icon to hide it.
+                    </p>
+                  )}
                   {iconPickerOpen && (
                     <ProjectIconPicker
                       idPrefix="project-settings-icon"
-                      iconDisabled={form.iconDisabled}
+                      iconDisabled={legacyIcon || form.iconDisabled}
                       name={form.name}
                       value={legacyIcon ? '' : (form.icon ?? '')}
                       onUseDetected={() =>
