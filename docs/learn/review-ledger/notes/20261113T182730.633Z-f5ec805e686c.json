@@ -1,0 +1,19 @@
+{
+  "revision": "a0337b373eef41a301644f6d500d5b5023d5585c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the composer CSS delta and mobile browser journeys. ChatInputArea and ComposerRunControl still own the reply controls; no module or authority boundary changed. Removing obsolete above-box settings rules preserves the documented toolbar owner. No prose change required. Source review does not qualify native devices or providers.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed toolbar policy against ChatInputArea, ComposerRunControl and chat.css. Run setup stays beside Send while a landscape textarea is focused; empty metadata has no row. Mobile Saved drafts and Clear remain under More draft options. This restores the documented toolbar contract; no prose change required. Browser evidence and pre-existing suite failures are reported separately.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the CSS removal at the reply composer against the placement amendment and current dock owners. It changes no region selection, pane ownership, Inbox controller or route. Run setup remains in the reply toolbar and notices remain above it when present. The placement explanation remains accurate; no prose change required.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed ChatInputArea toolbar rules and test callers. The removal of focus-dependent settings hiding and empty metadata display changes presentation only; conversation target, Station identity, dispatch and controller authority are unchanged. Existing source-level connection claims remain accurate; this review adds no native or two-machine qualification.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed mobile-chat-composer journeys: use More draft options on mobile, scope Run setup through the composer and measure the send row, with touch-landscape coverage. Spec ownership remains the product bucket. The matrix maps evidence owners rather than claiming all tests pass; whole-file results and inherited failures are retained separately. No prose change required.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the reply-toolbar description against ChatInputArea, ComposerRunControl and chat.css. Removing old focus-dependent settings hiding preserves the setup action beside Send while typing on short touch screens. Empty metadata stays hidden; mobile draft overflow actions retain ordinary interaction. The existing responsive description remains accurate. No prose change required.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed composer startup and reply guidance against ChatInputArea and ComposerRunControl. Run setup remains the settings entry beside Send or Start; mobile draft actions remain in More draft options. The landscape focus correction changes no startup, dispatch or persisted setting contract. Existing guidance remains accurate; no prose change required.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}
