@@ -706,8 +706,9 @@ stays separate. Select a Task to reveal Overview or a work chat to read its
 conversation. Running counts include actual chats, not the Task's status. **Show work**
 filters by project or Station and stays selected on this device. Until you choose
 a scope, it follows the project whose page you are on and shows all work anywhere
-else. The control uses the project’s name on its page and **Follow project page**
-elsewhere. An explicit choice such as **All work** stays selected as you navigate. If work needs
+else. The control shows **This project: <name>** on its page and **All work**
+elsewhere. **Always <name> · <Station>** pins a project across navigation. An
+explicit choice such as **All work** stays selected as you navigate. If work needs
 you outside the filter, choose **Show all** from the notice.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
