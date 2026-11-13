@@ -2321,7 +2321,9 @@ stored on the message itself: `editedAt` (the text is the latest edit's),
 `parseProjectRoomMessage` refuses a tombstone that still carries content. The
 inputs are `ProjectRoomReactionInput` (`{ emoji, reacted }`, a set state, so a
 repeat changes nothing), `ProjectRoomEditInput` and `ProjectRoomDeleteInput`, with
-their `parse…` functions. `PROJECT_ROOM_LIMITS` bounds reactions
+their `parse…` functions. `PROJECT_ROOM_FORBIDDEN_CODE`
+(`project_room_forbidden`, a `permission_denied` failure) is the refusal of an
+edit or delete by anyone but the message's person author. `PROJECT_ROOM_LIMITS` bounds reactions
 (`reactionEmojiPerMessage` 20, `reactionsPerMessage` 100, `reactionEmojiBytes`
 32) and revisions (`revisionsPerMessage` 50). `projectRoomReactionEmojiProblem`
 accepts exactly one emoji: a pictograph with optional skin tone or tag
