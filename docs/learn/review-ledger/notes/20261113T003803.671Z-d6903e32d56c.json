@@ -1,0 +1,7 @@
+{
+  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"No user-facing concept changed.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

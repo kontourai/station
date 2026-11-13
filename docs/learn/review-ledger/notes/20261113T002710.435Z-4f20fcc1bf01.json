@@ -1,0 +1,7 @@
+{
+  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"No placement behavior changed; card and summary still mount in the same places for host chats.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

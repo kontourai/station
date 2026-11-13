@@ -1,0 +1,7 @@
+{
+  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"No configuration surface changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

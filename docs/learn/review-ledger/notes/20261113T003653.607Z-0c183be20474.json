@@ -1,0 +1,7 @@
+{
+  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"The bridge allowlist remains enumerated and deny-by-default; the only widening is an ignored numeric revision query on an already admitted read-only checkpoint GET, validated by the shared query checks.","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/environments/peer-chat-policy.ts"]}
+  ]
+}

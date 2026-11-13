@@ -1,0 +1,7 @@
+{
+  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"ChatMessageList change only gates the session summary card to host-owned chats; no bridge claim affected.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

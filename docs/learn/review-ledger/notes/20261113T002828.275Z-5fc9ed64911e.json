@@ -1,0 +1,7 @@
+{
+  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Peer chat tunnel description still accurate; the policy change admits a revision query on the existing checkpoint read only.","inputs":["docs/guides/machine-relationships.md","src-server/routes/environments/peer-chat-policy.ts"]}
+  ]
+}
