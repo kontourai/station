@@ -5487,6 +5487,43 @@ const SCREENS: Screen[] = [
               await expect(
                 trigger.locator('.chat-input__chip-stack'),
               ).toBeHidden();
+            if (width === 320 && names === 'short') {
+              await composer
+                .getByRole('button', {
+                  name: 'More draft options',
+                  exact: true,
+                })
+                .click();
+              await page
+                .getByRole('menuitem', { name: 'Saved drafts', exact: true })
+                .click();
+              const drafts = page.getByRole('dialog', {
+                name: 'Saved drafts',
+                exact: true,
+              });
+              await expect(drafts).toBeVisible();
+              await drafts
+                .getByRole('button', {
+                  name: 'Close saved drafts',
+                  exact: true,
+                })
+                .click();
+              await composer
+                .getByRole('button', {
+                  name: 'More draft options',
+                  exact: true,
+                })
+                .click();
+              await page
+                .getByRole('menuitem', { name: 'Clear message', exact: true })
+                .click();
+              await expect(
+                composer.getByRole('textbox', { name: 'Message', exact: true }),
+              ).toHaveValue('');
+              await composer
+                .getByRole('textbox', { name: 'Message', exact: true })
+                .fill('Follow up on this');
+            }
           },
           true,
           false,
