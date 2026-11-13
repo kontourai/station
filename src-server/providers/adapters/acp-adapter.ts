@@ -3342,8 +3342,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     const deadline = Date.now() + waitMs;
     let found = findAcpModelConfigOption(record.configOptions);
     while (!found && !record.stopping && Date.now() < deadline) {
+      record.configOptionWaiters ??= new Set();
+      const waiters = record.configOptionWaiters;
       await new Promise<void>((resolve) => {
-        const waiters = (record.configOptionWaiters ??= new Set());
         const wake = () => {
           clearTimeout(timer);
           waiters.delete(wake);

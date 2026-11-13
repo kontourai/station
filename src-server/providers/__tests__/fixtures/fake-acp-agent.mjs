@@ -325,7 +325,10 @@ const app = acp
       setTimeout(() => {
         client.notify(acp.methods.client.session.update, {
           sessionId,
-          update: { sessionUpdate: 'config_option_update', configOptions: full },
+          update: {
+            sessionUpdate: 'config_option_update',
+            configOptions: full,
+          },
         });
       }, profile.lateModelOptionMs);
       shape.configOptions = (shape.configOptions ?? []).filter(
