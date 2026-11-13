@@ -153,6 +153,38 @@ describe('a connection removed while its credential is being written', () => {
     expect(onSignedIn).not.toHaveBeenCalled();
   });
 
+  test('a device-code sign-in cancelled mid-write stays cancelled when taking its credential back out fails', async () => {
+    const oidc = await startOidcStub();
+    cleanups.push(() => oidc.close());
+    oidc.deviceAnswers.push({
+      accessToken: 'device-access',
+      refreshToken: 'r',
+    });
+    const { vault, writing, release, written } = gatedVault();
+    let tried!: () => void;
+    const removalTried = new Promise<void>((resolve) => {
+      tried = resolve;
+    });
+    vault.compareAndRemove = async () => {
+      tried();
+      throw new Error('store unavailable');
+    };
+    const { signIn, onSignedIn } = await signInWith({
+      vault,
+      endpoints: oidc.endpoints,
+    });
+    await signIn.start(SCOPE, { identity: 'builder-id' });
+    await writing;
+    expect(signIn.cancel(SCOPE)?.phase).toBe('cancelled');
+    release();
+    await written;
+    await removalTried;
+    // Let the rejected removal reach the flow's catch.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(signIn.attempt(SCOPE)?.phase).toBe('cancelled');
+    expect(onSignedIn).not.toHaveBeenCalled();
+  });
+
   test('Google/GitHub flow: nothing kept, not completed, no sign-in reported', async () => {
     const social = await startSocialStub();
     cleanups.push(() => social.close());
