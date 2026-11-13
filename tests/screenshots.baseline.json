@@ -119,7 +119,7 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "956141d29399f64b326294ea1276025cb056bfcf46b3102393a5eb769ea8e618"
+      "sha256": "7630e4a8051c1c333c269fbf45a11c4197c5a7f33d9ee330d46696c7dc5347ac"
     },
     {
       "name": "developer-telemetry",
@@ -491,25 +491,25 @@
       "name": "reply-composer-dark-1440-long",
       "width": 1440,
       "height": 900,
-      "sha256": "bb6c5a33963724e6f6eb5d587b1e976ec228fe426fb3cc4d064e16cfba28f091"
+      "sha256": "edcc8c8a3b071ba9867bea58a954738c6f0c8240c7f6c52cace7c50b29f9bbf6"
     },
     {
       "name": "reply-composer-dark-1440-short",
       "width": 1440,
       "height": 900,
-      "sha256": "470763542428e32d8ed67acd52bd4384957f9234bc60881d008c15e1f1c0ad22"
+      "sha256": "defeed99a45207e7d1539884bdde66a1111f58bca5b3a4f1fd037912b62e5d80"
     },
     {
       "name": "reply-composer-dark-320-long",
       "width": 320,
       "height": 915,
-      "sha256": "f0c980e8995caf8ad5b03ad276a21aa25101ad86aa188da4f08eb161ba8d05eb"
+      "sha256": "e8c54ed19ce95b281f9ee90abdd4108d7aa37f2d91eb14282263bf4abb994e3b"
     },
     {
       "name": "reply-composer-dark-320-short",
       "width": 320,
       "height": 915,
-      "sha256": "e8aa6ab549dc3d2c0490bc79dd94bc3df0fab028b1dd94595fcf68d0bef969eb"
+      "sha256": "ddefd430cb5a2c2755e8c599505b35ed404a85e21a1f9503d7fb4547e0abc301"
     },
     {
       "name": "reply-composer-dark-360-long",
@@ -527,13 +527,13 @@
       "name": "reply-composer-dark-390-long",
       "width": 390,
       "height": 915,
-      "sha256": "bb4a752d79e945c0155772331c3f954ed17fba055935122dd3920da5832590f1"
+      "sha256": "c5dbe6729667613dbd032b2596eeb227ae66307ef688a35e7ce362ae77d87d95"
     },
     {
       "name": "reply-composer-dark-390-short",
       "width": 390,
       "height": 915,
-      "sha256": "e2320d86ca239ad300e626501cd43c4f3511ec571386a30a58de4543bf674fa8"
+      "sha256": "45c26e3ad3a0f24cf00ae54308e88311c8100c4bfd9a332f12d16359b1e35170"
     },
     {
       "name": "reply-composer-dark-412-long",
@@ -551,13 +551,13 @@
       "name": "reply-composer-light-1440-long",
       "width": 1440,
       "height": 900,
-      "sha256": "d08df5c0182b1f198b39780aea646678365e35fcbd9109df9dc137dac31d5c28"
+      "sha256": "b3293ff9ae9585cffb94cedb06241fafbd5f4734dbe896602b8fa6cbe9a475d5"
     },
     {
       "name": "reply-composer-light-1440-short",
       "width": 1440,
       "height": 900,
-      "sha256": "77c983bc2cb49c8a6fdcfd8b49159c8e08469c8b496225ad94cf8ae479685dd7"
+      "sha256": "928583d8fc0aea293527b161fd930b38cd22c81362fe23e246c85f3e1fc5a499"
     },
     {
       "name": "reply-composer-light-320-long",
