@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ComposerChoice } from '../components/ComposerChoice';
 import { ComposerRunControl } from '../components/ComposerRunControl';
+import { AgentIcon } from '../components/icons/AgentIcon';
 
 afterEach(cleanup);
 
@@ -106,4 +107,72 @@ test('neutral conversation changes and approval risk remain separate on the clos
   result.rerender(view('Full access'));
   expect(trigger.textContent).toContain('⚠');
   expect(trigger.getAttribute('aria-label')).toContain('Full access');
+});
+
+test('identical Agent and engine brands render one mark; different brands overlap', () => {
+  const view = (engineId: 'claude' | 'codex') => (
+    <ComposerRunControl
+      label="Writer · Sonnet"
+      icon={<AgentIcon agent={{ name: 'Writer', engineId: 'claude' }} />}
+      engineId={engineId}
+    >
+      <span />
+    </ComposerRunControl>
+  );
+  const result = render(view('claude'));
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.querySelectorAll('.brand-icon')).toHaveLength(1);
+  result.rerender(view('codex'));
+  expect(trigger.querySelectorAll('.brand-icon')).toHaveLength(2);
+  expect(
+    trigger.querySelector(
+      '.composer-run-control__engine-mark [data-brand-key="codex"]',
+    ),
+  ).toBeTruthy();
+});
+
+test('missing and unbranded Agents render the generic glyph, never initials', () => {
+  const view = (icon: React.ReactNode) => (
+    <ComposerRunControl label="demo-agent" icon={icon}>
+      <span />
+    </ComposerRunControl>
+  );
+  const result = render(view(null));
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__agent-mark svg'),
+  ).toBeTruthy();
+  result.rerender(
+    view(<AgentIcon agent={{ name: 'demo-agent', id: 'demo' }} />),
+  );
+  expect(
+    trigger.querySelector('.composer-run-control__agent-mark svg'),
+  ).toBeTruthy();
+  expect(trigger.querySelector('.brand-icon__initials')).toBeNull();
+});
+
+test('safety is a corner badge and the model has its own untruncated label segment', () => {
+  render(
+    <ComposerRunControl label="A long Agent name · Mini" icon={null}>
+      <ComposerChoice
+        caption="Approval"
+        value="Full access"
+        aria-label="Approval: Full access"
+        safetyLabel="Full access"
+      />
+    </ComposerRunControl>,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector(
+      '.composer-run-control__marks .composer-run-control__safety',
+    )?.textContent,
+  ).toBe('⚠');
+  expect(trigger.getAttribute('aria-label')).toContain('Full access');
+  expect(
+    trigger.querySelector('.composer-run-control__agent')?.textContent,
+  ).toBe('A long Agent name');
+  expect(
+    trigger.querySelector('.composer-run-control__model')?.textContent,
+  ).toBe(' · Mini');
 });

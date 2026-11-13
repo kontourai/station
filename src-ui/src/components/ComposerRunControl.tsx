@@ -1,6 +1,25 @@
-import { type ReactNode, useCallback, useId, useRef, useState } from 'react';
+import {
+  type EngineId,
+  parseEngineId,
+} from '@kontourai/station-contracts/agent-identity';
+import {
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+  useCallback,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { ComposerChoice } from './ComposerChoice';
 import { ComposerChoiceSummary } from './ComposerChoiceSummary';
+import { AgentIcon } from './icons/AgentIcon';
+import {
+  BrandIcon,
+  hasBundledEngineMark,
+  resolveBrandKey,
+} from './icons/BrandIcon';
+import { AgentGlyph } from './icons/Glyph';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -12,14 +31,35 @@ import './ComposerRunControl.css';
 export function ComposerRunControl({
   label,
   icon,
+  engineId,
   children,
   loadingLabel,
 }: {
   label: string;
   icon: ReactNode;
+  engineId?: EngineId | null;
   children: ReactNode;
   loadingLabel?: string;
 }) {
+  const agent =
+    isValidElement<React.ComponentProps<typeof AgentIcon>>(icon) &&
+    icon.type === AgentIcon
+      ? icon.props.agent
+      : undefined;
+  const agentEngine =
+    agent && (agent.engineId ?? parseEngineId(agent.slug ?? agent.id));
+  // Explicit artwork wins over the engine's default mark, just as in BrandIcon.
+  const agentBrand = agent?.icon?.startsWith('brand:')
+    ? agent.icon.slice(6)
+    : agent && !agent.icon && !agent.iconUrl && agentEngine
+      ? resolveBrandKey(agentEngine)
+      : undefined;
+  const engineBrand = engineId && resolveBrandKey(engineId);
+  const mark =
+    agent && isValidElement<React.ComponentProps<typeof AgentIcon>>(icon)
+      ? cloneElement(icon, { fallbackGlyph: true })
+      : icon || <AgentGlyph />;
+  const separator = label.lastIndexOf(' · ');
   const contentId = useId();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -86,10 +126,31 @@ export function ComposerRunControl({
           ref={trigger}
           className="composer-run-control"
           caption={null}
-          value={label}
+          value={
+            separator < 0 ? (
+              label
+            ) : (
+              <span className="composer-run-control__label">
+                <span className="composer-run-control__agent">
+                  {label.slice(0, separator)}
+                </span>
+                <span className="composer-run-control__model">
+                  {' '}
+                  · {label.slice(separator + 3)}
+                </span>
+              </span>
+            )
+          }
           icon={
-            <>
-              {icon}
+            <span className="composer-run-control__marks">
+              <span className="composer-run-control__agent-mark">{mark}</span>
+              {engineId &&
+                hasBundledEngineMark(engineId) &&
+                agentBrand !== engineBrand && (
+                  <span className="composer-run-control__engine-mark">
+                    <BrandIcon name="" engineId={engineId} size={16} />
+                  </span>
+                )}
               {changed && <span aria-hidden="true">·</span>}
               {safety.length > 0 && (
                 <span
@@ -99,7 +160,7 @@ export function ComposerRunControl({
                   ⚠
                 </span>
               )}
-            </>
+            </span>
           }
           aria-label={summary}
           data-testid="run-setup-trigger"

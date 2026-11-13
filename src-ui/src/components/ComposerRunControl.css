@@ -23,3 +23,46 @@
   max-width: 100%;
   min-height: 44px;
 }
+
+.composer-run-control__marks {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  flex: none;
+  padding-block: var(--k-space-1);
+}
+.composer-run-control__agent-mark {
+  display: flex;
+  position: relative;
+  z-index: 1;
+}
+.composer-run-control__engine-mark {
+  display: flex;
+  margin-left: -6px;
+  transform: translateY(3px);
+}
+.composer-run-control__safety {
+  position: absolute;
+  z-index: 2;
+  right: -3px;
+  top: -3px;
+  font-size: var(--k-text-xs);
+  line-height: 1;
+  background: var(--k-panel);
+  border-radius: var(--k-radius-full);
+}
+.composer-run-control .composer-choice__value {
+  width: 100%;
+}
+.composer-run-control__label {
+  display: flex;
+  min-width: 0;
+}
+.composer-run-control__agent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-run-control__model {
+  flex: none;
+  white-space: pre;
+}

@@ -50,7 +50,6 @@ import {
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
-import { BrandIcon, hasBundledEngineMark } from '../icons/BrandIcon';
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
@@ -1171,19 +1170,8 @@ export function ChatInputArea({
             ]
               .filter(Boolean)
               .join(' · ')}
-            icon={
-              <>
-                {agentIcon}
-                {(() => {
-                  const engine = parseEngineId(
-                    acpApproval?.engineId ?? executionEngineId,
-                  );
-                  return engine && hasBundledEngineMark(engine) ? (
-                    <BrandIcon name="" engineId={engine} size={20} />
-                  ) : null;
-                })()}
-              </>
-            }
+            icon={agentIcon}
+            engineId={parseEngineId(acpApproval?.engineId ?? executionEngineId)}
           >
             {onOpenAgentHandoff && (
               <ComposerChoice

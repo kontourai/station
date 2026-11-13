@@ -5223,25 +5223,45 @@ const SCREENS: Screen[] = [
       }),
     ),
   ),
-  {
-    name: 'run-setup-full-access-412',
-    title: 'Run setup — full access',
-    path: '/?dock=open',
-    viewport: { width: 412, height: 915 },
-    ...withGalleryProjectsList(
-      [],
-      async (page) => {
-        const draft = await openGalleryNewChatDraft(page);
-        const trigger = draft.getByTestId('run-setup-trigger');
-        await expect(trigger).toContainText('⚠');
-        await expect(trigger).toHaveAccessibleName(/Full access/);
-        await expect(trigger).toBeInViewport();
-      },
-      true,
-      true,
-      'Mini',
-    ),
-  },
+  ...[390, 412].map(
+    (width): Screen => ({
+      name: `run-setup-full-access-${width}`,
+      title: 'Run setup — full access',
+      path: '/?dock=open',
+      viewport: { width, height: 915 },
+      ...withGalleryProjectsList(
+        [],
+        async (page) => {
+          const draft = await openGalleryNewChatDraft(page);
+          const trigger = draft.getByTestId('run-setup-trigger');
+          await expect(trigger).toContainText('⚠');
+          await expect(trigger).toHaveAccessibleName(/Full access/);
+          await expect(trigger).toBeInViewport();
+          const model = trigger.locator('.composer-run-control__model');
+          await expect(model).toHaveText(' · Mini');
+          const modelBox = await model.boundingBox();
+          const triggerBox = await trigger.boundingBox();
+          expect(modelBox).not.toBeNull();
+          expect(triggerBox).not.toBeNull();
+          expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(
+            triggerBox!.x + triggerBox!.width,
+          );
+          expect(
+            await model.evaluate((el) => el.scrollWidth <= el.clientWidth),
+          ).toBe(true);
+          await expect(
+            draft.getByRole('button', { name: /Attach/ }).first(),
+          ).toBeInViewport();
+          await expect(
+            draft.getByRole('button', { name: 'Start', exact: true }),
+          ).toBeInViewport();
+        },
+        true,
+        true,
+        'Mini',
+      ),
+    }),
+  ),
   ...(['dark', 'light'] as const).flatMap((theme) =>
     [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
       (viewport): Screen => ({
@@ -5262,7 +5282,7 @@ const SCREENS: Screen[] = [
             await expect(trigger).toContainText('Station · Mini');
             await expect(
               trigger.locator('[data-brand-key="station"]'),
-            ).toHaveCount(2);
+            ).toHaveCount(1);
             await expect(trigger).toBeInViewport();
             await expect(
               page.getByRole('dialog', { name: 'Run setup', exact: true }),

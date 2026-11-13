@@ -26,7 +26,6 @@ import { Button } from '../Button';
 import { ComposerChoice } from '../ComposerChoice';
 import { ComposerRunControl } from '../ComposerRunControl';
 import { AgentIcon } from '../icons/AgentIcon';
-import { BrandIcon, hasBundledEngineMark } from '../icons/BrandIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
@@ -539,21 +538,16 @@ export function StartComposer({
                 .filter(Boolean)
                 .join(' · ')}
               icon={
-                agent.status === 'ready' && (
-                  <>
-                    {agent.agent && (
-                      <AgentIcon agent={agent.agent} size="small" />
-                    )}
-                    {(() => {
-                      const engine = parseEngineId(
-                        (agent.executionAgent ?? agent.agent)?.engineId,
-                      );
-                      return engine && hasBundledEngineMark(engine) ? (
-                        <BrandIcon name="" engineId={engine} size={20} />
-                      ) : null;
-                    })()}
-                  </>
-                )
+                agent.status === 'ready' && agent.agent ? (
+                  <AgentIcon agent={agent.agent} size="small" />
+                ) : null
+              }
+              engineId={
+                agent.status === 'ready'
+                  ? parseEngineId(
+                      (agent.executionAgent ?? agent.agent)?.engineId,
+                    )
+                  : undefined
               }
             >
               {agent.status === 'loading' ? (
