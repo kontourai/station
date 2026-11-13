@@ -533,7 +533,7 @@
       "name": "reply-composer-dark-390-short",
       "width": 390,
       "height": 915,
-      "sha256": "45c26e3ad3a0f24cf00ae54308e88311c8100c4bfd9a332f12d16359b1e35170"
+      "sha256": "e2320d86ca239ad300e626501cd43c4f3511ec571386a30a58de4543bf674fa8"
     },
     {
       "name": "reply-composer-dark-412-long",
@@ -899,7 +899,7 @@
       "name": "run-setup-dark-1440",
       "width": 1440,
       "height": 900,
-      "sha256": "8e088acd2f27254694134ee68a9559f1ddeafa42a3124af61b2750387b8e8629"
+      "sha256": "6a2742a6df1cafeb136806e69216afc62857106598c9d931ea2486d1993ef57a"
     },
     {
       "name": "run-setup-dark-390",
@@ -911,7 +911,7 @@
       "name": "run-setup-dark-412",
       "width": 412,
       "height": 915,
-      "sha256": "0fc028974e23c023a1e5193d7d210890481e62b4b281333cc70ffc4c0beb0670"
+      "sha256": "d447046292b18c97008f61b2f33c012e4ae558b093b6aeeb6881187a0f1ef09c"
     },
     {
       "name": "run-setup-filled-dark-1440",
@@ -953,19 +953,19 @@
       "name": "run-setup-full-access-390",
       "width": 390,
       "height": 915,
-      "sha256": "030c6eb18666a877a93b55d30008c8d02346c1e88304382b085e08bfe99fbf3f"
+      "sha256": "e4e29388e6975f8496aad12820c9cf05103ac037d01270d8d18ce6e503844795"
     },
     {
       "name": "run-setup-full-access-412",
       "width": 412,
       "height": 915,
-      "sha256": "4826e8bad044d2852987e67b802a3dc139674c312e58d031026b8acfaec0ae11"
+      "sha256": "e13988920d5101955fe0c73834138cbe52234edb114345e0fa0cbd487291af30"
     },
     {
       "name": "run-setup-light-1440",
       "width": 1440,
       "height": 900,
-      "sha256": "81547d02cad18b279be8194ada058ad20c5b348495f6e6060b3e467e56822ccc"
+      "sha256": "1e0e6c848927f7a794e025a6136e5580a2e96d3280e06f65623936a46d0e6c3d"
     },
     {
       "name": "run-setup-light-390",
@@ -977,7 +977,7 @@
       "name": "run-setup-light-412",
       "width": 412,
       "height": 915,
-      "sha256": "ee3b75b2bf486ee0379dfb4f2ddc0fed0989f6da2d4831e53dc64b58838762c6"
+      "sha256": "5872fdda54d7006a49235e2c0f2279820a5aa5dbf0b73081d8fa2474470348f6"
     },
     {
       "name": "run-setup-model-stacked-dark-412",
