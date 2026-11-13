@@ -81,7 +81,7 @@ describe('command routes', () => {
     ).toEqual({ kind: 'prompt-text' });
   });
 
-  test('memory routes only list and get; a write stays prompt text', () => {
+  test('memory routes only list and get; a write is refused, never sent', () => {
     expect(
       resolveAcpCommandRoute(v3.initialize, { name: 'memory', args: '' }).route,
     ).toMatchObject({ method: '_kiro/memory/list' });
@@ -90,10 +90,59 @@ describe('command routes', () => {
       args: 'get m-1',
     });
     expect(get.params?.('s1')).toEqual({ sessionId: 's1', id: 'm-1' });
-    for (const args of ['create note', 'delete m-1', 'get'])
-      expect(
-        resolveAcpCommandRoute(v3.initialize, { name: 'memory', args }).route,
-      ).toEqual({ kind: 'prompt-text' });
+    for (const args of ['create note', 'delete m-1', 'get']) {
+      const refused = resolveAcpCommandRoute(v3.initialize, {
+        name: 'memory',
+        args,
+      });
+      expect(refused.params).toBeUndefined();
+      expect(refused.refusal).toMatch(/read-only forms of \/memory/);
+    }
+  });
+
+  test('only read-only subcommands route; trust, context and knowledge changes are refused', () => {
+    // kiro-cli (v2): `/tools trust-all` would stop it asking permission.
+    const tools = resolveAcpCommandRoute(v2.initialize, {
+      name: 'tools',
+      args: '',
+    });
+    expect(tools.route).toMatchObject({
+      method: '_kiro.dev/commands/execute',
+    });
+    expect(tools.refusal).toBeUndefined();
+    for (const [name, args] of [
+      ['tools', 'trust-all'],
+      ['tools', 'trust fs_write'],
+      ['tools', 'reset'],
+      ['knowledge', 'add notes ./docs'],
+      ['knowledge', 'clear'],
+      ['context', 'add src/**'],
+      ['context', 'rm src/**'],
+      ['context', 'clear'],
+    ] as const) {
+      const refused = resolveAcpCommandRoute(v2.initialize, { name, args });
+      expect(refused.params, `${name} ${args}`).toBeUndefined();
+      expect(refused.refusal, `${name} ${args}`).toContain(`/${name}`);
+    }
+    // The agent service (v3): `/context add` and `/knowledge remove` too.
+    for (const [name, args] of [
+      ['context', 'add x'],
+      ['knowledge', 'remove kb-1'],
+    ] as const) {
+      const refused = resolveAcpCommandRoute(v3.initialize, { name, args });
+      expect(refused.params).toBeUndefined();
+      expect(refused.refusal).toBeDefined();
+    }
+    expect(
+      resolveAcpCommandRoute(v3.initialize, {
+        name: 'context',
+        args: 'show',
+      }).params?.('s1'),
+    ).toEqual({ sessionId: 's1', subcommand: 'show' });
+    // A command no entry routes on this session is still prompt text.
+    expect(
+      resolveAcpCommandRoute(v2.initialize, { name: 'plan', args: 'x' }),
+    ).toEqual({ route: { kind: 'prompt-text' } });
   });
 
   test('settings sends the observer the engine requires', () => {

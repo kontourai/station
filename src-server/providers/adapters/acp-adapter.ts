@@ -2708,16 +2708,18 @@ export class AcpAdapter implements ProviderAdapterShape {
       input.threadId,
       turnId,
       record.promptEpoch,
-      invocation && routed?.params && sessionId
-        ? this.runEngineCommand(
-            record,
-            turnId,
-            invocation.name,
-            routed.route,
-            routed.params(sessionId),
-            () => record.process.prompt(content),
-          )
-        : record.process.prompt(content),
+      invocation && routed?.refusal
+        ? this.refuseEngineCommand(record, turnId, routed.refusal)
+        : invocation && routed?.params && sessionId
+          ? this.runEngineCommand(
+              record,
+              turnId,
+              invocation.name,
+              routed.route,
+              routed.params(sessionId),
+              () => record.process.prompt(content),
+            )
+          : record.process.prompt(content),
     );
 
     return {
@@ -2725,6 +2727,28 @@ export class AcpAdapter implements ProviderAdapterShape {
       turnId,
       resumeCursor: record.session.resumeCursor,
     };
+  }
+
+  /**
+   * A slash command whose subcommand Station does not run: nothing reaches
+   * the engine, and the turn shows why (acp-command-routes.ts `refusal`).
+   */
+  private async refuseEngineCommand(
+    record: AcpSessionRecord,
+    turnId: string,
+    text: string,
+  ): Promise<PromptResponse> {
+    this.publishForTurn(record, {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      itemId: `${turnId}:command`,
+      method: 'content.text-delta',
+      delta: text,
+    });
+    return { stopReason: 'end_turn' };
   }
 
   /**

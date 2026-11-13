@@ -426,6 +426,33 @@ describe.skipIf(process.platform === 'win32')(
       });
     });
 
+    test('`/tools trust-all` reaches the engine neither as a command nor as a prompt', async () => {
+      const engine = launch(profileOf('kiro-v2'), [
+        { kind: 'text', text: 'ok' },
+      ]);
+      await engine.start('trust-all');
+      const turnId = await engine.send('trust-all', '/tools trust-all');
+      await engine.completed(turnId);
+      const records = engine.record();
+      expect(records.some((entry) => entry.extMethod !== undefined)).toBe(
+        false,
+      );
+      expect(records.some((entry) => entry.method === 'session/prompt')).toBe(
+        false,
+      );
+      expect(turnText(engine, turnId)).toContain(
+        'Station runs only the read-only forms of /tools',
+      );
+      // The read-only form still runs as kiro-cli's own command.
+      const listed = await engine.send('trust-all', '/tools');
+      await engine.completed(listed);
+      expect(
+        engine
+          .record()
+          .find((entry) => entry.extMethod === '_kiro.dev/commands/execute'),
+      ).toMatchObject({ params: { command: { command: 'tools' } } });
+    });
+
     test('the session agent is sent as a client agent on session/new and again on load', async () => {
       const agent = { slug: 'reviewer' } as ResolvedAgentDefinition;
       const engine = launch(profileOf('kiro-v3'));

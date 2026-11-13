@@ -44,10 +44,12 @@ interface AcpCommandRouteEntry {
   /** The slash command's name, without the slash. */
   readonly command: string;
   /**
-   * The first argument words this entry takes. Absent: any. `''` stands for
-   * no argument at all. A subcommand outside the list is not routed.
+   * The first argument words this entry takes: its read-only subcommands.
+   * `''` stands for no argument at all. Every entry names them; a
+   * subcommand outside every applicable entry's list is refused, never sent
+   * (`/tools trust-all`, `/context add`, `/knowledge clear`).
    */
-  readonly subcommands?: readonly string[];
+  readonly subcommands: readonly string[];
   /**
    * The param key the argument word after the subcommand is sent under
    * (`/memory get <id>` sends `{ id }`). The entry is not routed without one.
@@ -67,6 +69,7 @@ const KAS_EVIDENCE =
 const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
   {
     command: 'compact',
+    subcommands: [''],
     description: "Compact the engine's conversation history",
     route: {
       kind: 'engine-request',
@@ -79,6 +82,7 @@ const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
   },
   {
     command: 'context',
+    subcommands: ['', 'show'],
     description: "Show what fills the engine's context",
     route: {
       kind: 'engine-request',
@@ -92,6 +96,7 @@ const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
   },
   {
     command: 'knowledge',
+    subcommands: ['', 'show'],
     description: "Show the engine's knowledge bases",
     route: {
       kind: 'engine-request',
@@ -105,6 +110,7 @@ const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
   },
   {
     command: 'code',
+    subcommands: ['', 'status'],
     description: "Show the engine's code intelligence",
     route: {
       kind: 'engine-request',
@@ -142,6 +148,7 @@ const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
   },
   {
     command: 'config-template',
+    subcommands: [''],
     description: "Show the engine's session configuration template",
     route: {
       kind: 'engine-request',
@@ -165,6 +172,7 @@ const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
   },
   {
     command: 'settings',
+    subcommands: [''],
     description: "Show the engine's effective settings (read-only)",
     route: {
       kind: 'engine-request',
@@ -177,6 +185,7 @@ const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
   },
   {
     command: 'export',
+    subcommands: [''],
     description: "Export the engine's record of this session",
     route: {
       kind: 'engine-request',
@@ -197,23 +206,33 @@ const DECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] = [
  * `model` (change what Station reports the session runs), and the
  * interactive ones (`paste`, `voice`, `reply`, `feedback`, `hooks`).
  */
-const KIRO_CLI_EXECUTE_COMMANDS: readonly string[] = [
-  'help',
-  'context',
-  'compact',
-  'usage',
-  'mcp',
-  'tools',
-  'knowledge',
-  'prompts',
-  'code',
-  'stats',
-  'guide',
+const KIRO_CLI_EXECUTE_COMMANDS: ReadonlyArray<{
+  command: string;
+  /** Read-only subcommands; `''` is the bare command. */
+  subcommands: readonly string[];
+}> = [
+  { command: 'help', subcommands: [''] },
+  // `add`, `rm` and `clear` change what the engine reads.
+  { command: 'context', subcommands: ['', 'show'] },
+  { command: 'compact', subcommands: [''] },
+  { command: 'usage', subcommands: [''] },
+  { command: 'mcp', subcommands: [''] },
+  // `trust`, `untrust`, `trust-all` and `reset` change which tools the engine
+  // runs without asking: `trust-all` would stop kiro-cli sending
+  // session/request_permission, so Station's approvals never see a call.
+  { command: 'tools', subcommands: ['', 'schema'] },
+  // `add`, `update`, `remove` and `clear` write the engine's knowledge.
+  { command: 'knowledge', subcommands: ['', 'show', 'status'] },
+  { command: 'prompts', subcommands: ['', 'list'] },
+  { command: 'code', subcommands: ['', 'status'] },
+  { command: 'stats', subcommands: [''] },
+  { command: 'guide', subcommands: [''] },
 ];
 
 const UNDECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] =
-  KIRO_CLI_EXECUTE_COMMANDS.map((command) => ({
+  KIRO_CLI_EXECUTE_COMMANDS.map(({ command, subcommands }) => ({
     command,
+    subcommands,
     identity: { agentInfoName: 'Kiro CLI Agent' },
     description: '',
     route: {
@@ -254,8 +273,7 @@ function entryTakes(
 ): boolean {
   if (entry.command !== invocation.name) return false;
   const [subcommand = '', argument] = words(invocation.args);
-  if (entry.subcommands && !entry.subcommands.includes(subcommand))
-    return false;
+  if (!entry.subcommands.includes(subcommand)) return false;
   if (entry.argumentKey && !argument) return false;
   return true;
 }
@@ -276,6 +294,13 @@ export interface AcpResolvedCommandRoute {
   readonly route: EngineCommandRoute;
   /** Present for an `engine-request` route: the request's params. */
   readonly params?: (sessionId: string) => Record<string, unknown>;
+  /**
+   * Present when this session routes the command but not this subcommand:
+   * nothing is sent, not even as prompt text, because the engine may run a
+   * slash command it receives as a prompt and the subcommands left out
+   * change its trust, context or knowledge. The text says so.
+   */
+  readonly refusal?: string;
 }
 
 /**
@@ -290,12 +315,29 @@ export function resolveAcpCommandRoute(
   const declared = new Set(
     declaredAcpExtensionMethods(handshake.agentCapabilities),
   );
-  const entry = [...DECLARED_COMMAND_ROUTES, ...UNDECLARED_COMMAND_ROUTES].find(
+  const applicable = [
+    ...DECLARED_COMMAND_ROUTES,
+    ...UNDECLARED_COMMAND_ROUTES,
+  ].filter(
     (candidate) =>
-      entryTakes(candidate, invocation) &&
+      candidate.command === invocation.name &&
       entryApplies(candidate, handshake, declared),
   );
-  if (!entry) return { route: PROMPT_TEXT };
+  const entry = applicable.find((candidate) =>
+    entryTakes(candidate, invocation),
+  );
+  if (!entry) {
+    if (applicable.length === 0) return { route: PROMPT_TEXT };
+    const allowed = [
+      ...new Set(applicable.flatMap((candidate) => candidate.subcommands)),
+    ]
+      .map((sub) => `/${invocation.name}${sub ? ` ${sub}` : ''}`)
+      .join(', ');
+    return {
+      route: PROMPT_TEXT,
+      refusal: `Station runs only the read-only forms of /${invocation.name} (${allowed}); it did not send this one to the engine.`,
+    };
+  }
   const { route } = entry;
   return {
     route,
