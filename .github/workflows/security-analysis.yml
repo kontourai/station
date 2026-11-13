@@ -1,8 +1,6 @@
 name: "PR: Security analysis"
 
 on:
-  push:
-    branches: [main]
   # The workflow definition is read from the protected base branch. Candidate
   # code runs only on the disposable GitHub-hosted runner below.
   pull_request_target:
@@ -10,6 +8,13 @@ on:
   merge_group:
     branches: [main]
     types: [checks_requested]
+  # Main is analysed daily rather than on every push: a push re-analysed the
+  # exact commit its merge group had already analysed. This run is what still
+  # fails on a stale baseline entry (see the policy step) and what uploads the
+  # default-branch TRAP cache merge groups restore. main-health.yml tracks a
+  # red run here as "Main pipeline red: PR: Security analysis".
+  schedule:
+    - cron: '11 9 * * *'
   workflow_dispatch:
 
 permissions:
@@ -49,6 +54,14 @@ jobs:
           comment-summary-in-pr: never
   codeql:
     name: CodeQL JavaScript and TypeScript
+    # Analyse once per landing, in the merge group, not again on every PR
+    # push. Skipped by `if`, the required context reports success on the PR,
+    # as build-ios-verification does when its classifier says irrelevant; the
+    # merge group then runs it for real. Dependency review still runs on PRs.
+    # The pull_request_target branches kept in the checkout refs, TRAP switch
+    # and stale-baseline mode below are inert behind this `if`; they keep a
+    # run under that event safe should the `if` ever be dropped.
+    if: ${{ github.event_name != 'pull_request_target' }}
     runs-on: ubuntu-22.04
     # A successful security-extended run took 10m55; retain bounded headroom
     # for post-analysis normalization and base-policy enforcement.
@@ -84,14 +97,13 @@ jobs:
       # this YAML from the protected base, and actionlint-gate.mjs pins the
       # exact string. Paths are relative to source-root (the candidate).
       #
-      # TRAP caching is off only under pull_request_target. There GITHUB_REF
-      # is the base branch, so CodeQL treats the run as default-branch
-      # analysis and uploads a TRAP cache built from the candidate (only
-      # GitHub's read-only token stopped it in run 35824349214). merge_group
-      # keeps restoring main's cache: CodeQL uploads TRAP caches only from the
-      # default branch, and a queue ref is not it. Overlay needs no switch:
-      # CodeQL picks restore-only Overlay mode whenever the event carries a
-      # pull_request, before its default-branch check.
+      # TRAP caching: the scheduled and dispatched runs on main upload the
+      # default-branch cache; merge_group only restores it, because CodeQL
+      # uploads TRAP caches only from the default branch and a queue ref is
+      # not it. The pull_request_target guard is defense in depth behind the
+      # job-level `if`: under that event GITHUB_REF is the base branch, so a
+      # run there would upload a cache built from the candidate (only
+      # GitHub's read-only token stopped it in run 35824349214).
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
@@ -127,9 +139,10 @@ jobs:
             exit 1
           fi
           node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-          # PRs read the baseline from the BASE checkout, so an entry a PR
-          # removes is invisible here; warn instead of failing or the baseline
-          # could never shrink through a green gate. Push-to-main enforces.
+          # A merge group reads the baseline from the BASE checkout, so an
+          # entry its candidate removes is invisible here; warn instead of
+          # failing or the baseline could never shrink through a green gate.
+          # The daily run on main enforces.
           STALE_BASELINE_MODE=fail
           if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
             STALE_BASELINE_MODE=warn

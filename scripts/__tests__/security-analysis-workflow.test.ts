@@ -19,7 +19,6 @@ describe('security analysis workflow', () => {
     expect(workflow).toContain(
       'merge_group:\n    branches: [main]\n    types: [checks_requested]',
     );
-    expect(workflow).toContain('push:\n    branches: [main]');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('runs-on: ubuntu-22.04');
     expect(workflow).toContain('contents: read');
@@ -27,6 +26,59 @@ describe('security analysis workflow', () => {
     expect(workflow).not.toContain('secrets.');
     expect(workflow).not.toContain('actions/cache@');
     expect(workflow).not.toContain('upload-artifact@');
+  });
+
+  // A push to main re-analysed the commit its merge group had already
+  // analysed, and the PR-event run repeated the analysis on every PR push.
+  test('analyses CodeQL once per landing: skipped on PR events, run in the merge group and daily on main', () => {
+    const document = load(workflow) as {
+      on: Record<string, unknown>;
+      jobs: Record<string, { if?: unknown }>;
+    };
+    expect(Object.keys(document.on).sort()).toEqual([
+      'merge_group',
+      'pull_request_target',
+      'schedule',
+      'workflow_dispatch',
+    ]);
+    expect(document.on).not.toHaveProperty('push');
+    expect(document.on.schedule).toEqual([{ cron: '11 9 * * *' }]);
+    expect(document.jobs.codeql.if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ github.event_name != 'pull_request_target' }}",
+    );
+    // Dependency review keeps its PR-event run unchanged.
+    expect(document.jobs['dependency-review'].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}",
+    );
+  });
+
+  // Only the main run can see a baseline entry the change removed, so it
+  // must fail rather than warn. Every trigger outside the warn list fails.
+  test('fails on a stale baseline entry in every run on main, warning only in candidate runs', () => {
+    const policy = (
+      load(workflow) as {
+        jobs: { codeql: { steps: Array<{ name?: string; run?: string }> } };
+      }
+    ).jobs.codeql.steps.find(
+      (step) => step.name === 'Normalize and enforce JavaScript SARIF policy',
+    )?.run;
+    expect(policy).toContain('STALE_BASELINE_MODE=fail\n');
+    expect(policy).toContain('--stale-baseline="$STALE_BASELINE_MODE"');
+    const warnLines = (policy ?? '')
+      .split('\n')
+      .filter(
+        (line) =>
+          line.trim().startsWith('if [') && line.includes('GITHUB_EVENT_NAME'),
+      );
+    expect(warnLines).toHaveLength(1);
+    const warnEvents = [
+      ...warnLines[0].matchAll(/"\$GITHUB_EVENT_NAME" = "([a-z_]+)"/g),
+    ].map(([, event]) => event);
+    expect(warnEvents).toEqual(['pull_request_target', 'merge_group']);
+    expect(warnEvents).not.toContain('schedule');
+    expect(warnEvents).not.toContain('workflow_dispatch');
   });
 
   test('runs dependency review as one pinned, action-only candidate job', () => {
@@ -199,8 +251,8 @@ describe('CodeQL skips test code only', () => {
     expect(ignoredByCodeql(patterns, path)).toBe(true);
   });
 
-  // push-to-main fails on a baseline entry that matches no result. An entry
-  // on an ignored path can never match again, so none may remain.
+  // The scheduled main run fails on a baseline entry that matches no result.
+  // An entry on an ignored path can never match again, so none may remain.
   test('keeps no grandfathered finding on a path the scan now ignores', () => {
     const baseline = JSON.parse(
       readFileSync('scripts/codeql-error-baseline.json', 'utf8'),

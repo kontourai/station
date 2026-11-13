@@ -2291,6 +2291,84 @@ describe('persistent runner policy', () => {
     },
   );
 
+  // CodeQL analyses each landing once, in its merge group (the PR-event run
+  // repeated it on every push). Pinned literals, independent of the gate.
+  const SECURITY_FILE = '.github/workflows/security-analysis.yml';
+  const CODEQL_GUARD_MESSAGE =
+    'security-analysis CodeQL must keep its exact job guard: skipped under pull_request_target, run in the merge group, on schedule and on dispatch';
+  const SECURITY_WORKFLOW_MESSAGE =
+    'security-analysis must retain the exact base-controlled workflow shape, triggers, permissions, and concurrency';
+  const ghExpr = (inner: string) => `\${{ ${inner} }}`;
+  const securityMessages = (
+    document: ReturnType<typeof securityAnalysisWorkflowDocument>,
+  ) =>
+    persistentRunnerPolicyFindings([{ file: SECURITY_FILE, document }])
+      .filter(({ file }: { file: string }) => file === SECURITY_FILE)
+      .map(({ message }: { message: string }) => message);
+
+  test('the checked-in security workflow skips CodeQL on PR events and runs it daily on main (false-positive control)', () => {
+    const document = securityAnalysisWorkflowDocument();
+    expect(document.jobs.codeql.if).toBe(
+      ghExpr("github.event_name != 'pull_request_target'"),
+    );
+    expect((document.on as Record<string, unknown>).schedule).toEqual([
+      { cron: '11 9 * * *' },
+    ]);
+    expect(securityMessages(document)).toEqual([]);
+  });
+
+  test.each([
+    ['dropped', undefined],
+    ['always()', ghExpr('always()')],
+    ['widened to every event', ghExpr("github.event_name != 'merge_group'")],
+    [
+      'inverted to PR events only',
+      ghExpr("github.event_name == 'pull_request_target'"),
+    ],
+  ])('rejects a CodeQL job guard that is %s', (_name, guard) => {
+    const document = securityAnalysisWorkflowDocument();
+    if (guard === undefined) delete document.jobs.codeql.if;
+    else document.jobs.codeql.if = guard;
+    expect(securityMessages(document)).toContain(CODEQL_GUARD_MESSAGE);
+  });
+
+  test.each([
+    [
+      'the per-push main trigger restored',
+      (on: Record<string, unknown>) => {
+        on.push = { branches: ['main'] };
+      },
+    ],
+    [
+      'the daily schedule dropped',
+      (on: Record<string, unknown>) => {
+        delete on.schedule;
+      },
+    ],
+    [
+      'the schedule moved to every hour',
+      (on: Record<string, unknown>) => {
+        on.schedule = [{ cron: '11 * * * *' }];
+      },
+    ],
+    [
+      'a second schedule added',
+      (on: Record<string, unknown>) => {
+        on.schedule = [{ cron: '11 9 * * *' }, { cron: '11 21 * * *' }];
+      },
+    ],
+    [
+      'manual dispatch dropped',
+      (on: Record<string, unknown>) => {
+        delete on.workflow_dispatch;
+      },
+    ],
+  ])('rejects security-analysis triggers with %s', (_name, mutate) => {
+    const document = securityAnalysisWorkflowDocument();
+    mutate(document.on as Record<string, unknown>);
+    expect(securityMessages(document)).toContain(SECURITY_WORKFLOW_MESSAGE);
+  });
+
   test.each([
     [
       'workflow NODE_OPTIONS',

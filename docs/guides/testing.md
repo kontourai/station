@@ -340,7 +340,7 @@ The sweep checks out only the workflow's trusted revision and installs no
 dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
 
 The sidebar names below describe the primary trigger or delivery family.
-`PR:` checks can also run on main pushes; `Main:` qualification runs after main
+`PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
 pushes, every six hours, or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
@@ -386,7 +386,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -409,7 +409,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
-| [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
+| [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events (dependency review only; CodeQL reports skipped); merge queue; UTC schedule: `11 9 * * *`; manual dispatch. |
 | [`source-availability.yml`](../../.github/workflows/source-availability.yml) | Source availability | **Main: Source availability** | main pushes. |
 | [`starved-pr-report.yml`](../../.github/workflows/starved-pr-report.yml) | Starved pull request report | **Repo: Starved PR report** | UTC schedule: `17 * * * *`; manual dispatch. |
 | [`testflight-delivery.yml`](../../.github/workflows/testflight-delivery.yml) | Deliver iOS TestFlight channel | **Release: TestFlight delivery** | reused by `Nightly: Native cohort`, `Nightly: Native staging`, `Release: Stage`, `Release: Internal TestFlight cohort`. |
