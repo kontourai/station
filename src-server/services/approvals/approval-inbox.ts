@@ -10,7 +10,11 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import {
+  inputRequestFromRequestEvent,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+} from '@kontourai/station-shared/input-request';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
   toolRequestFromPayload,
@@ -540,6 +544,8 @@ export function wireApprovalInboxNotifications(
         // #3390: a form is answered with content on its own card, against
         // the exact event the person saw; this card's decisions carry
         // neither and would be refused, so it offers only the way there.
+        // A link is opened from its own card too: an Allow here would say
+        // the person opened a link nobody showed them.
         //
         // docs/design/event-content-spill.md: a request whose content
         // (or a tool call it gates) was stored out of line, or whose
@@ -547,7 +553,7 @@ export function wireApprovalInboxNotifications(
         // allowed, so its card offers only Deny; opening the card is
         // the way to review and allow it. A bound call that arrives
         // later, or a refused allow, rewrites the card (below).
-        actions: inputRequestFromRequestEvent(event)
+        actions: isCardAnsweredRequestEvent(event)
           ? []
           : needsLoad
             ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
@@ -703,7 +709,7 @@ export function wireApprovalInboxNotifications(
         if (provider.isReadOnlyAttachedSession(event.threadId)) return;
         await scheduleOrchestrationApproval(
           event,
-          !inputRequestFromRequestEvent(event) &&
+          !isCardAnsweredRequestEvent(event) &&
             provider.requiresContentLoad(event),
         );
         approvalInboxOps.add(1, { action: 'opened', target: 'orchestration' });
@@ -914,6 +920,11 @@ function formatOrchestrationBody(
     return toolRequestIsPlanReview(toolName)
       ? `${form.requester} wants you to review a plan.`
       : `${form.requester} asked a question.`;
+  const link = inputRequestUrlFromRequestEvent(event);
+  if (link)
+    return link.body.purpose === 'mcp-sign-in'
+      ? `${link.requester} wants you to sign in.`
+      : `${link.requester} wants you to open a link.`;
   if (toolName) {
     return `${event.provider} wants approval to use ${toolName}.`;
   }

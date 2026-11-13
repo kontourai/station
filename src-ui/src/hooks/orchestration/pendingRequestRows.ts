@@ -5,7 +5,11 @@ import {
   requestBoundCallIds,
 } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import {
+  inputRequestFromRequestEvent,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+} from '@kontourai/station-shared/input-request';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
@@ -146,13 +150,14 @@ export function unansweredApprovalRequests(
   }
   const unanswered = open.filter(
     (request) =>
-      inputRequestFromRequestEvent(request) !== null ||
+      isCardAnsweredRequestEvent(request) ||
       !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
     const { toolName, toolInput } = toolRequestFromPayload(request.payload);
     const inputRequest = inputRequestFromRequestEvent(request);
+    const inputRequestUrl = inputRequestUrlFromRequestEvent(request);
     // docs/design/event-content-spill.md: a request that names its call
     // only by id (a Codex file change) is approved over that call's
     // arguments, which may be stored out of line; the card shows and loads
@@ -185,6 +190,7 @@ export function unansweredApprovalRequests(
       needsApproval: true,
       approvalId: request.requestId,
       ...(inputRequest ? { inputRequest } : {}),
+      ...(inputRequestUrl ? { inputRequestUrl } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
       // docs/design/event-content-spill.md: loaded whole before Allow.

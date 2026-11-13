@@ -34,7 +34,7 @@ describe('InputRequestUrlCard', () => {
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
     fireEvent.click(link);
-    expect(onRespond).toHaveBeenCalledWith('opened');
+    expect(onRespond).toHaveBeenCalledWith('accept');
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toBe(
         'Opened remote’s link',

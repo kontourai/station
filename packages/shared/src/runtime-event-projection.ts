@@ -36,6 +36,7 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
 } from './input-request.js';
 import {
   toolRequestDisplayName,
@@ -1324,7 +1325,7 @@ export function projectRuntimeEventsToMessages(
         // `request.resolved`, so an answer given anywhere — this device,
         // another one, a timeout — leaves a trace.
         const openRecord = (
-          kind: 'form' | 'decision',
+          kind: 'form' | 'decision' | 'url',
           requester: string,
           message: string,
         ) => {
@@ -1356,6 +1357,12 @@ export function projectRuntimeEventsToMessages(
         const form = inputRequestFromRequestEvent(ev);
         if (form) {
           openRecord('form', form.requester, inputRequestSummary(form.message));
+          break;
+        }
+        // A link is opened from its own card too, never allowed in a click.
+        const link = inputRequestUrlFromRequestEvent(ev);
+        if (link) {
+          openRecord('url', link.requester, inputRequestSummary(link.message));
           break;
         }
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;

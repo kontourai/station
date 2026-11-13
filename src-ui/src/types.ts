@@ -16,6 +16,7 @@ import type { ClientOriginSender } from '@kontourai/station-contracts/client-ori
 import type {
   InputRequestForm,
   InputRequestRecord,
+  InputRequestUrl,
 } from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
@@ -279,6 +280,11 @@ export interface ChatMessage {
      * elicitation), answered on the pending-requests card.
      */
     inputRequest?: InputRequestForm;
+    /**
+     * An open link request (an MCP server's sign-in page, a URL-mode
+     * elicitation, an engine's link), opened from the pending-requests card.
+     */
+    inputRequestUrl?: InputRequestUrl;
     /** #3390: an `input-request` part's record; see `MessagePart`. */
     inputRequestRecord?: InputRequestRecord;
     cancelled?: boolean;

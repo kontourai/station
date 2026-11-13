@@ -14,6 +14,8 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
   readInputRequestForm,
   readInputRequestLink,
   readInputRequestResponse,
@@ -812,16 +814,50 @@ describe('URL requests', () => {
     expect(readInputRequestUrl({ ...request, source: 'approval' })).toBeNull();
   });
 
-  test('a URL answer is opened or cancel, nothing else', () => {
-    expect(readInputRequestUrlResponse({ action: 'opened' })).toEqual({
-      action: 'opened',
+  test('a URL answer is accept or cancel, nothing else', () => {
+    expect(readInputRequestUrlResponse({ action: 'accept' })).toEqual({
+      action: 'accept',
     });
     expect(readInputRequestUrlResponse({ action: 'cancel' })).toEqual({
       action: 'cancel',
     });
-    expect(readInputRequestUrlResponse({ action: 'accept' })).toBeNull();
+    // One vocabulary: `opened` is the transcript outcome, never an answer.
+    expect(readInputRequestUrlResponse({ action: 'opened' })).toBeNull();
     expect(
-      readInputRequestUrlResponse({ action: 'opened', url: 'https://x' }),
+      readInputRequestUrlResponse({ action: 'accept', url: 'https://x' }),
+    ).toBeNull();
+  });
+
+  test('a URL request event is read as a link answered on its own card', () => {
+    const inputRequest = {
+      schema: 'station.input-request/v1',
+      source: 'harness:kiro',
+      requester: 'Kiro',
+      message: 'Sign in to the docs server',
+      body: {
+        kind: 'url',
+        url: 'https://auth.example.com/authorize?x=1',
+        purpose: 'mcp-sign-in',
+      },
+    };
+    const event = { payload: { inputRequest } };
+    expect(inputRequestUrlFromRequestEvent(event)).toEqual(inputRequest);
+    expect(isCardAnsweredRequestEvent(event)).toBe(true);
+    // Not a form, and an approval with no input request is neither.
+    expect(inputRequestFromRequestEvent(event)).toBeNull();
+    expect(isCardAnsweredRequestEvent({ payload: { toolName: 'bash' } })).toBe(
+      false,
+    );
+    // A link Station would not show is no card at all.
+    expect(
+      inputRequestUrlFromRequestEvent({
+        payload: {
+          inputRequest: {
+            ...inputRequest,
+            body: { ...inputRequest.body, url: 'http://insecure.example.com' },
+          },
+        },
+      }),
     ).toBeNull();
   });
 

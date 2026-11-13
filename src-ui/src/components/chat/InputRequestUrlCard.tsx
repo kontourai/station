@@ -19,7 +19,8 @@ const PURPOSE_TITLE: Record<InputRequestUrl['body']['purpose'], string> = {
  * A `station.input-request/v1` URL request: a link the source wants the
  * person to open (an MCP server's sign-in page, a URL-mode elicitation, an
  * engine's link). Station never opens it: the person does, and the answer
- * says only that they did (`opened`) or that they cancelled. The link's host
+ * says only that they did (`accept`, recorded as opened) or that they
+ * cancelled. The link's host
  * is shown beside the button, so the person sees where it goes.
  */
 export function InputRequestUrlCard({
@@ -53,7 +54,7 @@ export function InputRequestUrlCard({
   if (done)
     return (
       <p className="input-request-card__provenance" role="status">
-        {done === 'opened'
+        {done === 'accept'
           ? `Opened ${request.requester}’s link`
           : `Cancelled ${request.requester}’s request`}
       </p>
@@ -102,7 +103,7 @@ export function InputRequestUrlCard({
                     event.preventDefault();
                     return;
                   }
-                  void respond('opened');
+                  void respond('accept');
                 }}
               >
                 {request.body.purpose === 'mcp-sign-in'

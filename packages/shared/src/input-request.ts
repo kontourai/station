@@ -467,7 +467,7 @@ export function readInputRequestUrlResponse(
 ): InputRequestUrlResponse | null {
   const value = own(input);
   if (!value || Object.keys(value).length !== 1) return null;
-  return value.action === 'opened' || value.action === 'cancel'
+  return value.action === 'accept' || value.action === 'cancel'
     ? { action: value.action }
     : null;
 }
@@ -653,6 +653,34 @@ export function inputRequestFromRequestEvent(
         : 'The agent has questions for you',
     body: { kind: 'form', fields: legacy.map(harnessQuestionField) },
   });
+}
+
+/**
+ * The URL request a `request.opened` event carries (its `inputRequest` with
+ * a `url` body), or null. Like a form, it is answered on its own card: the
+ * person opens the link there, so no one-click Allow may stand in for it.
+ */
+export function inputRequestUrlFromRequestEvent(
+  event: { payload?: Record<string, unknown> } | undefined,
+): InputRequestUrl | null {
+  const payload = own(event?.payload);
+  if (!payload || payload.inputRequest === undefined) return null;
+  return readInputRequestUrl(payload.inputRequest);
+}
+
+/**
+ * Whether a `request.opened` event is answered on its own card (a form or
+ * a link) rather than by an approval's Allow/Deny.
+ */
+export function isCardAnsweredRequestEvent(
+  event:
+    | { provider?: string; title?: string; payload?: Record<string, unknown> }
+    | undefined,
+): boolean {
+  return (
+    inputRequestFromRequestEvent(event) !== null ||
+    inputRequestUrlFromRequestEvent(event) !== null
+  );
 }
 
 /**

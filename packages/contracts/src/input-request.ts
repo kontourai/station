@@ -86,11 +86,13 @@ export interface InputRequestUrlBody {
 }
 
 /**
- * The answer to a URL request. `opened` records that the person opened the
- * link from Station; it says nothing about what they did there.
+ * The answer to a URL request, in the same vocabulary as every other answer
+ * (MCP elicitation's, and the `respondToRequest` decision): `accept` records
+ * that the person opened the link from Station, and says nothing about what
+ * they did there. Its transcript outcome is `opened`.
  */
 export type InputRequestUrlResponse =
-  | { action: 'opened' }
+  | { action: 'accept' }
   | { action: 'cancel' };
 
 export interface InputRequestFormBody {
