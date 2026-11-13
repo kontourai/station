@@ -99,7 +99,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     id: 'kiro-kas-bundle',
     name: 'Kiro (KAS, no CLI)',
     description:
-      "Kiro's agent service, installed by Station from a pinned build. Station keeps the Kiro sign-in; no kiro-cli needed.",
+      "Kiro's agent service, run from a pinned build Station downloads. Station keeps the Kiro sign-in; no kiro-cli needed.",
     // Not a program on PATH: Station resolves it at launch to the installed
     // runtime and `managedRuntime.argv` (managed-engine-install.ts).
     command: managedRuntimeCommand(KAS_INSTALL_ID),
