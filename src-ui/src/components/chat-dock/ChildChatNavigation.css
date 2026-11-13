@@ -66,7 +66,7 @@
 }
 @media (max-width: 600px) {
   .child-chat-trail__segment:not(:last-child) {
-    flex: 0 1 64px;
+    flex: 0 1 44px;
   }
 }
 
