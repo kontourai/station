@@ -92,7 +92,9 @@ Every turn is answered by the stub (`ok`). No real model is called.
   applied, a missing tail appended to its longest existing prefix), and
   containment is by whole path segment, so `HOME=<scratch>/../outside` and
   a link under the scratch root that points outside it do not count. On
-  Linux the entries are the NUL-separated `/proc/<pid>/environ`. On macOS
+  Linux the entries are the NUL-separated `/proc/<pid>/environ`, parsed as
+  strictly as on macOS: at most 6 MiB (the most `execve` hands a process),
+  and every entry, the last included, must end with a NUL. On macOS
   they are read with sysctl `KERN_PROCARGS2`, the kernel's NUL-separated
   copy of the process's arguments and environment, through a small
   `python3 -I` ctypes helper; `ps -E` joins the same entries with spaces, so
@@ -103,7 +105,8 @@ Every turn is answered by the stub (`ok`). No real model is called.
   `kern.argmax`, `argc` must be 0 or more and no more than the block can
   hold, and the executable path, every argument and every environment entry
   must end with a NUL inside the returned size. A block that fails any of
-  these is a read failure: the process is never tagged, and the run lists it
+  these, on either platform, is a read failure: the process is never
+  tagged, and the run lists it
   (`environmentReadFailures` in the result, `ENVIRONMENT UNREADABLE` lines in
   the output). A process whose entries cannot be read is never tagged, and
   if the helper cannot run at all (no `python3`), the run fails rather than
@@ -132,9 +135,9 @@ environment carries no run tag is not found (see [Gaps](#gaps)).
 
 ### Ownership: kill-eligible and report-only
 
-Everything above counts toward the measurement. Exactly two kinds of signal
-are ever sent, and both are default-deny: a process or group is signalled
-only when it is affirmatively shown to qualify.
+Everything above counts toward the measurement. Signals are sent under
+exactly three rules, and each is default-deny: a process or group is
+signalled only when it is affirmatively shown to qualify.
 
 - **A. A process carrying the run's nonce.** A process whose environment,
   read exactly as above, contains the entry `STATION_WEIGHT_RUN=<nonce>` is
@@ -158,6 +161,18 @@ only when it is affirmatively shown to qualify.
   it left is found and reported by the leftover accounting. Other callers of
   owned-process keep its existing behavior, which signals the group id even
   after the leader is gone.
+- **C. A child the run spawned, through its own handle.** The control
+  engine processes the Agent SDK starts (see *Control request* below) are
+  spawned by the run, which keeps each one's `ChildProcess`. They are
+  signalled only through that handle's `kill`, and only while Node has not
+  reaped them: right before each signal, `exitCode` and `signalCode` must
+  both still be null. Node records them in the callback that reaps the
+  child, and an unreaped pid cannot be reused, so the handle still names the
+  process the run spawned. Every path that ends them goes through that
+  `kill`: the run's cleanup (SIGTERM, then SIGKILL after 5 s), the SDK's
+  own close and escalation, its kill-all when the run's process exits, and
+  the abort signal Node wires to `kill`. No environment is read for this:
+  the handle, not a pid, is the identity.
 
 Every other process the run counts is *report-only*: a recorded root
 without the nonce, one found only by ancestry, only because a read saw it in
@@ -184,8 +199,12 @@ has no call that signals a pid only while it names one process.
 
 The tests follow the same rules: children a test spawned are killed through
 its own `ChildProcess` handles, which Node signals only until it has reaped
-them; detached test daemons exit on their own when the test's lease file is
-removed; and the end-to-end test ends the daemon it leaks only under rule A.
+them, as under rule C; and the end-to-end test ends the daemon it leaks only
+under rule A. Detached test daemons, which have no handle in the test, are
+never signalled: each exits on its own when the test's lease file is
+removed, when its owner (the test worker, passed in as pid plus birth) no
+longer answers or has another birth, or at a deadline (60 s; 120 s for the
+end-to-end daemon), so a killed test worker does not leak them.
 
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out

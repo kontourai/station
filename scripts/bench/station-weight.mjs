@@ -692,10 +692,41 @@ export function exactStarts(
 }
 
 /**
+ * The most environment a Linux process can start with: execve caps
+ * arguments plus environment at 3/4 of _STK_LIM (8 MiB), fs/exec.c.
+ */
+const LINUX_ENVIRON_MAX_BYTES = 6 * 1024 * 1024;
+
+/**
+ * The entries of a `/proc/<pid>/environ` read, parsed as strictly as the
+ * macOS block (see PROCARGS_SCRIPT): at most LINUX_ENVIRON_MAX_BYTES, and
+ * every entry, the last included, ends with a NUL. An empty read is an empty
+ * environment. Anything else is `{ malformed: <reason> }`, so a process whose
+ * environment area was rewritten or cut short is never tagged and is counted
+ * as a read failure. The size is the UTF-8 length of the decoded text, which
+ * is never less than the bytes read. The arguments are not held to this:
+ * they only exclude a process, never tag it.
+ * @param {string} text
+ * @returns {string[] | { malformed: string }}
+ */
+function parseLinuxEnviron(text) {
+  const bytes = Buffer.byteLength(text);
+  if (bytes > LINUX_ENVIRON_MAX_BYTES)
+    return {
+      malformed: `size ${bytes} outside 0..${LINUX_ENVIRON_MAX_BYTES}`,
+    };
+  if (text && !text.endsWith('\0')) {
+    const entries = text.split('\0').length - 1;
+    return { malformed: `unterminated environment entry ${entries}` };
+  }
+  return text.split('\0').filter(Boolean);
+}
+
+/**
  * pid -> exact environment and argument entries for each row whose read
- * still belongs to that row's process. Linux: `/proc/<pid>/environ` and
- * `cmdline`, accepted only if the pid still has the row's start ticks
- * afterwards. macOS: KERN_PROCARGS2 (see darwinProcessArguments), accepted
+ * still belongs to that row's process. Linux: `/proc/<pid>/environ` (parsed
+ * strictly, see parseLinuxEnviron) and `cmdline`, accepted only if the pid
+ * still has the row's start ticks afterwards. macOS: KERN_PROCARGS2 (see darwinProcessArguments), accepted
  * only if the start time read around it is the row's birth second. Each
  * entry carries the exact birth it was read under (see exactStarts). A
  * process whose entries cannot be read gets no entry, so it is never tagged;
@@ -724,8 +755,18 @@ function environments(
           `${row.started.slice(0, row.started.lastIndexOf(':') + 1)}${recheck.startTicks}`
       )
         continue;
+      const env = parseLinuxEnviron(entries);
+      if (!Array.isArray(env)) {
+        readFailures?.push({
+          pid: row.pid,
+          started: row.started,
+          command: row.command,
+          reason: env.malformed,
+        });
+        continue;
+      }
       tests.set(row.pid, {
-        env: entries.split('\0').filter(Boolean),
+        env,
         argv: argv.split('\0').filter(Boolean),
         exactStart: row.started,
       });
@@ -1659,6 +1700,35 @@ export function bundledClaudeExecutable() {
   }
 }
 
+/**
+ * Spawns one control-engine process for the Agent SDK, under rule C of the
+ * ownership contract (docs/reference/station-weight.md): a child this run
+ * spawned is signalled only through its own ChildProcess handle, and only
+ * while Node has not reaped it. Every signal it can receive goes through the
+ * returned child's `kill`: the run's cleanup, the SDK's own (close, its
+ * SIGTERM/SIGKILL escalation, its kill-all on process exit) and the abort
+ * `signal` Node wires to `kill`. That `kill` sends nothing once Node has
+ * recorded an exit status (`exitCode` or `signalCode`), which it records in
+ * the callback that reaps the child, so an unreaped pid cannot name another
+ * process. No environment is checked: the handle, not a pid, is the
+ * identity.
+ * @param {{ command: string, args: string[], cwd?: string, env: NodeJS.ProcessEnv, signal?: AbortSignal }} options
+ * @param {typeof spawn} [spawnChild]
+ */
+export function spawnControlChild(options, spawnChild = spawn) {
+  const child = spawnChild(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    signal: options.signal,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const kill = child.kill.bind(child);
+  child.kill = (signal) =>
+    child.exitCode === null && child.signalCode === null && kill(signal);
+  return child;
+}
+
 async function controlRequest({ cwd, env, stub, executable, model }) {
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
   const from = stub.requests.length;
@@ -1672,13 +1742,7 @@ async function controlRequest({ cwd, env, stub, executable, model }) {
       // Same model as Station's turn, so model-specific lines cancel out.
       ...(model ? { model } : {}),
       spawnClaudeCodeProcess: (options) => {
-        const child = spawn(options.command, options.args, {
-          cwd: options.cwd,
-          env: options.env,
-          signal: options.signal,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsHide: true,
-        });
+        const child = spawnControlChild(options);
         children.push(child);
         return child;
       },
@@ -1691,7 +1755,8 @@ async function controlRequest({ cwd, env, stub, executable, model }) {
     clearTimeout(deadline);
     run.close?.();
     // The control engine must be gone before the leftover check, which
-    // would otherwise have to tell it apart from Station's processes.
+    // would otherwise have to tell it apart from Station's processes. Rule
+    // C: each kill below is the guarded one from spawnControlChild.
     for (const child of children) {
       if (child.exitCode !== null || child.signalCode !== null) continue;
       const exited = once(child, 'exit');

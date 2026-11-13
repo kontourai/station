@@ -289,6 +289,14 @@ export function executeOwnedProcess(
      * cannot have been reused, and resolves `{ signalled }`; otherwise it
      * signals the group id whatever happened to the leader (descendants
      * that outlive it are the point of a tree kill), and resolves undefined.
+     *
+     * With `onlyWhileLeaderUnreaped`, call it only from a timer, an I/O
+     * callback or a continuation of one, never from code that runs inside
+     * another child's `exit` handler, including the microtasks and
+     * `nextTick`s that handler queues. libuv reaps every child that exited
+     * in one pass before it runs their exit callbacks, so there this leader
+     * may already be reaped with `exitCode` and `signalCode` still null,
+     * and its group id signalled after it could have been reused.
      * @param {{ onlyWhileLeaderUnreaped?: boolean }} [options]
      */
     forceTerminate: (options) =>

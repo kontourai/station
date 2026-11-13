@@ -13,6 +13,7 @@ import {
   taggedRows,
 } from '../bench/station-weight.mjs';
 import { STATION_WEIGHT_BUDGETS } from '../bench/station-weight-budgets.mjs';
+import { birthOf, daemonSource } from './helpers/station-weight-daemon.js';
 
 const makeTempDir = trackTempDirs();
 const posix = ['darwin', 'linux'].includes(process.platform);
@@ -23,6 +24,8 @@ const BASELINE = JSON.parse(
   ),
 );
 let leakedCleanup: (() => void) | undefined;
+/** This worker, as the owner of the daemon the test leaks. */
+const WORKER = { pid: process.pid, birth: birthOf(process.pid) };
 
 // The run is expected to have ended the daemon already. Cleanup follows the
 // run's own rule (contract A): the daemon is signalled only if its exact
@@ -48,7 +51,11 @@ function leakDuringShutdown(
     [
       '-e',
       `const { spawn } = require('node:child_process');
-       const daemon = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+       const daemon = spawn(process.execPath, ['-e', ${JSON.stringify(
+         // Ended by the run under rule A. If this worker is killed first,
+         // the daemon exits with it, or after two minutes at most.
+         daemonSource({ owner: WORKER, deadlineMs: 120_000 }),
+       )}], { detached: true, stdio: 'ignore' });
        daemon.unref();
        process.stdout.write(String(daemon.pid));`,
     ],

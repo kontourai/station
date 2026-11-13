@@ -24,6 +24,7 @@ import {
   runTagKind,
   sampleTreeCpu,
   signalIfSame,
+  spawnControlChild,
   taggedRows,
   withMemory,
 } from '../bench/station-weight.mjs';
@@ -411,6 +412,65 @@ const verdictOf = (
   verdicts: Array<{ id: string; verdict: string }>,
   id: string,
 ) => verdicts.find((entry) => entry.id === id)?.verdict;
+
+describe('station-weight control engine signals (rule C)', () => {
+  /** A child as Node's spawn returns it, recording each signal it is sent. */
+  const fakeSpawn = () => {
+    const sent: string[] = [];
+    const calls: unknown[][] = [];
+    const child = {
+      exitCode: null as number | null,
+      signalCode: null as string | null,
+      kill(signal: string) {
+        sent.push(signal);
+        return true;
+      },
+    };
+    const spawnChild = (...args: unknown[]) => {
+      calls.push(args);
+      return child;
+    };
+    return { child, sent, calls, spawnChild };
+  };
+  const options = {
+    command: '/bin/claude',
+    args: ['--print'],
+    cwd: '/repo',
+    env: { HOME: '/home' },
+    signal: new AbortController().signal,
+  };
+
+  test('the SDK and the run signal a control child only until Node records its exit', () => {
+    for (const exit of [
+      { exitCode: 0, signalCode: null },
+      { exitCode: null, signalCode: 'SIGTERM' },
+    ]) {
+      const fake = fakeSpawn();
+      const child = spawnControlChild(options, fake.spawnChild as never);
+      expect(fake.calls).toEqual([
+        [
+          '/bin/claude',
+          ['--print'],
+          {
+            cwd: '/repo',
+            env: { HOME: '/home' },
+            signal: options.signal,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            windowsHide: true,
+          },
+        ],
+      ]);
+      // Unreaped: the handle's own kill runs.
+      expect(child.kill('SIGTERM')).toBe(true);
+      expect(fake.sent).toEqual(['SIGTERM']);
+      // Reaped: whatever calls kill (the SDK's escalation timer, its
+      // kill-all on exit, the abort signal), nothing is sent.
+      Object.assign(fake.child, exit);
+      expect(child.kill('SIGKILL')).toBe(false);
+      expect(fake.sent).toEqual(['SIGTERM']);
+    }
+  });
+});
 
 describe('station-weight budgets', () => {
   test('a run at its baseline compares every comparable budget and passes', () => {
@@ -1097,6 +1157,74 @@ describe('station-weight process identity', () => {
     expect(tagged(statLine(10, { start: 500 }))).toEqual([10]);
     // The environment read belonged to whatever reused pid 10.
     expect(tagged(statLine(10, { start: 900 }))).toEqual([]);
+  });
+
+  test('a malformed Linux environment is unreadable, never kill-eligible', () => {
+    const nonce = '9a'.repeat(16);
+    const tagging = runTagging({
+      nonce,
+      scratch: '/tmp/station-weight-v',
+      startedAtMs: 1_700_000_000_000,
+      uid: 501,
+    });
+    const tableRow = {
+      ...row(12, 1, 'linux:boot:500'),
+      uid: 501,
+      startedAtMs: 1_700_000_005_000,
+    };
+    const ownership = (environ: string) => {
+      const readFailures: Array<{
+        pid: number;
+        started: string;
+        command: string;
+        reason: string;
+      }> = [];
+      const rows = killEligibility(
+        [tableRow],
+        taggedRows([tableRow], tagging, {
+          platform: 'linux',
+          readFailures,
+          readFile: linux(
+            {
+              '/proc/12/environ': environ,
+              '/proc/12/cmdline': 'node\0-e\0x\0',
+              '/proc/12/stat': statLine(12, { start: 500 }),
+            },
+            [12],
+          ).readFile,
+        }),
+      );
+      return {
+        eligible: rows.filter((entry) => entry.killEligible).map((e) => e.pid),
+        failures: readFailures.map(({ pid, reason }) => ({ pid, reason })),
+      };
+    };
+    // Positive control: the same entry, terminated.
+    expect(ownership(`PATH=/bin\0STATION_WEIGHT_RUN=${nonce}\0`)).toEqual({
+      eligible: [12],
+      failures: [],
+    });
+    expect(ownership('')).toEqual({ eligible: [], failures: [] });
+    // The reviewer's probe: the tag as an unterminated last entry.
+    expect(ownership(`PATH=/bin\0STATION_WEIGHT_RUN=${nonce}`)).toEqual({
+      eligible: [],
+      failures: [{ pid: 12, reason: 'unterminated environment entry 1' }],
+    });
+    expect(ownership(`STATION_WEIGHT_RUN=${nonce}`)).toEqual({
+      eligible: [],
+      failures: [{ pid: 12, reason: 'unterminated environment entry 0' }],
+    });
+    // Past the size an execve can hand a process (6 MiB).
+    const oversized = `STATION_WEIGHT_RUN=${nonce}\0${'X=y\0'.repeat(1_600_000)}`;
+    expect(ownership(oversized)).toEqual({
+      eligible: [],
+      failures: [
+        {
+          pid: 12,
+          reason: `size ${Buffer.byteLength(oversized)} outside 0..6291456`,
+        },
+      ],
+    });
   });
 
   test('only a whole environment entry carries the run tag', () => {

@@ -31,6 +31,10 @@ import {
   survivors,
   taggedRows,
 } from '../bench/station-weight.mjs';
+import {
+  birthOf,
+  daemonSource as boundedDaemonSource,
+} from './helpers/station-weight-daemon.js';
 
 // Fast real-process mechanics of the station-weight check. The full run
 // against an isolated Station is station-weight.end-to-end.process.test.ts.
@@ -43,7 +47,8 @@ const posix = ['darwin', 'linux'].includes(process.platform);
 // Cleanup never signals a process by pid alone. Children this file spawned
 // are killed through their own ChildProcess handles, which Node signals only
 // until it has reaped them. Detached daemons, which have no handle here, exit
-// on their own once the test's lease file is gone.
+// on their own once the test's lease file is gone, once this worker is gone
+// (a killed worker never removes the lease), or after 60 s.
 const children: ChildProcess[] = [];
 let lease = '';
 
@@ -62,9 +67,16 @@ afterEach(() => {
   rmSync(lease, { force: true });
 });
 
-/** An idle daemon body that exits within 100 ms of its lease file going. */
-const daemonSource = () =>
-  `const lease = ${JSON.stringify(lease)}; setInterval(() => { try { require('node:fs').statSync(lease); } catch { process.exit(0); } }, 100);`;
+/** This worker, as the owner of every daemon its tests start. */
+const WORKER = { pid: process.pid, birth: birthOf(process.pid) };
+
+/**
+ * An idle daemon body that exits within 100 ms of its lease file going, and
+ * also on its own bounds (see boundedDaemonSource).
+ */
+const daemonSource = () => boundedDaemonSource({ owner: WORKER, lease });
+
+const idleSource = `process.stdout.write('ready\\n'); setInterval(() => {}, 1000);`;
 
 const identity = (pid: number) => {
   const row = processTable().find((entry) => entry.pid === pid);
@@ -114,6 +126,61 @@ const detachSource = () => `const { spawn } = require('node:child_process');
     child.unref();
     return child.pid;
   };`;
+
+describe.skipIf(!posix)('station-weight test daemons', () => {
+  /** A daemon spawned with a handle, so the test can watch it exit. */
+  const daemon = (source: string) => {
+    const child = spawn(process.execPath, ['-e', source], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    children.push(child);
+    return child;
+  };
+  const exitsWithin = (child: ChildProcess, ms: number) =>
+    Promise.race([exited(child).then(() => true), wait(ms).then(() => false)]);
+
+  test('a daemon exits once its owner is gone, though its lease remains', async () => {
+    const { child: owner, firstLine } = start(idleSource);
+    await firstLine;
+    const child = daemon(
+      boundedDaemonSource({
+        owner: {
+          pid: owner.pid as number,
+          birth: birthOf(owner.pid as number),
+        },
+        lease,
+      }),
+    );
+    // Positive control: alive while its owner and lease are.
+    expect(await exitsWithin(child, 600)).toBe(false);
+    owner.kill('SIGKILL');
+    await exited(owner);
+    expect(await exitsWithin(child, 2_000)).toBe(true);
+    expect(child.exitCode).toBe(0);
+  });
+
+  test('a daemon exits when its owner pid has another birth', async () => {
+    const child = daemon(
+      boundedDaemonSource({
+        owner: { pid: process.pid, birth: 'another process' },
+        lease,
+        birthCheckMs: 500,
+      }),
+    );
+    expect(await exitsWithin(child, 3_000)).toBe(true);
+    expect(child.exitCode).toBe(0);
+  });
+
+  test('a daemon exits at its deadline, though its owner and lease remain', async () => {
+    const child = daemon(
+      boundedDaemonSource({ owner: WORKER, lease, deadlineMs: 800 }),
+    );
+    expect(await exitsWithin(child, 3_000)).toBe(true);
+    expect(child.exitCode).toBe(0);
+  });
+});
 
 describe.skipIf(!posix)('station-weight process tree ownership', () => {
   test('finds a grandchild that outlives its parent by recorded identity', async () => {
@@ -211,6 +278,13 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     expect(alive(spawnedDuringShutdown)).toBe(true);
     const left = leftoverAfterStop(beforeStop, processTable(), tagging);
     expect(left.map((row) => row.pid)).toEqual([spawnedDuringShutdown]);
+    // Ended here under rule A: left to its lease, it could still be alive,
+    // and tagged, when the next test reads the table.
+    expect(endRunProcesses(left)).toMatchObject({
+      killed: [spawnedDuringShutdown],
+    });
+    await wait(200);
+    expect(alive(spawnedDuringShutdown)).toBe(false);
   });
 
   test('a process carrying the control tag or no run tag is not a leftover', async () => {
