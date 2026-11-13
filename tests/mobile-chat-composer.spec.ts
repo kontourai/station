@@ -2819,6 +2819,36 @@ test('an iPhone 15 portrait inset is honoured once by the maximized chat', async
 
 test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
   test.use({ hasTouch: true, isMobile: true });
+  for (const theme of ['dark', 'light']) {
+    test(`landscape typing keeps Run setup in the send row in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 852, height: 393 });
+      await mockChatShell(page);
+      const textarea = await openComposer(page, true);
+      await page.evaluate(
+        (theme) => document.documentElement.setAttribute('data-theme', theme),
+        theme,
+      );
+      await textarea.fill('Landscape draft');
+      const composer = page.locator('.chat-input');
+      const trigger = composer
+        .locator('.chat-controls-row')
+        .getByTestId('run-setup-trigger');
+      await expect(trigger).toBeVisible();
+      await expect(composer.locator('.chat-input__meta')).toBeHidden();
+      await expect(textarea).toBeFocused();
+      await page.screenshot({
+        path: testInfo.outputPath(`landscape-typing-${theme}.png`),
+      });
+      await trigger.click();
+      await expect(
+        page.getByRole('dialog', { name: 'Run setup', exact: true }),
+      ).toBeVisible();
+      await closeRunSetup(page);
+      await expect(textarea).toHaveValue('Landscape draft');
+    });
+  }
   test('a landscape iPhone keeps the chat clear of its side insets', async ({
     page,
   }) => {
@@ -3188,7 +3218,10 @@ for (const viewport of [
     expect(textareaBox).not.toBeNull();
     expect(textareaBox!.width).toBeGreaterThanOrEqual(inputBox!.width * 0.9);
 
-    const drafts = page.getByRole('button', { name: 'Drafts', exact: true });
+    const drafts = page.getByRole('button', {
+      name: 'More draft options',
+      exact: true,
+    });
     await expect(drafts).toBeVisible();
     const draftsBox = await drafts.boundingBox();
     expect(draftsBox!.y).toBeGreaterThanOrEqual(
@@ -3196,6 +3229,9 @@ for (const viewport of [
     );
     expect(draftsBox!.x + draftsBox!.width).toBeLessThanOrEqual(viewport.width);
     await drafts.click();
+    await page
+      .getByRole('menuitem', { name: 'Saved drafts', exact: true })
+      .click();
     await expect(
       page.getByRole('dialog', { name: 'Saved drafts' }),
     ).toBeVisible();
@@ -4177,9 +4213,10 @@ for (const width of [320, 390, 600]) {
     await page.setViewportSize({ width, height: 844 });
     await mockChatShell(page);
     await openComposer(page);
-    const rail = page.locator('.chat-input__meta');
-    await expect(rail).toBeVisible();
-    const controls = await runSetupControl(rail, (panel) =>
+    const composer = page.locator('.chat-input');
+    const rail = composer.locator('.chat-controls-row');
+    await expect(rail.getByTestId('run-setup-trigger')).toBeVisible();
+    const controls = await runSetupControl(composer, (panel) =>
       panel.locator(
         '.chat-input__agent-btn, .chat-input__model-btn, .chat-input__approval-chip',
       ),
@@ -4269,7 +4306,10 @@ for (const width of [320, 390, 1280]) {
       await expect.poll(() => contrastRatio(send)).toBeGreaterThanOrEqual(4.5);
       const drafts = page
         .locator('.chat-controls-row')
-        .getByRole('button', { name: 'Drafts', exact: true });
+        .getByRole('button', {
+          name: width < 768 ? 'More draft options' : 'Drafts',
+          exact: true,
+        });
       const inputBox = (await textarea.boundingBox())!;
       const draftsBox = (await drafts.boundingBox())!;
       expect(draftsBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
@@ -4313,31 +4353,15 @@ for (const width of [320, 390, 1280]) {
         );
         expect(await contrastRatio(control)).toBeGreaterThanOrEqual(4.5);
       }
-      // #3127 made Clear an icon action named "Clear message"; it no longer
-      // carries a visible "Clear" word.
-      const clear = page.getByRole('button', {
+      await closeRunSetup(page);
+      if (width < 768) await drafts.click();
+      const clear = page.getByRole(width < 768 ? 'menuitem' : 'button', {
         name: 'Clear message',
         exact: true,
       });
       await expect(clear).toBeVisible();
-      await expect(clear).toHaveText('');
-      const clearBox = (await clear.boundingBox())!;
-      expect(clearBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
-      const sendBox = (await send.boundingBox())!;
-      if (width === 320) {
-        // Only at 320px do the actions wrap (Send then sits on the row below);
-        // there they must not collide.
-        expect(
-          clearBox.x + clearBox.width <= sendBox.x ||
-            sendBox.x + sendBox.width <= clearBox.x ||
-            clearBox.y + clearBox.height <= sendBox.y ||
-            sendBox.y + sendBox.height <= clearBox.y,
-          `Clear ${JSON.stringify(clearBox)} overlaps Send ${JSON.stringify(sendBox)}`,
-        ).toBe(true);
-      } else {
-        // Where the row does not wrap, Clear stays on Send's row, to its left.
-        expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(sendBox.x);
-      }
+      if (width < 768) await page.keyboard.press('Escape');
+      await textarea.focus();
       await expect(textarea).toHaveCSS('outline-style', 'none');
       const capsule = page.locator('.chat-input__capsule');
       await expect(capsule).toHaveCSS('outline-style', 'solid');
@@ -4345,7 +4369,11 @@ for (const width of [320, 390, 1280]) {
       await page.locator('.chat-input').screenshot({
         path: testInfo.outputPath(`composer-${width}-${theme}.png`),
       });
-      await model.click();
+      await (
+        await runSetupControl(activeComposer, (panel) =>
+          panel.locator('.chat-input__model-btn'),
+        )
+      ).click();
       const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
       await expect(picker).toBeVisible();
       await picker.getByRole('button', { name: 'Close model picker' }).click();
@@ -4364,15 +4392,20 @@ for (const width of [320, 390, 1280]) {
 
       await closeRunSetup(page);
       await drafts.click();
+      if (width < 768)
+        await page
+          .getByRole('menuitem', { name: 'Saved drafts', exact: true })
+          .click();
       const draftsDialog = page.getByRole('dialog', {
-        name: 'Portable drafts',
+        name: 'Saved drafts',
       });
       await expect(draftsDialog).toBeVisible();
       await draftsDialog
-        .getByRole('button', { name: 'Close portable drafts' })
+        .getByRole('button', { name: 'Close saved drafts' })
         .click();
       await expect(draftsDialog).toBeHidden();
       await expect(textarea).toHaveValue('Ask a question or describe a task…');
+      if (width < 768) await drafts.click();
       await clear.click();
       await expect(textarea).toHaveValue('');
       await expect(clear).toBeHidden();

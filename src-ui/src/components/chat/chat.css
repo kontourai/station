@@ -3492,10 +3492,6 @@
     display: none;
   }
 
-  .chat-input__settings {
-    flex-basis: 100%;
-  }
-
   /* #3050: a narrow composer gives up the Agent's route before its name. The
      chip's accessible name and tooltip keep the route. */
   .chat-input__agent-route {
@@ -3524,22 +3520,6 @@
     right: auto;
     left: 50%;
     translate: -50% 0;
-  }
-}
-
-@media (max-height: 540px) and (pointer: coarse) {
-  .app__main
-    .chat-dock--bottom
-    .chat-input:has(textarea:focus)
-    > .chat-input__meta:has(.chat-input__activity) {
-    display: flex;
-  }
-
-  .app__main
-    .chat-dock--bottom
-    .chat-input:has(textarea:focus)
-    .chat-input__settings {
-    display: none;
   }
 }
 
@@ -3663,12 +3643,7 @@
 .chat-input .chat-controls-row {
   flex-wrap: nowrap;
 }
-div.chat-input
-  > div.chat-input__capsule
-  > div.chat-controls-row
-  > div.composer-choices.chat-input__settings:has(
-    > button.composer-run-control
-  ) {
+.chat-controls-row > .chat-input__settings {
   flex: 0 1 auto;
   min-width: 44px;
   max-width: 45%;
