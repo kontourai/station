@@ -7,6 +7,7 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BedrockAdapter } from '../../../providers/adapters/bedrock-adapter.js';
 import { OllamaAdapter } from '../../../providers/adapters/ollama-adapter.js';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -15,6 +16,9 @@ import {
   isRuntimeAuthenticationFailure,
   RuntimeAuthHealthMonitor,
 } from '../runtime-auth-health-monitor.js';
+
+const PROXY_COOLDOWN_ERROR =
+  "API Error: Request rejected (429) · All credentials for model claude-opus-5-5 are cooling down via provider claude (last error: rate_limit_error: This request would exceed your account's rate limit. Please try again later.)";
 
 function runtimeEvent(
   provider: string,
@@ -32,6 +36,8 @@ function runtimeEvent(
 }
 
 describe('runtime auth health monitor', () => {
+  const makeTempDir = trackTempDirs();
+
   afterEach(() => {
     vi.useRealTimers();
     // archive#3587: every `vi.spyOn(console, 'warn')` in
@@ -63,12 +69,24 @@ describe('runtime auth health monitor', () => {
     ['OAuth token has expired', undefined],
     ['Invalid x-api-key provided', undefined],
     ['Request failed', 'authentication_error'],
+    [PROXY_COOLDOWN_ERROR, '401'],
+    [PROXY_COOLDOWN_ERROR, 'invalid_grant'],
   ])('recognizes an authentication failure: %s', (message, code) => {
     expect(isRuntimeAuthenticationFailure({ message, code })).toBe(true);
   });
 
   test.each([
     ['Rate limit exceeded', undefined],
+    [PROXY_COOLDOWN_ERROR, undefined],
+    [PROXY_COOLDOWN_ERROR, 'engine-turn-failed'],
+    ['Request rejected: all credentials are cooling down', '429'],
+    ['Request rejected: all credentials are cooling down', 'rate_limit_error'],
+    ['Request rejected: all credentials are cooling down', 'rate_limited'],
+    ['Request rejected: all credentials are cooling down', 'too_many_requests'],
+    [
+      'Request rejected: credentials are cooling down due to rate limiting',
+      undefined,
+    ],
     ['The model does not exist', undefined],
     ['Permission denied for this tool', undefined],
     ['Network connection failed', 'ECONNRESET'],
@@ -107,6 +125,61 @@ describe('runtime auth health monitor', () => {
 
   test('clearsRuntimeAuthHealth(undefined) is false', () => {
     expect(clearsRuntimeAuthHealth(undefined)).toBe(false);
+  });
+
+  test('a proxy cooldown does not persist an authentication block across restart', () => {
+    const home = makeTempDir('station-auth-health-');
+    const persistPath = join(home, 'runtime-auth-health.json');
+    const bus = new EventBus();
+    const changed = vi.fn();
+    bus.subscribe((event) => {
+      if (event.event === SERVER_EVENTS.RUNTIME_HEALTH_CHANGED) changed(event);
+    });
+    const monitor = new RuntimeAuthHealthMonitor(bus, { persistPath });
+    try {
+      bus.emit(
+        SERVER_EVENTS.ORCHESTRATION_EVENT,
+        runtimeEvent('claude', {
+          method: 'runtime.error',
+          severity: 'error',
+          code: 'engine-turn-failed',
+          message: PROXY_COOLDOWN_ERROR,
+        }),
+      );
+      expect(monitor.getFailure('claude')).toBeNull();
+      expect(changed).not.toHaveBeenCalled();
+      monitor.dispose();
+      const restarted = new RuntimeAuthHealthMonitor(bus, { persistPath });
+      try {
+        expect(restarted.getFailure('claude')).toBeNull();
+        bus.emit(
+          SERVER_EVENTS.ORCHESTRATION_EVENT,
+          runtimeEvent('claude', {
+            method: 'runtime.error',
+            severity: 'error',
+            code: 'authentication_error',
+            message: 'Invalid API key provided',
+          }),
+        );
+        const failure = restarted.getFailure('claude');
+        expect(failure).not.toBeNull();
+        bus.emit(
+          SERVER_EVENTS.ORCHESTRATION_EVENT,
+          runtimeEvent('claude', {
+            method: 'runtime.error',
+            severity: 'error',
+            message: PROXY_COOLDOWN_ERROR,
+          }),
+        );
+        // Rate limiting neither creates an auth failure nor proves recovery.
+        expect(restarted.getFailure('claude')).toEqual(failure);
+        expect(changed).toHaveBeenCalledTimes(1);
+      } finally {
+        restarted.dispose();
+      }
+    } finally {
+      monitor.dispose();
+    }
   });
 
   test('temporarily blocks a provider without retaining the raw error', () => {
