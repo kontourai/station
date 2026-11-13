@@ -290,10 +290,12 @@ describe.skipIf(!posix)('station-weight git isolation', () => {
     });
     expect(git(victim, 'rev-parse', '--verify', 'HEAD').status).not.toBe(0);
     expect(git(repo, 'log', '--format=%s').stdout.trim()).toBe('fixture');
-    expect(git(repo, 'ls-files').stdout.trim().split('\n').sort()).toEqual([
-      'AGENTS.md',
-      'CLAUDE.md',
-    ]);
+    expect(
+      git(repo, 'show', '--name-only', '--format=', 'HEAD')
+        .stdout.trim()
+        .split('\n')
+        .sort(),
+    ).toEqual(['AGENTS.md', 'CLAUDE.md']);
   });
 
   test('GIT_* variables in the environment handed to the fixture are dropped', () => {
