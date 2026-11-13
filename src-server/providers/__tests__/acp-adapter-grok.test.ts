@@ -1275,10 +1275,15 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
             created_at: at(times[k]! + 2_000),
           })),
         },
-        // Two points started within the window of the chosen turn.
+        // Two points started within the window of the chosen turn, with the
+        // same preview (as the ambient line makes them): neither is chosen.
         {
           rewind_points: [
-            { ...listed[0], created_at: at(times[1]! - 400) },
+            {
+              ...listed[0],
+              prompt_preview: listed[1]?.prompt_preview,
+              created_at: at(times[1]! - 400),
+            },
             ...listed.slice(1),
           ],
         },
