@@ -233,6 +233,52 @@ export function museServeApprovalPlan(
   }
 }
 
+/**
+ * The host reports it cannot enforce its sandbox, and the posture asked for
+ * (`auto`: no prompts, the sandbox as the only containment) relies on it.
+ * Not a reason to fall back to `muse exec`: exec runs that same posture in
+ * that same missing sandbox.
+ */
+export class MuseSandboxUnavailableError extends SendTurnRefusedError {
+  constructor(readonly reason: string | undefined) {
+    super(
+      `Muse cannot enforce its sandbox on this machine${
+        reason ? ` (${reason})` : ''
+      }, so Auto would run every command uncontained without asking. Choose Ask, or Full access if running without a sandbox is intended.`,
+      'permission_denied',
+    );
+    this.name = 'MuseSandboxUnavailableError';
+  }
+}
+
+/**
+ * What `initialize.sandboxAvailability` said about a host. `unavailable`
+ * only when the host said so; an absent or unknown value claims nothing.
+ */
+export interface MuseServeSandboxReport {
+  unavailable: boolean;
+  /** Muse's own reason (`sandboxUnavailableReason`), bounded; never inferred. */
+  reason?: string;
+}
+
+/** Whether `plan` relies on muse's sandbox as its only containment. */
+function planReliesOnSandbox(plan: MuseServeApprovalPlan): boolean {
+  return !plan.disableSandbox && plan.museMode === 'allowAll';
+}
+
+/**
+ * The sandbox a turn runs under: `disabled` (Station asked for none),
+ * `unavailable` (the host cannot enforce one), else `enabled` (requested;
+ * a host that never reported availability is not second-guessed).
+ */
+export function museSandboxLabel(
+  plan: MuseServeApprovalPlan,
+  sandbox: MuseServeSandboxReport,
+): 'disabled' | 'unavailable' | 'enabled' {
+  if (plan.disableSandbox) return 'disabled';
+  return sandbox.unavailable ? 'unavailable' : 'enabled';
+}
+
 /** The host could not be used; the caller falls back to `muse exec`. */
 class MuseServeUnavailableError extends Error {
   constructor(readonly reason: string) {
@@ -277,6 +323,7 @@ export interface MuseServeStarted {
   /** The model the host reported applying, when it reported one. */
   modelId?: string;
   plan: MuseServeApprovalPlan;
+  sandbox: MuseServeSandboxReport;
 }
 
 export interface MuseServeTurnInput {
@@ -301,6 +348,7 @@ interface ServeHost {
   connection: MuseServeConnection;
   spawned: MuseServeSpawnResult;
   posture: MuseServeHostPosture;
+  sandbox: MuseServeSandboxReport;
   epoch: number;
   /** Set before an owner-initiated close, so its exit is not a failure. */
   closing: boolean;
@@ -564,10 +612,23 @@ export class MuseServeSession {
     return (this.host ?? this.stopHost)?.spawned.process.pid;
   }
 
-  /** Spawns the host, verifies the handshake, and starts the MSP session. */
+  /** The latest host's sandbox report (none before a host answered). */
+  get sandbox(): MuseServeSandboxReport {
+    return (this.host ?? this.stopHost)?.sandbox ?? { unavailable: false };
+  }
+
+  /**
+   * Spawns the host, verifies the handshake, and starts the MSP session. A
+   * host without a sandbox refuses a posture that relies on one
+   * ({@link MuseSandboxUnavailableError}) before any session is started.
+   */
   async start(input: MuseServeStartInput): Promise<MuseServeStarted> {
     const plan = museServeApprovalPlan(input.approvalMode);
     const host = await this.openHost({ disableSandbox: plan.disableSandbox });
+    if (host.sandbox.unavailable && planReliesOnSandbox(plan)) {
+      await this.closeHost();
+      throw new MuseSandboxUnavailableError(host.sandbox.reason);
+    }
     let result: unknown;
     try {
       result = await host.connection.request(
@@ -613,6 +674,7 @@ export class MuseServeSession {
       museSessionId,
       ...(this.model ? { modelId: this.model } : {}),
       plan,
+      sandbox: host.sandbox,
     };
   }
 
@@ -642,6 +704,11 @@ export class MuseServeSession {
           ? museServeApprovalPlan(input.approvalMode)
           : this.plan;
       await this.ensureHost({ disableSandbox: plan.disableSandbox });
+      // Before the mode is applied: `auto` on a host without a sandbox would
+      // run commands uncontained with nobody asked.
+      if (this.host?.sandbox.unavailable && planReliesOnSandbox(plan)) {
+        throw new MuseSandboxUnavailableError(this.host.sandbox.reason);
+      }
       const connection = this.requireConnection();
       const sessionId = this.requireMuseSessionId();
       if (plan.museMode !== this.plan.museMode) {
@@ -1021,6 +1088,7 @@ export class MuseServeSession {
     const host: ServeHost = {
       spawned,
       posture,
+      sandbox: { unavailable: false },
       epoch,
       closing: false,
       connection: new MuseServeConnection(spawned.process, {
@@ -1073,6 +1141,15 @@ export class MuseServeSession {
       throw new MuseServeUnavailableError(
         `the host reports ${String(durability)} sessions`,
       );
+    }
+    // A property of the host process (MSP: probed once at construction).
+    // Only `unavailable` changes anything; absent reads as unknown.
+    if (isRecord(result) && result.sandboxAvailability === 'unavailable') {
+      const reason = readString(result.sandboxUnavailableReason);
+      host.sandbox = {
+        unavailable: true,
+        ...(reason ? { reason: truncate(reason, 80) } : {}),
+      };
     }
     host.connection.notify('initialized');
     return host;
@@ -2851,7 +2928,7 @@ export class MuseServeSession {
           : {}),
         museTransport: 'serve',
         museApprovalMode: plan.museMode,
-        museSandbox: plan.disableSandbox ? 'disabled' : 'enabled',
+        museSandbox: museSandboxLabel(plan, this.sandbox),
         ...(plan.stationMode ? { approvalMode: plan.stationMode } : {}),
         // The tier this turn's `turn/start` carried, which muse admitted (a
         // tier it refuses fails the send before this is published).

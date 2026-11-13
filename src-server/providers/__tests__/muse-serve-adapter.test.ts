@@ -19,6 +19,7 @@ import {
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_MODEL_RETRY_SCHEDULED_CODE,
   MUSE_MODEL_ROUTE_UNSERVED_CODE,
+  MUSE_SANDBOX_UNAVAILABLE_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
@@ -44,6 +45,7 @@ import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../adapter-shape.js';
 import {
   buildMuseServeArgs,
@@ -3247,5 +3249,143 @@ describe('Muse parity: model changes, unserved routes and retries', () => {
     expect(warnings[1].message).toContain('rate_limited');
     expect(of(h.events, 'turn.completed')).toEqual([]);
     expect(of(h.events, 'runtime.error')).toEqual([]);
+  });
+});
+
+/** The steer capture with its host reporting no enforceable sandbox. */
+function sandboxlessFrames() {
+  const frames = structuredClone(loadMuseServeCapture('steer'));
+  const init = frames.find(
+    (frame) =>
+      frame.dir === 's2c' &&
+      (frame.msg.result as { schema?: unknown } | undefined)?.schema,
+  );
+  Object.assign(init!.msg.result as Record<string, unknown>, {
+    sandboxAvailability: 'unavailable',
+    sandboxUnavailableReason: 'userNamespacesDenied',
+  });
+  return frames;
+}
+
+describe('Muse parity: a host that cannot enforce its sandbox', () => {
+  test('a session without a sandbox-reliant posture runs, says the sandbox is unavailable, and labels its turns so', async () => {
+    const h = harness();
+    const host = await firstHost(h, () =>
+      h.adapter.startSession({
+        provider: 'muse',
+        threadId: THREAD,
+        cwd: '/workspace/probe/repo',
+        modelOptions: { approvalMode: 'ask' },
+      }),
+    );
+    await replayMuseServeCapture(host, sandboxlessFrames(), {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/start'),
+    });
+    await settle();
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museTransport: 'serve',
+      museSandbox: 'unavailable',
+    });
+    const warnings = of(h.events, 'runtime.warning').filter(
+      (event) => event.code === MUSE_SANDBOX_UNAVAILABLE_CODE,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].details).toEqual({ reason: 'userNamespacesDenied' });
+    const consumed = new Set<SentFrame>();
+    const sending = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+    const request = await host.nextRequest('turn/start', consumed);
+    reply(host, request, turnAck(TURN_1418));
+    await sending;
+    await settle();
+    expect(of(h.events, 'turn.started')[0].metadata).toMatchObject({
+      museSandbox: 'unavailable',
+    });
+  });
+
+  test('`auto` is refused at start as settled, with no session and no exec fallback; preflight then refuses it before the boundary', async () => {
+    const h = harness();
+    const starting = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      cwd: '/workspace/probe/repo',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    starting.catch(() => {});
+    const host = await firstHost(h, () => starting);
+    await replayMuseServeCapture(host, sandboxlessFrames(), {
+      stopAt: captureIndex(
+        'steer',
+        (msg, dir) => dir === 'c2s' && msg.method === 'session/start',
+      ),
+    });
+    await expect(starting).rejects.toBeInstanceOf(SessionStartRefusedError);
+    await expect(starting).rejects.toMatchObject({
+      code: 'sandbox_unavailable',
+    });
+    await settle();
+    expect(host.sent.some((frame) => frame.method === 'session/start')).toBe(
+      false,
+    );
+    expect(host.stdinEnded).toBe(true);
+    expect(h.execSpawns).toEqual([]);
+    expect(await h.adapter.hasSession(THREAD)).toBe(false);
+    expect(of(h.events, 'session.started')).toEqual([]);
+    await expect(
+      h.adapter.preflightStart({
+        provider: 'muse',
+        threadId: 'thread-next',
+        modelOptions: { approvalMode: 'auto' },
+      }),
+    ).rejects.toMatchObject({ code: 'sandbox_unavailable' });
+    await expect(
+      h.adapter.preflightStart({
+        provider: 'muse',
+        threadId: 'thread-next',
+        modelOptions: { approvalMode: 'ask' },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  test('a turn asking for `auto` on such a host is refused before the mode or the turn reaches muse', async () => {
+    const h = harness();
+    const host = await firstHost(h, () =>
+      h.adapter.startSession({
+        provider: 'muse',
+        threadId: THREAD,
+        cwd: '/workspace/probe/repo',
+      }),
+    );
+    await replayMuseServeCapture(host, sandboxlessFrames(), {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/start'),
+    });
+    await settle();
+    await expect(
+      h.adapter.sendTurn({
+        threadId: THREAD,
+        input: 'go',
+        modelOptions: { approvalMode: 'auto' },
+      }),
+    ).rejects.toMatchObject({ kind: 'permission_denied' });
+    expect(
+      host.sent.filter(
+        (frame) =>
+          frame.method === 'session/setApprovalMode' ||
+          frame.method === 'turn/start',
+      ),
+    ).toEqual([]);
+  });
+
+  test('a host that reports its sandbox available labels turns enabled and warns nothing', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    await dispatchTurn(h, host);
+    expect(of(h.events, 'turn.started')[0].metadata).toMatchObject({
+      museSandbox: 'enabled',
+    });
+    expect(
+      of(h.events, 'runtime.warning').filter(
+        (event) => event.code === MUSE_SANDBOX_UNAVAILABLE_CODE,
+      ),
+    ).toEqual([]);
   });
 });

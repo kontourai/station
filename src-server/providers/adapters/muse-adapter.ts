@@ -18,6 +18,7 @@ import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MUSE_HELD_TURN_UNFINISHED_CODE,
   MUSE_LINGERING_CHILD_REAPED_CODE,
+  MUSE_SANDBOX_UNAVAILABLE_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -70,6 +71,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../adapter-shape.js';
 import type { CliAuthState, CliCommandResult } from '../auth/cli-auth.js';
 import {
@@ -124,7 +126,10 @@ import {
   MUSE_SERVE_INTERRUPT_SETTLE_MS,
   MUSE_SERVE_REQUEST_TIMEOUT_MS,
   type MuseServeHostPosture,
+  MuseSandboxUnavailableError,
+  type MuseServeSandboxReport,
   MuseServeSession,
+  museSandboxLabel,
 } from './muse-serve-session.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
@@ -970,6 +975,14 @@ export class MuseAdapter implements ProviderAdapterShape {
    */
   private readonly providerRefusal: MuseProviderOverrideRefusal | undefined;
   private providerNoticeReported = false;
+  /**
+   * The last serve host's report that it cannot enforce its sandbox. MSP
+   * defines availability as a property of the machine, the same for every
+   * host, so a later start can refuse a posture that relies on it before
+   * the start boundary (`preflightStart`). Cleared by a host that reports
+   * otherwise.
+   */
+  private sandboxUnavailable: MuseServeSandboxReport | undefined;
 
   constructor(private readonly options: MuseAdapterOptions = {}) {
     // `resume` and `tool-calls` are NOT claimed: Station implements no
@@ -1179,6 +1192,17 @@ export class MuseAdapter implements ProviderAdapterShape {
    */
   async preflightStart(input: ProviderSessionStartInput): Promise<void> {
     readMuseReasoningEffort(input.modelOptions);
+    if (
+      this.options.serve &&
+      this.sandboxUnavailable &&
+      readApprovalMode(input.modelOptions) === 'auto'
+    ) {
+      throw new SessionStartRefusedError(
+        new MuseSandboxUnavailableError(this.sandboxUnavailable.reason)
+          .message,
+        'sandbox_unavailable',
+      );
+    }
   }
 
   async startSession(
@@ -1215,7 +1239,22 @@ export class MuseAdapter implements ProviderAdapterShape {
           approvalMode: requestedApprovalMode,
         });
         serve = candidate;
+        this.sandboxUnavailable = serveStarted.sandbox.unavailable
+          ? serveStarted.sandbox
+          : undefined;
       } catch (error) {
+        if (error instanceof MuseSandboxUnavailableError) {
+          // Settled: the host was closed before any session existed, and
+          // exec would run the same posture in the same missing sandbox.
+          this.sandboxUnavailable = {
+            unavailable: true,
+            ...(error.reason ? { reason: error.reason } : {}),
+          };
+          throw new SessionStartRefusedError(
+            error.message,
+            'sandbox_unavailable',
+          );
+        }
         serveUnavailable = errorMessage(error);
         this.options.logger?.warn?.(
           'Muse serve unavailable; this session falls back to muse exec.',
@@ -1288,9 +1327,10 @@ export class MuseAdapter implements ProviderAdapterShape {
       ? {
           museTransport: 'serve',
           museApprovalMode: serveStarted.plan.museMode,
-          museSandbox: serveStarted.plan.disableSandbox
-            ? 'disabled'
-            : 'enabled',
+          museSandbox: museSandboxLabel(
+            serveStarted.plan,
+            serveStarted.sandbox,
+          ),
           ...(serveStarted.plan.stationMode
             ? { approvalMode: serveStarted.plan.stationMode }
             : {}),
@@ -1346,6 +1386,27 @@ export class MuseAdapter implements ProviderAdapterShape {
     // matrix cell's `declared` claim describes.
     if (!serve && this.options.serve) {
       this.publishExecTransportFacts(input.threadId, serveUnavailable);
+    }
+    if (
+      serveStarted?.sandbox.unavailable &&
+      !serveStarted.plan.disableSandbox
+    ) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: MUSE_SANDBOX_UNAVAILABLE_CODE,
+        message:
+          'Muse cannot enforce its sandbox on this machine, so the commands it runs in this session are not contained. Auto is refused here.',
+        details: {
+          ...(serveStarted.sandbox.reason
+            ? { reason: serveStarted.sandbox.reason }
+            : {}),
+        },
+      });
     }
 
     providerOps.add(1, {
