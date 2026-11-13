@@ -374,7 +374,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** Station's own manifest: `{ version, plugins: [{ id, source, type? }], tools? }`. */
-export const stationManifestDetector: RegistrySourceIndexDetector = {
+const stationManifestDetector: RegistrySourceIndexDetector = {
   id: 'station-manifest',
   paths: ['registry.json', 'manifest.json'],
   parse(value) {
@@ -407,7 +407,7 @@ export const stationManifestDetector: RegistrySourceIndexDetector = {
 };
 
 /** A Claude Code marketplace: `{ name, plugins: [{ name, source }] }`. */
-export const claudeMarketplaceDetector: RegistrySourceIndexDetector = {
+const claudeMarketplaceDetector: RegistrySourceIndexDetector = {
   id: 'claude-marketplace',
   paths: ['.claude-plugin/marketplace.json'],
   parse(value) {
@@ -435,7 +435,7 @@ export const claudeMarketplaceDetector: RegistrySourceIndexDetector = {
 };
 
 /** `<dir>/SKILL.md` anywhere below the root; a root `SKILL.md` is not a library. */
-export const skillDocumentDetector: RegistrySourceStructureDetector = {
+const skillDocumentDetector: RegistrySourceStructureDetector = {
   id: 'skill-md',
   provides: ['skills'],
   async detect(tree, limits) {
@@ -494,7 +494,7 @@ async function readDefinition(
 }
 
 /** Agent Plugins `plugin.json` packages and `.claude-plugin/plugin.json`. */
-export const pluginManifestDetector: RegistrySourceStructureDetector = {
+const pluginManifestDetector: RegistrySourceStructureDetector = {
   id: 'plugin-manifest',
   provides: ['plugins'],
   async detect(tree, limits, budget) {
@@ -521,7 +521,7 @@ export const pluginManifestDetector: RegistrySourceStructureDetector = {
 };
 
 /** `mcp.json` / `.mcp.json` with an `mcpServers` object. */
-export const mcpDefinitionDetector: RegistrySourceStructureDetector = {
+const mcpDefinitionDetector: RegistrySourceStructureDetector = {
   id: 'mcp-definitions',
   provides: ['integrations'],
   async detect(tree, limits, budget) {
@@ -548,9 +548,9 @@ export const mcpDefinitionDetector: RegistrySourceStructureDetector = {
   },
 };
 
-export const REGISTRY_SOURCE_INDEX_DETECTORS: readonly RegistrySourceIndexDetector[] =
+const REGISTRY_SOURCE_INDEX_DETECTORS: readonly RegistrySourceIndexDetector[] =
   [stationManifestDetector, claudeMarketplaceDetector];
-export const REGISTRY_SOURCE_STRUCTURE_DETECTORS: readonly RegistrySourceStructureDetector[] =
+const REGISTRY_SOURCE_STRUCTURE_DETECTORS: readonly RegistrySourceStructureDetector[] =
   [skillDocumentDetector, pluginManifestDetector, mcpDefinitionDetector];
 
 export interface RegistrySourceDetectionResult {

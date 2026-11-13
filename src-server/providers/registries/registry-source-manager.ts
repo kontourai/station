@@ -166,7 +166,7 @@ export function registrySourceSupplies(
  * home, `· Station app home` for an app home Station manages). Any
  * other folder is named by its parent folder.
  */
-export function localSkillFolderName(path: string): string {
+function localSkillFolderName(path: string): string {
   const parts = path.split(/[\\/]+/).filter(Boolean);
   const title = (word: string) =>
     word.charAt(0).toLocaleUpperCase() + word.slice(1);
@@ -185,10 +185,7 @@ export function localSkillFolderName(path: string): string {
  * is one of Station's own default or configured catalogs rather than a
  * plugin's. The branch and folder stay visible in its location.
  */
-export function githubCatalogName(
-  registryKey: string,
-  isDefault: boolean,
-): string {
+function githubCatalogName(registryKey: string, isDefault: boolean): string {
   const [owner, repo] = registryKey.replace(/^github:/, '').split('/');
   const name = owner && repo ? `${owner}/${repo}` : registryKey;
   return isDefault ? `${name} (default)` : name;

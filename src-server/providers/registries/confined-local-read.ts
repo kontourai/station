@@ -57,7 +57,7 @@ export const HARD_LINK_REFUSAL =
   'Source file has more than one hard link. A hard link cannot be told apart from the file it links to, which may be outside the source, so Station refuses every multiply linked file in a source folder.';
 
 /** Refuses a regular file that more than one directory entry names. */
-export function assertSingleLink(info: Pick<Stats, 'isFile' | 'nlink'>): void {
+function assertSingleLink(info: Pick<Stats, 'isFile' | 'nlink'>): void {
   if (info.isFile() && info.nlink > 1)
     throw new LocalSourceConfinementError(HARD_LINK_REFUSAL);
 }
