@@ -208,12 +208,16 @@ export async function generateServerReleaseNotes({
   const compare = (a, b) => {
     const x = order(a),
       y = order(b);
-    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    for (let i = 0; i < 3; i++) {
+      if (x[i] !== y[i]) return x[i] - y[i];
+    }
+    const rank = (value) =>
+      value.includes('-nightly.') ? 0 : value.includes('-preview.') ? 1 : 2;
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    for (let i = 3; i < Math.max(x.length, y.length); i++) {
       if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
     }
-    return (
-      Number(!a.includes('-')) - Number(!b.includes('-')) || a.localeCompare(b)
-    );
+    return a.localeCompare(b);
   };
   let previous;
   let fallback;

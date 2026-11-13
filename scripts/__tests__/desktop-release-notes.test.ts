@@ -417,3 +417,29 @@ test.each([503, 429, 403, 'timeout'])(
     expect(request).toHaveBeenCalledTimes(4);
   },
 );
+
+test.each([
+  ['v0.1.11-nightly.999', 'v0.1.11'],
+  ['v0.1.11-preview.1', 'v0.1.11-nightly.999'],
+])('new-channel fallback orders %s and %s by semver', async (first, second) => {
+  const tags = [first, second];
+  const expected = tags.includes('v0.1.11') ? 'v0.1.11' : 'v0.1.11-preview.1';
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json(tags.map((tag_name) => ({ tag_name }))),
+    )
+    .mockResolvedValueOnce(Response.json({ sha: previous }))
+    .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+    .mockResolvedValueOnce(Response.json({ sha: previous }));
+  vi.stubGlobal('fetch', request);
+  await generateServerReleaseNotes({
+    tag: 'v0.1.12-preview.1',
+    source,
+    repository: options.repository,
+    token: options.token,
+  });
+  expect(JSON.parse(request.mock.calls[2][1].body).previous_tag_name).toBe(
+    expected,
+  );
+});
