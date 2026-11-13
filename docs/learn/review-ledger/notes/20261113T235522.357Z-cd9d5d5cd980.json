@@ -1,0 +1,33 @@
+{
+  "revision": "24f0679a9b4a2a2b9219286f996a00ef5baf3db2",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom file sentence. The glossary's Project Room entry describes messages, note, presence, Agent requests and channels, not file storage; still accurate, unchanged.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom section's file sentence (uploader in the binding, release on delete, day-old unsent sweep, shared-blob removal). This document links the module map generally and repeats none of those file claims (checked by search); prose unchanged.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]}
+  ]
+}
