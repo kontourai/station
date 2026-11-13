@@ -2941,10 +2941,19 @@ Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)
 can report their absence.
 
-The `_kiro` v3 spelling remains unbound because it has not been observed (a
-source comment names the gap; no exported record does); it does not inherit
-`_kiro.dev` behavior. The table carries no promotion metadata: a tuple's
-binding says nothing about which canonical event, if any, should replace it.
+The `_kiro` v3 spelling never inherits `_kiro.dev` behavior. Its tuples, and
+every other engine-to-client Kiro extension (requests and
+`session_info_update._meta.kiro` kinds included), are rows of the exported
+`ENGINE_EXTENSION_BINDINGS`: each names its exact wire shape, its basis
+(`declared`, `client-announced` or `undeclared-engine`), what it was observed
+against (the scrubbed kiro-cli 2.35.0 capture in
+`src-server/services/acp/__tests__/fixtures/`, or a kirodotdev/kirocrew
+fixture path) and its consumer. A row's notification tuple binds only once
+`ENGINE_EXTENSION_CONSUMERS` marks its consumer implemented, and never over a
+tuple the table above already binds; today that is the three v3 notifications
+bound as `acp.host-chrome`. The notification table carries no promotion
+metadata: a tuple's binding says nothing about which canonical event, if any,
+should replace it.
 
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.

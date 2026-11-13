@@ -241,9 +241,10 @@ mechanism. Station's answer is a spec-conformant refusal:
 | Inbound | Station's response |
 |---|---|
 | `cursor/ask_question`, `cursor/create_plan` (chat sessions only) | Answered with what a person decided; see [Cursor's blocking requests](#cursors-blocking-requests) |
+| A reviewed engine-credential or engine-secret binding's method, on a process it was registered for | Answered from Station's engine host-auth vault; see [reviewed credential bindings](#reviewed-credential-and-secret-bindings) |
 | Unrecognized extension **request** | JSON-RPC `-32601` (Method not found), plus a `warn` log naming the method and a `station.acp.inbound_extension_requests` increment |
 | Unrecognized extension **notification** | Ignored (per spec) |
-| A request naming a token or credential | `-32601`, always — see below |
+| Any other request naming a token or credential | `-32601`, always — see below |
 
 The policy lives in `src-server/services/acp/acp-inbound-extension-policy.ts`
 and is wired into both the chat adapter and the availability probe. There is
@@ -252,18 +253,24 @@ previous behavior (`onExtMethod: () => ({})`) replied to every inbound
 extension request with an empty JSON-RPC *success*, which an agent reads as
 "handled."
 
-**No-credential-bridging invariant.** Station never answers an agent's
-token/credential request. What enforces it, most load-bearing first:
+**Credentials only through a reviewed binding.** Station answers an agent's
+token or credential request only through a reviewed engine-credential or
+engine-secret binding ([decision](../decisions/engine-credential-provider.md),
+which supersedes ADR 0013's blanket ban). What enforces it, most
+load-bearing first:
 
-1. **The allowlist is a reviewed table** (`REVIEWED_INBOUND_EXTENSION_REQUESTS`),
-   and extending it takes a reviewed code change. Its entries are requests
-   addressed to a person, answered with that person's decision.
+1. **The allowlists are reviewed tables** (`REVIEWED_INBOUND_EXTENSION_REQUESTS`,
+   `REVIEWED_ENGINE_CREDENTIAL_BINDINGS`, `REVIEWED_ENGINE_SECRET_BINDINGS`),
+   and extending one takes a reviewed code change. A credential responder is
+   registered only for a table entry itself, never a copy, and only for a
+   built-in descriptor launch that carries the binding's delegation
+   arguments.
 2. **Each call site owns a private registry** (one per session, one per
    connection) that no other code holds a reference to, so nothing can add a
    handler at runtime. Pinned by test.
 3. **A credential-name tripwire**: `AcpInboundExtensionRegistry.register()`
-   throws for a credential-shaped method name and `resolve()` re-checks at
-   dispatch.
+   throws for a credential-shaped method name, and `resolve()` serves one
+   only from a reviewed responder.
 
 (3) is a **tripwire on the obvious vocabulary, not a proof of
 completeness** — it misses `_vendor/session/refresh`, `_vendor/getAPIToken`
@@ -283,9 +290,13 @@ expiry** — so a long Station chat previously received `{}` *as its refreshed
 token* and then failed downstream in a confusing way.
 
 Station holds `STATION_INTERNAL_API_TOKEN` and model-connection credentials
-in the same process; an external agent is a less-trusted principal.
-Station does not read or bridge an engine's own login tokens or answer its
-credential callbacks. **Station does not become an engine's auth host.**
+in the same process; an external agent is a less-trusted principal. Station
+never reads or bridges an engine's own login tokens or any of its own
+principals. Where an engine owns its credential (kiro-cli
+`--auth-method cli`), Station leaves it there. Only for a process launched
+to delegate its credential to the host (the Kiro agent-service bundle,
+`--auth=acp-callback`) does a reviewed binding answer, from Station's
+engine host-auth vault.
 A person may separately save an API key for a connection; Station stores it
 in its engine credential store and passes it through that connection's process
 environment (see [Sign an engine in](connections.md#sign-an-engine-in)).
@@ -331,8 +342,18 @@ The default path is unaffected. `--agent-engine v3` is opt-in and cannot
 start a session under this policy; that is disclosed rather than papered
 over, and the probe and the chat path now agree — both fail, which is true.
 
+**Superseded on kiro-cli 2.35.0 (live, 2026-11-13).** `_kiro/terminal/shell_type`
+is a request with params `{sessionId}`, sent during `session/new`. Answered
+`-32601`, `session/new` now **succeeds** on `--agent-engine v3`, so it is no
+longer a blocker. It is still bound, as the `client.terminal-facts` answer
+naming the shell Station's terminal bridge runs. With
+`--auth-method cli`, kiro-cli keeps its own credential and sends no
+`_kiro/auth/getAccessToken`. The frames are in
+`src-server/services/acp/__tests__/fixtures/kiro-v3-2.35.0-session-frames.jsonl`.
+
 Answering any inbound extension method at all requires a reviewed registry
-entry. The only entries are Cursor's two blocking requests, below.
+entry: Cursor's two blocking requests (below), or a reviewed credential or
+secret binding (next section).
 
 ### Cursor's blocking requests
 
@@ -374,6 +395,111 @@ binary answers `-32601` to everything, including its own documented methods).
 See `docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md`.
 
 ---
+
+### Reviewed credential and secret bindings
+
+An engine can be launched to ask the client for its credential rather than
+keep one itself. Station answers that request only through a binding in
+`REVIEWED_ENGINE_CREDENTIAL_BINDINGS`
+([inbound extension policy](../../src-server/services/acp/acp-inbound-extension-policy.ts);
+contract `@kontourai/station-contracts/engine-credential-provider`).
+
+- `registry.registerCredentialResponder(binding, issuer, launch)` accepts only
+  a table entry itself (an identical copy is refused) whose wire is ACP. The
+  `launch` facts must show a built-in descriptor launch whose argv contains
+  the binding's `delegationArgv`.
+- The issuer is scoped to one connection and credential profile. It returns
+  `{ accessToken, expiresAt, attributes? }` and never a refresh token.
+- A refusal answers `-32000` with fixed text. An issuer's own error message
+  never reaches the engine.
+
+Engine-held secrets use `registerSecretResponder(binding, store)` with an
+entry of `REVIEWED_ENGINE_SECRET_BINDINGS`
+(`@kontourai/station-contracts/engine-secret-storage`). For Kiro's MCP OAuth
+grants, `_kiro/secret/get|store|delete` accept only keys matching
+`kiro.mcp.<sha256>.(client|tokens|verifier|discovery)`, values of at most
+65,536 characters, and persist only `client` and `tokens`. `get` of an absent
+key answers `{}`. A refusal answers `-32602` without the value.
+
+### Client capabilities Station announces
+
+`initialize` announces, beyond `fs` and `terminal`:
+
+- each `ACP_ANNOUNCED_CLIENT_META_FLAGS` entry
+  ([acp-process.ts](../../src-server/services/acp/acp-process.ts)) under
+  `clientCapabilities._meta.<namespace>`, only while every method it promises
+  answers through the session's registry (`answersExtensionMethod`). Today:
+  `kiro.userInput`, `kiro.openExternalUrl`, `kiro.secretStorage`. A flag
+  without a working handler is worse than none: Kiro's agent service reads
+  an unanswered `_kiro/userInput` as "yes".
+- `elicitation` with `form` and/or `url`, only when the client answers core
+  `elicitation/create` in those modes.
+
+`newSession` and `loadSession` take an optional `_meta` (for example Kiro's
+`{ kiro: { customAgents } }`), sent only when given. The
+[process test](../../src-server/services/acp/__tests__/acp-client-announcements.process.test.ts)
+records what a real agent process receives, including the withdrawal of a
+flag whose handler is removed.
+
+### Kiro extensions: bindings and mechanisms
+
+Every engine-to-client Kiro extension Station binds is a row of
+`ENGINE_EXTENSION_BINDINGS`
+([bindings](../../src-shared/extension-notification-bindings.ts)). Each row
+names:
+
+- the wire shape: a notification, a request, a
+  `session_info_update._meta.kiro.kind`, or a `_kiro.dev/session/update`
+  `sessionUpdate`;
+- its basis: `declared`, `client-announced` or `undeclared-engine`;
+- what it was observed against: the scrubbed kiro-cli 2.35.0 capture, or a
+  kirodotdev/kirocrew fixture path;
+- its consumer.
+
+A notification row binds only once its consumer is marked implemented in
+`ENGINE_EXTENSION_CONSUMERS`.
+
+Each consumer is a generic Station mechanism any engine can feed:
+
+| Mechanism | Contract | Kiro wire shapes |
+|---|---|---|
+| URL input request | `station.input-request/v1` body `{ kind: 'url', url, purpose, elicitationId? }`, answered `{ action: 'opened' \| 'cancel' }`; https only, no user info, at most 2,048 characters, never opened automatically | `_kiro.dev/mcp/oauth_request`, `_kiro/openExternalUrl` |
+| Form and choice input requests | existing `form` body | `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/userInput` (always answered `answered`, with explicit text for decline or no person) |
+| Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` and `_kiro/tools/didChange` (full) |
+| Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope` | v2 `_kiro.dev/session/update` `model_fallback`; v3 `model_fallback` kind (declared by `modelFallbackReporting`) |
+| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`, assigned, not summed across reports), `session_usage` (scope `session`), `context_usage` |
+| Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
+| Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused | the Kiro agent-service bundle |
+| Declared features | `declaredHandshake.engineVariant`, `declaredFeatures`, `logChannels` (names only; paths stay server-side) | `agentCapabilities._meta.kiro` |
+| Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises | none on 2.35; see below |
+
+Observed on kiro-cli 2.35.0 `--agent-engine v3`:
+
+- **Session options.** The `session/new` answer lists no `models`. Its
+  config options are `mode` (category `mode`), `memoryReflection`,
+  `autopilot` and `contentCollection`. A later `config_option_update`
+  advertises a `model` option. No option has category `thought_level`, so
+  `effort` has nothing to apply to on this route.
+- **`autopilot` is not an approval bypass.** With it on (the default) and
+  with it set off, the engine still sent `session/request_permission`, and a
+  reject was honored. Its `pending_interaction` and `interaction_resolved`
+  info updates mirror that request and are bound as host chrome, not as a
+  second approval.
+- **Modes.** Each mode carries `_meta.kiro.source` (`bundled` for the
+  engine's own; a person's agents appear too).
+
+### Kiro extensions Station does not support
+
+| Extension | Why not |
+|---|---|
+| `_kiro.dev/session/terminate` | Station runs one engine process per session and ends it itself. |
+| `_kiro/mcp/toggle` | It stops the engine's whole MCP subsystem, Station's control server included. |
+| `_kiro/hooks/*` | Station would become a command runner for the engine; Station's own tool-policy seam governs instead. |
+| `_kiro/workflow/*` | Pre-release, and Station has its own workflow noun. |
+| `_kiro/permissions/presets/add`, `remove` | They let the engine approve calls without asking, bypassing Station's `requestPermission` policy. `list` is read-only and stays. |
+| `executionTargets` `cloud-sandbox`, `sessionSources` `remote`, `_kiro/environment/*`, `_kiro/sourceProviders/*` | They leave the host's confinement; Station pins `local` where it can. |
+| `_kiro/memory/create\|update\|delete\|import\|export\|sync` | Station's knowledge stores stay authoritative (ADR 0009); `list` and `get` are read-only and engine-attributed. |
+| `_kiro/session/rename` | No consumer. |
 
 ## Tool Execution
 
@@ -577,10 +703,11 @@ and any a plugin contributes. Besides the launch fields above, an entry
 | Field | Description |
 |---|---|
 | `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
-| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`). The environment Station already launches with wins a conflict. |
+| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`, `KIRO_CLI_`). The environment Station already launches with wins a conflict. |
 | `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
 | `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
 | `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
+| `managedRuntime` | Built-in entries only. `installId` names a pinned install Station downloads with consent and verifies from its manifest digest (`@kontourai/station-contracts/managed-engine-install`); `argv` are the runtime's arguments, exactly one of them `{script}`, the install's entry script. |
 
 `validateACPEngineDescriptor` checks these fields and the entry's `name`,
 `description` and `sourceName`. An entry that fails is left out of the
@@ -593,7 +720,7 @@ without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
 proxy variable is refused), or one that looks like a credential (a `KEY`,
 `TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
 lists as a credential variable). A plugin entry is also refused when it
-carries `launchEnv`, reuses a built-in entry's id, or has a name that reads as
+carries `launchEnv` or `managedRuntime`, reuses a built-in entry's id, or has a name that reads as
 a built-in's (compared after NFKC, case-folding and mapping common Cyrillic and
 Greek look-alikes), and every entry from a plugin provider registered as
 "Station", "Kontour" or a built-in engine's name is refused; the built-in card
