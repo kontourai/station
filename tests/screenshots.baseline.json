@@ -92,12 +92,6 @@
       "sha256": "66a3ccf8d8e434955e2d567f8b85569d15fb34471188964733738f0922eb4639"
     },
     {
-      "name": "mobile-activity-compact",
-      "width": 390,
-      "height": 844,
-      "sha256": "73408ae60e4f2966e2d7ea76772189f4336de9f94e934c520762b15e957cf9cc"
-    },
-    {
       "name": "mobile-agent-editor",
       "width": 390,
       "height": 844,
@@ -306,18 +300,6 @@
       "width": 1440,
       "height": 900,
       "sha256": "61e4cdc04e3bcf88ee103d7cb8fcbbbf20cc4b16d333dbe3ee274850e1325a69"
-    },
-    {
-      "name": "sessions",
-      "width": 1440,
-      "height": 900,
-      "sha256": "daac0dd2bc75583ffb5cda71e128969e944db8f89df857c8e606eef49deb8ce8"
-    },
-    {
-      "name": "sessions-filtered-empty",
-      "width": 1440,
-      "height": 900,
-      "sha256": "96b13e42699b42cd377b870c5030ae6d5aa0e5c07e55d6e7fda3d628715801b7"
     },
     {
       "name": "settings",
