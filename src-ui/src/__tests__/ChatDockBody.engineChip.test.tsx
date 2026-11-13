@@ -245,7 +245,7 @@ function renderDock(
 }
 
 async function engineChip() {
-  const trigger = await screen.findByRole('button', { name: /^Run setup:/ });
+  const trigger = await screen.findByTestId('run-setup-trigger');
   if (trigger.getAttribute('aria-expanded') !== 'true')
     fireEvent.click(trigger);
   const button = await screen.findByRole('button', {

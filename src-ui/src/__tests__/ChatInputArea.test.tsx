@@ -2399,3 +2399,18 @@ test.each([undefined, 'claude'])(
     expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
   },
 );
+
+test.each([
+  { currentExecutionAgentId: 'other-engine' },
+  { currentModelSource: 'session override', currentModel: 'claude-sonnet' },
+])(
+  'reply setup exposes a conversation override independently of approval state: %j',
+  (override) => {
+    renderChatInputArea(override);
+    const trigger = screen.getByTestId('run-setup-trigger');
+    expect(trigger.textContent).toContain('⚠');
+    expect(trigger.getAttribute('aria-label')).toContain(
+      'Conversation override',
+    );
+  },
+);

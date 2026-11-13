@@ -1210,6 +1210,11 @@ export function ChatInputArea({
             )}
             <ComposerChoice
               ref={modelButtonRef}
+              safetyLabel={
+                currentExecutionAgentId || isOverride
+                  ? 'Conversation override'
+                  : undefined
+              }
               onClick={canModelSelect ? onModelOpen : undefined}
               aria-disabled={!canModelSelect}
               className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}

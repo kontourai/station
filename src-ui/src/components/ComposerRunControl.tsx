@@ -52,8 +52,12 @@ export function ComposerRunControl({
         .split(/[.—]/)[0]
         .trim(),
     );
-  const safety = choices.flatMap(({ safety }) => (safety ? [safety] : []));
-  const summary = [label, ...details, ...safety].join('; ');
+  const safety = [
+    ...new Set(
+      choices.flatMap(({ safety }) => (safety ? safety.split('; ') : [])),
+    ),
+  ];
+  const summary = [...new Set([label, ...details, ...safety])].join('; ');
   return (
     <>
       {loadingLabel ? (

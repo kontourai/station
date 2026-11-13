@@ -31,6 +31,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { StartComposer } from '../components/chat-start/StartComposer';
 import { displayableProjectIcon } from '../components/icons/ProjectIcon';
 import { projectAccents } from '../components/project-sidebar/projectAccent';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -373,9 +374,7 @@ function renderBoth(projectSlug?: string) {
 const formOf = (root: HTMLElement) =>
   within(root).getByRole('form', { name: 'Start work' });
 function setupOf(root: HTMLElement) {
-  const trigger = within(formOf(root)).getByRole('button', {
-    name: /^Run setup:/,
-  });
+  const trigger = within(formOf(root)).getByTestId('run-setup-trigger');
   if (trigger.getAttribute('aria-expanded') !== 'true')
     fireEvent.click(trigger);
   return document.getElementById(trigger.getAttribute('aria-controls')!)!;
@@ -2387,4 +2386,32 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     expect(menu.querySelector('.start-menu__hint')?.textContent).toBe(reason);
     ui.cleanupListener();
   }, 30_000);
+});
+
+test('start setup exposes an execution override independently of approval state', () => {
+  render(
+    <StartComposer
+      prompt=""
+      onPromptChange={vi.fn()}
+      agent={{
+        status: 'ready',
+        needsSetup: false,
+        agent: {
+          slug: 'profile',
+          name: 'Writer',
+          engineId: 'station-agent',
+        } as AgentData,
+        executionAgentId: 'other-engine',
+      }}
+      onOpenAgents={vi.fn()}
+      project={{ status: 'ready', label: 'No project', isGlobal: true }}
+      onOpenProject={vi.fn()}
+      canStart={false}
+      pending={false}
+      onStart={vi.fn()}
+    />,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.textContent).toContain('⚠');
+  expect(trigger.getAttribute('aria-label')).toContain('Conversation override');
 });
