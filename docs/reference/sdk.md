@@ -2513,7 +2513,9 @@ request authority remain distinct. `interruptOrchestrationTurn` and
 `dispatchOrchestrationCommand` accepts it in its fourth options argument.
 The runtime-event-content hooks accept `apiBase` and `requestScope` in their
 input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
-and the target API base as its second argument. Explicit target reads partition
+and the target API base as its second argument. Its optional `running` input
+refreshes a visible engine transcript every two seconds through React Query.
+Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.
 

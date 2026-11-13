@@ -1,3 +1,4 @@
+/** Legacy URL spelling only; no Activity surface is registered. */
 export const ACTIVITY_SURFACE_ID = 'activity' as const;
 
 export const SURFACE_DEEP_LINK_QUERY_KEYS = {
@@ -34,6 +35,8 @@ export interface ActivityDeepLinkIntent {
   sessionId?: string;
   focus?: ActivityFocusHint;
   messageAnchor?: SessionMessageAnchor;
+  childId?: string;
+  childTitle?: string;
 }
 
 export interface SurfaceDeepLinkIntent {
@@ -41,6 +44,8 @@ export interface SurfaceDeepLinkIntent {
   sessionId?: string;
   focus?: ActivityFocusHint;
   messageAnchor?: SessionMessageAnchor;
+  childId?: string;
+  childTitle?: string;
 }
 
 export interface SurfaceDeepLinkInput {
@@ -48,6 +53,8 @@ export interface SurfaceDeepLinkInput {
   sessionId?: string;
   focus?: ActivityFocusHint;
   messageAnchor?: SessionMessageAnchor;
+  childId?: string;
+  childTitle?: string;
 }
 
 /**
@@ -67,10 +74,15 @@ export function surfaceDeepLink(input: SurfaceDeepLinkInput): string {
     input.sessionId.length <= 512 && isSessionMessageAnchor(input.messageAnchor)
       ? `&${new URLSearchParams({ messageSession: input.sessionId, messageDirection: input.messageAnchor.direction, messageRequest: input.messageAnchor.requestKey })}`
       : '';
-  return `/?surface=${surface}&session=${session}${focus}${message}`;
+  const child = input.childId
+    ? `&${new URLSearchParams({ child: input.childId, childTitle: input.childTitle ?? 'Subagent' })}`
+    : '';
+  return `/?surface=${surface}&session=${session}${focus}${message}${child}`;
 }
 
-/** Activity destination with the same bounded optional message anchor as surfaceDeepLink. */
+/** Compatibility name for stored Activity producers; sessions now open in Chat. */
 export function activityDeepLink(intent?: ActivityDeepLinkIntent): string {
-  return surfaceDeepLink({ surfaceId: ACTIVITY_SURFACE_ID, ...intent });
+  return intent?.sessionId
+    ? surfaceDeepLink({ surfaceId: 'chat', ...intent })
+    : '/notifications';
 }

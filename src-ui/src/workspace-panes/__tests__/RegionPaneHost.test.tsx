@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_INSTANCE,
@@ -186,7 +186,7 @@ test('a region host document is the region’s; the model-less mount keeps the l
   expect(document).toMatchObject({
     id: 'left',
     scope: { kind: 'ambient' },
-    instances: [{ descriptorId: 'pane:builtin:activity' }],
+    instances: [{ descriptorId: 'pane:builtin:workspace-agents' }],
   });
   expect(() => createRegionPaneHostDocument('left', ['home'])).toThrow(
     /no built-in pane/,
@@ -254,13 +254,13 @@ test('the derived document activates the selected pane and keeps the arrangement
   );
   expect(document.instances.map((i) => i.descriptorId)).toEqual([
     'pane:builtin:chat',
-    'pane:builtin:activity',
+    'pane:builtin:workspace-agents',
   ]);
-  expect(document.activeInstanceId).toBe('workspace-activity');
+  expect(document.activeInstanceId).toBe('workspace-agents');
   expect(document.root).toMatchObject({
     type: 'tabs',
-    instanceIds: ['workspace-chat', 'workspace-activity'],
-    selectedInstanceId: 'workspace-activity',
+    instanceIds: ['workspace-chat', 'workspace-agents'],
+    selectedInstanceId: 'workspace-agents',
   });
   // No selection named, or one with no pane: the first pane.
   expect(
@@ -308,9 +308,9 @@ test('reconcileRegionPaneHostDocument rewrites a persisted document whose pane l
     id: 'bottom',
     instances: [
       { descriptorId: 'pane:builtin:chat' },
-      { descriptorId: 'pane:builtin:activity' },
+      { descriptorId: 'pane:builtin:workspace-agents' },
     ],
-    activeInstanceId: 'workspace-activity',
+    activeInstanceId: 'workspace-agents',
   });
 
   // Matching list, different selection: left alone, selection included —
@@ -322,7 +322,7 @@ test('reconcileRegionPaneHostDocument rewrites a persisted document whose pane l
   );
   expect(reconcileRegionPaneHostDocument(adapter, chatSelected)).toBe(false);
   expect(JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!).activeInstanceId).toBe(
-    'workspace-activity',
+    'workspace-agents',
   );
 
   // Chat alone derived, two panes persisted: NOT this function's case.
@@ -337,7 +337,7 @@ test('reconcileRegionPaneHostDocument rewrites a persisted document whose pane l
     JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!).instances.map(
       (i: { descriptorId: string }) => i.descriptorId,
     ),
-  ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']);
+  ).toEqual(['pane:builtin:chat', 'pane:builtin:workspace-agents']);
 
   // Corrupt key: nothing written, no throw.
   storage.set(BOTTOM_STORAGE_KEY, '{not json');
@@ -526,8 +526,8 @@ test.each([
   ['a non-canonical Home occupant', impostorHomeInstance, 'pane:builtin:home'],
   [
     'a canonical Activity occupant',
-    WORKSPACE_ACTIVITY_PANE_INSTANCE,
-    'pane:builtin:activity',
+    WORKSPACE_AGENTS_PANE_INSTANCE,
+    'pane:builtin:workspace-agents',
   ],
 ])(
   'a persisted document naming %s is retired on restore: Chat renders and the stale occupant is gone',

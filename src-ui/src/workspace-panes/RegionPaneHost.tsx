@@ -316,11 +316,6 @@ export type RenderChatPane = (
   shellChrome: DockShellChrome,
 ) => ReactNode;
 
-export type RenderActivityPane = (
-  instance: WorkspacePaneInstance,
-  shellChrome: DockShellChrome,
-) => ReactNode;
-
 /**
  * A docked built-in pane other than Chat's and Activity's (#2047: the
  * coding panes) renders through the built-in registry, behind its own lazy
@@ -342,11 +337,6 @@ const loadRegionBuiltinPane = () =>
 const loadRegionPluginPane = () =>
   import('./RegionPluginPane').then((module) => ({
     default: module.RegionPluginPane,
-  }));
-
-const loadRegionActivityReviewPane = () =>
-  import('./RegionActivityReviewPane').then((module) => ({
-    default: module.RegionActivityReviewPane,
   }));
 
 /**
@@ -518,13 +508,11 @@ export function RegionPaneHost({
   regionId,
   onRequestAuth,
   renderChatPane,
-  renderActivityPane,
   chatPaneFailureContext,
 }: {
   regionId?: DockMode;
   onRequestAuth?: () => Promise<boolean> | undefined;
   renderChatPane: RenderChatPane;
-  renderActivityPane?: RenderActivityPane;
   /**
    * Chat's side of a crashed Chat pane (which conversation, and a way back
    * to the list) — supplied by the caller with Chat's renderer, for the
@@ -569,7 +557,7 @@ export function RegionPaneHost({
     [panes],
   );
   const selected =
-    region && region.occupant && panes.includes(region.occupant)
+    region?.occupant && panes.includes(region.occupant)
       ? region.occupant
       : panes[0];
   const documentId = regionPaneHostDocumentId(regionId);
@@ -907,15 +895,6 @@ export function RegionPaneHost({
                       instance,
                       renderChatPane(instance, onRequestAuth, shellChrome),
                     );
-                  case 'activity':
-                    if (!renderActivityPane)
-                      throw new Error(
-                        'Region host holds Activity but was given no Activity renderer',
-                      );
-                    return ownedByPane(
-                      instance,
-                      renderActivityPane(instance, shellChrome),
-                    );
                   default:
                     return ownedByPane(
                       instance,
@@ -923,11 +902,7 @@ export function RegionPaneHost({
                         load={
                           String(instance.instanceId).startsWith('plugin-pane:')
                             ? loadRegionPluginPane
-                            : String(instance.instanceId).startsWith(
-                                  'activity-review:',
-                                )
-                              ? loadRegionActivityReviewPane
-                              : loadRegionBuiltinPane
+                            : loadRegionBuiltinPane
                         }
                         componentProps={{ instance }}
                         pending={

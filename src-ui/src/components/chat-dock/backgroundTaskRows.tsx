@@ -316,7 +316,7 @@ export function TaskRow({
               }
               onClick={() => onOpenTranscript(delegateThreadId)}
             >
-              View transcript
+              Open chat
             </button>
             {isRunningDelegate && (
               <button

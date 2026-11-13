@@ -78,6 +78,8 @@ export interface SurfaceIntent {
   session?: string;
   focus?: 'evidence';
   messageAnchor?: SessionMessageAnchor;
+  childId?: string;
+  childTitle?: string;
 }
 
 export interface SurfaceIntentRecord extends SurfaceIntent {
@@ -1831,6 +1833,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         surfaceIntent.surfaceId,
         surfaceIntent.sessionId,
         surfaceIntent.focus,
+        surfaceIntent.childId,
+        surfaceIntent.childTitle,
         surfaceIntent.messageAnchor?.direction,
         surfaceIntent.messageAnchor?.requestKey,
       ])
@@ -1857,6 +1861,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
               session: surfaceIntent.sessionId,
               focus: surfaceIntent.focus,
               messageAnchor: surfaceIntent.messageAnchor,
+              childId: surfaceIntent.childId,
+              childTitle: surfaceIntent.childTitle,
             }
           : undefined,
       );

@@ -328,7 +328,7 @@ export function safeSessionReferenceLabel(label: string): string {
 }
 
 export function canonicalSessionReferenceUrl(conversationId: string): string {
-  return `/activity?session=${encodeURIComponent(conversationId)}`;
+  return `/?surface=chat&session=${encodeURIComponent(conversationId)}`;
 }
 
 /**

@@ -124,7 +124,7 @@ describe('an interrupted subagent', () => {
       }),
     );
     expect(
-      screen.getByRole('button', { name: 'View transcript' }),
+      screen.getByRole('button', { name: 'Open chat' }),
     ).toBeTruthy();
   });
 

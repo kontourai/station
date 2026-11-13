@@ -3,7 +3,7 @@ import type { OrchestrationConversationEventWindow } from '@kontourai/station-co
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { type ReactNode, useSyncExternalStore } from 'react';
 import { ConversationConnectionContext } from '../components/conversation/ConversationConnectionContext';
-import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
+import { SessionReaderBindingProvider } from '../components/conversation/SessionReaderBinding';
 // @vitest-environment jsdom
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -152,7 +152,7 @@ function CanonicalActivityBinding({ children }: { children: ReactNode }) {
   );
   const intent = navigation.surfaceIntent;
   return (
-    <ActivityWorkspacePaneBindingProvider
+    <SessionReaderBindingProvider
       binding={{
         apiBase: API,
         sessionId: intent?.sessionId,
@@ -161,7 +161,7 @@ function CanonicalActivityBinding({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </ActivityWorkspacePaneBindingProvider>
+    </SessionReaderBindingProvider>
   );
 }
 

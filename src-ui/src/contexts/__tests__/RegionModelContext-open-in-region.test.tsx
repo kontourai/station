@@ -10,7 +10,7 @@
  * where it did before it was reimplemented over the same core.
  */
 
-import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-agents-pane';
 import { createWorkspaceCodingTerminalPaneInstance } from '@kontourai/station-contracts/workspace-coding-panels';
 import { WORKSPACE_HOME_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-home-pane';
 import { parseWorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
@@ -101,7 +101,7 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     const pushes = vi.spyOn(window.history, 'pushState');
     let outcome: unknown;
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE);
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE);
     });
     expect(outcome).toEqual({
       ok: true,
@@ -129,7 +129,7 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     );
     let outcome: unknown;
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE);
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE);
     });
     // `firstFreeDockRegion`: bottom is the first free once right is taken.
     expect(outcome).toMatchObject({ ok: true, region: 'bottom' });
@@ -148,7 +148,7 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
     await mount();
     let outcome: unknown;
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE, {
         region: 'bottom',
       });
     });
@@ -175,7 +175,7 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
   test('an instance already open in some region is revealed there, not opened again', async () => {
     await mount();
     act(() =>
-      current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, { region: 'bottom' }),
+      current().open(WORKSPACE_AGENTS_PANE_INSTANCE, { region: 'bottom' }),
     );
     act(() => current().model.selectPane('bottom', 'chat'));
     act(() => current().model.setRegion('bottom', { visible: false }));
@@ -189,7 +189,7 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
 
     let outcome: unknown;
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE);
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE);
     });
     expect(outcome).toEqual({
       ok: true,
@@ -208,7 +208,7 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
 
     // Naming the region it is in is the same reveal.
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE, {
         region: 'bottom',
       });
     });
@@ -229,13 +229,13 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
   test('the default focusExisting moves a held pane when a different region is named', async () => {
     await mount();
     act(() =>
-      current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, { region: 'right' }),
+      current().open(WORKSPACE_AGENTS_PANE_INSTANCE, { region: 'right' }),
     );
     expect(current().model.regions.right.panes).toEqual(['activity']);
 
     let outcome: unknown;
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE, {
         region: 'bottom',
       });
     });
@@ -256,11 +256,11 @@ describe('openInRegion resolves a region and places through the model (#2048)', 
   test('focusExisting: false with another region moves the pane there', async () => {
     await mount();
     act(() =>
-      current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, { region: 'bottom' }),
+      current().open(WORKSPACE_AGENTS_PANE_INSTANCE, { region: 'bottom' }),
     );
     let outcome: unknown;
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE, {
         region: 'right',
         focusExisting: false,
       });
@@ -340,7 +340,7 @@ describe('openInRegion refusals change nothing (#2048)', () => {
       current().model.openSurfaceInRegion('chat', { region: 'main' }),
     ).toEqual({ ok: false, reason: 'refused' });
     expect(
-      current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, { placement: 'split' }),
+      current().open(WORKSPACE_AGENTS_PANE_INSTANCE, { placement: 'split' }),
     ).toEqual({ ok: false, reason: 'unsupported-placement' });
 
     expect(current().model.regions).toBe(before);
@@ -359,7 +359,7 @@ describe('openInRegion refusals change nothing (#2048)', () => {
     await mount(600);
     let outcome: unknown;
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE, {
         region: 'right',
       });
     });
@@ -371,7 +371,7 @@ describe('openInRegion refusals change nothing (#2048)', () => {
     expect(current().model.regions.right.panes).toEqual([]);
 
     act(() => {
-      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE);
+      outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE);
     });
     expect(outcome).toMatchObject({ ok: true, region: 'bottom' });
     expect(current().model.regions.right.panes).toEqual([]);
@@ -410,7 +410,7 @@ describe('showSurface over openSurfaceInRegion (#2048)', () => {
     await mount();
     const outcome = openInRegion(
       current().model,
-      WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      WORKSPACE_AGENTS_PANE_INSTANCE,
       { region: 'bottom' },
     );
     expect(outcome).toMatchObject({ ok: true, region: 'bottom' });

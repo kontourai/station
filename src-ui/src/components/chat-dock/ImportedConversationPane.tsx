@@ -233,7 +233,7 @@ export default function ImportedConversationPane({
           className="imported-conversation-pane__error"
           variant="compact"
           title="This continuation can't open as a chat"
-          description={`Station has no ${engineName(unboundEngine)} agent, so the continuation has none. Open it from Activity, or set up ${engineName(unboundEngine)} in New Chat.`}
+          description={`Station has no ${engineName(unboundEngine)} agent, so the continuation has none. Set up ${engineName(unboundEngine)} in New Chat.`}
         />
       )}
       {(continued.isError || openFailed) && (

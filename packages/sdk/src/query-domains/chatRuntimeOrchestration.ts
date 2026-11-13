@@ -589,6 +589,8 @@ export function useChildWorkTranscriptQuery(
     threadId: string;
     childId: string;
     enabled?: boolean;
+    /** Re-read a live child through the query owner; stops when the reader unmounts. */
+    running?: boolean;
     requestScope?: ApiRequestScope;
   },
   apiBase?: string,
@@ -620,6 +622,7 @@ export function useChildWorkTranscriptQuery(
     getNextPageParam: (page) => page.nextOffset,
     retry: false,
     staleTime: 30_000,
+    refetchInterval: input.running ? 2_000 : false,
   });
 }
 

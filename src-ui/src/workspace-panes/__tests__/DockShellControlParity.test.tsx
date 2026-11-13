@@ -696,9 +696,6 @@ describe('the region bar is a header drag surface (real chrome)', () => {
                 // it beside Activity), so both renderers need a stub; only
                 // the SELECTED pane's is on this test's path.
                 renderChatPane={() => <p data-testid="region-chat-occupant" />}
-                renderActivityPane={() => (
-                  <p data-testid="region-activity-occupant" />
-                )}
               />
             </RegionModelProvider>
           </NavigationProvider>

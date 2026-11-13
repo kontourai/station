@@ -547,7 +547,6 @@ describe('the git section on Home', () => {
         remoteUnavailable={[]}
         remoteAuthenticationRequired={[]}
         onOpen={vi.fn()}
-        onViewActivity={vi.fn()}
         onRetry={vi.fn()}
       />
     );

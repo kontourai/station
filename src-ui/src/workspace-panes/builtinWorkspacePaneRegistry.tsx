@@ -1,11 +1,6 @@
 import { WORKSPACE_BASIS_PANE_RENDERER_NAME } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { WORKSPACE_BOARD_PANE_RENDERER_NAME } from '@kontourai/station-board-pane/workspace-board-pane';
 import type { ConversationPullRequestLinkObservation } from '@kontourai/station-contracts/conversation-pull-request-links';
-import { WORKSPACE_ACTIVITY_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-activity-pane';
-import {
-  isCanonicalWorkspaceActivityReviewPaneInstance,
-  WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME,
-} from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { WORKSPACE_AGENTS_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -958,14 +953,6 @@ const LazyHomeWorkspacePane = lazy(() =>
   })),
 );
 
-const LazyActivityWorkspacePane = lazy(() =>
-  import('../views/activity/ActivityWorkspacePane').then(
-    ({ ActivityWorkspacePane }) => ({
-      default: ActivityWorkspacePane,
-    }),
-  ),
-);
-
 const LazyBoardWorkspacePane = lazy(() =>
   import('../views/board/BoardWorkspacePane').then(
     ({ BoardWorkspacePane }) => ({
@@ -1057,19 +1044,6 @@ function HomeWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
   );
 }
 
-// Activity binds no Project either (its list aggregates every host session),
-// so it never consults `useWorkspacePaneBoundIdentity`; its own renderer
-// still refuses a non-canonical occurrence. Lazy for the same reason Home
-// is: the sessions surface is Activity's own chunk, and a host
-// that never mounts Activity should not download it to have it in the table.
-function ActivityWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
-  return (
-    <Suspense fallback={<SkeletonBlock count={3} label="Loading Activity" />}>
-      <LazyActivityWorkspacePane {...props} />
-    </Suspense>
-  );
-}
-
 // The Console Board (archive#4142): the component lives in
 // `@kontourai/station-board-pane`, and this lazy entry — via the wrapper
 // that supplies its shell affordances — is core's ONE import of that
@@ -1082,31 +1056,6 @@ function BoardWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
     <Suspense fallback={<SkeletonBlock count={3} label="Loading the Board" />}>
       <LazyBoardWorkspacePane {...props} />
     </Suspense>
-  );
-}
-
-const LazyActivityReview = lazy(() =>
-  import('./RegionActivityReviewPane').then((m) => ({
-    default: m.RegionActivityReviewPane,
-  })),
-);
-function ActivityReviewWorkspacePaneEntry({
-  instance,
-}: BuiltinWorkspacePaneProps) {
-  if (!isCanonicalWorkspaceActivityReviewPaneInstance(instance))
-    return (
-      <WorkspacePaneBindingUnavailable
-        identity={{ state: 'pane-instance-invalid' }}
-      />
-    );
-  return (
-    <UnsavedGuardOwnerContext.Provider value={String(instance.instanceId)}>
-      <Suspense
-        fallback={<SkeletonBlock count={3} label="Loading Activity review" />}
-      >
-        <LazyActivityReview instance={instance} />
-      </Suspense>
-    </UnsavedGuardOwnerContext.Provider>
   );
 }
 
@@ -1135,8 +1084,6 @@ const builtinWorkspacePaneRegistry: Record<
   BuiltinWorkspacePaneRendererName,
   BuiltinWorkspacePaneComponent
 > = {
-  [WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME]:
-    ActivityReviewWorkspacePaneEntry,
   'flow-run-console': FlowRunConsolePane,
   [WORKSPACE_CHAT_PANE_RENDERER_NAME]: ChatPane,
   [WORKSPACE_TASK_ROOM_EDITOR_RENDERER_NAME]: TaskRoomEditor,
@@ -1153,7 +1100,6 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME]: PullRequestWorkspacePane,
   [WORKSPACE_LAYOUT_PANE_RENDERER_NAME]: LayoutWorkspacePaneEntry,
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,
-  [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
   [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,
   [WORKSPACE_DEVICE_PANE_RENDERER_NAME]: DeviceWorkspacePaneEntry,
   [WORKSPACE_TERMINAL_PANE_RENDERER_NAME]: TerminalSessionWorkspacePaneEntry,

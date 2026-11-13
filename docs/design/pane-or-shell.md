@@ -81,7 +81,7 @@ Pane (work surface — target state; most are routes today and stay routable):
 | --- | --- |
 | Home | descriptor already exists (`workspace-home-pane.ts`); placement is epic slice M2 |
 | Chat | already a pane; the dock and the fullscreen layout are placements |
-| Activity | #305 asks for exactly this |
+| Activity (retired) | Session links now open Chat; the inbox and Home own work lists |
 | Console Board | already a Console Kit view behind D8; first extraction candidate |
 | Agents | list+detail work surface |
 | Connections | work surface, though its recovery flows are shell (test 1 splits pages, not areas) |

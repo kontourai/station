@@ -310,7 +310,7 @@ visible and retryable; a failed Task stop keeps the confirmation open.
 Full access, arbitrary folders, remote mentions, offline copies/replay, personal
 defaults and local skill/workspace integrations are unavailable on relayed chats.
 
-Dock, Activity, attached records and coding tabs use the same conversation body.
+Dock, attached records and coding tabs use the same conversation body.
 Attached records retain their read-only access and explicit **Continue in Station**
 action, which confirms continuation into an owned child.
 Owner, member and guest Task histories share record rendering and pagination;
@@ -416,7 +416,7 @@ storage events refresh snoozes in other tabs of the same browser.
 The implementation is shared by both Inbox presentations; Home and
 sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and
-View Activity sits beside the Continue heading.
+Recent work and the inbox provide the work list.
 Home's Recent work rows use a recorded Directory label when no Project label
 is available and a working folder is known. For a Project, the decorative mark
 before its name is its chosen icon, or, without one, a dot in its sidebar colour

@@ -794,7 +794,6 @@ describe('a project wears the same colour everywhere', () => {
         remoteUnavailable={[]}
         remoteAuthenticationRequired={[]}
         onOpen={vi.fn()}
-        onViewActivity={vi.fn()}
         onRetry={vi.fn()}
       />
     );

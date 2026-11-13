@@ -329,7 +329,7 @@ export function AgentsWorkspacePane() {
       : undefined;
 
   const openSession = (threadId: string) =>
-    showSurface('activity', { session: threadId });
+    showSurface('chat', { session: threadId });
 
   const sessionByThread = useMemo(
     () => new Map(sessions.map((session) => [session.threadId, session])),
@@ -352,6 +352,13 @@ export function AgentsWorkspacePane() {
       }
       showProvenance={scope === 'all'}
       onOpenSession={openSession}
+      onOpenChild={(item) =>
+        showSurface('chat', {
+          session: item.reporterThreadId,
+          childId: item.childId,
+          childTitle: item.title,
+        })
+      }
     />
   );
 

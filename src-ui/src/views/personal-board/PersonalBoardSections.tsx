@@ -182,7 +182,7 @@ function RecentSection({
         {rows.map((session) => (
           <li key={session.threadId}>
             <StationLink
-              href={`/?surface=activity&session=${encodeURIComponent(session.threadId)}`}
+              href={`/?surface=chat&session=${encodeURIComponent(session.threadId)}`}
             >
               {session.displayTitle || 'Untitled conversation'}
             </StationLink>

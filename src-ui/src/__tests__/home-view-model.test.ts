@@ -8,7 +8,6 @@ import { inboxRowChips } from '../components/inbox-row/inbox-row-chips';
 import { createDefaultChatState } from '../contexts/active-chats-state';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 import { orchestrationLifecycleLabel } from '../utils/session-state';
-import { activityOriginShortLabel } from '../views/activity/activity-list-model';
 import {
   buildActiveChatTaskItems,
   buildHomeWorkItems,
@@ -2758,7 +2757,6 @@ test('a recorded agent sender reaches Inbox and Activity markers without changin
     kind: 'agent-message',
     label: 'Agent message',
   });
-  expect(activityOriginShortLabel(session)).toBe('Agent message');
   const personSession: OrchestrationSessionSummary = {
     ...session,
     turnOrigin: {
@@ -2780,7 +2778,6 @@ test('a recorded agent sender reaches Inbox and Activity markers without changin
     kind: 'agent-message',
     label: 'Agent message',
   });
-  expect(activityOriginShortLabel(personSession)).toBe('Browser (reported)');
 });
 
 test('Inbox retains identical conversation IDs on different Stations and principals', () => {
@@ -2791,7 +2788,7 @@ test('Inbox retains identical conversation IDs on different Stations and princip
     stationName: environmentId,
     affinity: {
       kind: 'device' as const,
-      connectionId: 'direct-' + environmentId,
+      connectionId: `direct-${environmentId}`,
       principalNamespace,
     },
   });

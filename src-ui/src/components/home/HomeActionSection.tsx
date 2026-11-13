@@ -188,7 +188,6 @@ export function HomeActionSection({
 export function HomeContinueCard({
   model,
   id,
-  onViewActivity,
   childrenById,
 }: {
   model: HomeViewModel;
@@ -198,7 +197,6 @@ export function HomeContinueCard({
    * Given when Recent work is not shown (Continue holds the only item), so
    * the way to all work stays on the page, beside this heading.
    */
-  onViewActivity?: () => void;
 }) {
   const coarsePointer = useCoarsePointer();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
@@ -222,15 +220,6 @@ export function HomeContinueCard({
           here, not under a smaller label. */}
       <div className="home-view__section-heading">
         <h2 id="home-continue-label">Continue</h2>
-        {onViewActivity && (
-          <button
-            type="button"
-            className="home-view__link"
-            onClick={onViewActivity}
-          >
-            View Activity
-          </button>
-        )}
       </div>
       <ul className="home-view__task-list home-view__continue-list">
         {renderHomeWorkRow({

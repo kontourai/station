@@ -13,7 +13,10 @@ import {
   type DeviceSettingsActions,
   useDeviceSettings,
 } from '../../contexts/DeviceSettingsContext';
-import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import {
+  type SurfaceIntentRecord,
+  useRegionModelOptional,
+} from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import type {
   NewChatClosedOutcome,
@@ -56,12 +59,15 @@ export function useChatDockOverlays({
   );
   const regionModel = useRegionModelOptional();
   const incoming = regionModel?.surfaceIntents.chat;
+  const [readerSurfaceIntent, setReaderSurfaceIntent] =
+    useState<SurfaceIntentRecord>();
   const consumeIntent = regionModel?.consumeSurfaceIntent;
   useEffect(() => {
     if (!incoming?.session) return;
     onReaderIntent();
     setMobileInboxOpen(false);
     setImportedSessionId(incoming.session);
+    setReaderSurfaceIntent(incoming);
     consumeIntent?.('chat', incoming.token);
   }, [incoming, consumeIntent, onReaderIntent]);
   // An imported conversation occupies the same reading surface as an owned chat.
@@ -197,6 +203,7 @@ export function useChatDockOverlays({
 
   return {
     importedSessionId,
+    readerSurfaceIntent,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,

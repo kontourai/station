@@ -277,9 +277,7 @@ test('Activity review renderer refuses forged declarations and mismatched occurr
     `activity-review:${'b'.repeat(32)}`,
   );
   if (!instance) throw new Error('Canonical review occurrence missing');
-  expect(getBuiltinWorkspacePaneRenderer(descriptor, instance)).toBeTypeOf(
-    'function',
-  );
+  expect(getBuiltinWorkspacePaneRenderer(descriptor, instance)).toBeNull();
   expect(
     getBuiltinWorkspacePaneRenderer(
       { ...descriptor, provenance: { origin: 'plugin', pluginId: 'decoy' } },

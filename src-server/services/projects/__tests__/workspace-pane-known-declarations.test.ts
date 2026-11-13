@@ -28,7 +28,7 @@ describe('known Workspace Pane declarations', () => {
     expect(catalog.instanceCount).toBe(0);
     expect(
       catalog.getDescriptor(WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR.id),
-    ).toEqual(WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR);
+    ).toBeUndefined();
     expect(
       KNOWN_WORKSPACE_PANE_DECLARATIONS.find(
         (item) =>
@@ -178,7 +178,6 @@ describe('known Workspace Pane declarations', () => {
         (declaration) => declaration.availabilityInput,
       ),
     ).toEqual([
-      { rollout: 'available', distribution: 'enabled' },
       {
         rollout: 'available',
         distribution: 'enabled',

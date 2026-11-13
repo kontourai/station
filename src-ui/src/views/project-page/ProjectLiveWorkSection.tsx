@@ -5,10 +5,7 @@ import { type ReactNode, useMemo } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { useAgents } from '../../contexts/AgentsContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
-import {
-  useShowSurface,
-  useShowSurfacePage,
-} from '../../contexts/useShowSurface';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { relativeTime } from '../../utils/relativeTime';
 import {
   type SessionIconAgent,
@@ -113,7 +110,6 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
   const showSurface = useShowSurface();
   // "All activity" is Home's "View Activity" verb: go to the page. A row's
   // session link stays the contextual reveal (`showSurface` with an intent).
-  const showSurfacePage = useShowSurfacePage();
   // Read once per render, the same shape `SessionsView` uses: `now` only
   // separates Recently finished from Earlier — neither of which this section
   // renders — so it is not a memo input.
@@ -163,7 +159,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
       }),
     );
     if (detail) openChatsStore.focus(detail);
-    else showSurface('activity', { session: session.threadId });
+    else showSurface('chat', { session: session.threadId });
   }
 
   function renderLane(lane: SessionLane) {
@@ -202,20 +198,6 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
           >
             Live work
           </span>
-          {/* Everything this section deliberately does not show — finished runs
-            and history — lives on the Activity list. The project filter there
-            is component state with no route parameter today, so this lands on
-            the unfiltered list; the station#3202 report states what threading
-            it would take. */}
-          <div className="project-page__live-work-actions">
-            <button
-              type="button"
-              className="project-page__add-btn"
-              onClick={() => showSurfacePage('activity')}
-            >
-              All activity
-            </button>
-          </div>
         </div>
         {lanes.map(renderLane)}
       </section>

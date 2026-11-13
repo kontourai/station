@@ -11,6 +11,19 @@
 > callers; this review does not renew historical bundle measurements, screenshots,
 > browser gesture measurements or physical-device results.
 
+## Current amendment: session readers belong to Chat
+
+Activity and its Quick review pane are retired. Session destinations open in
+Chat, and child transcripts push onto a navigation stack owned by that chat
+pane. Home and the inbox own the work lists. The Activity-specific examples
+and measurements in the dated slices below describe their historical revision.
+
+Legacy `/activity`, `/sessions` and `?surface=activity` URLs open the named
+session in Chat, or the inbox without a session. Saved Activity region entries
+migrate to Home in `main` and Chat in a dock; an existing Chat keeps its original
+placement. Retired quick-review tabs are removed, and a dock emptied by this
+migration closes. Other pane order and selection are retained.
+
 Status: **accepted direction with an implemented core**. The dated sections
 record the decisions and sequence of the placement work. Read later amendments
 where an earlier slice says a capability is absent. The current source has both

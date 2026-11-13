@@ -1024,18 +1024,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     defaultRegion: 'bottom',
   },
   {
-    id: 'activity',
-    title: 'Activity',
-    icon: 'activity',
-    shortcut: {
-      id: 'activity.toggle',
-      key: 'a',
-      modifiers: ['cmd', 'shift'],
-    },
-    regions: REGION_IDS,
-    defaultRegion: 'right',
-  },
-  {
     // #2050: the work this conversation set running. Dock regions only, and
     // catalog-only exposure with no chord — it belongs beside a chat, and the
     // toolbar's picker is for surfaces that stand on their own.
@@ -1202,15 +1190,6 @@ const PROJECT_LAYOUT_SURFACE_ID = new RegExp(`^layout:${UUID}/${UUID}$`);
 const PLUGIN_PANE_SURFACE_ID = /^plugin-pane:[0-9a-f]{32}$/;
 
 export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
-  {
-    prefix: 'activity-review:',
-    matches: (id) => /^activity-review:[0-9a-f]{32}$/.test(id),
-    descriptorId: 'pane:builtin:activity-review',
-    title: 'Activity review',
-    icon: 'activity',
-    regions: DOCK_REGION_IDS,
-    defaultRegion: 'right',
-  },
   {
     prefix: 'pr:',
     matches: (id) => PULL_REQUEST_SURFACE_ID.test(id),

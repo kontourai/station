@@ -4,7 +4,6 @@ import {
   AgentGlyph,
   BoardGlyph,
   BranchGlyph,
-  ChartGlyph,
   CheckGlyph,
   CodeGlyph,
   DatabaseGlyph,
@@ -66,8 +65,6 @@ const BUILTIN_PANE_GLYPHS = {
   // same object the sidebar's pill names (#2157).
   'workspace-layout': BoardGlyph,
   'workspace-home': HomeGlyph,
-  'workspace-activity': ChartGlyph,
-  'workspace-activity-review': ChartGlyph,
   'workspace-agents': AgentGlyph,
   // A handset, not the Browser Preview globe: the tile names a simulator
   // or emulator screen, not a page (#1969).

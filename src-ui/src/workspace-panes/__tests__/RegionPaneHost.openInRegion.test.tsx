@@ -11,7 +11,7 @@
  * pane renderers stubbed.
  */
 
-import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_HOME_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-home-pane';
 import {
   act,
@@ -36,8 +36,8 @@ import { useOpenInRegion } from '../../contexts/useOpenInRegion';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 vi.mock('../../components/chat-dock/ChatDock', () => ({
   ChatDock: () => null,
@@ -175,7 +175,7 @@ test('an open from main lands as the selected tab on the right, a second open fo
 
   let outcome: unknown;
   act(() => {
-    outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+    outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE, {
       region: 'right',
     });
   });
@@ -185,14 +185,14 @@ test('an open from main lands as the selected tab on the right, a second open fo
   expect(outcome).toEqual({
     ok: true,
     region: 'right',
-    surfaceId: 'activity',
+    surfaceId: 'workspace-agents',
     existing: false,
   });
   const sessions = await screen.findByTestId('sessions-view');
   expect(sessions.closest('.chat-dock')).toBe(shell('right'));
   expect(tabs('right')).toEqual([
     ['Chat', 'false'],
-    ['Activity', 'true'],
+    ['Agents', 'true'],
   ]);
   // One shell: `right`, holding both panes. The `bottom` Chat left hid with
   // its last pane (#2153: a move is not a close), and it is Chat's — which
@@ -208,14 +208,14 @@ test('an open from main lands as the selected tab on the right, a second open fo
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
   );
   act(() => {
-    outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+    outcome = current().open(WORKSPACE_AGENTS_PANE_INSTANCE, {
       region: 'right',
     });
   });
   expect(outcome).toEqual({
     ok: true,
     region: 'right',
-    surfaceId: 'activity',
+    surfaceId: 'workspace-agents',
     existing: true,
   });
   await waitFor(() =>
@@ -223,9 +223,12 @@ test('an open from main lands as the selected tab on the right, a second open fo
   );
   expect(tabs('right')).toEqual([
     ['Chat', 'false'],
-    ['Activity', 'true'],
+    ['Agents', 'true'],
   ]);
-  expect(current().model.regions.right.panes).toEqual(['chat', 'activity']);
+  expect(current().model.regions.right.panes).toEqual([
+    'chat',
+    'workspace-agents',
+  ]);
 
   // A refusal: Home has no dock pane. Nothing moves, nothing is pushed.
   act(() => {
@@ -236,7 +239,7 @@ test('an open from main lands as the selected tab on the right, a second open fo
   expect(outcome).toEqual({ ok: false, reason: 'no-surface' });
   expect(tabs('right')).toEqual([
     ['Chat', 'false'],
-    ['Activity', 'true'],
+    ['Agents', 'true'],
   ]);
   expect(pushes).not.toHaveBeenCalled();
   expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();

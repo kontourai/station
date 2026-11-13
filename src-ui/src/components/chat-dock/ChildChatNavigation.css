@@ -1,0 +1,45 @@
+.child-chat-root {
+  display: contents;
+}
+.child-chat-root[hidden],
+.child-chat-pane__reader[hidden] {
+  display: none;
+}
+.child-chat-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.child-chat-trail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: var(--k-space-2);
+  gap: var(--k-space-1);
+  border-bottom: 1px solid var(--k-line);
+}
+.child-chat-trail__segment {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.child-chat-trail button {
+  min-height: 44px;
+}
+.child-chat-pane__reader {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+}
+.child-chat-pane .conversation-reader,
+.child-chat-pane .child-work-transcript {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}

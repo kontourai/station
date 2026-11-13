@@ -26,6 +26,5 @@ export async function warmRegionHostImports(): Promise<void> {
   await Promise.all([
     import('../RegionPaneHost'),
     import('../RegionBuiltinPane'),
-    import('../../app-shell/ActivityRegionShell'),
   ]);
 }
