@@ -1,6 +1,6 @@
 /**
  * Session actions an ACP engine may offer beyond prompting: rewind in place,
- * native fork, delete, and reconnecting one MCP server. Each is a binding
+ * native fork, and reconnecting one MCP server. Each is a binding
  * keyed on what the live session's `initialize` answer says (ADR 0013), never
  * a static claim about "ACP": the ACP adapter runs many engines, so its
  * adapter-level continuity stays `none` and these are per-session
@@ -85,6 +85,44 @@ export function resolveAcpRewind(
     : undefined;
 }
 
+/** Bound on one restored path the engine reports; a longer one is dropped. */
+const REWIND_PATH_MAX_CHARS = 4096;
+
+/**
+ * The engine's answer to a rewind: `{success, affectedFiles?, message?}`
+ * (live: `{success: true, affectedFiles: [], totalFiles: 0}`). `affectedFiles`
+ * is read only when it is an array: its count is the array's length, and at
+ * most `pathsMax` of its string entries are kept. Anything else is not a
+ * success.
+ */
+export function readAcpRewindAnswer(
+  result: unknown,
+  pathsMax: number,
+):
+  | { success: true; affectedFiles?: { count: number; paths: string[] } }
+  | { success: false; message?: string } {
+  if (!isRecord(result) || result.success !== true) {
+    const message =
+      isRecord(result) && typeof result.message === 'string'
+        ? result.message.slice(0, 1024)
+        : undefined;
+    return { success: false, ...(message ? { message } : {}) };
+  }
+  if (!Array.isArray(result.affectedFiles)) return { success: true };
+  const paths = result.affectedFiles
+    .filter(
+      (path): path is string =>
+        typeof path === 'string' &&
+        path.length > 0 &&
+        path.length <= REWIND_PATH_MAX_CHARS,
+    )
+    .slice(0, pathsMax);
+  return {
+    success: true,
+    affectedFiles: { count: result.affectedFiles.length, paths },
+  };
+}
+
 /** The `_meta` namespace the fork point goes under, when native fork-at-message is declared. */
 export function resolveAcpForkAtMessage(
   handshake: Handshake | null | undefined,
@@ -97,13 +135,6 @@ export function resolveAcpForkAtMessage(
       isRecord(forkMeta[namespace]) &&
       (forkMeta[namespace] as Record<string, unknown>).messageId === true,
   );
-}
-
-/** Whether the session declared core `session/delete`. */
-export function acpDeclaresSessionDelete(
-  handshake: Handshake | null | undefined,
-): boolean {
-  return sessionCapability(handshake, 'delete') !== undefined;
 }
 
 /**

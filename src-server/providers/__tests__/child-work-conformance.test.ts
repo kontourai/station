@@ -35,7 +35,12 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
-import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
+import {
+  type AcpMapperContext,
+  mapAcpExtensionNotification,
+  mapAcpSessionUpdate,
+} from '../adapters/acp-adapter-events.js';
+import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
 import {
@@ -253,20 +258,77 @@ async function replayMuseServeCaptures(): Promise<CanonicalRuntimeEvent[]> {
 }
 
 /**
- * ACP: `_kiro.dev/subagent/list_update` is the one subagent-shaped tuple a
- * Kiro ACP agent was observed sending (station#1935, bound as host chrome).
- * Only the TUPLE was observed; no payload was captured, so the params here
- * are an empty object and the claim under test is the routing: the mapper
- * forwards it as an opaque extension notification, never as child work.
+ * ACP: Kiro's two subagent wires, replayed through the ACP mapper exactly as
+ * the adapter routes them. The frames are the kirocrew test vectors in
+ * `kiro-extension-golden-frames.jsonl` (no live subagent capture exists: the
+ * kirocrew live captures omit the roster because it names the host's agents).
+ * Each format runs one child from running to an end.
  */
-async function replayAcpKiroSubagentTuple(): Promise<CanonicalRuntimeEvent[]> {
+function acpGoldenFrames(): Array<{ method: string; params: any }> {
+  return readFileSync(
+    new URL(
+      '../../services/acp/__tests__/fixtures/kiro-extension-golden-frames.jsonl',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line).msg);
+}
+
+function replayAcpFrames(
+  frames: Array<{ method: string; params: any }>,
+): CanonicalRuntimeEvent[] {
   const events: CanonicalRuntimeEvent[] = [];
-  mapAcpExtensionNotification('_kiro.dev/subagent/list_update', {}, {
+  const session = {
     provider: 'acp',
-    session: { threadId: 'thread-acp' },
-    publish: (event: CanonicalRuntimeEvent) => events.push(event),
-  } as unknown as Parameters<typeof mapAcpExtensionNotification>[2]);
+    threadId: 'thread-acp',
+    status: 'running',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as const;
+  const ctx: AcpMapperContext = {
+    provider: 'acp',
+    session,
+    activeTurnId: 'turn-acp',
+    publish: (event) => events.push(event),
+    state: {},
+    toolUpdateSupervisor: new AcpToolUpdateSupervisor(session, (event) =>
+      events.push(event),
+    ),
+  };
+  for (const frame of frames) {
+    if (frame.method === 'session/update')
+      mapAcpSessionUpdate(frame.params.update, ctx);
+    else mapAcpExtensionNotification(frame.method, frame.params, ctx);
+  }
   return events;
+}
+
+const ACP_FORMATS = {
+  'kiro-cli subagent/list_update': async () => {
+    const [roster] = acpGoldenFrames().filter(
+      (frame) => frame.method === '_kiro.dev/subagent/list_update',
+    );
+    // The same roster once its running child has finished.
+    const finished = structuredClone(roster!);
+    finished.params.subagents[0].status = { type: 'completed', message: '' };
+    return replayAcpFrames([roster!, finished]);
+  },
+  'Kiro agent service agent-subtask': async () =>
+    replayAcpFrames(
+      acpGoldenFrames().filter(
+        (frame) => frame.params?.update?._meta?.kiro?.kind === 'agent-subtask',
+      ),
+    ),
+};
+
+async function replayAcpKiroSubagents(): Promise<CanonicalRuntimeEvent[]> {
+  return [
+    ...(await ACP_FORMATS['kiro-cli subagent/list_update']()),
+    ...(await ACP_FORMATS['Kiro agent service agent-subtask']()),
+  ];
 }
 
 /**
@@ -321,7 +383,7 @@ const DRIVERS: Record<string, Driver> = {
   muse: {
     run: replayMuseServeCaptures,
   },
-  acp: { run: replayAcpKiroSubagentTuple },
+  acp: { run: replayAcpKiroSubagents, formats: ACP_FORMATS },
 };
 
 /**

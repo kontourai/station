@@ -5629,6 +5629,63 @@ export function createOrchestrationRoutes(
     },
   );
 
+  /**
+   * This Session's continuity as its live engine declared it (`live: false`
+   * when no engine process holds it). Read under the same gate as the
+   * Session's other reads; a client offers an engine-native action, such as
+   * "Rewind conversation to here", only on what this answers.
+   */
+  app.get('/sessions/:threadId/continuity', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (!orchestrationService.canUserReadSession(threadId, readAuthorityFor(c)))
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: await orchestrationService.readSessionLiveContinuity(threadId),
+    });
+  });
+
+  /**
+   * Rewind the Session's ENGINE context in place to before one of its turns.
+   * The person's own act on their own Session, like the MCP reconnect above:
+   * the request principal must be current and own the Session. The
+   * transcript is never edited; the engine's marker event records the turns
+   * it hid. Answers `SessionRewindOutcome`, including a typed refusal.
+   */
+  const rewindSessionSchema = z
+    .object({ turnId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS) })
+    .strict();
+  app.post('/sessions/:threadId/rewind', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const parsed = rewindSessionSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success)
+      return c.json({ success: false, error: 'Invalid rewind request' }, 400);
+    try {
+      return c.json({
+        success: true,
+        data: await orchestrationService.rewindSessionToTurn(
+          threadId,
+          parsed.data.turnId,
+        ),
+      });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 409);
+    }
+  });
+
   app.get('/session-board/projects/:projectSlug', async (c) => {
     try {
       const data = await orchestrationService.listProjectSessionBoard(

@@ -71,7 +71,10 @@ import {
   modelSelectionReceipt,
   readApprovalMode,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
+  SESSION_REWIND_AFFECTED_PATHS_MAX,
   type SessionCapabilityDeliveryMetadata,
+  type SessionLiveContinuity,
+  type SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
@@ -228,6 +231,10 @@ import {
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
 import {
+  acpChildWorkNotReportedEvent,
+  acpReportsSubagents,
+} from './acp-child-work.js';
+import {
   acpCommandAnswer,
   acpCommandFailure,
   acpCommandUnsupported,
@@ -263,8 +270,8 @@ import {
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
-  acpDeclaresSessionDelete,
   acpSessionContinuity,
+  readAcpRewindAnswer,
   readAcpUserMessageId,
   resolveAcpForkAtMessage,
   resolveAcpMcpReconnect,
@@ -2335,6 +2342,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           };
         })(),
       });
+      // ACP has no subagent concept: an engine whose handshake names no
+      // subagent reporter cannot say what runs under it, which is not the
+      // same as nothing running.
+      if (!acpReportsSubagents(acpProcess.initResult))
+        this.publish(acpChildWorkNotReportedEvent(input.threadId));
 
       return session;
     } catch (caught) {
@@ -3308,13 +3320,11 @@ export class AcpAdapter implements ProviderAdapterShape {
    * (`acp-session-actions.ts`). The adapter's `metadata.continuity` stays
    * `none`: it speaks for every ACP engine, and most declare neither.
    */
-  sessionContinuity(threadId: string): {
-    fork: 'native' | 'none';
-    rewind: 'in-place' | 'none';
-  } {
-    return acpSessionContinuity(
-      this.requireSession(threadId).process.initResult,
-    );
+  sessionContinuity(threadId: string): SessionLiveContinuity {
+    const record = this.sessions.get(threadId);
+    if (!record || record.stopping || !record.process.sessionId)
+      return { live: false, fork: 'none', rewind: 'none' };
+    return { live: true, ...acpSessionContinuity(record.process.initResult) };
   }
 
   /**
@@ -3400,50 +3410,56 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Move the engine's session back to the end of `toTurnId`: every later
-   * turn is hidden from the model, and files their write tools changed are
-   * restored by the engine. Refused while a turn runs, for a turn whose
-   * prompt id this process did not see, and on an engine without a declared
-   * rewind. The transcript keeps every turn; an append-only marker records
-   * the rewind.
+   * Rewind the engine's context to before `turnId`: that turn and every
+   * later one are hidden from the model, and the engine restores files its
+   * write tools changed in them. Refused, before anything reaches the
+   * engine, on an engine without a declared rewind, while a turn runs, and
+   * for a turn whose prompt id this process did not see. The transcript keeps
+   * every turn; an append-only `runtime.warning` marker records the rewind.
    */
   async rewindSession(
     threadId: string,
-    toTurnId: string,
-  ): Promise<EngineCommandOutcome> {
-    const record = this.requireSession(threadId);
+    turnId: string,
+  ): Promise<SessionRewindOutcome> {
+    const record = this.sessions.get(threadId);
+    const sessionId = record?.process.sessionId;
+    if (!record || record.stopping || !sessionId)
+      return { kind: 'refused', reason: 'not-live' };
     const binding = resolveAcpRewind(record.process.initResult);
-    const sessionId = record.process.sessionId;
-    if (!binding || !sessionId) return { kind: 'not-declared' };
-    if (record.activeTurnId)
-      return {
-        kind: 'failed',
-        message: 'A turn is running; stop it before rewinding.',
-      };
+    if (!binding) return { kind: 'refused', reason: 'unsupported' };
+    if (record.activeTurnId) return { kind: 'refused', reason: 'turn-running' };
     const turns = record.turnMessages ?? [];
-    const index = turns.findIndex((entry) => entry.turnId === toTurnId);
-    if (index < 0)
+    const index = turns.findIndex((entry) => entry.turnId === turnId);
+    const point = turns[index];
+    if (!point) return { kind: 'refused', reason: 'unknown-turn' };
+    let answer: ReturnType<typeof readAcpRewindAnswer>;
+    try {
+      answer = readAcpRewindAnswer(
+        await record.process.extMethod(binding.method, {
+          sessionId,
+          messageId: point.firstMessageId,
+        }),
+        SESSION_REWIND_AFFECTED_PATHS_MAX,
+      );
+    } catch (error) {
+      const failure = acpCommandFailure(error);
       return {
         kind: 'failed',
         message:
-          'That turn has no engine message id on this session, so it cannot be a rewind point.',
+          failure.kind === 'failed'
+            ? failure.message
+            : `${record.engineName} has no rewind on this session.`,
       };
-    const dropped = turns.slice(index + 1);
-    const first = dropped[0];
-    if (!first) return { kind: 'answered', text: 'Nothing to rewind.' };
-    let outcome: EngineCommandOutcome;
-    try {
-      outcome = acpCommandAnswer(
-        await record.process.extMethod(binding.method, {
-          sessionId,
-          messageId: first.firstMessageId,
-        }),
-      );
-    } catch (error) {
-      return acpCommandFailure(error);
     }
-    if (outcome.kind !== 'answered' || outcome.success !== true) return outcome;
-    record.turnMessages = turns.slice(0, index + 1);
+    if (!answer.success)
+      return {
+        kind: 'failed',
+        message:
+          answer.message ?? `${record.engineName} did not rewind the session.`,
+      };
+    const hiddenTurnIds = turns.slice(index).map((entry) => entry.turnId);
+    record.turnMessages = turns.slice(0, index);
+    const files = answer.affectedFiles;
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -3452,13 +3468,19 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'runtime.warning',
       severity: 'warning',
       code: ACP_SESSION_REWOUND_CODE,
-      message: `${record.engineName} rewound this session to an earlier turn; the ${dropped.length === 1 ? 'later turn is' : `${dropped.length} later turns are`} hidden from the engine.`,
+      message: `${record.engineName} rewound this conversation; ${hiddenTurnIds.length === 1 ? 'one turn is' : `${hiddenTurnIds.length} turns are`} hidden from it${files ? ` and it restored ${files.count === 1 ? 'one file' : `${files.count} files`}` : ''}.`,
       details: {
-        toTurnId,
-        hiddenTurnIds: dropped.map((entry) => entry.turnId),
+        beforeTurnId: turnId,
+        hiddenTurnIds,
+        ...(files ? { affectedFileCount: files.count } : {}),
       },
     });
-    return outcome;
+    return {
+      kind: 'rewound',
+      beforeTurnId: turnId,
+      hiddenTurnIds,
+      ...(files ? { affectedFiles: files } : {}),
+    };
   }
 
   /**
@@ -3516,33 +3538,6 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       return acpCommandFailure(error);
     }
-  }
-
-  /**
-   * Discard this conversation's engine session: delete the engine's stored
-   * copy where it declared core `session/delete`, then stop. A delete the
-   * engine refuses is logged; the stop still happens.
-   */
-  async discardSession(threadId: string): Promise<void> {
-    const record = this.sessions.get(threadId);
-    const sessionId = record?.process.sessionId;
-    if (
-      record &&
-      !record.stopping &&
-      sessionId &&
-      acpDeclaresSessionDelete(record.process.initResult)
-    ) {
-      try {
-        await record.process.deleteSession(sessionId);
-      } catch (error) {
-        (this.options.logger ?? console).warn?.(
-          { threadId, connectionId: record.connectionId },
-          'ACP session/delete failed while discarding the session',
-          error,
-        );
-      }
-    }
-    await this.stopSession(threadId);
   }
 
   private publishAgentProjectionWarning(

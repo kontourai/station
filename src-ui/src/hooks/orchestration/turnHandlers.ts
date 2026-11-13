@@ -826,12 +826,18 @@ export function handleRuntimeErrorEvent(
 const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
   MUSE_SERVE_UNAVAILABLE_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
-  // What the engine now holds differs from what the transcript shows: an
-  // in-place rewind hid later turns from it, or it runs its own default
-  // agent rather than the one this chat was started with. Both read as
-  // part of the conversation, not as a passing toast.
-  ACP_SESSION_REWOUND_CODE,
+  // The engine runs its own default agent rather than the one this chat was
+  // started with: part of the conversation, not a passing toast.
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
+]);
+
+/**
+ * Warnings the transcript projection itself draws, from the stored event, as
+ * a marker row: an in-place engine rewind (`sessionRewoundMarker`), which
+ * also marks the turns it hid. Neither a toast nor a second notice.
+ */
+const TRANSCRIPT_DRAWN_WARNING_CODES: ReadonlySet<string> = new Set([
+  ACP_SESSION_REWOUND_CODE,
 ]);
 
 /**
@@ -864,6 +870,11 @@ export function handleRuntimeWarningEvent(
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);
+  if (
+    event.code !== undefined &&
+    TRANSCRIPT_DRAWN_WARNING_CODES.has(event.code)
+  )
+    return;
   if (
     !isReplayThread(event.threadId) &&
     !(

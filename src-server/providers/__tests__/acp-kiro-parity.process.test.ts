@@ -549,22 +549,43 @@ describe.skipIf(process.platform === 'win32')(
       expect(report).toMatchObject({ reconnect: true });
     });
 
-    test('rewind is refused mid-turn and runs to the next turn’s prompt id after it', async () => {
-      const engine = launch(profileOf('kiro-v3'), [
-        { kind: 'user-message-id' },
-        { kind: 'wait-ms', ms: 400 },
-        { kind: 'text', text: 'ok' },
-      ]);
+    test('rewind is refused mid-turn, rewinds to before the chosen turn after it, and refuses a turn it already hid', async () => {
+      const engine = launch(
+        {
+          ...profileOf('kiro-v3'),
+          extMethodAnswers: {
+            ...(profileOf('kiro-v3').extMethodAnswers as Record<
+              string,
+              unknown
+            >),
+            '_kiro/checkpoint/revertMultiple': {
+              result: {
+                success: true,
+                affectedFiles: ['src/a.ts', 'src/b.ts'],
+                totalFiles: 2,
+              },
+            },
+          },
+        },
+        [
+          { kind: 'user-message-id' },
+          { kind: 'wait-ms', ms: 400 },
+          { kind: 'text', text: 'ok' },
+        ],
+      );
       await engine.start('rewind');
       const first = await engine.send('rewind', 'one');
       // `sendTurn` has returned, so the turn is running.
       expect(await engine.adapter.rewindSession('rewind', first)).toEqual({
-        kind: 'failed',
-        message: 'A turn is running; stop it before rewinding.',
+        kind: 'refused',
+        reason: 'turn-running',
       });
       await engine.completed(first);
       const second = await engine.send('rewind', 'two');
       await engine.completed(second);
+      expect(
+        await engine.adapter.rewindSession('rewind', 'never-sent'),
+      ).toEqual({ kind: 'refused', reason: 'unknown-turn' });
       expect(
         engine
           .record()
@@ -573,12 +594,12 @@ describe.skipIf(process.platform === 'win32')(
           ),
       ).toBe(false);
 
-      expect(await engine.adapter.rewindSession('rewind', first)).toMatchObject(
-        {
-          kind: 'answered',
-          success: true,
-        },
-      );
+      expect(await engine.adapter.rewindSession('rewind', second)).toEqual({
+        kind: 'rewound',
+        beforeTurnId: second,
+        hiddenTurnIds: [second],
+        affectedFiles: { count: 2, paths: ['src/a.ts', 'src/b.ts'] },
+      });
       expect(
         engine
           .record()
@@ -596,7 +617,42 @@ describe.skipIf(process.platform === 'win32')(
           'rewind marker',
         ),
       ).toMatchObject({
-        details: { toTurnId: first, hiddenTurnIds: [second] },
+        details: {
+          beforeTurnId: second,
+          hiddenTurnIds: [second],
+          affectedFileCount: 2,
+        },
+      });
+      // The hidden turn is no longer a rewind point.
+      expect(await engine.adapter.rewindSession('rewind', second)).toEqual({
+        kind: 'refused',
+        reason: 'unknown-turn',
+      });
+    });
+
+    test('rewind is refused on an engine that declares none, and on a stopped session', async () => {
+      const v2 = launch(profileOf('kiro-v2'), [{ kind: 'text', text: 'ok' }]);
+      await v2.start('no-rewind');
+      const turn = await v2.send('no-rewind', 'one');
+      await v2.completed(turn);
+      expect(v2.adapter.sessionContinuity('no-rewind')).toEqual({
+        live: true,
+        fork: 'none',
+        rewind: 'none',
+      });
+      expect(await v2.adapter.rewindSession('no-rewind', turn)).toEqual({
+        kind: 'refused',
+        reason: 'unsupported',
+      });
+      await v2.adapter.stopSession('no-rewind');
+      expect(v2.adapter.sessionContinuity('no-rewind')).toEqual({
+        live: false,
+        fork: 'none',
+        rewind: 'none',
+      });
+      expect(await v2.adapter.rewindSession('no-rewind', turn)).toEqual({
+        kind: 'refused',
+        reason: 'not-live',
       });
     });
 
@@ -633,8 +689,8 @@ describe.skipIf(process.platform === 'win32')(
       ).toMatchObject({ meta: { kiro: { messageId: 'msg-3' } } });
 
       expect(
-        await engine.adapter.rewindSession('rewind-steer', first),
-      ).toMatchObject({ kind: 'answered', success: true });
+        await engine.adapter.rewindSession('rewind-steer', second),
+      ).toMatchObject({ kind: 'rewound', hiddenTurnIds: [second] });
       // Turn 2's own prompt, not the steer's re-prompt: reverting from msg-3
       // would leave turn 2's first prompt in the engine's history.
       expect(
@@ -646,7 +702,7 @@ describe.skipIf(process.platform === 'win32')(
       ).toMatchObject({ params: { messageId: 'msg-2' } });
     });
 
-    test('native fork names the turn’s prompt id; discarding deletes the engine session', async () => {
+    test('native fork names the turn’s prompt id', async () => {
       const engine = launch(profileOf('kiro-v3'), [
         { kind: 'user-message-id' },
         { kind: 'text', text: 'ok' },
@@ -655,6 +711,7 @@ describe.skipIf(process.platform === 'win32')(
       const turnId = await engine.send('fork', 'one');
       await engine.completed(turnId);
       expect(engine.adapter.sessionContinuity('fork')).toEqual({
+        live: true,
         fork: 'native',
         rewind: 'in-place',
       });
@@ -673,10 +730,116 @@ describe.skipIf(process.platform === 'win32')(
         sessionId,
         meta: { kiro: { messageId: 'msg-1' } },
       });
-      await engine.adapter.discardSession('fork');
+    });
+
+    test('Kiro agent service subagents arrive as child work, and its session claims no not-reported', async () => {
+      const subtask = (status: string) => ({
+        kind: 'session-update',
+        update: {
+          sessionUpdate:
+            status === 'in_progress' ? 'tool_call' : 'tool_call_update',
+          toolCallId: 'tc-sub',
+          title: 'Sub-agent: researcher',
+          status,
+          _meta: { kiro: { kind: 'agent-subtask', agentSubtaskId: 'sa-1' } },
+        },
+      });
+      const engine = launch(profileOf('kiro-v3'), [
+        subtask('in_progress'),
+        subtask('completed'),
+        { kind: 'text', text: 'ok' },
+      ]);
+      await engine.start('subagents-v3');
+      await engine.completed(await engine.send('subagents-v3', 'go'));
+      const deltas = engine.events.flatMap((event) =>
+        event.method === 'child-work.updated' ? [event.delta] : [],
+      );
+      expect(deltas.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      expect(deltas[0]).toMatchObject({
+        running: [{ childId: 'sa-1', reporterThreadId: 'subagents-v3' }],
+      });
+      expect(deltas[1]).toMatchObject({ childId: 'sa-1', status: 'completed' });
+    });
+
+    test('a kiro-cli subagent roster arrives as child work', async () => {
+      const engine = launch(profileOf('kiro-v2'), [
+        {
+          kind: 'notification',
+          method: '_kiro.dev/subagent/list_update',
+          params: {
+            sessionId: '$sessionId',
+            subagents: [
+              {
+                sessionId: 'sub-1',
+                sessionName: 'review',
+                agentName: 'reviewer',
+                initialQuery: 'review the diff',
+                status: { type: 'working', message: '' },
+              },
+            ],
+          },
+        },
+        { kind: 'text', text: 'ok' },
+      ]);
+      await engine.start('subagents-v2');
+      await engine.completed(await engine.send('subagents-v2', 'go'));
+      const deltas = engine.events.flatMap((event) =>
+        event.method === 'child-work.updated' ? [event.delta] : [],
+      );
+      expect(deltas).toEqual([
+        expect.objectContaining({
+          kind: 'snapshot',
+          running: [
+            expect.objectContaining({
+              childId: 'sub-1',
+              title: 'review the diff',
+              kindLabel: 'reviewer',
+            }),
+          ],
+        }),
+      ]);
+    });
+
+    test('an ACP engine with no subagent reporter says its child work is not reported', async () => {
+      const goose = JSON.parse(
+        readFileSync(
+          fileURLToPath(
+            new URL(
+              './fixtures/acp-engine-profiles/goose.json',
+              import.meta.url,
+            ),
+          ),
+          'utf8',
+        ),
+      );
+      const engine = launch(goose);
+      await engine.start('no-subagents');
       expect(
-        engine.record().find((entry) => entry.method === 'session/delete'),
-      ).toEqual({ method: 'session/delete', sessionId });
+        await waitFor(
+          () =>
+            engine.events.find(
+              (event) => event.method === 'child-work.updated',
+            ),
+          'not-reported',
+        ),
+      ).toMatchObject({
+        delta: {
+          kind: 'not-reported',
+          reporterThreadId: 'no-subagents',
+          reason: 'This engine reports no subagents to Station over ACP.',
+        },
+      });
+      const kiro = launch(profileOf('kiro-v3'), [{ kind: 'text', text: 'ok' }]);
+      await kiro.start('kiro-reports');
+      // A later event has drained, so an earlier not-reported would have too.
+      await kiro.completed(await kiro.send('kiro-reports', 'go'));
+      expect(
+        kiro.events.some((event) => event.method === 'child-work.updated'),
+      ).toBe(false);
     });
 
     test('a credential request before initialize is refused on a custom command', async () => {

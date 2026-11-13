@@ -48,6 +48,7 @@ import {
   isReplayMarkedUpdate,
   mapEngineExtensionNotification,
   mapEngineSessionInfo,
+  mapEngineToolCallMeta,
   readAcpUsageCost,
 } from './acp-engine-extension-events.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
@@ -301,6 +302,8 @@ export function mapAcpSessionUpdate(
         hasRawInput: Object.hasOwn(update, 'rawInput'),
         hasRawOutput: Object.hasOwn(update, 'rawOutput'),
       });
+      // A vendor kind on the call (Kiro's `agent-subtask`) is also child work.
+      mapEngineToolCallMeta(update, ctx);
       return;
     }
 
@@ -323,6 +326,7 @@ export function mapAcpSessionUpdate(
         hasContent: Object.hasOwn(update, 'content'),
         hasStatus: Object.hasOwn(update, 'status'),
       });
+      mapEngineToolCallMeta(update, ctx);
       return;
     }
 

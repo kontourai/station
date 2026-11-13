@@ -383,18 +383,104 @@ describe('engine extension events: kirocrew golden frames', () => {
     ]);
   });
 
-  test('subagent frames publish no child work until the ACP subagent cell is declared', () => {
-    const { feed, of } = harness();
+  test('v3 agent-subtask tool calls publish the child running, then settled, and stay ordinary tool calls', () => {
+    const { feed, of, state } = harness();
     for (const msg of pick(
-      (msg) =>
-        msg.method === '_kiro.dev/subagent/list_update' ||
-        msg.params?.update?._meta?.kiro?.kind === 'agent-subtask',
+      (msg) => msg.params?.update?._meta?.kiro?.kind === 'agent-subtask',
     ))
       feed(msg);
-    expect(of('child-work.updated')).toEqual([]);
+    expect(of('child-work.updated').map((event) => event.delta)).toEqual([
+      {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: 'thread-1',
+        running: [
+          expect.objectContaining({
+            childId: 'sa-1',
+            status: 'running',
+            title: 'Sub-agent: researcher',
+            kindLabel: 'researcher',
+            workKind: 'agent',
+            parent: {
+              threadId: 'thread-1',
+              turnId: 'turn-1',
+              toolCallId: 'tc1',
+            },
+          }),
+        ],
+      },
+      expect.objectContaining({
+        kind: 'settle',
+        childId: 'sa-1',
+        status: 'completed',
+      }),
+      {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: 'thread-1',
+        running: [],
+      },
+    ]);
+    expect(state.acpSubagents?.size).toBe(0);
     // The subagent's tool call is still an ordinary tool call.
     expect(of('tool.completed')).toEqual([
       expect.objectContaining({ itemId: 'tc1' }),
+    ]);
+  });
+
+  test('a v2 subagent roster settles its terminal entries and lists the running ones', () => {
+    const { feed, of } = harness();
+    const [roster] = pick(
+      (msg) => msg.method === '_kiro.dev/subagent/list_update',
+    );
+    feed(roster!);
+    expect(of('child-work.updated').map((event) => event.delta)).toEqual([
+      expect.objectContaining({
+        kind: 'settle',
+        childId: 'sub-2',
+        status: 'failed',
+        identity: expect.objectContaining({
+          title: 'write tests',
+          kindLabel: 'tester',
+        }),
+      }),
+      {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: 'thread-1',
+        running: [
+          expect.objectContaining({
+            childId: 'sub-1',
+            title: 'review the diff',
+            kindLabel: 'reviewer',
+          }),
+        ],
+      },
+    ]);
+    // The opaque envelope is still published beside it (host chrome).
+    expect(of('extension.notification')).toHaveLength(1);
+  });
+
+  test('a subagent frame with no usable id, or an unknown status word, maps fail-closed', () => {
+    const { feed, of } = harness();
+    feed({
+      method: '_kiro.dev/subagent/list_update',
+      params: {
+        subagents: [
+          { sessionId: '', status: { type: 'working' } },
+          { sessionId: 'x'.repeat(257), status: { type: 'working' } },
+          { sessionId: 'odd', status: { type: 'vanished' } },
+          { sessionId: 'no-status' },
+        ],
+      },
+    });
+    expect(of('child-work.updated').map((event) => event.delta)).toEqual([
+      expect.objectContaining({
+        kind: 'settle',
+        childId: 'odd',
+        status: 'unresolved',
+      }),
+      expect.objectContaining({ kind: 'snapshot', running: [] }),
     ]);
   });
 

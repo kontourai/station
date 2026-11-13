@@ -27,6 +27,8 @@ import type {
   ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
+  SessionLiveContinuity,
+  SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -547,6 +549,24 @@ export interface ProviderAdapterShape {
     serverName: string,
     options: { startOAuth: boolean },
   ): Promise<EngineCommandOutcome>;
+  /**
+   * This live session's continuity as its own engine declared it. `live:
+   * false` when no engine process holds the session. Present only on an
+   * adapter some of whose engines can declare a native mechanism; absent
+   * reads as `none` for both.
+   */
+  sessionContinuity?(threadId: string): SessionLiveContinuity;
+  /**
+   * Rewind the engine's context in place to before `turnId`: that turn and
+   * every later one are hidden from the engine. The transcript keeps every
+   * turn. Refused with a typed reason before anything reaches the engine
+   * when the session declares no in-place rewind, is not live, is running a
+   * turn, or never reported an id for the turn.
+   */
+  rewindSession?(
+    threadId: string,
+    turnId: string,
+  ): Promise<SessionRewindOutcome>;
   respondToRequest(
     threadId: string,
     requestId: string,

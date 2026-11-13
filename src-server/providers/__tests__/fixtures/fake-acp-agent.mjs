@@ -34,7 +34,8 @@
 //                        step kinds: `client-request` {method, params},
 //                        `user-message-id` (a Kiro `user_message_id_assigned`
 //                        session_info_update, ids `msg-1`, `msg-2`, ...),
-//                        `wait-ms` {ms}
+//                        `wait-ms` {ms}, `session-update` {update} (one
+//                        `session/update` sent as given)
 // Client-to-engine extension requests are answered from the profile's
 // `extMethodAnswers` ({ "<method>": { result } | { error } }) and recorded as
 // `{ extMethod, params }`; any other is refused -32601. `session/load`,
@@ -198,6 +199,8 @@ async function runStep(step, sessionId, client) {
       });
     case 'wait-ms':
       return new Promise((resolve) => setTimeout(resolve, step.ms));
+    case 'session-update':
+      return update(step.update);
     case 'tool': {
       const toolCallId = `call_fake_${++state.toolCalls}`;
       await update({

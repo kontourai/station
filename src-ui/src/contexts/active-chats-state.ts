@@ -214,6 +214,8 @@ export type ChatMessage = {
   stationMemoryContinuation?: boolean;
   /** See `ChatMessage.stationRestartContinuation` in types.ts. */
   stationRestartContinuation?: boolean;
+  /** See `ChatMessage.rewound` in types.ts. */
+  rewound?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;

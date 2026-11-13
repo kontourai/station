@@ -420,46 +420,65 @@ describe('runtime warning notifications', () => {
     activeChatsStore.removeChat(POSTURE_THREAD);
   });
 
-  // The two ACP engine-session notices (an in-place rewind, an agent the
-  // engine did not take) state what the engine now holds, which differs from
-  // what the transcript shows: they are the chat's, like the Muse notice.
-  test.each([
-    [
-      'acp.session-rewound',
-      'Kiro rewound this session to an earlier turn; the later turn is hidden from the engine.',
-    ],
-    [
-      'acp.agent-projection-unapplied',
-      'Kiro is running its own default agent, not this Station agent: the engine refused the agent.',
-    ],
-  ])(
-    'the ACP %s warning is a transcript notice, not a toast',
-    (code, message) => {
-      const thread = `acp-posture-${code}`;
-      activeChatsStore.removeChat(thread);
-      activeChatsStore.initChat(thread, {
-        agentSlug: 'kiro',
-        agentName: 'Kiro',
-        title: 'Kiro chat',
-      });
-      handleOrchestrationEvent('http://localhost', {
-        provider: 'acp' as const,
-        threadId: thread,
-        createdAt: '2026-11-13T10:00:00.000Z',
-        method: 'runtime.warning' as const,
-        severity: 'warning' as const,
-        message,
-        code,
-      });
-      expect(
-        (activeChatsStore.getSnapshot()[thread].ephemeralMessages ?? []).filter(
-          (notice) => notice.content === message,
-        ),
-      ).toMatchObject([{ role: 'system', ephemeral: true }]);
-      expect(toastStore.getSnapshot()).toEqual([]);
-      activeChatsStore.removeChat(thread);
-    },
-  );
+  // An agent the engine did not take states what the engine now holds,
+  // which differs from what the transcript shows: it is the chat's, like the
+  // Muse notice.
+  test('the ACP agent-projection warning is a transcript notice, not a toast', () => {
+    const code = 'acp.agent-projection-unapplied';
+    const message =
+      'Kiro is running its own default agent, not this Station agent: the engine refused the agent.';
+    const thread = `acp-posture-${code}`;
+    activeChatsStore.removeChat(thread);
+    activeChatsStore.initChat(thread, {
+      agentSlug: 'kiro',
+      agentName: 'Kiro',
+      title: 'Kiro chat',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp' as const,
+      threadId: thread,
+      createdAt: '2026-11-13T10:00:00.000Z',
+      method: 'runtime.warning' as const,
+      severity: 'warning' as const,
+      message,
+      code,
+    });
+    expect(
+      (activeChatsStore.getSnapshot()[thread].ephemeralMessages ?? []).filter(
+        (notice) => notice.content === message,
+      ),
+    ).toMatchObject([{ role: 'system', ephemeral: true }]);
+    expect(toastStore.getSnapshot()).toEqual([]);
+    activeChatsStore.removeChat(thread);
+  });
+
+  // An in-place rewind is drawn by the transcript projection from the stored
+  // event (a marker, and the hidden turns marked rewound): no toast, and no
+  // second notice beside the marker.
+  test('the ACP session-rewound warning is neither a toast nor an ephemeral notice', () => {
+    const thread = 'acp-posture-rewound';
+    activeChatsStore.removeChat(thread);
+    activeChatsStore.initChat(thread, {
+      agentSlug: 'kiro',
+      agentName: 'Kiro',
+      title: 'Kiro chat',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp' as const,
+      threadId: thread,
+      createdAt: '2026-11-13T10:00:00.000Z',
+      method: 'runtime.warning' as const,
+      severity: 'warning' as const,
+      message: 'Kiro rewound this conversation; one turn is hidden from it.',
+      code: 'acp.session-rewound',
+      details: { beforeTurnId: 't-2', hiddenTurnIds: ['t-2'] },
+    });
+    expect(
+      activeChatsStore.getSnapshot()[thread].ephemeralMessages ?? [],
+    ).toEqual([]);
+    expect(toastStore.getSnapshot()).toEqual([]);
+    activeChatsStore.removeChat(thread);
+  });
 
   test('reconnect warnings group within a session without hiding other sessions or causes', () => {
     const warning = {
