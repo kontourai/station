@@ -31,8 +31,10 @@ name: "PR: iOS build"
 # its `before..after` range touches a post-merge (broad) input and NO native
 # one (`--scope ios-post-merge`). That range is the landed candidate's own
 # range, because main is fast-forwarded to it, so "native input present"
-# means "the merge group already built this exact tree". The paths filter
-# below is a cheap superset of that rule; the classifier decides.
+# means "the merge group already built this exact tree". The push has no
+# `paths` filter on purpose: GitHub's path filters see at most 300 changed
+# files and then skip the run, which would silently drop a large landing's
+# post-merge build. The minute-long Linux classifier decides instead.
 #
 # Post-merge builds coalesce: the build job shares one concurrency group on
 # push with cancel-in-progress off, so at most one runs and one waits, a
@@ -54,11 +56,6 @@ on:
     types: [checks_requested]
   push:
     branches: [main]
-    paths:
-      - 'src-ui/**'
-      - 'packages/connect/**'
-      - 'packages/contracts/**'
-      - 'packages/sdk/**'
   workflow_dispatch:
     inputs:
       push_extensions:

@@ -363,7 +363,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
 | [`bubblewrap-kernel.yml`](../../.github/workflows/bubblewrap-kernel.yml) | — | **Tool: bubblewrap kernel legs** | manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
-| [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events (build skipped for drafts and the release PR); merge queue; main pushes (path filtered, UI-only changes); manual dispatch. |
+| [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events (build skipped for drafts and the release PR); merge queue; main pushes (classifier-filtered: UI-only landings); manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |

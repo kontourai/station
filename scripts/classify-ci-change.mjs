@@ -100,12 +100,8 @@ const IOS_NATIVE_PREFIXES = Object.freeze([
   'src-ui/src/platform/',
   'src-ui/public/',
 ]);
-/**
- * What only the post-merge build covers. build-ios.yml's `push` paths filter
- * must name each of these prefixes (classify-ci-change.test.ts holds them in
- * lockstep), since a push touching none of them cannot be post-merge relevant.
- */
-export const IOS_POST_MERGE_PREFIXES = Object.freeze([
+/** What only the post-merge build covers (see above). */
+const IOS_POST_MERGE_PREFIXES = Object.freeze([
   'src-ui/',
   'packages/connect/',
   'packages/contracts/',

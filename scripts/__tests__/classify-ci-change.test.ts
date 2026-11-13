@@ -25,7 +25,6 @@ import {
   classifyIosGitRange,
   classifyIosPostMergeChangedPaths,
   classifyIosPostMergeGitRange,
-  IOS_POST_MERGE_PREFIXES,
   renderGithubOutputs,
 } from '../classify-ci-change.mjs';
 import { runWorkflowShell } from './fixtures/workflow-shell.js';
@@ -861,23 +860,14 @@ describe('iOS builds native inputs before landing and the rest of the UI after',
     expect(classifyIosChangedPaths(testOnly).relevant).toBe(false);
   });
 
-  // The push trigger's paths filter decides whether the post-merge
-  // classifier even runs, so it must cover every post-merge prefix. Read the
-  // workflow rather than trust the comment that says so.
-  test('the push paths filter names every post-merge prefix', () => {
+  // The post-merge classifier must see every main push: GitHub's path
+  // filters consider at most 300 changed files and then skip the run, which
+  // would silently drop a large landing's only iOS build.
+  test('every main push reaches the post-merge classifier', () => {
     const workflow = parse(
       readFileSync(join(repoRoot, '.github/workflows/build-ios.yml'), 'utf8'),
-    ) as { on: { push?: { branches?: string[]; paths?: string[] } } };
-    expect(workflow.on.push?.branches).toEqual(['main']);
-    expect(IOS_POST_MERGE_PREFIXES).toEqual([
-      'src-ui/',
-      'packages/connect/',
-      'packages/contracts/',
-      'packages/sdk/',
-    ]);
-    expect([...(workflow.on.push?.paths ?? [])].sort()).toEqual(
-      IOS_POST_MERGE_PREFIXES.map((prefix) => `${prefix}**`).sort(),
-    );
+    ) as { on: { push?: Record<string, unknown> } };
+    expect(workflow.on.push).toEqual({ branches: ['main'] });
   });
 
   // Every script the macOS job runs on its default (non-dispatch) path is a
