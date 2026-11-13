@@ -5,12 +5,14 @@ import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import {
   ContinuationPublicationUncertainError,
+  DelegationRoundsTransactionParentError,
   DelegationRoundsTransactionUncertainError,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { HomeWriterUnavailableError } from '../../ssh/home-writer-owner.js';
 import { SourceRefusal } from '../delegation-group-source-admission.js';
 import * as reportPublication from '../report-rounds-publication.js';
 import {
@@ -84,9 +86,34 @@ test('prepared finalizer refuses replacement of its captured request authority i
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   assert.ok(principal);
   const noEffects = observeNoFinalizerEffects(f);
-  const observer = observeFinalTransaction(f, 'body', () =>
-    setRuntimeAuthenticatedRequestPrincipal(request, principal),
-  );
+  const guards: Array<() => undefined> = [];
+  const readLocation = f.h.f.owner.readHistoricalFlowLocation.bind(f.h.f.owner);
+  const locations = vi
+    .spyOn(f.h.f.owner, 'readHistoricalFlowLocation')
+    .mockImplementation(async (input) => {
+      const location = await readLocation(input);
+      guards.push(location.assertCurrent);
+      return location;
+    });
+  const observer = observeFinalTransaction(f, 'body', () => {
+    const active: Array<() => undefined> = [];
+    for (const guard of guards) {
+      try {
+        guard();
+        active.push(guard);
+      } catch (error) {
+        assert.ok(
+          error instanceof DelegationRoundsTransactionParentError ||
+            (error instanceof HomeWriterUnavailableError &&
+              error.reason === 'borrow-unavailable'),
+        );
+      }
+    }
+    assert.ok(active.length > 0, 'observe live historical location guards');
+    setRuntimeAuthenticatedRequestPrincipal(request, principal);
+    for (const guard of active)
+      assert.throws(guard, { code: 'authorization_unavailable' });
+  });
   try {
     await assert.rejects(finalizeFixture(f, request), {
       code: 'authorization_unavailable',
@@ -95,6 +122,7 @@ test('prepared finalizer refuses replacement of its captured request authority i
     assert.equal(observer.completedBodies, 0);
     noEffects();
   } finally {
+    locations.mockRestore();
     noEffects.restore();
     observer.restore();
     await closeFinalizer(f);
