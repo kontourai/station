@@ -62,10 +62,14 @@ const history = vi.hoisted(() => ({
   ] as ChildWorkTranscriptEntry[],
   error: undefined as Error | undefined,
   refetch: vi.fn(),
+  sessions: [] as { threadId: string; childWork: { asChild: ChildWorkItem } }[],
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
-  useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
+  useOrchestrationSessionsQuery: () => ({
+    data: history.sessions,
+    isSuccess: true,
+  }),
   useChildWorkTranscriptQuery: vi.fn(() => ({
     data: { pages: [{ entries: history.entries }] },
     isSuccess: !history.error,
@@ -76,10 +80,18 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     hasNextPage: false,
   })),
 }));
+vi.mock('../components/conversation/ConversationReader', () => ({
+  SessionConversationReader: ({ isStreaming }: { isStreaming: boolean }) => (
+    <output aria-label="Delegate state">
+      {isStreaming ? 'running' : 'settled'}
+    </output>
+  ),
+}));
 const initialEntries = history.entries;
 afterEach(() => {
   cleanup();
   childWorkGlobalStore.reset();
+  history.sessions = [];
   history.entries = initialEntries;
   history.error = undefined;
   history.refetch.mockClear();
@@ -405,5 +417,50 @@ test('a mounted child consumes live settlement instead of retaining its open-tim
     expect(
       vi.mocked(useChildWorkTranscriptQuery).mock.calls.at(-1)?.[0].running,
     ).toBe(false),
+  );
+});
+
+test('an initially running delegate reader consumes its live terminal state', async () => {
+  const delegate: ChildWorkItem = {
+    ...item,
+    producer: 'station-delegate',
+    childId: 'delegate',
+    status: 'running',
+  };
+  history.sessions = [
+    { threadId: 'delegate', childWork: { asChild: delegate } },
+  ];
+  const target = {
+    threadId: 'delegate',
+    title: 'Delegate',
+    running: true,
+    connection,
+  };
+  const reader = () => (
+    <QueryClientProvider client={new QueryClient()}>
+      <ChildChatNavigation
+        rootKey="parent"
+        title="Parent"
+        initialChild={target}
+      >
+        <input aria-label="Parent draft" />
+      </ChildChatNavigation>
+    </QueryClientProvider>
+  );
+  const view = render(reader());
+  expect(
+    (await screen.findByRole('status', { name: 'Delegate state' })).textContent,
+  ).toBe('running');
+  history.sessions = [
+    {
+      threadId: 'delegate',
+      childWork: { asChild: { ...delegate, status: 'completed' } },
+    },
+  ];
+  view.rerender(reader());
+  await waitFor(() =>
+    expect(
+      screen.getByRole('status', { name: 'Delegate state' }).textContent,
+    ).toBe('settled'),
   );
 });

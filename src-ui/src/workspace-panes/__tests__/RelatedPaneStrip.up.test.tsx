@@ -755,3 +755,15 @@ test('a saved legacy Activity opener returns to its exact session in Chat', asyn
     expect(model?.surfaceIntents.chat?.session).toBe('legacy-thread'),
   );
 });
+
+test('a saved legacy Activity collection opener returns to the inbox', async () => {
+  seedRelation({
+    occurrenceId: 'activity',
+    label: 'Legacy work',
+    source: { kind: 'activity', selectedThreadId: null },
+  });
+  mount();
+  await waitFor(() => expect(model).not.toBeNull());
+  act(() => screen.getByRole('button', { name: 'Up to Legacy work' }).click());
+  await waitFor(() => expect(window.location.pathname).toBe('/notifications'));
+});

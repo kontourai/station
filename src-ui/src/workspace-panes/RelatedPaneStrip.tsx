@@ -372,6 +372,15 @@ function OpenerUp({
 }) {
   switch (opener.source.kind) {
     case 'activity':
+      if (opener.source.selectedThreadId === null)
+        return (
+          <RouteUp
+            opener={{
+              ...opener,
+              source: { kind: 'route', pathname: '/notifications', search: '' },
+            }}
+          />
+        );
       return (
         <ConversationUp
           instanceId={instanceId}
