@@ -80,6 +80,8 @@ describe.skipIf(!posix)('station-weight end to end', () => {
         allowDirty: true,
         settings: {
           settleMs: 2_000,
+          settleIntervalMs: 2_000,
+          settleMaxMs: 180_000,
           cpuWindowMs: 2_000,
           idleSessions: 1,
           stopGraceMs: 2_000,

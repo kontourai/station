@@ -485,9 +485,66 @@ async function allocatePorts() {
   throw new Error('could not allocate a port band clear of reserved ports');
 }
 
+/** Two consecutive tree RSS samples within this fraction count as settled. */
+const SETTLE_TOLERANCE = 0.05;
+
+/**
+ * Waits `settleMs`, then samples the tree every `settleIntervalMs` until two
+ * consecutive RSS totals agree within SETTLE_TOLERANCE. A tree still moving
+ * at `settleMaxMs` is not at rest, so the caller reports it as not measured.
+ */
+async function settleTree(roots, settings) {
+  const begin = performance.now();
+  await wait(settings.settleMs);
+  let previous = ownedTree(processTable(), roots);
+  const samples = [sum(previous, 'rssBytes')];
+  while (performance.now() - begin < settings.settleMaxMs) {
+    await wait(settings.settleIntervalMs);
+    const current = ownedTree(processTable(), roots);
+    const before = sum(previous, 'rssBytes');
+    const now = sum(current, 'rssBytes');
+    samples.push(now);
+    if (Math.abs(now - before) <= SETTLE_TOLERANCE * before)
+      return {
+        rows: current,
+        stable: true,
+        settledAfterMs: performance.now() - begin,
+        samples,
+      };
+    previous = current;
+  }
+  return {
+    rows: previous,
+    stable: false,
+    settledAfterMs: performance.now() - begin,
+    samples,
+  };
+}
+
+function restMetric(settled, extra = {}) {
+  const detail = {
+    processCount: settled.rows.length,
+    processes: processRows(settled.rows),
+    settledAfterMs: settled.settledAfterMs,
+    rssSamples: settled.samples,
+    ...extra,
+  };
+  if (settled.stable)
+    return measured(sum(settled.rows, 'rssBytes'), 'bytes', detail);
+  return {
+    ...notMeasured(
+      `tree RSS did not settle within ${SETTLE_TOLERANCE * 100}% in ${Math.round(settled.settledAfterMs / 1000)}s`,
+      'bytes',
+    ),
+    ...detail,
+  };
+}
+
 /** Defaults are chosen for a quiet host; flags can lengthen them. */
 export const DEFAULT_SETTINGS = Object.freeze({
   settleMs: 30_000,
+  settleIntervalMs: 5_000,
+  settleMaxMs: 300_000,
   cpuWindowMs: 30_000,
   idleSessions: 3,
   stopGraceMs: 5_000,
@@ -653,13 +710,8 @@ export async function runStationWeight({
     );
     await api.pair(instanceRecord.baseDir);
 
-    progress(`paired; settling ${settings.settleMs}ms`);
-    await wait(settings.settleMs);
-    const rest = ownedTree(processTable(), roots);
-    result.metrics.restRssBytes = measured(sum(rest, 'rssBytes'), 'bytes', {
-      processCount: rest.length,
-      processes: processRows(rest),
-    });
+    progress('paired; settling');
+    result.metrics.restRssBytes = restMetric(await settleTree(roots, settings));
 
     const cpuStart = ownedTree(processTable(), roots);
     const switchesStart =
@@ -733,15 +785,11 @@ export async function runStationWeight({
       }
       for (let index = 1; index < settings.idleSessions; index += 1)
         sessionIds.push(await sendHi(api, repo));
-      await wait(settings.settleMs);
-      const idle = ownedTree(processTable(), roots);
-      result.metrics.idleSessionsRssBytes = measured(
-        sum(idle, 'rssBytes'),
-        'bytes',
+      progress('sessions created; settling');
+      result.metrics.idleSessionsRssBytes = restMetric(
+        await settleTree(roots, settings),
         {
           sessions: sessionIds.length,
-          processCount: idle.length,
-          processes: processRows(idle),
           note: 'each session was created by one stub-answered turn; no real model call',
         },
       );
@@ -892,6 +940,7 @@ if (invokedDirectly(import.meta.url)) {
   const settings = Object.fromEntries(
     Object.entries({
       settleMs: number('settle-ms'),
+      settleMaxMs: number('settle-max-ms'),
       cpuWindowMs: number('cpu-window-ms'),
       idleSessions: number('sessions'),
       stopGraceMs: number('stop-grace-ms'),
