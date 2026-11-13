@@ -12,7 +12,7 @@
  * is NOT_MEASURED with a reason. It is never PASS and never counted as zero.
  */
 
-export const BASELINE_SCHEMA_VERSION = 1;
+const BASELINE_SCHEMA_VERSION = 1;
 
 /**
  * `ratio` is proportional headroom; `floor` is additive headroom in the

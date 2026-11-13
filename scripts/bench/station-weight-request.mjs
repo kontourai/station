@@ -33,7 +33,7 @@ export function messagesRequests(requests) {
 }
 
 /** Every text block of a request body, labelled by where it sits. */
-export function textBlocks(body) {
+function textBlocks(body) {
   const blocks = [];
   const push = (where, content) => {
     if (typeof content === 'string') {
