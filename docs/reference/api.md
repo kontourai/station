@@ -3539,7 +3539,11 @@ other engines refuse during group-wide preflight, before any sync attempt is
 reserved. Known nonpersistent Sessions also refuse that preflight. New durable
 Task launches request provider transcript retention; an old missing native
 transcript is not reconstructed from its cursor. The qualified native runtimes
-are Claude Code 2.1.308 and 2.1.318.
+are Claude Code 2.1.308, 2.1.318 and 2.1.322. The 2.1.322 qualification uses
+Agent SDK 0.3.322 and synthetic loopback inference, including a real group caller's
+wrong-ACK retry and replay. It does not establish real-provider billing, restart
+recovery or portable authority; see the
+[retained-session conformance boundary](../conformance/tool-policy-delivery.md#retained-session-context-sync).
 Station stops the ordinary activation, resumes the same conversation with an
 empty builtin tool set and command-line wildcard denial, and sends through the
 canonical turn boundary. This restricts model-tool execution; it does not claim

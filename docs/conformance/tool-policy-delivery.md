@@ -315,10 +315,18 @@ it cannot reduce the selected Agent profile to fit the engine. See
 
 Session-group context sync is separate from ordinary Agent grants and the
 matrix's general pre-tool policy cells. The current path accepts retained
-Claude Code 2.1.308 and 2.1.318 conversations only; other runtimes refuse
+Claude Code 2.1.308, 2.1.318 and 2.1.322 conversations only; other runtimes refuse
 before a sync attempt is reserved. Known nonpersistent Sessions also refuse.
 Durable Task creation requests native transcript retention; the group performs
 preflight for every member.
+The 2.1.322 / Agent SDK 0.3.322 qualification uses real native CLI execution
+with synthetic loopback inference: ordinary and resumed effects run, while
+restricted Write, SDK MCP, plugin MCP and Agent-child Write are denied. A separate
+public-SDK/HTTP group caller qualifies one wrong-ACK retry and same-operation
+replay. These results do not establish provider billing, restart recovery,
+universal internal-effect suppression or portable authority. The
+[epic checkpoint](../plans/child-work-epic.md#current-native-wrong-ackretry-checkpoint-2026-11-13)
+retains the revision, negative controls and limits.
 
 The [session owner](../../src-server/services/orchestration/orchestration-service.ts)
 holds an exclusive activation generation through confirmed teardown, exact
