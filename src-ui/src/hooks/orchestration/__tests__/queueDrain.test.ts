@@ -476,34 +476,40 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
         'provider_turn_in_progress',
       ),
     );
-    activeChatsStore.updateChat(threadId, { queuedMessages: ['after rewind'] });
-    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
-    // A rewind may hold the engine for its whole 30 s deadline.
-    for (let second = 0; second < 32; second += 1) {
-      await vi.advanceTimersByTimeAsync(1_000);
-      await vi.dynamicImportSettled();
+    try {
+      activeChatsStore.updateChat(threadId, {
+        queuedMessages: ['after rewind'],
+      });
+      drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+      // A rewind may hold the engine for its whole 30 s deadline.
+      for (let second = 0; second < 32; second += 1) {
+        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.dynamicImportSettled();
+      }
+      // Past the old ten one-second tries, and still not given up.
+      expect(sendExecutionMessageMock.mock.calls.length).toBeGreaterThanOrEqual(
+        30,
+      );
+      expect(
+        activeChatsStore.getSnapshot()[threadId]?.queuedMessageFailure,
+      ).toBeUndefined();
+      for (let second = 0; second < 10; second += 1) {
+        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.dynamicImportSettled();
+      }
+      expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
+        queuedMessages: ['after rewind'],
+        queuedMessageFailure: {
+          message:
+            'The conversation is still busy. Your message is still queued; retry to send it.',
+          code: 'provider_turn_in_progress',
+        },
+      });
+    } finally {
+      // The persistent refusal must not reach the next test.
+      sendExecutionMessageMock.mockReset();
+      sendExecutionMessageMock.mockResolvedValue(undefined);
     }
-    // Past the old ten one-second tries, and still not given up.
-    expect(sendExecutionMessageMock.mock.calls.length).toBeGreaterThanOrEqual(
-      30,
-    );
-    expect(
-      activeChatsStore.getSnapshot()[threadId]?.queuedMessageFailure,
-    ).toBeUndefined();
-    for (let second = 0; second < 10; second += 1) {
-      await vi.advanceTimersByTimeAsync(1_000);
-      await vi.dynamicImportSettled();
-    }
-    expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
-      queuedMessages: ['after rewind'],
-      queuedMessageFailure: {
-        message:
-          'The conversation is still busy. Your message is still queued; retry to send it.',
-        code: 'provider_turn_in_progress',
-      },
-    });
-    sendExecutionMessageMock.mockReset();
-    sendExecutionMessageMock.mockResolvedValue(undefined);
   });
 
   test('a terminal event before dispatch acknowledgement still releases the next queued message', async () => {
