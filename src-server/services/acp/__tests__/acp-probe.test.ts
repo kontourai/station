@@ -1032,9 +1032,9 @@ describe("ACPProbe's client does not fabricate extension answers", () => {
         client.extMethod('_kiro/terminal/shell_type', {}),
       ).resolves.toEqual({ shellType: 'sh' });
     // Any other reviewed request needs a person or a session: still refused.
-    await expect(
-      client.extMethod('_kiro/userInput', {}),
-    ).rejects.toMatchObject({ code: -32601 });
+    await expect(client.extMethod('_kiro/userInput', {})).rejects.toMatchObject(
+      { code: -32601 },
+    );
     expect(
       warn.mock.calls.some(
         (call) =>
