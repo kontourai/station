@@ -345,6 +345,8 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
 export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelWorkers: 2,
   parallelSafetyExceptions: {
+    'tests/new-project-choices.spec.ts':
+      'Read-only live shell and new-project form; writes only this browser context’s device-local inbox scope and theme.',
     'tests/chat-history-reopen.spec.ts':
       'Owns a unique temporary SQLite directory; shell requests are page-scoped fixtures and the store is closed and removed in finally.',
     'tests/sidebar-geometry.spec.ts':
@@ -369,6 +371,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
   parallelSafe: [
+    'tests/new-project-choices.spec.ts',
     'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
