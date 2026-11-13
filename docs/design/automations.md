@@ -314,13 +314,23 @@ Four findings shape the design.
   (`InboundWebhookToken.starts`; omitted means no authority). Route:
   [`inbound-webhooks.ts`](../../src-server/routes/webhooks/inbound-webhooks.ts)
   with headers `x-station-webhook-token`, `-timestamp`, `-nonce` and
-  `-signature`; HMAC over `ts\nnonce\nbody`; a 256 KB cap; a per-token
-  limiter and a global budget of 300 unauthenticated attempts; and 202 only
-  after the turn starts.
-  [Authorization](../../src-server/services/webhooks/inbound-webhook-authorization.ts).
+  `-signature`. Station keeps the route and hands each request to a
+  `webhook` source of [Telltale](https://github.com/kontourai/telltale)
+  (`@kontourai/telltale`), which verifies it: a per-token limiter and a
+  global budget of 300 unauthenticated attempts, the credential, freshness,
+  a 256 KB cap, HMAC over `ts\nnonce\nbody` on the raw bytes, then the
+  replay reservation. Telltale stamps the event `untrusted`, from the route
+  it entered by. Before Telltale commits the replay key, Station checks the
+  payload shape and the token's grants (bound to the token its own lookup
+  returned) and emits only the fields it uses; a refusal releases the key.
+  Station then starts the turn and answers 202 only after the turn starts.
+  [Authorization](../../src-server/services/webhooks/inbound-webhook-authorization.ts)
+  supplies Telltale's credential, replay and audit bindings and keeps the
+  grant check.
   [Store](../../src-server/services/webhooks/inbound-webhook-store.ts):
   `security/inbound-webhooks.json` at mode 0600, re-read per request,
-  secrets of at least 32 characters, a 5-minute replay ledger and a
+  secrets of at least 32 characters, a 5-minute replay ledger (Telltale's
+  reserve/extend/commit/release contract, refusing when full) and a
   256-entry audit.
   [Turn starter](../../src-server/routes/webhooks/webhook-turn-starter.ts)
   runs as `LOCAL_OPERATOR_PRINCIPAL_ID` with
@@ -470,6 +480,14 @@ starts as `{ workflow_run: ['completed'] }`. GitHub expects an answer within
 This is the owner-recommended first source (section 9, decision 1). It is a
 monitor kind over the existing external monitor and feeds the same
 normalizer. It needs no ingress.
+
+Station's scheduler tick still owns timing, preview gating and the ledger's
+poll state; the listing goes through the external monitor's transport and
+credential path. Telltale owns the rest: `githubPollStep` picks the runs in
+the window and the next cursor, and `normalizeGitHubWorkflowRun` checks each
+run. Overlap re-reads still reach Station's ledger, which records them as
+`duplicate`. Handing timing to Telltale's own `github-poll` source is a
+later slice.
 
 ### The qualification rule
 
