@@ -330,7 +330,21 @@
 
     "src-ui/src/components/room/RoomConversation.tsx",
 
-    "src-ui/src/components/conversation/ConversationReader.tsx"
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+
+    "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+
+    "src-ui/src/components/chat-dock/ChildChatNavigationContext.ts",
+
+    "src-ui/src/components/conversation/SessionReaderBinding.tsx",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+
+    "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+
+    "src-ui/src/__tests__/child-transcript-navigation.test.tsx",
+
+    "src-ui/src/__tests__/activity-retirement.test.ts"
   ],
 
   "checks": [
