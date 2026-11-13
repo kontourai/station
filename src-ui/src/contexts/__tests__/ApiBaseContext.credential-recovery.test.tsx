@@ -205,6 +205,45 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     expect(screen.queryByText(BANNER)).toBeNull();
   });
 
+  it('keeps access recovery stable across repeated HTML fallbacks after a 401', async () => {
+    const origin = window.location.origin;
+    await renderShell();
+    fetchByPath();
+    await act(async () => {
+      await authenticatedFetch(`${origin}/api/boot`);
+    });
+    expect(await screen.findByText(BANNER)).toBeTruthy();
+    const id = connections!.activeConnection!.id;
+    const authority = connections!.credentialAuthorityGeneration(id);
+    fetchByPath({
+      '/api/': async () =>
+        new Response('<!doctype html><title>Fallback</title>', {
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await act(async () => {
+        const response = await authenticatedFetch(
+          `${origin}/api/auth/authority`,
+        );
+        await expect(response.json()).rejects.toThrow();
+      });
+      expect(screen.queryByText(BANNER)).toBeTruthy();
+      expect(connections!.credentialAuthorityGeneration(id)).toBe(authority);
+    }
+    // A real JSON response can still retire the rejection.
+    fetchByPath({
+      '/api/': async () =>
+        new Response('{"success":true}', {
+          headers: { 'content-type': 'application/json' },
+        }),
+    });
+    await act(async () => {
+      await authenticatedFetch(`${origin}/api/settings`);
+    });
+    expect(screen.queryByText(BANNER)).toBeNull();
+  });
+
   it.each(['GET', 'DELETE'])(
     'keeps a saved bearer on operator-session 403 and removes it on 401 through the app handler for %s',
     async (method) => {

@@ -24,6 +24,12 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
+Credential recovery ignores successful responses declared as `text/html` or
+`application/xhtml+xml`: a sign-in page or a stale address's HTML fallback
+must not clear a recorded credential rejection or restart authority checks.
+The response remains available to the caller for normal content validation.
+
+
 `dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
 accepts `{ requestScope }` as its fourth argument. Pass a captured
 `requestScope` when a command follows a delayed confirmation or Undo window;

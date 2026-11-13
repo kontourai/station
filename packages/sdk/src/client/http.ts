@@ -1182,6 +1182,18 @@ async function reportAuthenticated(
   opts?: ClientRequestOptions,
 ): Promise<void> {
   if (!response.ok || opts?.authentication === 'omit') return;
+  // A stale Station address can serve an HTML fallback or a sign-in page
+  // with status 200. That is not evidence that it accepted this credential.
+  // Recovering here would re-key the authority gate before JSON decoding
+  // rejects the page, repeating the startup/401/recovery cycle indefinitely.
+  const mediaType = response.headers
+    .get('content-type')
+    ?.split(';')[0]
+    ?.trim()
+    .toLowerCase();
+  if (mediaType === 'text/html' || mediaType === 'application/xhtml+xml')
+    return;
+
   if (configured && sameOrigin(url, configured.origin)) {
     // Awaited, and bounded, for the same reasons as `reportUnauthorized`.
     await awaitCredentialReport(configured.onAuthenticated?.(url));
