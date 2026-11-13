@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked: describes session/load resume generally; the adapter still prefers session/resume when advertised, and now adopts the answer and reapplies requested options (in the ACP guide). Design-level text remains accurate. No claim changed.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}
