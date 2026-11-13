@@ -6,7 +6,8 @@
  *
  * Station registers its own public OAuth client (`RegisterClient`, client
  * name "Station"), so nothing here presents another product's identity.
- * Social (Google, GitHub) sign-in is not ported: Kiro's device service takes
+ * Social (Google, GitHub) sign-in is in `social.ts`, through Kiro's portal
+ * and a loopback callback. Kiro's social device flow is not ported: it takes
  * only kiro-cli's own client id, which Station will not present as its own.
  *
  * Endpoints (under `https://oidc.<region>.amazonaws.com`):
@@ -119,7 +120,7 @@ export type DevicePoll =
  */
 const OIDC_REQUEST_TIMEOUT_MS = 15_000;
 
-interface Http {
+export interface Http {
   fetch: typeof fetch;
   endpoints: KiroOidcEndpoints;
   now: () => number;
@@ -132,7 +133,7 @@ const AMZ_JSON_1_1 = {
   accept: 'application/json',
 };
 
-async function postJson(
+export async function postJson(
   http: Http,
   url: string,
   body: unknown,
@@ -170,13 +171,13 @@ async function postJson(
   return { status: response.status, data };
 }
 
-function record(data: unknown, step: string): Record<string, unknown> {
+export function record(data: unknown, step: string): Record<string, unknown> {
   if (typeof data !== 'object' || data === null || Array.isArray(data))
     throw new KiroOidcError(`${step} returned a non-object body`);
   return data as Record<string, unknown>;
 }
 
-function requireString(
+export function requireString(
   data: Record<string, unknown>,
   key: string,
   step: string,
@@ -187,7 +188,7 @@ function requireString(
   return value;
 }
 
-function oauthError(data: unknown): string {
+export function oauthError(data: unknown): string {
   if (typeof data !== 'object' || data === null) return '';
   const error = (data as Record<string, unknown>).error;
   // Bounded and character-limited: it becomes part of a log line.
@@ -196,7 +197,7 @@ function oauthError(data: unknown): string {
     : '';
 }
 
-function expiry(http: Http, expiresIn: unknown): number {
+export function expiry(http: Http, expiresIn: unknown): number {
   const seconds =
     typeof expiresIn === 'number' && Number.isFinite(expiresIn) && expiresIn > 0
       ? expiresIn
@@ -395,6 +396,11 @@ export async function refreshOidcToken(
 const PROFILE_ARN =
   /^arn:[-a-z0-9]{1,63}:codewhisperer:[-a-z0-9]{1,63}:\d{12}:profile\/[A-Za-z0-9]{1,64}$/;
 
+/** A Kiro (CodeWhisperer) profile ARN as the control plane and social service spell one. */
+export function isProfileArn(value: unknown): value is string {
+  return typeof value === 'string' && PROFILE_ARN.test(value);
+}
+
 /**
  * The first Kiro profile an Identity Center token can use: each control
  * plane is asked, the login region's first, following `nextToken` until a
@@ -428,7 +434,7 @@ export async function firstAvailableProfileArn(
       const profiles = Array.isArray(body.profiles) ? body.profiles : [];
       for (const profile of profiles) {
         const arn = (profile as Record<string, unknown> | null)?.arn;
-        if (typeof arn === 'string' && PROFILE_ARN.test(arn)) return arn;
+        if (isProfileArn(arn)) return arn;
       }
       const token = body.nextToken;
       if (typeof token !== 'string' || token === '' || seen.has(token)) break;
