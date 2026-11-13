@@ -40,6 +40,19 @@ test('request and background pills fit desktop and phone in both themes', async 
         </div>
       ))}
       <InboxRowStatusLine
+        id="running-row"
+        now={now}
+        status={{
+          rung: 'running',
+          lane: 'running',
+          word: 'Running',
+          detail: 'Bash',
+          tone: 'active',
+          since: now - 121000,
+          line: 'Running · Bash · 2m 1s',
+        }}
+      />
+      <InboxRowStatusLine
         id="input-row"
         now={now}
         status={{

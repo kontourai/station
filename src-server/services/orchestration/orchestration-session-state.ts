@@ -785,7 +785,7 @@ export function buildOrchestrationSessionSummary(options: {
       ? {
           openRequestIds: [...openRequestIds],
           openRequestKinds: Object.fromEntries(
-            openRequestIds.map((id) => {
+            openRequestIds.flatMap((id) => {
               const event = options.events
                 ?.slice()
                 .reverse()
@@ -793,14 +793,13 @@ export function buildOrchestrationSessionSummary(options: {
                   (event) =>
                     event.method === 'request.opened' && event.requestId === id,
                 );
-              return [
-                id,
-                event?.method === 'request.opened' &&
-                (event.requestType === 'input' ||
-                  inputRequestFromRequestEvent(event))
+              if (!event || event.method !== 'request.opened') return [];
+              const kind =
+                event.requestType === 'input' ||
+                inputRequestFromRequestEvent(event)
                   ? 'input'
-                  : 'approval',
-              ];
+                  : 'approval';
+              return [[id, kind] as const];
             }),
           ),
           blockingOpenRequestIds: openRequestIds.filter(

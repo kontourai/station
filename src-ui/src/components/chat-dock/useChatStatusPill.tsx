@@ -79,18 +79,20 @@ export function useChatStatusPill({
   const onUnavailable = useCallback(() => setView('unavailable'), []);
   // Requests still waiting on the user: open on the server and not yet
   // answered here (an answered one stays open until `request.resolved`).
-  const pendingRequestKinds = useMemo(
-    () => ({
-      ...Object.fromEntries(
-        (windowRequests ?? []).map((request) => [
-          request.requestId,
-          request.requestKind,
-        ]),
-      ),
-      ...activeSession.pendingRequestKinds,
-    }),
-    [windowRequests, activeSession.pendingRequestKinds],
-  );
+  const pendingRequestKinds = useMemo(() => {
+    const kinds = new Map(
+      Object.entries(activeSession.pendingRequestKinds ?? {}),
+    );
+    // Known input outranks a conservative approval hint from a partial read.
+    for (const request of windowRequests ?? []) {
+      if (
+        request.requestKind &&
+        (request.requestKind === 'input' || !kinds.has(request.requestId))
+      )
+        kinds.set(request.requestId, request.requestKind);
+    }
+    return Object.fromEntries(kinds);
+  }, [windowRequests, activeSession.pendingRequestKinds]);
   const pendingApprovals = useMemo(
     () =>
       requestsWaitingOnUser({

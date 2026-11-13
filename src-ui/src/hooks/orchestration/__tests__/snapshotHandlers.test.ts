@@ -1632,3 +1632,30 @@ test('reload preserves blocking request kinds and removes resolved kind metadata
   });
   expect(chats['thread-1'].pendingRequestKinds).toEqual({});
 });
+
+test('snapshot kind metadata preserves opaque request IDs as data keys', () => {
+  applyOrdinarySnapshot(
+    {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: 'thread-1',
+          status: 'running',
+          openRequestIds: ['__proto__'],
+          blockingOpenRequestIds: ['__proto__'],
+          openRequestKinds: { ['__proto__']: 'input' },
+        },
+      ],
+    },
+    {
+      'thread-1': {
+        provider: 'claude',
+        conversationId: 'thread-1',
+        orchestrationSessionStarted: true,
+      },
+    },
+  );
+  const kinds = chats['thread-1'].pendingRequestKinds;
+  expect(Object.hasOwn(kinds, '__proto__')).toBe(true);
+  expect(kinds['__proto__']).toBe('input');
+});

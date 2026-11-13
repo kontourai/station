@@ -2161,23 +2161,16 @@ function ChatMessageListComponent({
                         suppressActivity={suppressActivity}
                         hideProgressSilence={progressSilenceShownElsewhere}
                         statusLabel={
-                          activeSession.orchestrationStatus ===
-                            'awaiting-approval' &&
-                          chatWaitsOnUser(activeSession)
-                            ? // station#2235: the status alone asserts nothing about
-                              // an approval — a crashed turn's needs_input folds to
-                              // this status with no request behind it. Name the
-                              // approval only when a request is still waiting on
-                              // the user; without one the session is waiting on the
-                              // user, not on a decision. A session whose requests
-                              // are all answered is waiting on the engine, and says
-                              // nothing here.
-                              waitingApprovalCount > 0
-                              ? requestAttentionKind(activeSession) === 'answer'
-                                ? attentionWord('answer')
-                                : attentionWord('approval')
-                              : 'Waiting on you'
-                            : undefined
+                          waitingApprovalCount > 0
+                            ? attentionWord(
+                                requestAttentionKind(activeSession) ??
+                                  'approval',
+                              )
+                            : activeSession.orchestrationStatus ===
+                                  'awaiting-approval' &&
+                                chatWaitsOnUser(activeSession)
+                              ? attentionWord('waiting')
+                              : undefined
                         }
                         attributionAgent={streamingAttributionAgent}
                         owner={owner}

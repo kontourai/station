@@ -353,9 +353,8 @@ function selectSnapshotRows(
               ),
             ),
           ];
-    const openRequestKinds = Object.assign(
-      {},
-      ...candidates.map((row) => row.openRequestKinds ?? {}),
+    const openRequestKinds = Object.fromEntries(
+      candidates.flatMap((row) => Object.entries(row.openRequestKinds ?? {})),
     );
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>

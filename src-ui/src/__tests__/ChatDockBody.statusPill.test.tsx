@@ -402,9 +402,17 @@ test('mixed-request pill routes to permission first even when the question arriv
   );
 });
 
-function WindowQuestionPill() {
+function WindowQuestionPill({
+  approvalHint = false,
+}: {
+  approvalHint?: boolean;
+}) {
   const { pill } = useChatStatusPill({
-    activeSession: buildSession(),
+    activeSession: buildSession(
+      approvalHint
+        ? { pendingRequestKinds: { 'window-question': 'approval' } }
+        : {},
+    ),
     streamStatus: undefined,
     turnLive: false,
     enabled: true,
@@ -423,6 +431,15 @@ test('a question found only in the event window renders Needs answer without sna
   render(
     <QueryClientProvider client={new QueryClient()}>
       <WindowQuestionPill />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs answer'));
+});
+
+test('known window input outranks an older conservative approval hint', async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <WindowQuestionPill approvalHint />
     </QueryClientProvider>,
   );
   await waitFor(() => expect(pill()?.textContent).toContain('Needs answer'));

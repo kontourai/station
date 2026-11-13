@@ -4606,3 +4606,21 @@ test('summary carries unresolved input kinds alongside blocking ids', () => {
     lifecycleState: 'needs_input',
   });
 });
+
+test('summary does not invent a permission kind when the open event is unavailable', () => {
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: 'missing-kind',
+    status: 'running' as const,
+    createdAt: '2026-11-01T00:00:00Z',
+    updatedAt: '2026-11-01T00:00:00Z',
+  };
+  const summary = buildOrchestrationSessionSummary({
+    answerability: OBSERVATION,
+    loaded,
+    events: [],
+    openRequestIds: ['unknown'],
+  });
+  expect(summary?.openRequestIds).toEqual(['unknown']);
+  expect(summary?.openRequestKinds?.unknown).toBeUndefined();
+});
