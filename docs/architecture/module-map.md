@@ -2310,8 +2310,9 @@ For an adapter that announces `session.started` before its start returns, accept
 (#3390); `@kontourai/station-shared/input-request` owns reading and the one
 content validator. Provider normalization
 (`src-server/providers/adapters/harness-questions.ts`) maps Claude
-AskUserQuestion, Codex requestUserInput and Cursor's `cursor/ask_question`
-ACP extension request into a form on the canonical
+AskUserQuestion, Codex requestUserInput, and the ACP extension requests
+Cursor's `cursor/ask_question` and Grok's `_x.ai/ask_user_question` into a
+form on the canonical
 request event, and the MCP edge maps a tool server's elicitation the same
 way. SessionCommandModule validates content against the current event's form
 before the adapter, which checks it again against its own copy, translates it

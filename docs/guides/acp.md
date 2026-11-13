@@ -497,8 +497,10 @@ names:
   kirodotdev/kirocrew fixture path;
 - its consumer.
 
-A notification row binds only once its consumer is marked implemented in
-`ENGINE_EXTENSION_CONSUMERS`. The ACP mapper
+A notification row binds only once its consumer, and every consumer it names
+in `also`, is marked implemented in `ENGINE_EXTENSION_CONSUMERS`, and while
+it carries no `pending` reason (Kiro's two child-work rows carry one: only
+test vectors back them). The ACP mapper
 ([acp-engine-extension-events.ts](../../src-server/providers/adapters/acp-engine-extension-events.ts))
 reads each bound row through one reader per row id and publishes the
 generic event; the opaque `extension.notification` envelope is still
