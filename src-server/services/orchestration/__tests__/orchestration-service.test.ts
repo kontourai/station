@@ -27801,6 +27801,13 @@ describe('OrchestrationService', () => {
       expect(
         await service.dispatch(command('outliving-3', 'other-child'), context),
       ).toEqual({ outcome: 'no-active-task', threadId: THREAD_ID });
+      // The running child, under a token it does not advertise.
+      expect(
+        await service.dispatch(
+          { ...command('outliving-5'), turnId: 'other-turn' },
+          context,
+        ),
+      ).toEqual({ outcome: 'no-active-task', threadId: THREAD_ID });
       publish({
         eventId: 'outliving-child-settled',
         provider: 'muse',
