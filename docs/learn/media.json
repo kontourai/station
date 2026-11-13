@@ -718,12 +718,12 @@
     {
       "path": "docs/learn/media/updates-after-390-dark.png",
       "kind": "image",
-      "digest": "2b931008809ae86118a9b555b99ee3eb14a52867fa157e2f301f41dbfe313d7a",
-      "alt": "Updates panel with shared summaries.",
-      "caption": "Updates panel with shared summaries.",
+      "digest": "34678c9c84e678df77f6f6883948a1c7f8c56c8e380ecffbec197c5a89930304",
+      "alt": "Installed and available server changelogs in Updates.",
+      "caption": "Installed and available server changelogs in Updates.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
+      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -746,12 +746,12 @@
     {
       "path": "docs/learn/media/updates-after-1440-light.png",
       "kind": "image",
-      "digest": "cb9780e9d1d618115378cddd50b28390048dad8329fb67253b091249faf582f8",
-      "alt": "Updates panel with shared summaries.",
-      "caption": "Updates panel with shared summaries.",
+      "digest": "c7a73438c70eaee67faedce5ae43617eeb892b1be0c64d9bda08327cf8f1be20",
+      "alt": "Installed and available server changelogs in Updates.",
+      "caption": "Installed and available server changelogs in Updates.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 1440px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
+      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -760,12 +760,12 @@
     {
       "path": "docs/learn/media/updates-history-after-390-dark.png",
       "kind": "image",
-      "digest": "314b3e4fc50b06b7a4707c5787bb45f90b35eb32b1f8d6e7ce8ea02e242d9336",
-      "alt": "Release history using the published styled select.",
-      "caption": "Release history using the published styled select.",
+      "digest": "e893fd651cb8d8b5c1bf7c5071bac6c32a122b36d45767e0f92af7f86cda72cf",
+      "alt": "Release history selected through the shared release picker.",
+      "caption": "Release history selected through the shared release picker.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
+      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -774,12 +774,12 @@
     {
       "path": "docs/learn/media/updates-notes-after-390-light.png",
       "kind": "image",
-      "digest": "683d1a5812dddd07c754de03f07136c57d7ec1060f72d2c8b15baebf076225f7",
-      "alt": "Installed-version changelog using the recovered exact archive notes.",
-      "caption": "Installed-version changelog using the recovered exact archive notes.",
+      "digest": "b68d65ac5b30aa6a4478cb39b92dada2c129adc66708fa064a8acac0ac1fdace",
+      "alt": "Installed server release notes in the what\u2019s new dialog.",
+      "caption": "Installed server release notes in the what\u2019s new dialog.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
-      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
+      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
