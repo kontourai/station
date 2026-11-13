@@ -484,7 +484,10 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
         return Buffer.concat([head, Buffer.from(text, 'binary')]);
       };
       const argmax = Number(
-        spawnSync('sysctl', ['-n', 'kern.argmax'], { encoding: 'utf8' }).stdout,
+        spawnSync('sysctl', ['-n', 'kern.argmax'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }).stdout,
       );
       const cases = new Map<number, Buffer>([
         // Well formed: path, padding, one argument, one entry, terminator.
