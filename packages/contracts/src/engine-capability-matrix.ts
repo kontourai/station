@@ -503,6 +503,13 @@ export type SubagentObservabilityCell =
       evidence: string;
       /** Adapter module that maps them, used by the conformance tripwire. */
       adapterModule: string;
+      /**
+       * Set when only some connections of this engine report (the adapter
+       * decides per connection, at session start). A session this process
+       * has not seen report then reads `not-reported` with this reason,
+       * never "nothing running".
+       */
+      perConnection?: { unobservedReason: string };
     };
 
 /**
@@ -1285,6 +1292,10 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       evidence:
         'kiro-cli `_kiro.dev/subagent/list_update` subagents[{sessionId, status.type}] and Kiro agent service tool_call `_meta.kiro.kind: agent-subtask` with `agentSubtaskId` (kirocrew session_handle_native_children.py, test_kas_subagent_progress.py)',
       adapterModule: 'acp-child-work.ts',
+      perConnection: {
+        unobservedReason:
+          'Only some ACP engines report subagents, and this session has not reported since Station started.',
+      },
     },
     subagentControl: {
       state: 'none',

@@ -205,6 +205,18 @@ export class ChildWorkProjection {
       };
     }
     const observedAt = this.observedAt.get(threadId);
+    // An engine that reports only on some connections: without a report
+    // seen by this process, Station cannot say nothing is running.
+    if (
+      observedAt === undefined &&
+      cell?.state === 'declared' &&
+      cell.perConnection
+    ) {
+      return {
+        observability: 'not-reported',
+        reason: cell.perConnection.unobservedReason,
+      };
+    }
     if (observedAt === undefined && cell?.state !== 'declared')
       return undefined;
     const children = childWorkForReporter(this.state, threadId).filter(
