@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { ChatMessageList } from '../../components/chat/ChatMessageList';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
-import { ErrorState, SkeletonBlock } from '../../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { ChatSession } from '../../types';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { childTranscriptMessages } from './childTranscriptMessages';
@@ -108,19 +108,24 @@ export function ChildWorkTranscript({
       {transcript.isPending && (
         <SkeletonBlock count={3} label="Loading transcript" />
       )}
-      {transcript.isError && entries.length === 0 && (
+      {transcript.isError && !transcript.isFetchNextPageError && (
         <ErrorState
           variant="compact"
-          title="Could not read the transcript"
+          title={
+            entries.length > 0
+              ? 'Could not refresh the transcript'
+              : 'Could not read the transcript'
+          }
           description={failureText(transcript.error)}
           action={<Button onClick={() => void refetch()}>Retry</Button>}
         />
       )}
       {transcript.isSuccess && entries.length === 0 && (
-        <p className="child-work-transcript__note">The transcript is empty.</p>
+        <Empty label="No messages in this transcript yet." />
       )}
       <ChatMessageList
         activeSession={session}
+        emptyState={null}
         fontSize={14}
         showReasoning={false}
         showToolDetails
@@ -149,7 +154,11 @@ export function ChildWorkTranscript({
       {transcript.isFetchNextPageError && (
         <ErrorState
           variant="compact"
-          title="Could not read the transcript"
+          title={
+            entries.length > 0
+              ? 'Could not refresh the transcript'
+              : 'Could not read the transcript'
+          }
           description={failureText(transcript.error)}
           action={<Button onClick={() => void refetch()}>Retry</Button>}
         />

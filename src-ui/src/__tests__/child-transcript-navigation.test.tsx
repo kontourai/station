@@ -37,6 +37,11 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn(), dismissToast: vi.fn() }),
 }));
+vi.mock('../components/chat/ChatEmptyState', () => ({
+  ChatEmptyState: () => (
+    <p data-testid="initial-chat-empty">Initial chat state</p>
+  ),
+}));
 vi.mock('../components/chat/ChildWorkInstructionPanel', () => ({
   ChildWorkInstructionPanel: () => null,
 }));
@@ -50,6 +55,7 @@ const history = vi.hoisted(() => ({
       text: '## Child answer\n\nThe files are ready.',
     },
   ] as ChildWorkTranscriptEntry[],
+  error: undefined as Error | undefined,
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -62,7 +68,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     hasNextPage: false,
   })),
 }));
-afterEach(cleanup);
+const initialEntries = history.entries;
+afterEach(() => {
+  cleanup();
+  history.entries = initialEntries;
+  history.error = undefined;
+});
 const connection = { apiBase: 'https://station.test' };
 const item: ChildWorkItem = {
   producer: 'engine-subagent',
@@ -282,4 +293,27 @@ test('a child hides the real parent header portals and restores them on return',
     leading.remove();
     trailing.remove();
   }
+});
+
+test('an empty child record never mounts the initial-chat empty owner', async () => {
+  history.entries = [];
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  expect(
+    await screen.findByText('No messages in this transcript yet.'),
+  ).toBeTruthy();
+  expect(screen.queryByTestId('initial-chat-empty')).toBeNull();
+});
+
+test('a failed refresh keeps recorded messages visible with a recovery action', async () => {
+  history.error = new Error('Transcript fixture unavailable');
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  expect(
+    await screen.findByText('Could not refresh the transcript'),
+  ).toBeTruthy();
+  expect(screen.getByText('Inspect the child files')).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Retry', exact: false }),
+  ).toBeTruthy();
 });
