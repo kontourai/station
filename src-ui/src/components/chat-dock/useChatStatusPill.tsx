@@ -87,9 +87,14 @@ export function useChatStatusPill({
           ]),
         ],
         answeredApprovals: activeSession.answeredApprovals,
-      }),
+      }).sort(
+        (left, right) =>
+          Number(activeSession.pendingRequestKinds?.[left] === 'input') -
+          Number(activeSession.pendingRequestKinds?.[right] === 'input'),
+      ),
     [
       activeSession.pendingApprovals,
+      activeSession.pendingRequestKinds,
       activeSession.answeredApprovals,
       windowRequests,
     ],

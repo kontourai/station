@@ -10,9 +10,25 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+
+const revealRequest = vi.hoisted(() => vi.fn());
+vi.mock('../components/status/approvalReveal', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/status/approvalReveal')
+    >();
+  revealRequest.mockImplementation(actual.revealApprovalCard);
+  return { ...actual, revealApprovalCard: revealRequest };
+});
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 
@@ -366,4 +382,21 @@ describe('ChatDockBody composer status pill', () => {
     expect(getApprovalClaims().size).toBe(0);
     vi.doUnmock('../components/status/ChatStatusPillView');
   });
+});
+
+test('mixed-request pill routes to permission first even when the question arrived first', async () => {
+  revealRequest.mockClear();
+  revealRequest.mockResolvedValueOnce(true);
+  renderDock(
+    buildSession({
+      orchestrationStatus: 'awaiting-approval',
+      pendingApprovals: ['question', 'permission'],
+      pendingRequestKinds: { question: 'input', permission: 'approval' },
+    }),
+  );
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs approval'));
+  fireEvent.click(pill()!);
+  expect(revealRequest).toHaveBeenCalledWith(
+    expect.objectContaining({ requestId: 'permission' }),
+  );
 });
