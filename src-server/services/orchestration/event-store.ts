@@ -222,6 +222,10 @@ import {
   isSqliteContentionError,
 } from '../../utils/sqlite-wal.js';
 import {
+  type AutomationProposalStore,
+  createSqliteAutomationProposalStore,
+} from '../automation/automation-proposals.js';
+import {
   type OperationalEventConsumer,
   type OperationalEventConsumerConfig,
   type OperationalEventConsumerOpenOutcome,
@@ -2901,6 +2905,7 @@ export class EventStore {
   private taskWriteBack?: TaskWriteBackStore;
   private worktreeOutputSettlements?: WorktreeOutputSettlementStore;
   private agentSchedule?: AgentScheduleStore;
+  private automationProposals?: AutomationProposalStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
@@ -16946,6 +16951,12 @@ export class EventStore {
   agentScheduleStore(): AgentScheduleStore {
     this.agentSchedule ??= createSqliteAgentScheduleStore(this.db);
     return this.agentSchedule;
+  }
+
+  /** #4830: agent-proposed Automation sources and rules (`automation-proposals.ts`). */
+  automationProposalStore(): AutomationProposalStore {
+    this.automationProposals ??= createSqliteAutomationProposalStore(this.db);
+    return this.automationProposals;
   }
 
   /** #3628: coordinator designations and their wakes (`coordinator-session.ts`). */

@@ -28,6 +28,11 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-13T13:09:17Z | nightly-desktop | 0.1.11-nightly.20261113.1 | `ce3f226` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/43418305981) |
+| 2026-11-13T11:53:15Z | nightly-npm | 0.11.0-nightly.20261113.43418305981 | `ce3f226` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43418305981) |
+| 2026-11-13T05:17:58Z | nightly-desktop | 0.1.11-nightly.20261113 | `76c30c3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43360033137) |
+| 2026-11-13T05:17:54Z | nightly-android | 0.1.11-nightly.20261113 | `76c30c3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43360033137) |
+| 2026-11-13T03:57:08Z | nightly-npm | 0.11.0-nightly.20261113.43360033137 | `76c30c3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43360033137) |
 | 2026-11-12T20:08:33Z | nightly-desktop | 0.1.11-nightly.20261112.1 | `f53648a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43272588376) |
 | 2026-11-12T20:08:30Z | nightly-android | 0.1.11-nightly.20261112.1 | `f53648a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43272588376) |
 | 2026-11-12T18:10:50Z | nightly-npm | 0.11.0-nightly.20261112.43272588376 | `f53648a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43272588376) |
@@ -470,6 +475,142 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-13T13:09:17Z · nightly-desktop · 0.1.11-nightly.20261113.1
+
+- Ship SHA: `ce3f22639a3d22d56250ca6fa2686aa1296a6091`
+- Artifact built at: `2026-11-13T11:53:26.221Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 43418305981)
+- Note: android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:43418305981:play-upload-or-query (the provider effect may already be live))
+
+### Changelog
+
+Commits since `76c30c3` ([full sha](https://github.com/kontourai/station/commit/76c30c3b8dbaf4b36795ec4b0ed73902b3674509)):
+
+**Features**
+
+- [#4842](https://github.com/kontourai/station/pull/4842) feat(security): mark untrusted content from engine-native web reads (#4828)
+
+**Fixes**
+
+- [#4889](https://github.com/kontourai/station/pull/4889) fix(connections): keep proxy cooldowns from disabling Claude
+- [#4877](https://github.com/kontourai/station/pull/4877) fix(ui): say what happened in chat, reset and handoff copy
+- [#4873](https://github.com/kontourai/station/pull/4873) fix(ui): read Session-row plan progress from the status ladder
+
+**Other**
+
+- [#4631](https://github.com/kontourai/station/pull/4631) chore(deps): consolidate updates and preserve runtime contracts
+- [#4883](https://github.com/kontourai/station/pull/4883) test(gallery): regenerate screenshot baselines for the 13px Comfortable default
+- [#4875](https://github.com/kontourai/station/pull/4875) style(ui): drop decorative gradients, glows, blur and idle pulses
+
+## 2026-11-13T11:53:15Z · nightly-npm · 0.11.0-nightly.20261113.43418305981
+
+- Ship SHA: `ce3f22639a3d22d56250ca6fa2686aa1296a6091`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261113.43418305981 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `76c30c3` ([full sha](https://github.com/kontourai/station/commit/76c30c3b8dbaf4b36795ec4b0ed73902b3674509)):
+
+**Features**
+
+- [#4842](https://github.com/kontourai/station/pull/4842) feat(security): mark untrusted content from engine-native web reads (#4828)
+
+**Fixes**
+
+- [#4889](https://github.com/kontourai/station/pull/4889) fix(connections): keep proxy cooldowns from disabling Claude
+- [#4877](https://github.com/kontourai/station/pull/4877) fix(ui): say what happened in chat, reset and handoff copy
+- [#4873](https://github.com/kontourai/station/pull/4873) fix(ui): read Session-row plan progress from the status ladder
+
+**Other**
+
+- [#4631](https://github.com/kontourai/station/pull/4631) chore(deps): consolidate updates and preserve runtime contracts
+- [#4883](https://github.com/kontourai/station/pull/4883) test(gallery): regenerate screenshot baselines for the 13px Comfortable default
+- [#4875](https://github.com/kontourai/station/pull/4875) style(ui): drop decorative gradients, glows, blur and idle pulses
+
+## 2026-11-13T05:17:58Z · nightly-desktop · 0.1.11-nightly.20261113
+
+- Ship SHA: `76c30c3b8dbaf4b36795ec4b0ed73902b3674509`
+- Artifact built at: `2026-11-13T04:02:01.304Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 43360033137)
+
+### Changelog
+
+Commits since `f53648a` ([full sha](https://github.com/kontourai/station/commit/f53648ab2f41c3ad68c2a0b26e9aabcdf6bddd07)):
+
+**Features**
+
+- [#4868](https://github.com/kontourai/station/pull/4868) feat(usage): attribute usage receipts to the connection that produced them (#4710 slice 2)
+- [#4866](https://github.com/kontourai/station/pull/4866) feat(connections): one honest readiness status and the resource-hub kit (#4710 slice 1)
+- [#4848](https://github.com/kontourai/station/pull/4848) feat(approvals): judge guardian calls against what the person typed (#4827)
+
+**Fixes**
+
+- [#4871](https://github.com/kontourai/station/pull/4871) fix(orchestration): bound the thread-content backfill so startup doesn't stall
+
+**Other**
+
+- [#4872](https://github.com/kontourai/station/pull/4872) test(ui): let the fold-label print guard allow a classifying prop
+- [#4867](https://github.com/kontourai/station/pull/4867) test: align terminal frame guards with resize protocol
+- [#4863](https://github.com/kontourai/station/pull/4863) build(deps): adopt conduit 0.8, survey 9, ferry 0.8/thread 0.7, relay 0.8 and corpus-store next.5
+
+## 2026-11-13T05:17:54Z · nightly-android · 0.1.11-nightly.20261113
+
+- Ship SHA: `76c30c3b8dbaf4b36795ec4b0ed73902b3674509`
+- Artifact built at: `2026-11-13T04:03:24.069Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 43360033137)
+
+### Changelog
+
+Commits since `f53648a` ([full sha](https://github.com/kontourai/station/commit/f53648ab2f41c3ad68c2a0b26e9aabcdf6bddd07)):
+
+**Features**
+
+- [#4868](https://github.com/kontourai/station/pull/4868) feat(usage): attribute usage receipts to the connection that produced them (#4710 slice 2)
+- [#4866](https://github.com/kontourai/station/pull/4866) feat(connections): one honest readiness status and the resource-hub kit (#4710 slice 1)
+- [#4848](https://github.com/kontourai/station/pull/4848) feat(approvals): judge guardian calls against what the person typed (#4827)
+
+**Fixes**
+
+- [#4871](https://github.com/kontourai/station/pull/4871) fix(orchestration): bound the thread-content backfill so startup doesn't stall
+
+**Other**
+
+- [#4872](https://github.com/kontourai/station/pull/4872) test(ui): let the fold-label print guard allow a classifying prop
+- [#4867](https://github.com/kontourai/station/pull/4867) test: align terminal frame guards with resize protocol
+- [#4863](https://github.com/kontourai/station/pull/4863) build(deps): adopt conduit 0.8, survey 9, ferry 0.8/thread 0.7, relay 0.8 and corpus-store next.5
+
+## 2026-11-13T03:57:08Z · nightly-npm · 0.11.0-nightly.20261113.43360033137
+
+- Ship SHA: `76c30c3b8dbaf4b36795ec4b0ed73902b3674509`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261113.43360033137 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `f53648a` ([full sha](https://github.com/kontourai/station/commit/f53648ab2f41c3ad68c2a0b26e9aabcdf6bddd07)):
+
+**Features**
+
+- [#4868](https://github.com/kontourai/station/pull/4868) feat(usage): attribute usage receipts to the connection that produced them (#4710 slice 2)
+- [#4866](https://github.com/kontourai/station/pull/4866) feat(connections): one honest readiness status and the resource-hub kit (#4710 slice 1)
+- [#4848](https://github.com/kontourai/station/pull/4848) feat(approvals): judge guardian calls against what the person typed (#4827)
+
+**Fixes**
+
+- [#4871](https://github.com/kontourai/station/pull/4871) fix(orchestration): bound the thread-content backfill so startup doesn't stall
+
+**Other**
+
+- [#4872](https://github.com/kontourai/station/pull/4872) test(ui): let the fold-label print guard allow a classifying prop
+- [#4867](https://github.com/kontourai/station/pull/4867) test: align terminal frame guards with resize protocol
+- [#4863](https://github.com/kontourai/station/pull/4863) build(deps): adopt conduit 0.8, survey 9, ferry 0.8/thread 0.7, relay 0.8 and corpus-store next.5
 
 ## 2026-11-12T20:08:33Z · nightly-desktop · 0.1.11-nightly.20261112.1
 

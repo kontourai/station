@@ -340,7 +340,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
     );
     expect(document.querySelectorAll('.message.user')).toHaveLength(1);
     expect(
-      screen.getAllByText('Non-person input · sender not recorded'),
+      screen.getAllByText('Automated message · sender unknown'),
     ).toHaveLength(2);
   });
 

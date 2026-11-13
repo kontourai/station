@@ -1,0 +1,7 @@
+{
+  "revision": "0b810862bf4c254ddb692f9c0d7a755416e4c4da",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Session-row plan read now keys on the status ladder's lane instead of the fold label; behaviour unchanged: Drafts show nothing, running and needs-you rows refresh, other rows read once. Start Your First Task paragraph and Review Activity pointer remain accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/TaskPlanProgress.tsx","src-ui/src/utils/taskPlanProgress.ts","src-ui/src/views/SessionsView.tsx"]}
+  ]
+}

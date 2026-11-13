@@ -133,7 +133,7 @@ beforeAll(() => {
 });
 afterEach(() => cleanup());
 
-test('an app still on its first start is reported, not replaced by the Station agent', async () => {
+test('an engine still on its first start is reported, not replaced by the Station agent', async () => {
   render(
     <NewChatModal
       agents={[STATION_AGENT]}
@@ -145,7 +145,7 @@ test('an app still on its first start is reported, not replaced by the Station a
     />,
   );
 
-  expect(await screen.findByText('Your AI app is still starting')).toBeTruthy();
+  expect(await screen.findByText('The engine is still starting')).toBeTruthy();
   expect(screen.getByText(STARTING)).toBeTruthy();
   expect(screen.queryByText(/Station needs one thing/)).toBeNull();
 });

@@ -24,7 +24,7 @@ function senderAgentLabel(sender: ClientOriginSender): string | undefined {
 /** The accessible name of the whole incoming message. */
 export function incomingMessageLabel(sender: ClientOriginSender): string {
   if (sender.kind === 'unattributed')
-    return 'Non-person input: sender not recorded';
+    return 'Automated message: sender unknown';
   if (sender.kind === 'provider') return 'The engine replied on its own';
   if (sender.kind === 'coordinator') return 'Update from Station';
   const agent = senderAgentLabel(sender);
@@ -45,7 +45,7 @@ export function IncomingAgentHeader({
     return (
       <p className="agent-cause">
         <InboxGlyph />
-        Non-person input · sender not recorded
+        Automated message · sender unknown
       </p>
     );
   if (sender.kind === 'provider')
@@ -103,7 +103,7 @@ export function IncomingAgentCause({
 }) {
   const label =
     sender.kind === 'unattributed'
-      ? 'Non-person input · sender not recorded'
+      ? 'Automated message · sender unknown'
       : sender.kind === 'provider'
         ? 'The engine replied on its own'
         : sender.kind === 'coordinator'
