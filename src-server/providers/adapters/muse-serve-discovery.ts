@@ -211,6 +211,8 @@ function epochMsIso(value: unknown): string | undefined {
 export function museQuotaResult(
   result: unknown,
   connectionId: string,
+  /** `profile` when the read ran under a credential profile's config. */
+  accountScope: 'profile' | 'global' = 'global',
 ): ConnectionQuotaResult {
   const usage = isRecord(result) ? result.usage : undefined;
   if (usage === undefined) {
@@ -274,8 +276,7 @@ export function museQuotaResult(
       observedAt,
       baselineAt: observedAt,
       source: 'provider-reported',
-      // Muse signs in one account per data home; there are no profiles.
-      accountScope: 'global',
+      accountScope,
       ...(tier ? { plan: { value: { type: tier }, observedAt } } : {}),
       windows,
     },

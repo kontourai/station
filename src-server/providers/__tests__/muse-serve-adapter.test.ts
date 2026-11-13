@@ -3650,6 +3650,32 @@ describe('Muse parity: the model catalog through a short-lived host (#2266)', ()
     expect(h.hosts).toHaveLength(1);
   });
 
+  test('#1942: the catalog is read under the active profile, and a profile switch is not served from the global cache', async () => {
+    let active: string | undefined;
+    const h = harness({
+      getAppHomeEnv: async () =>
+        active
+          ? {
+              env: { XDG_CONFIG_HOME: `/profiles/muse/${active}` },
+              profileRef: active,
+            }
+          : { profileRef: null },
+      spawnHost: discoveryHost([
+        [
+          'model/list',
+          { providerId: 'meta', profileId: null, source: 'providerCatalog', models: [] },
+        ],
+      ]),
+    });
+    await h.adapter.listModelCatalog!();
+    active = 'work';
+    await h.adapter.listModelCatalog!();
+    expect(h.hostEnvs).toEqual([
+      undefined,
+      { XDG_CONFIG_HOME: '/profiles/muse/work' },
+    ]);
+  });
+
   test('a host with an unverified schema is not asked for its catalog', async () => {
     const init = liveInitializeResult();
     (init.schema as Record<string, unknown>).fingerprint =
@@ -3677,7 +3703,9 @@ describe('Muse parity: the model catalog through a short-lived host (#2266)', ()
     });
     const controller = new AbortController();
     const reading = h.adapter.listModelCatalog!({ signal: controller.signal });
-    await h.hosts[0]?.nextRequest('model/list', new Set());
+    // The host starts after the profile resolves, so wait for it.
+    await vi.waitFor(() => expect(h.hosts).toHaveLength(1));
+    await h.hosts[0].nextRequest('model/list', new Set());
     const abortedAt = Date.now();
     controller.abort(new Error('caller gave up'));
     await expect(reading).rejects.toThrow('caller gave up');
@@ -3778,6 +3806,56 @@ describe('Muse parity: the subscription allowance through usage/read', () => {
         ],
       },
     });
+  });
+
+  test('#1942: a profile connection reads its allowance under that profile, never the global account', async () => {
+    const profileEnv = { XDG_CONFIG_HOME: '/profiles/muse/work' };
+    const getAppHomeEnv = vi.fn(async (ref?: string) =>
+      ref === 'work'
+        ? { env: profileEnv, profileRef: 'work' }
+        : { profileRef: null },
+    );
+    const h = harness({
+      getAppHomeEnv,
+      spawnHost: discoveryHost([
+        [
+          'usage/read',
+          {
+            usage: {
+              observedAtMs: Date.parse('2026-11-13T15:00:00.000Z'),
+              window: { usedPercent: 5 },
+            },
+          },
+        ],
+      ]),
+    });
+    await expect(
+      h.adapter.readQuotaSnapshot!({
+        connectionId: 'muse',
+        credentialProfileRef: 'work',
+      }),
+    ).resolves.toMatchObject({
+      kind: 'snapshot',
+      snapshot: { accountScope: 'profile' },
+    });
+    expect(getAppHomeEnv).toHaveBeenCalledWith('work');
+    expect(h.hostEnvs).toEqual([profileEnv]);
+  });
+
+  test('#1942: a named profile that cannot be prepared fails the read instead of reading the global account', async () => {
+    const h = harness({
+      getAppHomeEnv: async () => {
+        throw new Error('profile home is unwritable');
+      },
+      spawnHost: discoveryHost([['usage/read', {}]]),
+    });
+    await expect(
+      h.adapter.readQuotaSnapshot!({
+        connectionId: 'muse',
+        credentialProfileRef: 'work',
+      }),
+    ).resolves.toMatchObject({ kind: 'unavailable', reason: 'provider-error' });
+    expect(h.hosts).toEqual([]);
   });
 
   test('a host that fails the read is a provider error, not a snapshot', async () => {

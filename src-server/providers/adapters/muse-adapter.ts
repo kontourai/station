@@ -209,8 +209,9 @@ export interface MuseAdapterOptions {
    * credential. `undefined` (or `{ profileRef: null }` with no env) keeps
    * the user's own Muse config. A selected profile that cannot be prepared
    * throws, and the session is refused rather than run on another account.
-   * Applied to the session's serve host and every exec turn; model
-   * discovery and the allowance read keep the global config.
+   * Applied to the session's serve host, every exec turn, the allowance
+   * read (the connection's profile) and the model catalog (the active
+   * profile), so each reads the account the connection runs on.
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
@@ -1125,6 +1126,8 @@ export class MuseAdapter implements ProviderAdapterShape {
   /** Muse's goal on a serve session ({@link MUSE_GOAL_CAPABILITY}). */
   readonly goals?: ProviderAdapterShape['goals'];
   private catalogCache?: {
+    /** The profile env the catalog was read under (`''` for global). */
+    account: string;
     observedAt: number;
     catalog: ProviderAdapterModelCatalog;
   };
@@ -1199,7 +1202,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.providerRefusal = refusal;
     if (options.serve) this.childSteerOutlivesParentTurn = true;
     if (options.serve && this.providerOverride !== 'echo') {
-      const discovery = this.discoveryDeps(options.serve);
+      const serve = options.serve;
       this.metadata = {
         ...this.metadata,
         abortSettlement: 'await',
@@ -1214,11 +1217,11 @@ export class MuseAdapter implements ProviderAdapterShape {
         },
       };
       this.listModelCatalog = (request) =>
-        this.readModelCatalog(discovery, request);
+        this.readModelCatalog(serve, request);
       this.listModels = async (request) =>
-        (await this.readModelCatalog(discovery, request)).models;
-      this.readQuotaSnapshot = async ({ connectionId }) =>
-        this.readMuseQuota(discovery, connectionId);
+        (await this.readModelCatalog(serve, request)).models;
+      this.readQuotaSnapshot = async ({ connectionId, credentialProfileRef }) =>
+        this.readMuseQuota(serve, connectionId, credentialProfileRef);
       this.getCommands = async () =>
         MUSE_SERVE_COMMANDS.map((command) => ({ ...command }));
       this.goals = {
@@ -1229,15 +1232,28 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
   }
 
-  private discoveryDeps(serve: MuseServeAdapterOptions): MuseDiscoveryDeps {
+  private discoveryDeps(
+    serve: MuseServeAdapterOptions,
+    appHomeEnv?: Record<string, string>,
+  ): MuseDiscoveryDeps {
     // The posture is irrelevant to a query; the default sandboxed host is
     // what every session starts from.
     const posture: MuseServeHostPosture = { disableSandbox: false };
     return {
+      // #1942: under the profile's config, like a session's host, so the
+      // read reports that account rather than the global one.
       spawnHost: () =>
         serve.spawnHost
-          ? serve.spawnHost(posture)
-          : createMuseServeHost(posture, undefined, serve.dataHome),
+          ? appHomeEnv
+            ? serve.spawnHost(posture, undefined, undefined, appHomeEnv)
+            : serve.spawnHost(posture)
+          : createMuseServeHost(
+              posture,
+              undefined,
+              serve.dataHome,
+              undefined,
+              appHomeEnv,
+            ),
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
       timeoutMs: serve.handshakeTimeoutMs ?? MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
     };
@@ -1249,7 +1265,7 @@ export class MuseAdapter implements ProviderAdapterShape {
    * connections does not start a host each time; a failure is never cached.
    */
   private async readModelCatalog(
-    discovery: MuseDiscoveryDeps,
+    serve: MuseServeAdapterOptions,
     request: { signal?: AbortSignal; maxEntries?: number } | undefined,
   ): Promise<ProviderAdapterModelCatalog> {
     const maxEntries = Math.max(
@@ -1259,16 +1275,26 @@ export class MuseAdapter implements ProviderAdapterShape {
         Math.floor(request?.maxEntries ?? MUSE_MODEL_CATALOG_MAX_ENTRIES),
       ),
     );
+    // The catalog is read under the connection's active profile: which
+    // models muse offers can depend on the signed-in account, and a profile
+    // connection may have no global sign-in at all. Cached per account.
+    const appHomeEnv = (await this.resolveAppHomeEnv())?.env;
+    const account = appHomeEnv ? JSON.stringify(appHomeEnv) : '';
     const cached = this.catalogCache;
     const now = this.now().getTime();
-    if (!cached || now - cached.observedAt >= MUSE_MODEL_CATALOG_CACHE_MS) {
+    if (
+      !cached ||
+      cached.account !== account ||
+      now - cached.observedAt >= MUSE_MODEL_CATALOG_CACHE_MS
+    ) {
       const result = await withMuseDiscoveryHost(
-        discovery,
+        this.discoveryDeps(serve, appHomeEnv),
         'model/list',
         {},
         request?.signal,
       );
       this.catalogCache = {
+        account,
         observedAt: now,
         catalog: museModelCatalog(result, MUSE_MODEL_CATALOG_MAX_ENTRIES),
       };
@@ -1284,13 +1310,25 @@ export class MuseAdapter implements ProviderAdapterShape {
 
   /** `usage/read`: muse's subscription allowance, when it has observed one. */
   private async readMuseQuota(
-    discovery: MuseDiscoveryDeps,
+    serve: MuseServeAdapterOptions,
     connectionId: string,
+    credentialProfileRef: string | undefined,
   ): Promise<ConnectionQuotaResult> {
     try {
+      // #1942: the profile the connection runs on, resolved with a session's
+      // rule: a named profile that cannot be prepared fails the read rather
+      // than reporting the global account's allowance.
+      const appHomeEnv = (await this.resolveAppHomeEnv(credentialProfileRef))
+        ?.env;
       return museQuotaResult(
-        await withMuseDiscoveryHost(discovery, 'usage/read', {}, undefined),
+        await withMuseDiscoveryHost(
+          this.discoveryDeps(serve, appHomeEnv),
+          'usage/read',
+          {},
+          undefined,
+        ),
         connectionId,
+        appHomeEnv ? 'profile' : 'global',
       );
     } catch (error) {
       this.options.logger?.warn?.('Muse quota read unavailable', {
