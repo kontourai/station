@@ -60,7 +60,8 @@ settings from a check that actually reached the provider:
 - **Unreachable** — configured, but Station cannot reach it.
 
 The engine page's header shows the same state as its row, with the reason and
-at most one fix. A section tab carries an attention mark when an engine
+at most one fix. If the engine list could not be loaded, the header reads
+**Not loaded** instead of **Ready**, because a usage limit comes from that list. A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix or reads **Usage limit reached**, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
