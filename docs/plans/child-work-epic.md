@@ -19,6 +19,37 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Main integration and projection-cost checkpoint (2026-11-13)
+
+Main through `e1e50fc7dc4b` is merged at `eec8b850d4a6`. The merge retains
+upstream dependency versions and web-read protections, this branch's pinned
+smol-toml and Terser additions, and both process-heavy test lists. Managed
+lockfile regeneration and frozen dependency installation pass.
+
+At that merged revision, all 94 interrupted-turn recovery cases pass, including
+the two fake-timer cases that failed in the earlier readiness run. No causal
+repair of those earlier failures is established. The combined projection and
+Claude adapter selection passes 479 cases and fails the unchanged 1,200-thread
+projection workload at 12.38 seconds against its 10-second limit.
+
+A direct worker CPU diagnostic retains the full workload and measures 10.95
+seconds seeding durable events, 223 ms for the batched read, and 11.19 seconds
+overall. SQLite execution and repeated statement preparation dominate. A prior
+runner-only CPU capture misses the worker and cannot explain the failure;
+its passing rerun is not a causal repair. Diagnostic test edits are restored
+byte-exactly.
+
+At `ec4b4f8ccdd0`, projection/history and sequence reads reuse the existing
+bounded prepared-statement cache, and the history upsert reuses one statement
+per connection. Values remain live database reads; savepoints, independent
+durable event commits and cache-disabled behavior remain intact. All 13
+projection/history/cache-control cases pass with the original population,
+assertions and 10-second product bound. Read-only lint passes. This observation
+does not establish timing stability or resolve every earlier timer failure.
+Server-test types, current committed readiness, semantic documentation review,
+native enforcement/acceptance and protected delivery remain outstanding.
+Neither qualification flag is enabled and the full epic remains NOT_READY.
+
 ### Latest combined recovery and native-routing checkpoint (2026-11-13)
 
 At `f231a073f608`, one HTTP/SDK result read is bounded to eight physical Home
