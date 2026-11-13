@@ -558,7 +558,9 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(all).toBeVisible();
       await expectNoHorizontalScroll(page);
       const path = testInfo.outputPath(`long-notes-${theme}-${viewport}.png`);
-      await page.screenshot({ path });
+      await page.screenshot({
+        path: testInfo.outputPath(`long-notes-${theme}-${viewport}.png`),
+      });
       const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e');
       mkdirSync(retained, { recursive: true });
       copyFileSync(
