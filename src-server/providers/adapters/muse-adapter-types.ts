@@ -330,6 +330,11 @@ export interface MuseSessionRecord {
    * of its serve host and of every turn's exec. Never created per turn.
    */
   tmpDir?: string;
+  /**
+   * #1942: the credential-profile home env resolved at session start; every
+   * exec turn of the session spawns under it. Absent: the user's own config.
+   */
+  appHomeEnv?: Record<string, string>;
   externalThreadId: string;
   /**
    * The `--session-id` handed to every `muse exec` for this thread. Muse's

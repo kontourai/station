@@ -125,6 +125,21 @@ const CODEX_APP_HOME_IMPORT_PROFILE: AppHomeImportProfile = {
   credentialsFilename: 'auth.json',
 };
 
+/**
+ * #1942: Muse allowlist. Observed under a real `~/.config/muse` (Muse Code
+ * 1.4.18): `settings.json` (settings, user MCP servers), `auth.json` (the
+ * Meta login or API key: credentials, opt-in only), `trust.json` (folder
+ * trust decisions) and `.*.lock` files. Config = `settings.json` and
+ * `skills/` (the binary's documented user-skill root). `trust.json` is
+ * refused: a trust decision is the user's about a folder, and copying it
+ * would grant a profile trust nobody gave it. Locks are runtime state.
+ */
+const MUSE_APP_HOME_IMPORT_PROFILE: AppHomeImportProfile = {
+  allowlistFiles: new Set(['settings.json']),
+  allowlistDirs: new Set(['skills']),
+  credentialsFilename: 'auth.json',
+};
+
 export interface AppHomeDirEntry {
   name: string;
   isDirectory(): boolean;
@@ -400,6 +415,27 @@ export function claudeAppHomeEnv(dir: string): Record<string, string> {
 export function codexAppHomeEnv(dir: string): Record<string, string> {
   return { CODEX_HOME: dir };
 }
+
+/**
+ * #1942: the Muse Code counterpart. Muse has no config-home variable of its
+ * own: the binary reads `$XDG_CONFIG_HOME/muse` (credential `auth.json`,
+ * `settings.json`, skills), and `MUSE_AUTH_PATH` is honoured only by the
+ * `muse` launcher's download step, not by the binary. So a Muse app home is
+ * an XDG config ROOT whose `muse/` subfolder is the engine's config dir
+ * ({@link MUSE_APP_HOME_CONFIG_SUBDIR}).
+ *
+ * Accepted cost, disclosed: `XDG_CONFIG_HOME` is not Muse-private. Tools a
+ * profile session runs inherit it, so one that keeps its own config only
+ * under `$XDG_CONFIG_HOME` (rather than also under `$HOME`) does not find it
+ * there. Data (`XDG_DATA_HOME`: sessions, memory) is not moved, so a resume
+ * still finds its session under any profile.
+ */
+export function museAppHomeEnv(dir: string): Record<string, string> {
+  return { XDG_CONFIG_HOME: dir };
+}
+
+/** Muse's own config folder inside its XDG config root (see {@link museAppHomeEnv}). */
+export const MUSE_APP_HOME_CONFIG_SUBDIR = 'muse';
 
 interface AppHomeProfileMarker {
   version: typeof PROFILE_MARKER_VERSION;
@@ -1261,6 +1297,21 @@ export async function importCodexGlobalSnapshot(
   return importGlobalSnapshot({
     ...options,
     importProfile: CODEX_APP_HOME_IMPORT_PROFILE,
+  });
+}
+
+/**
+ * #1942: `globalDir` is Muse's own config folder (`~/.config/muse`); the
+ * snapshot lands in the profile's `muse/` subfolder, which is where the
+ * binary looks once `XDG_CONFIG_HOME` names the profile ({@link museAppHomeEnv}).
+ */
+export async function importMuseGlobalSnapshot(
+  options: ImportClaudeGlobalSnapshotOptions,
+): Promise<ImportClaudeGlobalSnapshotResult> {
+  return importGlobalSnapshot({
+    ...options,
+    profileDir: join(options.profileDir, MUSE_APP_HOME_CONFIG_SUBDIR),
+    importProfile: MUSE_APP_HOME_IMPORT_PROFILE,
   });
 }
 

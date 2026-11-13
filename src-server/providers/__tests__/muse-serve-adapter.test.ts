@@ -32,7 +32,7 @@ import {
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
@@ -51,6 +51,7 @@ import {
 import {
   buildMuseServeArgs,
   MuseAdapter,
+  type MuseAdapterOptions,
   museServeEnvOverrides,
 } from '../adapters/muse-adapter.js';
 import {
@@ -58,6 +59,7 @@ import {
   MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
 } from '../adapters/muse-serve-child-work.js';
 import { museServeApprovalPlan } from '../adapters/muse-serve-session.js';
+import { CredentialProfileEnvironmentError } from '../app-home/app-home-profiles.js';
 import {
   FakeMuseServeHost,
   loadMuseServeCapture,
@@ -79,6 +81,7 @@ interface Harness {
   events: CanonicalRuntimeEvent[];
   execSpawns: string[][];
   hostTmpDirs: Array<string | undefined>;
+  hostEnvs: Array<Record<string, string> | undefined>;
 }
 
 const adapters: MuseAdapter[] = [];
@@ -97,16 +100,19 @@ function harness(
     terminateHost?: (host: FakeMuseServeHost) => Promise<void>;
     onRelease?: (host: FakeMuseServeHost) => void;
     env?: NodeJS.ProcessEnv;
+    getAppHomeEnv?: MuseAdapterOptions['getAppHomeEnv'];
   } = {},
 ): Harness {
   const hosts: FakeMuseServeHost[] = [];
   const events: CanonicalRuntimeEvent[] = [];
   const execSpawns: string[][] = [];
   const hostTmpDirs: Array<string | undefined> = [];
+  const hostEnvs: Array<Record<string, string> | undefined> = [];
   const adapter = new MuseAdapter({
     serve: {
-      spawnHost: (posture, _cwd, tmpDir) => {
+      spawnHost: (posture, _cwd, tmpDir, envOverrides) => {
         hostTmpDirs.push(tmpDir);
+        hostEnvs.push(envOverrides);
         const args = buildMuseServeArgs(posture);
         const host =
           options.spawnHost?.(args, hosts.length) ??
@@ -134,6 +140,7 @@ function harness(
       throw new Error('this test drives serve; exec must not spawn');
     },
     ...(options.env ? { env: options.env } : {}),
+    ...(options.getAppHomeEnv ? { getAppHomeEnv: options.getAppHomeEnv } : {}),
     logger: { warn: () => {}, info: () => {} },
   });
   adapters.push(adapter);
@@ -141,7 +148,7 @@ function harness(
     void (async () => {
       for await (const event of adapter.streamEvents()) events.push(event);
     })();
-  return { adapter, hosts, events, execSpawns, hostTmpDirs };
+  return { adapter, hosts, events, execSpawns, hostTmpDirs, hostEnvs };
 }
 
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
@@ -273,6 +280,53 @@ describe('chat-host-images: a serve host', () => {
       if (previous === undefined) delete process.env.STATION_HOME;
       else process.env.STATION_HOME = previous;
     }
+  });
+});
+
+describe('#1942: a serve host runs under the credential profile', () => {
+  test("the selected profile's XDG config root reaches the host", async () => {
+    const getAppHomeEnv = vi.fn(async (ref?: string) => ({
+      profileRef: ref ?? null,
+      env: { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-x' },
+    }));
+    const h = harness({ getAppHomeEnv });
+    await firstHost(h, () =>
+      h.adapter.startSession({
+        provider: 'muse',
+        threadId: THREAD,
+        cwd: '/workspace/probe/repo',
+        credentialProfileRef: 'work',
+      }),
+    );
+    expect(getAppHomeEnv).toHaveBeenCalledWith('work');
+    expect(h.hostEnvs).toEqual([
+      { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-x' },
+    ]);
+  });
+
+  test('a profile that cannot be prepared refuses the start before any host', async () => {
+    const h = harness({
+      getAppHomeEnv: async () => {
+        throw new Error('overlay invalid');
+      },
+    });
+    await expect(
+      h.adapter.startSession({
+        provider: 'muse',
+        threadId: THREAD,
+        credentialProfileRef: 'work',
+      }),
+    ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+    expect(h.hosts).toHaveLength(0);
+    expect(h.execSpawns).toHaveLength(0);
+  });
+
+  test('no profile keeps the user’s own Muse config', async () => {
+    const h = harness({ getAppHomeEnv: async () => ({ profileRef: null }) });
+    await firstHost(h, () =>
+      h.adapter.startSession({ provider: 'muse', threadId: THREAD }),
+    );
+    expect(h.hostEnvs).toEqual([undefined]);
   });
 });
 

@@ -1,4 +1,5 @@
 import type {
+  EngineAccountEngine,
   EngineAccountProviderMoney,
   EngineAccountUsageHistory,
   EngineAccountUsageMetadata,
@@ -26,12 +27,18 @@ import { openExternalLink } from '../platform/openExternalLink';
 import { describeStationFailure } from '../utils/stationFailure';
 import './EngineAccountOverview.css';
 
+const ENGINE_ACCOUNT_LABELS: Record<EngineAccountEngine, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  muse: 'Muse Code',
+};
+
 export function EngineAccountOverview({
   connectionId,
   engine,
 }: {
   connectionId: string;
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
 }) {
   const scope = useHostRequestAuthorityScope();
   const authority = useQuery({
@@ -86,7 +93,7 @@ function AccountPage({
   canReadActivity,
 }: {
   connectionId: string;
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
   scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
   canManage: boolean;
   canLogin: boolean;
@@ -152,7 +159,7 @@ function AccountPage({
   return (
     <section
       className="engine-account-overview"
-      aria-label={`${engine === 'codex' ? 'Codex' : 'Claude'} account and usage`}
+      aria-label={`${ENGINE_ACCOUNT_LABELS[engine]} account and usage`}
     >
       <div className="engine-account-overview__toolbar">
         <label>

@@ -62,6 +62,7 @@ import {
   MUSE_PROVIDER_MODES,
 } from '../adapters/muse-adapter-types.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from '../adapters/unresolved-tool-output.js';
+import { CredentialProfileEnvironmentError } from '../app-home/app-home-profiles.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   MUSE_13_BACKGROUND_FOLLOW_UP_TEXT,
@@ -2165,10 +2166,13 @@ describe('MuseAdapter credential detection', () => {
     expect(findBinary).toHaveBeenCalledWith('muse');
     // The injected probe stands in for every process this would otherwise
     // start; nothing else may reach `execFile`.
+    // #1942: under the switches that keep the `muse` launcher from
+    // downloading a missing binary or starting its own login.
     expect(runCommand).toHaveBeenCalledWith(
       '/fake/prefix/bin/muse',
       ['--version'],
       undefined,
+      { MUSE_NO_AUTO_UPDATE: '1', MUSE_LOGIN: '0' },
     );
     // Presence only — the credential file is stat'd, never opened.
     expect(credentialFileExists).toHaveBeenCalledWith('/xdg/muse/auth.json');
@@ -2190,6 +2194,38 @@ describe('MuseAdapter credential detection', () => {
     expect(prerequisites.find((p) => p.id === 'muse-auth')?.status).toBe(
       'missing',
     );
+  });
+
+  it("reads the active credential profile's store, not the global one (#1942)", async () => {
+    const credentialFileExists = vi.fn(
+      (path: string) => path === '/profile/muse/auth.json',
+    );
+    const signedIn = credentialAdapter({
+      env: { XDG_CONFIG_HOME: '/global' },
+      credentialFileExists,
+      peekAppHomeEnv: async () => ({
+        profileRef: 'work',
+        env: { XDG_CONFIG_HOME: '/profile' },
+      }),
+    });
+    expect(
+      (await signedIn.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('installed');
+    expect(credentialFileExists).toHaveBeenCalledWith(
+      '/profile/muse/auth.json',
+    );
+
+    // The same host with no profile selected reads the (absent) global store.
+    const global = credentialAdapter({
+      env: { XDG_CONFIG_HOME: '/global' },
+      credentialFileExists,
+      peekAppHomeEnv: async () => ({ profileRef: null }),
+    });
+    expect(
+      (await global.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('missing');
   });
 
   it('honors XDG_CONFIG_HOME when locating the credential store', () => {
@@ -4376,5 +4412,72 @@ describe('Muse reasoning effort on the exec path', () => {
     await expect(refused).rejects.toBeInstanceOf(SendTurnRefusedError);
     await expect(refused).rejects.toMatchObject({ kind: 'input_unsupported' });
     expect(harness.spawnArgs).toEqual([]);
+  });
+});
+
+describe('#1942: exec turns run under the credential profile', () => {
+  function profileHarness(getAppHomeEnv: MuseAdapterOptions['getAppHomeEnv']) {
+    const envs: Array<Record<string, string> | undefined> = [];
+    const processes: FakeMuseProcess[] = [];
+    const harness = createHarness({
+      getAppHomeEnv,
+      processFactory: (_args, _cwd, _tmpDir, envOverrides) => {
+        envs.push(envOverrides);
+        const processHandle = new FakeMuseProcess();
+        processes.push(processHandle);
+        return { process: processHandle, release: () => {} };
+      },
+    });
+    return { harness, envs, processes };
+  }
+
+  test("every turn's muse exec gets the profile's XDG config root", async () => {
+    const getAppHomeEnv = vi.fn(async (ref?: string) => ({
+      profileRef: ref ?? null,
+      env: { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-y' },
+    }));
+    const { harness, envs } = profileHarness(getAppHomeEnv);
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'profile-turn',
+      credentialProfileRef: 'work',
+    });
+    await harness.adapter.sendTurn({ threadId: 'profile-turn', input: 'hi' });
+    expect(getAppHomeEnv).toHaveBeenCalledWith('work');
+    expect(envs).toEqual([
+      { XDG_CONFIG_HOME: '/station/app-homes/credential-profile-y' },
+    ]);
+    await harness.adapter.stopAll();
+  });
+
+  test('a named profile that cannot be prepared refuses the start', async () => {
+    const { harness, envs } = profileHarness(async () => {
+      throw new Error('profile home could not be created');
+    });
+    await expect(
+      harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'profile-refused',
+        credentialProfileRef: 'work',
+      }),
+    ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+    expect(envs).toEqual([]);
+  });
+
+  test('a lookup failure with no profile named degrades to the global config', async () => {
+    const { harness, envs } = profileHarness(async () => {
+      throw new Error('settings unreadable');
+    });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'profile-degraded',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'profile-degraded',
+      input: 'hi',
+    });
+    expect(envs).toEqual([undefined]);
+    expect(harness.logger.warn).toHaveBeenCalled();
+    await harness.adapter.stopAll();
   });
 });

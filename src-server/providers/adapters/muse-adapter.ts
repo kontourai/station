@@ -6,7 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
@@ -90,12 +90,22 @@ import {
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../adapter-shape.js';
-import type { CliAuthState, CliCommandResult } from '../auth/cli-auth.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+} from '../app-home/app-home-profiles.js';
+import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
   buildCliRuntimePrerequisites,
   findCliBinary,
   resolveAugmentedPathSync,
+  runCliCommand,
 } from '../auth/cli-auth.js';
+import {
+  MUSE_UNATTENDED_LAUNCHER_ENV,
+  museCredentialPath,
+  museCredentialState,
+} from '../auth/muse-auth.js';
 import {
   providerFailure,
   providerFailureForCode,
@@ -184,8 +194,29 @@ export interface MuseAdapterOptions {
     args: string[],
     cwd?: string,
     tmpDir?: string,
+    /** The session's credential-profile home (`getAppHomeEnv`), when one applies. */
+    envOverrides?: Record<string, string>,
   ) => MuseSpawnResult;
   now?: () => Date;
+  /**
+   * #1942: the credential-profile (app-home) env for a session, from
+   * `createCredentialProfileAppHomeEnvResolver({ engine: 'muse' })`:
+   * `XDG_CONFIG_HOME` naming the profile, under which muse reads its
+   * credential. `undefined` (or `{ profileRef: null }` with no env) keeps
+   * the user's own Muse config. A selected profile that cannot be prepared
+   * throws, and the session is refused rather than run on another account.
+   * Applied to the session's serve host and every exec turn; model
+   * discovery and the allowance read keep the global config.
+   */
+  getAppHomeEnv?: (
+    credentialProfileRef?: string,
+  ) => Promise<ResolvedAppHome | undefined>;
+  /**
+   * #1942: the same env, resolved WITHOUT creating anything
+   * (`createCredentialProfileAppHomeEnvPeek`), so readiness reports the
+   * credential store a fresh session would read.
+   */
+  peekAppHomeEnv?: () => Promise<ResolvedAppHome | undefined>;
   /** Mints the durable `--session-id` handed to every turn of a session. */
   newSessionId?: () => string;
   terminateProcess?: (processHandle: MuseProcessLike) => Promise<void>;
@@ -210,6 +241,8 @@ export interface MuseAdapterOptions {
     command: string,
     args: string[],
     signal?: AbortSignal,
+    /** {@link MUSE_UNATTENDED_LAUNCHER_ENV}, layered over Station's env. */
+    envOverlay?: Record<string, string>,
   ) => Promise<CliCommandResult | null>;
   /**
    * Declared absolute per-turn budget in milliseconds (wall-clock from turn
@@ -257,6 +290,8 @@ export interface MuseServeAdapterOptions {
     cwd?: string,
     /** chat-host-images: the session's temp folder, the host's TMPDIR. */
     tmpDir?: string,
+    /** #1942: the session's credential-profile home env, when one applies. */
+    envOverrides?: Record<string, string>,
   ) => MuseServeSpawnResult;
   terminateHost?: (spawned: MuseServeSpawnResult) => Promise<void>;
   /** Station's bound on an unanswered approval (default 30 minutes). */
@@ -544,32 +579,9 @@ export function formatMuseDuration(ms: number): string {
   return unit(ms / 1_000, 'second');
 }
 
-/**
- * Where the muse CLI stores its credential, honoring XDG. Presence only —
- * the file is never opened, so no secret material is read (the detection line
- * in docs/design/connections-onboarding.md §1).
- */
-export function museCredentialPath(env: NodeJS.ProcessEnv): string {
-  const configHome = env.XDG_CONFIG_HOME?.trim();
-  return configHome
-    ? join(configHome, 'muse', 'auth.json')
-    : join(homedir(), '.config', 'muse', 'auth.json');
-}
-
-/**
- * `authenticated` means "a credential is available to muse", derived from an
- * env key or the presence of the credential file — never from the CLI merely
- * running. Validity is proven on first use, not here.
- */
-export function museCredentialState(
-  env: NodeJS.ProcessEnv,
-  fileExists: (path: string) => boolean,
-): CliAuthState {
-  if (env.META_API_KEY?.trim()) return 'authenticated';
-  return fileExists(museCredentialPath(env))
-    ? 'authenticated'
-    : 'unauthenticated';
-}
+// #1942: the credential-store read moved to `auth/muse-auth.ts`, beside the
+// Claude and Codex ones, so the app-home route reads it without this file.
+export { museCredentialPath, museCredentialState };
 
 /**
  * Names the startup provider a CONTAINED run may put on `muse exec`.
@@ -834,9 +846,11 @@ export function createMuseProcess(
   cwd?: string,
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`). */
   tmpDir?: string,
+  /** #1942: the session's credential-profile home env. */
+  envOverrides?: Record<string, string>,
 ): MuseSpawnResult {
   // #4520: a managed policy's pinned launch fields (`managedEngineLaunch`).
-  const launch = museLaunch(args, {});
+  const launch = museLaunch(args, { ...envOverrides });
   // Mirrors the Codex spawn recipe (windowsHide + detached + piped stdio +
   // a Station-owned TMPDIR), routed through `spawnOwnedChild` so a per-turn
   // spawner's children are registered and reapable if Station dies without
@@ -874,11 +888,13 @@ export function createMuseServeHost(
   cwd?: string,
   dataHome?: string,
   tmpDir?: string,
+  /** #1942: the session's credential-profile home env. */
+  envOverrides?: Record<string, string>,
 ): MuseServeSpawnResult {
-  const launch = museLaunch(
-    buildMuseServeArgs(posture),
-    museServeEnvOverrides(dataHome),
-  );
+  const launch = museLaunch(buildMuseServeArgs(posture), {
+    ...envOverrides,
+    ...museServeEnvOverrides(dataHome),
+  });
   if (dataHome) mkdirSync(dataHome, { recursive: true });
   const { proc, release } = spawnOwnedChild(launch.command, [...launch.args], {
     cwd,
@@ -1032,6 +1048,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     args: string[],
     cwd?: string,
     tmpDir?: string,
+    envOverrides?: Record<string, string>,
   ) => MuseSpawnResult;
   private readonly now: () => Date;
   private readonly newSessionId: () => string;
@@ -1375,6 +1392,19 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
   }
 
+  /**
+   * The app-home env readiness reads under. A peek that fails names no
+   * home: readiness then reports the user's own store, and the start itself
+   * refuses a profile it cannot prepare.
+   */
+  private async peekReadinessAppHomeEnv(): Promise<Record<string, string>> {
+    try {
+      return (await this.options.peekAppHomeEnv?.())?.env ?? {};
+    } catch {
+      return {};
+    }
+  }
+
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
@@ -1401,16 +1431,54 @@ export class MuseAdapter implements ProviderAdapterShape {
       versionArgs: ['--version'],
       authArgs: ['--version'],
       findBinary: this.findBinary,
-      ...(this.options.runCommand
-        ? { runCommand: this.options.runCommand }
-        : {}),
-      installStep: 'Install the Muse Code CLI and ensure `muse` is on PATH.',
+      // The `muse` launcher must answer `--version` without downloading or
+      // prompting (MUSE_UNATTENDED_LAUNCHER_ENV).
+      runCommand: (command, args, signal) =>
+        (this.options.runCommand ?? runCliCommand)(command, args, signal, {
+          ...MUSE_UNATTENDED_LAUNCHER_ENV,
+        }),
+      installStep:
+        'Install the Muse Code CLI and ensure `muse` is on PATH. If `muse` is installed but its binary is missing, rerun the Muse installer.',
       authStep:
         'Run `muse auth set --api-key-stdin` (or set META_API_KEY) before starting Station.',
+      // #1942: the store a fresh session would read: the connection's active
+      // credential profile or app home when one applies (peeked, creating
+      // nothing), else the user's own.
       detectAuthState: async () =>
-        museCredentialState(this.env, this.credentialFileExists),
+        museCredentialState(
+          { ...this.env, ...(await this.peekReadinessAppHomeEnv()) },
+          this.credentialFileExists,
+        ),
       signal: options?.signal,
     });
+  }
+
+  /**
+   * #1942: the session's credential-profile env, with Codex's failure rule
+   * (`CodexAdapter.resolveAppHomeEnv`): once a profile is named (here or as
+   * the connection's active one, which the resolver itself refuses on), a
+   * failure refuses the start, because running on the global account would
+   * bill an account nobody selected. A failure with no profile named
+   * degrades to the global config with a warning.
+   */
+  private async resolveAppHomeEnv(
+    credentialProfileRef?: string,
+  ): Promise<ResolvedAppHome | undefined> {
+    try {
+      return await this.options.getAppHomeEnv?.(credentialProfileRef);
+    } catch (error) {
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
+      }
+      this.options.logger?.warn?.(
+        'Muse app-home profile lookup failed; continuing with the global Muse config.',
+        { reason: errorMessage(error) },
+      );
+      return undefined;
+    }
   }
 
   /**
@@ -1457,6 +1525,12 @@ export class MuseAdapter implements ProviderAdapterShape {
         "This conversation's Muse session can only be continued through `muse serve`, which this Station does not run for Muse.",
       );
     }
+    // #1942: the credential profile this session runs under, resolved before
+    // anything is spawned. A selected profile that cannot be prepared refuses
+    // the start (see `resolveAppHomeEnv`).
+    const appHomeEnv = (
+      await this.resolveAppHomeEnv(input.credentialProfileRef)
+    )?.env;
     // chat-host-images: prepared once, here; the serve host and every exec
     // turn get this one folder, and none is created later in the session.
     const sessionTmpDir = engineSessionTmpDir(input.threadId);
@@ -1474,6 +1548,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         input.threadId,
         input.cwd,
         sessionTmpDir,
+        appHomeEnv,
       );
       try {
         serveStarted = await candidate.start({
@@ -1560,6 +1635,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       stopped: false,
       ...(serve ? { serve } : {}),
       ...(sessionTmpDir ? { tmpDir: sessionTmpDir } : {}),
+      ...(appHomeEnv ? { appHomeEnv } : {}),
     };
     this.sessions.set(input.threadId, record);
     // chat-host-images: the folder prepared at the start is recorded now that
@@ -1745,18 +1821,34 @@ export class MuseAdapter implements ProviderAdapterShape {
     threadId: string,
     cwd: string | undefined,
     tmpDir: string | undefined,
+    appHomeEnv?: Record<string, string>,
   ): MuseServeSession {
     const serve = this.options.serve ?? {};
     const spawnHost =
       serve.spawnHost ??
-      ((posture: MuseServeHostPosture, hostCwd?: string, hostTmpDir?: string) =>
-        createMuseServeHost(posture, hostCwd, serve.dataHome, hostTmpDir));
+      ((
+        posture: MuseServeHostPosture,
+        hostCwd?: string,
+        hostTmpDir?: string,
+        envOverrides?: Record<string, string>,
+      ) =>
+        createMuseServeHost(
+          posture,
+          hostCwd,
+          serve.dataHome,
+          hostTmpDir,
+          envOverrides,
+        ));
     return new MuseServeSession({
       threadId,
       now: this.now,
       publish: (event) => this.publish(event),
       ...(this.options.logger ? { logger: this.options.logger } : {}),
-      spawnHost: (posture) => spawnHost(posture, cwd, tmpDir),
+      // A re-host (after a host exit) runs under the same profile.
+      spawnHost: (posture) =>
+        appHomeEnv
+          ? spawnHost(posture, cwd, tmpDir, appHomeEnv)
+          : spawnHost(posture, cwd, tmpDir),
       // Muse moved the session's model itself: what this session reports
       // (and retains for later turns) follows it.
       onModelChanged: (modelId) => {
@@ -1939,7 +2031,14 @@ export class MuseAdapter implements ProviderAdapterShape {
 
     let spawned: MuseSpawnResult;
     try {
-      spawned = this.processFactory(args, record.cwd, record.tmpDir);
+      spawned = record.appHomeEnv
+        ? this.processFactory(
+            args,
+            record.cwd,
+            record.tmpDir,
+            record.appHomeEnv,
+          )
+        : this.processFactory(args, record.cwd, record.tmpDir);
     } catch (error) {
       cleanupImages();
       throw error;

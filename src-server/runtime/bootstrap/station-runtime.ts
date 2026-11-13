@@ -175,6 +175,7 @@ import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
+  createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
 } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
@@ -1182,8 +1183,22 @@ export class StationRuntime {
   // session log) are the user's own either way — no `dataHome` override here
   // — so there is no app-home/credential-profile closure to wire. The logger closure reads `this.logger` lazily for the same
   // reason the Codex one above does.
+  private readonly museAppHomeSettings: CredentialProfileAppHomeEnvOptions = {
+    engine: 'muse',
+    loadConnectionSettings: async () =>
+      (await this.configLoader.loadAppConfig()).agentConnections?.muse,
+    warn: (message) =>
+      (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(message),
+  };
   private museAdapter = new MuseAdapter({
     serve: {},
+    // #1942: Muse's credential profiles, through the same resolver as the
+    // Claude and Codex adapters (lazy: invoked at session start only).
+    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver(
+      this.museAppHomeSettings,
+    ),
+    peekAppHomeEnv: () =>
+      createCredentialProfileAppHomeEnvPeek(this.museAppHomeSettings)(),
     logger: {
       warn: (msg: string, context?: unknown) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
