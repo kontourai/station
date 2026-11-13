@@ -1023,6 +1023,29 @@ export const MUSE_SERVE_HOST_EXITED_CODE = 'muse-serve-host-exited';
 export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 
 /**
+ * `runtime.warning` code for a `muse serve` turn whose model call muse is
+ * retrying (`turn/retryScheduled`, `turn/modelRetryScheduled`): the attempt
+ * failed and muse scheduled another. The turn is still running; this is
+ * not its outcome. `details` carries the attempt numbers and the delay.
+ */
+export const MUSE_MODEL_RETRY_SCHEDULED_CODE = 'muse-model-retry-scheduled';
+
+/**
+ * `runtime.warning` code for a `muse serve` session whose standing model the
+ * provider muse now uses cannot serve (`session/modelRouteUnserved`). Muse
+ * keeps the selection; turns on it fail until another model is chosen.
+ */
+export const MUSE_MODEL_ROUTE_UNSERVED_CODE = 'muse-model-route-unserved';
+
+/**
+ * `runtime.warning` code for a `muse serve` session on a host that reports it
+ * cannot enforce its sandbox (`initialize.sandboxAvailability:
+ * 'unavailable'`). Postures that rely on that sandbox run tools uncontained;
+ * `details.reason` is muse's own reason when it sent one.
+ */
+export const MUSE_SANDBOX_UNAVAILABLE_CODE = 'muse-sandbox-unavailable';
+
+/**
  * #2324: refusal code for a send that arrived while the engine is running a
  * turn it opened on its own (a provider-triggered turn, see
  * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply

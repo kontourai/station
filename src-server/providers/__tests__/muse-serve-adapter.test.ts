@@ -17,6 +17,8 @@ import {
   MUSE_APPROVAL_DECIDE_FAILED_CODE,
   MUSE_APPROVAL_EXPIRED_CODE,
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
+  MUSE_MODEL_RETRY_SCHEDULED_CODE,
+  MUSE_MODEL_ROUTE_UNSERVED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
@@ -2995,5 +2997,255 @@ describe('Muse parity: reasoning effort on serve', () => {
     await expect(sending).rejects.toBeInstanceOf(SendTurnRefusedError);
     await settle();
     expect(of(h.events, 'turn.started')).toEqual([]);
+  });
+});
+
+/** The capture's first live `session/tokenUsage` params (cost absent). */
+function liveTokenUsage(): Record<string, unknown> {
+  const frame = loadMuseServeCapture('steer').find(
+    (entry) => entry.msg.method === 'session/tokenUsage',
+  );
+  return structuredClone(frame?.msg.params as Record<string, unknown>);
+}
+
+const LIVE_MODEL = 'muse-spark-1.3-contributor';
+
+describe('Muse parity: usage, cost and context', () => {
+  test('a live tokenUsage with no cost publishes token counts and no cost', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    await dispatchTurn(h, host);
+    notify(host, 'session/tokenUsage', liveTokenUsage());
+    await settle();
+    const usage = of(h.events, 'token-usage.updated');
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toMatchObject({
+      turnId: TURN_1418,
+      promptTokens: 36194,
+      completionTokens: 212,
+    });
+    expect(usage[0]).not.toHaveProperty('reportedCost');
+    expect(usage[0]).not.toHaveProperty('reportedCostUsd');
+  });
+
+  test("a fully priced cumulative cost is the session's USD total; a partial one is never shown as exact", async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    await dispatchTurn(h, host);
+    const priced = liveTokenUsage();
+    (priced.cumulative as Record<string, unknown>).cost = {
+      usd: 0.0425,
+      partial: false,
+    };
+    notify(host, 'session/tokenUsage', priced);
+    const partial = liveTokenUsage();
+    (partial.cumulative as Record<string, unknown>).cost = {
+      usd: 0.05,
+      partial: true,
+    };
+    notify(host, 'session/tokenUsage', partial);
+    await settle();
+    const usage = of(h.events, 'token-usage.updated');
+    expect(usage).toHaveLength(2);
+    expect(usage[0].reportedCost).toEqual({
+      amount: 0.0425,
+      unit: 'USD',
+      scope: 'session',
+    });
+    expect(usage[1]).not.toHaveProperty('reportedCost');
+    expect(usage[1].promptTokens).toBe(36194);
+  });
+
+  test('contextUsage publishes occupancy with its window, or occupancy alone; never a derived percent', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    await dispatchTurn(h, host);
+    notify(host, 'session/contextUsage', {
+      usedTokens: 36406,
+      windowTokens: 262144,
+      pressure: 'normal',
+    });
+    notify(host, 'session/contextUsage', {
+      usedTokens: 40000,
+      pressure: 'normal',
+    });
+    notify(host, 'session/contextUsage', { pressure: 'normal' });
+    await settle();
+    const usage = of(h.events, 'token-usage.updated');
+    expect(usage).toHaveLength(2);
+    expect(usage[0]).toMatchObject({
+      turnId: TURN_1418,
+      contextTokens: 36406,
+      contextWindowTokens: 262144,
+    });
+    expect(usage[1].contextTokens).toBe(40000);
+    expect(usage[1]).not.toHaveProperty('contextWindowTokens');
+    for (const event of usage) {
+      expect(event).not.toHaveProperty('contextPercent');
+      expect(event).not.toHaveProperty('promptTokens');
+    }
+  });
+});
+
+describe('Muse parity: the todo list is the plan', () => {
+  test('todoListChanged replaces the plan; cancelled and unknown items are left out', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    await dispatchTurn(h, host);
+    notify(host, 'session/todoListChanged', {
+      revision: 3,
+      sourceTool: 'todo_write',
+      items: [
+        { text: 'Read the failing test', status: 'completed' },
+        {
+          text: 'Fix the parser',
+          status: 'inProgress',
+          activeForm: 'Fixing the parser',
+        },
+        { text: 'Write the changelog', status: 'pending' },
+        { text: 'Rewrite the lexer', status: 'cancelled' },
+        { text: 'Mystery', status: 'blocked' },
+      ],
+    });
+    notify(host, 'session/todoListChanged', {
+      revision: 4,
+      sourceTool: 'todo_write',
+      items: [],
+    });
+    await settle();
+    const plans = of(h.events, 'plan.updated');
+    expect(plans).toHaveLength(2);
+    expect(plans[0]).toMatchObject({
+      turnId: TURN_1418,
+      entries: [
+        { content: 'Read the failing test', status: 'completed' },
+        { content: 'Fix the parser', status: 'in_progress' },
+        { content: 'Write the changelog', status: 'pending' },
+      ],
+    });
+    expect(plans[1].entries).toEqual([]);
+  });
+});
+
+describe('Muse parity: model changes, unserved routes and retries', () => {
+  test('a policy change is a session reroute from the model the session held', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    notify(host, 'session/modelChanged', {
+      modelId: 'muse-spark-1.2-contributor',
+      providerId: 'meta',
+      source: 'policy',
+    });
+    await settle();
+    expect(of(h.events, 'model.rerouted')).toEqual([
+      expect.objectContaining({
+        fromModel: LIVE_MODEL,
+        toModel: 'muse-spark-1.2-contributor',
+        trigger: 'other',
+        scope: 'session',
+      }),
+    ]);
+    expect((await h.adapter.listSessions())[0].model).toBe(
+      'muse-spark-1.2-contributor',
+    );
+  });
+
+  test('a user or default change reconfigures the session model; the echo of the model held publishes nothing', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    const configuredBefore = of(h.events, 'session.configured').length;
+    notify(host, 'session/modelChanged', {
+      modelId: LIVE_MODEL,
+      providerId: 'meta',
+      source: 'user',
+    });
+    notify(host, 'session/modelChanged', {
+      modelId: 'muse-spark-1.2-contributor',
+      providerId: 'meta',
+      source: 'default',
+    });
+    notify(host, 'session/modelChanged', {
+      modelId: 'not a model id; rm -rf',
+      providerId: 'meta',
+      source: 'user',
+    });
+    await settle();
+    const configured = of(h.events, 'session.configured').slice(
+      configuredBefore,
+    );
+    expect(configured).toEqual([
+      expect.objectContaining({
+        sessionId: THREAD,
+        model: 'muse-spark-1.2-contributor',
+      }),
+    ]);
+    expect(configured[0]).not.toHaveProperty('metadata');
+    expect(of(h.events, 'model.rerouted')).toEqual([]);
+  });
+
+  test('an unserved standing route is a warning naming the model', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    notify(host, 'session/modelRouteUnserved', {
+      commandId: '00000000-0000-7000-8000-000000000031',
+      installedProviderId: 'openrouter',
+      modelId: LIVE_MODEL,
+      providerId: 'meta',
+    });
+    await settle();
+    const warnings = of(h.events, 'runtime.warning').filter(
+      (event) => event.code === MUSE_MODEL_ROUTE_UNSERVED_CODE,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain(LIVE_MODEL);
+    expect(warnings[0].details).toEqual({
+      modelId: LIVE_MODEL,
+      installedProviderId: 'openrouter',
+    });
+  });
+
+  test('a scheduled retry is announced once per attempt, bounded, and the turn keeps running', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    await dispatchTurn(h, host);
+    const retry = {
+      turnId: TURN_1418,
+      attempt: 1,
+      nextAttempt: 2,
+      maxAttempts: 4,
+      retryDelayMs: 2000,
+      system: 'meta',
+      errorKind: 'rate_limited',
+      httpStatus: 429,
+    };
+    notify(host, 'turn/retryScheduled', {
+      ...retry,
+      reason: `upstream said ${'x'.repeat(400)}`,
+    });
+    notify(host, 'turn/modelRetryScheduled', retry);
+    notify(host, 'turn/modelRetryScheduled', {
+      ...retry,
+      attempt: 2,
+      nextAttempt: 3,
+    });
+    await settle();
+    const warnings = of(h.events, 'runtime.warning').filter(
+      (event) => event.code === MUSE_MODEL_RETRY_SCHEDULED_CODE,
+    );
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toMatchObject({
+      turnId: TURN_1418,
+      details: {
+        nextAttempt: 2,
+        maxAttempts: 4,
+        retryDelayMs: 2000,
+        httpStatus: 429,
+      },
+    });
+    expect(warnings[0].message).toMatch(/attempt 2 of 4, in 2 seconds/);
+    expect(warnings[0].message.length).toBeLessThan(260);
+    expect(warnings[1].message).toContain('rate_limited');
+    expect(of(h.events, 'turn.completed')).toEqual([]);
+    expect(of(h.events, 'runtime.error')).toEqual([]);
   });
 });

@@ -1407,6 +1407,14 @@ export class MuseAdapter implements ProviderAdapterShape {
       publish: (event) => this.publish(event),
       ...(this.options.logger ? { logger: this.options.logger } : {}),
       spawnHost: (posture) => spawnHost(posture, cwd, tmpDir),
+      // Muse moved the session's model itself: what this session reports
+      // (and retains for later turns) follows it.
+      onModelChanged: (modelId) => {
+        const record = this.sessions.get(threadId);
+        if (!record || record.serve === undefined) return;
+        record.modelId = modelId;
+        record.session = { ...record.session, model: modelId };
+      },
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
       newCommandId: serve.newCommandId ?? (() => museUuidV7()),
       approvalTimeoutMs: resolveMuseSupervisionBound(

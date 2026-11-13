@@ -10,9 +10,13 @@ import {
   MUSE_APPROVAL_DECIDE_FAILED_CODE,
   MUSE_APPROVAL_EXPIRED_CODE,
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
+  MUSE_MODEL_RETRY_SCHEDULED_CODE,
+  MUSE_MODEL_ROUTE_UNSERVED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
 } from '@kontourai/station-contracts/provider';
 import type {
+  PlanEntry,
+  PlanEntryStatus,
   ProviderRuntimeErrorBody,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
@@ -94,6 +98,16 @@ import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
  * - 1.4.18: `turn/steer {expectedTurnId}` joins input to the running turn
  *   (`{status: 'accepted', turnId}`); with no such run it is refused
  *   -32030 `commandRejected` (`missing_run`).
+ * - 1.4.18 (live): `session/tokenUsage` carries one completion's `usage` and
+ *   the session's `cumulative` totals, whose `cost {usd, partial}` was
+ *   absent on the probed provider; `turn/modelAttemptStarted` is emitted
+ *   per model call. Schema-only (never observed live): `session/contextUsage`,
+ *   `session/todoListChanged`, `session/modelChanged`,
+ *   `session/modelRouteUnserved`, `turn/retryScheduled` and
+ *   `turn/modelRetryScheduled`; each is mapped from its 1.4.18 schema shape.
+ *   `session/reasoningEffortChanged` follows a `session/setReasoningEffort`,
+ *   which Station never sends (the tier rides each `turn/start`), and no
+ *   canonical event records a standing effort, so it is not mapped.
  */
 
 type MuseServeLogger = Pick<Logger, 'warn' | 'info'>;
@@ -145,6 +159,24 @@ const MSP_COMMAND_REJECTED = -32030;
 /** MSP `userInputNotFound` / `userInputAlreadySettled`. */
 const MSP_USER_INPUT_GONE = new Set([-32055, -32056]);
 const TURN_ERROR_MESSAGE_MAX_CHARS = 500;
+/** A Muse model id: one token (it reaches a transcript marker verbatim). */
+const MUSE_MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
+/** MSP caps `turn/retryScheduled.reason` at 160; Station keeps that bound. */
+const RETRY_REASON_MAX_CHARS = 160;
+/** Retry attempts announced per turn (a retry chain is a handful). */
+const RETRY_ANNOUNCEMENTS_MAX = 64;
+/**
+ * MSP `TodoStatus` → `PlanEntryStatus`. `cancelled` has no canonical status:
+ * a cancelled item is no longer part of the work, and every plan surface
+ * would render an unknown status as pending, so it is left out of the plan
+ * rather than shown as work still to do. An unknown status (the vocabulary
+ * is wire-open) is left out for the same reason.
+ */
+const MUSE_TODO_STATUS: Readonly<Record<string, PlanEntryStatus>> = {
+  pending: 'pending',
+  inProgress: 'in_progress',
+  completed: 'completed',
+};
 
 export type MuseServeApprovalModeWire =
   | 'allowAll'
@@ -219,6 +251,8 @@ export interface MuseServeSessionDeps {
   publish: (event: CanonicalRuntimeEvent) => void;
   logger?: MuseServeLogger;
   spawnHost: (posture: MuseServeHostPosture) => MuseServeSpawnResult;
+  /** The session's model changed on muse's side (`session/modelChanged`). */
+  onModelChanged?: (modelId: string) => void;
   terminateHost: (spawned: MuseServeSpawnResult) => Promise<void>;
   newCommandId: () => string;
   approvalTimeoutMs: number;
@@ -290,6 +324,8 @@ interface ServeTurn {
   settled: boolean;
   settledPromise: Promise<void>;
   resolveSettled: () => void;
+  /** Retry attempts (`nextAttempt`) already announced for this turn. */
+  retriesAnnounced: Set<number>;
 }
 
 /** A Muse `request_user_input` prompt Station put to the user. */
@@ -419,6 +455,17 @@ function parseJsonMaybe(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+/**
+ * `cumulative.cost.usd` when muse priced every leg. A `partial` cost (some
+ * leg had no price) is a lower bound that `reportedCost` cannot mark as one,
+ * so it is not published: no cost is shown rather than an understated one.
+ */
+function museSessionCostUsd(cumulative: unknown): number | undefined {
+  if (!isRecord(cumulative) || !isRecord(cumulative.cost)) return undefined;
+  if (cumulative.cost.partial !== false) return undefined;
+  return readCount(cumulative.cost.usd);
 }
 
 function truncate(value: string, max: number): string {
@@ -1256,6 +1303,26 @@ export class MuseServeSession {
           this.onTokenUsage(params),
         );
         return;
+      case 'session/contextUsage':
+        this.routeSessionFrame((turnId) => this.onContextUsage(params, turnId));
+        return;
+      case 'session/todoListChanged':
+        this.routeSessionFrame((turnId) => this.onTodoListChanged(params, turnId));
+        return;
+      case 'session/modelChanged':
+        this.routeSessionFrame((turnId) => this.onModelChanged(params, turnId));
+        return;
+      case 'session/modelRouteUnserved':
+        this.routeSessionFrame((turnId) =>
+          this.onModelRouteUnserved(params, turnId),
+        );
+        return;
+      case 'turn/retryScheduled':
+      case 'turn/modelRetryScheduled':
+        this.routeTurnFrame(readString(params.turnId), () =>
+          this.onRetryScheduled(params),
+        );
+        return;
       case 'approval/requested':
         this.onApprovalRequested(params);
         return;
@@ -1319,6 +1386,20 @@ export class MuseServeSession {
       return;
     }
     frame();
+  }
+
+  /**
+   * A session-level frame (no `turnId` of its own). It is attributed to the
+   * turn running now, if any, and waits behind a dispatched turn's
+   * `turn.started` like that turn's own frames.
+   */
+  private routeSessionFrame(frame: (turnId: string | undefined) => void): void {
+    const live = this.liveTurn();
+    if (live && live.kind === 'dispatched' && !live.startPublished) {
+      live.buffered.push(() => frame(live.settled ? undefined : live.turnId));
+      return;
+    }
+    frame(live?.turnId);
   }
 
   private onTurnStarted(params: Record<string, unknown>): void {
@@ -1540,8 +1621,11 @@ export class MuseServeSession {
     if (promptTokens === undefined && completionTokens === undefined) return;
     const cacheReadTokens = readCount(usage.cacheReadTokens);
     const cacheWriteTokens = readCount(usage.cacheWriteTokens);
+    const reportedCostUsd = museSessionCostUsd(params.cumulative);
     // One model completion's usage (not cumulative): each event is its own
     // receipt, which is how the usage fold treats a non-cumulative engine.
+    // The cost is the session's running total (`cumulative.cost`), so it
+    // rides `reportedCost` with `scope: 'session'`.
     this.deps.publish({
       eventId: crypto.randomUUID(),
       provider: 'muse',
@@ -1554,6 +1638,193 @@ export class MuseServeSession {
       totalTokens: (promptTokens ?? 0) + (completionTokens ?? 0),
       ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
       ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+      ...(reportedCostUsd !== undefined
+        ? {
+            reportedCost: {
+              amount: reportedCostUsd,
+              unit: 'USD',
+              scope: 'session' as const,
+            },
+          }
+        : {}),
+    });
+  }
+
+  /**
+   * `session/contextUsage`: occupancy and, when muse's basis has a limit,
+   * the window. Muse sends no percentage, so none is derived here; a
+   * window-less occupancy is published alone (the usage fold resolves the
+   * window elsewhere). `pressure` has no canonical home and is not mapped.
+   */
+  private onContextUsage(
+    params: Record<string, unknown>,
+    turnId: string | undefined,
+  ): void {
+    const contextTokens = readCount(params.usedTokens);
+    if (contextTokens === undefined) return;
+    const window = readCount(params.windowTokens);
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'token-usage.updated',
+      ...(turnId ? { turnId } : {}),
+      contextTokens,
+      ...(window !== undefined && window > 0
+        ? { contextWindowTokens: window }
+        : {}),
+    });
+  }
+
+  /**
+   * `session/todoListChanged` → `plan.updated`, a full replace (MSP: "an
+   * empty `items` array is a cleared list"). Cancelled and unknown-status
+   * items are left out (see {@link MUSE_TODO_STATUS}).
+   */
+  private onTodoListChanged(
+    params: Record<string, unknown>,
+    turnId: string | undefined,
+  ): void {
+    if (!Array.isArray(params.items)) return;
+    const entries: PlanEntry[] = [];
+    for (const item of params.items) {
+      if (!isRecord(item)) continue;
+      const content = readString(item.text);
+      const status = MUSE_TODO_STATUS[readString(item.status) ?? ''];
+      if (content && status) entries.push({ content, status });
+    }
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'plan.updated',
+      ...(turnId ? { turnId } : {}),
+      entries,
+    });
+  }
+
+  /**
+   * `session/modelChanged`. A `policy` change is muse moving the session
+   * onto a model nobody picked: `model.rerouted` (session scope, since the
+   * selection is now the session's). A `user` or `default` change (another
+   * client's pick, or muse's default resolving) reconfigures the session's
+   * model. A change to the model already held (the echo of Station's own
+   * `session/setModel`) publishes nothing.
+   */
+  private onModelChanged(
+    params: Record<string, unknown>,
+    turnId: string | undefined,
+  ): void {
+    const modelId = readString(params.modelId);
+    if (!modelId || !MUSE_MODEL_ID.test(modelId) || modelId === this.model)
+      return;
+    const previous = this.model;
+    this.model = modelId;
+    this.deps.onModelChanged?.(modelId);
+    const base = {
+      eventId: crypto.randomUUID(),
+      provider: 'muse' as const,
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+    };
+    if (readString(params.source) === 'policy' && previous) {
+      this.deps.publish({
+        ...base,
+        method: 'model.rerouted',
+        ...(turnId ? { turnId } : {}),
+        fromModel: previous,
+        toModel: modelId,
+        trigger: 'other',
+        scope: 'session',
+      });
+      return;
+    }
+    this.deps.publish({
+      ...base,
+      method: 'session.configured',
+      sessionId: this.deps.threadId,
+      model: modelId,
+    });
+  }
+
+  /** `session/modelRouteUnserved`: the standing model cannot be served now. */
+  private onModelRouteUnserved(
+    params: Record<string, unknown>,
+    turnId: string | undefined,
+  ): void {
+    const modelId = readString(params.modelId);
+    const installed = readString(params.installedProviderId);
+    const model = modelId && MUSE_MODEL_ID.test(modelId) ? modelId : undefined;
+    const provider =
+      installed && MUSE_MODEL_ID.test(installed) ? installed : undefined;
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: MUSE_MODEL_ROUTE_UNSERVED_CODE,
+      ...(turnId ? { turnId } : {}),
+      message: `Muse's provider${provider ? ` (${provider})` : ''} cannot serve this session's model${
+        model ? ` ${model}` : ''
+      }. Choose another model before the next message.`,
+      details: {
+        ...(model ? { modelId: model } : {}),
+        ...(provider ? { installedProviderId: provider } : {}),
+      },
+    });
+  }
+
+  /**
+   * `turn/retryScheduled` / `turn/modelRetryScheduled`: a model attempt of a
+   * running turn failed and muse scheduled the next. Both shapes describe the
+   * same scheduled attempt, so each `nextAttempt` is announced once per turn.
+   */
+  private onRetryScheduled(params: Record<string, unknown>): void {
+    const turnId = readString(params.turnId);
+    const turn = turnId ? this.turns.get(turnId) : undefined;
+    if (!turn || turn.settled) return;
+    const nextAttempt = readCount(params.nextAttempt);
+    const maxAttempts = readCount(params.maxAttempts);
+    const retryDelayMs = readCount(params.retryDelayMs);
+    if (nextAttempt === undefined || maxAttempts === undefined) return;
+    if (
+      turn.retriesAnnounced.has(nextAttempt) ||
+      turn.retriesAnnounced.size >= RETRY_ANNOUNCEMENTS_MAX
+    )
+      return;
+    turn.retriesAnnounced.add(nextAttempt);
+    const reason = readString(params.reason);
+    const errorKind = readString(params.errorKind);
+    const httpStatus = readCount(params.httpStatus);
+    const why = reason
+      ? truncate(redactSecrets(reason), RETRY_REASON_MAX_CHARS)
+      : errorKind
+        ? truncate(redactSecrets(errorKind), RETRY_REASON_MAX_CHARS)
+        : undefined;
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: MUSE_MODEL_RETRY_SCHEDULED_CODE,
+      turnId: turn.turnId,
+      message: `Muse is retrying the model call (attempt ${nextAttempt} of ${maxAttempts}${
+        retryDelayMs !== undefined
+          ? `, in ${formatMuseServeDuration(retryDelayMs)}`
+          : ''
+      })${why ? `: ${why}` : '.'}`,
+      details: {
+        nextAttempt,
+        maxAttempts,
+        ...(retryDelayMs !== undefined ? { retryDelayMs } : {}),
+        ...(httpStatus !== undefined ? { httpStatus } : {}),
+      },
     });
   }
 
@@ -2543,6 +2814,7 @@ export class MuseServeSession {
       settled: false,
       settledPromise,
       resolveSettled,
+      retriesAnnounced: new Set(),
     };
   }
 
