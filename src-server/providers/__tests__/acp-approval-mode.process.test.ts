@@ -279,6 +279,7 @@ describe.skipIf(process.platform === 'win32')(
         FAKE_OPENCODE_RECORD: process.env.FAKE_OPENCODE_RECORD,
         FAKE_OPENCODE_REFUSE_RESUME: process.env.FAKE_OPENCODE_REFUSE_RESUME,
         FAKE_OPENCODE_CLIENT_WRITE: process.env.FAKE_OPENCODE_CLIENT_WRITE,
+        FAKE_OPENCODE_VERSION: process.env.FAKE_OPENCODE_VERSION,
       };
       delete process.env.OPENCODE_CONFIG_CONTENT;
       process.env.FAKE_OPENCODE_USER_CONFIG = USER_CONFIG;
@@ -291,6 +292,23 @@ describe.skipIf(process.platform === 'win32')(
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       }
+    });
+
+    test('ruling R1: OpenCode 2.x over ACP refuses Station approval modes before reading rules, and still starts under its own', async () => {
+      process.env.FAKE_OPENCODE_VERSION = 'opencode v2.3.0';
+      h = harness('opencode');
+      await expect(start(h, 'r1-refused', 'ask')).rejects.toMatchObject({
+        code: 'acp_approval_governance_refused',
+        message: expect.stringMatching(
+          /OpenCode 2\.3\.0 runs over ACP here, and over ACP Station cannot verify/,
+        ),
+      });
+      expect(records(h).filter((entry) => 'debugAgent' in entry)).toEqual([]);
+      expect(launches(h)).toHaveLength(0);
+
+      await start(h, 'r1-own-approvals');
+      expect(launches(h)).toHaveLength(1);
+      expect(launches(h)[0]?.OPENCODE_CONFIG_CONTENT ?? null).toBeNull();
     });
 
     test('the launch environment carries Station rules merged into the inline configuration Station inherited', async () => {

@@ -317,6 +317,12 @@ import {
   grokQuestionCancelled,
   grokQuestionResponse,
 } from './harness-questions.js';
+import {
+  type OpenCodeVersion,
+  openCodeAcpApprovalUnsupportedReason,
+  openCodeServesNatively,
+  openCodeVersionProbe,
+} from './opencode-version-probe.js';
 
 /** Matches the `any`-typed logger threaded through the existing ACP substrate (acp-manager.ts, acp-connection.ts, ACPProcessOptions.logger). */
 type AcpLogger = any;
@@ -614,6 +620,13 @@ export interface AcpAdapterOptions {
     cwd: string;
     env: NodeJS.ProcessEnv;
   }) => OpenCodeAgentReader;
+  /**
+   * Reads which OpenCode a binary is (`opencode-version-probe.ts`); tests
+   * replace it. Defaults to the shared cached `--version` probe.
+   */
+  probeOpenCodeVersion?: (
+    binary: string,
+  ) => Promise<OpenCodeVersion | undefined>;
   /** Overrides {@link DEFAULT_SEND_TURN_START_WAIT_MS} (tests). */
   sendTurnStartWaitMs?: number;
   logger?: AcpLogger;
@@ -4253,6 +4266,19 @@ export class AcpAdapter implements ProviderAdapterShape {
     const resolved = await findCliBinaryAsync(command);
     if (!resolved) {
       return { ok: false, reason: `${command} could not be found` };
+    }
+    // Ruling R1: Station's check reads 1.x's `debug agent <name>`, which
+    // 2.x does not have, and 2.x keeps saved approvals the check cannot
+    // see. Over ACP Station does not govern a 2.x OpenCode; its own
+    // approvals still apply when Station's mode is not asked for.
+    const version = await (
+      this.options.probeOpenCodeVersion ?? openCodeVersionProbe.probe
+    )(resolved);
+    if (version && openCodeServesNatively(version)) {
+      return {
+        ok: false,
+        reason: openCodeAcpApprovalUnsupportedReason(version.text),
+      };
     }
     const reader = (this.options.readOpenCodeAgents ?? openCodeAgentReader)({
       command: resolved,
