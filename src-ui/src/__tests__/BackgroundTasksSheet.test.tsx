@@ -137,9 +137,9 @@ describe('BackgroundTasksSheet', () => {
   test('renders the empty state when there are no running or finished tasks', () => {
     renderSheet({ running: [], finished: [] });
     expect(screen.getByText('Nothing to show')).not.toBeNull();
-    expect(screen.getByText(/Recent activity only/).textContent).toContain(
-      'closed-chat history may be missing.',
-    );
+    expect(
+      screen.getByText('Recent tasks only. Remote tasks are in Activity.'),
+    ).not.toBeNull();
   });
 
   test('renders a Running section with a count and the Activity disclosure', () => {
@@ -148,9 +148,7 @@ describe('BackgroundTasksSheet', () => {
       finished: [],
     });
     expect(screen.getByText('Running (2)')).not.toBeNull();
-    expect(
-      screen.getByText(/Find remote delegations in Activity\./),
-    ).not.toBeNull();
+    expect(screen.getByText(/Remote tasks are in Activity\./)).not.toBeNull();
     expect(
       screen.queryByText('Remote delegations appear on the Sessions page.'),
     ).toBeNull();
