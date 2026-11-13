@@ -5,22 +5,25 @@
  * when the value exceeds `baseline * (1 + ratio) + floor`. Shrinking never
  * fails, so a later improvement needs no baseline edit to pass. There are no
  * absolute magnitudes here: every limit comes from a value measured on the
- * same host class (`host` scope) or from the host-independent request
- * baseline (`request` scope).
+ * same host (`host` scope, keyed by the host fingerprint) or from the
+ * host-independent request baseline (`request` scope).
  *
  * A metric that was not measured, or that has no baseline to compare with,
- * is NOT_MEASURED with a reason. It is never PASS and never counted as zero.
+ * is NOT_MEASURED with a reason. It is never PASS and never counted as zero,
+ * and `gateOutcome` fails the run for it.
  */
 
-const BASELINE_SCHEMA_VERSION = 1;
+const BASELINE_SCHEMA_VERSION = 2;
 
 /**
  * `ratio` is proportional headroom; `floor` is additive headroom in the
  * metric's own unit, for metrics whose baseline can sit near zero.
  */
 export const STATION_WEIGHT_BUDGETS = Object.freeze([
-  // Launch timing swings with host load: clean runs on one loaded host
-  // ranged 3.6-8.6 s, so a 50% ceiling failed a clean tree.
+  // The median of `readyLaunches` (default 3) launches, each after a fresh
+  // build. Nine launches on one host at load 21-24 ranged 3.8-6.3 s singly
+  // and 5.2-6.1 s as medians of three; the reviewer's worst single launch
+  // was 9.0 s against a 5.07 s baseline. +100% clears all of those.
   { id: 'serverReadyMs', scope: 'host', ratio: 1, floor: 0 },
   { id: 'restMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
   { id: 'idleSessionsMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
@@ -55,22 +58,12 @@ export const STATION_WEIGHT_BUDGETS = Object.freeze([
   { id: 'request.sideCallCount', scope: 'request', ratio: 0, floor: 0 },
 ]);
 
-/** Host class: host-scope baselines only compare like with like. */
-export function hostClass(host) {
-  return `${host.platform}-${host.arch}`;
-}
-
-function baselineValues(baseline, budget, klass) {
+function baselineValues(baseline, budget, host) {
   if (budget.scope === 'request') return baseline?.request?.values;
-  return baseline?.hosts?.[klass]?.values;
+  return baseline?.hosts?.[host?.fingerprint]?.values;
 }
 
-/**
- * @param {{ host: { platform: string, arch: string }, metrics: Record<string, { status: string, value?: number, reason?: string }> }} result
- * @param {unknown} baseline
- */
-export function evaluateBudgets(result, baseline) {
-  const klass = hostClass(result.host);
+function checkSchema(baseline) {
   if (
     baseline !== undefined &&
     baseline.schemaVersion !== BASELINE_SCHEMA_VERSION
@@ -78,6 +71,15 @@ export function evaluateBudgets(result, baseline) {
     throw new Error(
       `baseline schemaVersion ${baseline.schemaVersion} is not ${BASELINE_SCHEMA_VERSION}`,
     );
+}
+
+/**
+ * @param {{ host: { label?: string, fingerprint?: string }, metrics: Record<string, { status: string, value?: number, reason?: string }> }} result
+ * @param {unknown} baseline
+ * @param {{ reportOnly?: boolean }} [options]
+ */
+export function evaluateBudgets(result, baseline, { reportOnly = false } = {}) {
+  checkSchema(baseline);
   return STATION_WEIGHT_BUDGETS.map((budget) => {
     const metric = result.metrics?.[budget.id];
     if (metric?.status !== 'measured')
@@ -88,7 +90,11 @@ export function evaluateBudgets(result, baseline) {
       };
     if (!Number.isFinite(metric.value))
       throw new Error(`${budget.id} is measured but has no finite value`);
-    const reference = baselineValues(baseline, budget, klass)?.[budget.id];
+    if (reportOnly)
+      return { id: budget.id, verdict: 'NOT_COMPARED', value: metric.value };
+    const reference = baselineValues(baseline, budget, result.host)?.[
+      budget.id
+    ];
     if (!Number.isFinite(reference))
       return {
         id: budget.id,
@@ -96,7 +102,7 @@ export function evaluateBudgets(result, baseline) {
         value: metric.value,
         reason:
           budget.scope === 'host'
-            ? `no ${klass} baseline for this metric`
+            ? `no baseline for this host (fingerprint ${result.host?.fingerprint ?? 'unknown'}, ${result.host?.label ?? 'unknown platform'})`
             : 'no request baseline for this metric',
       };
     const limit = reference * (1 + budget.ratio) + budget.floor;
@@ -111,47 +117,90 @@ export function evaluateBudgets(result, baseline) {
 }
 
 /**
+ * Whether a run passes as a gate. A run that did not complete, a budget that
+ * should have been compared and was not, and a budget past its headroom all
+ * fail. Report-only mode compares nothing but still fails when a metric was
+ * not measured: it skips the baseline, not the measurement.
+ */
+export function gateOutcome(result, verdicts, { reportOnly = false } = {}) {
+  const reasons = [];
+  if (result.outcome !== 'completed')
+    reasons.push(
+      `run ${result.outcome ?? 'unknown'}: ${String(result.reason ?? result.error ?? 'no reason recorded').split('\n')[0]}`,
+    );
+  const notMeasured = verdicts.filter(
+    (entry) => entry.verdict === 'NOT_MEASURED',
+  );
+  if (notMeasured.length)
+    reasons.push(
+      `not compared: ${notMeasured.map((entry) => entry.id).join(', ')}`,
+    );
+  const failed = verdicts.filter((entry) => entry.verdict === 'FAIL');
+  if (failed.length)
+    reasons.push(`over budget: ${failed.map((entry) => entry.id).join(', ')}`);
+  const comparedCount = verdicts.filter((entry) =>
+    ['PASS', 'FAIL'].includes(entry.verdict),
+  ).length;
+  return {
+    passed: reasons.length === 0,
+    reasons,
+    comparedCount,
+    summary: reportOnly
+      ? `REPORT_ONLY compared nothing: ${verdicts.filter((entry) => entry.verdict === 'NOT_COMPARED').length} budgets measured, 0 compared against a baseline`
+      : `compared ${comparedCount} of ${verdicts.length} budgets`,
+  };
+}
+
+/**
  * Returns a new baseline with this run's measured values. Request values are
- * shared by every host; host values are stored under the run's host class.
+ * shared by every host; host values are stored under the run's host
+ * fingerprint, with only a coarse platform label beside it. An incomplete or
+ * dirty run is refused rather than recorded, so a gap can never delete or
+ * replace a reference.
  */
 export function recordBaseline(result, previous) {
-  const klass = hostClass(result.host);
-  const next = {
-    schemaVersion: BASELINE_SCHEMA_VERSION,
-    request: previous?.request,
-    hosts: { ...(previous?.hosts ?? {}) },
-  };
+  checkSchema(previous);
+  if (result.outcome !== 'completed')
+    throw new Error(
+      `refusing to record a baseline from a ${result.outcome} run`,
+    );
+  if (result.dirty)
+    throw new Error('refusing to record a baseline from a dirty tree');
+  if (!result.host?.fingerprint || !result.host?.label)
+    throw new Error('refusing to record a baseline without a host fingerprint');
+  const missing = STATION_WEIGHT_BUDGETS.filter(
+    (budget) => result.metrics?.[budget.id]?.status !== 'measured',
+  ).map((budget) => budget.id);
+  if (missing.length)
+    throw new Error(
+      `refusing to record an incomplete baseline; not measured: ${missing.join(', ')}`,
+    );
   const pick = (scope) =>
     Object.fromEntries(
-      STATION_WEIGHT_BUDGETS.filter((budget) => budget.scope === scope)
-        .map((budget) => [budget.id, result.metrics?.[budget.id]])
-        .filter(([, metric]) => metric?.status === 'measured')
-        .map(([id, metric]) => [id, metric.value]),
+      STATION_WEIGHT_BUDGETS.filter((budget) => budget.scope === scope).map(
+        (budget) => [budget.id, result.metrics[budget.id].value],
+      ),
     );
   const provenance = {
     sourceRevision: result.sourceRevision,
     recordedAt: result.startedAt,
   };
-  const requestValues = pick('request');
-  if (Object.keys(requestValues).length)
-    next.request = {
+  return {
+    schemaVersion: BASELINE_SCHEMA_VERSION,
+    request: {
       ...provenance,
       claudeCodeVersion: result.request?.station?.claudeCodeVersion ?? null,
-      values: requestValues,
-    };
-  const hostValues = pick('host');
-  if (Object.keys(hostValues).length)
-    next.hosts[klass] = {
-      ...provenance,
-      host: {
-        release: result.host.release,
-        cpuModel: result.host.cpuModel,
-        cpus: result.host.cpus,
-        totalMemoryBytes: result.host.totalMemoryBytes,
+      values: pick('request'),
+    },
+    hosts: {
+      ...(previous?.hosts ?? {}),
+      [result.host.fingerprint]: {
+        platform: result.host.label,
+        ...provenance,
+        values: pick('host'),
       },
-      values: hostValues,
-    };
-  return next;
+    },
+  };
 }
 
 export function formatVerdicts(verdicts) {
@@ -159,7 +208,9 @@ export function formatVerdicts(verdicts) {
     const detail =
       entry.verdict === 'NOT_MEASURED'
         ? entry.reason
-        : `value=${round(entry.value)} baseline=${round(entry.baseline)} limit=${round(entry.limit)}`;
+        : entry.verdict === 'NOT_COMPARED'
+          ? `value=${round(entry.value)}`
+          : `value=${round(entry.value)} baseline=${round(entry.baseline)} limit=${round(entry.limit)}`;
     return `[station-weight] ${entry.verdict} ${entry.id} ${detail}`;
   });
 }

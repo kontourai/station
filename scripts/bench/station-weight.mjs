@@ -9,21 +9,24 @@
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { cpus, loadavg, platform, release, totalmem } from 'node:os';
+import { cpus, loadavg, release, totalmem } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { acceptedTurnReply } from '../../tests/live/helpers/accepted-turn-reply.mjs';
 import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { findFreePortBlock, findFreePortOutside } from '../lib/free-ports.mjs';
@@ -35,7 +38,7 @@ import {
 import {
   evaluateBudgets,
   formatVerdicts,
-  hostClass,
+  gateOutcome,
   recordBaseline,
 } from './station-weight-budgets.mjs';
 import {
@@ -73,37 +76,77 @@ const notMeasured = (reason, unit) => ({
   reason,
 });
 
+/**
+ * `base` without any `GIT_*` variable. GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE,
+ * GIT_CONFIG_* and the rest route or reconfigure every git command that
+ * inherits them, so a caller running inside another checkout's hook would
+ * otherwise have the check read, or commit into, that checkout.
+ */
+export function gitEnvironment(base = process.env) {
+  return Object.fromEntries(
+    Object.entries(base).filter(([key]) => !key.startsWith('GIT_')),
+  );
+}
+
 const git = (...args) =>
   execFileSyncBounded('git', args, {
     cwd: ROOT,
     encoding: 'utf8',
     windowsHide: true,
+    env: gitEnvironment(),
   }).trim();
 
+/** The revision under test and whether the tree is dirty. */
+export function repositoryState() {
+  return { sha: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain') };
+}
+
 // ---------------------------------------------------------------------------
-// Process tree by ownership: descendants of the instance's registered roots.
+// Process tree: what belongs to the run, by recorded identity and by the
+// environment every process the instance starts inherits.
+
+/** Pinned so lstart is a property of the process, not of who asked. */
+const PS_ENV = { ...process.env, LC_ALL: 'C', TZ: 'UTC' };
+
+/** C-locale lstart, `Www Mmm [ d]d HH:MM:SS YYYY`, as `ps` prints it. */
+const lstartToken = ([weekday, month, day, clock, year]) =>
+  `${weekday} ${month} ${day.padStart(2, ' ')} ${clock} ${year}`;
 
 /**
- * One `ps` snapshot. `started` (lstart) pairs with pid as the process
- * identity, so a reused pid is never mistaken for a survivor.
+ * One `ps` snapshot. `started` is the process birth token in the format the
+ * instance record and `lookupProcessBirthFingerprint` use (pinned lstart on
+ * macOS, `/proc` start ticks plus boot id on Linux), so pid plus `started` is
+ * the process identity and a reused pid is never mistaken for the same one.
  */
-export function processTable(run = execFileSyncBounded) {
+export function processTable(
+  run = execFileSyncBounded,
+  { platform: platformName = process.platform, birth } = {},
+) {
   const text = run('ps', ['-A', '-o', 'pid=,ppid=,rss=,time=,lstart=,comm='], {
     encoding: 'utf8',
     windowsHide: true,
-    env: { ...process.env, LC_ALL: 'C' },
+    env: PS_ENV,
   });
+  const linuxBirth =
+    birth ??
+    ((pid) => lookupProcessBirthFingerprint(pid, { platform: 'linux' }));
   const rows = [];
   for (const line of text.split('\n')) {
     const parts = line.trim().split(/\s+/);
     if (parts.length < 10) continue;
     const [pid, ppid, rss, time, ...rest] = parts;
+    const started =
+      platformName === 'linux'
+        ? linuxBirth(Number(pid))
+        : lstartToken(rest.slice(0, 5));
+    // A Linux process that exited before its birth was read is gone.
+    if (!started) continue;
     rows.push({
       pid: Number(pid),
       ppid: Number(ppid),
       rssBytes: Number(rss) * 1024,
       cpuSeconds: parseCpuTime(time),
-      started: rest.slice(0, 5).join(' '),
+      started,
       command: basename(rest.slice(5).join(' ')),
     });
   }
@@ -119,9 +162,18 @@ export function parseCpuTime(text) {
   return Number(days) * 86400 + hours * 3600 + minutes * 60 + seconds;
 }
 
-/** The rows owned by `roots`: the roots and every descendant by parent pid. */
+const identityKey = (row) => `${row.pid}:${row.started}`;
+
+/**
+ * The rows owned by `roots`: each root whose pid AND birth token match a live
+ * row, and every descendant of those by parent pid. A root whose pid now
+ * belongs to another process contributes nothing.
+ */
 export function ownedTree(table, roots) {
-  const ids = new Set(roots.filter((pid) => Number.isInteger(pid) && pid > 0));
+  const wanted = new Set(roots.map(identityKey));
+  const ids = new Set(
+    table.filter((row) => wanted.has(identityKey(row))).map((row) => row.pid),
+  );
   let size;
   do {
     size = ids.size;
@@ -130,16 +182,156 @@ export function ownedTree(table, roots) {
   return table.filter((row) => ids.has(row.pid));
 }
 
+/** Identities of the instance's registered roots, from its record. */
+export function recordedRoots(record) {
+  const roots = [record.serverFingerprint, record.uiFingerprint].filter(
+    Boolean,
+  );
+  assert(
+    roots.length > 0 &&
+      roots.every(
+        (root) =>
+          Number.isInteger(root.pid) && typeof root.startToken === 'string',
+      ),
+    'instance record carries no process fingerprints to identify its tree',
+  );
+  return roots.map((root) => ({ pid: root.pid, started: root.startToken }));
+}
+
 /**
- * Rows from `before` still alive in `after` with the same start time, plus
+ * Environment entries every process the instance starts inherits. Station
+ * keeps PATH, HOME and TMPDIR for its children (an engine needs PATH to find
+ * `claude`), so a process that detached from the tree still carries them.
+ */
+export function runTags({ runId, scratch }) {
+  return [
+    `STATION_WEIGHT_RUN=${runId}`,
+    `HOME=${join(scratch, 'user')}`,
+    `TMPDIR=${join(scratch, 'tmp')}`,
+  ];
+}
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * pid -> environment test for every same-user process. macOS `ps -E` appends
+ * the environment a process was started with to its command line; Linux
+ * exposes it in `/proc/<pid>/environ`. A process whose environment cannot be
+ * read (another user's) is not one of the run's.
+ */
+function environmentMatcher(run, platformName) {
+  if (platformName === 'linux') {
+    const environments = new Map();
+    for (const entry of readdirSync('/proc')) {
+      if (!/^\d+$/.test(entry)) continue;
+      try {
+        environments.set(
+          Number(entry),
+          new Set(readFileSync(`/proc/${entry}/environ`, 'utf8').split('\0')),
+        );
+      } catch {
+        // Exited, or another user's.
+      }
+    }
+    return (pid, tag) => environments.get(pid)?.has(tag) ?? false;
+  }
+  const lines = new Map();
+  const text = run('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], {
+    encoding: 'utf8',
+    windowsHide: true,
+    env: PS_ENV,
+  });
+  for (const line of text.split('\n')) {
+    const match = line.match(/^\s*(\d+)\s(.*)$/);
+    if (match) lines.set(Number(match[1]), ` ${match[2]} `);
+  }
+  // A whole `KEY=VALUE` entry, bounded by spaces, so `TMPDIR=/x/tmp` does not
+  // match `TMPDIR=/x/tmp2`.
+  const patterns = new Map();
+  return (pid, tag) => {
+    if (!patterns.has(tag))
+      patterns.set(tag, new RegExp(` ${escapeRegExp(tag)} `));
+    return patterns.get(tag).test(lines.get(pid) ?? '');
+  };
+}
+
+/**
+ * Rows of `table` whose environment carries any of `tags` and none of
+ * `excludeTags` (the control engine shares the run's environment but is not
+ * Station's). These are found whatever their ancestry: a double-forked daemon
+ * or a child spawned during shutdown has no path back to the roots.
+ */
+export function taggedRows(
+  table,
+  { tags, excludeTags = [] },
+  { run = execFileSyncBounded, platform: platformName = process.platform } = {},
+) {
+  const carries = environmentMatcher(run, platformName);
+  return table.filter(
+    (row) =>
+      row.pid !== process.pid &&
+      tags.some((tag) => carries(row.pid, tag)) &&
+      !excludeTags.some((tag) => carries(row.pid, tag)),
+  );
+}
+
+/** The instance's processes: owned by the recorded roots or tagged. */
+export function instanceTree(table, roots, tagged) {
+  return ownedTree(table, [...roots, ...tagged]);
+}
+
+/**
+ * Rows from `before` still alive in `after` with the same birth token, plus
  * anything they spawned since.
  */
 export function survivors(before, after) {
-  const identity = new Map(before.map((row) => [row.pid, row.started]));
-  const alive = after
-    .filter((row) => identity.get(row.pid) === row.started)
-    .map((row) => row.pid);
-  return ownedTree(after, alive);
+  return ownedTree(after, before);
+}
+
+/** The instance's tree in `table`: its recorded roots and tagged processes. */
+export function instanceSnapshot(table, roots, tagging, options) {
+  return instanceTree(table, roots, taggedRows(table, tagging, options));
+}
+
+/**
+ * What lives on after stop: survivors of the pre-stop tree by identity, and
+ * every process still carrying the run's environment, whether it detached or
+ * was spawned after the pre-stop snapshot.
+ */
+export function leftoverAfterStop(beforeStop, after, tagging, options) {
+  return ownedTree(after, [
+    ...beforeStop,
+    ...taggedRows(after, tagging, options),
+  ]);
+}
+
+/**
+ * Sends `signal` to each row only while its pid still has the recorded birth
+ * token: a pid that now belongs to another process is never signalled.
+ */
+export function signalIfSame(
+  rows,
+  signal,
+  {
+    birth = (pid) => lookupProcessBirthFingerprint(pid),
+    kill = process.kill,
+  } = {},
+) {
+  const signalled = [];
+  const skipped = [];
+  for (const row of rows) {
+    if (birth(row.pid) !== row.started) {
+      skipped.push(row.pid);
+      continue;
+    }
+    try {
+      kill(row.pid, signal);
+      signalled.push(row.pid);
+    } catch {
+      // Exited between the check and the signal.
+    }
+  }
+  return { signalled, skipped };
 }
 
 const sum = (rows, key) => rows.reduce((total, row) => total + row[key], 0);
@@ -227,8 +419,6 @@ export function withMemory(rows, run = execFileSyncBounded) {
     });
 }
 
-const memorySnapshot = (roots) => withMemory(ownedTree(processTable(), roots));
-
 /** Linux only: voluntary + involuntary context switches across the tree. */
 function contextSwitches(rows) {
   let total = 0;
@@ -249,31 +439,56 @@ function contextSwitches(rows) {
 // ---------------------------------------------------------------------------
 // The launcher and the HTTP API.
 
-async function station(args, { env, timeoutMs }) {
-  const owned = executeOwnedProcess(
-    join(ROOT, 'station'),
-    args,
-    undefined,
-    `station ${args[0]}`,
-    { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
-  );
-  const output = captureOwnedProcessOutput(owned);
-  progress(`station ${args[0]} pid=${owned.child.pid}`);
+/** Generous: a build's output is large, but a runaway child is still refused. */
+const LAUNCHER_OUTPUT_MAX_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Runs one launcher command as an owned process group and returns its exit
+ * status and output. Output that overflowed its capture bound or is not valid
+ * UTF-8, and a process that could not run at all, are errors: an incomplete
+ * capture is never taken as a complete success.
+ */
+export async function runLauncher(
+  executable,
+  args,
+  { env, timeoutMs, cwd = ROOT, maxBytes = LAUNCHER_OUTPUT_MAX_BYTES },
+) {
+  const label = `${basename(executable)} ${args[0] ?? ''}`.trim();
+  const owned = executeOwnedProcess(executable, args, undefined, label, {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const output = captureOwnedProcessOutput(owned, { maxBytes });
+  progress(`${label} pid=${owned.child.pid}`);
   const timer = setTimeout(() => void owned.forceTerminate(), timeoutMs);
   try {
     const result = await owned.completion;
     const captured = output.finish();
-    progress(
-      `station ${args[0]} exited status=${result.status} signal=${result.signal}`,
-    );
+    progress(`${label} exited status=${result.status} signal=${result.signal}`);
+    if (result.error)
+      throw new Error(`${label} did not run: ${result.error.message}`, {
+        cause: result.error,
+      });
+    if (captured.truncated)
+      throw new Error(
+        `${label} wrote ${captured.stdout.sourceBytes + captured.stderr.sourceBytes} bytes, past the ${maxBytes}-byte capture bound: its output is incomplete`,
+      );
+    if (captured.invalidUtf8)
+      throw new Error(`${label} wrote output that is not valid UTF-8`);
     return {
       status: result.status,
+      signal: result.signal,
       output: `${captured.stdout.text}\n${captured.stderr.text}`,
     };
   } finally {
     clearTimeout(timer);
   }
 }
+
+const station = (args, options) =>
+  runLauncher(join(ROOT, 'station'), args, options);
 
 async function stationOk(args, options) {
   const result = await station(args, options);
@@ -437,6 +652,7 @@ export function bundledClaudeExecutable() {
 async function controlRequest({ cwd, env, stub, executable, model }) {
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
   const from = stub.requests.length;
+  const children = [];
   const run = query({
     prompt: PROMPT,
     options: {
@@ -445,14 +661,17 @@ async function controlRequest({ cwd, env, stub, executable, model }) {
       pathToClaudeCodeExecutable: executable,
       // Same model as Station's turn, so model-specific lines cancel out.
       ...(model ? { model } : {}),
-      spawnClaudeCodeProcess: (options) =>
-        spawn(options.command, options.args, {
+      spawnClaudeCodeProcess: (options) => {
+        const child = spawn(options.command, options.args, {
           cwd: options.cwd,
           env: options.env,
           signal: options.signal,
           stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true,
-        }),
+        });
+        children.push(child);
+        return child;
+      },
     },
   });
   const deadline = setTimeout(() => void run.interrupt?.(), 120_000);
@@ -461,13 +680,23 @@ async function controlRequest({ cwd, env, stub, executable, model }) {
   } finally {
     clearTimeout(deadline);
     run.close?.();
+    // The control engine must be gone before the leftover check, which
+    // would otherwise have to tell it apart from Station's processes.
+    for (const child of children) {
+      if (child.exitCode !== null || child.signalCode !== null) continue;
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
+      await exited;
+      clearTimeout(timer);
+    }
   }
   return stub.requests.slice(from);
 }
 
 // ---------------------------------------------------------------------------
 
-function scrubbedEnvironment(scratch, stubUrl, claudeExecutable) {
+function scrubbedEnvironment(scratch, stubUrl, claudeExecutable, runId) {
   // Station reports the Claude engine ready only when a `claude` is on PATH.
   // Point that at the SDK's bundled binary, so Station and the control run
   // the same lockfile-pinned executable rather than whatever this host has
@@ -512,6 +741,8 @@ function scrubbedEnvironment(scratch, stubUrl, claudeExecutable) {
     DISABLE_AUTOUPDATER: '1',
     DISABLE_TELEMETRY: '1',
     DISABLE_ERROR_REPORTING: '1',
+    // Ties every process the instance starts to this run (see runTags).
+    STATION_WEIGHT_RUN: runId,
   };
   for (const key of [
     'HOME',
@@ -526,25 +757,35 @@ function scrubbedEnvironment(scratch, stubUrl, claudeExecutable) {
   return env;
 }
 
-function fixtureRepository(scratch, markers) {
+/**
+ * Writes the fixture repository and commits it with git confined to it: the
+ * run's isolated environment without any `GIT_*` routing or config variable,
+ * no system config, and an empty global config under the scratch root.
+ */
+export function fixtureRepository(scratch, markers, env) {
   const repo = join(scratch, 'repo');
   mkdirSync(repo, { recursive: true });
   // CLAUDE.md deliberately does not import AGENTS.md, so each file's
   // marker answers for that file alone.
   writeFileSync(join(repo, 'AGENTS.md'), `# Rules\n\n${markers.agentsMd}\n`);
   writeFileSync(join(repo, 'CLAUDE.md'), `# Rules\n\n${markers.claudeMd}\n`);
+  const globalConfig = join(scratch, 'fixture.gitconfig');
+  writeFileSync(globalConfig, '');
+  const gitEnv = {
+    ...gitEnvironment(env),
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: globalConfig,
+    GIT_AUTHOR_NAME: 'station-weight',
+    GIT_AUTHOR_EMAIL: 'station-weight@example.invalid',
+    GIT_COMMITTER_NAME: 'station-weight',
+    GIT_COMMITTER_EMAIL: 'station-weight@example.invalid',
+  };
   const run = (...args) =>
     execFileSyncBounded('git', args, {
       cwd: repo,
       encoding: 'utf8',
       windowsHide: true,
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: 'station-weight',
-        GIT_AUTHOR_EMAIL: 'station-weight@example.invalid',
-        GIT_COMMITTER_NAME: 'station-weight',
-        GIT_COMMITTER_EMAIL: 'station-weight@example.invalid',
-      },
+      env: gitEnv,
     });
   run('init', '-q');
   run('add', '-A');
@@ -563,6 +804,74 @@ async function allocatePorts() {
   throw new Error('could not allocate a port band clear of reserved ports');
 }
 
+// ---------------------------------------------------------------------------
+// Host identity for host-dependent budgets.
+
+function hardwareModel(platformName) {
+  try {
+    if (platformName === 'darwin')
+      return execFileSyncBounded('sysctl', ['-n', 'hw.model'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim();
+    if (platformName === 'linux')
+      return ['sys_vendor', 'product_name']
+        .map((name) =>
+          readFileSync(`/sys/devices/virtual/dmi/id/${name}`, 'utf8').trim(),
+        )
+        .join(' ');
+  } catch {
+    // Unreadable: the fingerprint still separates hosts by CPU and memory.
+  }
+  return 'unknown';
+}
+
+/**
+ * What a host-dependent baseline is keyed by. Only the hash and a coarse
+ * platform label are ever written to the committed baseline.
+ */
+export function hostFingerprintInputs({
+  platform: platformName = process.platform,
+  arch = process.arch,
+  model = hardwareModel(platformName),
+  cpuList = cpus(),
+  memoryBytes = totalmem(),
+  osRelease = release(),
+} = {}) {
+  return {
+    platform: platformName,
+    arch,
+    hardwareModel: model,
+    cpuModel: cpuList[0]?.model ?? 'unknown',
+    cpuCount: cpuList.length,
+    memoryGiB: Math.round(memoryBytes / 2 ** 30),
+    osMajor: String(osRelease).split('.')[0],
+  };
+}
+
+export function hostFingerprint(inputs) {
+  const canonical = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(inputs).sort(([a], [b]) => a.localeCompare(b)),
+    ),
+  );
+  return createHash('sha256').update(canonical).digest('hex').slice(0, 16);
+}
+
+export function describeHost(inputs = hostFingerprintInputs()) {
+  return {
+    label: `${inputs.platform}-${inputs.arch}`,
+    fingerprint: hostFingerprint(inputs),
+    // Local result only; the committed baseline keeps the hash and label.
+    fingerprintInputs: inputs,
+    node: process.version,
+    loadStart: loadavg(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rest and idle measurement.
+
 /** Two consecutive tree memory samples within this fraction count as settled. */
 const SETTLE_TOLERANCE = 0.05;
 
@@ -571,14 +880,14 @@ const SETTLE_TOLERANCE = 0.05;
  * consecutive memory totals agree within SETTLE_TOLERANCE. A tree still moving
  * at `settleMaxMs` is not at rest, so the caller reports it as not measured.
  */
-async function settleTree(roots, settings) {
+async function settleTree(snapshot, settings) {
   const begin = performance.now();
   await wait(settings.settleMs);
-  let previous = memorySnapshot(roots);
+  let previous = snapshot();
   const samples = [sum(previous, 'memoryBytes')];
   while (performance.now() - begin < settings.settleMaxMs) {
     await wait(settings.settleIntervalMs);
-    const current = memorySnapshot(roots);
+    const current = snapshot();
     const before = sum(previous, 'memoryBytes');
     const now = sum(current, 'memoryBytes');
     samples.push(now);
@@ -599,7 +908,8 @@ async function settleTree(roots, settings) {
   };
 }
 
-function restMetric(settled, extra = {}) {
+/** A settled tree's memory; an empty tree measured nothing. */
+export function restMetric(settled, extra = {}) {
   const detail = {
     basis: MEMORY_BASIS,
     processCount: settled.rows.length,
@@ -608,6 +918,14 @@ function restMetric(settled, extra = {}) {
     memorySamples: settled.samples,
     ...extra,
   };
+  if (!settled.rows.length)
+    return {
+      ...notMeasured(
+        "the instance's process tree was empty: nothing was measured",
+        'bytes',
+      ),
+      ...detail,
+    };
   if (settled.stable)
     return measured(sum(settled.rows, 'memoryBytes'), 'bytes', detail);
   return {
@@ -619,30 +937,169 @@ function restMetric(settled, extra = {}) {
   };
 }
 
+/**
+ * CPU time the tree used over `windowMs`, sampled every `intervalMs`. Each
+ * process counts the CPU time it last showed minus what it showed at the
+ * window's start (zero if it appeared inside the window), so a worker that
+ * exits during the window still counts what it used up to its last sample.
+ * `snapshot(final)` returns the tree's rows.
+ */
+export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
+  const startCpu = new Map();
+  const lastCpu = new Map();
+  let samples = 0;
+  const observe = (rows, first) => {
+    samples += 1;
+    for (const row of rows) {
+      const key = identityKey(row);
+      if (!startCpu.has(key)) startCpu.set(key, first ? row.cpuSeconds : 0);
+      lastCpu.set(key, row.cpuSeconds);
+    }
+    return rows;
+  };
+  const begin = performance.now();
+  const firstRows = observe(snapshot(false), true);
+  let next = begin;
+  for (;;) {
+    next += intervalMs;
+    const end = begin + windowMs;
+    if (next >= end) {
+      await wait(Math.max(0, end - performance.now()));
+      break;
+    }
+    await wait(Math.max(0, next - performance.now()));
+    observe(snapshot(false), false);
+  }
+  const endRows = observe(snapshot(true), false);
+  const windowSeconds = (performance.now() - begin) / 1000;
+  const endKeys = new Set(endRows.map(identityKey));
+  let cpuSeconds = 0;
+  for (const [key, last] of lastCpu)
+    cpuSeconds += Math.max(0, last - startCpu.get(key));
+  return {
+    cpuSeconds,
+    windowSeconds,
+    samples,
+    firstRows,
+    endRows,
+    exitedDuringWindow: [...lastCpu.keys()].filter((key) => !endKeys.has(key))
+      .length,
+  };
+}
+
+/** What `sampleTreeCpu` cannot see; reported beside every CPU value. */
+export const IDLE_CPU_GAP = (intervalMs) =>
+  `not counted: CPU a process used after its last sample before exiting (at most one ${intervalMs} ms interval per process) and processes that started and exited between two samples`;
+
+export function idleCpuMetric(sampled, intervalMs) {
+  const detail = {
+    windowSeconds: sampled.windowSeconds,
+    cpuSeconds: sampled.cpuSeconds,
+    processCount: sampled.endRows.length,
+    samples: sampled.samples,
+    sampleIntervalMs: intervalMs,
+    exitedDuringWindow: sampled.exitedDuringWindow,
+    gap: IDLE_CPU_GAP(intervalMs),
+  };
+  if (!sampled.firstRows.length || !sampled.endRows.length)
+    return {
+      ...notMeasured(
+        "the instance's process tree was empty: nothing was measured",
+        'percent of one core',
+      ),
+      ...detail,
+    };
+  return measured(
+    (sampled.cpuSeconds / sampled.windowSeconds) * 100,
+    'percent of one core',
+    detail,
+  );
+}
+
+const median = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
 /** Defaults are chosen for a quiet host; flags can lengthen them. */
 export const DEFAULT_SETTINGS = Object.freeze({
   settleMs: 30_000,
   settleIntervalMs: 5_000,
   settleMaxMs: 300_000,
   cpuWindowMs: 30_000,
+  cpuSampleIntervalMs: 250,
   idleSessions: 3,
   stopGraceMs: 5_000,
   sideCallWindowMs: 5_000,
+  readyLaunches: 3,
 });
+
+/**
+ * Applies the baseline to a result: records it when asked (refusing an
+ * incomplete one), evaluates the budgets, and decides the gate.
+ */
+export function evaluateRun(
+  result,
+  {
+    baselinePath = DEFAULT_BASELINE_PATH,
+    record = false,
+    reportOnly = false,
+  } = {},
+) {
+  result.reportOnly = reportOnly;
+  try {
+    // Report-only never reads the baseline: it compares nothing.
+    const baseline =
+      !reportOnly && existsSync(baselinePath)
+        ? JSON.parse(readFileSync(baselinePath, 'utf8'))
+        : undefined;
+    result.budgets = evaluateBudgets(result, baseline, { reportOnly });
+    result.gate = gateOutcome(result, result.budgets, { reportOnly });
+    if (!existsSync(baselinePath) && !reportOnly)
+      result.gate.reasons.unshift(`no baseline file at ${baselinePath}`);
+    if (record) {
+      const next = recordBaseline(result, baseline);
+      writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
+      result.baselineRecorded = baselinePath;
+      result.gate = {
+        passed: true,
+        reasons: [],
+        summary: `RECORDED baseline for host ${result.host.fingerprint} (${result.host.label}) in ${baselinePath}`,
+      };
+    }
+  } catch (error) {
+    result.budgets ??= [];
+    result.gate = {
+      passed: false,
+      reasons: [error.message],
+      summary: record ? 'baseline NOT recorded' : 'budgets NOT evaluated',
+    };
+  }
+  return result;
+}
 
 export async function runStationWeight({
   out,
   baselinePath = DEFAULT_BASELINE_PATH,
   record = false,
+  reportOnly = false,
   allowDirty = false,
   settings: overrides = {},
+  hooks = {},
 } = {}) {
   const settings = { ...DEFAULT_SETTINGS, ...overrides };
   for (const [name, value] of Object.entries(settings))
     assert(Number.isSafeInteger(value) && value >= 0, `invalid ${name}`);
   assert(settings.idleSessions >= 1, 'idleSessions must be at least 1');
-  const sha = git('rev-parse', 'HEAD');
-  const dirty = git('status', '--porcelain');
+  assert(settings.readyLaunches >= 1, 'readyLaunches must be at least 1');
+  assert(
+    settings.cpuSampleIntervalMs >= 1,
+    'cpuSampleIntervalMs must be at least 1',
+  );
+  const { sha, dirty } = repositoryState();
   assert(allowDirty || !dirty, 'commit first: the check measures a clean tree');
   const runId = randomUUID();
   const outputDir = resolve(
@@ -650,23 +1107,14 @@ export async function runStationWeight({
   );
   mkdirSync(outputDir, { recursive: true });
   const result = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'station-weight',
     sourceRevision: sha,
     dirty: Boolean(dirty),
     runId,
     startedAt: new Date().toISOString(),
     outcome: 'failed',
-    host: {
-      platform: platform(),
-      arch: process.arch,
-      release: release(),
-      node: process.version,
-      cpus: cpus().length,
-      cpuModel: cpus()[0]?.model,
-      totalMemoryBytes: totalmem(),
-      loadStart: loadavg(),
-    },
+    host: describeHost(),
     settings,
     units: {
       bytes: 'UTF-8 bytes; no tokenizer is applied, so no token counts',
@@ -685,8 +1133,9 @@ export async function runStationWeight({
     // The launcher is a bash script and the tree is read through POSIX ps.
     result.outcome = 'not_measured';
     result.reason = `${process.platform} is not supported: requires POSIX ps and the bash launcher`;
+    evaluateRun(result, { baselinePath, record, reportOnly });
     write();
-    return result;
+    return { ...result, outputDir };
   }
 
   // Rooted at /tmp, not the caller's TMPDIR: tools under this home listen on
@@ -700,12 +1149,20 @@ export async function runStationWeight({
   };
   const stub = await startStubAnthropic();
   const claudeExecutable = bundledClaudeExecutable();
-  const env = scrubbedEnvironment(scratch, stub.url, claudeExecutable);
-  const repo = fixtureRepository(scratch, markers);
+  const env = scrubbedEnvironment(scratch, stub.url, claudeExecutable, runId);
+  const repo = fixtureRepository(scratch, markers, env);
+  const controlConfigDir = join(scratch, 'claude-control');
+  // The control engine shares the run's environment but is not Station's.
+  const tagging = {
+    tags: runTags({ runId, scratch }),
+    excludeTags: [`CLAUDE_CONFIG_DIR=${controlConfigDir}`],
+  };
   const ports = await allocatePorts();
   const api = client(ports.server);
   let started = false;
   let roots = [];
+  const treeNow = (table = processTable()) =>
+    instanceSnapshot(table, roots, tagging);
   try {
     // `station start --clean` rebuilds, so a ready time taken from it would
     // mostly measure the build. Build first (reported on its own), then the
@@ -719,105 +1176,70 @@ export async function runStationWeight({
       note: 'reported only; not a budget',
     });
 
-    const launch = performance.now();
-    const startCommand = station(
-      [
-        'start',
-        `--instance=${instance}`,
-        '--temp-home',
-        '--force',
-        `--port=${ports.server}`,
-        `--ui-port=${ports.ui}`,
-        `--log=${join(scratch, 'server.log')}`,
-      ],
-      { env, timeoutMs: 10 * 60_000 },
-    );
-    started = true;
-    // The UI listener's readiness route is the one the launcher itself
-    // trusts: unauthenticated, and `ready` only once the sibling server
-    // confirmed its own boot identity. The server's
-    // /api/system/identity needs a credential, and unauthenticated polling
-    // there trips the auth rate limiter.
-    const launcher = { done: false, status: null };
-    const startOutcome = startCommand.then((outcome) => {
-      launcher.done = true;
-      launcher.status = outcome.status;
-      launcher.returnedMs = performance.now() - launch;
-      return outcome;
-    });
-    const readyAt = poll(
-      'the UI readiness attestation',
-      10 * 60_000,
-      async () => {
-        if (launcher.done && launcher.status !== 0)
-          throw Object.assign(new Error('station start failed'), {
-            fatal: true,
-          });
-        const response = await fetch(
-          `http://127.0.0.1:${ports.ui}/api/system/readiness`,
-          {
-            headers: { 'x-station-readiness-budget-ms': '1600' },
-            signal: AbortSignal.timeout(2_000),
-          },
-        );
-        const body = await response.json().catch(() => null);
-        return response.ok && body?.ready === true && body?.status === 'ready'
-          ? performance.now()
-          : false;
+    // Ready time is the median of `readyLaunches` launches; every launch but
+    // the last is stopped again, and the last one is the instance measured.
+    // A start after a stop rebuilds the UI (measured: 16-20 s against 5.5 s
+    // for the first start), so each relaunch is preceded by an unmeasured
+    // build and times the same thing as the first.
+    const launches = [];
+    for (let index = 0; index < settings.readyLaunches; index += 1) {
+      if (index > 0) {
+        await stationOk(['stop', `--instance=${instance}`], {
+          env,
+          timeoutMs: 120_000,
+        });
+        started = false;
+        await stationOk(['build', `--instance=${instance}`], {
+          env,
+          timeoutMs: 20 * 60_000,
+        });
+      }
+      started = true;
+      launches.push(await launchInstance(instance, ports, scratch, env));
+    }
+    result.metrics.serverReadyMs = measured(
+      median(launches.map((launch) => launch.readyMs)),
+      'ms',
+      {
+        endpoint: 'UI listener /api/system/readiness status:ready',
+        aggregate: `median of ${launches.length} launches`,
+        launches,
       },
-      100,
-    ).catch((error) => error);
-    const startResult = await startOutcome;
-    assert.equal(
-      startResult.status,
-      0,
-      `station start exited ${startResult.status}:\n${startResult.output.slice(-4000)}`,
     );
-    const ready = await readyAt;
-    if (ready instanceof Error) throw ready;
-    result.metrics.serverReadyMs = measured(ready - launch, 'ms', {
-      endpoint: 'UI listener /api/system/readiness status:ready',
-      launcherReturnedMs: launcher.returnedMs,
-    });
     const instanceRecord = JSON.parse(
       readFileSync(
         join(ROOT, '.station/instances', `${instance}.json`),
         'utf8',
       ),
     );
-    roots = [instanceRecord.serverPid, instanceRecord.uiPid];
-    assert(
-      Number.isInteger(instanceRecord.serverPid),
-      'instance record has no server pid',
-    );
+    roots = recordedRoots(instanceRecord);
     await api.pair(instanceRecord.baseDir);
 
     progress('paired; settling');
+    const memorySnapshot = () => withMemory(treeNow());
     result.metrics.restMemoryBytes = restMetric(
-      await settleTree(roots, settings),
+      await settleTree(memorySnapshot, settings),
     );
 
-    const cpuStart = ownedTree(processTable(), roots);
-    const switchesStart =
-      process.platform === 'linux' ? contextSwitches(cpuStart) : 0;
-    const windowStart = performance.now();
-    await wait(settings.cpuWindowMs);
-    const cpuEnd = ownedTree(processTable(), roots);
-    const windowSeconds = (performance.now() - windowStart) / 1000;
-    const startCpu = new Map(
-      cpuStart.map((row) => [`${row.pid}:${row.started}`, row.cpuSeconds]),
+    // The window walks the tree by ancestry from the roots and the processes
+    // tagged at its start (a full environment scan every 250 ms would be the
+    // heaviest thing on the host), and rescans for tagged processes at its end.
+    const taggedAtStart = taggedRows(processTable(), tagging);
+    const sampled = await sampleTreeCpu(
+      (final) => {
+        const table = processTable();
+        return final
+          ? treeNow(table)
+          : instanceTree(table, roots, taggedAtStart);
+      },
+      {
+        windowMs: settings.cpuWindowMs,
+        intervalMs: settings.cpuSampleIntervalMs,
+      },
     );
-    const cpuSeconds = cpuEnd.reduce(
-      (total, row) =>
-        total +
-        row.cpuSeconds -
-        (startCpu.get(`${row.pid}:${row.started}`) ?? 0),
-      0,
-    );
-    result.metrics.idleCpuPercent = measured(
-      (cpuSeconds / windowSeconds) * 100,
-      'percent of one core',
-      { windowSeconds, cpuSeconds, processCount: cpuEnd.length },
+    result.metrics.idleCpuPercent = idleCpuMetric(
+      sampled,
+      settings.cpuSampleIntervalMs,
     );
     result.metrics.idleWakeups = notMeasured(
       process.platform === 'darwin'
@@ -827,9 +1249,14 @@ export async function runStationWeight({
     );
     result.metrics.idleContextSwitches =
       process.platform === 'linux'
-        ? measured(contextSwitches(cpuEnd) - switchesStart, 'count', {
-            note: 'voluntary + involuntary context switches over the window; a proxy, not wakeups',
-          })
+        ? measured(
+            contextSwitches(sampled.endRows) -
+              contextSwitches(sampled.firstRows),
+            'count',
+            {
+              note: 'voluntary + involuntary context switches of the processes alive at both ends of the window; a proxy, not wakeups',
+            },
+          )
         : notMeasured('reads /proc; Linux only', 'count');
 
     const preTurn = stub.requests.length;
@@ -871,18 +1298,18 @@ export async function runStationWeight({
         sessionIds.push(await sendHi(api, repo));
       progress('sessions created; settling');
       result.metrics.idleSessionsMemoryBytes = restMetric(
-        await settleTree(roots, settings),
+        await settleTree(memorySnapshot, settings),
         {
           sessions: sessionIds.length,
           note: 'each session was created by one stub-answered turn; no real model call',
         },
       );
 
-      mkdirSync(join(scratch, 'claude-control'), { recursive: true });
+      mkdirSync(controlConfigDir, { recursive: true });
       progress('idle-session sample taken; running the control request');
       const controlCalls = await controlRequest({
         cwd: repo,
-        env: { ...env, CLAUDE_CONFIG_DIR: join(scratch, 'claude-control') },
+        env: { ...env, CLAUDE_CONFIG_DIR: controlConfigDir },
         stub,
         executable: claudeExecutable,
         model: result.request.station?.model ?? undefined,
@@ -913,11 +1340,15 @@ export async function runStationWeight({
           {
             withDefinitions: diff.addedTools.length,
             namedOnly: diff.addedNamedTools.length,
+            changedDefinitions: diff.changedTools.length,
           },
         );
         result.metrics['request.stationAddedToolDefinitionBytes'] = measured(
           diff.addedToolDefinitionBytes,
           'bytes',
+          {
+            note: 'added tools in full, plus the byte growth of tool definitions Station changed',
+          },
         );
       }
     }
@@ -935,9 +1366,21 @@ export async function runStationWeight({
       result.metrics[id] ??= notMeasured(requestGap);
     result.repoRules ??= { status: 'not_measured', reason: requestGap };
 
-    // Leftover after stop: the tree as it stood, then whatever of it lives on.
+    // Leftover after stop: the tree as it stood, then whatever of it lives
+    // on, plus anything still carrying the run's environment however it got
+    // there (a double-forked daemon, a child spawned during shutdown).
     progress('stopping');
-    const beforeStop = ownedTree(processTable(), roots);
+    const tableBeforeStop = processTable();
+    const beforeStop = instanceSnapshot(tableBeforeStop, roots, tagging);
+    // Evidence that the environment alone ties every instance process to
+    // the run: what ancestry found that tagging did not.
+    const taggedBeforeStop = new Set(
+      taggedRows(tableBeforeStop, tagging).map((row) => row.pid),
+    );
+    const untaggedBeforeStop = beforeStop
+      .filter((row) => !taggedBeforeStop.has(row.pid))
+      .map((row) => row.command);
+    await hooks.beforeStop?.({ env, scratch });
     const stopStart = performance.now();
     await stationOk(['stop', `--instance=${instance}`], {
       env,
@@ -946,24 +1389,24 @@ export async function runStationWeight({
     started = false;
     result.stopMs = performance.now() - stopStart;
     await wait(settings.stopGraceMs);
-    const left = withMemory(survivors(beforeStop, processTable()));
-    result.metrics.leftoverAfterStopMemoryBytes = measured(
-      sum(left, 'memoryBytes'),
-      'bytes',
-      {
-        basis: MEMORY_BASIS,
-        processCount: left.length,
-        processes: processRows(left),
-        afterSeconds: settings.stopGraceMs / 1000,
-      },
-    );
-    for (const row of left) {
-      try {
-        process.kill(row.pid, 'SIGKILL');
-      } catch {
-        // Already gone.
-      }
-    }
+    const after = processTable();
+    const left = withMemory(leftoverAfterStop(beforeStop, after, tagging));
+    const cleanup = signalIfSame(left, 'SIGKILL');
+    result.metrics.leftoverAfterStopMemoryBytes = beforeStop.length
+      ? measured(sum(left, 'memoryBytes'), 'bytes', {
+          basis: MEMORY_BASIS,
+          processCount: left.length,
+          processes: processRows(left),
+          afterSeconds: settings.stopGraceMs / 1000,
+          beforeStopProcessCount: beforeStop.length,
+          beforeStopUntagged: untaggedBeforeStop,
+          killed: cleanup.signalled,
+          notSignalledPidReused: cleanup.skipped,
+        })
+      : notMeasured(
+          "the instance's process tree was empty before stop: nothing was measured",
+          'bytes',
+        );
     result.outcome = 'completed';
   } catch (error) {
     result.error = error.stack ?? String(error);
@@ -973,6 +1416,15 @@ export async function runStationWeight({
         env,
         timeoutMs: 120_000,
       }).catch(() => undefined);
+    // Whatever still carries the run's environment, Station's or the
+    // control's, is the run's to end; identity is rechecked per signal.
+    try {
+      const strays = taggedRows(processTable(), { tags: tagging.tags });
+      if (strays.length)
+        result.cleanupKilled = signalIfSame(strays, 'SIGKILL').signalled;
+    } catch (error) {
+      result.cleanupError = String(error?.message ?? error);
+    }
     writeFileSync(
       join(outputDir, 'requests.json'),
       `${JSON.stringify(stub.requests, null, 2)}\n`,
@@ -981,20 +1433,82 @@ export async function runStationWeight({
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  const baseline = existsSync(baselinePath)
-    ? JSON.parse(readFileSync(baselinePath, 'utf8'))
-    : undefined;
-  result.hostClass = hostClass(result.host);
-  result.budgets = evaluateBudgets(result, baseline);
-  if (record && result.outcome === 'completed') {
-    writeFileSync(
-      baselinePath,
-      `${JSON.stringify(recordBaseline(result, baseline), null, 2)}\n`,
-    );
-    result.baselineRecorded = baselinePath;
-  }
+  evaluateRun(result, { baselinePath, record, reportOnly });
   write();
   return { ...result, outputDir };
+}
+
+/**
+ * One `station start` of the built instance: the time from launch until the
+ * UI listener's readiness route answers `ready`.
+ */
+async function launchInstance(instance, ports, scratch, env) {
+  const launch = performance.now();
+  const startCommand = station(
+    [
+      'start',
+      `--instance=${instance}`,
+      '--temp-home',
+      '--force',
+      `--port=${ports.server}`,
+      `--ui-port=${ports.ui}`,
+      `--log=${join(scratch, 'server.log')}`,
+    ],
+    { env, timeoutMs: 10 * 60_000 },
+  );
+  // The UI listener's readiness route is the one the launcher itself
+  // trusts: unauthenticated, and `ready` only once the sibling server
+  // confirmed its own boot identity. The server's /api/system/identity needs
+  // a credential, and unauthenticated polling there trips the auth rate
+  // limiter.
+  const launcher = { done: false, status: null };
+  const startOutcome = startCommand.then(
+    (outcome) => {
+      launcher.done = true;
+      launcher.status = outcome.status;
+      launcher.returnedMs = performance.now() - launch;
+      return outcome;
+    },
+    (error) => {
+      launcher.done = true;
+      throw error;
+    },
+  );
+  const readyAt = poll(
+    'the UI readiness attestation',
+    10 * 60_000,
+    async () => {
+      if (launcher.done && launcher.status !== 0)
+        throw Object.assign(new Error('station start failed'), {
+          fatal: true,
+        });
+      const response = await fetch(
+        `http://127.0.0.1:${ports.ui}/api/system/readiness`,
+        {
+          headers: { 'x-station-readiness-budget-ms': '1600' },
+          signal: AbortSignal.timeout(2_000),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      return response.ok && body?.ready === true && body?.status === 'ready'
+        ? performance.now()
+        : false;
+    },
+    100,
+  ).catch((error) => error);
+  const startResult = await startOutcome;
+  assert.equal(
+    startResult.status,
+    0,
+    `station start exited ${startResult.status}:\n${startResult.output.slice(-4000)}`,
+  );
+  const ready = await readyAt;
+  if (ready instanceof Error) throw ready;
+  return {
+    readyMs: ready - launch,
+    launcherReturnedMs: launcher.returnedMs,
+    launcherOutputTail: startResult.output.trim().split('\n').slice(-12),
+  };
 }
 
 function printSummary(result) {
@@ -1008,7 +1522,14 @@ function printSummary(result) {
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);
   for (const text of formatVerdicts(result.budgets ?? [])) console.log(text);
   if (result.error) line(`ERROR ${result.error.split('\n')[0]}`);
-  line(`result ${join(result.outputDir ?? '', 'result.json')}`);
+  line(`host ${result.host?.label} fingerprint ${result.host?.fingerprint}`);
+  line(result.gate.summary);
+  line(
+    result.gate.passed
+      ? 'GATE PASS'
+      : `GATE FAIL: ${result.gate.reasons.join('; ')}`,
+  );
+  if (result.outputDir) line(`result ${join(result.outputDir, 'result.json')}`);
 }
 
 if (invokedDirectly(import.meta.url)) {
@@ -1029,21 +1550,32 @@ if (invokedDirectly(import.meta.url)) {
       cpuWindowMs: number('cpu-window-ms'),
       idleSessions: number('sessions'),
       stopGraceMs: number('stop-grace-ms'),
+      readyLaunches: number('ready-launches'),
     }).filter(([, value]) => value !== undefined),
   );
-  const result = await runStationWeight({
-    out: typeof args.out === 'string' ? args.out : undefined,
+  const options = {
     baselinePath:
       typeof args.baseline === 'string'
         ? resolve(args.baseline)
         : DEFAULT_BASELINE_PATH,
     record: args['record-baseline'] === true,
-    allowDirty: args['allow-dirty'] === true,
-    settings,
-  });
+    reportOnly: args['report-only'] === true,
+  };
+  if (options.record && options.reportOnly)
+    throw new Error('--record-baseline and --report-only exclude each other');
+  let result;
+  if (typeof args.evaluate === 'string') {
+    // Re-applies the baseline to a saved result without measuring again.
+    const path = resolve(args.evaluate);
+    result = evaluateRun(JSON.parse(readFileSync(path, 'utf8')), options);
+    result.outputDir = dirname(path);
+  } else
+    result = await runStationWeight({
+      out: typeof args.out === 'string' ? args.out : undefined,
+      allowDirty: args['allow-dirty'] === true,
+      settings,
+      ...options,
+    });
   printSummary(result);
-  const failed =
-    result.outcome === 'failed' ||
-    (result.budgets ?? []).some((entry) => entry.verdict === 'FAIL');
-  process.exitCode = failed ? 1 : 0;
+  process.exitCode = result.gate.passed ? 0 : 1;
 }

@@ -133,22 +133,30 @@ function normalizeLine(line) {
     .replace(/(cc_version=[0-9]+\.[0-9]+\.[0-9]+)[^;\s]*/g, '$1');
 }
 
+/**
+ * Every line of every text block, blank lines included: a blank line is still
+ * a newline byte the engine receives. Keyed by the normalized line; each entry
+ * keeps the original lines so sizes are counted from the text actually sent.
+ */
 function lineCounts(body) {
   const counts = new Map();
   for (const block of textBlocks(body))
     for (const line of block.text.split('\n')) {
       const key = normalizeLine(line);
-      if (!key.trim()) continue;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      const entry = counts.get(key) ?? { count: 0, originals: [] };
+      entry.count += 1;
+      entry.originals.push(line);
+      counts.set(key, entry);
     }
   return counts;
 }
 
+/** Lines `left` carries more often than `right`, as original text. */
 function multisetDifference(left, right) {
   const lines = [];
-  for (const [line, count] of left) {
-    const extra = count - (right.get(line) ?? 0);
-    for (let index = 0; index < extra; index += 1) lines.push(line);
+  for (const [key, entry] of left) {
+    const extra = entry.count - (right.get(key)?.count ?? 0);
+    if (extra > 0) lines.push(...entry.originals.slice(-extra));
   }
   return lines;
 }
@@ -156,18 +164,31 @@ function multisetDifference(left, right) {
 function lineReport(lines) {
   return {
     lineCount: lines.length,
-    // +1 per line for the newline that separated it.
+    // +1 per line for the newline that separated it, so a blank line counts
+    // as the one byte it is.
     bytes: lines.reduce((sum, line) => sum + bytes(line) + 1, 0),
     chars: lines.reduce((sum, line) => sum + chars(line) + 1, 0),
     excerpts: lines
+      .filter((line) => line.trim())
       .slice(0, 40)
       .map((line) =>
         line.length > EXCERPT_CHARS ? `${line.slice(0, EXCERPT_CHARS)}…` : line,
       ),
+    blankLineCount: lines.filter((line) => !line.trim()).length,
   };
 }
 
-/** What Station's turn request carries beyond (and without) the control's. */
+/**
+ * A tool definition as compared: its JSON with session ids normalized, so
+ * the same definition in two runs compares equal.
+ */
+const toolKey = (tool) => normalizeLine(JSON.stringify(tool ?? null));
+
+/**
+ * What Station's turn request carries beyond (and without) the control's.
+ * Tools are compared by whole definition, not by name: a tool both requests
+ * carry but whose definition Station changed counts its byte growth.
+ */
 export function diffAgainstControl(stationBody, controlBody) {
   const station = lineCounts(stationBody);
   const control = lineCounts(controlBody);
@@ -183,6 +204,22 @@ export function diffAgainstControl(stationBody, controlBody) {
   const removedTools = [...controlTools.keys()].filter(
     (name) => !stationTools.has(name),
   );
+  const changedTools = [...stationTools.keys()]
+    .filter(
+      (name) =>
+        controlTools.has(name) &&
+        toolKey(stationTools.get(name)) !== toolKey(controlTools.get(name)),
+    )
+    .map((name) => {
+      const stationBytes = bytes(JSON.stringify(stationTools.get(name)));
+      const controlBytes = bytes(JSON.stringify(controlTools.get(name)));
+      return {
+        name,
+        stationBytes,
+        controlBytes,
+        growthBytes: Math.max(0, stationBytes - controlBytes),
+      };
+    });
   const named = (body) =>
     new Set(
       textBlocks(body).flatMap(
@@ -198,10 +235,12 @@ export function diffAgainstControl(stationBody, controlBody) {
     removedText: lineReport(multisetDifference(control, station)),
     addedTools,
     removedTools,
-    addedToolDefinitionBytes: addedTools.reduce(
-      (sum, name) => sum + bytes(JSON.stringify(stationTools.get(name))),
-      0,
-    ),
+    changedTools,
+    addedToolDefinitionBytes:
+      addedTools.reduce(
+        (sum, name) => sum + bytes(JSON.stringify(stationTools.get(name))),
+        0,
+      ) + changedTools.reduce((sum, tool) => sum + tool.growthBytes, 0),
     // Tools Station makes available by name only (deferred schemas).
     addedNamedTools,
   };

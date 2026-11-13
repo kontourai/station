@@ -2,9 +2,22 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, test } from 'vitest';
-import { parseFootprint, withMemory } from '../bench/station-weight.mjs';
+import {
+  hostFingerprint,
+  hostFingerprintInputs,
+  IDLE_CPU_GAP,
+  idleCpuMetric,
+  ownedTree,
+  parseFootprint,
+  processTable,
+  recordedRoots,
+  restMetric,
+  signalIfSame,
+  withMemory,
+} from '../bench/station-weight.mjs';
 import {
   evaluateBudgets,
+  gateOutcome,
   recordBaseline,
   STATION_WEIGHT_BUDGETS,
 } from '../bench/station-weight-budgets.mjs';
@@ -217,30 +230,111 @@ describe('station-weight request analysis', () => {
   });
 });
 
-const BASELINE = JSON.parse(
-  readFileSync(
-    join(__dirname, '../bench/station-weight-baseline.json'),
-    'utf8',
-  ),
-);
+describe('station-weight request diff blind spots', () => {
+  const control = () =>
+    engineTurn({ sessionId: 'c', versionSuffix: 'a', userText: 'hi' });
 
-/** A result shaped as runStationWeight writes it, at the baseline values. */
-function resultAtBaseline() {
-  const [klass, host] = Object.entries(BASELINE.hosts)[0] as [
-    string,
-    { values: Record<string, number> },
-  ];
-  const [platform, arch] = klass.split('-');
-  const metrics: Record<
-    string,
-    { status: string; value?: number; unit: string; reason?: string }
-  > = {};
+  test('a tool Station keeps by name but whose definition grew counts its growth', () => {
+    const station = control();
+    const added = 'x'.repeat(190_000);
+    station.tools = station.tools.map((tool) =>
+      tool.name === 'Bash'
+        ? { ...tool, description: `${tool.description}${added}` }
+        : tool,
+    );
+    const diff = diffAgainstControl(station, control());
+    expect(diff.addedTools).toEqual([]);
+    expect(diff.changedTools).toEqual([
+      expect.objectContaining({ name: 'Bash', growthBytes: 190_000 }),
+    ]);
+    expect(diff.addedToolDefinitionBytes).toBe(190_000);
+  });
+
+  test('an unchanged tool set adds no definition bytes', () => {
+    const diff = diffAgainstControl(control(), control());
+    expect(diff.changedTools).toEqual([]);
+    expect(diff.addedToolDefinitionBytes).toBe(0);
+  });
+
+  test('blank lines are text bytes the engine receives', () => {
+    const station = control();
+    station.messages[0].content.push({
+      type: 'text' as const,
+      text: '\n'.repeat(100_000),
+    });
+    const diff = diffAgainstControl(station, control());
+    // 100,000 newlines split into 100,001 empty lines, one byte each.
+    expect(diff.addedText.bytes).toBe(100_001);
+    expect(diff.addedText.blankLineCount).toBe(100_001);
+    expect(diff.addedText.excerpts).toEqual([]);
+  });
+
+  test('added text is sized from the text sent, not the normalized key', () => {
+    const station = control();
+    const line = `Station session ${crypto.randomUUID()}`;
+    station.messages[0].content.push({ type: 'text' as const, text: line });
+    expect(diffAgainstControl(station, control()).addedText.bytes).toBe(
+      Buffer.byteLength(line) + 1,
+    );
+  });
+});
+
+const HOST = { label: 'testos-arm64', fingerprint: '0123456789abcdef' };
+const OTHER_HOST = { label: 'testos-arm64', fingerprint: 'fedcba9876543210' };
+
+/** A baseline fixture: one host, the request values, zero leftover. */
+const FIXTURE_BASELINE = {
+  schemaVersion: 2,
+  request: {
+    sourceRevision: 'r',
+    recordedAt: 't',
+    claudeCodeVersion: '2.1.318',
+    values: {
+      'request.stationAddedTextBytes': 1000,
+      'request.stationAddedToolCount': 20,
+      'request.stationAddedToolDefinitionBytes': 4500,
+      'request.sideCallCount': 0,
+    },
+  },
+  hosts: {
+    [HOST.fingerprint]: {
+      platform: HOST.label,
+      sourceRevision: 'r',
+      recordedAt: 't',
+      values: {
+        serverReadyMs: 5000,
+        restMemoryBytes: 1_000_000_000,
+        idleSessionsMemoryBytes: 1_500_000_000,
+        idleCpuPercent: 0.2,
+        leftoverAfterStopMemoryBytes: 0,
+      },
+    },
+  },
+};
+
+type Metric = { status: string; value?: number; unit: string; reason?: string };
+
+/** A completed result shaped as runStationWeight writes it, at the fixture values. */
+function resultAtBaseline(host = HOST) {
+  const metrics: Record<string, Metric> = {};
   for (const [id, value] of Object.entries({
-    ...BASELINE.request.values,
-    ...host.values,
+    ...FIXTURE_BASELINE.request.values,
+    ...FIXTURE_BASELINE.hosts[HOST.fingerprint].values,
   }))
-    metrics[id] = { status: 'measured', value: value as number, unit: 'x' };
-  return { host: { platform, arch }, metrics };
+    metrics[id] = measuredAt(value);
+  return {
+    outcome: 'completed',
+    dirty: false,
+    sourceRevision: 'abc',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    host: { ...host },
+    metrics,
+    request: { station: { claudeCodeVersion: '2.1.318' } },
+  };
+}
+
+function measuredAt(value: number): Metric {
+  return { status: 'measured', value, unit: 'x' };
 }
 
 const verdictOf = (
@@ -248,22 +342,25 @@ const verdictOf = (
   id: string,
 ) => verdicts.find((entry) => entry.id === id)?.verdict;
 
-describe('station-weight budgets against the committed baseline', () => {
-  test('the committed baseline covers every budget for its host class', () => {
-    const verdicts = evaluateBudgets(resultAtBaseline(), BASELINE);
-    expect(verdicts.map((entry) => entry.verdict)).toEqual(
-      STATION_WEIGHT_BUDGETS.map(() => 'PASS'),
-    );
+describe('station-weight budgets', () => {
+  test('a run at its baseline compares every comparable budget and passes', () => {
+    const verdicts = evaluateBudgets(resultAtBaseline(), FIXTURE_BASELINE);
+    for (const budget of STATION_WEIGHT_BUDGETS)
+      expect(verdictOf(verdicts, budget.id), budget.id).toBe('PASS');
+    expect(gateOutcome(resultAtBaseline(), verdicts)).toMatchObject({
+      passed: true,
+      comparedCount: 9,
+    });
   });
 
   test('injected text growing past its headroom fails; within headroom and shrinking pass', () => {
-    const base = BASELINE.request.values['request.stationAddedTextBytes'];
-    expect(base).toBeGreaterThan(0);
+    const base =
+      FIXTURE_BASELINE.request.values['request.stationAddedTextBytes'];
     const at = (value: number) => {
       const result = resultAtBaseline();
       result.metrics['request.stationAddedTextBytes'].value = value;
       return verdictOf(
-        evaluateBudgets(result, BASELINE),
+        evaluateBudgets(result, FIXTURE_BASELINE),
         'request.stationAddedTextBytes',
       );
     };
@@ -274,85 +371,333 @@ describe('station-weight budgets against the committed baseline', () => {
 
   test('a new side call fails even though counts otherwise carry headroom', () => {
     const result = resultAtBaseline();
-    result.metrics['request.sideCallCount'].value =
-      BASELINE.request.values['request.sideCallCount'] + 1;
+    result.metrics['request.sideCallCount'].value = 1;
     expect(
-      verdictOf(evaluateBudgets(result, BASELINE), 'request.sideCallCount'),
+      verdictOf(
+        evaluateBudgets(result, FIXTURE_BASELINE),
+        'request.sideCallCount',
+      ),
     ).toBe('FAIL');
   });
 
   test('a process left alive after stop fails a zero leftover baseline', () => {
     const result = resultAtBaseline();
     const id = 'leftoverAfterStopMemoryBytes';
-    const klass = `${result.host.platform}-${result.host.arch}`;
-    expect(BASELINE.hosts[klass].values[id]).toBe(0);
+    expect(FIXTURE_BASELINE.hosts[HOST.fingerprint].values[id]).toBe(0);
     result.metrics[id].value = 4096;
-    expect(verdictOf(evaluateBudgets(result, BASELINE), id)).toBe('FAIL');
+    expect(verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), id)).toBe(
+      'FAIL',
+    );
+    result.metrics[id].value = 0;
+    expect(verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), id)).toBe(
+      'PASS',
+    );
   });
 
   test('idle CPU near zero has an additive floor of one percentage point', () => {
     const result = resultAtBaseline();
-    const klass = `${result.host.platform}-${result.host.arch}`;
-    const base = BASELINE.hosts[klass].values.idleCpuPercent;
+    const base = FIXTURE_BASELINE.hosts[HOST.fingerprint].values.idleCpuPercent;
     result.metrics.idleCpuPercent.value = base * 2 + 0.99;
-    expect(verdictOf(evaluateBudgets(result, BASELINE), 'idleCpuPercent')).toBe(
-      'PASS',
-    );
+    expect(
+      verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), 'idleCpuPercent'),
+    ).toBe('PASS');
     result.metrics.idleCpuPercent.value = base * 2 + 1.01;
-    expect(verdictOf(evaluateBudgets(result, BASELINE), 'idleCpuPercent')).toBe(
-      'FAIL',
-    );
+    expect(
+      verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), 'idleCpuPercent'),
+    ).toBe('FAIL');
   });
 
-  test('a gap is NOT_MEASURED with its reason, never PASS', () => {
+  test('ready time (a median of launches) fails only past +100% of its baseline', () => {
     const result = resultAtBaseline();
-    result.metrics.restMemoryBytes = {
-      status: 'not_measured',
-      unit: 'bytes',
-      reason: 'probe unavailable',
-    };
-    delete (result.metrics as Record<string, unknown>).serverReadyMs;
-    const verdicts = evaluateBudgets(result, BASELINE);
+    const base = FIXTURE_BASELINE.hosts[HOST.fingerprint].values.serverReadyMs;
+    result.metrics.serverReadyMs.value = base * 2;
+    expect(
+      verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), 'serverReadyMs'),
+    ).toBe('PASS');
+    result.metrics.serverReadyMs.value = base * 2 + 1;
+    expect(
+      verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), 'serverReadyMs'),
+    ).toBe('FAIL');
+  });
+
+  test('host budgets compare only against the same host fingerprint; request budgets compare everywhere', () => {
+    const result = resultAtBaseline(OTHER_HOST);
+    const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
+    for (const budget of STATION_WEIGHT_BUDGETS)
+      expect(verdictOf(verdicts, budget.id), budget.id).toBe(
+        budget.scope === 'host' ? 'NOT_MEASURED' : 'PASS',
+      );
     expect(
       verdicts.find((entry) => entry.id === 'restMemoryBytes'),
     ).toMatchObject({
-      verdict: 'NOT_MEASURED',
-      reason: 'probe unavailable',
+      reason: expect.stringContaining(OTHER_HOST.fingerprint),
     });
-    expect(verdictOf(verdicts, 'serverReadyMs')).toBe('NOT_MEASURED');
+  });
+});
+
+describe('station-weight gate', () => {
+  test('a budget that should have been compared and was not fails the gate', () => {
+    const result = resultAtBaseline();
+    result.metrics['request.stationAddedTextBytes'] = {
+      status: 'not_measured',
+      unit: 'bytes',
+      reason: 'Claude engine not ready: timed out',
+    };
+    const gate = gateOutcome(result, evaluateBudgets(result, FIXTURE_BASELINE));
+    expect(gate.passed).toBe(false);
+    expect(gate.reasons.join()).toContain('request.stationAddedTextBytes');
   });
 
-  test('host budgets on another host class are NOT_MEASURED, request budgets still apply', () => {
-    const result = {
-      ...resultAtBaseline(),
-      host: { platform: 'plan9', arch: 'mips' },
-    };
-    const verdicts = evaluateBudgets(result, BASELINE);
-    for (const budget of STATION_WEIGHT_BUDGETS)
-      expect(verdictOf(verdicts, budget.id)).toBe(
-        budget.scope === 'host' ? 'NOT_MEASURED' : 'PASS',
-      );
+  test('with no baseline every budget is NOT_MEASURED and the gate fails', () => {
+    const result = resultAtBaseline();
+    const verdicts = evaluateBudgets(result, undefined);
+    expect(
+      verdicts.filter((entry) => entry.verdict === 'NOT_MEASURED'),
+    ).toHaveLength(9);
+    expect(gateOutcome(result, verdicts)).toMatchObject({
+      passed: false,
+      comparedCount: 0,
+    });
   });
 
-  test('recording keeps other host classes and only measured values', () => {
-    const result = {
-      ...resultAtBaseline(),
-      host: { platform: 'plan9', arch: 'mips' },
-      sourceRevision: 'abc',
-      startedAt: '2026-01-01T00:00:00.000Z',
+  test('a run that did not complete fails even with nothing over budget', () => {
+    const result = { ...resultAtBaseline(), outcome: 'failed', error: 'boom' };
+    expect(
+      gateOutcome(result, evaluateBudgets(result, FIXTURE_BASELINE)),
+    ).toMatchObject({ passed: false, reasons: ['run failed: boom'] });
+  });
+
+  test('report-only compares nothing, says so, and still fails a gap', () => {
+    const result = resultAtBaseline(OTHER_HOST);
+    const verdicts = evaluateBudgets(result, undefined, { reportOnly: true });
+    expect(verdicts.map((entry) => entry.verdict)).not.toContain('PASS');
+    const gate = gateOutcome(result, verdicts, { reportOnly: true });
+    expect(gate).toMatchObject({ passed: true, comparedCount: 0 });
+    expect(gate.summary).toMatch(/^REPORT_ONLY compared nothing/);
+    result.metrics.restMemoryBytes = {
+      status: 'not_measured',
+      unit: 'bytes',
+      reason: 'tree memory did not settle',
     };
+    expect(
+      gateOutcome(
+        result,
+        evaluateBudgets(result, undefined, { reportOnly: true }),
+        { reportOnly: true },
+      ).passed,
+    ).toBe(false);
+  });
+});
+
+describe('station-weight measured-nothing guards', () => {
+  test('an empty process tree is NOT_MEASURED, never zero memory', () => {
+    const metric = restMetric({
+      rows: [],
+      stable: true,
+      settledAfterMs: 1,
+      samples: [0, 0],
+    });
+    expect(metric).toMatchObject({ status: 'not_measured' });
+    expect(metric).not.toHaveProperty('value');
+  });
+
+  test('an empty process tree is NOT_MEASURED, never zero CPU', () => {
+    const metric = idleCpuMetric(
+      {
+        cpuSeconds: 0,
+        windowSeconds: 30,
+        samples: 120,
+        firstRows: [],
+        endRows: [],
+        exitedDuringWindow: 0,
+      },
+      250,
+    );
+    expect(metric).toMatchObject({ status: 'not_measured' });
+    expect(metric.gap).toBe(IDLE_CPU_GAP(250));
+  });
+});
+
+describe('station-weight baseline recording', () => {
+  test('refuses an incomplete recording instead of deleting a reference', () => {
+    const result = resultAtBaseline();
     result.metrics.restMemoryBytes = {
       status: 'not_measured',
       unit: 'bytes',
       reason: 'x',
     };
-    const next = recordBaseline(result, BASELINE);
-    for (const klass of Object.keys(BASELINE.hosts))
-      expect(next.hosts[klass]).toEqual(BASELINE.hosts[klass]);
-    expect(next.hosts['plan9-mips'].values).not.toHaveProperty(
-      'restMemoryBytes',
+    expect(() => recordBaseline(result, FIXTURE_BASELINE)).toThrow(
+      /incomplete baseline; not measured: restMemoryBytes/,
     );
-    expect(next.hosts['plan9-mips'].values).toHaveProperty('serverReadyMs');
+  });
+
+  test('refuses a run that did not complete or measured a dirty tree', () => {
+    expect(() =>
+      recordBaseline({ ...resultAtBaseline(), outcome: 'failed' }, undefined),
+    ).toThrow(/failed run/);
+    expect(() =>
+      recordBaseline({ ...resultAtBaseline(), dirty: true }, undefined),
+    ).toThrow(/dirty tree/);
+  });
+
+  test('keys host values by fingerprint, keeps other hosts, and stores no hardware detail', () => {
+    const result = resultAtBaseline(OTHER_HOST);
+    (result.host as Record<string, unknown>).fingerprintInputs = {
+      hardwareModel: 'Secret1,1',
+      cpuModel: 'Secret CPU',
+      memoryGiB: 48,
+    };
+    const next = recordBaseline(result, FIXTURE_BASELINE);
+    expect(next.hosts[HOST.fingerprint]).toEqual(
+      FIXTURE_BASELINE.hosts[HOST.fingerprint],
+    );
+    expect(Object.keys(next.hosts[OTHER_HOST.fingerprint]).sort()).toEqual([
+      'platform',
+      'recordedAt',
+      'sourceRevision',
+      'values',
+    ]);
+    expect(next.hosts[OTHER_HOST.fingerprint].platform).toBe(OTHER_HOST.label);
+    expect(JSON.stringify(next)).not.toMatch(/Secret|memoryGiB/);
+  });
+});
+
+describe('station-weight host fingerprint', () => {
+  const inputs = {
+    platform: 'darwin',
+    arch: 'arm64',
+    model: 'Model1,1',
+    cpuList: [{ model: 'CPU A' }, { model: 'CPU A' }],
+    memoryBytes: 48 * 2 ** 30,
+    osRelease: '25.6.0',
+  };
+
+  test('separates hosts that share a platform label', () => {
+    const base = hostFingerprint(hostFingerprintInputs(inputs as never));
+    for (const change of [
+      { model: 'Model2,1' },
+      { cpuList: [{ model: 'CPU B' }, { model: 'CPU B' }] },
+      { cpuList: [{ model: 'CPU A' }] },
+      { memoryBytes: 64 * 2 ** 30 },
+      { osRelease: '26.0.0' },
+    ])
+      expect(
+        hostFingerprint(
+          hostFingerprintInputs({ ...inputs, ...change } as never),
+        ),
+        JSON.stringify(change),
+      ).not.toBe(base);
+    // A point release is the same host class.
+    expect(
+      hostFingerprint(
+        hostFingerprintInputs({ ...inputs, osRelease: '25.7.1' } as never),
+      ),
+    ).toBe(base);
+    expect(base).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  test('the committed baseline publishes only fingerprints and platform labels', () => {
+    const committed = JSON.parse(
+      readFileSync(
+        join(__dirname, '../bench/station-weight-baseline.json'),
+        'utf8',
+      ),
+    );
+    expect(committed.schemaVersion).toBe(2);
+    for (const [key, entry] of Object.entries(
+      committed.hosts as Record<string, Record<string, unknown>>,
+    )) {
+      expect(key).toMatch(/^[0-9a-f]{16}$/);
+      expect(Object.keys(entry).sort()).toEqual([
+        'platform',
+        'recordedAt',
+        'sourceRevision',
+        'values',
+      ]);
+      expect(entry.platform).toMatch(/^[a-z0-9]+-[a-z0-9]+$/);
+    }
+    // The comparison a run makes must be possible from what is committed.
+    expect(
+      evaluateBudgets(
+        resultAtBaseline({
+          label: Object.values(
+            committed.hosts as Record<string, { platform: string }>,
+          )[0].platform,
+          fingerprint: Object.keys(committed.hosts)[0],
+        }),
+        committed,
+      ).filter((entry) => entry.verdict === 'NOT_MEASURED'),
+    ).toEqual([]);
+  });
+});
+
+describe('station-weight process identity', () => {
+  const row = (pid: number, ppid: number, started: string) => ({
+    pid,
+    ppid,
+    rssBytes: 0,
+    cpuSeconds: 0,
+    started,
+    command: 'node',
+  });
+
+  test('a root whose pid now belongs to another process owns nothing', () => {
+    const table = [row(100, 1, 'born-later'), row(101, 100, 'child')];
+    expect(ownedTree(table, [{ pid: 100, started: 'recorded' }])).toEqual([]);
+    expect(
+      ownedTree(table, [{ pid: 100, started: 'born-later' }]).map(
+        (entry) => entry.pid,
+      ),
+    ).toEqual([100, 101]);
+  });
+
+  test('roots come from the recorded fingerprints, not bare pids', () => {
+    expect(
+      recordedRoots({
+        serverPid: 1,
+        serverFingerprint: { pid: 1, startToken: 'a' },
+        uiPid: 2,
+        uiFingerprint: { pid: 2, startToken: 'b' },
+      }),
+    ).toEqual([
+      { pid: 1, started: 'a' },
+      { pid: 2, started: 'b' },
+    ]);
+    expect(() => recordedRoots({ serverPid: 1, uiPid: 2 })).toThrow(
+      /no process fingerprints/,
+    );
+  });
+
+  test('a signal is sent only while the pid still has the recorded birth', () => {
+    const killed: number[] = [];
+    const outcome = signalIfSame(
+      [row(7, 1, 'then'), row(8, 1, 'same')],
+      'SIGKILL',
+      {
+        birth: (pid: number) => (pid === 7 ? 'now' : 'same'),
+        kill: (pid: number) => {
+          killed.push(pid);
+          return true;
+        },
+      },
+    );
+    expect(killed).toEqual([8]);
+    expect(outcome).toEqual({ signalled: [8], skipped: [7] });
+  });
+
+  test('macOS birth tokens keep lstart day padding, matching the instance record', () => {
+    const table = processTable(
+      () =>
+        '  100     1  2048  0:01.50 Mon Nov  2 08:05:09 2026 /usr/bin/node\n',
+      { platform: 'darwin' },
+    );
+    expect(table).toEqual([
+      expect.objectContaining({
+        pid: 100,
+        started: 'Mon Nov  2 08:05:09 2026',
+        cpuSeconds: 1.5,
+      }),
+    ]);
   });
 });
 

@@ -2,8 +2,9 @@
 
 `npm run perf:station-weight` measures how heavy one isolated Station is at
 rest and how much Station adds to the Claude engine's first model request. It
-compares the result with a recorded baseline and exits non-zero only when a
-budget grows past its headroom. Run it on a pull request that touches the
+compares the result with a recorded baseline. It exits non-zero when a budget
+grows past its headroom, and also when a budget that should have been compared
+was not: a gap is never a pass. Run it on a pull request that touches the
 server, engine launch, or anything Station injects into a session.
 
 The [runner](../../scripts/bench/station-weight.mjs) owns the lifecycle, the
@@ -20,14 +21,21 @@ decomposes what reached it, and the
    repository whose `CLAUDE.md` and `AGENTS.md` each carry a unique marker,
    and builds an allowlisted environment: scratch `HOME`, `TMPDIR`,
    `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, telemetry off, `ANTHROPIC_BASE_URL`
-   pointing at the stub. Nothing from the caller's agent session leaks in.
+   pointing at the stub, and a `STATION_WEIGHT_RUN=<run id>` tag. Nothing
+   from the caller's agent session leaks in. The fixture commit runs git
+   without any `GIT_*` variable, system config or global config, so a caller
+   inside another checkout's hook cannot route it there.
 3. Puts the Agent SDK's bundled Claude Code binary (pinned by the lockfile) on
    `PATH` as `claude`. Station reports the engine ready only when `claude` is on
    `PATH`, and this keeps Station and the control on one executable.
 4. Runs `station build --instance=<name>`, then times
    `station start --instance=<name> --temp-home --force` on free ports clear
-   of 3000 and 3141. `--clean` is not used: it rebuilds, so the timing would
-   mostly measure the build. The build time is reported separately.
+   of 3000 and 3141, three times by default (`--ready-launches`), with a
+   stop and an unmeasured build between launches. `--clean` is not used: it
+   rebuilds, so the timing would mostly measure the build. A start after a
+   stop also rebuilds the UI (16–20 s against 5.5 s for the first start),
+   hence the build before each relaunch. The build time is reported
+   separately.
 5. Samples the instance's process tree, sends `hi` to the Claude agent in the
    fixture repository, creates more idle sessions the same way, runs the
    control request, then runs `station stop` and looks for survivors.
@@ -38,22 +46,37 @@ Every turn is answered by the stub (`ok`). No real model is called.
 
 | Metric | How it is measured |
 | --- | --- |
-| `serverReadyMs` | Launch of `station start` until the UI listener's `/api/system/readiness` answers `status: ready`. That is the route the launcher itself trusts. It confirms the server's boot identity and needs no credential. |
+| `serverReadyMs` | Median over the launches of: launch of `station start` until the UI listener's `/api/system/readiness` answers `status: ready`. That is the route the launcher itself trusts. It confirms the server's boot identity and needs no credential. |
 | `restMemoryBytes` | Summed memory of the instance's tree with no sessions, once two consecutive samples 5 s apart agree within 5% (after at least 30 s, at most 300 s). |
 | `idleSessionsMemoryBytes` | The same, after three sessions each created by one stub-answered turn. Each Claude session keeps an engine process alive. |
-| `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. |
+| `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
 | `idleWakeups` | Not measured: see [Gaps](#gaps). |
 | `idleContextSwitches` | Linux only: voluntary plus involuntary context switches over the same window, from `/proc`. This is a proxy, not wakeups. |
-| `leftoverAfterStopMemoryBytes` | Memory of any process from the pre-stop tree still alive 5 s after `station stop`. |
-| `request.stationAddedTextBytes` | Text lines in Station's first turn request that the control request lacks. |
+| `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: survivors of the pre-stop tree, and any process carrying the run's environment, however it detached and whenever it started. They are then killed. |
+| `request.stationAddedTextBytes` | Text lines, blank lines included, in Station's first turn request that the control request lacks, sized from the text sent. |
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
-| `request.stationAddedToolDefinitionBytes` | JSON size of the added tool schemas. |
+| `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
 | `request.sideCallCount` | Other Messages requests during the turn window, such as a title request. |
 | `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. |
 
-**Process tree.** The tree is found by ownership: the supervisor and UI pids
-from the instance record, plus every descendant by parent pid. A survivor
-must match both pid and start time, so a reused pid is not counted.
+**Process tree.** The tree is found two ways, and the union is measured:
+
+- *Identity.* The supervisor and UI fingerprints from the instance record
+  (pid plus birth token: pinned `lstart` on macOS, `/proc` start ticks plus
+  boot id on Linux), plus every descendant by parent pid. A root whose pid
+  now belongs to another process contributes nothing.
+- *Environment.* Every process the instance starts inherits the run's
+  `HOME`, `TMPDIR` and `STATION_WEIGHT_RUN` tag. Same-user environments are
+  read from `ps -E` on macOS and `/proc/<pid>/environ` on Linux, so a
+  double-forked daemon or a child spawned during shutdown is found with no
+  ancestry at all. The control engine shares the environment but has its own
+  `CLAUDE_CONFIG_DIR`, which excludes it. A run records which pre-stop
+  processes only ancestry found (`beforeStopUntagged`); on macOS that list
+  was empty.
+
+A process is signalled only after its birth token is read again and still
+matches, so a reused pid is never killed. A tree that is empty when sampled
+is `NOT_MEASURED`, never zero.
 
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out
@@ -72,28 +95,58 @@ applied, so the results contain no token counts or estimates.
 ## Budgets and baseline
 
 A budget fails only when `value > baseline × (1 + ratio) + floor`. Shrinking
-always passes. `request.*` budgets use one host-independent baseline. The
-other budgets compare only against a baseline recorded on the same host class
-(`<platform>-<arch>`). Without one, the verdict is `NOT_MEASURED`.
+always passes. `request.*` budgets use one host-independent baseline and are
+compared on every host. The other budgets depend on the host and compare only
+against a baseline recorded on a host with the same fingerprint: a hash of
+the platform, architecture, hardware model, CPU model and count, memory in
+GiB and OS major version. The committed baseline stores only that hash and a
+coarse label such as `darwin-arm64`. Two Macs of one platform label do not
+share a host baseline.
 
 | Budget | Headroom |
 | --- | --- |
-| `serverReadyMs` | +100% (clean runs on one loaded host ranged 3.6–8.6 s) |
+| `serverReadyMs` | +100% of a median of three launches (see [Ready time](#ready-time)) |
 | `restMemoryBytes`, `idleSessionsMemoryBytes`, `leftoverAfterStopMemoryBytes` | +25% |
 | `idleCpuPercent` | ×2 plus 1 percentage point |
 | `request.stationAddedTextBytes`, `request.stationAddedToolCount`, `request.stationAddedToolDefinitionBytes` | +10% |
 | `request.sideCallCount` | none: a new side request is a discrete change |
 
+### Exit status
+
+The run exits non-zero when it did not complete, when any budget is over its
+headroom, and when any budget is `NOT_MEASURED`: a metric that was not
+measured (for example an engine that never became ready), a missing baseline
+file, or a host with no baseline of its own. On a host without a baseline,
+`--report-only` measures everything, compares nothing, prints
+`REPORT_ONLY compared nothing`, and exits 0 only if every budgeted metric was
+measured. `--evaluate=<result.json>` applies the baseline (and the same exit
+status) to a saved result without measuring again.
+
+### Recording
+
 To record a baseline, run `npm run perf:station-weight -- --record-baseline`
-on a clean tree and quiet host, and commit the file. Recording replaces only
-the run's host class and the request values, and keeps the other host classes.
+on a clean tree and quiet host, and commit the file. Recording refuses a run
+that did not complete, was dirty, or left any budgeted metric unmeasured, so a
+gap never deletes a reference. It replaces the request values and this host's
+entry, and keeps every other host.
+
+### Ready time
+
+Ready time follows host load. Nine launches on one host at load 21–24 took
+3.8–6.3 s each; medians of three consecutive launches took 5.2–6.1 s. A
+reviewer's single launches on the same host ranged 3.6–9.0 s. The budget
+therefore compares a median of three launches with +100% headroom, which
+clears every value observed. One run is still one sample: a sustained load
+shift moves the median too, so compare several runs before claiming a change.
+
+### Output
 
 Each run writes `result.json` (metrics, per-process detail, request breakdown,
 verdicts) and `requests.json` (every request the stub received) under
 `.kontourai/station-weight/<sha>/<run-id>/`. Diff two results to compare
 revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
-`--settle-max-ms`, `--cpu-window-ms`, `--sessions` and `--stop-grace-ms`
-override the defaults.
+`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms` and
+`--ready-launches` override the defaults.
 
 ## Gaps
 
@@ -103,7 +156,15 @@ override the defaults.
   `ps`, so the whole run reports `not_measured`.
 - **Unready engine.** A memory sample that never settles, an engine that never
   reports ready, or a missing bundled binary makes the affected metrics
-  `not_measured`, with the reason.
+  `not_measured`, with the reason, and the run exits non-zero.
+- **Idle CPU of short-lived processes.** Sampling every 250 ms misses the CPU
+  a process uses after its last sample before it exits (at most one interval
+  per process) and any process that starts and exits between two samples.
+  The window rescans the environment only at its end, so a process that
+  detaches and exits inside the window is missed too. The gap is written
+  beside every CPU value (`idleCpuPercent.gap`).
+- **Context switches** (Linux) count only processes alive at both ends of
+  the window.
 
 None of these is ever zero or a pass.
 
@@ -112,11 +173,18 @@ None of these is ever zero or a pass.
 - One run is one sample on one host. Launch timing in particular swings with
   host load (`host.loadStart`/`loadEnd` are recorded). Compare several runs
   before claiming a change.
-- The check is not wired into hosted CI. Request budgets are host-independent,
-  but no Linux run has qualified them, and hosted runners have no host-class
-  baseline for the idle budgets.
+- `npm run perf:station-weight` is not a per-PR hosted check. Its end-to-end
+  test, `scripts/__tests__/station-weight.end-to-end.process.test.ts`, is
+  process-heavy, so the full-regression workflow runs it on `ubuntu-24.04`
+  from main qualification (every push to `main` and every 6 hours). There it
+  asserts the mechanics, compares the host-independent request budgets, and
+  leaves the host budgets `NOT_MEASURED` because hosted runners have no
+  baseline of their own.
 - The control isolates what Station adds. It does not measure the engine's own
   prompt, which changes with the bundled Claude Code version.
-- `scripts/__tests__/station-weight.process.test.ts` runs the whole check with
-  short windows and fails when Station's request additions exceed the
-  committed request budgets.
+- The end-to-end test runs the whole check with short windows, injects a
+  daemon that detaches during shutdown and asserts it is found and killed,
+  and fails when Station's request additions exceed the committed request
+  budgets. `scripts/__tests__/station-weight.process.test.ts` covers the
+  process mechanics (identity, leftovers, CPU sampling, launcher capture,
+  git isolation and the exit status) in seconds.
