@@ -2266,6 +2266,17 @@ test('legacy persisted form approval stamp folds to needs_input, never pending r
   });
   expect(folded.lifecycleState).toBe('needs_input');
   expect(folded.pendingReview).toBe(false);
+  const blocked = projectSessionLifecycle({
+    session: {
+      provider: 'codex',
+      threadId: 't',
+      status: 'running',
+      createdAt: at(0),
+      updatedAt: at(1),
+    },
+    events: [{ ...event, sessionState: 'blocked' }],
+  });
+  expect(blocked.lifecycleState).toBe('blocked');
 });
 
 test('permission outranks input, then resolving permission reveals the outstanding input', () => {

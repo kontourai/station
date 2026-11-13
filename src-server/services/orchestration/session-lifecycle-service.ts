@@ -1128,6 +1128,7 @@ function deriveLifecycleTransition(
     event.sessionState &&
     !(
       event.method === 'request.opened' &&
+      event.sessionState === 'review_pending' &&
       event.blocking !== false &&
       (event.requestType === 'input' || inputRequestFromRequestEvent(event))
     ) &&
