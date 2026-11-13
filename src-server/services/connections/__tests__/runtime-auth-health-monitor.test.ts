@@ -7,6 +7,7 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BedrockAdapter } from '../../../providers/adapters/bedrock-adapter.js';
 import { OllamaAdapter } from '../../../providers/adapters/ollama-adapter.js';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -35,6 +36,8 @@ function runtimeEvent(
 }
 
 describe('runtime auth health monitor', () => {
+  const makeTempDir = trackTempDirs();
+
   afterEach(() => {
     vi.useRealTimers();
     // archive#3587: every `vi.spyOn(console, 'warn')` in
@@ -125,7 +128,7 @@ describe('runtime auth health monitor', () => {
   });
 
   test('a proxy cooldown does not persist an authentication block across restart', () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-auth-health-'));
+    const home = makeTempDir('station-auth-health-');
     const persistPath = join(home, 'runtime-auth-health.json');
     const bus = new EventBus();
     const changed = vi.fn();
@@ -176,7 +179,6 @@ describe('runtime auth health monitor', () => {
       }
     } finally {
       monitor.dispose();
-      rmSync(home, { recursive: true, force: true });
     }
   });
 
