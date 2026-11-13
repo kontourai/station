@@ -19,7 +19,46 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
-### Current finalizer qualification (2026-11-12)
+### Latest request-fence and recovery checkpoint (2026-11-12)
+
+At `b76e8a78a367`, a single-delegation final-fetch fence joins a real V3
+reservation, current envelope and exact wire to a durable no-resend intent.
+It uses the actual Home/publication scope without inventing a group or seat.
+Version-1 group ledgers remain readable; single intents use a version-2 mixed
+ledger with one authority/invocation namespace. All six controlled cases pass.
+This component is not integrated into native adapters and does not qualify
+native confinement, provider pricing or inherited portable execution.
+
+At `14b974795a70`, cancellation after durable intent consumption refuses the
+transport, retains the reservation and prevents replay through a reopened
+store. The added control passes, removing the final post-intent check fails
+with a missing expected rejection, and byte-exact restoration passes. The
+transport is controlled; no live provider or native-engine acceptance follows.
+
+Main through `fd4a18165ef3` is merged at `49c01eab4ed4`. The earlier full legacy
+launch-fence selection passed 46 cases and failed the queued V2 Flow pause
+case at its unchanged five-second intent barrier. The same case failed with
+the pre-feature fence/store modules and later passed under profiling at the
+merged head. No causal repair is established; the full selection remains
+unqualified. The stack profiler reached its bucket cap, so it is incomplete
+cost evidence.
+
+The complete lost-reappraisal scenario still times out at 60 seconds. A
+request-scoped I/O diagnostic at `49c01eab4ed4` reached fixture-ready at
+57.1 seconds and timed out during the first finalizer call. It recorded 1,009
+synchronous fsyncs totaling 11.2 seconds, not an explanation for all elapsed
+time. Earlier retained runs reached later phases before the same deadline.
+The scenario, assertions and deadline remain intact. Both production
+qualification flags remain false.
+
+Readiness at that merged head passed governance, lint, hygiene, component style
+and verification policy, but failed documentation truth on stale review/source
+bindings. Its default working-tree scope was empty, so it did not evaluate the
+committed branch changes. Explicit base/head readiness, semantic documentation
+review, native transport/effect integration and the full epic acceptance remain
+open.
+
+### Earlier finalizer qualification (2026-11-12)
 
 The 2026-11-07 pass below is historical. With installed Flow Agents 9.14.0,
 the full five-file selection at `08cbbfe5a6ca` passes 17 cases and fails the
