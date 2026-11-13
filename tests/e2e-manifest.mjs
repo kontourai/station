@@ -379,6 +379,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/component-style.spec.ts',
+    'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
     'tests/chat-dock-open-helper.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
@@ -454,8 +455,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
-    // Retains reviewed Updates screenshots under gallery/diagnostics/ux-lane-e.
-    'tests/server-older-banner.spec.ts',
     'tests/station-connection-chat.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
