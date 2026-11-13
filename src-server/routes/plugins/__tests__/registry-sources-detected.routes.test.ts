@@ -1559,39 +1559,37 @@ describe('every acquisition caller of the registry resolver checks agent ownersh
       expect(installed.status, await codeOf(installed)).toBe(200);
 
       unsettle(kind);
-      const refused = async (response: Response, caller: string) => {
-        const body = await codeOf(response);
-        expect(response.status, `${caller}: ${body}`).toBe(status);
-        expect(body, caller).toContain(code);
+      // Every caller is exercised before anything is asserted, so a failure
+      // names each caller that got through, not only the first.
+      const outcomes: Record<string, string> = {};
+      const record = async (caller: string, response: Response) => {
+        outcomes[caller] = await codeOf(response);
       };
-      // Install routes.
       for (const path of ['/agents/install', '/plugins/install'])
-        await refused(
+        await record(
+          path,
           await request(path, 'POST', {
             id: 'shared',
             dataPolicy: 'preserve',
             consent: { permissions: [], contentDigest: 'x', dependencies: [] },
           }),
-          path,
         );
-      // Preview.
-      await refused(
-        await call('/preview', { registryId: 'shared' }),
-        'preview',
+      await record('preview', await call('/preview', { registryId: 'shared' }));
+      await record('update', await call('/shared/update'));
+      outcomes.capture = await capturePluginRegistryAcquisition(
+        root,
+        { name: 'shared', version: '1.0.0' } as never,
+        'digest',
+        { projectHomeDir: home },
+        'shared',
+        'unused',
+      ).then(
+        () => 'captured',
+        (error: unknown) =>
+          error instanceof AgentCatalogOwnershipRefusal
+            ? `${status} ${error.code}`
+            : String(error),
       );
-      // Update of the installed package.
-      await refused(await call('/shared/update'), 'update');
-      // Acquisition capture.
-      await expect(
-        capturePluginRegistryAcquisition(
-          root,
-          { name: 'shared', version: '1.0.0' } as never,
-          'digest',
-          { projectHomeDir: home },
-          'shared',
-          'unused',
-        ),
-      ).rejects.toBeInstanceOf(AgentCatalogOwnershipRefusal);
       // Removal only looks up, so it still finds the installed package.
       expect(await isRegistryPluginRemovalTarget('shared', home)).toBe(true);
 
@@ -1600,18 +1598,24 @@ describe('every acquisition caller of the registry resolver checks agent ownersh
       const fresh = temporary(`acquire-${kind}-fresh-`);
       const next = await catalogs(root, fresh);
       unsettle(kind);
-      await refused(
-        await next.call('/preview', { registryId: 'parent' }),
+      await record(
         'dependency preview',
+        await next.call('/preview', { registryId: 'parent' }),
       );
-      await refused(
+      await record(
+        'dependency installation',
         await next.request('/plugins/install', 'POST', {
           id: 'parent',
           dataPolicy: 'preserve',
           consent,
         }),
-        'dependency installation',
       );
+      const through = Object.entries(outcomes).filter(
+        ([, outcome]) =>
+          !outcome.startsWith(`${status} `) || !outcome.includes(code),
+      );
+      expect(Object.fromEntries(through)).toEqual({});
+      expect(Object.keys(outcomes)).toHaveLength(7);
       for (const name of ['shared', 'parent'])
         expect(
           resolveInstalledPluginRoot(join(fresh, 'plugins'), name),
