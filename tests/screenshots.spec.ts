@@ -5280,21 +5280,16 @@ const SCREENS: Screen[] = [
   })(),
   {
     name: 'overlay-mobile-sheet',
-    title: 'Overlay — Mobile project-switcher sheet',
+    title: 'New chat — Mobile composer Project picker',
     path: '/?dock=open',
     viewport: MOBILE,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // archive#793: always rendered (bound project or not — unbound is a
-      // valid, always-reachable switcher state), so this needs no
-      // project/session seeding to be deterministic. This screen is the MOBILE
-      // header's own trigger, which #1552 D3 did not touch.
-      const trigger = page.getByRole('button', { name: /^Switch project/ });
-      await trigger.waitFor({ timeout: 10_000 });
-      await trigger.click();
+      const draft = await openGalleryNewChatDraft(page);
+      await draft.getByRole('button', { name: /^Project: / }).click();
       await expect(
-        page.locator('.chat-dock__project-switcher-panel'),
-      ).toBeVisible({ timeout: 10_000 });
+        page.getByRole('dialog', { name: 'Choose project', exact: true }),
+      ).toBeVisible();
     },
   },
   // archive#4525: no screen in the gallery otherwise stages a BOUND
