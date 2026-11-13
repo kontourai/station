@@ -1,6 +1,12 @@
+import { useCoreUpdateStatusQuery } from '@kontourai/station-sdk';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { readClientReleaseVersion } from '../../build-info';
+import {
+  coreUpdateScopeFromContext,
+  useConnectedServerUpdateContext,
+} from '../../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { serverIdentityMatchesView } from '../../views/settings/coreUpdatePresentation';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { desktopUpdateControlView } from '../desktop-update/desktopUpdatePresentation';
@@ -28,6 +34,22 @@ export function UpdatesControl({
   onNavigate: (path: string) => void;
 }) {
   const profile = usePlatformProfile();
+  const server = useConnectedServerUpdateContext();
+  const serverReady =
+    server.identityReady &&
+    server.isCurrent() &&
+    server.reachability === 'connected' &&
+    !server.nativeObservationPending &&
+    !server.claimedOwnerUnresolved &&
+    server.kind !== 'embedded-sidecar';
+  const { data: installedServer } = useCoreUpdateStatusQuery(
+    server.apiBase,
+    { enabled: serverReady, staleTime: 60_000 },
+    {
+      scopeKey: coreUpdateScopeFromContext(server),
+      assertCurrent: server.isCurrent,
+    },
+  );
   const { state } = useDesktopUpdateState(profile.isDesktop);
   const desktop = desktopUpdateControlView(state);
   const notices = useUpdateNotices();
@@ -40,6 +62,7 @@ export function UpdatesControl({
         }
       : notices.find((notice) => notice.progress)?.progress;
   const request = useOpenUpdatesRequest();
+  const [appChangelogPending, setAppChangelogPending] = useState(false);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -103,6 +126,21 @@ export function UpdatesControl({
               : readClientReleaseVersion()
         }
         nativeApp={profile.isDesktop || profile.isMobile}
+        onPendingChange={setAppChangelogPending}
+        updatesOpen={open}
+      />
+      <PostUpdateChangelog
+        key={`${server.apiBase}:${server.identity?.instanceId ?? ''}`}
+        version={
+          serverReady &&
+          installedServer &&
+          serverIdentityMatchesView(installedServer, server.identity)
+            ? (installedServer.currentVersion ?? null)
+            : null
+        }
+        serverKey={`${server.apiBase}:${server.identity?.instanceId ?? ''}`}
+        nativeApp={false}
+        paused={appChangelogPending}
         updatesOpen={open}
       />
       {loaded && (

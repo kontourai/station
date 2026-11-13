@@ -150,7 +150,8 @@ test.beforeAll(async () => {
 });
 
 const VIEWPORTS = {
-  desktop: { width: 1280, height: 720 },
+  desktop: { width: 1440, height: 900 },
+  ownerPhone: { width: 412, height: 915 },
   phone: { width: 390, height: 844 },
 } as const;
 
@@ -250,6 +251,53 @@ for (const theme of ['light', 'dark'] as const) {
       await expectNoHorizontalScroll(page);
       await page.screenshot({
         path: testInfo.outputPath(`manual-${theme}-${viewport}.png`),
+      });
+    });
+  }
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const viewport of ['desktop', 'phone', 'ownerPhone'] as const) {
+    test(`installed server changelog (${theme}, ${viewport})`, async ({
+      page,
+    }, testInfo) => {
+      await page.route(
+        'https://api.github.com/repos/kontourai/station/releases/**',
+        (route) => {
+          const installed = route
+            .request()
+            .url()
+            .endsWith('/tags/v0.1.11-nightly.246303');
+          return route.fulfill({
+            json: {
+              tag_name: installed
+                ? 'v0.1.11-nightly.246303'
+                : 'v0.1.11-nightly.246500',
+              name: installed
+                ? 'Installed server release'
+                : 'Available server release',
+              body: installed
+                ? '## Server changes\n- Restores connections after a server restart.\n- Shows the installed server changelog.'
+                : '- Available server improvements.',
+              draft: false,
+            },
+          });
+        },
+      );
+      await mount(page, theme, viewport, 'update');
+      await page
+        .getByRole('button', { name: 'Review updates', exact: true })
+        .click();
+      const panel = page.getByRole('dialog', { name: 'Updates', exact: true });
+      await expect(
+        panel.getByText('Shows the installed server changelog.'),
+      ).toBeVisible();
+      await expect(
+        panel.getByText('Available server improvements.'),
+      ).toBeVisible();
+      await expectNoHorizontalScroll(page);
+      await page.screenshot({
+        path: testInfo.outputPath(`installed-${theme}-${viewport}.png`),
       });
     });
   }

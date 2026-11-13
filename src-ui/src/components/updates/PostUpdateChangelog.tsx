@@ -13,23 +13,35 @@ const loadWhatsNew = () =>
 export function PostUpdateChangelog({
   version,
   nativeApp,
+  serverKey,
   updatesOpen,
+  paused = false,
+  onPendingChange,
 }: {
   version: string | null;
   nativeApp: boolean;
+  serverKey?: string;
   updatesOpen: boolean;
+  paused?: boolean;
+  onPendingChange?: (pending: boolean) => void;
 }) {
-  const { pendingVersion, dismiss } = usePostUpdateChangelog(version);
+  const { pendingVersion, dismiss } = usePostUpdateChangelog(
+    version,
+    serverKey,
+  );
+  useEffect(() => {
+    onPendingChange?.(!!pendingVersion);
+  }, [pendingVersion, onPendingChange]);
   useEffect(() => {
     if (updatesOpen) dismiss();
   }, [updatesOpen, dismiss]);
-  if (!pendingVersion || updatesOpen) return null;
+  if (!pendingVersion || updatesOpen || paused) return null;
   return (
     <LazyBoundary
       load={loadWhatsNew}
       pending={
         <Dialog
-          title={`Updated to Station ${pendingVersion}`}
+          title={`Updated ${serverKey ? 'server' : 'to Station'} ${pendingVersion}`}
           closeLabel="Close what’s new"
           onClose={dismiss}
         >
@@ -46,7 +58,12 @@ export function PostUpdateChangelog({
           <Button onClick={retry}>Retry changelog</Button>
         </Dialog>
       )}
-      componentProps={{ version: pendingVersion, nativeApp, onClose: dismiss }}
+      componentProps={{
+        version: pendingVersion,
+        nativeApp,
+        serverKey,
+        onClose: dismiss,
+      }}
     />
   );
 }

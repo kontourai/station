@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   generateDesktopReleaseNotes,
+  generateServerReleaseNotes,
   publishDesktopReleaseNotes,
 } from '../lib/desktop-release-notes.mjs';
 
@@ -274,4 +275,85 @@ test('a tag lookup validation error never authorizes a release creation', async 
     }),
   ).rejects.toThrow('HTTP 422 GET /git/ref/tags/');
   expect(request).toHaveBeenCalledTimes(2);
+});
+
+test.each(['v0.1.12', 'v0.1.12-nightly.2500', 'v0.1.12-preview.2'])(
+  'server notes for %s exclude desktop, rolling, other rings and newer releases',
+  async (serverTag) => {
+    const priorTag = serverTag.replace('0.1.12', '0.1.11');
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json([
+          { tag_name: 'v99.0.0', draft: false },
+          { tag_name: 'nightly-server', draft: false },
+          { tag_name: `desktop-${priorTag}`, draft: false },
+          {
+            tag_name: serverTag.includes('nightly')
+              ? 'v0.1.11-preview.1'
+              : 'v0.1.11-nightly.2499',
+            draft: false,
+          },
+          { tag_name: priorTag, draft: true },
+          { tag_name: priorTag, draft: false },
+        ]),
+      )
+      .mockResolvedValueOnce(Response.json({ sha: previous }))
+      .mockResolvedValueOnce(
+        Response.json({
+          body: `- Server changes\n/compare/${priorTag}...${serverTag}`,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ sha: previous }));
+    vi.stubGlobal('fetch', request);
+    const notes = await generateServerReleaseNotes({
+      tag: serverTag,
+      source,
+      repository: options.repository,
+      token: options.token,
+    });
+    expect(notes).toContain('- Server changes');
+    expect(notes).toContain(`/compare/${previous}...${source}`);
+    expect(JSON.parse(request.mock.calls[2][1].body)).toMatchObject({
+      tag_name: serverTag,
+      previous_tag_name: priorTag,
+      target_commitish: source,
+    });
+  },
+);
+
+test('server notes fail closed without a previous release', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json([])),
+  );
+  await expect(
+    generateServerReleaseNotes({
+      tag: 'v0.1.12',
+      source,
+      repository: options.repository,
+      token: options.token,
+    }),
+  ).rejects.toThrow('Previous server release');
+});
+
+test('the first stable release can use a published server prerelease as its baseline', async () => {
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json([{ tag_name: 'v0.1.12-preview.1', draft: false }]),
+    )
+    .mockResolvedValueOnce(Response.json({ sha: previous }))
+    .mockResolvedValueOnce(Response.json({ body: '- Stable server changes' }))
+    .mockResolvedValueOnce(Response.json({ sha: previous }));
+  vi.stubGlobal('fetch', request);
+  await generateServerReleaseNotes({
+    tag: 'v0.1.12',
+    source,
+    repository: options.repository,
+    token: options.token,
+  });
+  expect(JSON.parse(request.mock.calls[2][1].body).previous_tag_name).toBe(
+    'v0.1.12-preview.1',
+  );
 });

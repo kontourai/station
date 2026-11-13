@@ -13,14 +13,25 @@ import {
   usePendingPairingApproval,
 } from '@kontourai/station-connect';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   BANNER_IDS,
   BANNER_PRIORITY,
   bannerStore,
 } from '../../contexts/banner-store';
+import { toastStore } from '../../contexts/ToastContext';
 import { recordReplayConnection } from '../../hooks/orchestration/replay/capture-tap';
-import { setStreamConnectionState } from '../../hooks/orchestration/streamConnectionState';
+import {
+  getStreamConnectionState,
+  setStreamConnectionState,
+  subscribeStreamConnectionState,
+} from '../../hooks/orchestration/streamConnectionState';
 import { checkHostCompatibility } from '../../lib/compatibility';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
@@ -78,6 +89,66 @@ export function ConnectionBannerSource() {
       pollInterval: 10_000,
     });
   const endpoint = activeConnection?.url ?? apiBase;
+  const stream = useSyncExternalStore(subscribeStreamConnectionState, () =>
+    getStreamConnectionState(apiBase),
+  );
+  const noticeRef = useRef({
+    scope: '',
+    connected: false,
+    lost: false,
+    toast: '',
+  });
+  useEffect(() => {
+    const scope = `${activeConnection?.id ?? 'local'}:${apiBase}`;
+    if (noticeRef.current.scope !== scope) {
+      if (noticeRef.current.toast) toastStore.dismiss(noticeRef.current.toast);
+      noticeRef.current = { scope, connected: false, lost: false, toast: '' };
+    }
+    const notice = noticeRef.current;
+    if (status === 'connected') {
+      notice.connected = true;
+      // Health recovery alone cannot declare an interrupted stream live.
+      if (
+        notice.lost &&
+        (stream.phase === 'caught-up' || stream.phase === 'unknown')
+      ) {
+        toastStore.dismiss(notice.toast);
+        notice.toast = toastStore.upsert({
+          dedupeKey: `connection-restored:${scope}`,
+          message: 'Server connection restored.',
+          tone: 'success',
+        });
+        notice.lost = false;
+      }
+    } else if (
+      status === 'error' &&
+      failureStreak >= 3 &&
+      notice.connected &&
+      !notice.lost
+    ) {
+      notice.lost = true;
+      const explanation = reason
+        ? connectionFailureCopy(reason, 'The server', endpoint).summary
+        : 'Server connection lost.';
+      notice.toast = toastStore.upsert({
+        dedupeKey: `connection-lost:${scope}`,
+        message: blocked
+          ? `${explanation} Reconnect needs attention.`
+          : `${explanation} Reconnecting…`,
+        tone: 'warning',
+      });
+    }
+  }, [
+    activeConnection?.id,
+    apiBase,
+    endpoint,
+    status,
+    failureStreak,
+    reason,
+    blocked,
+    stream.phase,
+  ]);
+
   useEffect(() => {
     if (!blocked) return;
     if (setStreamConnectionState(apiBase, 'closed'))
@@ -149,8 +220,8 @@ export function ConnectionBannerSource() {
    * missed three probes". That put a paragraph of prose with an address in it
    * on a phone screen for a condition that is usually transient and
    * self-healing, which is what the owner asked to stop. Transient
-   * reachability is now carried by the connection indicator, which is exactly
-   * as loud as it needs to be and costs no vertical space.
+   * reachability uses the connection indicator and a deduplicated toast after
+   * three failures, without adding permanent mobile chrome.
    *
    * The 3-probe streak has NOT been deleted, only narrowed to the one
    * reachability case that is a decision (above): archive#2630's finding that load is

@@ -166,7 +166,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorage.removeItem('station.release-notes.last-version');
+  localStorage.clear();
   deviceSettingsStore.reset('showReleaseNotesAfterUpdate');
   vi.stubGlobal(
     'fetch',
@@ -679,4 +679,62 @@ test('mobile keeps its installed version and channel when no app update is avail
       name: 'Check for desktop app updates',
     }),
   ).toBeNull();
+});
+
+test('server upgrades open the installed server changelog and another server never inherits it', async () => {
+  const key = `station.release-notes.last-version.server:${context.apiBase}:${identity.instanceId}`;
+  localStorage.setItem(key, '0.7.0-preview.1');
+  installFakeNativeUpdater(native, desktopUpdateFixture('idle'));
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      tag_name: 'v0.8.0-preview.1',
+      name: 'Server release',
+      body: '- Installed server changes',
+      draft: false,
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(<UpdatesControl onNavigate={vi.fn()} />);
+  expect(
+    await screen.findByRole('dialog', {
+      name: 'Updated server 0.8.0-preview.1',
+    }),
+  ).toBeTruthy();
+  expect(await screen.findByText('Installed server changes')).toBeTruthy();
+  expect(fetcher).toHaveBeenCalledWith(
+    'https://api.github.com/repos/kontourai/station/releases/tags/v0.8.0-preview.1',
+    expect.objectContaining({ credentials: 'omit' }),
+  );
+  const original = context.apiBase;
+  context.apiBase = 'https://other.example.test';
+  view.rerender(
+    <QueryClientProvider client={clients[clients.length - 1]}>
+      <UpdatesControl onNavigate={vi.fn()} />
+    </QueryClientProvider>,
+  );
+  expect(
+    screen.queryByRole('dialog', { name: 'Updated server 0.8.0-preview.1' }),
+  ).toBeNull();
+  context.apiBase = original;
+});
+
+test('Updates shows the installed server changelog alongside an offered release', async () => {
+  installFakeNativeUpdater(native, desktopUpdateFixture('idle'));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const installed = url.endsWith('v0.8.0-preview.1');
+      return Response.json({
+        tag_name: installed ? 'v0.8.0-preview.1' : 'v0.8.0-preview.2',
+        body: installed
+          ? '- Installed server fixes'
+          : '- Available server fixes',
+        draft: false,
+      });
+    }),
+  );
+  render(<UpdatesControl onNavigate={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Updates', exact: true }));
+  expect(await screen.findByText('Installed server fixes')).toBeTruthy();
+  expect(await screen.findByText('Available server fixes')).toBeTruthy();
 });

@@ -92,12 +92,14 @@ export function ReleaseNotes({
   notes,
   active = true,
   collapsible = false,
+  title = 'What’s new',
 }: {
   version: string;
   nativeApp?: boolean;
   notes?: string | null;
   active?: boolean;
   collapsible?: boolean;
+  title?: string;
 }) {
   const [open, setOpen] = useState(false);
   const expanded = !collapsible || open;
@@ -115,10 +117,10 @@ export function ReleaseNotes({
           onToggle={() => setOpen(!open)}
           controls={id}
         >
-          What’s new
+          {title}
         </DisclosureToggle>
       ) : (
-        <h4>What’s new</h4>
+        <h4>{title}</h4>
       )}
       {expanded && (
         <div id={id} className="content-stack">

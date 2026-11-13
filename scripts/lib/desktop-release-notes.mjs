@@ -136,3 +136,93 @@ export async function publishDesktopReleaseNotes({
   )
     throw new Error('GitHub did not confirm the archived changelog');
 }
+
+export async function generateServerReleaseNotes({
+  tag,
+  source,
+  repository,
+  token,
+}) {
+  if (
+    !/^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
+      tag ?? '',
+    ) ||
+    !/^[a-f0-9]{40}$/.test(source ?? '')
+  )
+    throw new Error('Expected an exact-source server release');
+  const api = github(repository, token);
+  const ring = tag.includes('-nightly.')
+    ? 'nightly'
+    : tag.includes('-preview.')
+      ? 'preview'
+      : 'stable';
+  const order = (value) =>
+    value
+      .slice(1)
+      .split(/[.-]/)
+      .filter((part) => /^\d+$/.test(part))
+      .map(Number);
+  const older = (candidate) => {
+    const a = order(candidate),
+      b = order(tag);
+    const sameBase = a.slice(0, 3).every((part, i) => part === b[i]);
+    if (sameBase && !tag.includes('-')) return candidate.includes('-');
+    if (sameBase && !candidate.includes('-')) return false;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0);
+    }
+    return false;
+  };
+  const releaseRing = (value) =>
+    value.includes('-nightly.')
+      ? 'nightly'
+      : value.includes('-preview.')
+        ? 'preview'
+        : 'stable';
+  // Releases are paginated: desktop archives must not crowd server history out.
+  let previous;
+  let fallback;
+  for (let page = 1; ; page++) {
+    const releases = await api(`/releases?per_page=100&page=${page}`);
+    if (!Array.isArray(releases)) throw new Error('Invalid release history');
+    fallback ??= releases.find(
+      (release) =>
+        !release.draft &&
+        /^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
+          release.tag_name ?? '',
+        ) &&
+        older(release.tag_name),
+    );
+    previous = releases.find(
+      (release) =>
+        !release.draft &&
+        release.tag_name !== tag &&
+        /^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
+          release.tag_name ?? '',
+        ) &&
+        releaseRing(release.tag_name) === ring &&
+        older(release.tag_name),
+    );
+    if (previous || releases.length < 100) break;
+  }
+  previous ??= fallback;
+  if (!previous) throw new Error('Previous server release is unavailable');
+  const priorTag = previous.tag_name;
+  const before = await api(`/commits/${priorTag}`);
+  if (!/^[a-f0-9]{40}$/.test(before?.sha ?? ''))
+    throw new Error('Previous server source is unavailable');
+  const generated = await api('/releases/generate-notes', {
+    tag_name: tag,
+    target_commitish: source,
+    previous_tag_name: priorTag,
+  });
+  const after = await api(`/commits/${priorTag}`);
+  if (after?.sha !== before.sha)
+    throw new Error('Server release moved while generating notes');
+  if (typeof generated?.body !== 'string' || !generated.body.trim())
+    throw new Error('GitHub generated no release notes');
+  return generated.body.replaceAll(
+    `/compare/${priorTag}...${tag}`,
+    `/compare/${before.sha}...${source}`,
+  );
+}

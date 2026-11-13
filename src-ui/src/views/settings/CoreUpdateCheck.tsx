@@ -871,6 +871,17 @@ export function CoreUpdateCheck({
             }}
           />
         )}
+      {showReleaseNotes &&
+        status?.currentVersion &&
+        identityMatches &&
+        !comparisonSuperseded && (
+          <ReleaseNotes
+            title={`Installed server ${status.currentVersion}`}
+            key={`installed-${status.currentVersion}`}
+            version={status.currentVersion}
+            active={active}
+          />
+        )}
       {showReleaseNotes && targetVersion && (
         <ReleaseNotes
           key={targetVersion}
