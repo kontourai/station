@@ -143,3 +143,37 @@ test('in-app changelogs omit installation instructions but retain later change s
   expect(screen.queryByText(/curl https/)).toBeNull();
   expect(screen.getByText('Recovery fix')).toBeTruthy();
 });
+
+const legacyBody =
+  "Portable server Nightly 0.1.11-nightly.2026111300 from 76c30c3b8dbaf4b36795ec4b0ed73902b3674509. Install with: curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh (this release's install.sh and install.ps1 are the installers at 76c30c3b8dbaf4b36795ec4b0ed73902b3674509). These assets are immutable.";
+test.each(['\n\n## Installation\n\nInstall fixture\n', legacyBody])(
+  'install-only published bodies show the missing changelog state: %s',
+  async (body) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json(release('v0.1.11', body))),
+    );
+    mount(<ReleaseNotes version="0.1.11" />);
+    expect(await screen.findByText('Release notes unavailable')).toBeTruthy();
+    expect(screen.queryByText(/Install fixture|curl -fsSL/)).toBeNull();
+  },
+);
+test('legacy stripping preserves ordinary installation discussion', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        release(
+          'v0.1.11',
+          '- Improved install.sh diagnostics. Install with curl as usual.',
+        ),
+      ),
+    ),
+  );
+  mount(<ReleaseNotes version="0.1.11" />);
+  expect(
+    await screen.findByText(
+      'Improved install.sh diagnostics. Install with curl as usual.',
+    ),
+  ).toBeTruthy();
+});

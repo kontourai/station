@@ -13,6 +13,19 @@ import { DisclosureToggle } from '../DisclosureToggle';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './Updates.css';
 
+function changelogBody(body: string) {
+  return (
+    body
+      .replace(/^## Installation[^\n]*\n[\s\S]*?(?=^## |$(?![\s\S]))/gm, '')
+      // Exact legacy portable-server template, before Installation had a heading.
+      .replace(
+        /^Portable server Nightly (\d+\.\d+\.\d+-nightly\.\d+(?:\.\d+)?) from ([a-f0-9]{40})\. Install with: curl -fsSL https:\/\/raw\.githubusercontent\.com\/kontourai\/station\/main\/install\.sh \| STATION_CHANNEL=nightly sh \(this release's install\.sh and install\.ps1 are the installers at \2\)\. These assets are immutable\.\s*$/,
+        '',
+      )
+      .trim()
+  );
+}
+
 function NotesBody({ body }: { body: string }) {
   return (
     <div className="release-notes__body">
@@ -34,9 +47,7 @@ function NotesBody({ body }: { body: string }) {
           img: ({ alt }) => <span>{alt}</span>,
         }}
       >
-        {body
-          .replace(/^## Installation[^\n]*\n[\s\S]*?(?=^## |$(?![\s\S]))/gm, '')
-          .trim()}
+        {body}
       </ReactMarkdown>
     </div>
   );
@@ -63,13 +74,10 @@ function PublishedNotes({
   release: StationReleaseNotes;
   history?: boolean;
 }) {
+  const body = changelogBody(release.body);
   return (
     <article className="content-stack">
-      {release.body.trim() ? (
-        <NotesBody body={release.body} />
-      ) : (
-        <MissingNotes />
-      )}
+      {body ? <NotesBody body={body} /> : <MissingNotes />}
       <footer className="release-notes__links">
         <a href={release.url} target="_blank" rel="noopener noreferrer">
           View this release on GitHub
@@ -103,6 +111,7 @@ export function ReleaseNotes({
   collapsible?: boolean;
   title?: string;
 }) {
+  const fallback = changelogBody(notes ?? '');
   const [open, setOpen] = useState(false);
   const expanded = !collapsible || open;
   const id = useId();
@@ -130,8 +139,8 @@ export function ReleaseNotes({
             <PublishedNotes release={query.data} />
           ) : (
             <>
-              {notes?.trim() && <NotesBody body={notes} />}
-              {query.isFetching && !notes?.trim() && (
+              {fallback && <NotesBody body={fallback} />}
+              {query.isFetching && !fallback && (
                 <SkeletonBlock count={1} label="Loading release notes" />
               )}
               {query.isError ? (
@@ -146,9 +155,7 @@ export function ReleaseNotes({
                 />
               ) : (
                 !query.isFetching &&
-                !notes?.trim() && (
-                  <MissingNotes retry={() => void query.refetch()} />
-                )
+                !fallback && <MissingNotes retry={() => void query.refetch()} />
               )}
             </>
           )}

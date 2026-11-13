@@ -185,12 +185,19 @@ export function ConnectionBannerSource() {
     connected: false,
     lost: false,
     toast: '',
+    message: '',
   });
   useEffect(() => {
     const scope = `${activeConnection?.id ?? 'local'}:${apiBase}`;
     if (noticeRef.current.scope !== scope) {
       if (noticeRef.current.toast) toastStore.dismiss(noticeRef.current.toast);
-      noticeRef.current = { scope, connected: false, lost: false, toast: '' };
+      noticeRef.current = {
+        scope,
+        connected: false,
+        lost: false,
+        toast: '',
+        message: '',
+      };
     }
     const notice = noticeRef.current;
     const decision =
@@ -199,13 +206,19 @@ export function ConnectionBannerSource() {
       credentialOwned ||
       pendingApproval ||
       reason === 'awaiting-approval';
-    if (status === 'error' && decision) {
+    if (decision) {
       if (notice.lost) toastStore.dismiss(notice.toast);
       notice.lost = false;
       return;
     }
     if (status === 'connected') {
       notice.connected = true;
+      // A terminal stream has no catch-up pending. Clear the stale reconnect
+      // notice without claiming that event delivery recovered.
+      if (notice.lost && stream.phase === 'closed') {
+        toastStore.dismiss(notice.toast);
+        notice.lost = false;
+      }
       // Health recovery alone cannot declare an interrupted stream live.
       if (
         notice.lost &&
@@ -227,10 +240,8 @@ export function ConnectionBannerSource() {
       reason !== 'awaiting-approval' &&
       status === 'error' &&
       failureStreak >= 3 &&
-      notice.connected &&
-      !notice.lost
+      notice.connected
     ) {
-      notice.lost = true;
       const name = activeConnection?.name || 'Station';
       const explanation =
         reason === 'busy'
@@ -238,11 +249,15 @@ export function ConnectionBannerSource() {
           : reason === 'timeout'
             ? `${name} didn't answer in time.`
             : `Connection to ${name} lost.`;
+      const message = blocked
+        ? `${explanation} Reconnect needs attention.`
+        : `${explanation} Reconnecting…`;
+      if (notice.lost && notice.message === message) return;
+      notice.lost = true;
+      notice.message = message;
       notice.toast = toastStore.upsert({
         dedupeKey: `connection:${scope}`,
-        message: blocked
-          ? `${explanation} Reconnect needs attention.`
-          : `${explanation} Reconnecting…`,
+        message,
         tone: 'warning',
         duration: 0,
       });

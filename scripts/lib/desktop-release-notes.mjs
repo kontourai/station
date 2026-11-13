@@ -32,12 +32,11 @@ function github(repository, token) {
           signal: AbortSignal.timeout(30_000),
         });
       } catch (error) {
-        if (
-          !retrySafe ||
-          attempt ||
-          !['TimeoutError', 'TypeError', 'AbortError'].includes(error?.name)
-        )
+        if (!['TimeoutError', 'TypeError', 'AbortError'].includes(error?.name))
           throw error;
+        if (!retrySafe || attempt)
+          throw Object.assign(error, { releaseNotesUnavailable: true });
+        await new Promise((resolve) => setTimeout(resolve, 250));
         continue;
       }
       const transient =
@@ -47,7 +46,16 @@ function github(repository, token) {
           (response.headers.get('x-ratelimit-remaining') === '0' ||
             response.headers.has('retry-after')));
       if (!retrySafe || attempt || !transient) break;
+      const retryAfter = response.headers.get('retry-after');
+      const seconds = retryAfter === null ? NaN : Number(retryAfter);
+      const requested = Number.isFinite(seconds)
+        ? seconds * 1000
+        : Date.parse(retryAfter ?? '') - Date.now();
+      const delay = Number.isFinite(requested)
+        ? Math.min(30_000, Math.max(0, requested))
+        : 250;
       await response.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
     if (response.status === 404 && !body) return null;
     if (!response.ok) {
@@ -75,8 +83,18 @@ function github(repository, token) {
         ),
         oauthScopes: safe(response.headers.get('x-oauth-scopes')),
       };
-      throw new Error(
-        `GitHub release notes: HTTP ${response.status} ${method} ${path} ${JSON.stringify(diagnostic)}`,
+      throw Object.assign(
+        new Error(
+          `GitHub release notes: HTTP ${response.status} ${method} ${path} ${JSON.stringify(diagnostic)}`,
+        ),
+        {
+          releaseNotesUnavailable:
+            response.status >= 500 ||
+            response.status === 429 ||
+            (response.status === 403 &&
+              (response.headers.get('x-ratelimit-remaining') === '0' ||
+                response.headers.has('retry-after'))),
+        },
       );
     }
     return response.json();
@@ -248,6 +266,23 @@ export async function generateServerReleaseNotes({
     if (releases.length < 100) break;
   }
   previous ??= fallback;
+  // Older stable versions may exist only as git tags, without a Release.
+  if (!previous) {
+    for (let page = 1; ; page++) {
+      const tags = await api(`/tags?per_page=100&page=${page}`);
+      if (!Array.isArray(tags)) throw new Error('Invalid tag history');
+      for (const entry of tags) {
+        const candidate = entry.name;
+        if (
+          /^v\d+\.\d+\.\d+$/.test(candidate ?? '') &&
+          older(candidate) &&
+          (!previous || compare(candidate, previous.tag_name) > 0)
+        )
+          previous = { tag_name: candidate };
+      }
+      if (tags.length < 100) break;
+    }
+  }
   if (!previous) throw new Error('Previous server release is unavailable');
   const priorTag = previous.tag_name;
   const before = await api(`/commits/${priorTag}`);

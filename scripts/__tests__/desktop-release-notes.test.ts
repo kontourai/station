@@ -443,3 +443,64 @@ test.each([
     expected,
   );
 });
+
+test('real-history stable promotion uses an older plain git tag when Releases contain only same-base nightlies', async () => {
+  const request = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes('/releases?'))
+      return Response.json([{ tag_name: 'v0.1.11-nightly.2026111300' }]);
+    if (url.includes('/tags?'))
+      return Response.json([
+        { name: 'v0.1.11-nightly.2026111300' },
+        { name: 'v0.1.10' },
+      ]);
+    if (url.includes('/commits/v0.1.10'))
+      return Response.json({ sha: previous });
+    if (url.endsWith('/releases/generate-notes')) {
+      expect(JSON.parse(String(init?.body)).previous_tag_name).toBe('v0.1.10');
+      return Response.json({ body: '- Stable changes' });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  });
+  vi.stubGlobal('fetch', request);
+  await expect(
+    generateServerReleaseNotes({
+      tag: 'v0.1.11',
+      source,
+      repository: options.repository,
+      token: options.token,
+    }),
+  ).resolves.toBe('- Stable changes');
+  expect(request).toHaveBeenCalledTimes(5);
+});
+
+test.each([
+  ['2', 2000],
+  ['120', 30000],
+  ['invalid', 250],
+])(
+  'retry-after %s delays the second request by %s ms',
+  async (header, delay) => {
+    vi.useFakeTimers();
+    try {
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('', {
+            status: 429,
+            headers: { 'retry-after': String(header) },
+          }),
+        )
+        .mockResolvedValueOnce(Response.json({ sha: previous }))
+        .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+        .mockResolvedValueOnce(Response.json({ sha: previous }));
+      vi.stubGlobal('fetch', request);
+      const result = generateDesktopReleaseNotes(options);
+      await vi.advanceTimersByTimeAsync(Number(delay) - 1);
+      expect(request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(result).resolves.toBe('- Changes');
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);

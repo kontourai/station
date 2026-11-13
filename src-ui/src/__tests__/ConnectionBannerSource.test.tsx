@@ -873,3 +873,64 @@ it.each([
     expect(toastStore.getSnapshot()).toHaveLength(0);
   },
 );
+
+it('updates reconnect copy when blocked changes and clears loss on terminal stream health recovery', () => {
+  connectionStatus.status = 'connected';
+  const client = new QueryClient();
+  const tree = () => (
+    <QueryClientProvider client={client}>
+      <ConnectionBannerSource />
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  connectionStatus.status = 'error';
+  connectionStatus.reason = 'timeout';
+  connectionStatus.failureStreak = 3;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].message).toContain('Reconnecting');
+  connectionStatus.blocked = true;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].message).toContain(
+    'Reconnect needs attention',
+  );
+  connectionStatus.blocked = false;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].message).toContain('Reconnecting');
+  act(() => {
+    setStreamConnectionState('https://station.example.test', 'closed');
+  });
+  connectionStatus.status = 'connected';
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(0);
+});
+
+it('removes an existing lost toast when a decision takes ownership', () => {
+  activeConnection = {
+    id: 'local',
+    name: 'Station',
+    url: 'https://station.example.test',
+  };
+  connectionStatus.status = 'connected';
+  const client = new QueryClient();
+  const tree = () => (
+    <QueryClientProvider client={client}>
+      <ConnectionBannerSource />
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  connectionStatus.status = 'error';
+  connectionStatus.reason = 'timeout';
+  connectionStatus.failureStreak = 3;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(1);
+  // Credential ownership may arrive while health still reports connected.
+  connectionStatus.status = 'connected';
+  activeConnection = {
+    id: 'local',
+    name: 'Station',
+    url: 'https://station.example.test',
+    credentialState: 'required',
+  };
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(0);
+});

@@ -17,9 +17,9 @@ try {
 } catch (error) {
   // Nightly availability must not depend on GitHub note generation. Stable and
   // preview publication fail closed so reviewed releases retain their changelog.
-  if (!tag.includes('-nightly.')) throw error;
+  if (!tag.includes('-nightly.') || !error.releaseNotesUnavailable) throw error;
   console.warn(
-    '::warning::Server changelog unavailable; publishing installation instructions only.',
+    `::warning::Server changelog unavailable; publishing installation instructions only. ${error.message.replace(/[\r\n]/g, ' ')}`,
   );
   notes = '';
 }

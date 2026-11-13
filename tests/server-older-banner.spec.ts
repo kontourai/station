@@ -489,3 +489,38 @@ for (const theme of ['light', 'dark'] as const) {
     }
   }
 }
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const viewport of ['desktop', 'phone', 'ownerPhone'] as const) {
+    test(`install-only changelog empty state (${theme}, ${viewport})`, async ({
+      page,
+    }, testInfo) => {
+      await mount(page, theme, viewport, 'update');
+      await page.route(
+        'https://api.github.com/repos/kontourai/station/releases/tags/**',
+        (route) =>
+          route.fulfill({
+            json: {
+              tag_name: decodeURIComponent(
+                new URL(route.request().url()).pathname.split('/').at(-1) ?? '',
+              ),
+              draft: false,
+              body: '\n\n## Installation\n\nInstall fixture\n',
+            },
+          }),
+      );
+      await page
+        .getByRole('button', { name: 'Review updates', exact: true })
+        .click();
+      const panel = page.getByRole('dialog', { name: 'Updates', exact: true });
+      await expect(
+        panel.getByText('Release notes unavailable').first(),
+      ).toBeVisible();
+      await expect(panel.getByText('Install fixture')).toHaveCount(0);
+      await expectNoHorizontalScroll(page);
+      await page.screenshot({
+        path: testInfo.outputPath(`install-only-${theme}-${viewport}.png`),
+      });
+    });
+  }
+}
