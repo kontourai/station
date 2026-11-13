@@ -503,13 +503,43 @@ text. The agent fetches logs itself with `gh`.
   unattended-grant store, keyed by this principal.
 - **Two keys.** The rule's `(projectId, agentId, action)` must appear in its
   source's `grants`.
-- **Who can create rules.** Only authenticated operator surfaces create
-  rules. Never the station-control MCP and never an agent session, so an
-  agent cannot widen its own triggers.
+- **Who can create rules: an agent proposes, a person confirms.** This
+  reverses the earlier rule, which allowed only operator surfaces (owner
+  decision 2026-11-12,
+  [#4830](https://github.com/kontourai/station/issues/4830); see
+  [the decision record](../decisions/agent-proposed-automations.md)). An
+  agent in a person's chat may call `propose_automation_source` or
+  `propose_automation_rule`. Station validates the proposal and writes a plain
+  description: what it watches, what it opens, which agent it wakes and with
+  what authority. Nothing is created until a person confirms the card in that
+  chat. Confirming needs the Station operator in person. It decides the
+  proposing chat's scope again, and requires each Agent named to be
+  unchanged (slug, Project, definition digest), inside the store's lock. It
+  creates the source or rule through the ordinary store, under an id derived
+  from the proposal so a retry never duplicates it
+  ([routes](../../src-server/routes/orchestration/automation-proposals.ts),
+  [validation](../../src-server/services/automation/automation-proposals.ts)).
+  A proposal never grants more than the proposing chat holds:
+  - every Project/Agent pair it names must pass that chat's dispatch scope
+    rule;
+  - it may name only `dispatch-task`;
+  - a rule never pins `auto` approval;
+  - `fullAccessGrant`, a credential, a secret, `enabled` and `mode` are
+    refused as escalations;
+  - only credential-free `github-poll` sources can be proposed.
+
+  A proposal from a conversation that had read untrusted content
+  ([#3483](https://github.com/kontourai/station/issues/3483)) is labelled
+  so on the card. Sources are moving to
+  [Telltale](https://github.com/kontourai/telltale)
+  ([#4832](https://github.com/kontourai/station/issues/4832)). A Telltale
+  source type's `plan()` should then write the "watches" text. Today's
+  proposals use Station's own GitHub poll.
 - **Default deny.** Sources are created disabled and rules in `observe`
-  mode, which records decisions but never acts. No grants means
-  no actions. A corrupt config or ledger fails closed with
-  `policy_unavailable`.
+  mode, which records decisions but never acts. This also holds for a
+  confirmed proposal, unless the person ticks "Turn it on now" in the same
+  confirmation. No grants means no actions. A corrupt config or ledger fails
+  closed with `policy_unavailable`.
 - **Rate limits.** A per-source attempt limiter plus the global
   unauthenticated budget; per rule `maxStartsPerHour` (default 2) and
   `maxActive` 1; a global `AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions`;
@@ -521,7 +551,22 @@ text. The agent fetches logs itself with `gh`.
   standing grant.
 - **Never.** Merge, arm auto-merge, push to main, edit protected paths (port
   the list from `qualification-repair.mjs`), or change automations or
-  grants.
+  grants. This includes proposing them. Proposals are gated on the calling
+  turn being person-authored: it must carry the shared person-authorship
+  mark (#4848), meaning a person typed it into Station's composer. Station
+  infers the calling turn from Session state (the running turn by its
+  persisted lifecycle fold); a start not yet stored refuses, and the
+  decision is made again in the transaction that writes the proposal.
+  Everything else refuses, including a delegated child's result that
+  continues in the person's chat with `dispatchOrigin: interactive`.
+  - **Known race.** A concurrent steer, failed or accepted, clears an
+    in-flight delegated continuation's pending reservation, so an agent
+    continuation can create a proposal card. The operator's in-person
+    confirmation remains required and is the authority boundary.
+  - **Known false refusal.** An invocationless legacy start can leave the
+    Session stuck `pending`, refusing proposals until it exits.
+  - The fix for both is a turn-bound station-control credential
+    ([#4882](https://github.com/kontourai/station/issues/4882)).
 - **Honest limit.** Station cannot police an external engine's use of
   ambient host credentials. "Never merge" is real only if the Station OS
   user has no GitHub write credential. Publishing is therefore a
