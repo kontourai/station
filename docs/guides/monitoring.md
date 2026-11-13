@@ -1701,10 +1701,11 @@ turn's usage. Spans written before this change can carry a Codex session total.
 The bridge writes one `execute_tool` start per open tool call id: an engine
 that re-publishes `tool.started` as a call's title, kind or input changes (ACP)
 does not add start rows. The start row records the input known at first sight.
-When that input was empty and a later `tool.started` reports one (OpenCode first
-reports `{}`), the end row carries it in `gen_ai.tool.call.arguments`. A known
-input is never replaced: Claude re-publishes a started Agent call with a task
-descriptor, which is not the tool's input. Both rows use the
+When a later `tool.started` reports a different input (OpenCode first reports
+`{}`; Grok backfills fields into a partial input), the end row carries the
+latest in `gen_ai.tool.call.arguments`. Claude is the exception: its
+`task_started` re-publishes a started Agent call with a task descriptor, which
+is not the tool's input, so a known Claude input is kept. Both rows use the
 name the call started under, so Insights counts a call and its outcome under
 one tool; a later retitle (OpenCode's description, such as "List files") is not
 a tool name. A call first reported with no name keeps its id on the start row.
