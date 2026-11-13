@@ -1,0 +1,7 @@
+{
+  "revision": "71c19d7c5aacd6ba1f1a9eeb51e18aa1a1021fe5",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Final diff since the passing reconnect journeys changes formatting only around the separate Agent-mark SVG assertion. Both 320x568 and 390x844 controlled browser journeys passed; closed-sheet screenshot and composer-trigger geometry are retained. No provider or device qualification.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}
