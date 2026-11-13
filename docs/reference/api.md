@@ -5001,7 +5001,10 @@ and requires the instance operator.
 A plain ID that more than one registered Agent catalog offers is refused with
 409 (`agent-catalog-ambiguous`), and one that cannot be matched because a
 catalog could not be read is refused with 503 (`agent-catalog-unavailable`,
-naming it), before any install path runs. A source-qualified ID from an added source
+naming it), before any install path runs. The same rule applies on every
+package acquisition path (`/plugins/install`, preview, update and dependency
+resolution) through `resolvePluginRegistryInstall`. There an unreadable catalog
+refuses only an ID that a readable catalog offers as an agent. A source-qualified ID from an added source
 installs through the plugin path, because a manifest agent entry is a package.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
 Otherwise it calls the Agent registry provider (which copies a plugin tree into
@@ -5099,8 +5102,10 @@ scan bound, or `unavailable`), `kinds` (each with `count`, the detector `via`,
 `revision` (a GitHub commit resolved when it was read, or a folder digest),
 `checkedAt` and `changedAt`, the last read that found a new revision. `kind`
 is the primary catalog kind, kept for older clients. Refresh reads the source
-again before its catalogs. Station's default local skill folders are named for their engine and
-owner (`Codex skills · user`, `Claude skills · Station`), not one shared name.
+again before its catalogs. Station's default sources are named by engine, owner and scope
+(`Codex skills · user`, `Claude skills · Station profile`,
+`anthropics/skills (default)`), never by one shared name; the location stays on
+the row.
 
 ### List Available Skills (Registry)
 
