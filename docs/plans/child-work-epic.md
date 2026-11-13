@@ -19,7 +19,44 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
-### Latest SDK and caller checkpoint (2026-11-13)
+### Latest combined recovery and native-routing checkpoint (2026-11-13)
+
+At `f231a073f608`, one HTTP/SDK result read is bounded to eight physical Home
+acquisitions from a measured baseline of 73. Metadata, delivery and final
+request checks remain; withdrawing the request after actual Home retirement
+refuses disclosure. Removing that final guard fails the intended control,
+and byte-exact restoration passes. The full mixed-model caller, 20 adjacent
+cases and server-test types pass at that revision.
+
+That head's full Flow caller exposed an earlier narrowing HTTP 503 and retained
+publication cleanup. A focused real competing-Home control reproduces a busy
+refusal at synchronous post-retirement authority validation. At
+`977291469e70`, both post-retirement checks queue through normal Home admission
+under the original captured authority. The contention control fails when the
+synchronous check is restored and passes after byte-exact restoration.
+Both complete HTTP/SDK input callers pass together, including concurrent
+narrowing replay, late terminal controls and cleanup, with their original
+workloads and product deadlines.
+
+The complete lost-reappraisal scenario passes at that head in 40.8 seconds
+under its unchanged 60-second limit. The combined nine-file persistence,
+custody, publication, finalizer, Anthropic preparation and authority-span
+selection passes all 49 cases in 238.21 seconds. Earlier timing and cleanup
+failures remain retained; this receipt does not establish which changes or
+environment differences explain every timing variation.
+
+At `bbffea0ddd2a`, actual Claude and Codex Session launches pass Session ID,
+cwd and requested model to the existing connection-launch resolver. Discovery
+and quota calls remain unscoped. Seven controlled adapter cases and server-test
+types pass; removing the handoff fails five routing/refusal/adoption controls,
+and byte-exact restoration passes. This is a routing prerequisite, not an
+authenticated execution grant or complete native integration. Gateway ownership,
+per-request accounting, protected-effect enforcement and real two-engine
+local/peer/SSH acceptance remain unfinished. Neither qualification flag is
+enabled; final documentation review, readiness and protected delivery remain
+required.
+
+### Earlier SDK and caller checkpoint (2026-11-13)
 
 Main through `ce8952d1da67` is merged at `7829440dcfd8`.
 `c8f316721af2` avoids redundant Project reloads while retaining the captured
