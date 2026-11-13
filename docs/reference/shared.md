@@ -667,6 +667,9 @@ interface ProjectConfig {
   name: string;
   slug: string;
   icon?: string;
+  iconDisabled?: boolean;
+  derivedIcon?: string; // read-only display fallback
+  repositoryDisplay?: string; // full canonical remote of primary resource
   description?: string;
   workingDirectory?: string;
   defaultProviderId?: string;
@@ -696,7 +699,8 @@ number at most 128 KiB. [`projectIconProblem`](../../packages/contracts/src/proj
 is that rule; `POST /api/projects` and `PUT /api/projects/:slug` refuse any
 other value with 400, so a path or remote URL is never stored, and
 `ProjectService` applies it to a new icon from any other caller. `''` or `null`
-in a request clears the icon, and the stored record then omits it. An update
+in an update request clears the icon, and the stored record then omits it and
+sets `iconDisabled: true`. Choosing an explicit icon enables display again. An update
 that does not name `icon` leaves the stored one alone, including an older value
 the rule now refuses; the UI does not draw such a value.
 
@@ -713,6 +717,9 @@ interface ProjectMetadata {
   slug: string;
   name: string;
   icon?: string;
+  iconDisabled?: boolean;
+  derivedIcon?: string; // read-only display fallback
+  repositoryDisplay?: string; // full canonical remote of primary resource
   repositorySource?: ProjectRepositorySource;
   description?: string;
   hasWorkingDirectory: boolean;
@@ -724,9 +731,11 @@ interface ProjectMetadata {
 }
 ```
 
-Operator Project lists may derive `icon` from bounded repository artwork without
-writing the Project record. `repositorySource`, when present, retains verified
-acquisition identity for display; it does not match Projects across Stations.
+Operator Project lists and details may return `derivedIcon` from repository
+artwork under 12 KiB without saving it. Explicit `icon` and `iconDisabled` take
+precedence. `repositoryDisplay` carries the manifest primary Git remote, with
+`repositorySource` as a fallback only when no manifest exists. These display
+fields do not match Projects across Stations.
 
 ### `ProjectRunLocations`
 
