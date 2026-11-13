@@ -748,7 +748,7 @@ describe('scripted fork delivery and canonical history qualification', () => {
          WHERE thread_id = ? AND method = 'session.started'
            AND json_extract(payload, '$.metadata.conversationStartSeedCarrier') IS NOT NULL`,
       )
-      .run(seeded.threadId);
+      .run(seeded.threadId) as { changes: number };
     expect(unlinked.changes).toBe(1);
     const sessions = f.store.conversationSessions(f.conversationId).length;
     await expect(
