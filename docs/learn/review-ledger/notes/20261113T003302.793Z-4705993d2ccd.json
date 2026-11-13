@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"The chat-api reference lists checkpoints among admitted families and points to the policy for bounded queries; still accurate with the added revision query.","inputs":["docs/reference/api.md","src-server/routes/environments/peer-chat-policy.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]}
-  ]
-}

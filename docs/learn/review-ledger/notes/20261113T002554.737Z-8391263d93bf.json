@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/design/pane-relationships.md","note":"ChatDock change only nulls the session context card's conversation id for non-host chats; pane relationships unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
-  ]
-}

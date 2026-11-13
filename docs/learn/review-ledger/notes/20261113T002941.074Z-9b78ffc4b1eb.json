@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"No responsive behavior changed; the session context card fits and trades with its chip as before.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
-  ]
-}

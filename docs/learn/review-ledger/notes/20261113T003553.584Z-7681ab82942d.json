@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/reference/skill-experiences.md","note":"SkillExperiencePanel skips the session read for chats another Station owns; remote chats already deny skills, so documented behavior for host chats is unchanged.","inputs":["docs/reference/skill-experiences.md","src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx"]}
-  ]
-}

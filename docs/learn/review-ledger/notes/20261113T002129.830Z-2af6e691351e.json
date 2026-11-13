@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"peer-chat-policy and StationConnectionsContext keep their owners and responsibilities; only the checkpoint query allowlist and the provider's memo inputs changed.","inputs":["docs/architecture/module-map.md","src-server/routes/environments/peer-chat-policy.ts","src-ui/src/connections/StationConnectionsContext.tsx"]}
-  ]
-}

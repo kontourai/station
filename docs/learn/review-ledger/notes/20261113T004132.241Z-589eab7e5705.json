@@ -1,7 +1,0 @@
-{
-  "revision": "693cba083b6e96acb266c156b495394d69352205",
-
-  "notes": [
-    {"path":"docs/design/station-connection.md","note":"Updated the relay ceiling row: checkpoints admit only the transcript's revision query, agent stats are not admitted and relay chats skip them; added that host-only conversation records are not read for chats another Station owns and that the provider re-resolves only on routed profile facts.","inputs":["docs/design/station-connection.md","src-server/routes/environments/peer-chat-policy.ts","src-ui/src/connections/StationConnectionsContext.tsx","tests/station-connection-chat.spec.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "3be73e0708879109b00e52220d56ff22edfa3b81",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Rechecked Monitoring history and Agent catalog reads against runtime-event-log.ts: malformed JSON is still skipped (now with one aggregated warning per file per query), bounds, budgets, timeBounds invalidation and truncation semantics unchanged. Checked by source reading and runtime-event-log.test.ts (focused run).","inputs":["docs/architecture/module-map.md","src-server/runtime/conversation/runtime-event-log.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Paired Station chat claims still hold: tunnel families unchanged except the checkpoint read's revision query; summary card and session context rows now skip chats another Station owns.","inputs":["docs/design/chat-composer.md","src-server/routes/environments/__tests__/peer-chat-routes.test.ts","src-server/routes/environments/peer-chat-policy.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatMessageList.tsx"]}
-  ]
-}

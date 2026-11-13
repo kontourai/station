@@ -1,7 +1,0 @@
-{
-  "revision": "3be73e0708879109b00e52220d56ff22edfa3b81",
-
-  "notes": [
-    {"path":"docs/guides/monitoring.md","note":"Added the one-start-per-open-call-id rule for OrchestrationMonitoringBridge and the serialized single-call append / torn-tail / one-warning-per-file reader behavior. Checked against orchestration-monitoring-bridge.ts and runtime-event-log.ts and their focused tests, including fault injection. Historical-read budgets and truncation text rechecked unchanged.","inputs":["docs/guides/monitoring.md","src-server/runtime/conversation/runtime-event-log.ts","src-server/services/orchestration/orchestration-monitoring-bridge.ts"]}
-  ]
-}

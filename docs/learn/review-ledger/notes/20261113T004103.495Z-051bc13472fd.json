@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"Feature preview and connection settings unchanged; the provider still retires remote leases when the paired chats preview is disabled.","inputs":["docs/user/settings.md","src-ui/src/connections/StationConnectionsContext.tsx"]}
-  ]
-}

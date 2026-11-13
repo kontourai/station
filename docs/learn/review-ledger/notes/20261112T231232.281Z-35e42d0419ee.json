@@ -1,7 +1,0 @@
-{
-  "revision": "4fe43e46f57d114ac5a19d45d107d2ad4d523b5e",
-
-  "notes": [
-    {"path":"docs/architecture/abstraction-review.md","note":"Rechecked the observation-paths section against the monitoring guide change (one tool start per open call id; serialized event-log appends and per-file malformed-line warning). Its cited issues and claims about dashboards, chat spans, instrument registration and placeholder zeroes are unaffected. Document reading only.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
-  ]
-}

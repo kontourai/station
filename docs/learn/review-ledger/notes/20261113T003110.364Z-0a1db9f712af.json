@@ -1,7 +1,0 @@
-{
-  "revision": "c553054a89716ac8de8775d54f81fd908ec0826e",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Added a test to the existing station-connection-chat product spec and a settle wait; no lane or fixture guidance changed.","inputs":["docs/guides/testing.md","tests/station-connection-chat.spec.ts"]}
-  ]
-}
