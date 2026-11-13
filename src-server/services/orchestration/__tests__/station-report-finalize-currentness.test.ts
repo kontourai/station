@@ -142,8 +142,8 @@ test('pass-through final transaction observer reaches body and durable return on
     noEffects();
     assert.ok(registryReads > 0, 'the real paired-registry observer must run');
     assert.ok(
-      registryReads <= 12,
-      `one finalizer guard opened the paired registry ${registryReads} times; maximum 12`,
+      registryReads <= 2,
+      `one finalizer guard opened the paired registry ${registryReads} times; maximum 2`,
     );
     const activeReads = registryReads;
     measuring = true;
