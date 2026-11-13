@@ -83,37 +83,37 @@
       "name": "child-chat-dark-1440",
       "width": 1440,
       "height": 900,
-      "sha256": "1482164008202213a7e845e23a85882a9cccf16c839e25f031e6eb28d76436dd"
+      "sha256": "4b65ad43130f7e47d53a2e9550a17ad609c810e1a34e19a4f5080f5bcc76befc"
     },
     {
       "name": "child-chat-dark-390",
       "width": 390,
       "height": 844,
-      "sha256": "dcdbc27eaf0e393c7dd223a7476029e9f0f7979af24034f1ce22350a552068f5"
+      "sha256": "a464b84c5e53e9db6b7be80b356e8f8bef71f4bed54d4b131cf79510af2206ed"
     },
     {
       "name": "child-chat-dark-412",
       "width": 412,
       "height": 915,
-      "sha256": "52a6ce368d3a21763a3a9d006e6f7fdf016a9fae242a34d30fe7a6442209122a"
+      "sha256": "6a257074639cd56e6adfb59ea6b3bf9c8c85f422b57476a51114ac30021f0ec1"
     },
     {
       "name": "child-chat-light-1440",
       "width": 1440,
       "height": 900,
-      "sha256": "f34e2d92aefb885f965a22c8708f6c72b72280f55b9f109044a94017d8711cf5"
+      "sha256": "4783eebbdad0cdbda22e12827ce0ad8dcbd75f90b7fa33b35fea8b3009d8bc7d"
     },
     {
       "name": "child-chat-light-390",
       "width": 390,
       "height": 844,
-      "sha256": "dd7a48fa052567f32035351bdc3d8a1a05cae618c01f554c8d2ee2b3aa2ac4b7"
+      "sha256": "aa8c911d6c8c1b9f387b9b8c1fb3ee0c1ce896cbb3ec5669f00fcc9af4743907"
     },
     {
       "name": "child-chat-light-412",
       "width": 412,
       "height": 915,
-      "sha256": "0a6a47c4440260810954358eb7425b45ba76450553e0771bcb4b789afdb72853"
+      "sha256": "7656cdba3773c0b34ec9d15faba6573c1847ec78c4b6db11d96cf54dccdf9b2b"
     },
     {
       "name": "command-palette-empty",
