@@ -1,0 +1,7 @@
+{
+  "revision": "8fb761d2ff74caf5da9062c3fb8030bbc60a92a1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared setup trigger and existing picker ownership; name begins with visible agent/model, absent approval and mode are omitted, exceptional safety posture remains visible, unknown provider marks are omitted. Browser qualification remains separately reported.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/ComposerChoiceSummary.ts","src-ui/src/components/ComposerRunControl.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}
