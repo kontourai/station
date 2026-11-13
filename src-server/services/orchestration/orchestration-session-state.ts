@@ -2,6 +2,7 @@ import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestr
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -783,6 +784,22 @@ export function buildOrchestrationSessionSummary(options: {
     ...(openRequestIds
       ? {
           openRequestIds: [...openRequestIds],
+          openRequestKinds: Object.fromEntries(
+            openRequestIds.map((id) => {
+              const event = options.events?.findLast(
+                (event) =>
+                  event.method === 'request.opened' && event.requestId === id,
+              );
+              return [
+                id,
+                event?.method === 'request.opened' &&
+                (event.requestType === 'input' ||
+                  inputRequestFromRequestEvent(event))
+                  ? 'input'
+                  : 'approval',
+              ];
+            }),
+          ),
           blockingOpenRequestIds: openRequestIds.filter(
             (id) =>
               !options.events?.some(

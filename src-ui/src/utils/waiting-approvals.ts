@@ -13,6 +13,7 @@
 export interface ApprovalRequestState {
   pendingApprovals?: readonly string[];
   answeredApprovals?: readonly string[];
+  pendingRequestKinds?: Readonly<Record<string, 'input' | 'approval'>>;
   orchestrationStatus?: string;
 }
 
@@ -35,4 +36,14 @@ export function chatWaitsOnUser(chat: ApprovalRequestState): boolean {
     chat.orchestrationStatus === 'awaiting-approval' &&
     (chat.pendingApprovals?.length ?? 0) === 0
   );
+}
+
+/** Permission takes priority when both kinds wait; unknown older-host kinds are approvals. */
+export function requestAttentionKind(
+  chat: ApprovalRequestState,
+): 'approval' | 'answer' | undefined {
+  const waiting = requestsWaitingOnUser(chat);
+  if (waiting.some((id) => chat.pendingRequestKinds?.[id] !== 'input'))
+    return 'approval';
+  return waiting.length > 0 ? 'answer' : undefined;
 }

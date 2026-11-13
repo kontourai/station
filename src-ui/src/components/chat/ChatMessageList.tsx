@@ -29,6 +29,7 @@ import { isShallowEqual } from '../../utils/isShallowEqual';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import {
   chatWaitsOnUser,
+  requestAttentionKind,
   requestsWaitingOnUser,
 } from '../../utils/waiting-approvals';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
@@ -2171,7 +2172,9 @@ function ChatMessageListComponent({
                               // are all answered is waiting on the engine, and says
                               // nothing here.
                               waitingApprovalCount > 0
-                              ? 'Waiting for approval'
+                              ? requestAttentionKind(activeSession) === 'answer'
+                                ? 'Needs answer'
+                                : 'Needs approval'
                               : 'Waiting on you'
                             : undefined
                         }

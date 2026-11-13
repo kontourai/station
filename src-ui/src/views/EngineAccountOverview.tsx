@@ -23,6 +23,7 @@ import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useCoarseNow } from '../hooks/useCoarseNow';
 import { openExternalLink } from '../platform/openExternalLink';
+import { formatDuration } from '../utils/relativeTime';
 import { describeStationFailure } from '../utils/stationFailure';
 import './EngineAccountOverview.css';
 
@@ -902,15 +903,7 @@ function historyWindowKey(
 }
 function historyDuration(seconds: number | undefined): string {
   if (seconds === undefined) return 'duration unknown';
-  const [value, unit]: [number, string] =
-    seconds >= 86400
-      ? [seconds / 86400, 'd']
-      : seconds >= 3600
-        ? [seconds / 3600, 'h']
-        : seconds >= 60
-          ? [seconds / 60, 'm']
-          : [seconds, 's'];
-  return `${percentFormatter.format(value)}${unit}`;
+  return formatDuration(seconds * 1000);
 }
 function AllowanceHistory({
   history,

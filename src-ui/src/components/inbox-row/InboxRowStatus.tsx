@@ -1,4 +1,8 @@
-import { absoluteTime, relativeTime } from '../../utils/relativeTime';
+import {
+  absoluteTime,
+  formatDuration,
+  relativeTime,
+} from '../../utils/relativeTime';
 import {
   type WorkStatus,
   type WorkStatusRung,
@@ -81,12 +85,7 @@ export function WorkStatusLineText({ status }: { status: WorkStatus }) {
 /** What a screen reader hears instead of a number that changes every
  *  second: a coarse duration that only moves when the host's clock does. */
 function coarseDuration(elapsedMs: number): string {
-  const minutes = Math.round(elapsedMs / 60_000);
-  if (minutes < 1) return 'for under a minute';
-  if (minutes < 60)
-    return `for about ${minutes} minute${minutes === 1 ? '' : 's'}`;
-  const hours = Math.round(minutes / 60);
-  return `for about ${hours} hour${hours === 1 ? '' : 's'}`;
+  return `for ${formatDuration(elapsedMs)}`;
 }
 
 /** The detail's test id names what it is the basis for, where one exists. */

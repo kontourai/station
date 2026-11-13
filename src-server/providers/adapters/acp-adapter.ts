@@ -3887,7 +3887,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       ...origin,
       requestId,
       method: 'request.opened',
-      requestType: 'approval',
+      requestType: 'input',
       title: request.title,
       payload: { ...request.payload, inputRequest: request.form },
     });

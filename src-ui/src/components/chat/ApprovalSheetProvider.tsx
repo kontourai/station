@@ -177,8 +177,10 @@ export function ApprovalSheetProvider({
             open={open}
             title={
               requests.length === 1
-                ? 'Needs approval'
-                : `Needs approval (${requests.length})`
+                ? requests[0]?.inputRequest
+                  ? 'Needs answer'
+                  : 'Needs approval'
+                : `${requests.some((request) => !request.inputRequest) ? 'Needs approval' : 'Needs answer'} (${requests.length})`
             }
             subtitle={undefined}
             returnFocusTarget={returnFocusTarget.current}

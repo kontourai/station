@@ -4906,7 +4906,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             : {}),
           requestId,
           method: 'request.opened',
-          requestType: 'approval',
+          requestType: inputRequest ? 'input' : 'approval',
           title: inputRequest
             ? inputRequest.message
             : (options.title ??

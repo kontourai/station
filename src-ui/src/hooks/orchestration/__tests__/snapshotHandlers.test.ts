@@ -1594,3 +1594,41 @@ describe('#2309: with an activity record, the record names the running child (th
     expect(chat.model).toBe('model-root');
   });
 });
+
+test('reload preserves blocking request kinds and removes resolved kind metadata', () => {
+  const seed = {
+    'thread-1': {
+      provider: 'claude',
+      conversationId: 'thread-1',
+      orchestrationSessionStarted: true,
+    },
+  };
+  const payload = {
+    sessions: [
+      {
+        provider: 'claude',
+        threadId: 'thread-1',
+        status: 'running',
+        openRequestIds: ['question', 'tool'],
+        blockingOpenRequestIds: ['question', 'tool'],
+        openRequestKinds: { question: 'input', tool: 'approval' },
+      },
+    ],
+  } as const;
+  applyOrdinarySnapshot(payload as any, seed);
+  expect(chats['thread-1'].pendingRequestKinds).toEqual({
+    question: 'input',
+    tool: 'approval',
+  });
+  applyOrdinarySnapshot({
+    sessions: [
+      {
+        ...payload.sessions[0],
+        openRequestIds: [],
+        blockingOpenRequestIds: [],
+        openRequestKinds: {},
+      },
+    ],
+  });
+  expect(chats['thread-1'].pendingRequestKinds).toEqual({});
+});

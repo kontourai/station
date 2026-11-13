@@ -511,6 +511,7 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  pendingRequestKinds?: Record<string, 'input' | 'approval'>;
   /** See ChatUIState.answeredApprovals. */
   answeredApprovals?: string[];
   /** See ChatUIState.unacknowledgedDecisions (#2880). */

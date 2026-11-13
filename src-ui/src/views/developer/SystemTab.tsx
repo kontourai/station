@@ -21,7 +21,11 @@ import { BuildProvenance } from '../settings/BuildProvenance';
 import { SystemPerformance } from './SystemPerformance';
 import { SystemServices } from './SystemServices';
 import './SystemTab.css';
-import { formatDateTime, relativeTimeAgo } from '../../utils/relativeTime';
+import {
+  formatDateTime,
+  formatDuration,
+  relativeTimeAgo,
+} from '../../utils/relativeTime';
 
 export default function SystemTab({ apiBase }: { apiBase: string }) {
   const [view, setView] = useState('overview');
@@ -73,7 +77,9 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
                     <dt>Uptime</dt>
                     <dd>
                       {bootHistory.data
-                        ? formatDuration(bootHistory.data.currentUptimeSeconds)
+                        ? formatDuration(
+                            bootHistory.data.currentUptimeSeconds * 1000,
+                          )
                         : '—'}
                     </dd>
                   </div>
@@ -225,11 +231,6 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
 
 function formatDate(value: string): string {
   return formatDateTime(value, value);
-}
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 // Shared work-item convention (src-ui/src/utils/relativeTime.ts) — one
 // relative-time story across Home lanes, inbox, switcher, and this tab.

@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { formatDuration as formatChildWorkElapsed } from './relativeTime';
 
 /**
  * The words every child-work surface (the Agents pane's row, the transcript's
@@ -111,17 +112,7 @@ export function childWorkResultText(
   return summary;
 }
 
-/** `m:ss`, or `h:mm:ss` past an hour. */
-export function formatChildWorkElapsed(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return hours > 0
-    ? `${hours}:${pad(minutes)}:${pad(seconds)}`
-    : `${minutes}:${pad(seconds)}`;
-}
+export { formatDuration as formatChildWorkElapsed } from './relativeTime';
 
 /** Only the members the engine reported; a reported 0 prints. */
 export function childWorkUsageClauses(

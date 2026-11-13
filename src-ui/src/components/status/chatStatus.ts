@@ -9,6 +9,7 @@ import { receivedDeliveryLabel } from '../chat/deliveryLabels';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
 export type ChatStatusKind =
+  | 'answer'
   | 'approval'
   | 'blocked'
   | 'reconnecting'
@@ -45,6 +46,7 @@ export interface ChatStatusInput {
   resyncPending?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
+  inputCount?: number;
   stream?: ChatStreamStatus;
   turnLive: boolean;
   /** Paused for the user with no approval behind it (needs input). */
@@ -130,6 +132,16 @@ export function deriveChatStatus(
       action: 'reveal-approval',
     };
   }
+  if ((input.inputCount ?? 0) > 0)
+    return {
+      kind: 'answer',
+      tone: 'attention',
+      glyph: 'attention',
+      label: 'Needs answer',
+      count: input.inputCount! > 1 ? input.inputCount : undefined,
+      details: [],
+      action: 'reveal-approval',
+    };
   if (stream?.kind === 'restored') {
     return {
       kind: 'restored',
@@ -140,7 +152,22 @@ export function deriveChatStatus(
       action: undefined,
     };
   }
-  if (!input.turnLive) return undefined;
+  if (!input.turnLive) {
+    const children = activity?.runningChildWork;
+    if (!children) return undefined;
+    return {
+      kind: 'working',
+      tone: 'active',
+      glyph: 'working',
+      label:
+        children.count > 0
+          ? `${children.count} background task${children.count === 1 ? '' : 's'} running`
+          : 'Waiting for background reply',
+      clockFrom: parseEpochMs(children.oldestStartedAt),
+      details: [],
+      action: undefined,
+    };
+  }
 
   const clockFrom = activity
     ? openTurnStartedAtMs(activity)

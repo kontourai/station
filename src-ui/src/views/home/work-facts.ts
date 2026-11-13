@@ -12,7 +12,7 @@ import {
   orchestrationLifecycleLabel,
   sessionAttentionKind,
 } from '../../utils/session-state';
-import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import { requestAttentionKind } from '../../utils/waiting-approvals';
 import { groupDelegatedSessionRuns } from '../sessions/run-groups';
 import type { HomeWorkItem } from './home-view-model';
 
@@ -162,7 +162,8 @@ function workActivityFrom(
 function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
   // Requests still waiting on the user, not every one open on the server: an
   // answered one waits on the engine (utils/waiting-approvals).
-  if (requestsWaitingOnUser(chat).length > 0) return 'approval';
+  const requestKind = requestAttentionKind(chat);
+  if (requestKind) return requestKind;
   if (
     chat.outboundQueuedTurns?.some(
       (turn) =>

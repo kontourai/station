@@ -59,6 +59,13 @@ export function handleRequestOpenedEvent(
     chat.pendingApprovalTurnIds ?? {};
   chatStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingRequestKinds: {
+      ...chat.pendingRequestKinds,
+      [event.requestId]:
+        event.requestType === 'input' || inputRequestFromRequestEvent(event)
+          ? 'input'
+          : 'approval',
+    },
     pendingApprovalTurnIds:
       typeof event.turnId === 'string'
         ? { ...otherTurnIds, [event.requestId]: event.turnId }
@@ -521,6 +528,11 @@ export function handleRequestResolvedEvent(
   approvalToasts.delete(event.requestId);
   chatStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingRequestKinds: Object.fromEntries(
+      Object.entries(chat.pendingRequestKinds ?? {}).filter(
+        ([id]) => id !== event.requestId,
+      ),
+    ),
     pendingApprovalTurnIds,
     answeredApprovals: (chat.answeredApprovals ?? []).filter(
       (id) => id !== event.requestId,
@@ -538,6 +550,7 @@ export function handleRequestResolvedEvent(
 type PendingApprovalState = Pick<
   ChatUIState,
   | 'pendingApprovals'
+  | 'pendingRequestKinds'
   | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
@@ -590,6 +603,11 @@ export function settlePendingApprovalsOnTurnEnd(
   }
   return {
     pendingApprovals: pending.filter((requestId) => !settled.has(requestId)),
+    pendingRequestKinds: Object.fromEntries(
+      Object.entries(chat?.pendingRequestKinds ?? {}).filter(
+        ([id]) => !settled.has(id),
+      ),
+    ),
     // A settled request is gone; its "answered here" mark goes with it.
     answeredApprovals: (chat?.answeredApprovals ?? []).filter(
       (requestId) => !settled.has(requestId),

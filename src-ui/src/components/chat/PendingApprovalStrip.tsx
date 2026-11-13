@@ -65,12 +65,15 @@ function useNewApprovalAnnouncement(
         ? inputRequestSummary(request.inputRequest.message)
         : toolRequestDisplayName(request.toolName || request.name) || 'a tool',
     );
+    const label = fresh.some((request) => !request.inputRequest)
+      ? 'Needs approval'
+      : 'Needs answer';
     setAnnouncement((previous) => ({
       id: previous.id + 1,
       text:
         fresh.length === 1
-          ? `Needs approval: ${names[0]}`
-          : `Needs approval (${fresh.length}): ${names.join(', ')}`,
+          ? `${label}: ${names[0]}`
+          : `${label} (${fresh.length}): ${names.join(', ')}`,
     }));
   }, [keys, settled]);
   return announcement;

@@ -2473,3 +2473,24 @@ Before starting work, agents can use `search_conversations` and
 [work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
 for input bounds, caller scope, incomplete search results and recorded workspace
 fields, and the [HTTP leaves](api.md#station-control-work-discovery).
+
+### Blocking request kinds and background elapsed time
+
+Session summaries include `openRequestKinds`, keyed by unresolved request ID,
+with `input` for questions, elicitation forms and plan review, and `approval`
+for tool permissions. `blockingOpenRequestIds` remains the authoritative set
+that suspends progress. The fields are additive: an older host without kind
+metadata is conservatively displayed as approval. Older persisted forms are
+classified from their validated input-request payload when the host projects
+its summary.
+
+The conversation pill and Inbox use **Needs answer** for input and **Needs
+approval** for permission. Permission takes precedence when both wait, matching
+the attention ladder. Requests answered locally stop asking for attention while
+the engine confirms delivery. With no main turn open, the pill still shows
+server-reported background work and its count; its clock starts at the oldest
+reported child start. A pending provider follow-up reads **Waiting for background
+reply**. This display does not enable Stop or Steer for a closed turn.
+
+Elapsed displays share `src-ui/src/utils/relativeTime.ts` and use `45s`,
+`2m 1s`, and `1h 4m`. Under an hour, live clocks retain seconds.

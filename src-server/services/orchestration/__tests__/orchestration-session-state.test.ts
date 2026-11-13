@@ -4574,3 +4574,35 @@ test('session summaries expose the captured route when the loaded runtime has no
     }).modelRoute,
   ).toBeUndefined();
 });
+
+test('summary carries unresolved input kinds alongside blocking ids', () => {
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: 'kind-thread',
+    status: 'running' as const,
+    createdAt: '2026-11-01T00:00:00Z',
+    updatedAt: '2026-11-01T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...loaded,
+      eventId: 'question',
+      method: 'request.opened',
+      requestId: 'q',
+      requestType: 'input',
+      title: 'Question',
+    },
+  ];
+  expect(
+    buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      loaded,
+      events,
+      openRequestIds: ['q'],
+    }),
+  ).toMatchObject({
+    blockingOpenRequestIds: ['q'],
+    openRequestKinds: { q: 'input' },
+    lifecycleState: 'needs_input',
+  });
+});
