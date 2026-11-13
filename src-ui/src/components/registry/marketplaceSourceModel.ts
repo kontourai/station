@@ -114,14 +114,21 @@ export function redactHome(location: string): string {
   return rest ? `~/${rest}` : '~';
 }
 
-/** A stable short tag for a source, used when its path cannot tell it apart. */
-function stableTag(value: string): string {
+/** A stable hash of a source's identity: 32-bit FNV-1a, 7 base-36 digits. */
+function stableHash(value: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return hash.toString(36).padStart(4, '0').slice(-4);
+  return hash.toString(36).padStart(7, '0');
+}
+
+const TAG_LENGTH = 4;
+
+/** A stable short tag for a source, used when its path cannot tell it apart. */
+function stableTag(value: string): string {
+  return stableHash(value).slice(-TAG_LENGTH);
 }
 
 /**
@@ -174,14 +181,33 @@ export function distinctLabels(
       );
     }
   }
-  // Last guard: no two labels may be equal ignoring punctuation.
-  const seen = new Map<string, string>();
-  for (const source of sources) {
+  // Last guard: no two labels may be equal ignoring punctuation, even when
+  // short tags collide. Labels are settled in id order, so the result does
+  // not depend on input order. A label that repeats one already taken gets
+  // a longer tag (up to the whole hash), then an ordinal, until it is free.
+  const taken = new Set<string>();
+  const byId = [...sources].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  );
+  for (const source of byId) {
     const label = labels.get(source.id)!;
-    const key = labelKey(label);
-    if (seen.has(key) && seen.get(key) !== source.id)
-      labels.set(source.id, `${label} #${stableTag(source.id)}`);
-    else seen.set(key, source.id);
+    const hash = stableHash(source.id);
+    const shortTag = ` #${hash.slice(-TAG_LENGTH)}`;
+    const base = label.endsWith(shortTag)
+      ? label.slice(0, -shortTag.length)
+      : label;
+    const candidates = function* () {
+      yield label;
+      for (let length = TAG_LENGTH; length <= hash.length; length += 1)
+        yield `${base} #${hash.slice(-length)}`;
+      for (let ordinal = 2; ; ordinal += 1) yield `${base} #${hash}-${ordinal}`;
+    };
+    for (const candidate of candidates()) {
+      if (taken.has(labelKey(candidate))) continue;
+      taken.add(labelKey(candidate));
+      labels.set(source.id, candidate);
+      break;
+    }
   }
   return labels;
 }

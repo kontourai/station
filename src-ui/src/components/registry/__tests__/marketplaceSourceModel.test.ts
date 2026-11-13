@@ -91,6 +91,64 @@ describe('labels for sources named alike', () => {
     for (const label of labels.values()) expect(label).not.toMatch(ACCOUNTS);
   });
 
+  // These three ids share their last four hash digits (t5c6), and their
+  // names and paths differ only by punctuation, so the short tag alone
+  // cannot tell them apart.
+  const shortTagCollision = [
+    source(
+      '159bafac-955d-4d19-a772-694feea0c565',
+      '/home/alex/.codex/skills',
+      'Local skills',
+    ),
+    source(
+      '7209dfab-62ba-41e1-ac74-2890f2bbb3c8',
+      '/home/alex/codex/skills',
+      'Local-skills',
+    ),
+    source(
+      '8c0d0983-4201-4a3b-a38c-9e52b9e5a861',
+      '/home/alex/co.dex/skills',
+      'Local_skills',
+    ),
+  ];
+  const orders = <T>(items: readonly T[]): T[][] =>
+    items.length <= 1
+      ? [[...items]]
+      : items.flatMap((item, index) =>
+          orders([...items.slice(0, index), ...items.slice(index + 1)]).map(
+            (rest) => [item, ...rest],
+          ),
+        );
+
+  test('three ids whose short tags collide still get labels unique ignoring punctuation, in every input order', () => {
+    const labels = distinctLabels(shortTagCollision);
+    expect(labels.size).toBe(3);
+    expect(unique(labels)).toBe(true);
+    for (const order of orders(shortTagCollision))
+      expect(distinctLabels(order)).toEqual(labels);
+    // A longer tag replaces the short one rather than repeating it.
+    for (const label of labels.values())
+      expect(label.match(/#/g)?.length).toBe(1);
+  });
+
+  test('when every tag length is taken, an ordinal tells sources apart, in every input order', () => {
+    // FNV-1a of both ids is the same 32-bit value (07ko21p), and three other
+    // sources are named exactly as the longer tags would label them.
+    const sources = [
+      source('source-825528', '/srv/x', 'Solo'),
+      source('source-1023002', '/srv/x', 'Solo'),
+      source('a1', '/srv/a1', 'Solo · srv/x #ko21p'),
+      source('a2', '/srv/a2', 'Solo · srv/x #7ko21p'),
+      source('a3', '/srv/a3', 'Solo · srv/x #07ko21p'),
+    ];
+    const labels = distinctLabels(sources);
+    expect(unique(labels)).toBe(true);
+    expect(labels.get('source-1023002')).toBe('Solo · srv/x #o21p');
+    expect(labels.get('source-825528')).toBe('Solo · srv/x #07ko21p-2');
+    for (const order of orders(sources))
+      expect(distinctLabels(order)).toEqual(labels);
+  });
+
   test('a path tail that tells sources apart is still preferred to a tag', () => {
     const labels = distinctLabels([
       source('a', '/srv/team/a/skills'),
