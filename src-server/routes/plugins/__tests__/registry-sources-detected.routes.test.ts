@@ -25,6 +25,7 @@ import {
   parseManagedPolicyDocument,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -61,8 +62,14 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principa
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../../../services/plugins/plugin-incarnation.js';
-import { resolvePluginRegistryInstall } from '../../../services/plugins/plugin-install-transaction.js';
+import {
+  capturePluginRegistryAcquisition,
+  isRegistryPluginRemovalTarget,
+  resolvePluginRegistryInstall,
+} from '../../../services/plugins/plugin-install-transaction.js';
 import { createLogger } from '../../../utils/logger.js';
+import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
+import { registerPluginLifecycleRoutes } from '../plugin-lifecycle-routes.js';
 import { createRegistryRoutes } from '../registry.js';
 
 const temporary = trackTempDirs();
@@ -1298,6 +1305,29 @@ describe.skipIf(process.platform === 'win32')(
       );
     });
 
+    test('detection refuses a hard-linked SKILL.md with the reason, and counts none', async () => {
+      const { add, list } = setup();
+      const outside = await outsideFolder();
+      const root = await folder({
+        'skills/ordinary/SKILL.md': skillDocument('ordinary'),
+      });
+      await mkdir(join(root, 'skills/linked'));
+      await link(
+        join(outside, 'outside/SKILL.md'),
+        join(root, 'skills/linked/SKILL.md'),
+      );
+      const source = await add({ location: root });
+      expect(source.detection).toMatchObject({ state: 'refused', kinds: [] });
+      expect(source.detection?.reason).toContain(
+        'skills/linked/SKILL.md: Source file has more than one hard link',
+      );
+      const rows = await list('skills');
+      expect(rows.some((item) => item.catalog?.sourceId === source.id)).toBe(
+        false,
+      );
+      expect(JSON.stringify(rows)).not.toContain(OUTSIDE_SECRET);
+    });
+
     test('a hard-linked SKILL.md is refused by the confined skill provider', async () => {
       const outside = await outsideFolder();
       const root = temporary('hardlink-skill-');
@@ -1390,4 +1420,202 @@ describe('every install path applies the same agent ownership rule', () => {
     expect(body.code).not.toBe('agent-catalog-unavailable');
     expect(response.status, JSON.stringify(body)).toBe(200);
   });
+});
+
+/**
+ * The ownership rule sits in the one registry resolver, so it holds for every
+ * caller that acquires: install, preview, update, dependency preview and
+ * installation, and acquisition capture. Removal only looks up.
+ */
+describe('every acquisition caller of the registry resolver checks agent ownership', () => {
+  /** The real plugin install and lifecycle routers (preview, update). */
+  function pluginRoutes(home: string, store: EventStore) {
+    const app = new Hono();
+    const deps = {
+      projectHomeDir: home,
+      pluginsDir: join(home, 'plugins'),
+      agentsDir: join(home, 'agents'),
+      logger,
+      packageMcpJournal: store.createPackageMcpAdmissionJournal(),
+      projectVisiblePlugins:
+        () =>
+        <T>(items: T) =>
+          items,
+      visibility: {
+        resolvePrincipal: () => ({
+          id: LOCAL_OPERATOR_PRINCIPAL_ID,
+          kind: 'human' as const,
+          display: 'Operator',
+        }),
+      },
+      buildPlugin: async () => {},
+    };
+    registerPluginInstallRoutes(app, deps);
+    registerPluginLifecycleRoutes(app, deps);
+    const bound = withOperatorPrincipal(app);
+    return (path: string, body: unknown = {}) =>
+      bound.request(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+  }
+
+  /** `parent` depends on `shared`; one readable catalog offers `shared` as an agent. */
+  async function catalogs(root: string, home: string) {
+    await ensureStationHomeSchema(home);
+    const harness = setup(home);
+    registerManifestRegistryProvider(
+      new JsonManifestRegistryProvider(join(root, 'registry.json'), home),
+    );
+    registerAgentRegistryProvider(
+      {
+        listAvailable: async () => [{ id: 'shared', installed: false }],
+        listInstalled: async () => [],
+        install: async () => ({ success: false, message: 'unused' }),
+        uninstall: async () => ({ success: false, message: 'unused' }),
+      },
+      'Known agent',
+    );
+    return { ...harness, call: pluginRoutes(home, harness.store) };
+  }
+
+  /** A second agent catalog that cannot be read, or that also offers `shared`. */
+  function unsettle(kind: 'unavailable' | 'ambiguous') {
+    registerAgentRegistryProvider(
+      {
+        listAvailable: async () => {
+          if (kind === 'unavailable') throw new Error('catalog host is down');
+          return [{ id: 'shared', installed: false }];
+        },
+        listInstalled: async () => [],
+        install: async () => {
+          throw new Error('must not install');
+        },
+        uninstall: async () => ({ success: false, message: 'unused' }),
+      },
+      'Second agent catalog',
+    );
+  }
+
+  async function dependentFolder() {
+    const root = await stationFolder({ plugins: ['shared', 'parent'] });
+    const path = join(root, 'packages/parent/plugin.json');
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.extensions = {
+      'io.kontourai.station': {
+        schemaVersion: '1.0',
+        dependencies: [{ name: 'shared', version: '*' }],
+      },
+    };
+    await writeFile(path, JSON.stringify(manifest));
+    return root;
+  }
+
+  const codeOf = async (response: Response) =>
+    `${response.status} ${await response.clone().text()}`;
+
+  test.each([
+    ['unavailable', 503, 'agent-catalog-unavailable'],
+    ['ambiguous', 409, 'agent-catalog-ambiguous'],
+  ] as const)(
+    'an %s owner refuses install, preview, update, dependency preview and installation, and capture',
+    async (kind, status, code) => {
+      const root = await dependentFolder();
+      const home = temporary(`acquire-${kind}-home-`);
+      const { call, request } = await catalogs(root, home);
+      // While ownership is settled: consent for parent, and shared installed
+      // so a real update has something to update.
+      const settled = await call('/preview', { registryId: 'parent' });
+      const preview = (await settled.json()) as {
+        valid: boolean;
+        permissions: { required: string[] };
+        contentDigest: string;
+        dependencies: Array<{ id: string; consent: Record<string, unknown> }>;
+      };
+      expect(settled.status, JSON.stringify(preview)).toBe(200);
+      expect(preview.dependencies.map(({ id }) => id)).toEqual(['shared']);
+      const consent = {
+        permissions: preview.permissions.required,
+        contentDigest: preview.contentDigest,
+        dependencies: ['shared'],
+        dependencyApprovals: preview.dependencies.map((dependency) => ({
+          id: dependency.id,
+          ...dependency.consent,
+        })),
+      };
+      const installed = await request('/plugins/install', 'POST', {
+        id: 'shared',
+        dataPolicy: 'preserve',
+        consent: {
+          permissions: [],
+          contentDigest: computePluginContentDigest(
+            join(root, 'packages'),
+            'shared',
+          ),
+          dependencies: [],
+        },
+      });
+      expect(installed.status, await codeOf(installed)).toBe(200);
+
+      unsettle(kind);
+      const refused = async (response: Response, caller: string) => {
+        const body = await codeOf(response);
+        expect(response.status, `${caller}: ${body}`).toBe(status);
+        expect(body, caller).toContain(code);
+      };
+      // Install routes.
+      for (const path of ['/agents/install', '/plugins/install'])
+        await refused(
+          await request(path, 'POST', {
+            id: 'shared',
+            dataPolicy: 'preserve',
+            consent: { permissions: [], contentDigest: 'x', dependencies: [] },
+          }),
+          path,
+        );
+      // Preview.
+      await refused(
+        await call('/preview', { registryId: 'shared' }),
+        'preview',
+      );
+      // Update of the installed package.
+      await refused(await call('/shared/update'), 'update');
+      // Acquisition capture.
+      await expect(
+        capturePluginRegistryAcquisition(
+          root,
+          { name: 'shared', version: '1.0.0' } as never,
+          'digest',
+          { projectHomeDir: home },
+          'shared',
+          'unused',
+        ),
+      ).rejects.toBeInstanceOf(AgentCatalogOwnershipRefusal);
+      // Removal only looks up, so it still finds the installed package.
+      expect(await isRegistryPluginRemovalTarget('shared', home)).toBe(true);
+
+      // A home without shared: parent's preview and installation must
+      // acquire shared as a dependency.
+      const fresh = temporary(`acquire-${kind}-fresh-`);
+      const next = await catalogs(root, fresh);
+      unsettle(kind);
+      await refused(
+        await next.call('/preview', { registryId: 'parent' }),
+        'dependency preview',
+      );
+      await refused(
+        await next.request('/plugins/install', 'POST', {
+          id: 'parent',
+          dataPolicy: 'preserve',
+          consent,
+        }),
+        'dependency installation',
+      );
+      for (const name of ['shared', 'parent'])
+        expect(
+          resolveInstalledPluginRoot(join(fresh, 'plugins'), name),
+        ).toBeNull();
+    },
+  );
 });

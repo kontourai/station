@@ -284,12 +284,32 @@ function assertNoSymlinkTree(
  */
 class ManagedPluginRegistryLookupRefusal extends Error {}
 
-async function resolveSinglePluginRegistryProvider(id: string): Promise<{
+/**
+ * Why a caller resolves a registry entry. `acquire` (install, preview,
+ * update, dependency preflight and installation, acquisition capture) first
+ * requires a settled agent catalog owner for a plain id, so no acquisition
+ * path can skip it. `lookup` (removal and alias migration) only reads what is
+ * already installed or recorded, and skips it.
+ */
+type RegistryResolutionPurpose = 'acquire' | 'lookup';
+
+/**
+ * The one resolver every registry catalog-item resolution goes through. The
+ * purpose is required, so a new caller has to choose.
+ */
+async function resolveSinglePluginRegistryProvider(
+  id: string,
+  purpose: RegistryResolutionPurpose,
+): Promise<{
   provider: IPluginRegistryProvider;
   source: string | null;
   claim?: unknown;
   fresh?: boolean;
 }> {
+  // A plain id may name an agent package; a source-qualified selection
+  // names its owner already.
+  if (purpose === 'acquire' && !readRegistryCatalogSelection(id))
+    await assertRegisteredAgentOwnership(id, 'package');
   const { resolveSelectedPluginCatalog } = await import(
     '../../providers/registries/registry-source-manager.js'
   );
@@ -473,7 +493,7 @@ export async function ensureCanonicalRegistryInstallAliases(
         ReturnType<typeof resolveSinglePluginRegistryProvider>
       >;
       try {
-        match = await resolveSinglePluginRegistryProvider(id);
+        match = await resolveSinglePluginRegistryProvider(id, 'lookup');
       } catch (error) {
         throw new RegistryInstallAliasFormatError(
           `Pre-ownership registry install '${id}' cannot be assigned to exactly one registry source: ${errorMessage(error)}. Remove the ambiguity, then retry to migrate config/registry-installs.json.`,
@@ -1263,7 +1283,7 @@ function createDependencyLifecycle(options: {
       if (!source && policy.configuration?.profiles.length) {
         try {
           registryKey = (
-            await resolveSinglePluginRegistryProvider(dependencyId)
+            await resolveSinglePluginRegistryProvider(dependencyId, 'acquire')
           ).provider.registryKey;
         } catch (error) {
           if (!errorMessage(error).startsWith('No plugin registry provider'))
@@ -3412,7 +3432,10 @@ async function installPluginFromSourceUnderContext(
             throw new Error(`Dependency preflight cannot install '${id}'`);
           },
           async resolveSource(id: string) {
-            const selected = await resolveSinglePluginRegistryProvider(id);
+            const selected = await resolveSinglePluginRegistryProvider(
+              id,
+              'acquire',
+            );
             if (!selected.source)
               throw new Error(
                 `Plugin dependency '${id}' has no inspectable source`,
@@ -4078,7 +4101,10 @@ async function installPluginFromSourceUnderContext(
             pluginsDir,
             () => ({
               async resolveSource(id: string) {
-                const entry = await resolveSinglePluginRegistryProvider(id);
+                const entry = await resolveSinglePluginRegistryProvider(
+                  id,
+                  'acquire',
+                );
                 if (entry.source) {
                   admitRegistryAcquisition(entry);
                   if (!entry.provider.registryKey) {
@@ -4103,7 +4129,10 @@ async function installPluginFromSourceUnderContext(
                 id: string,
                 installOptions?: { expectedInstalledPluginName?: string },
               ) {
-                const entry = await resolveSinglePluginRegistryProvider(id);
+                const entry = await resolveSinglePluginRegistryProvider(
+                  id,
+                  'acquire',
+                );
                 admitRegistryAcquisition(entry);
                 return entry.provider.install(id, installOptions);
               },
@@ -5282,9 +5311,10 @@ function admitRegistryAcquisition(match: { claim?: unknown }): void {
  */
 async function lookupPluginRegistryInstall(
   id: string,
+  purpose: RegistryResolutionPurpose,
 ): Promise<{ source: string; registryKey: string; claim?: unknown } | null> {
   try {
-    const match = await resolveSinglePluginRegistryProvider(id);
+    const match = await resolveSinglePluginRegistryProvider(id, purpose);
     if (!match.source) {
       return null;
     }
@@ -5313,12 +5343,7 @@ async function lookupPluginRegistryInstall(
 export async function resolvePluginRegistryInstall(
   id: string,
 ): Promise<{ source: string; registryKey: string } | null> {
-  // A plain id may name an agent package: its catalog owner must be known
-  // before any acquisition, on every face (install, preview, update,
-  // dependency). A source-qualified selection names its owner already.
-  if (!readRegistryCatalogSelection(id))
-    await assertRegisteredAgentOwnership(id, 'package');
-  const match = await lookupPluginRegistryInstall(id);
+  const match = await lookupPluginRegistryInstall(id, 'acquire');
   if (!match) return null;
   admitRegistryAcquisition(match);
   return { source: match.source, registryKey: match.registryKey };
@@ -5336,7 +5361,7 @@ export async function isRegistryPluginRemovalTarget(
   projectHomeDir: string,
 ): Promise<boolean> {
   try {
-    return (await lookupPluginRegistryInstall(id)) !== null;
+    return (await lookupPluginRegistryInstall(id, 'lookup')) !== null;
   } catch (error) {
     if (
       error instanceof ManagedPluginRegistryLookupRefusal ||
@@ -5393,7 +5418,7 @@ export async function capturePluginRegistryAcquisition(
   )
     throw new RegistryAcquisitionRefused();
   const registryObservation = registryId
-    ? await resolveSinglePluginRegistryProvider(registryId)
+    ? await resolveSinglePluginRegistryProvider(registryId, 'acquire')
     : undefined;
   if (registryObservation?.claim !== undefined && !policyAdmission)
     throw new RegistryAcquisitionRefused('policy-unavailable');

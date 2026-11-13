@@ -27,6 +27,7 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import { readBoundedJson } from './catalog-http.js';
 import {
+  HARD_LINK_REFUSAL,
   LocalSourceConfinementError,
   LocalSourceFileTooLargeError,
   readBoundedFile,
@@ -77,6 +78,11 @@ export interface SourceTree {
   files: readonly string[];
   /** Each listed file's size in bytes, where the listing states it. */
   sizes: ReadonlyMap<string, number>;
+  /**
+   * Listed files with more than one hard link (a local folder only). Read
+   * files are refused when read; a file counted unread is refused by this.
+   */
+  multiplyLinked?: ReadonlySet<string>;
   read(path: string, limits: RegistrySourceScanLimits): Promise<Buffer>;
 }
 
@@ -118,6 +124,7 @@ export async function readLocalSourceTree(
     throw new Error('Local source is not a folder.');
   const files: string[] = [];
   const sizes = new Map<string, number>();
+  const multiplyLinked = new Set<string>();
   const digest = createHash('sha256');
   let entries = 0;
   const walk = async (directory: string, prefix: string, depth: number) => {
@@ -138,6 +145,7 @@ export async function readLocalSourceTree(
         digest.update(`f\0${path}\0${info.size}\0${info.mtimeMs}\n`);
         files.push(path);
         sizes.set(path, info.size);
+        if (info.nlink > 1) multiplyLinked.add(path);
       } else {
         digest.update(`o\0${path}\n`);
       }
@@ -148,6 +156,7 @@ export async function readLocalSourceTree(
     revision: digest.digest('hex'),
     files,
     sizes,
+    multiplyLinked,
     async read(path, readLimits) {
       // Confined by real path at the moment of the read: the tree was listed
       // earlier, and a directory in it may have become a link since.
@@ -443,6 +452,13 @@ export const skillDocumentDetector: RegistrySourceStructureDetector = {
       const size = tree.sizes.get(path);
       if (size === undefined || size > limits.maxFileBytes)
         refuseFileBytes(path, limits);
+      // Counted without being read, so the read's hard-link refusal would
+      // come too late: the same refusal applies here, naming the file.
+      if (tree.multiplyLinked?.has(path))
+        throw new RegistrySourceScanRefusal(
+          'confinement',
+          `${path}: ${HARD_LINK_REFUSAL}`,
+        );
     }
     const roots = new Set(
       skills.map((path) => {
