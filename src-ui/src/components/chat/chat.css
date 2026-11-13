@@ -3663,7 +3663,12 @@
 .chat-input .chat-controls-row {
   flex-wrap: nowrap;
 }
-.chat-input .chat-controls-row > .composer-choices.chat-input__settings {
+div.chat-input
+  > div.chat-input__capsule
+  > div.chat-controls-row
+  > div.composer-choices.chat-input__settings:has(
+    > button.composer-run-control
+  ) {
   flex: 0 1 auto;
   min-width: 44px;
   max-width: 45%;

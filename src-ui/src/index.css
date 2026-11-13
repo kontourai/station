@@ -5235,7 +5235,7 @@ button.tool-call__line:hover {
 .chat-controls-row
   > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
     .responsive-surface-overlay
-  ):not(.chat-input__queued-retry-actions):not(.chat-input__settings) {
+  ):not(.chat-input__queued-retry-actions) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -5258,9 +5258,7 @@ button.tool-call__line:hover {
 .chat-controls-row
   > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
     .responsive-surface-overlay
-  ):not(.chat-input__queued-retry-actions):not(.chat-input__settings):hover:not(
-    :disabled
-  ) {
+  ):not(.chat-input__queued-retry-actions):hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
