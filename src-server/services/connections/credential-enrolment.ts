@@ -40,7 +40,10 @@ import {
   codexAppHomeEnv,
   museAppHomeEnv,
 } from '../../providers/app-home/app-home-profiles.js';
-import { MUSE_UNATTENDED_LAUNCHER_ENV } from '../../providers/auth/muse-auth.js';
+import {
+  MUSE_UNATTENDED_LAUNCHER_ENV,
+  withoutAmbientMuseApiKey,
+} from '../../providers/auth/muse-auth.js';
 import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 
 const execFileAsync = promisify(execFile);
@@ -117,6 +120,21 @@ export function enrolmentLauncherEnv(
   engine: EnrolmentEngine,
 ): Record<string, string> {
   return engine === 'muse' ? { ...MUSE_UNATTENDED_LAUNCHER_ENV } : {};
+}
+
+/**
+ * The environment an enrolment run (sign-in status, device login) starts
+ * from for a profile: `base` with the launcher switches and the profile's
+ * config home. Muse also loses its ambient API key, which would otherwise
+ * stand in for the profile's own sign-in (`withoutAmbientMuseApiKey`).
+ */
+export function enrolmentChildEnv(
+  engine: EnrolmentEngine,
+  base: NodeJS.ProcessEnv,
+  homeEnv: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const env = { ...base, ...enrolmentLauncherEnv(engine), ...homeEnv };
+  return engine === 'muse' ? withoutAmbientMuseApiKey(env) : env;
 }
 
 /**
@@ -295,7 +313,7 @@ export async function verifyEnrolment(
       command as string,
       args as string[],
       {
-        env: { ...deps.env, ...enrolmentLauncherEnv(engine), ...homeEnv },
+        env: enrolmentChildEnv(engine, deps.env, homeEnv),
         timeout: STATUS_TIMEOUT_MS,
         windowsHide: true,
       },

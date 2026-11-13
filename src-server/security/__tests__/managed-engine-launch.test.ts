@@ -245,6 +245,52 @@ describe('pinned launch fields reach the engine child', () => {
   });
 });
 
+// #1942: muse honours META_API_KEY whatever config home it runs under, so a
+// child under a credential profile must not inherit the user's ambient key;
+// the global (no profile) child keeps it. Drives the real builders.
+describe('a Muse child under a credential profile does not inherit META_API_KEY', () => {
+  const inherited = process.env.META_API_KEY;
+  afterEach(() => {
+    if (inherited === undefined) delete process.env.META_API_KEY;
+    else process.env.META_API_KEY = inherited;
+  });
+
+  test('muse exec and muse serve', async () => {
+    const engine = recordingEngine();
+    install({ instances: { muse: { locked: false, binaryPath: engine.binary } } });
+    process.env.META_API_KEY = 'sk-ambient';
+    const tmpDir = makeTempDir('station-muse-key-tmp-');
+    const profile = { XDG_CONFIG_HOME: makeTempDir('station-muse-profile-') };
+    const run = async (spawned: {
+      process: unknown;
+      release?: () => void;
+    }) => {
+      await exited(spawned.process as never);
+      spawned.release?.();
+      return engine.read().env;
+    };
+    const execEnv = await run(
+      createMuseProcess(['exec'], undefined, tmpDir, profile),
+    );
+    expect(execEnv.XDG_CONFIG_HOME).toBe(profile.XDG_CONFIG_HOME);
+    expect(execEnv).not.toHaveProperty('META_API_KEY');
+    const serveEnv = await run(
+      createMuseServeHost(
+        { disableSandbox: false },
+        undefined,
+        undefined,
+        tmpDir,
+        profile,
+      ),
+    );
+    expect(serveEnv.XDG_CONFIG_HOME).toBe(profile.XDG_CONFIG_HOME);
+    expect(serveEnv).not.toHaveProperty('META_API_KEY');
+    // No profile: the user's own Muse, key included.
+    const globalEnv = await run(createMuseProcess(['exec'], undefined, tmpDir));
+    expect(globalEnv.META_API_KEY).toBe('sk-ambient');
+  });
+});
+
 // #4515 fix round 2: the Codex and Muse builders hand the merged launch env
 // to `childProcessEnvironment`, which layers it over `process.env` again. On
 // Windows an inherited `HTTPS_PROXY` came back beside a locked

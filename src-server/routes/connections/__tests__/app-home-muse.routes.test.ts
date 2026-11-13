@@ -218,7 +218,9 @@ describe('Muse credential-profile sign-in (#1942)', () => {
     const previous = process.env.XDG_CONFIG_HOME;
     const previousKey = process.env.META_API_KEY;
     process.env.XDG_CONFIG_HOME = xdg;
-    delete process.env.META_API_KEY;
+    // #1942: the user's ambient key belongs to their own Muse; it must not
+    // read as the app home's sign-in.
+    process.env.META_API_KEY = 'sk-ambient';
     try {
       mkdirSync(join(xdg, 'muse'), { recursive: true });
       writeFileSync(join(xdg, 'muse', 'settings.json'), '{"mcpServers":{}}');
@@ -250,7 +252,8 @@ describe('Muse credential-profile sign-in (#1942)', () => {
     } finally {
       if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = previous;
-      if (previousKey !== undefined) process.env.META_API_KEY = previousKey;
+      if (previousKey === undefined) delete process.env.META_API_KEY;
+      else process.env.META_API_KEY = previousKey;
       await rm(xdg, { recursive: true, force: true });
     }
   });

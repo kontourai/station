@@ -2229,6 +2229,30 @@ describe('MuseAdapter credential detection', () => {
     ).toBe('missing');
   });
 
+  it('#1942: an ambient META_API_KEY does not sign in a credential profile, but still signs in the global connection', async () => {
+    const profile = credentialAdapter({
+      env: { META_API_KEY: 'sk-ambient' },
+      credentialFileExists: noFile,
+      peekAppHomeEnv: async () => ({
+        profileRef: 'work',
+        env: { XDG_CONFIG_HOME: '/profile' },
+      }),
+    });
+    expect(
+      (await profile.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('missing');
+    const global = credentialAdapter({
+      env: { META_API_KEY: 'sk-ambient' },
+      credentialFileExists: noFile,
+      peekAppHomeEnv: async () => ({ profileRef: null }),
+    });
+    expect(
+      (await global.getPrerequisites()).find((p) => p.id === 'muse-auth')
+        ?.status,
+    ).toBe('installed');
+  });
+
   it('honors XDG_CONFIG_HOME when locating the credential store', () => {
     expect(museCredentialPath({ XDG_CONFIG_HOME: '/xdg' })).toBe(
       '/xdg/muse/auth.json',

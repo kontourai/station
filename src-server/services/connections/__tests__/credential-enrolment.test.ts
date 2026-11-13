@@ -294,6 +294,18 @@ describe('muse enrolment', () => {
     });
   });
 
+  test("an ambient META_API_KEY never reaches the profile's sign-in check", async () => {
+    const d = deps({ stdout: MUSE_SIGNED_IN_STDOUT });
+    d.env = { ...d.env, META_API_KEY: 'sk-ambient' };
+    await verifyEnrolment('muse', '/station/profiles/work', d);
+    const call = (d.execFile as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(call[2].env).toMatchObject({
+      XDG_CONFIG_HOME: '/station/profiles/work',
+    });
+    expect(call[2].env).not.toHaveProperty('META_API_KEY');
+  });
+
   test('anything else is unknown, never a verdict', async () => {
     for (const stdout of ['', 'muse: network unreachable', '{"allowance":1}']) {
       const result = await verifyEnrolment('muse', '/p', deps({ stdout }));

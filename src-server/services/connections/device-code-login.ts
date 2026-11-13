@@ -33,8 +33,8 @@ import { augmentedSpawnEnv } from '../../providers/auth/cli-auth.js';
 import {
   type EnrolmentAuthState,
   type EnrolmentEngine,
+  enrolmentChildEnv,
   enrolmentHomeEnv,
-  enrolmentLauncherEnv,
   enrolmentLoginArgs,
   verifyEnrolment,
 } from './credential-enrolment.js';
@@ -458,11 +458,11 @@ export class DeviceCodeLoginManager {
         // The engine's own config-home override is the ONLY thing Station
         // adds. `credential-enrolment.ts`'s invariant, at a spawn instead of
         // a printed command.
-        env: {
-          ...baseEnv,
-          ...enrolmentLauncherEnv(engine),
-          ...enrolmentHomeEnv(engine, profileDir),
-        },
+        env: enrolmentChildEnv(
+          engine,
+          baseEnv,
+          enrolmentHomeEnv(engine, profileDir),
+        ),
         windowsHide: true,
       });
     } catch {

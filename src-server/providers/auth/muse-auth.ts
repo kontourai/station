@@ -33,6 +33,24 @@ export function museCredentialPath(env: NodeJS.ProcessEnv): string {
   return join(defaultMuseGlobalConfigDir(env), 'auth.json');
 }
 
+/** Muse's ambient API-key variable: a credential that ignores config homes. */
+export const MUSE_API_KEY_ENV = 'META_API_KEY';
+
+/**
+ * `env` for a muse run under a credential profile or app home: without the
+ * ambient {@link MUSE_API_KEY_ENV}. That key belongs to the user's own
+ * (global) Muse, and muse honours it whatever config home it is pointed at,
+ * so inherited it would make every profile read as signed in and bill the
+ * key's account instead of the profile's.
+ */
+export function withoutAmbientMuseApiKey<T extends NodeJS.ProcessEnv>(
+  env: T,
+): T {
+  const next = { ...env };
+  delete next[MUSE_API_KEY_ENV];
+  return next;
+}
+
 /**
  * `authenticated` means "a credential is available to muse", derived from an
  * env key or the presence of the credential file — never from the CLI merely
@@ -42,7 +60,7 @@ export function museCredentialState(
   env: NodeJS.ProcessEnv,
   fileExists: (path: string) => boolean,
 ): CliAuthState {
-  if (env.META_API_KEY?.trim()) return 'authenticated';
+  if (env[MUSE_API_KEY_ENV]?.trim()) return 'authenticated';
   return fileExists(museCredentialPath(env))
     ? 'authenticated'
     : 'unauthenticated';

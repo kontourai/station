@@ -53,6 +53,7 @@ import {
   defaultMuseConfigRoot,
   defaultMuseGlobalConfigDir,
   museCredentialState,
+  withoutAmbientMuseApiKey,
 } from '../../providers/auth/muse-auth.js';
 import {
   managedEngineRefusalBody,
@@ -185,7 +186,10 @@ const APP_HOME_ENGINES: Record<string, AppHomeEngine> = {
     defaultHome: () => defaultMuseConfigRoot(),
     importSnapshot: importMuseGlobalSnapshot,
     detectAuthState: async (dir) =>
-      museCredentialState({ ...process.env, XDG_CONFIG_HOME: dir }, existsSync),
+      museCredentialState(
+        withoutAmbientMuseApiKey({ ...process.env, XDG_CONFIG_HOME: dir }),
+        existsSync,
+      ),
     keychainAuthPossible: false,
   },
 };

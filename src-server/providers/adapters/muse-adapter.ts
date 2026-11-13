@@ -105,6 +105,7 @@ import {
   MUSE_UNATTENDED_LAUNCHER_ENV,
   museCredentialPath,
   museCredentialState,
+  withoutAmbientMuseApiKey,
 } from '../auth/muse-auth.js';
 import {
   providerFailure,
@@ -869,6 +870,25 @@ export function readMuseReasoningEffort(
   );
 }
 
+/**
+ * A muse child's final environment. #1942: under a credential profile (an
+ * `XDG_CONFIG_HOME` override), the ambient `META_API_KEY` is removed, so the
+ * run signs in as the profile and never bills the key's account.
+ */
+export function museChildEnv(
+  launchEnv: Record<string, string | undefined>,
+  tmpDir: string | undefined,
+  profileEnv: Record<string, string> | undefined,
+): NodeJS.ProcessEnv {
+  const env = childProcessEnvironment({
+    ...launchEnv,
+    TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
+  });
+  return profileEnv?.XDG_CONFIG_HOME !== undefined
+    ? withoutAmbientMuseApiKey(env)
+    : env;
+}
+
 /** Exported for the #4520 spawn-level test; the adapter is its caller. */
 export function createMuseProcess(
   args: string[],
@@ -888,10 +908,7 @@ export function createMuseProcess(
     cwd,
     // #2663: the PATH `muse` was resolved from, so a launcher script found
     // off the service PATH can find its interpreter (see spawnCodexProcess).
-    env: childProcessEnvironment({
-      ...launch.env,
-      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
-    }),
+    env: museChildEnv(launch.env, tmpDir, envOverrides),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   return { process: proc as unknown as MuseProcessLike, release };
@@ -927,10 +944,7 @@ export function createMuseServeHost(
   if (dataHome) mkdirSync(dataHome, { recursive: true });
   const { proc, release } = spawnOwnedChild(launch.command, [...launch.args], {
     cwd,
-    env: childProcessEnvironment({
-      ...launch.env,
-      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
-    }),
+    env: museChildEnv(launch.env, tmpDir, envOverrides),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   return { process: proc as unknown as MuseServeProcessLike, release };
@@ -1510,11 +1524,16 @@ export class MuseAdapter implements ProviderAdapterShape {
       // #1942: the store a fresh session would read: the connection's active
       // credential profile or app home when one applies (peeked, creating
       // nothing), else the user's own.
-      detectAuthState: async () =>
-        museCredentialState(
-          { ...this.env, ...(await this.peekReadinessAppHomeEnv()) },
+      detectAuthState: async () => {
+        const profileEnv = await this.peekReadinessAppHomeEnv();
+        const env = { ...this.env, ...profileEnv };
+        return museCredentialState(
+          profileEnv.XDG_CONFIG_HOME !== undefined
+            ? withoutAmbientMuseApiKey(env)
+            : env,
           this.credentialFileExists,
-        ),
+        );
+      },
       signal: options?.signal,
     });
   }
