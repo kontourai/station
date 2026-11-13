@@ -85,7 +85,12 @@ describe('project icon discovery', () => {
     expect((await discoverProjectIconCandidates(root))[0].relativePath).toBe(
       'apps/web/public/favicon.png',
     );
-    const project: { workingDirectory: string; icon?: string } = {
+    const project: {
+      workingDirectory: string;
+      icon?: string;
+      iconDisabled?: boolean;
+      derivedIcon?: string;
+    } = {
       workingDirectory: root,
     };
     expect(await withDiscoveredProjectIcon(project)).toBe(project);
@@ -116,7 +121,9 @@ describe('project icon discovery', () => {
     mkdirSync(join(root, '.git'));
     writeFileSync(join(root, 'favicon.png'), PNG);
     writeFileSync(join(root, 'logo.png'), PNG);
-    const project = { workingDirectory: root };
+    const project: { workingDirectory: string; derivedIcon?: string } = {
+      workingDirectory: root,
+    };
     reads.length = 0;
     const first = await withDiscoveredProjectIcon(project);
     expect(first.derivedIcon).toBeTruthy();
@@ -136,7 +143,9 @@ describe('project icon discovery', () => {
     const large = Buffer.alloc(13 * 1024);
     PNG.copy(large);
     writeFileSync(join(root, 'favicon.png'), large);
-    const project = { workingDirectory: root };
+    const project: { workingDirectory: string; derivedIcon?: string } = {
+      workingDirectory: root,
+    };
     expect(await withDiscoveredProjectIcon(project)).not.toHaveProperty(
       'derivedIcon',
     );
