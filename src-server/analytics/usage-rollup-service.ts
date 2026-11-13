@@ -12,6 +12,7 @@ import type {
   UsageCoverage,
   UsageReceipt,
   UsageRollup,
+  UsageRollupGroupBy,
   UsageTaskOutcome,
 } from '@kontourai/station-contracts/usage-rollup';
 import {
@@ -26,9 +27,13 @@ const USAGE_ROLLUP_SOURCE_DEADLINE_MS = 3_000;
 export interface UsageRollupRequest {
   provider?: string;
   credentialProfileRef?: string | null;
+  /** Only receipts whose session recorded this engine connection. */
+  connectionId?: string;
+  /** Only receipts whose accepted launch plan named this model connection. */
+  modelConnectionId?: string;
   from: string;
   to: string;
-  groupBy?: 'provider' | 'model' | 'station' | 'conversation' | 'task' | 'day';
+  groupBy?: UsageRollupGroupBy;
   cursor?: string;
   pageSize?: number;
   /** Aggregate-only reads retain totals while an exhausted drilldown is skipped. */
@@ -133,7 +138,15 @@ export class UsageRollupService {
           );
     const matches = (receipt: UsageReceipt) =>
       (!request.provider || receipt.provider === request.provider) &&
-      (accountKey === undefined || receipt.accountKey === accountKey);
+      (accountKey === undefined || receipt.accountKey === accountKey) &&
+      (request.connectionId === undefined ||
+        receipt.connectionId === request.connectionId) &&
+      (request.modelConnectionId === undefined ||
+        receipt.modelConnectionId === request.modelConnectionId);
+    const connectionFiltered =
+      request.connectionId !== undefined ||
+      request.modelConnectionId !== undefined;
+    const narrowed = Boolean(request.provider) || connectionFiltered;
     const pageSize = Math.min(
       Math.max(request.pageSize ?? 50, 1),
       USAGE_ROLLUP_MAX_PAGE_SIZE,
@@ -197,7 +210,13 @@ export class UsageRollupService {
         coverage: [
           ...results.map((result) =>
             request.credentialProfileRef === undefined
-              ? result.coverage
+              ? narrowed
+                ? narrowedCoverage(
+                    result.coverage,
+                    (result.aggregateReceipts ?? result.receipts).some(matches),
+                    connectionFiltered,
+                  )
+                : result.coverage
               : {
                   ...result.coverage,
                   state:
@@ -299,6 +318,39 @@ export class UsageRollupService {
       ...(hasRemaining ? { nextCursor: encodeRollupCursor(next) } : {}),
     };
   }
+}
+
+/**
+ * Source coverage describes the whole Station, so a filtered read restates
+ * it for the filter. With nothing matching, Station observed nothing it can
+ * attribute here: that is unknown, not a complete zero. Capture counts are
+ * per engine, never per connection, so a connection read is at most partial.
+ * Offline, stale and unknown sources keep their own state.
+ */
+function narrowedCoverage(
+  coverage: UsageCoverage,
+  anyMatch: boolean,
+  connectionFiltered: boolean,
+): UsageCoverage {
+  if (coverage.state !== 'complete' && coverage.state !== 'partial')
+    return coverage;
+  if (!anyMatch)
+    return {
+      ...coverage,
+      state: 'unknown',
+      reason: 'no usage observations match this filter in this window',
+    };
+  if (!connectionFiltered) return coverage;
+  return {
+    ...coverage,
+    state: 'partial',
+    reason: [
+      coverage.reason,
+      'Connection totals exclude usage without recorded connection attribution. Capture counts describe the engine.',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  };
 }
 
 /**
@@ -649,8 +701,16 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
   ])
     if (receipt[key] !== undefined && typeof receipt[key] !== 'string')
       throw new Error('invalid usage receipt field');
-  return {
+  const {
+    connectionId: _connectionId,
+    modelConnectionId: _modelConnectionId,
+    ...peerReceipt
+  } = {
     ...(receipt as unknown as Omit<UsageReceipt, 'pricing'>),
+  };
+  return {
+    // A peer's connection ids name its own configuration, never this one's.
+    ...peerReceipt,
     // A peer's opaque retail extension is not locally reviewed tariff evidence.
     retailEquivalent: undefined,
     pricing: parsedPricing,

@@ -1,0 +1,11 @@
+{
+  "revision": "49b96d4b1da88a3b86e2150b0ca15cf2cffc6c52",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Trimmed the new landing paragraph to fit the 6144-byte instruction budget that verification:policy:gate enforces (now 6128 bytes). Meaning unchanged: arm with no method flag, confirm once, never merge by hand or arm another lane's PR, done only when the PR reads MERGED, watch with host PR tooling without busy-polling, report exactly what blocks it. The guide pointer drops 'queue confirmation' because the same sentence names the confirmation query.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Imported AGENTS.md changed only by trimming its landing paragraph to the byte budget, with the same rule. Import and governance block unchanged; no prose change.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Cited AGENTS.md landing paragraph trimmed to its byte budget, same rule (done only when MERGED, no busy-polling). Push & Monitor still agrees with it; no prose change.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

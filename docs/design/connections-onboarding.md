@@ -16,8 +16,10 @@
 > contract for follow-up slices; revise it — not just the code — when direction changes.
 >
 > The current Connections rail has **Models, Engines, Tools, Knowledge and Computers**,
-> owned by `connection-sections.ts`. `/connections` resolves to the first section needing
-> attention, or Models. The earlier unified Providers overview and its delivery tables
+> owned by `connection-sections.ts`. `/connections` shows a loading state until the section
+> lists load, or for up to 1.5 seconds, then resolves to the first section needing
+> attention, or Models. Resting states (such as a saved, untested model connection or an
+> engine the managed policy refuses) do not mark a section. The earlier unified Providers overview and its delivery tables
 > below are historical interface direction. Model setup uses the Models detail pane;
 > engine setup has its own Add engine flow. Legacy URLs redirect to the corresponding
 > section. Provider presets and explicit configuration remain shared design rules.

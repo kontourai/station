@@ -132,8 +132,8 @@ importers:
         specifier: 0.2.0
         version: 0.2.0(playwright@1.64.1)
       '@kontourai/conduit':
-        specifier: 0.7.1
-        version: 0.7.1
+        specifier: 0.8.0
+        version: 0.8.0
       '@kontourai/console-core':
         specifier: ^0.4.0
         version: 0.4.0
@@ -144,8 +144,8 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@kontourai/corpus-store':
-        specifier: 0.1.0-next.4
-        version: 0.1.0-next.4
+        specifier: 0.1.0-next.5
+        version: 0.1.0-next.5
       '@kontourai/dispatch':
         specifier: 0.8.1
         version: 0.8.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.1(playwright@1.64.1))
@@ -153,8 +153,8 @@ importers:
         specifier: 0.4.1
         version: 0.4.1(@kontourai/flow@5.4.0(supports-color@7.2.0))
       '@kontourai/ferry':
-        specifier: 0.7.0
-        version: 0.7.0
+        specifier: 0.8.0
+        version: 0.8.0
       '@kontourai/fieldwork':
         specifier: 0.15.0
         version: 0.15.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(ws@8.22.1)(zod@4.6.7))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)
@@ -168,8 +168,8 @@ importers:
         specifier: ^0.1.0
         version: link:packages/monument
       '@kontourai/relay':
-        specifier: 0.7.1
-        version: 0.7.1(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))
+        specifier: 0.8.0
+        version: 0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))
       '@kontourai/station-basis-pane':
         specifier: ^0.3.0
         version: link:packages/basis-pane
@@ -192,20 +192,20 @@ importers:
         specifier: 6.3.0
         version: 6.3.0(supports-color@7.2.0)
       '@kontourai/survey':
-        specifier: 8.4.0
-        version: 8.4.0(supports-color@7.2.0)(typescript@7.0.2)
+        specifier: 9.0.0
+        version: 9.0.0(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/telltale':
         specifier: 0.1.0
         version: 0.1.0
       '@kontourai/thread':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.0
+        version: 0.7.0
       '@kontourai/ui':
         specifier: ^1.19.0
         version: 1.20.1(react@19.3.1)
       '@kontourai/veritas':
         specifier: 1.12.2
-        version: 1.12.2(@kontourai/survey@8.4.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)
+        version: 1.12.2(@kontourai/survey@9.0.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0(patch_hash=2501897259233d420cf716d5490c38a87df5ff9f02de1d06587e74fc08bb0835)
@@ -829,8 +829,8 @@ importers:
         specifier: ^6.2.1
         version: 6.2.1(supports-color@7.2.0)
       '@kontourai/thread':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.0
+        version: 0.7.0
 
   packages/monument: {}
 
@@ -855,8 +855,8 @@ importers:
         specifier: ^6.2.1
         version: 6.2.1(supports-color@7.2.0)
       '@kontourai/thread':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.0
+        version: 0.7.0
       '@kontourai/ui':
         specifier: ^1.19.0
         version: 1.20.1(react@19.3.1)
@@ -889,8 +889,8 @@ importers:
         specifier: ^0.13.0
         version: link:../contracts
       '@kontourai/thread':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.0
+        version: 0.7.0
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0(patch_hash=2501897259233d420cf716d5490c38a87df5ff9f02de1d06587e74fc08bb0835)
@@ -2373,6 +2373,10 @@ packages:
     resolution: {integrity: sha512-EiAd0KYVnysVy6I1lvW6vHoGTocLmG81HotMDsqJTIcqhMBImFAyojMs1qPqXrBnH/HpjrLI+yBlUSOzKtJwjw==}
     engines: {node: '>=22'}
 
+  '@kontourai/conduit@0.8.0':
+    resolution: {integrity: sha512-cn9AJ+oBvbYUqTEI2blRqLws9po22d2EKuPUkaxFA23Q1CgxQYTwblx0+K/1WOfBv5cgNspQiF8YvkLxfwf3CQ==}
+    engines: {node: '>=22'}
+
   '@kontourai/console-core@0.4.0':
     resolution: {integrity: sha512-Yv0siUdDjWuQXrHZwO6+nurnMRp8mfrmYDRyNMcxP+ewFHzETDBORFf9YZ5MHaTp4qGIHVbLLmH4I6CSN8IrZQ==}
 
@@ -2395,8 +2399,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/corpus-store@0.1.0-next.4':
-    resolution: {integrity: sha512-gQ8GBqS+G4fm6yKZjkPBzTfdKUSH2lLXixRhrWNPstdlrPMLx2U71Jnf5YzsRBGTrPqx7uyb4vJXWutBs4OlfQ==}
+  '@kontourai/corpus-store@0.1.0-next.5':
+    resolution: {integrity: sha512-d9S5M0CG8+xeg8zi6GGvu77ImeB8ygfQmaU0aFZDQdZXFxfa0wLgvLiezmXClnGNU0KOBocYYVO6B1jtTbxlnA==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2479,8 +2483,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/ferry@0.7.0':
-    resolution: {integrity: sha512-5pceGMilfl+goyHWTh2ERVXR763C6fTk+CZPobMqK6TfB8gXOHHRUVkUCPT4eGVwc9VHTa5SaaFFDDTo5WIjvg==}
+  '@kontourai/ferry@0.8.0':
+    resolution: {integrity: sha512-2Ti4TNbf1V/q3jH2+dX8qgEb/kUCSMygPSZO6/qOZDAG3BXCTut4oqjhAREnJt81qOwUVaw7GYODLwnI/TT9Sw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2547,6 +2551,16 @@ packages:
       '@anthropic-ai/sdk':
         optional: true
 
+  '@kontourai/relay@0.8.0':
+    resolution: {integrity: sha512-jyrRsiXVj1r4onM9O1AJBEAuvLzsVbwfpa9oHiS8w1vceecbd+t0GB5JcaNsd8zktvx3wwDhrJ5pT8Tebjd7gg==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@ai-sdk/provider': '>=3.0.0'
+      '@anthropic-ai/sdk': '>=0.40.0'
+    peerDependenciesMeta:
+      '@anthropic-ai/sdk':
+        optional: true
+
   '@kontourai/surface@1.3.1':
     resolution: {integrity: sha512-IE4iLt2/i/J40fXk4mU/m9YRNazwzWSlbRA9i8zv62rFSpOUNjTLDVFUGL7Po7AVYd6+WDStUFtDynToEj4idQ==}
     engines: {node: '>=22'}
@@ -2597,6 +2611,16 @@ packages:
       typescript:
         optional: true
 
+  '@kontourai/survey@9.0.0':
+    resolution: {integrity: sha512-Ao3wgabAhxfEcdjE+/FcmN+Y2w7OIA8+EZOh5s188ajVaFDwEExLzNhhEOtS9lIuJzY2+k5efTk0AHBh5sSyNQ==}
+    engines: {node: '>=22'}
+    hasBin: true
+    peerDependencies:
+      typescript: '>=5.0.0'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   '@kontourai/telemetry@0.1.0':
     resolution: {integrity: sha512-MEYwGWaOX3z6WcIcP4iL2bozAfy0Ywv6Cg124oGBgOAqIluYmPXNC0qVPa1CDNBfkzb8/z5SlbG52jqWdkK3zQ==}
 
@@ -2608,8 +2632,8 @@ packages:
     resolution: {integrity: sha512-MhHKngKoKAWIEkvANx4YMrdYgBH5pRAGU3ocMiKRW1qcw6eluUyDB659vEgxFFcYy+FUXUrWb2EGt/7cI0WgIg==}
     engines: {node: '>=22'}
 
-  '@kontourai/thread@0.6.0':
-    resolution: {integrity: sha512-IgVJtZT1ovUMxRqf2BjUP4G9lVeDYsKU8P6BjJbXsMbpevnkokq8Wgib+SuulJKLdOwmZV8RmvfwMscI7Y11Hw==}
+  '@kontourai/thread@0.7.0':
+    resolution: {integrity: sha512-AZ9yrgZVxxEHMYn/G4HAGgk/05I3riApWlipJDcEE1RElnCJ3TQ8z7SMJZpFYHEeEEWyVJ+yHz7OpIzrvv5MLg==}
     engines: {node: '>=22'}
 
   '@kontourai/traverse@5.0.1':
@@ -10656,6 +10680,8 @@ snapshots:
 
   '@kontourai/conduit@0.7.1': {}
 
+  '@kontourai/conduit@0.8.0': {}
+
   '@kontourai/console-core@0.4.0': {}
 
   '@kontourai/console-server@1.1.0(@kontourai/flow-agents@9.14.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7))(supports-color@7.2.0)':
@@ -10686,7 +10712,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@kontourai/corpus-store@0.1.0-next.4':
+  '@kontourai/corpus-store@0.1.0-next.5':
     dependencies:
       js-yaml: 5.4.2
 
@@ -10757,9 +10783,9 @@ snapshots:
       commander: 15.0.0
       zod: 4.6.7
 
-  '@kontourai/ferry@0.7.0':
+  '@kontourai/ferry@0.8.0':
     dependencies:
-      '@kontourai/thread': 0.6.0
+      '@kontourai/thread': 0.7.0
       commander: 15.0.0
       zod: 4.6.7
 
@@ -10866,6 +10892,12 @@ snapshots:
     optionalDependencies:
       '@anthropic-ai/sdk': 1.8.0(zod@4.6.7)
 
+  '@kontourai/relay@0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))':
+    dependencies:
+      '@ai-sdk/provider': 3.0.19
+    optionalDependencies:
+      '@anthropic-ai/sdk': 0.122.0(zod@4.6.7)
+
   '@kontourai/surface@1.3.1(supports-color@7.2.0)':
     optionalDependencies:
       '@sigstore/sign': 4.1.1(supports-color@7.2.0)
@@ -10939,6 +10971,17 @@ snapshots:
       - kerberos
       - supports-color
 
+  '@kontourai/survey@9.0.0(supports-color@7.2.0)(typescript@7.0.2)':
+    dependencies:
+      '@kontourai/surface': 6.3.0(supports-color@7.2.0)
+      '@modelcontextprotocol/server': 2.4.0
+      zod: 4.6.7
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - kerberos
+      - supports-color
+
   '@kontourai/telemetry@0.1.0': {}
 
   '@kontourai/telltale@0.1.0': {}
@@ -10947,7 +10990,7 @@ snapshots:
     dependencies:
       zod: 4.6.7
 
-  '@kontourai/thread@0.6.0':
+  '@kontourai/thread@0.7.0':
     dependencies:
       zod: 4.6.7
 
@@ -10969,7 +11012,7 @@ snapshots:
     dependencies:
       react: 19.3.1
 
-  '@kontourai/veritas@1.12.2(@kontourai/survey@8.4.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)':
+  '@kontourai/veritas@1.12.2(@kontourai/survey@9.0.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)':
     dependencies:
       '@kontourai/plumb': 0.2.0
       '@kontourai/surface': 6.2.1(supports-color@7.2.0)
@@ -10980,7 +11023,7 @@ snapshots:
       hachure: 0.18.0
       picomatch: 4.0.7
     optionalDependencies:
-      '@kontourai/survey': 8.4.0(supports-color@7.2.0)(typescript@7.0.2)
+      '@kontourai/survey': 9.0.0(supports-color@7.2.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - kerberos

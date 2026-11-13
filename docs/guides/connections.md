@@ -37,8 +37,10 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 
 ## Read the connection list
 
-Each row shows one readiness state and a next action. Model connections distinguish
-saved settings from a check that actually reached the provider:
+Each Model and Engine row shows one readiness badge beside its name; the line
+under the name holds facts, not the state. An engine whose first add failed is
+listed as **Not connected yet** instead. Model connections distinguish saved
+settings from a check that actually reached the provider:
 
 - **Ready** — the current readiness evidence permits selection; it does not prove every model or tool capability.
 - **Sign in required**, **API key required**, or **Credentials required** — complete the named authentication step.
@@ -48,9 +50,23 @@ saved settings from a check that actually reached the provider:
 - **Unreachable — retrying** or **Cannot reach provider** — the latest reachability check failed; the former retains a recent pass within the retry grace period.
 - **Found, not connected** — Station observed a service-specific setup signal; connect it to Station.
 - **Setup required** — finish the remaining setup.
-- **Limited** — usable with reduced capabilities; review the details.
+- **Limited** — reduced capabilities; review the details. An engine in this state does not run agents until it reports ready again.
 - **Disabled** — configured but turned off.
+- **Not allowed** — the managed policy does not allow this engine. It is its own state, not **Disabled**, because there is nothing to turn on.
 - **Unreachable** — configured, but Station cannot reach it.
+
+The engine page's Status, its **Ready** step and its readiness notice show the
+same state as its row. A section tab carries an attention mark when an engine
+cannot run agents for a reason you can fix, a model connection
+is turned off, is missing a required key or sign-in, was refused by its last
+check, or cannot be reached after retrying; a tool server's last check
+failed; or Knowledge has no vector store. Engines the managed policy refuses,
+saved-but-untested model connections, Knowledge without an embedding model, and
+computers that are not connected carry no mark. Opening `/connections` shows a loading state until these lists load, or
+for up to 1.5 seconds, then opens the first section that needs
+attention, or Models when none does. The rows, the engine page, the marks and
+that redirect share one [readiness
+derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
@@ -179,7 +195,10 @@ events. Source-home continuations and older events without this observation
 remain unattributed. A process restart does not inherit a previous process's
 account observation. Account filtering excludes unattributed receipts; it never
 assigns old costs to today's active account. Capture counts still describe the
-engine, and account results disclose this attribution gap.
+engine, and account results disclose this attribution gap. Engine activity is
+selected inside Station's bounded observation window, so a busy engine does not
+crowd a quiet one out, and an engine with no usage in the window reports unknown
+capture rather than another engine's coverage.
 
 Reported costs and estimates remain separate. **Tokens**, **Reported cost** and
 **Estimated cost** select the daily chart measure. A cost measure with no values
@@ -889,8 +908,9 @@ opens on that entry's first step.
    New chat uses the dock's current Project, or no Project when none is open.
    Choose **Done** to finish without opening a chat.
 
-A configured engine that reads **Setup required** offers **Retry check** on its
-engine page; a Ready engine offers **Check connection** instead.
+A configured command-backed engine that is not ready offers **Retry check** on its
+engine page, except one the managed policy refuses (**Not allowed**), which has
+no repair; a Ready engine offers **Check connection** instead.
 An engine whose first check never succeeded is saved but has no Agent yet; it
 is listed on the Engines page and at the top of Add engine as **Not connected
 yet**, and its page offers **Retry check**, **Remove**, and, for a custom
