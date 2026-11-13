@@ -1128,8 +1128,9 @@ A saved `kiro` connection keeps its own arguments.
    Installing needs permission to operate Station on a paired device.
    Until you sign in, a chat on this engine is held with **Sign in to Kiro
    (KAS, no CLI) from its sign-in panel in Connections**, and the engines
-   list shows it as **Setup required** with that step even though the
-   engine answers its handshake. Station's readiness reads the installed
+   list shows it as **Sign in required** even though the engine answers its
+   handshake. If Station cannot read that readiness, the row says it could
+   not verify the engine; other engines still list. Station's readiness reads the installed
    runtime, not `PATH`. Removing the connection during a sign-in cancels it,
    and nothing it was finishing is kept.
 2. **Sign in.** Choose **AWS Builder ID**, **IAM Identity Center** with
