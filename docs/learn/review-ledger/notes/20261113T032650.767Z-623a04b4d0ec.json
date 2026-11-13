@@ -1,0 +1,7 @@
+{
+  "revision": "be19a559b9bac300d118ee6679b8de2f15a71d05",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed Updates and changelogs against UpdatesControl, per-server presentation memory, installed CoreUpdateCheck notes, and connection notice publisher. Updated upgrade memory and sustained-loss/recovery copy. Other settings journeys are outside this delta review; browser/provider/release publication claims remain unverified.","inputs":["docs/user/settings.md","src-ui/src/components/updates/PostUpdateChangelog.tsx","src-ui/src/components/updates/ReleaseNotes.tsx"]}
+  ]
+}
