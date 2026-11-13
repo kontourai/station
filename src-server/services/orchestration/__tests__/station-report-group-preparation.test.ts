@@ -343,7 +343,7 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
       resealer.close(retry);
       writeFileSync(admissionFile, admissionBytes, { mode: 0o600 });
     }
-    vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T21:57:48Z'));
+    vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-14T08:18:01Z'));
     await assert.rejects(() => AnthropicSealedPreparation.create(), {
       code: 'stale_contract',
     });

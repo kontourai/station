@@ -998,7 +998,7 @@ test.each([
       ])
         assert.ok(!JSON.stringify(body).includes(privateValue), privateValue);
       assert.equal(qualifies.mock.calls.length, 1);
-      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T21:57:48Z'));
+      vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-14T08:18:01Z'));
       await assert.rejects(() => AnthropicSealedPreparation.create(), {
         code: 'stale_contract',
       });

@@ -2872,7 +2872,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const originalDate = Date;
     const previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
     vi.stubEnv('ANTHROPIC_BASE_URL', undefined);
-    useAdvancingHistoricalClock(Date.parse('2026-10-31T02:16:00Z'));
+    useAdvancingHistoricalClock(Date.parse('2026-11-13T20:31:00Z'));
     onTestFinished(() => {
       vi.stubGlobal('Date', originalDate);
       vi.stubEnv('ANTHROPIC_BASE_URL', previousAnthropicBaseUrl);
@@ -2905,8 +2905,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       name: 'Source',
       slug: 'source',
       workingDirectory: repo,
-      createdAt: '2026-10-31T02:16:00Z',
-      updatedAt: '2026-10-31T02:16:00Z',
+      createdAt: '2026-11-13T20:31:00Z',
+      updatedAt: '2026-11-13T20:31:00Z',
     });
     writeFileSync(
       join(home, 'projects', 'source', 'manifest.json'),
@@ -2914,8 +2914,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         schemaVersion: 1,
         id: 'prj_initialized_report',
         repos: [{ kind: 'local-only', id: 'local:source' }],
-        createdAt: '2026-10-31T02:16:00Z',
-        updatedAt: '2026-10-31T02:16:00Z',
+        createdAt: '2026-11-13T20:31:00Z',
+        updatedAt: '2026-11-13T20:31:00Z',
       }),
     );
     await storage.saveProviderConnection({

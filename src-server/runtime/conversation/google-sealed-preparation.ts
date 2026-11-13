@@ -19,9 +19,9 @@ import {
 
 const MODEL = 'gemini-2.5-flash-lite';
 const VERSION = 'v1beta';
-const VALID_FROM = Date.parse('2026-10-31T02:15:00Z');
-// The earliest retained pricing/cap snapshot bounds freshness; startup cannot extend it.
-const EXPIRES = Date.parse('2026-10-31T21:57:47.087Z');
+const VALID_FROM = Date.parse('2026-11-13T20:30:00Z');
+// Twelve hours from the earliest reviewed snapshot; startup cannot extend it.
+const EXPIRES = Date.parse('2026-11-14T08:18:00.046Z');
 const INPUT_RESERVATION = 1_048_576;
 const SDK = [
   [
@@ -34,13 +34,15 @@ const SDK = [
   ],
 ] as const;
 const SOURCES = [
-  'be045b656ef39e524983f5fdad51ce6708dca2914af318706e4680fe55f03500',
-  '1be990e419cf2be979cc994a5b5a36ec90f545d41e99e2776efb3ae746767012',
-  'a4787c44502444013da7f019960bfd22983af71e6a77daa898cbe0b8324269d0',
-  '0853630e9e01a1cf7330de047553c650ab9db47da9f9cae5e70c61658ec5efcb',
-  '8e4dbf7146d482b09700ec4385aea12fe9d28dca0953debc54c64968406b2a68',
-  '9dbd67810482953aa2d8c0543023ed9294b662c905ce374759216d2f9a83cc2e',
-  '5f140c15fbaa1c91b078967248e1ebc09108a5aa243eb7d7a5c845f73c11ba25',
+  '4239f738649e888a91417186274ff11dc226e1fa214f64597f49dc590550d8c4',
+  '6661126edb5ba536092740191d8c453cf65c5f8636798c4848f786efdf701683',
+  '147405daf12162045a59e3dcf4665359648a4073b5f44bd9ad4191a411ff3042',
+  '60b5d85930bfb3b1ccf815de8fcf5dcd364e02d607a828a3b0765a34bfbd0b93',
+  '6dbfd6e650a049489be5289d7a298bde63cd799dc3bb0dc86c8d6b1132be1073',
+  '552e6f760798c11b0316652c2effa77641d3b366afc29734f707d0cc56789d50',
+  '0b67fd8517f1e55aaa66266a8f56576117b54935d89610f8a81426d1164e81c3',
+  'eb634cbd3cb00462c8a88cda2bc9d188639145c383047aff7807b44e44785094',
+  '42a3c9ae72d579e75fd36ee5cead6cad6a917a05deb393436a4316bed9e2d697',
 ];
 const sha = (value: string | Buffer) =>
   createHash('sha256').update(value).digest('hex');
@@ -195,7 +197,7 @@ export class GoogleSealedPreparation {
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://ai.google.dev/gemini-api/docs/pricing',
-      revision: 'flash-lite25-text-20261031-sdk30145',
+      revision: 'flash-lite25-text-20261113-sdk30145',
       sourceSha256s: SOURCES,
       validFromMs: VALID_FROM,
       expiresAtMs: EXPIRES,

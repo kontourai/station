@@ -20,15 +20,14 @@ import { reportInputToolDefinition } from './report-input-profile.js';
 
 const MODEL = 'claude-sonnet-4-6';
 const VERSION = '2026-10-21';
-const VALID_FROM = Date.parse('2026-10-31T02:15:00Z');
-// The earliest retained pricing/cap snapshot bounds freshness; startup cannot extend it.
-const EXPIRES = Date.parse('2026-10-31T21:57:45.679Z');
+const VALID_FROM = Date.parse('2026-11-13T20:30:00Z');
+// Twelve hours from the earliest reviewed snapshot; startup cannot extend it.
+const EXPIRES = Date.parse('2026-11-14T08:12:15.083Z');
 const INPUT_RESERVATION = 1_048_576;
-const INPUT_VALID_FROM = Date.parse('2026-10-31T02:15:00Z');
+const INPUT_VALID_FROM = Date.parse('2026-11-13T20:30:00Z');
 const INPUT_SOURCES = [
-  '9cfd74b9085448d42da7b6632fb908b764159f37e77dd644d2503369239023ff',
-  '85f3a48d1aa56da63c28d0adcde5d85bce55c5616de70fcfd7c86e6dd5e48bb6',
-  'eb0fa6af00d91517f2c5d7bf6bbe79c97b74461b6420213f740a965486489d79',
+  '8de7a2c9e11c1baf96af426cc78d944e6f3316a8df1f2166c27087760edfe84d',
+  '00b3bc548d6d432182726d798b7b0d4b38bbf37f0a70caf50453f5dbd1aed84d',
 ];
 const SDK = [
   [
@@ -41,16 +40,15 @@ const SDK = [
   ],
 ] as const;
 const SOURCES = [
-  'c92acb78991145659dd2dcbde67ae5f26c0d5314536e66f4397e620280cbbfc6',
-  '01e0a50c56274c867968f480ad73bff0e9e1e4748bf49f72840058f35a80f332',
-  '02083697070ff7e1a0544d45468e53d69abb2a76663cc86eda721ccf419d9693',
-  '5c33ab689842ca2f32bccfc97950a044ba570424773321d87bc3cfb0e5128a80',
-  '092bcc936c46d55400a9ee79de189772de52bb5c069fd8786ef4543228ea50dd',
-  '7f63e402b16b134a82d5a55f5bcdd7deac84f2035b7732ef595e5f898bed9e27',
-  '1184fe7357f121b66cb7a5e51b35226202b50964902f5c0272a9d8eb6dbcc36d',
-  '1319bd2fdc490e6ef3dd03bed40f35e3cb7e34759d0b44cb2d9b0c884bd92b99',
-  '89a596d3cf66522d1c8e95d81ab41b069f6d360ecbe1db9111bd3757b0985d17',
-  '01b068305849d6e02e432b8e6e64986d0d42c2a4d0dd970eff83fb3b20c8e9eb',
+  '6e175b7363b058e0a9e70f8e4816f060af3eef6abe253fe90c2af2b26ec20f04',
+  '5c0a7741ac03733fe75638d0a573d893b04d3ef51f99e23fffeecdd8bac385ab',
+  '83f84dd60807535b68a783827e96ab437dd194081d3d0da1d60c1f2efdecad70',
+  'fb245db57e57983541ce5ca68e2c1dca73ae5553a249215aeed4a25791ce2186',
+  'e47d061186addad93e3e88249d5e2d1696b755721356cf9b0427098018b7b7a5',
+  '9067656991b86a332720f74233c20552d2fb6a28e6c9e19cf0a34244973568aa',
+  '8043cf06b8adcfa1c429c0e5e149c9a291b2acb322aa33ed582deefa1ceeb8c0',
+  '5fbbddc8cacbb52d522c6f7ae7b6911877002bd590a68ea638a9712f69f477ba',
+  '5b22a3bfa7cf403728d7b9826bc9cb08e12df3220e7de65393b91ee1e48d36dd',
 ];
 const sha = (value: string | Buffer) =>
   createHash('sha256').update(value).digest('hex');
@@ -215,8 +213,8 @@ export class AnthropicSealedPreparation {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://platform.claude.com/docs/en/about-claude/pricing',
       revision: inputTool
-        ? 'sonnet46-input-20261031-sdk30142'
-        : 'sonnet46-text-20261031-sdk30142',
+        ? 'sonnet46-input-20261113-sdk30142'
+        : 'sonnet46-text-20261113-sdk30142',
       sourceSha256s: inputTool ? [...SOURCES, ...INPUT_SOURCES] : SOURCES,
       validFromMs: inputTool ? INPUT_VALID_FROM : VALID_FROM,
       expiresAtMs: EXPIRES,

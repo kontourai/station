@@ -17,7 +17,7 @@ import {
   subject,
 } from './delegation-source-fixtures/source.js';
 
-const NOW = Date.parse('2026-10-31T02:16:00Z');
+const NOW = Date.parse('2026-11-13T20:31:00Z');
 afterEach(() => vi.restoreAllMocks());
 const remaining = {
   inputTokens: 1048576,
@@ -192,20 +192,20 @@ test('real preparation derives public profile from actual request/source/credent
 
 test('snapshot-anchored profile expiry refuses without extending validity at startup', async () => {
   const p = await prepare();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T02:15:00Z') - 1);
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-13T20:30:00Z') - 1);
   assert.throws(() => p.preparation.assertCurrent(), {
     code: 'stale_contract',
   });
   await assert.rejects(() => AnthropicSealedPreparation.create(), {
     code: 'stale_contract',
   });
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T02:15:00Z'));
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-13T20:30:00Z'));
   p.preparation.assertCurrent();
   vi.mocked(Date.now).mockReturnValue(
-    Date.parse('2026-10-31T21:57:45.679Z') - 1,
+    Date.parse('2026-11-14T08:12:15.083Z') - 1,
   );
   p.preparation.assertCurrent();
-  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-31T21:57:45.679Z'));
+  vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-14T08:12:15.083Z'));
   assert.throws(() => p.preparation.assertCurrent(), {
     code: 'stale_contract',
   });
@@ -334,11 +334,11 @@ test('input-tool issuance uses a distinct fixed-freshness profile with no new ef
   );
   assert.equal(
     contract.evidence.validFromMs,
-    Date.parse('2026-10-31T02:15:00Z'),
+    Date.parse('2026-11-13T20:30:00Z'),
   );
   assert.equal(
     contract.evidence.expiresAtMs,
-    Date.parse('2026-10-31T21:57:45.679Z'),
+    Date.parse('2026-11-14T08:12:15.083Z'),
   );
   assert.ok(captured.contract.id.startsWith('anthropic-input:'));
   assert.equal(captured.quote.inputUpperBoundTokens, 1048576);
