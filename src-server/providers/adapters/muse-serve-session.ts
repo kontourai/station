@@ -1104,6 +1104,15 @@ export class MuseServeSession {
     if (isRecord(result) && readString(result.turnId) !== turnId) {
       throw new Error('Muse reported the steer joined a different turn.');
     }
+    // Muse can write the turn's terminal before this reply. A steer
+    // `turn.started` after that terminal would reopen a turn that never ends
+    // again. Muse accepted the input, so whether the ended turn used it is
+    // unknown: a plain (indeterminate) error, not a no-effect refusal.
+    if (turn.settled || this.liveTurn() !== turn) {
+      throw new Error(
+        'The Muse turn ended as it accepted the steer; whether it used the input is unknown.',
+      );
+    }
     this.deps.publish({
       eventId: crypto.randomUUID(),
       provider: 'muse',

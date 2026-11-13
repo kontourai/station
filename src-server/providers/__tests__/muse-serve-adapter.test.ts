@@ -42,6 +42,7 @@ import {
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import { activeTurnIdForEvents } from '../../services/orchestration/session-lifecycle-service.js';
 import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
@@ -2425,6 +2426,59 @@ describe('#1952 Muse Code 1.4.18: steering a running serve turn', () => {
         (event) => event.inputKind === 'steer',
       ),
     ).toEqual([]);
+  });
+
+  test('a steer muse accepts after it already ended the turn publishes no steer turn.started and stays indeterminate', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    const frames = loadMuseServeCapture('steer');
+    let sent: Promise<{ turnId: string }> | undefined;
+    await replayMuseServeCapture(host, frames, {
+      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/steer'),
+      onDrivenRequest: (method) => {
+        if (method !== 'turn/start') return undefined;
+        sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+        return sent;
+      },
+    });
+    const { turnId } = await sent!;
+    const steering = h.adapter.steerTurn(THREAD, STEER_TEXT, turnId);
+    const request = await host.nextRequest('turn/steer', new Set());
+    // Muse's own terminal lands first, then the steer's `accepted` reply.
+    const completedIndex = captureIndex(
+      'steer',
+      (msg) => msg.method === 'turn/completed',
+    );
+    host.writeFrame(frames[completedIndex].msg);
+    await settle();
+    const reply = frames.find(
+      (frame) =>
+        frame.dir === 's2c' &&
+        frame.msg.method === undefined &&
+        (frame.msg.result as { status?: unknown } | undefined)?.status ===
+          'accepted' &&
+        (frame.msg.result as { turnId?: unknown }).turnId === TURN_1418,
+    );
+    host.writeFrame({ ...reply!.msg, id: request.id });
+    // Muse accepted the input, so this is not a no-effect refusal.
+    const outcome = await steering.then(
+      () => 'resolved',
+      (error: unknown) => error,
+    );
+    expect(outcome).toBeInstanceOf(Error);
+    expect(outcome).not.toBeInstanceOf(ProviderTurnEndedError);
+    await settle();
+    const methods = h.events
+      .filter((event) => event.turnId === TURN_1418)
+      .map((event) => event.method)
+      .filter((method) => method.startsWith('turn.'));
+    expect(methods.at(-1)).toBe('turn.completed');
+    expect(
+      of(h.events, 'turn.started').filter(
+        (event) => event.inputKind === 'steer',
+      ),
+    ).toEqual([]);
+    expect(activeTurnIdForEvents(h.events)).toBeUndefined();
   });
 
   test('a steer naming a turn that is not running is refused before anything reaches muse', async () => {
