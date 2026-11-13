@@ -1,0 +1,7 @@
+{
+  "revision": "c46f5b8f2b109bf70374be115394e4d32debd843",
+
+  "notes": [
+    {"path":"docs/README.md","note":"The index entry for the Station connections design still describes it accurately; its edit only corrected the relay ceiling details.","inputs":["docs/README.md","docs/design/station-connection.md"]}
+  ]
+}
