@@ -53,33 +53,48 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
 | `idleWakeups` | Not measured: see [Gaps](#gaps). |
 | `idleContextSwitches` | Linux only: voluntary plus involuntary context switches over the same window, from `/proc`. This is a proxy, not wakeups. |
-| `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: survivors of the pre-stop tree, and any process carrying the run's environment, however it detached. They are then killed. What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). |
+| `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: any process seen in the instance's tree during the run, and any process carrying the run's environment, however it detached. They are then killed. What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). A read of the tree that failed while following it makes the value `NOT_MEASURED`. |
 | `request.stationAddedTextBytes` | Text lines, blank lines included, in Station's first turn request that the control request lacks, sized from the text sent. |
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
 | `request.sideCallCount` | Other Messages requests during the turn window, such as a title request. |
 | `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. |
 
-**Process tree.** The tree is found two ways, and the union is measured:
+**Process tree.** The tree is found three ways, and the union is measured:
 
 - *Identity.* The supervisor and UI fingerprints from the instance record
   (pid plus birth token: pinned `lstart` on macOS, `/proc` start ticks plus
   boot id on Linux), plus every descendant by parent pid. A root whose pid
   now belongs to another process contributes nothing.
+- *Identities seen.* From the moment the instance record names its roots
+  until after the stop grace, the tree is read by ancestry every 250 ms, and
+  every pid plus birth token any read saw is the run's from then on
+  (`seenProcessCount`). This does not depend on the environment: a child
+  that detaches, or overwrites its environment (a long `process.title` on
+  macOS overwrites the area `ps` and the kernel read it from), is still
+  found if it stayed in the tree for one read.
 - *Environment.* Every process the instance starts inherits the run's
   `HOME`, `TMPDIR` and `STATION_WEIGHT_RUN` nonce, so a double-forked daemon
   or a child spawned during shutdown is found with no ancestry at all. Only
-  the environment counts, never the arguments. On Linux the entries of
-  `/proc/<pid>/environ` must match exactly. On macOS the environment is what
-  `ps -E` prints after the process's plain `ps` command line, and a process
-  whose two lines disagree is skipped. A process that names the nonce in its
-  arguments is excluded, because the nonce is only ever passed through the
-  environment. The process must also run as the same effective user and have
-  started after the run did, with 2 s of slack for whole-second birth times.
-  The control engine shares the environment but has its own
-  `CLAUDE_CONFIG_DIR`, which excludes it. A run records which pre-stop
-  processes only ancestry found (`beforeStopUntagged`). On macOS that list
-  was empty.
+  whole environment entries count, never the arguments and never text
+  inside another variable's value: exactly `STATION_WEIGHT_RUN=<nonce>`, or
+  `HOME` or `TMPDIR` whose value is the scratch root or a path under it. On
+  Linux the entries are the NUL-separated `/proc/<pid>/environ`. On macOS
+  they are read with sysctl `KERN_PROCARGS2`, the kernel's NUL-separated
+  copy of the process's arguments and environment, through a small
+  `python3 -I` ctypes helper; `ps -E` joins the same entries with spaces, so
+  `INNOCENT=before HOME=<scratch>/user` would look like a `HOME` entry. The
+  helper reads each process's start time around the read and drops a
+  process whose start changed or does not match its row. A process whose
+  entries cannot be read is never tagged, and if the helper cannot run at
+  all (no `python3`), the run fails rather than skipping the check. A
+  process that names the nonce in its arguments is excluded, because the
+  nonce is only ever passed through the environment. The process must also
+  run as the same effective user and have started after the run did, with
+  2 s of slack for whole-second birth times. The control engine shares the
+  environment but has its own `CLAUDE_CONFIG_DIR`, which excludes it. A run
+  records which pre-stop processes only ancestry found
+  (`beforeStopUntagged`). On macOS that list was empty.
 
 On Linux each process is read from `/proc` alone: one `stat` read gives its
 parent, CPU, birth and RSS, and `status` gives its uid and context switches.
@@ -93,8 +108,8 @@ A process is signalled only after its birth token is read again and still
 matches, so a reused pid is never killed. The tests clean up the same way. A
 tree that is empty when sampled is `NOT_MEASURED`, never zero.
 
-A process that both leaves the tree and drops the run's environment is not
-found (see [Gaps](#gaps)).
+A process that leaves the tree before any read saw it there and whose
+environment carries no run tag is not found (see [Gaps](#gaps)).
 
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out
@@ -187,20 +202,27 @@ revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
   counted: the CPU a process uses after its last read before it exits, up to
   the longest span observed between the start of one read and the end of the
   next (`idleCpuPercent.maxReadSpanMs`), and any process that starts and exits
-  between two reads. The window follows ancestry and rescans the environment
-  only at its end, so a process that detaches and exits inside the window is
-  missed too. The gap, with the observed span, is written beside every CPU
+  between two reads. The window follows ancestry and the identities already
+  seen, and rescans the environment only at its end, so a process that
+  detaches before any read saw it and exits inside the window is missed
+  too. The gap, with the observed span, is written beside every CPU
   value (`idleCpuPercent.gap`).
 - **Context switches** (Linux) count only processes alive at both ends of
   the window.
-- **A detached process without the run's environment.** A process that both
-  leaves the instance tree (for example by double-forking) and is started
-  with an environment that drops the run tag, `HOME` and `TMPDIR` (for
-  example `env: {}`) is not found after stop. Neither ancestry nor
-  environment ties it to the run. macOS has no subreaper or cgroup to follow
-  it. A process group or session can be left with `setsid`, and its id can be
-  reused once the group is gone. The gap is written beside the value
+- **A process that escapes between two reads without the run's
+  environment.** A process that leaves the instance tree before any read saw
+  it there, and whose environment carries no run tag as an exact entry, is
+  not found after stop. That needs both: a double fork that completes
+  within one 250 ms interval (or during `station start`, before the instance
+  record names its roots), and a child started with an environment that
+  drops the tag, `HOME` and `TMPDIR` (for example `env: {}`), or one that
+  overwrites its environment area before the next environment read.
+  macOS has no subreaper or cgroup to follow it. A process group or session
+  can be left with `setsid`, and its id can be reused once the group is
+  gone. The gap is written beside the value
   (`leftoverAfterStopMemoryBytes.gap`).
+- **macOS needs `python3`** with `ctypes` on `PATH` (the Command Line Tools
+  provide it) to read environments exactly. Without it the run fails.
 
 A gap that leaves a metric without a value makes it `NOT_MEASURED`, never
 zero or a pass. Sampled idle CPU and the leftover memory are different: the

@@ -105,6 +105,12 @@ describe.skipIf(!posix)('station-weight end to end', () => {
       expect(leftover.value).toBeGreaterThan(0);
       expect(leftover.killed).toContain(leaked);
       expect(leftover.gap).toBe(LEFTOVER_GAP);
+      // Every process of the pre-stop tree, and more seen while the run was
+      // followed, is remembered by identity, whatever its environment.
+      expect(leftover.seenProcessCount).toBeGreaterThanOrEqual(
+        leftover.beforeStopProcessCount,
+      );
+      expect(leftover.beforeStopProcessCount).toBeGreaterThan(0);
       expect(result.metrics.idleCpuPercent.gap).toContain(
         `up to ${Math.ceil(result.metrics.idleCpuPercent.maxReadSpanMs)} ms`,
       );

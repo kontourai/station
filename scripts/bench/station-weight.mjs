@@ -17,6 +17,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -37,6 +38,7 @@ import {
 } from '../lib/owned-process.mjs';
 import {
   evaluateBudgets,
+  formatValue,
   formatVerdicts,
   gateOutcome,
   recordBaseline,
@@ -111,7 +113,7 @@ export function repositoryState() {
  * by withMemory.
  * @typedef {{ pid: number, ppid: number, uid?: number, rssBytes: number, cpuSeconds: number, started: string, startedAtMs?: number, contextSwitches?: number, command: string, memoryBytes?: number }} ProcessRow
  * @typedef {{ pid: number, started: string }} ProcessIdentity
- * @typedef {{ tags: string[], excludeTags?: string[], argumentMarkers?: string[], uid: number, notBeforeMs: number }} Tagging
+ * @typedef {{ nonceEntry: string, scratchRoots: string[], excludeEntries: string[], argumentMarkers: string[], uid: number, notBeforeMs: number }} Tagging
  * @typedef {(command: string, args: string[], options: object) => string} RunCommand
  * @typedef {{ status: string, value?: number, unit?: string, reason?: string, [detail: string]: any }} Metric
  */
@@ -354,11 +356,14 @@ export function recordedRoots(record) {
  * ancestry. Station keeps PATH, HOME and TMPDIR for its children (an engine
  * needs PATH to find `claude`), so a process that detached from the tree
  * still carries the scratch HOME and TMPDIR; the nonce `STATION_WEIGHT_RUN`
- * is set for every process the instance starts. A process qualifies only if
- * it runs as this user (effective uid) and started after the run did, and a
- * process naming the nonce in its arguments is excluded: the nonce is only
- * ever passed through the environment. The slack absorbs whole-second birth
- * times (macOS lstart, Linux btime).
+ * is set for every process the instance starts. An environment entry
+ * matches only as a whole NUL-separated entry: exactly
+ * `STATION_WEIGHT_RUN=<nonce>`, or `HOME`/`TMPDIR` whose value is the scratch
+ * root or a path under it. A process qualifies only if it runs as this user
+ * (effective uid) and started after the run did, and a process naming the
+ * nonce in its arguments is excluded: the nonce is only ever passed through
+ * the environment. The slack absorbs whole-second birth times (macOS
+ * lstart, Linux btime).
  */
 /**
  * @param {{ nonce: string, scratch: string, startedAtMs: number, controlConfigDir?: string, uid?: number }} run
@@ -372,13 +377,19 @@ export function runTagging({
   uid = process.geteuid(),
 }) {
   assert(/^[0-9a-f]{32}$/.test(nonce), 'the run tag is a 128-bit hex nonce');
+  assert(scratch.startsWith('/'), 'the scratch root is an absolute path');
+  const root = scratch.replace(/\/+$/, '');
+  let real = root;
+  try {
+    // macOS /tmp is a link to /private/tmp; a child may report either.
+    real = realpathSync(root);
+  } catch {
+    // Not created (unit tests): the spelled root is the only one.
+  }
   return {
-    tags: [
-      `STATION_WEIGHT_RUN=${nonce}`,
-      `HOME=${join(scratch, 'user')}`,
-      `TMPDIR=${join(scratch, 'tmp')}`,
-    ],
-    excludeTags: controlConfigDir
+    nonceEntry: `STATION_WEIGHT_RUN=${nonce}`,
+    scratchRoots: [...new Set([root, real])],
+    excludeEntries: controlConfigDir
       ? [`CLAUDE_CONFIG_DIR=${controlConfigDir}`]
       : [],
     argumentMarkers: [nonce],
@@ -387,34 +398,128 @@ export function runTagging({
   };
 }
 
-const LSTART_LINE =
-  /^\s*(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d\d:\d\d:\d\d)\s+(\d{4})\s+(.*)$/;
+const SCRATCH_VARIABLES = new Set(['HOME', 'TMPDIR']);
 
-/** pid -> { started, command } from `ps -o pid=,lstart=,command=` output. */
-function psCommands(text) {
-  const lines = new Map();
-  for (const line of text.split('\n')) {
-    const match = line.match(LSTART_LINE);
-    if (match)
-      lines.set(Number(match[1]), {
-        started: lstartToken(match.slice(2, 7)),
-        command: match[7],
-      });
+/**
+ * Whether exact environment `entries` (one `NAME=value` string each, as the
+ * kernel stores them) carry the run's tag and not an excluded entry. A tag
+ * inside another variable's value (`INNOCENT=x HOME=/scratch/user`) is not
+ * an entry, so it never matches.
+ * @param {string[]} entries
+ * @param {Tagging} tagging
+ */
+export function carriesRunTag(entries, tagging) {
+  let tagged = false;
+  for (const entry of entries) {
+    if (tagging.excludeEntries.includes(entry)) return false;
+    if (entry === tagging.nonceEntry) tagged = true;
+    const equals = entry.indexOf('=');
+    if (equals <= 0 || !SCRATCH_VARIABLES.has(entry.slice(0, equals))) continue;
+    const value = entry.slice(equals + 1);
+    if (
+      tagging.scratchRoots.some(
+        (root) => value === root || value.startsWith(`${root}/`),
+      )
+    )
+      tagged = true;
   }
-  return lines;
+  return tagged;
 }
 
 /**
- * pid -> environment test and argument line for each row. Linux: the exact
- * NUL-separated entries of `/proc/<pid>/environ` (and `cmdline`), accepted
- * only if the pid still has the row's start ticks afterwards. macOS: `ps -E` appends
- * the environment a process was started with to its arguments, so the
- * environment is what follows the process's plain `ps` command line, and a
- * process whose two lines disagree (or whose birth differs from the row's)
- * changed between the reads and is skipped. A process whose environment
- * cannot be read (another user's) gets no entry.
+ * Reads the exact argument and environment entries of `pids` on macOS with
+ * sysctl KERN_PROCARGS2, the kernel's copy of the NUL-separated block a
+ * process was started with (argc, executable path, argv, then environment
+ * entries up to the first empty one). `ps -E` prints the same entries joined
+ * by spaces, which cannot tell an entry from a space inside a value. Each
+ * pid's start time (microseconds, KERN_PROC_PID) is read before and after;
+ * a pid whose start changed, or that cannot be read (exited, another user's,
+ * EPERM), is omitted, so it is never tagged. Bytes that are not UTF-8 are
+ * kept as lone surrogates and never equal a tag.
  */
-function environments(rows, { run, platformName, readFile }) {
+const PROCARGS_SCRIPT = String.raw`
+import ctypes, json, struct, sys
+libc = ctypes.CDLL(None, use_errno=True)
+libc.sysctl.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p, ctypes.c_size_t]
+def sysctl(mib, size):
+    names = (ctypes.c_int * len(mib))(*mib)
+    buffer = ctypes.create_string_buffer(size)
+    length = ctypes.c_size_t(size)
+    if libc.sysctl(names, len(mib), buffer, ctypes.byref(length), None, 0) != 0:
+        return None
+    return buffer.raw[:length.value]
+argmax = struct.unpack('i', sysctl([1, 8], 4))[0]
+def started(pid):
+    info = sysctl([1, 14, 1, pid], 4096)
+    if info is None or len(info) < 16:
+        return None
+    seconds, micros = struct.unpack_from('qi', info, 0)
+    return seconds * 1000000 + micros
+def strings(block, index, count):
+    found = []
+    while index < len(block) and (count is None or len(found) < count):
+        end = block.find(b'\0', index)
+        end = len(block) if end < 0 else end
+        if count is None and end == index:
+            break
+        found.append(block[index:end].decode('utf-8', 'surrogateescape'))
+        index = end + 1
+    return found, index
+out = {}
+for pid in map(int, sys.argv[1:]):
+    before = started(pid)
+    block = sysctl([1, 49, pid], argmax)
+    if before is None or block is None or len(block) < 4 or started(pid) != before:
+        continue
+    argc = struct.unpack_from('i', block, 0)[0]
+    index = block.find(b'\0', 4)
+    if index < 0:
+        continue
+    while index < len(block) and block[index] == 0:
+        index += 1
+    argv, index = strings(block, index, argc)
+    env, index = strings(block, index, None)
+    out[str(pid)] = {'startedUs': before, 'argv': argv, 'env': env}
+json.dump(out, sys.stdout)
+`;
+
+/**
+ * @param {number[]} pids
+ * @param {RunCommand} run
+ * @returns {Map<number, { startedUs: number, argv: string[], env: string[] }>}
+ */
+export function darwinProcessArguments(pids, run) {
+  if (!pids.length) return new Map();
+  let text;
+  try {
+    // -I: no PYTHON* variables, user site or script directory on the path.
+    text = run('python3', ['-I', '-c', PROCARGS_SCRIPT, ...pids.map(String)], {
+      encoding: 'utf8',
+      windowsHide: true,
+      env: PS_ENV,
+    });
+  } catch (error) {
+    throw new Error(
+      `cannot read process environments exactly (python3 -I with ctypes, sysctl KERN_PROCARGS2): ${String(error?.message ?? error).split('\n')[0]}`,
+    );
+  }
+  return new Map(
+    Object.entries(JSON.parse(text)).map(([pid, entry]) => [
+      Number(pid),
+      entry,
+    ]),
+  );
+}
+
+/**
+ * pid -> exact environment and argument entries for each row whose read
+ * still belongs to that row's process. Linux: `/proc/<pid>/environ` and
+ * `cmdline`, accepted only if the pid still has the row's start ticks
+ * afterwards. macOS: KERN_PROCARGS2 (see darwinProcessArguments), accepted
+ * only if the start time read around it is the row's birth second. A
+ * process whose entries cannot be read gets no entry, so it is never tagged.
+ */
+function environments(rows, { run, platformName, readFile, readArguments }) {
   const tests = new Map();
   if (platformName === 'linux') {
     for (const row of rows) {
@@ -434,69 +539,53 @@ function environments(rows, { run, platformName, readFile }) {
           `${row.started.slice(0, row.started.lastIndexOf(':') + 1)}${recheck.startTicks}`
       )
         continue;
-      const set = new Set(entries.split('\0'));
       tests.set(row.pid, {
-        carries: (tag) => set.has(tag),
-        argv: argv.split('\0').join(' '),
+        env: entries.split('\0').filter(Boolean),
+        argv: argv.split('\0').filter(Boolean),
       });
     }
     return tests;
   }
-  const ps = (args) =>
-    psCommands(
-      run('ps', ['-A', ...args, '-ww', '-o', 'pid=,lstart=,command='], {
-        encoding: 'utf8',
-        windowsHide: true,
-        env: PS_ENV,
-      }),
-    );
-  const plain = ps([]);
-  const withEnvironment = ps(['-E']);
+  const read = readArguments(
+    rows.map((row) => row.pid),
+    run,
+  );
   for (const row of rows) {
-    const argv = plain.get(row.pid);
-    const full = withEnvironment.get(row.pid);
-    if (!argv || !full) continue;
-    if (argv.started !== row.started || full.started !== row.started) continue;
-    if (
-      full.command !== argv.command &&
-      !full.command.startsWith(`${argv.command} `)
-    )
+    const entry = read.get(row.pid);
+    if (!entry || !Number.isSafeInteger(entry.startedUs)) continue;
+    // lstart, and so the row, has whole seconds.
+    if (Math.floor(entry.startedUs / 1_000_000) * 1000 !== row.startedAtMs)
       continue;
-    // Entries are space-separated and a value may itself contain spaces, so
-    // a tag is a whole `KEY=VALUE` entry bounded by spaces: `TMPDIR=/x/tmp`
-    // does not match `TMPDIR=/x/tmp2`.
-    const environment = ` ${full.command.slice(argv.command.length + 1)} `;
-    tests.set(row.pid, {
-      carries: (tag) => environment.includes(` ${tag} `),
-      argv: argv.command,
-    });
+    tests.set(row.pid, { env: entry.env, argv: entry.argv });
   }
   return tests;
 }
 
 /**
  * Rows of `table` that are the run's by environment (see runTagging): the
- * same effective uid, started after the run, carrying any of `tags` and none
- * of `excludeTags` (the control engine shares the run's environment but is
- * not Station's), with no argument naming the nonce. These are found
- * whatever their ancestry: a double-forked daemon or a child spawned during
- * shutdown has no path back to the roots.
+ * same effective uid, started after the run, carrying the run's tag as an
+ * exact entry and none of `excludeEntries` (the control engine shares the
+ * run's environment but is not Station's), with no argument naming the
+ * nonce. These are found whatever their ancestry: a double-forked daemon or
+ * a child spawned during shutdown has no path back to the roots.
  */
 /**
  * @param {ProcessRow[]} table
  * @param {Tagging} tagging
- * @param {{ run?: RunCommand, platform?: string, readFile?: (path: string, encoding: 'utf8') => string }} [options]
+ * @param {{ run?: RunCommand, platform?: string, readFile?: (path: string, encoding: 'utf8') => string, readArguments?: typeof darwinProcessArguments }} [options]
  * @returns {ProcessRow[]}
  */
 export function taggedRows(
   table,
-  { tags, excludeTags = [], argumentMarkers = [], uid, notBeforeMs },
+  tagging,
   {
     run = /** @type {RunCommand} */ (execFileSyncBounded),
     platform: platformName = process.platform,
     readFile = readFileSync,
+    readArguments = darwinProcessArguments,
   } = {},
 ) {
+  const { argumentMarkers, uid, notBeforeMs } = tagging;
   assert(
     Number.isInteger(uid) && Number.isFinite(notBeforeMs),
     'tagging needs the run uid and start time',
@@ -511,14 +600,16 @@ export function taggedRows(
     run,
     platformName,
     readFile,
+    readArguments,
   });
   return candidates.filter((row) => {
     const entry = environment.get(row.pid);
     return (
       entry !== undefined &&
-      !argumentMarkers.some((marker) => entry.argv.includes(marker)) &&
-      tags.some(entry.carries) &&
-      !excludeTags.some(entry.carries)
+      !argumentMarkers.some((marker) =>
+        entry.argv.some((argument) => argument.includes(marker)),
+      ) &&
+      carriesRunTag(entry.env, tagging)
     );
   });
 }
@@ -555,19 +646,150 @@ export function instanceSnapshot(table, roots, tagging, options) {
 }
 
 /**
- * What lives on after stop: survivors of the pre-stop tree by identity, and
- * every process still carrying the run's environment, whether it detached or
- * was spawned after the pre-stop snapshot.
- * @param {ProcessIdentity[]} beforeStop
+ * What lives on after stop: every process seen in the instance's tree during
+ * the run that is still alive with the same birth token (see processLedger),
+ * and every process still carrying the run's environment, whether it
+ * detached or was spawned after the last read, plus their descendants.
+ * @param {ProcessIdentity[]} seen
  * @param {ProcessRow[]} after
  * @param {Tagging} tagging
  * @param {Parameters<typeof taggedRows>[2]} [options]
  */
-export function leftoverAfterStop(beforeStop, after, tagging, options) {
-  return ownedTree(after, [
-    ...beforeStop,
-    ...taggedRows(after, tagging, options),
-  ]);
+export function leftoverAfterStop(seen, after, tagging, options) {
+  return ownedTree(after, [...seen, ...taggedRows(after, tagging, options)]);
+}
+
+/**
+ * Every process identity (pid plus birth token) ever seen in the instance's
+ * tree. Ownership by identity does not depend on the environment: a child
+ * that rewrites its environment area (a long `process.title` on macOS) or
+ * detaches is still the run's once a read saw it in the tree, and a pid
+ * reused since never matches its birth token.
+ */
+function processLedger() {
+  /** @type {Map<string, ProcessIdentity>} */
+  const seen = new Map();
+  let lastAt = -Infinity;
+  return {
+    /**
+     * @template {ProcessRow} T
+     * @param {T[]} rows
+     * @returns {T[]}
+     */
+    remember(rows) {
+      for (const row of rows)
+        seen.set(identityKey(row), { pid: row.pid, started: row.started });
+      lastAt = performance.now();
+      return rows;
+    },
+    /** @returns {ProcessIdentity[]} */
+    identities: () => [...seen.values()],
+    get size() {
+      return seen.size;
+    },
+    get lastAt() {
+      return lastAt;
+    },
+  };
+}
+
+/**
+ * Reads the tree by ancestry every `intervalMs` into `ledger`, from the
+ * recorded roots and everything already seen, and skips a tick when another
+ * read fed the ledger within the interval (the CPU window reads at the same
+ * rate). A failed read is kept in `errors`: what it missed is unknown, so the
+ * caller must not report the leftover check as complete.
+ * @param {ReturnType<typeof processLedger>} ledger
+ * @param {() => ProcessIdentity[]} roots
+ * @param {{ intervalMs: number, read?: () => ProcessRow[] }} options
+ */
+function followTree(ledger, roots, { intervalMs, read = processTable }) {
+  /** @type {string[]} */
+  const errors = [];
+  const tick = () => {
+    if (performance.now() - ledger.lastAt < intervalMs) return;
+    try {
+      ledger.remember(ownedTree(read(), [...roots(), ...ledger.identities()]));
+    } catch (error) {
+      errors.push(String(error?.message ?? error).split('\n')[0]);
+    }
+  };
+  const timer = setInterval(tick, intervalMs);
+  return {
+    errors,
+    stop: () => clearInterval(timer),
+  };
+}
+
+/**
+ * The run's ownership of processes in one place: the recorded roots, every
+ * identity seen in the tree since (followed every `intervalMs` once the roots
+ * are known), and the environment tag. The runner reads the tree, the
+ * leftovers and the cleanup set only through this.
+ * @param {Tagging} tagging
+ * @param {{ intervalMs: number, read?: () => ProcessRow[], tagOptions?: Parameters<typeof taggedRows>[2] }} options
+ */
+export function runOwnership(
+  tagging,
+  { intervalMs, read = processTable, tagOptions },
+) {
+  /** @type {ProcessIdentity[]} */
+  let roots = [];
+  const ledger = processLedger();
+  /** @type {ReturnType<typeof followTree> | undefined} */
+  let follower;
+  const known = () => [...roots, ...ledger.identities()];
+  return {
+    ledger,
+    /** @param {ProcessIdentity[]} next */
+    setRoots(next) {
+      roots = next;
+      follower?.stop();
+      follower = followTree(ledger, () => roots, { intervalMs, read });
+    },
+    /** The tree now: roots, identities seen, tagged rows, descendants. */
+    tree(table = read()) {
+      return ledger.remember(
+        instanceSnapshot(table, known(), tagging, tagOptions),
+      );
+    },
+    /**
+     * The tree by ancestry only, from what is known and `tagged`.
+     * @param {ProcessRow[]} table
+     * @param {ProcessRow[]} tagged
+     */
+    ancestry(table, tagged) {
+      return ledger.remember(instanceTree(table, known(), tagged));
+    },
+    /**
+     * What lives on after stop; ends the following.
+     * @param {ProcessRow[]} after
+     */
+    leftover(after) {
+      follower?.stop();
+      return leftoverAfterStop(ledger.identities(), after, tagging, tagOptions);
+    },
+    /** Reads of the tree that failed while following. */
+    followErrors: () => follower?.errors ?? [],
+    /**
+     * Everything still alive that is the run's to end: seen in the tree, or
+     * tagged, the control engine included.
+     * @param {ProcessRow[]} table
+     */
+    strays(table) {
+      const found = new Map(
+        ownedTree(table, ledger.identities()).map((row) => [row.pid, row]),
+      );
+      for (const row of taggedRows(
+        table,
+        { ...tagging, excludeEntries: [] },
+        tagOptions,
+      ))
+        found.set(row.pid, row);
+      return [...found.values()];
+    },
+    stop: () => follower?.stop(),
+  };
 }
 
 /**
@@ -1288,7 +1510,7 @@ export async function sampleTreeCpu(snapshot, { windowMs, intervalMs }) {
  * value is a lower bound: none of this is counted, and it is still compared.
  */
 export const IDLE_CPU_GAP = ({ intervalMs, maxReadSpanMs }) =>
-  `not counted: CPU a process used after its last read before exiting (up to ${Math.ceil(maxReadSpanMs)} ms per process, the longest span observed between the start of one read and the end of the next; the nominal interval is ${intervalMs} ms), processes that started and exited between two reads, and processes that left the tree by detaching inside the window and exited before its end (the window follows ancestry and rescans the environment only at its end)`;
+  `not counted: CPU a process used after its last read before exiting (up to ${Math.ceil(maxReadSpanMs)} ms per process, the longest span observed between the start of one read and the end of the next; the nominal interval is ${intervalMs} ms), processes that started and exited between two reads, and processes that left the tree by detaching before any read saw them in it and exited before the window's end (the window follows ancestry and identities already seen, and rescans the environment only at its end)`;
 
 /** @returns {Metric} */
 export function idleCpuMetric(sampled, intervalMs) {
@@ -1323,7 +1545,7 @@ export function idleCpuMetric(sampled, intervalMs) {
  * a process group or session can be left with setsid and its id reused.
  */
 export const LEFTOVER_GAP =
-  'not found: a process that both left the instance tree (for example by double-forking, so it is reparented away) and was started with an environment that drops the run tag, HOME and TMPDIR (for example env: {}); neither ancestry nor environment ties it to the run';
+  'not found: a process that left the instance tree before any read saw it there (the tree is read every 250 ms from the instance record until after stop, so a double fork that completes between two reads, or one during station start before the record names its roots) and whose environment carries neither the run tag nor a scratch HOME or TMPDIR as an exact entry (started with env: {}, or with its environment area overwritten, as a long process.title does on macOS); neither a recorded identity, ancestry nor environment ties it to the run';
 
 const median = (values) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -1484,9 +1706,11 @@ export async function runStationWeight({
   const ports = await allocatePorts();
   const api = client(ports.server);
   let started = false;
-  let roots = [];
-  const treeNow = (table = processTable()) =>
-    instanceSnapshot(table, roots, tagging);
+  // Every process seen in the tree is the run's by identity from then on.
+  const ownership = runOwnership(tagging, {
+    intervalMs: settings.cpuSampleIntervalMs,
+  });
+  const treeNow = (table = processTable()) => ownership.tree(table);
   try {
     // `station start --clean` rebuilds, so a ready time taken from it would
     // mostly measure the build. Build first (reported on its own), then the
@@ -1537,7 +1761,9 @@ export async function runStationWeight({
         'utf8',
       ),
     );
-    roots = recordedRoots(instanceRecord);
+    // From here until after stop the tree is read every interval, so a
+    // child that detaches or rewrites its environment later is still known.
+    ownership.setRoots(recordedRoots(instanceRecord));
     await api.pair(instanceRecord.baseDir);
 
     progress('paired; settling');
@@ -1546,9 +1772,10 @@ export async function runStationWeight({
       await settleTree(memorySnapshot, settings),
     );
 
-    // The window walks the tree by ancestry from the roots and the processes
-    // tagged at its start (a full environment scan every 250 ms would be the
-    // heaviest thing on the host), and rescans for tagged processes at its end.
+    // The window walks the tree by ancestry from the roots, the processes
+    // tagged at its start and every identity seen so far (a full environment
+    // scan every 250 ms would be the heaviest thing on the host), and
+    // rescans for tagged processes at its end.
     const taggedAtStart = taggedRows(processTable(), tagging);
     const linux = process.platform === 'linux';
     // Context switches are read from /proc when the window opens and when it
@@ -1560,7 +1787,7 @@ export async function runStationWeight({
         const table = processTable();
         const rows = final
           ? treeNow(table)
-          : instanceTree(table, roots, taggedAtStart);
+          : ownership.ancestry(table, taggedAtStart);
         if (linux && !switchesStart) switchesStart = contextSwitches(rows);
         if (linux && final) switchesEnd = contextSwitches(rows);
         return rows;
@@ -1693,12 +1920,12 @@ export async function runStationWeight({
       result.metrics[id] ??= notMeasured(requestGap);
     result.repoRules ??= { status: 'not_measured', reason: requestGap };
 
-    // Leftover after stop: the tree as it stood, then whatever of it lives
-    // on, plus anything still carrying the run's environment however it got
+    // Leftover after stop: whatever was ever seen in the tree and lives on,
+    // plus anything still carrying the run's environment however it got
     // there (a double-forked daemon, a child spawned during shutdown).
     progress('stopping');
     const tableBeforeStop = processTable();
-    const beforeStop = instanceSnapshot(tableBeforeStop, roots, tagging);
+    const beforeStop = treeNow(tableBeforeStop);
     // Evidence that the environment alone ties every instance process to
     // the run: what ancestry found that tagging did not.
     const taggedBeforeStop = new Set(
@@ -1716,41 +1943,50 @@ export async function runStationWeight({
     started = false;
     result.stopMs = performance.now() - stopStart;
     await wait(settings.stopGraceMs);
-    const after = processTable();
-    const left = withMemory(leftoverAfterStop(beforeStop, after, tagging));
+    const left = withMemory(ownership.leftover(processTable()));
+    const followErrors = ownership.followErrors();
     const cleanup = signalIfSame(left, 'SIGKILL');
-    result.metrics.leftoverAfterStopMemoryBytes = beforeStop.length
-      ? measured(sum(left, 'memoryBytes'), 'bytes', {
-          basis: MEMORY_BASIS,
-          processCount: left.length,
-          processes: processRows(left),
-          afterSeconds: settings.stopGraceMs / 1000,
-          beforeStopProcessCount: beforeStop.length,
-          beforeStopUntagged: untaggedBeforeStop,
-          killed: cleanup.signalled,
-          notSignalledPidReused: cleanup.skipped,
-          gap: LEFTOVER_GAP,
-        })
-      : notMeasured(
+    const leftoverDetail = {
+      basis: MEMORY_BASIS,
+      processCount: left.length,
+      processes: processRows(left),
+      afterSeconds: settings.stopGraceMs / 1000,
+      beforeStopProcessCount: beforeStop.length,
+      beforeStopUntagged: untaggedBeforeStop,
+      seenProcessCount: ownership.ledger.size,
+      killed: cleanup.signalled,
+      notSignalledPidReused: cleanup.skipped,
+      gap: LEFTOVER_GAP,
+    };
+    result.metrics.leftoverAfterStopMemoryBytes = !beforeStop.length
+      ? notMeasured(
           "the instance's process tree was empty before stop: nothing was measured",
           'bytes',
-        );
+        )
+      : followErrors.length
+        ? {
+            ...notMeasured(
+              `${followErrors.length} reads of the tree failed, so processes seen only then are unknown: ${followErrors[0]}`,
+              'bytes',
+            ),
+            ...leftoverDetail,
+          }
+        : measured(sum(left, 'memoryBytes'), 'bytes', leftoverDetail);
     result.outcome = 'completed';
   } catch (error) {
     result.error = error.stack ?? String(error);
   } finally {
+    ownership.stop();
     if (started)
       await station(['stop', `--instance=${instance}`], {
         env,
         timeoutMs: 120_000,
       }).catch(() => undefined);
-    // Whatever still carries the run's environment, Station's or the
-    // control's, is the run's to end; identity is rechecked per signal.
+    // Whatever was seen in the tree, or still carries the run's
+    // environment (Station's or the control's), is the run's to end;
+    // identity is rechecked per signal.
     try {
-      const strays = taggedRows(processTable(), {
-        ...tagging,
-        excludeTags: [],
-      });
+      const strays = ownership.strays(processTable());
       if (strays.length)
         result.cleanupKilled = signalIfSame(strays, 'SIGKILL').signalled;
     } catch (error) {
@@ -1847,7 +2083,7 @@ function printSummary(result) {
   for (const [id, metric] of Object.entries(result.metrics ?? {}))
     line(
       metric.status === 'measured'
-        ? `MEASURED ${id}=${Number(metric.value.toFixed?.(2) ?? metric.value)} ${metric.unit}`
+        ? `MEASURED ${id}=${formatValue(metric.value)} ${metric.unit}`
         : `NOT_MEASURED ${id}: ${metric.reason}`,
     );
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);

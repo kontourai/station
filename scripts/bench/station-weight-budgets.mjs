@@ -94,7 +94,10 @@ export function evaluateBudgets(result, baseline, { reportOnly = false } = {}) {
         : {
             id: budget.id,
             verdict: 'REPORTED',
-            reason: metric?.reason ?? 'metric absent from this run',
+            reason:
+              metric?.status === 'measured'
+                ? `measured without a finite value (${formatValue(metric.value)})`
+                : (metric?.reason ?? 'metric absent from this run'),
           };
     if (metric?.status !== 'measured')
       return {
@@ -223,12 +226,20 @@ export function formatVerdicts(verdicts) {
       entry.verdict === 'NOT_MEASURED' || entry.value === undefined
         ? entry.reason
         : ['REPORTED', 'NOT_COMPARED'].includes(entry.verdict)
-          ? `value=${round(entry.value)}`
-          : `value=${round(entry.value)} baseline=${round(entry.baseline)} limit=${round(entry.limit)}`;
+          ? `value=${formatValue(entry.value)}`
+          : `value=${formatValue(entry.value)} baseline=${formatValue(entry.baseline)} limit=${formatValue(entry.limit)}`;
     return `[station-weight] ${entry.verdict} ${entry.id} ${detail}`;
   });
 }
 
-function round(value) {
+/**
+ * A metric value for display: finite numbers to two decimals, anything else
+ * (null from a serialized NaN or Infinity, a string) as written. Presentation
+ * never throws on a value the gate already handled.
+ * @param {unknown} value
+ */
+export function formatValue(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value))
+    return String(value);
   return Number.isInteger(value) ? value : Number(value.toFixed(2));
 }

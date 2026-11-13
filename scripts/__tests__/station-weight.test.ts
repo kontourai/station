@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  carriesRunTag,
   contextSwitchDelta,
   hostFingerprint,
   hostFingerprintInputs,
@@ -295,14 +296,21 @@ describe('station-weight request diff blind spots', () => {
       userText: 'hi',
     });
     expect(diffAgainstControl(station, control()).addedText.lineCount).toBe(0);
-    // The same stamp anywhere but the billing header is ordinary text.
-    station.messages[0].content.push({
-      type: 'text' as const,
-      text: 'cc_version=2.1.318.f9e',
-    });
-    expect(diffAgainstControl(station, control()).addedText.bytes).toBe(
-      'cc_version=2.1.318.f9e'.length + 1,
-    );
+    // The same stamp anywhere but the billing header is ordinary text: lines
+    // both requests carry, differing only by that suffix, are different
+    // lines. A normalizer applied to every line would make them equal.
+    const reference = control();
+    for (const [turn, suffix] of [
+      [station, 'f9e'],
+      [reference, 'a25'],
+    ] as const)
+      turn.messages[0].content.push({
+        type: 'text' as const,
+        text: `cc_version=2.1.318.${suffix}`,
+      });
+    const diff = diffAgainstControl(station, reference);
+    expect(diff.addedText.bytes).toBe('cc_version=2.1.318.f9e'.length + 1);
+    expect(diff.removedText.bytes).toBe('cc_version=2.1.318.a25'.length + 1);
   });
 
   test('an unchanged tool set adds no definition bytes', () => {
@@ -639,7 +647,7 @@ describe('station-weight idle CPU gap', () => {
       `up to ${Math.ceil(sampled.maxReadSpanMs)} ms per process`,
     );
     expect(metric.gap).not.toMatch(/up to 100 ms/);
-    expect(metric.gap).toContain('detaching inside the window');
+    expect(metric.gap).toContain('detaching before any read saw them');
   });
 });
 
@@ -929,6 +937,88 @@ describe('station-weight process identity', () => {
     expect(tagged(statLine(10, { start: 500 }))).toEqual([10]);
     // The environment read belonged to whatever reused pid 10.
     expect(tagged(statLine(10, { start: 900 }))).toEqual([]);
+  });
+
+  test('only a whole environment entry carries the run tag', () => {
+    const nonce = 'cd'.repeat(16);
+    const scratch = '/tmp/station-weight-y';
+    const tagging = runTagging({
+      nonce,
+      scratch,
+      startedAtMs: 0,
+      controlConfigDir: `${scratch}/claude-control`,
+      uid: 501,
+    });
+    const carries = (...entries: string[]) => carriesRunTag(entries, tagging);
+    expect(carries(`STATION_WEIGHT_RUN=${nonce}`)).toBe(true);
+    expect(carries(`HOME=${scratch}/user`)).toBe(true);
+    expect(carries(`TMPDIR=${scratch}/tmp/`)).toBe(true);
+    expect(carries(`HOME=${scratch}`)).toBe(true);
+    // The reviewer's cases: tag text inside another variable's value.
+    expect(carries(`INNOCENT=before HOME=${scratch}/user after`)).toBe(false);
+    expect(carries(`INNOCENT=before STATION_WEIGHT_RUN=${nonce} after`)).toBe(
+      false,
+    );
+    // A sibling path that only shares the prefix, another variable, a
+    // longer nonce.
+    expect(carries(`HOME=${scratch}2/user`)).toBe(false);
+    expect(carries(`XDG_HOME=${scratch}/user`)).toBe(false);
+    expect(carries(`STATION_WEIGHT_RUN=${nonce}0`)).toBe(false);
+    // The control engine's own entry excludes it.
+    expect(
+      carries(
+        `STATION_WEIGHT_RUN=${nonce}`,
+        `CLAUDE_CONFIG_DIR=${scratch}/claude-control`,
+      ),
+    ).toBe(false);
+  });
+
+  test('a macOS environment counts only from a read of the row process', () => {
+    const nonce = 'ef'.repeat(16);
+    const tagging = runTagging({
+      nonce,
+      scratch: '/tmp/station-weight-z',
+      startedAtMs: 1_700_000_000_000,
+      uid: 501,
+    });
+    const tableRow = {
+      ...row(20, 1, 'Tue Nov 14 22:13:25 2023'),
+      uid: 501,
+      startedAtMs: 1_700_000_005_000,
+    };
+    const tagged = (read: Map<number, unknown>) =>
+      taggedRows([tableRow], tagging, {
+        platform: 'darwin',
+        readArguments: () => read as never,
+      }).map((entry) => entry.pid);
+    const entry = (startedUs: number) => ({
+      startedUs,
+      argv: ['node'],
+      env: [`STATION_WEIGHT_RUN=${nonce}`],
+    });
+    expect(tagged(new Map([[20, entry(1_700_000_005_250_000)]]))).toEqual([20]);
+    // The read belonged to a process born in another second: a reused pid.
+    expect(tagged(new Map([[20, entry(1_700_000_009_000_000)]]))).toEqual([]);
+    // Unreadable (exited, another user's): never the run's.
+    expect(tagged(new Map())).toEqual([]);
+  });
+
+  test('a failed macOS environment read is an error, never an owned process', () => {
+    const tagging = runTagging({
+      nonce: '01'.repeat(16),
+      scratch: '/tmp/station-weight-w',
+      startedAtMs: 0,
+      uid: 501,
+    });
+    const tableRow = { ...row(30, 1, 'x'), uid: 501, startedAtMs: 5_000 };
+    expect(() =>
+      taggedRows([tableRow], tagging, {
+        platform: 'darwin',
+        run: () => {
+          throw new Error('spawnSync python3 ENOENT');
+        },
+      }),
+    ).toThrow('cannot read process environments exactly');
   });
 
   test('context switches count only processes read at both ends of the window', () => {

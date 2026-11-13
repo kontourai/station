@@ -15,6 +15,7 @@ import {
   processTable,
   repositoryState,
   runLauncher,
+  runOwnership,
   runTagging,
   sampleTreeCpu,
   signalIfSame,
@@ -216,6 +217,85 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
     expect(leftoverAfterStop([], table, tagging).map((row) => row.pid)).toEqual(
       [genuine.child.pid],
     );
+  });
+
+  test('a run tag spelled inside another variable is not an environment entry', async () => {
+    // The reviewer's cases: the tag text inside an unrelated value, which a
+    // space-separated environment listing cannot tell from an entry.
+    const fakeHome = start(idle, {
+      ...process.env,
+      INNOCENT: `before HOME=${scratch}/user after`,
+    });
+    const fakeNonce = start(idle, {
+      ...process.env,
+      INNOCENT: `before STATION_WEIGHT_RUN=${nonce} after`,
+    });
+    // Positive controls: genuine entries, one behind a 190,000-byte argument
+    // and one a HOME under the scratch root.
+    const genuine = start(idle, tagged);
+    const longArgument = start(idle, tagged, ['x'.repeat(190_000)]);
+    const nestedHome = start(idle, {
+      ...process.env,
+      HOME: `${scratch}/user/nested`,
+    });
+    await Promise.all(
+      [fakeHome, fakeNonce, genuine, longArgument, nestedHome].map(
+        (entry) => entry.firstLine,
+      ),
+    );
+    const table = processTable();
+    const expected = [
+      genuine.child.pid,
+      longArgument.child.pid,
+      nestedHome.child.pid,
+    ].sort();
+    expect(
+      taggedRows(table, tagging)
+        .map((row) => row.pid)
+        .sort(),
+    ).toEqual(expected);
+    expect(
+      leftoverAfterStop([], table, tagging)
+        .map((row) => row.pid)
+        .sort(),
+    ).toEqual(expected);
+  });
+
+  test('a detached child without the run environment is a leftover once a read saw it in the tree', async () => {
+    // The root starts a daemon in its own session with no environment at
+    // all (env: {}), so no tag ties it to the run; the reviewer's macOS
+    // case, a long process.title, hides the environment the same way.
+    const ownership = runOwnership(tagging, { intervalMs: 50 });
+    const { child: root, firstLine } = start(
+      `const { spawn } = require('node:child_process');
+       const daemon = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore', env: {}, windowsHide: true });
+       daemon.unref();
+       process.stdout.write(daemon.pid + '\\n');
+       setInterval(() => {}, 1000);`,
+      tagged,
+    );
+    const daemon = Number(await firstLine);
+    stray(daemon);
+    ownership.setRoots([identity(root.pid as number)]);
+    try {
+      let seen = false;
+      for (let attempt = 0; attempt < 40 && !seen; attempt += 1) {
+        await wait(50);
+        seen = ownership.ledger.identities().some((row) => row.pid === daemon);
+      }
+      expect(seen).toBe(true);
+      root.kill('SIGKILL');
+      await exited(root);
+      await wait(200);
+      const table = processTable();
+      expect(table.find((row) => row.pid === daemon)?.ppid).not.toBe(root.pid);
+      // Neither ancestry nor environment finds it any more.
+      expect(leftoverAfterStop([], table, tagging)).toEqual([]);
+      expect(ownership.leftover(table).map((row) => row.pid)).toEqual([daemon]);
+      expect(ownership.followErrors()).toEqual([]);
+    } finally {
+      ownership.stop();
+    }
   });
 
   test('a tagged process that names the nonce in its arguments too is not the run', async () => {
@@ -466,6 +546,31 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
     expect(run.stdout).not.toContain('not compared');
     expect(run.status).toBe(0);
   });
+
+  test.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ])(
+    'a saved ready time of %s (serialized as null) is reported and exits 0',
+    (_name, value) => {
+      const result = complete();
+      result.metrics.serverReadyMs = metric(value);
+      // The shape a run writes: JSON turns a non-finite number into null.
+      expect(JSON.parse(JSON.stringify(result)).metrics.serverReadyMs).toEqual({
+        status: 'measured',
+        value: null,
+        unit: 'x',
+      });
+      const run = gate(result);
+      expect(run.stderr).not.toContain('TypeError');
+      expect(run.stdout).toContain('MEASURED serverReadyMs=null x');
+      expect(run.stdout).toContain(
+        'REPORTED serverReadyMs measured without a finite value (null)',
+      );
+      expect(run.stdout).toContain('GATE PASS');
+      expect(run.status).toBe(0);
+    },
+  );
 
   test('request budgets NOT_MEASURED (engine never ready) exit non-zero', () => {
     const result = complete();
