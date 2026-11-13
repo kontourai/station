@@ -100,7 +100,7 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
     ).toEqual(['kiro-kas-bundle']);
   });
 
-  test('lists the added engines with their launch commands, and never Gemini CLI', () => {
+  test('lists the added engines with their launch commands', () => {
     const entries = new BuiltinACPConnectionRegistryProvider(
       () => false,
       () => false,
@@ -121,13 +121,34 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
       kimi: ['kimi', 'acp'],
       kilo: ['kilo', 'acp'],
       junie: ['junie', '--acp=true'],
+      // `--experimental-acp` is deprecated (gemini-cli config.ts).
+      gemini: ['gemini', '--acp'],
     });
-    expect(Object.keys(launch)).not.toContain('gemini');
-    expect(entries.map((entry) => entry.command)).not.toContain('gemini');
     // No built-in launches through a package runner that downloads code.
     expect(entries.map((entry) => entry.command)).not.toEqual(
       expect.arrayContaining(['npx', 'uvx']),
     );
+  });
+
+  test('Gemini CLI takes only a Gemini API key and never offers its Google login', () => {
+    const gemini = new BuiltinACPConnectionRegistryProvider(
+      () => false,
+      () => false,
+    )
+      .listAvailable()
+      .find((entry) => entry.id === 'gemini');
+    // GOOGLE_API_KEY is Vertex AI only, which needs a second variable.
+    expect(gemini?.auth?.credentialEnvVars).toEqual(['GEMINI_API_KEY']);
+    // The ids Gemini CLI's initialize advertises (packages/cli/src/acp/
+    // acpRpcDispatcher.ts): its Google login is refused on terms, its key
+    // method is what the key field replaces.
+    expect(gemini?.auth?.hiddenAuthMethodIds).toEqual([
+      'oauth-personal',
+      'gemini-api-key',
+    ]);
+    // Who Google still serves since 2026-06-18 is said up front.
+    expect(gemini?.description).toMatch(/paid Gemini API keys/);
+    expect(gemini?.description).toMatch(/Code Assist Standard or Enterprise/);
   });
 
   test('Cursor is detected and launched as cursor-agent, never the bare agent alias', () => {

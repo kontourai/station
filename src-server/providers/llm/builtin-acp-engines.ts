@@ -380,6 +380,53 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     },
   },
   {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    // Google's 2026-05-19 notice (developers.googleblog.com, "transitioning
+    // Gemini CLI to Antigravity CLI"): from 2026-06-18 it serves only paid
+    // API keys and Gemini Code Assist Standard or Enterprise.
+    description:
+      "Google's Gemini CLI. Since June 18, 2026 Google serves it only to paid Gemini API keys and Gemini Code Assist Standard or Enterprise, not to free or Google AI Pro and Ultra accounts.",
+    command: 'gemini',
+    // `--experimental-acp` still parses but is deprecated in favour of
+    // `--acp` (packages/cli/src/config/config.ts, google-gemini/gemini-cli
+    // 4ed06ed0dd, v0.68.0).
+    args: ['--acp'],
+    icon: 'GM',
+    tags: ['acp', 'gemini', 'google'],
+    homepageUrl: 'https://geminicli.com/docs/',
+    install: {
+      darwin: {
+        command: 'brew install gemini-cli',
+        docsUrl: 'https://www.geminicli.com/docs/get-started/installation',
+      },
+      linux: {
+        command: 'npm install -g @google/gemini-cli',
+        docsUrl: 'https://www.geminicli.com/docs/get-started/installation',
+        note: 'Needs Node.js 20 or later.',
+      },
+      win32: {
+        command: 'npm install -g @google/gemini-cli',
+        docsUrl: 'https://www.geminicli.com/docs/get-started/installation',
+        note: 'Needs Node.js 20 or later.',
+      },
+    },
+    auth: {
+      signInHint:
+        'Provide a paid Gemini API key. Station does not offer the Google account sign-in: Gemini CLI terms forbid using its Google login from other software.',
+      // `GEMINI_API_KEY` selects the key route on its own
+      // (packages/core/src/core/contentGenerator.ts getAuthTypeFromEnv).
+      // `GOOGLE_API_KEY` is read only for Vertex AI, which also needs
+      // GOOGLE_GENAI_USE_VERTEXAI=true, so a key field cannot use it.
+      credentialEnvVars: ['GEMINI_API_KEY'],
+      // `oauth-personal`: docs/resources/tos-privacy.md calls accessing its
+      // services "using third-party software, tools, or services (for
+      // example, using OpenClaw with Gemini CLI OAuth)" a violation.
+      // `gemini-api-key`: the key field above replaces it.
+      hiddenAuthMethodIds: ['oauth-personal', 'gemini-api-key'],
+    },
+  },
+  {
     id: 'factory-droid',
     name: 'Factory Droid',
     description: "Factory's Droid coding agent CLI.",
