@@ -81,7 +81,7 @@ export function coreUpdateScopeFromContext(c) {
 }
 `;
 
-/** Replaces only the two data seams; everything else is the real source. */
+/** Controls SDK, connection, chat and navigation inputs; renders real components. */
 const stubSeams: Plugin = {
   name: 'server-older-banner-seams',
   setup(builder) {
@@ -93,8 +93,23 @@ const stubSeams: Plugin = {
       { filter: /hooks\/useConnectedServerUpdateContext$/ },
       () => ({ path: 'context', namespace: 'stub' }),
     );
+    builder.onResolve({ filter: /contexts\/ActiveChatsContext$/ }, () => ({
+      path: 'chats',
+      namespace: 'stub',
+    }));
+    builder.onResolve({ filter: /contexts\/NavigationContext$/ }, () => ({
+      path: 'navigation',
+      namespace: 'stub',
+    }));
     builder.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
-      contents: args.path === 'sdk' ? STUB_SDK : STUB_CONTEXT,
+      contents:
+        args.path === 'sdk'
+          ? STUB_SDK
+          : args.path === 'context'
+            ? STUB_CONTEXT
+            : args.path === 'chats'
+              ? 'export function useActiveChatIds() { return []; }'
+              : 'export function useNavigationActions() { return { navigate() {} }; }',
       loader: 'js',
       resolveDir: REPO_ROOT,
     }));
@@ -110,9 +125,15 @@ import { useState } from 'react';
 import { UpdatesPanel } from './src-ui/src/components/updates/UpdatesPanel';
 import { WhatsNewDialog } from './src-ui/src/components/updates/WhatsNewDialog';
 import { ServerOlderLaunchCheck } from './src-ui/src/components/ServerOlderLaunchCheck';
+import { ToastProvider, toastStore } from './src-ui/src/contexts/ToastContext';
+import { NotificationContainer } from './src-ui/src/components/notifications/NotificationContainer';
 
 function Harness() {
   const [open, setOpen] = useState(false);
+  if (window.__scene.startsWith('notice-')) return <ToastProvider>
+    <button onClick={() => toastStore.upsert({ dedupeKey: 'connection-layout', message: window.__scene === 'notice-lost' ? "The server didn't answer in time. Reconnecting…" : 'Server connection restored.', tone: window.__scene === 'notice-lost' ? 'warning' : 'success' })}>Show connection notice</button>
+    <NotificationContainer />
+  </ToastProvider>;
   if (window.__scene === 'notes') return <WhatsNewDialog version="0.1.11-nightly.246303" nativeApp={false} serverKey="fixture" onClose={() => {}} />;
   return <>
     <ServerOlderLaunchCheck clientVersion="0.1.11-nightly.2465" />
@@ -420,4 +441,47 @@ for (const capture of [
       resolve(retained, `${capture.name}.png`),
     );
   });
+}
+
+// Controlled ToastStore input: transition and deduplication behavior is covered
+// by the mounted ConnectionBannerSource tests, not claimed by these layouts.
+for (const theme of ['light', 'dark'] as const) {
+  for (const viewport of ['desktop', 'ownerPhone'] as const) {
+    for (const notice of ['lost', 'restored'] as const) {
+      test(`connection notice presentation ${notice} (${theme}, ${viewport})`, async ({
+        page,
+      }, testInfo) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await mount(page, theme, viewport, 'update', `notice-${notice}`);
+        await page
+          .getByRole('button', { name: 'Show connection notice', exact: true })
+          .click();
+        const message =
+          notice === 'lost'
+            ? "The server didn't answer in time. Reconnecting…"
+            : 'Server connection restored.';
+        await expect(page.getByText(message, { exact: true })).toBeVisible();
+        const card = page.locator('.toast-card');
+        await expect(card).toBeVisible();
+        const box = await card.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(
+          VIEWPORTS[viewport].width,
+        );
+        await expectNoHorizontalScroll(page);
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `connection-${notice}-${theme}-${viewport}.png`,
+          ),
+        });
+        const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e');
+        mkdirSync(retained, { recursive: true });
+        copyFileSync(
+          testInfo.outputPath(`connection-${notice}-${theme}-${viewport}.png`),
+          resolve(retained, `connection-${notice}-${theme}-${viewport}.png`),
+        );
+      });
+    }
+  }
 }
