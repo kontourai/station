@@ -94,16 +94,12 @@ export function AgentEditorModelSection({
   return (
     <>
       <div className="editor-field">
-        <div className="editor-label-row">
-          <label className="editor-label" htmlFor="ae-model-connection">
-            Model connection
-          </label>
-          <InfoTip label="Model connection">
-            Which model connection Station&apos;s engine uses for this agent.
-          </InfoTip>
-        </div>
+        <label className="editor-label" htmlFor="ae-model-connection">
+          Model connection
+        </label>
         <select
           id="ae-model-connection"
+          aria-describedby="ae-model-connection-hint"
           className="editor-select"
           value={form.execution.modelConnectionId}
           disabled={disabled}
@@ -132,6 +128,9 @@ export function AgentEditorModelSection({
             </option>
           ))}
         </select>
+        <span className="editor-hint" id="ae-model-connection-hint">
+          The model connection Station&apos;s engine uses for this agent.
+        </span>
       </div>
 
       {modelConnectionOptions

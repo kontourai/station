@@ -111,7 +111,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   ).json()) as { success: boolean; data: unknown[] };
   expect(initialProjects.data).toEqual([]);
 
-  await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+  await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
 
   // UX audit RT-02, live and un-intercepted: this home was created by this
   // run, so its `config/app.json` genuinely carries `firstRun: {status:
@@ -138,7 +138,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   await expect(chapter).toHaveCount(0);
   await page
     .getByTestId('first-run-home-card')
-    .getByRole('button', { name: 'Personalize Station' })
+    .getByRole('button', { name: 'Open setup' })
     .click();
   await expect(chapter).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Step 1 of 3')).toBeVisible();
@@ -294,7 +294,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await authenticatedRequest.get('/api/projects')
     ).json()) as { success: boolean; data: unknown[] };
     expect(initialProjects.data).toEqual([]);
-    await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+    await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
 
     const chapter = page.getByTestId('first-run-engines');
     const firstRunStatus = (await (
@@ -309,7 +309,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await expect(chapter).toHaveCount(0);
       await page
         .getByTestId('first-run-home-card')
-        .getByRole('button', { name: 'Personalize Station' })
+        .getByRole('button', { name: 'Open setup' })
         .click();
       await expect(chapter).toBeVisible();
       await chapter.getByRole('button', { name: 'Not now' }).click();
@@ -451,7 +451,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await page.getByLabel('Base URL').fill(ollama.origin);
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page).toHaveURL(/\/connections\/models\/[^/?]+(?:\?|$)/);
-    await page.getByRole('button', { name: 'Test Connection' }).click();
+    await page.getByRole('button', { name: 'Test connection' }).click();
     await expect(page.getByText('Connection healthy')).toBeVisible();
 
     await expect

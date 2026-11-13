@@ -171,7 +171,7 @@ budget. The smoke checks that QR/manual welcome actions are hittable, at least
 44 points tall and inside the viewport, while protected workspace navigation is
 absent. It opens **Enter a pairing code**, checks the real address/code fields
 and title geometry before/after keyboard focus, closes that surface, then follows
-**Other ways to connect → Open connection manager → Connect a Station**. The
+**More ways to connect → Manage Stations → Connect a Station**. The
 existing address/title horizontal containment and focus-scale checks remain.
 It submits no pairing request and does not prove camera capture, host approval,
 credential persistence or physical-device behavior. Notification-sheet discovery

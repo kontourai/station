@@ -83,7 +83,7 @@ that server's authentication requirements; some permit anonymous access or
 host-managed credentials. Blank fields alone do not establish readiness. A
 refused check retains its reason so you can correct the settings and retry.
 
-**Test Connection** first requests the model catalog. If no usable catalog is
+**Test connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not
 prove chat, tool calling, images, or other model features. See the
@@ -140,11 +140,13 @@ provider's dated breakdown and active/group/model/surface annotations.
 Unavailable fields remain **Not reported**. An unavailable quota percentage does
 not discard readable account/credit details.
 
-**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
-field paths and deliberate exclusions. Only field names leave the server for
-unmapped values. This bounded shape audit excludes null/empty fields, value
-validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+**Data captured** lists the reading's source, **Stored in** (secure store or
+credential file), **History**, **Fields Station didn't recognize**,
+**Excluded fields** and **Complete** (No when the response was too large to
+check). Only field names leave the server for unrecognized values, and the panel
+ends with “Values and credentials are never shown.” This bounded check excludes
+null/empty fields, value validation, credential stores and other endpoints;
+**None** does not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
 only window labels, percentages, durations, reset times and observation timestamps.
 It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
@@ -297,8 +299,8 @@ Project access administration still requires Project IAM. See the
 
 Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
-**Enter a pairing code**, with **Find nearby Stations** under **More connection
-options**. Enter its address, a pairing code,
+**Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
+under **More ways to connect**. Enter its address, a pairing code,
 or scan a QR code. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
@@ -475,7 +477,7 @@ and is not yet verified; inspect it under **Connection details**. Saving does
 not connect, sign in, approve a Device, or grant Project access.
 
 Choose **Share device details**, then **Copy device details**, and send them to
-the Station owner for approval. These are public installation details, not a
+the Station operator for approval. These are public installation details, not a
 password or private key. This action is available even when the Station is
 already confirmed. It does not rotate trust or issue an invitation.
 
@@ -644,7 +646,7 @@ For a native signing-key approval, select the saved broker route and choose
 **Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
 instance, app/channel, and selected route. Choose **Copy device details** and
-send this public installation proof to the Station owner. On the owner's machine, with the self-hosted connector
+send this public installation proof to the Station operator. On the operator's machine, with the self-hosted connector
 configured and online, save that JSON to a private file and run:
 
 ```sh

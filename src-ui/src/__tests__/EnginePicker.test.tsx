@@ -347,11 +347,11 @@ describe('EnginePicker component', () => {
 
     expect(screen.getByTestId('engine-picker-none-capable')).toBeTruthy();
     expect(
-      screen.getByText('No connected engine can run the built-in assistant'),
+      screen.getByText('No connected engine can run the Station agent'),
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "Kiro can chat and answer questions about Station, but can't run the assistant.",
+        "Kiro can chat and answer questions about Station, but can't run the Station agent.",
       ),
     ).toBeTruthy();
     // Nothing to choose, and nothing is ever written from this state: an
@@ -385,7 +385,7 @@ describe('EnginePicker component', () => {
     // delivery-protocol §6 forbids.
     expect(
       screen.getByText(
-        "Kiro can chat and answer questions about Station, but can't run the assistant.",
+        "Kiro can chat and answer questions about Station, but can't run the Station agent.",
       ),
     ).toBeTruthy();
   });
@@ -403,7 +403,7 @@ describe('EnginePicker component', () => {
     expect(screen.getByTestId('engine-picker-none-capable')).toBeTruthy();
     expect(
       screen.getByText(
-        "Kiro and OpenCode can chat and answer questions about Station, but can't run the assistant.",
+        "Kiro and OpenCode can chat and answer questions about Station, but can't run the Station agent.",
       ),
     ).toBeTruthy();
   });
@@ -575,8 +575,6 @@ describe('the step variant contributes no chrome of its own', () => {
         onTitleChange={(title: string) => titles.push(title)}
       />,
     );
-    expect(titles.at(-1)).toBe(
-      'No connected engine can run the built-in assistant',
-    );
+    expect(titles.at(-1)).toBe('No connected engine can run the Station agent');
   });
 });

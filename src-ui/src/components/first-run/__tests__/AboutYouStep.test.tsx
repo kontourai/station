@@ -38,6 +38,15 @@ describe('AboutYouStep — nothing is assumed', () => {
     expect(onComplete).toHaveBeenCalledWith(undefined, destination);
   });
 
+  test('"Connect another device" says it is optional and where else to find it', () => {
+    renderStep();
+    const devices = screen.getByRole('button', {
+      name: 'Connect another device',
+    });
+    const hint = screen.getByText('Optional. Also in Connections.');
+    expect(devices.getAttribute('aria-describedby')).toBe(hint.id);
+  });
+
   test('both exits are disabled while answers are saving', () => {
     const { onComplete } = renderStep({ saving: true });
     for (const button of screen.getAllByRole('button')) {
@@ -131,7 +140,7 @@ describe('AboutYouStep — managed limit without remote clients (#4519)', () => 
     const help = screen.getByRole('link', { name: 'Get help' });
     expect(help.getAttribute('href')).toBe('https://help.acme.example/station');
     expect(note.contains(help)).toBe(true);
-    expect(screen.queryByText(/QR invitation/)).toBeNull();
+    expect(screen.queryByText('Optional. Also in Connections.')).toBeNull();
     fireEvent.click(devices);
     expect(onComplete).not.toHaveBeenCalled();
     // The other exits still work.

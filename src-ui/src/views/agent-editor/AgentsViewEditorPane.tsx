@@ -223,7 +223,7 @@ export function AgentsViewEditorPane({
       ) : (
         <div className="agent-inline-editor">
           <DetailHeader
-            title={isCreating ? 'New Agent' : form.name || selectedSlug || ''}
+            title={isCreating ? 'New agent' : form.name || selectedSlug || ''}
             icon={
               !isCreating && selectedAgent ? (
                 <AgentIcon
@@ -305,8 +305,8 @@ export function AgentsViewEditorPane({
                     {isSaving
                       ? 'Saving…'
                       : isCreating
-                        ? 'Create Agent'
-                        : 'Save Changes'}
+                        ? 'Create agent'
+                        : 'Save changes'}
                   </button>
                 </>
               ) : undefined
@@ -411,8 +411,8 @@ export function AgentsViewEditorPane({
                 {isSaving
                   ? 'Saving…'
                   : isCreating
-                    ? 'Create Agent'
-                    : 'Save Changes'}
+                    ? 'Create agent'
+                    : 'Save changes'}
               </button>
             )}
           </DetailHeader>
@@ -485,7 +485,7 @@ export function AgentsViewEditorPane({
 
           {validationMessages.length > 0 && (
             <div className="agent-editor__error-banner" role="alert">
-              <strong>Can’t save yet — please fix:</strong>
+              <strong>Fix these to save:</strong>
               <ul className="agent-editor__validation-summary">
                 {validationMessages.map((msg) => (
                   <li key={msg}>{msg}</li>
@@ -628,7 +628,7 @@ export function AgentsViewEditorPane({
 
       <ConfirmModal
         isOpen={!editorUnavailable && showDeleteModal}
-        title="Delete Agent"
+        title="Delete agent"
         message={`Are you sure you want to delete "${form.name || selectedSlug}"? This cannot be undone.`}
         confirmLabel="Delete"
         onConfirm={onDelete}

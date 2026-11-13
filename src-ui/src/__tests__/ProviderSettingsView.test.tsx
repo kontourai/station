@@ -207,7 +207,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         ),
       ).toBeNull();
       // What the panel is for when nothing exists: the way out.
-      expect(screen.getByText('Quick Setup')).toBeTruthy();
+      expect(screen.getByText('Quick setup')).toBeTruthy();
       expect(screen.getAllByText('No model connections yet')).toHaveLength(1);
     });
 
@@ -240,9 +240,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     test('the model-connections description does not point at the page it is on', () => {
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
-      const description = screen.getByText(/Connections used by Station/);
+      const description = screen.getByText(/Used by Station's engine/);
       expect(description.textContent).toContain(
-        'Engine connections are under the Engines tab.',
+        'Other engines are on the Engines tab.',
       );
       // Review L8: the JSX-newline form could never appear in rendered text,
       // so asserting its absence proved nothing. The rendered sentence is what

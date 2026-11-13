@@ -1,8 +1,10 @@
 import { useAgentsQuery } from '@kontourai/station-sdk';
+import { Button } from '../components/Button';
 import { AgentGlyph } from '../components/icons/Glyph';
 import { GLOBAL_CONTEXT } from '../components/modals/new-chat-modal-utils';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { AGENTS_PANE_ID } from '../components/split-pane-metrics';
+import { ErrorState } from '../components/state';
 import { type AgentData } from '../contexts/AgentsContext';
 import { dispatchNewChatIntent } from '../lib/newChatIntent';
 import type { NavigationView } from '../types';
@@ -20,8 +22,12 @@ interface AgentsViewProps {
 }
 
 export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
-  const { isLoading: agentsLoading, isError: agentsLoadFailed } =
-    useAgentsQuery();
+  const {
+    isLoading: agentsLoading,
+    isError: agentsLoadFailed,
+    error: agentsLoadError,
+    refetch: refetchAgents,
+  } = useAgentsQuery();
   const {
     DiscardModal,
     agentsCollectionEmpty,
@@ -94,7 +100,6 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
         compact
         label="agents"
         title="Agents"
-        subtitle="Choose an AI app or create your own agent."
         items={listItems}
         loading={agentsLoading}
         selectedId={editorId}
@@ -104,34 +109,40 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
         searchValue={search}
         listFilteredEmptyNoun="agents"
         collectionEmpty={agentsCollectionEmpty}
-        searchPlaceholder="Search agents..."
+        searchPlaceholder="Search agents…"
         onAdd={() => handleNew()}
         addLabel="New agent"
-        listEmptyTitle={
-          agentsLoadFailed ? 'Couldn’t load agents' : 'No agents yet'
-        }
         // archive#4463: when the list is genuinely
         // empty (no filter active), authoredAgents.length is always 0 too, so
         // the detail pane's create-first-run card is always showing beside
         // this — and its description was the exact same sentence. The card
         // is the trusted surface for "how to get started"; the list keeps
         // only the title, so there is one owner of the guidance.
-        listEmptyDescription={
-          agentsLoadFailed
-            ? 'Check the Station connection, then try this page again.'
-            : undefined
-        }
+        listEmptyTitle="No agents yet"
+        // A failed read with nothing listed is the layout's own error state
+        // with Retry; with stale agents still listed, one banner says so.
+        error={agentsLoadFailed ? agentsLoadError : undefined}
+        onRetry={() => void refetchAgents()}
+        listErrorTitle="Couldn’t load agents"
         listIntro={
-          agentsLoadFailed ? (
-            <div className="agent-editor__error-banner" role="alert">
-              Agent data could not be refreshed. Existing agents, if shown, may
-              be out of date.
-            </div>
+          agentsLoadFailed && listItems.length > 0 ? (
+            <ErrorState
+              variant="compact"
+              title="Couldn’t refresh agents"
+              description="This list may be out of date."
+              action={
+                <Button size="sm" onClick={() => void refetchAgents()}>
+                  Retry
+                </Button>
+              }
+            />
           ) : undefined
         }
         emptyIcon={<AgentGlyph />}
         emptyDescription="Select an agent to edit, or create a new one."
-        emptyContent={emptyContent}
+        // A failed read proves nothing about whether agents exist, so the
+        // "No agents of your own yet" create card waits for a real answer.
+        emptyContent={agentsLoadFailed ? undefined : emptyContent}
       >
         <AgentsViewEditorPane
           // The page no longer remounts per selection (#2992), so the pane's

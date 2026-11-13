@@ -836,7 +836,7 @@ describe('RelayRouteProfiles', () => {
     );
     expect(
       screen.getByText(
-        'No Stations yet. Open a setup link from the Station owner, or add one.',
+        'No Stations yet. Open a setup link from the Station operator, or add one.',
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add a Station' })).toBeTruthy();
@@ -1159,7 +1159,9 @@ describe('RelayRouteProfiles', () => {
 
     await screen.findByRole('region', { name: 'Pending operator approval' });
     expect(
-      screen.getByText('Waiting for the Station owner to approve this device.'),
+      screen.getByText(
+        'Waiting for the Station operator to approve this device.',
+      ),
     ).toBeTruthy();
     expect(screen.queryByLabelText('Station account password')).toBeNull();
     const loginCall = mocks.enrollmentInvoke.mock.calls.find(
@@ -1278,7 +1280,9 @@ describe('RelayRouteProfiles', () => {
       };
     });
     renderRoutes();
-    await screen.findByText(/Ask the Station owner for a new setup invitation/);
+    await screen.findByText(
+      /Ask the Station operator for a new setup invitation/,
+    );
     expect(
       screen.getByText(
         /Stage: route-status. Code: native_enrollment_saved_connections_ambiguous/,
@@ -1357,7 +1361,7 @@ describe('RelayRouteProfiles', () => {
 
     expect(
       await screen.findByText(
-        'Station couldn’t confirm this device setup step. Keep this screen open and ask the Station owner what to do next.',
+        'Station couldn’t confirm this device setup step. Keep this screen open and ask the Station operator what to do next.',
       ),
     ).toBeTruthy();
     const troubleshooting = screen.getByText('Device setup troubleshooting')
@@ -2214,7 +2218,7 @@ describe('RelayRouteProfiles', () => {
     renderRoutes();
     expect(
       screen.getByText(
-        'No Stations yet. Open a setup link from the Station owner, or add one.',
+        'No Stations yet. Open a setup link from the Station operator, or add one.',
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Add a Station' }));

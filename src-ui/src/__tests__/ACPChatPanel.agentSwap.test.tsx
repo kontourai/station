@@ -157,7 +157,7 @@ describe('ACPChatPanel transcript identity across an agent swap', () => {
     );
     expect(capture.sessions.at(-1)?.messages[0].content).toBe('Current answer');
     act(() => activeChatsStore.removeChat(SESSION_ID));
-    expect(screen.getByText('Initializing...')).toBeTruthy();
+    expect(screen.getByText('Initializing…')).toBeTruthy();
   });
 
   test('a new agentSlug re-selects the transcript with no store write', () => {

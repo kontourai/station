@@ -76,10 +76,10 @@ export function NotConnectedEngineDetail({
       />
       <div className="agent-editor__section">
         <div className="acp-add-dialog__result" role="status">
-          <strong>Not connected yet</strong>
+          {/* The header badge already says "Not connected yet". */}
           <span>
-            Station saved this engine but has not connected to it. Its Agent is
-            added once it connects.
+            Station saved this engine but couldn't connect. Its agent appears
+            once it connects.
           </span>
           {connection.lastError ? (
             <span className="acp-add-dialog__result-reason">

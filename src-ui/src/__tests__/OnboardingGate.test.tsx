@@ -861,7 +861,9 @@ describe('OnboardingGate', () => {
     );
     const launcher = screen.getByTestId('setup-launcher');
     expect(launcher.getAttribute('aria-label')).toBe('Setup reminder');
-    expect(launcher.textContent).toContain('Setup needed');
+    expect(
+      launcher.querySelector('.onboarding-setup-launcher__eyebrow'),
+    ).toBeNull();
     expect(launcher.textContent).not.toContain('First run');
     unmount();
 
@@ -886,7 +888,7 @@ describe('OnboardingGate', () => {
     expect(screen.getByTestId('setup-launcher')).toBeTruthy();
     expect(screen.getByText('Choose what powers Station')).toBeTruthy();
 
-    fireEvent.click(screen.getByLabelText('Dismiss setup launcher'));
+    fireEvent.click(screen.getByLabelText('Dismiss setup reminder'));
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
 
     currentStatus = createStatus({
@@ -997,7 +999,7 @@ describe('OnboardingGate', () => {
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByLabelText('Dismiss setup launcher'));
+    fireEvent.click(screen.getByLabelText('Dismiss setup reminder'));
 
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
     // Dismissal now persists through the device-settings store (archive#
@@ -1362,7 +1364,7 @@ describe('OnboardingGate', () => {
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByText('View All Connections'));
+    fireEvent.click(screen.getByText('All connections'));
 
     expect(navigate).toHaveBeenCalledWith('/connections');
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
@@ -1931,8 +1933,8 @@ describe('OnboardingGate', () => {
     );
 
     expect(screen.queryByText('App')).toBeNull();
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain(
-      'Your work',
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Connect to your Station',
     );
     fireEvent.click(
       screen.getByRole('button', { name: 'Scan pairing QR code' }),

@@ -250,6 +250,49 @@ describe('ExistingSetupImportStepper', () => {
     expect(screen.getByRole('status')).toBeTruthy();
   });
 
+  test('a receipt summary counts only what happened and sends an unknown outcome to Skills', () => {
+    const receipt = {
+      id: 'receipt-2',
+      createdAt: 'now',
+      previewId: 'preview-1',
+      retryable: false,
+      items: [
+        {
+          sourceId: 'one',
+          reviewedTarget: 'one',
+          state: 'applied' as const,
+          outcome: 'imported' as const,
+          rollback: { state: 'available' as const, retryable: false },
+        },
+        {
+          sourceId: 'two',
+          reviewedTarget: 'two',
+          state: 'indeterminate' as const,
+          outcome: 'indeterminate' as const,
+          rollback: { state: 'indeterminate' as const, retryable: false },
+        },
+      ],
+    };
+    hooks.apply.mockImplementation((_input, options) =>
+      options?.onSuccess?.(receipt),
+    );
+    hooks.review.mockImplementation((_input, options) =>
+      options?.onSuccess?.({
+        preview,
+        witness: { id: 'witness-1', expiresAt: 'later', items: [] },
+      }),
+    );
+    render(<ExistingSetupImportStepper />);
+    fireEvent.click(screen.getByRole('button', { name: 'Review targets' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Apply reviewed targets' }),
+    );
+    expect(screen.getByRole('heading', { name: 'Import result' })).toBeTruthy();
+    expect(
+      screen.getByText('1 imported; 1 unknown, check Skills.'),
+    ).toBeTruthy();
+  });
+
   test('keeps every workflow action row on the responsive primitive through review, apply, rollback, and reset', () => {
     const receipt = {
       id: 'receipt-1',
@@ -306,6 +349,8 @@ describe('ExistingSetupImportStepper', () => {
     expect(screen.getByText(/one — rolled-back/)).toBeTruthy();
     expect(screen.getByText(/two — failed/)).toBeTruthy();
     expect(screen.getByText(/repair: choose-different-target/)).toBeTruthy();
+    // Only outcomes that happened are counted; zero counts are left out.
+    expect(screen.getByText('1 failed; 1 rolled back.')).toBeTruthy();
     expect(
       screen.queryByText('Station did not publish an itemized outcome'),
     ).toBeNull();

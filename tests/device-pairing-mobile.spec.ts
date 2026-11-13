@@ -137,7 +137,7 @@ async function openConnections(page: Page): Promise<Locator> {
     }
   } else if (await setupLauncher.isVisible()) {
     await setupLauncher
-      .getByRole('button', { name: 'View All Connections' })
+      .getByRole('button', { name: 'All connections' })
       .click();
     await page.waitForURL(/\/connections(?:\?|$)/);
   } else {
@@ -616,7 +616,9 @@ test('unpaired mobile tour displays every step and returns to connection setup',
   try {
     const page = await context.newPage();
     await page.goto(baseURL!);
-    await page.getByRole('button', { name: 'See how Station works' }).click();
+    await page
+      .getByRole('button', { name: 'Explore a sample workspace' })
+      .click();
     const sample = page.getByTestId('unpaired-sample-workspace');
     await expect(sample).toBeVisible();
     for (let step = 1; step <= 4; step++) {

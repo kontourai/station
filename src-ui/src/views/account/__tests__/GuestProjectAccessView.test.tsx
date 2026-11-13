@@ -222,7 +222,9 @@ test('a read-only admin device inspects but cannot submit, with the operator-app
   expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
   expect(screen.getByText('view-only')).toBeTruthy();
   expect(
-    screen.getByText(/approve collaborator management for this browser/),
+    screen.getByText(
+      'View only. To change people or invitations, ask the Station operator to approve this browser for managing collaborators.',
+    ),
   ).toBeTruthy();
   const create = screen.getByRole('button', {
     name: 'Create invitation',
@@ -277,8 +279,10 @@ test('self-demotion acknowledges without content and hands back a refreshed view
     expectedActor: admin.id,
   });
   expect(
-    await screen.findByText(/You changed your own Project role/),
-  ).toBeTruthy();
+    (await screen.findByText(/You changed your own Project role/)).textContent,
+  ).toBe(
+    "List refreshed. You changed your own Project role. You can still read the Project, but can't change people or invitations.",
+  );
   expect(await screen.findByText(/limited to Project admins/)).toBeTruthy();
 });
 
@@ -298,6 +302,86 @@ test('a stale revision refuses honestly, refreshes, and never retries the mutati
     await screen.findByRole('button', { name: 'Confirm change' }),
   );
   expect(await screen.findByText(/Try again in a moment/)).toBeTruthy();
+  expect(stub.posts).toHaveLength(1);
+});
+
+test('a 401 refusal whose re-read is refused never claims the list was refreshed', async () => {
+  let refused = false;
+  const stub: Stub = {
+    posts: [],
+    access: () =>
+      refused
+        ? new Response('forbidden', { status: 403 })
+        : envelope(adminView()),
+    observe: () => observation(['orchestration:read', 'orchestration:operate']),
+    mutate: () => {
+      refused = true;
+      return new Response('unauthorized', { status: 401 });
+    },
+  };
+  stubFetch(stub);
+  mount();
+
+  expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke access' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Confirm change' }),
+  );
+  const banner = await screen.findByText(
+    /refused this change for this browser/,
+  );
+  expect(banner.textContent).toBe(
+    "Station refused this change for this browser. If the list doesn't let you change people, request browser access again.",
+  );
+  expect(screen.queryByText(/List refreshed/)).toBeNull();
+});
+
+test('losing administration on a refetch names the cause without claiming a refresh', async () => {
+  let lost = false;
+  const stub: Stub = {
+    posts: [],
+    access: () =>
+      lost ? new Response('forbidden', { status: 403 }) : envelope(adminView()),
+    observe: () => observation(['orchestration:read', 'orchestration:operate']),
+    mutate: () => envelope({ changed: true }),
+  };
+  stubFetch(stub);
+  mount();
+
+  expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
+  lost = true;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Refresh people and access' }),
+  );
+  const banner = await screen.findByText(/administration access changed/);
+  expect(banner.textContent).toBe(
+    "Your administration access changed. You can still read the Project, but can't change people or invitations.",
+  );
+  expect(screen.queryByText(/List refreshed/)).toBeNull();
+});
+
+test("a 401 refusal re-reads the list and points at this browser's approval, not sign-in", async () => {
+  const stub: Stub = {
+    posts: [],
+    access: () => envelope(adminView()),
+    observe: () => observation(['orchestration:read', 'orchestration:operate']),
+    mutate: () => new Response('unauthorized', { status: 401 }),
+  };
+  stubFetch(stub);
+  mount();
+
+  expect((await screen.findAllByText('Guest Admin')).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke access' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Confirm change' }),
+  );
+  const banner = await screen.findByText(
+    /refused this change for this browser/,
+  );
+  expect(banner.textContent).toBe(
+    "List refreshed. Station refused this change for this browser. If the list doesn't let you change people, request browser access again.",
+  );
+  expect(banner.textContent).not.toMatch(/Sign in again/);
   expect(stub.posts).toHaveLength(1);
 });
 

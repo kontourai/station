@@ -41,7 +41,7 @@ describe('ProviderTypePicker', () => {
     expect(onAdd).toHaveBeenCalledWith('ollama', 'Ollama');
   });
 
-  test('groups engine choices (agents, registered commands) and a truthfully labeled custom engine under one AI apps and other engines group', () => {
+  test('groups engine choices (agents, registered commands) and a truthfully labeled custom engine under one Engines group', () => {
     const onChooseAgent = vi.fn();
     const onChooseCommand = vi.fn();
     const agent = {
@@ -99,7 +99,7 @@ describe('ProviderTypePicker', () => {
     // One group, one noun — the picker's cross-reference to the Engines tab
     // no longer splits agents and registered commands under different
     // chrome ("Coding providers" / "Local and command providers").
-    expect(screen.getByText('AI apps and other engines')).toBeTruthy();
+    expect(screen.getByText('Engines')).toBeTruthy();
     expect(screen.queryByText('Coding providers')).toBeNull();
     expect(screen.queryByText('Local and command providers')).toBeNull();
 

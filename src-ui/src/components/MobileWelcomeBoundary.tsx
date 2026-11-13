@@ -20,7 +20,7 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
     <main className="mobile-welcome" aria-labelledby="mobile-welcome-title">
       <div className="mobile-welcome__content">
         <p className="mobile-welcome__eyebrow">Station on your phone</p>
-        <h1 id="mobile-welcome-title">Your work, wherever you are.</h1>
+        <h1 id="mobile-welcome-title">Connect to your Station</h1>
         <p className="mobile-welcome__intro">
           Connect to a Station on your computer to continue chats and review
           work. Your computer runs the agents and keeps your files.
@@ -31,13 +31,13 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
         >
           Scan pairing QR code
         </Button>
-        <section
-          className="mobile-welcome__alternatives"
-          aria-label="Other connection options"
-        >
-          <h2>Other connection options</h2>
+        {/* One group under the QR action: the two direct routes, with the
+            rest in the row's overflow (two labelled actions per row, #3045).
+            No heading or nested disclosure on top of it. */}
+        <div className="mobile-welcome__alternatives">
           <ActionRow
-            overflowLabel="More connection options"
+            label="Other ways to connect"
+            overflowLabel="More ways to connect"
             primary={
               <Button
                 onClick={() => openConnectionsModal({ mode: 'pair-code' })}
@@ -60,16 +60,14 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
                 label: 'Find nearby Stations',
                 onSelect: () => openConnectionsModal({ mode: 'discover' }),
               },
+              {
+                key: 'list',
+                label: 'Manage Stations',
+                onSelect: () => openConnectionsModal({ mode: 'list' }),
+              },
             ]}
           />
-          <details>
-            <summary>Other ways to connect</summary>
-            <p>Manage saved Stations or set up an advanced connection.</p>
-            <Button onClick={() => openConnectionsModal({ mode: 'list' })}>
-              Open connection manager
-            </Button>
-          </details>
-        </section>
+        </div>
         <section className="mobile-welcome__steps" aria-label="How to connect">
           <h2>Start on your computer</h2>
           <ol>

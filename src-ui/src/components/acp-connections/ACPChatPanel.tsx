@@ -294,7 +294,7 @@ export function ACPChatPanel({
   if (!activeSession || !bodySession) {
     return (
       <div className="acp-chat-panel acp-chat-panel--loading">
-        Initializing...
+        Initializing…
       </div>
     );
   }

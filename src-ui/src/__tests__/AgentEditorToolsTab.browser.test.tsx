@@ -71,10 +71,13 @@ describe('agent editor browser tools switch (D14)', () => {
     );
     const toggle = screen.getByRole('switch', { name: 'Browser access' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'More about Browser access' }),
-    );
-    expect(screen.getByRole('tooltip').textContent).toMatch(/Project browser/);
+    // The visible hint says what the switch does; no InfoTip repeats it.
+    expect(
+      screen.getByText('Lets this agent use the Project’s browser.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'More about Browser access' }),
+    ).toBeNull();
     fireEvent.click(toggle);
     expect(latest?.tools.browser).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
@@ -111,9 +114,7 @@ test.each(['station', 'codex'])(
     );
     expect(screen.queryByRole('switch', { name: 'Browser access' })).toBeNull();
     expect(
-      screen.getByText(
-        'Station browser access is currently available with Claude Code.',
-      ),
+      screen.getByText('Browser access works only with Claude Code.'),
     ).toBeTruthy();
     expect(latest.tools.browser).toBe(true);
   },

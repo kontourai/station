@@ -287,9 +287,7 @@ for (const viewport of [
     // (`views/CredentialProfileEnrolment.tsx:68-69`).
     await advanced.locator('> summary').click();
 
-    await expect(
-      page.getByRole('heading', { name: 'Credential entries' }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible();
     await expect(
       page.getByRole('checkbox', {
         name: /Run sessions in a Station-managed app home/,
@@ -300,7 +298,7 @@ for (const viewport of [
     ).toBeVisible();
     await expect(
       page.getByRole('checkbox', {
-        name: /Automatically try an enrolled credential entry/,
+        name: /Switch to a backup account when this one hits/,
       }),
     ).not.toBeChecked();
     // Finish the pre-existing staged attempt before exercising a new manual
@@ -313,17 +311,15 @@ for (const viewport of [
     // block renders a `Show sign-in command` <details> inside this one
     // (`views/CredentialProfileEnrolment.tsx:68-69`).
     await advanced.locator('> summary').click();
-    await expect(
-      page.getByRole('heading', { name: 'Credential entries' }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible();
 
     await page
-      .getByRole('textbox', { name: 'Credential entry reference' })
+      .getByRole('textbox', { name: 'Account reference' })
       .fill('new-profile');
     await page
-      .getByRole('textbox', { name: 'Credential entry label' })
+      .getByRole('textbox', { name: 'Account label' })
       .fill('New profile');
-    await page.getByRole('button', { name: 'Add credential entry' }).click();
+    await page.getByRole('button', { name: 'Add account' }).click();
     await expect(page.getByText('New profile', { exact: true })).toBeVisible();
 
     const backup = page.locator('.credential-recovery__profile', {
@@ -340,47 +336,47 @@ for (const viewport of [
       hasText: 'Renamed backup',
     });
     const enrollmentCheckbox = renamedBackup.getByRole('checkbox', {
-      name: 'Allow automatic recovery selection',
+      name: 'Use as backup',
     });
     // This is a mutation-controlled input: the checked state is committed
     // only after the server projection returns.
-    await renamedBackup
-      .getByText('Allow automatic recovery selection', { exact: true })
-      .click();
+    await renamedBackup.getByText('Use as backup', { exact: true }).click();
     await expect(enrollmentCheckbox).toBeChecked();
 
     await page
       .getByRole('button', { name: 'Import into Renamed backup' })
       .click();
     const importResult = page.getByRole('status', {
-      name: 'Credential entry provisioning import result',
+      name: 'Import result',
     });
     await expect(importResult).toContainText(
-      'Provisioning import completed: 2 items copied; 1 item skipped.',
+      'Import finished: 2 items copied, 1 item skipped.',
     );
     await expect(importResult).toContainText(
-      'This credential entry is marked as imported.',
+      'This account is marked as imported.',
     );
     await expect(page.getByText(CANARY_SECRET)).toHaveCount(0);
     await expect(page.getByText('settings.json')).toHaveCount(0);
 
-    await renamedBackup.getByRole('button', { name: 'Apply manually' }).click();
+    await renamedBackup
+      .getByRole('button', { name: 'Switch to this account' })
+      .click();
     await expect(
-      page.getByText(/potentially billable engine turn/),
+      page.getByText(
+        /One engine turn checks this account first and may be billed/,
+      ),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Apply and verify' }).click();
-    await expect(
-      page.getByText('Credential application: adopted.'),
-    ).toBeVisible();
+    await page.getByRole('button', { name: 'Check and switch' }).click();
+    await expect(page.getByText('Switched accounts.')).toBeVisible();
 
     // A later failure must name rollback, never report success.
-    await renamedBackup.getByRole('button', { name: 'Apply manually' }).click();
-    await page.getByRole('button', { name: 'Apply and verify' }).click();
+    await renamedBackup
+      .getByRole('button', { name: 'Switch to this account' })
+      .click();
+    await page.getByRole('button', { name: 'Check and switch' }).click();
     await expect(
       page.locator('.credential-recovery__outcome[role="alert"]'),
-    ).toContainText(
-      'Credential application was rolled back; the active credential was not changed.',
-    );
+    ).toContainText('Account not changed. The switch was undone.');
   });
 }
 
@@ -402,10 +398,10 @@ test('unsupported credential profile capability fails closed', async ({
   ).toBeVisible();
   await expect(
     page.getByRole('checkbox', {
-      name: /Automatically try an enrolled credential entry/,
+      name: /Switch to a backup account when this one hits/,
     }),
   ).toBeDisabled();
   await expect(
-    page.getByRole('button', { name: 'Apply manually' }),
+    page.getByRole('button', { name: 'Switch to this account' }),
   ).toBeDisabled();
 });

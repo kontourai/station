@@ -95,7 +95,7 @@ test.describe('Agent editor', () => {
     const edited = `Edited by the editor round-trip at ${Date.now()}.`;
 
     await page.goto(`/agents/${SLUG}`);
-    const save = page.getByRole('button', { name: 'Save Changes' });
+    const save = page.getByRole('button', { name: 'Save changes' });
     await expect(save).toBeVisible({ timeout: 20_000 });
 
     await page.locator('#ae-description').fill(edited);
@@ -157,16 +157,16 @@ test.describe('Agent editor at 390x844', () => {
     // archive#4521 item 4: this footer is now the page's ONLY save
     // affordance on a touch/narrow surface (the header row's own copy no
     // longer mounts there), so it carries the header's own wording —
-    // "Save Changes" here, not editing — rather than a generic "Save". The
+    // "Save changes" here, not editing — rather than a generic "Save". The
     // dirty-dot indicator (`agent-inline-editor__dirty-dot`, an
     // `aria-label="Unsaved changes"` span) sits INSIDE the button before the
-    // text, so its accessible name is "Unsaved changes Save Changes" while
+    // text, so its accessible name is "Unsaved changes Save changes" while
     // dirty — an anchored regex keeps matching power against both the dot
     // being dropped later and a duplicate row appearing, which `exact: true`
     // against the bare string cannot (it matches zero elements whenever the
     // dot is present).
     const footerSave = footer.getByRole('button', {
-      name: /Save Changes$/,
+      name: /Save changes$/,
     });
     await expect(footerSave).toBeVisible();
     // The header row's own copy of this control must not ALSO be mounted.

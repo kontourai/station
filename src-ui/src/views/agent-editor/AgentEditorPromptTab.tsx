@@ -1,6 +1,5 @@
 import type { AgentEngineValidationFinding } from '@kontourai/station-contracts/agent-validation';
 import { InfoTip } from '../../components/InfoTip';
-import { SparkleGlyph } from '../../components/icons/Glyph';
 import type { AgentEditorFormProps } from './types';
 import { buildSystemPromptPrompt } from './utils';
 
@@ -62,13 +61,7 @@ export function AgentEditorPromptTab({
               }
             }}
           >
-            {isEnriching ? (
-              '...'
-            ) : (
-              <>
-                <SparkleGlyph /> Generate
-              </>
-            )}
+            {isEnriching ? 'Generating…' : 'Generate'}
           </button>
         </div>
         <textarea
@@ -82,7 +75,7 @@ export function AgentEditorPromptTab({
               prompt: event.target.value,
             }))
           }
-          placeholder="You are a helpful assistant..."
+          placeholder="You are a helpful assistant…"
           aria-required={promptIsRequired}
           disabled={locked}
         />

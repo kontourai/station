@@ -42,10 +42,10 @@ without adding a model API key:
    Assistant** in the chat's Agent picker. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
-For a customized Codex Agent, open **Customize → Agents → New agent → Use an
-AI app**, enter a name, select **Codex**, and choose its model and Project.
+For a customized Codex Agent, open **Customize → Agents → New agent → Use a
+connected engine**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
-inspect the selection. Save with **Create Agent**, then choose it in a new chat.
+inspect the selection. Save with **Create agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
 the same priority as that message. (With the **Station orchestration instructions** Feature Preview on, an Agent that has Station controls also gets Station's own guidance on using them in that first message.) You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
 for tool selection and approval details.
@@ -137,7 +137,8 @@ configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
-app (on the welcome screen it is under **More connection options**). Discovery is off by default and shows names and local addresses without
+app (on the welcome screen it is under **More ways to connect**). Discovery is
+off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
@@ -648,16 +649,17 @@ of the answer's sheet. For the message that started a chat, both start a new
 chat with the same Agent and Project. When earlier messages have no completed
 answer to fork from, neither is offered; **New chat from this message** remains.
 
-The usage disclosure ends after your usage decision. **Personalize Station**
-opens optional preferences after the work entry; it is not a prerequisite for a
-chat.
+The usage disclosure ends after your usage decision. **Open setup** on the
+**Finish setup** card opens optional preferences after the work entry; it is not
+a prerequisite for a chat.
 Closing preparation prevents a late response from starting work. The request stays
 in the Home field while that Home view remains mounted and through the temporary
 setup-return flow; changing Stations or authorization ends that flow.
 
 When creating an agent, choose **Use a model connection** for Station's engine
-or **Use an AI app** for Claude Code, Codex, or another connected engine. Those
-apps run on the computer hosting your Station, including when you use a phone.
+or **Use a connected engine** for Claude Code, Codex, or another connected
+engine. Those engines run on the computer hosting your Station, including when
+you use a phone.
 An agent's setup warning names that agent; other ready agents can still run.
 
 At the end of first-run setup, choose **Start your first chat**. Station saves
@@ -1315,7 +1317,7 @@ configured Projects.
 
 ## Run A Scheduled Readiness Check
 
-An automation that runs in a chat can use any agent, including AI app agents
+An automation that runs in a chat can use any agent, including agents that use an engine
 such as Claude Code or Codex, when your Station supports it (see
 [Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
 a model connection (Station's engine); if none is ready, the form offers **Set

@@ -340,14 +340,14 @@ describe('AgentsViewEditorPane — one save affordance on mobile (station#4521 i
     }
   });
 
-  test('desktop keeps the header row’s Save Changes button, and only one', () => {
+  test('desktop keeps the header row’s Save changes button, and only one', () => {
     isMobile = false;
     render(<AgentsViewEditorPane {...(baseProps() as any)} />);
     // Tightened from `toBeGreaterThanOrEqual(1)`: that had zero power
     // against a desktop duplicate (a regression this exact class already
     // shipped once on mobile) — it would have passed unchanged at 2.
     expect(
-      screen.getAllByRole('button', { name: /Save Changes/ }),
+      screen.getAllByRole('button', { name: /Save changes/ }),
     ).toHaveLength(1);
   });
 
@@ -355,12 +355,12 @@ describe('AgentsViewEditorPane — one save affordance on mobile (station#4521 i
     isMobile = true;
     render(<AgentsViewEditorPane {...(baseProps() as any)} />);
     const saveButtons = screen.getAllByRole('button', {
-      name: /^Save Changes$|^Saving…$|^Save$/,
+      name: /^Save changes$|^Saving…$|^Save$/,
     });
     expect(saveButtons).toHaveLength(1);
   });
 
-  test('mobile’s one save affordance carries the same Create Agent wording the header used to', () => {
+  test('mobile’s one save affordance carries the same Create agent wording the header used to', () => {
     isMobile = true;
     render(
       <AgentsViewEditorPane
@@ -371,9 +371,9 @@ describe('AgentsViewEditorPane — one save affordance on mobile (station#4521 i
       />,
     );
     const saveButtons = screen.getAllByRole('button', {
-      name: /Create Agent|Save Changes/,
+      name: /Create agent|Save changes/,
     });
     expect(saveButtons).toHaveLength(1);
-    expect(saveButtons[0].textContent).toContain('Create Agent');
+    expect(saveButtons[0].textContent).toContain('Create agent');
   });
 });

@@ -660,7 +660,7 @@ export function resolveProviderPresentation(
           readiness: 'Reachable — no model catalog',
           tone: 'warn',
           detail:
-            'The service answered but offers no model list. Run Test Connection or start a chat to verify it can actually run work.',
+            'The service answered but offers no model list. Run Test connection or start a chat to verify it can actually run work.',
           actionLabel: 'Test connection',
         };
       }
