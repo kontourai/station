@@ -850,9 +850,11 @@ describe('foldUsageEvents: engine-reported cost and context reading', () => {
       cost(0.2, 'turn', { turnId: 'a' }),
       cost(0.2, 'session'),
       cost(0.3, 'turn', { turnId: 'b' }),
-      cost(0.5, 'session'),
+      // The session total can hold more than the turns (a subagent's work).
+      cost(0.65, 'session'),
     ]);
-    expect(usage.reportedCosts).toEqual([{ unit: 'credit', amount: 0.5 }]);
+    // Neither the turn sum (0.5) nor turn + session (1.15).
+    expect(usage.reportedCosts).toEqual([{ unit: 'credit', amount: 0.65 }]);
   });
 
   it('a new engine process banks the previous session total; units stay apart', () => {
