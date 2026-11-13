@@ -71,6 +71,27 @@ function github(repository, token) {
     }
     if (response.status === 404 && !body) return null;
     if (!response.ok) {
+      const unavailable =
+        response.status >= 500 ||
+        response.status === 429 ||
+        (response.status === 403 &&
+          (response.headers.get('x-ratelimit-remaining') === '0' ||
+            response.headers.has('retry-after')));
+      if (unavailable) {
+        // The nightly fallback logs this error, so it carries only the
+        // request line: never response bodies or token-scope headers.
+        const reason = `GitHub API HTTP ${response.status} for ${method} ${path}`;
+        await response.body?.cancel();
+        throw Object.assign(
+          new Error(
+            `GitHub release notes: HTTP ${response.status} ${method} ${path}`,
+          ),
+          {
+            releaseNotesReason: reason,
+            releaseNotesUnavailable: true,
+          },
+        );
+      }
       const safe = (value) =>
         typeof value === 'string'
           ? value
@@ -95,20 +116,9 @@ function github(repository, token) {
         ),
         oauthScopes: safe(response.headers.get('x-oauth-scopes')),
       };
-      throw Object.assign(
-        new Error(
-          `GitHub release notes: HTTP ${response.status} ${method} ${path} ${JSON.stringify(diagnostic)}`,
-        ),
-        {
-          // Logged by the nightly fallback; never the diagnostic above.
-          releaseNotesReason: `GitHub API HTTP ${response.status} for ${method} ${path}`,
-          releaseNotesUnavailable:
-            response.status >= 500 ||
-            response.status === 429 ||
-            (response.status === 403 &&
-              (response.headers.get('x-ratelimit-remaining') === '0' ||
-                response.headers.has('retry-after'))),
-        },
+      // Fail-closed configuration errors keep the full diagnostic.
+      throw new Error(
+        `GitHub release notes: HTTP ${response.status} ${method} ${path} ${JSON.stringify(diagnostic)}`,
       );
     }
     return response.json();
