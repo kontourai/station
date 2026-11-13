@@ -434,22 +434,6 @@
     "room-agent-abandon-light-mobile": [
       "src-ui/src/views/project-page/ProjectRoom.tsx"
     ],
-    "room-channels-dark-desktop": [
-      "src-ui/src/views/project-page/ProjectRoom.tsx",
-      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
-    ],
-    "room-channels-dark-mobile": [
-      "src-ui/src/views/project-page/ProjectRoom.tsx",
-      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
-    ],
-    "room-channels-light-desktop": [
-      "src-ui/src/views/project-page/ProjectRoom.tsx",
-      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
-    ],
-    "room-channels-light-mobile": [
-      "src-ui/src/views/project-page/ProjectRoom.tsx",
-      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
-    ],
     "room-reactions-dark-desktop": [
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/components/room/RoomReactions.tsx"
