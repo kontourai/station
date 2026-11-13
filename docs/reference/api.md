@@ -4868,7 +4868,9 @@ changes requiring a preview decision must be completed through preview/install.
 Missing update source or managed update refusal returns 409; pending lifecycle
 or activation returns 202. A managed update answers install trust refusals as
 install does: 409 `plugin-install-trust-refused` or `plugin-trust-record-newer`,
-and 503 `plugin-trust-records-unavailable`.
+and 503 `plugin-trust-records-unavailable`. A registry update answers registry
+refusals as install does too, such as 409 `agent-catalog-ambiguous` or 503
+`agent-catalog-unavailable`.
 
 The legacy path can still use git/registry update with a backup and restoration
 on failure. Before either path it runs the install trust migration (#2998); when
