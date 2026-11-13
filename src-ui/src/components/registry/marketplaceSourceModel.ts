@@ -159,8 +159,10 @@ export function locationHint(source: RegistrySource): string | undefined {
     return `github.com/${key[1]}/${key[2]}${key[4] ? `/${key[4]}` : ''} @ ${key[3]}`;
   const url = location.match(/^https:\/\/(github\.com\/[^/]+\/[^/]+)/);
   if (url) return `${url[1]}${source.ref ? ` @ ${source.ref}` : ''}`;
+  // The last two folders: enough to tell default folders apart, and never
+  // the home folder's own name.
   const segments = pathSegments(location);
-  return segments.length > 3 ? `…/${segments.slice(-3).join('/')}` : location;
+  return segments.length > 2 ? `…/${segments.slice(-2).join('/')}` : location;
 }
 
 /** The repository or folder a location names, for overlap checks. */
