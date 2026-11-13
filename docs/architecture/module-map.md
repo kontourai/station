@@ -565,7 +565,12 @@ remain required at entry.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
-descendant cannot borrow it. Runtime-admitted report cancellation, initial execution,
+descendant cannot borrow it. Publication checks finish lifetime-proof reads
+before entering their fresh physical Home span. Source guards use the same
+synchronous-callback validator as Home admission; rejected thenables are never
+assimilated. The body has its own physical entry, and the post-source check runs
+only after physical Home revalidation. Completion validation alone grants no
+Home, credential or execution authority. Runtime-admitted report cancellation, initial execution,
 returning sync/report and sync finalization build group, authority and host
 facades for controller transactions against an exact lease.
 The runtime parent spans the operation; each child releases home after the full
@@ -590,7 +595,7 @@ without retaining a stale continuation-turn row. Context acknowledgement remains
 exact-byte agreement, not evidence that a model remembers the supplied context.
 Scoped runtime facades can resolve metadata, but their provider invocation hooks
 refuse; actual dispatch uses the operation's separately admitted effect path.
-The pinned Flow Agents 9.11.0 controller uses the scoped host for recipient
+The pinned Flow Agents 9.14.0 controller uses the scoped host for recipient
 identity and discards its runtime; paid and sync launches use the base facade.
 The additional scoped invocation refusals are inspected defenses, not independently
 mutation-proven behavior against a different SDK or a deliberately misusing caller.
@@ -2733,7 +2738,7 @@ still unqualified.
 
 The personal-host continuation-finalizer route currently refuses, and its
 preview is not offered, until rounds-writer publication exclusion is
-qualified. The installed Flow Agents 9.11.0 contract supplies optional
+qualified. The installed Flow Agents 9.14.0 contract supplies optional
 transaction ownership and authenticates retained winner bytes; the metadata-only
 adapter does not grant provider execution or create a retry authorization.
 
@@ -2789,9 +2794,10 @@ block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. Independent advisory and explicitly selected
 Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
-joins and evaluation. Station selects Flow Agents 9.11.0 and Flow 5.4.0.
-The installed rounds module and types match the independently verified 9.11.0
-registry artifact. Installed-entry, type and persistence/Flow-admission controls
+joins and evaluation. Station selects Flow Agents 9.14.0 and Flow 5.4.0.
+The installed rounds module, types and companion recipient/Flow/winner modules
+match the retained 9.14.0 public registry artifact. Earlier independent package
+checks retain their original revisions. Installed-entry, type and persistence/Flow-admission controls
 establish compatibility, not all-writer or funded-journey qualification.
 Earlier controlled composed consumer suites passed 40 cases at their
 recorded source; positive execution uses a 240-second input. The earlier 120-second

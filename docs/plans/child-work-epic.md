@@ -19,6 +19,30 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Publication guard repair and retained performance failures (2026-11-13)
+
+At `780264f13f53`, a synchronous rounds check reuses its already-entered Home
+span for the initial source guard. Lifetime-proof reads finish before physical
+admission. Body entry, post-source physical revalidation and final return fencing
+remain separate. Home and publication share the unchanged synchronous-callback
+validator, avoiding rejected-thenable assimilation. The actual inspection control
+falls from five to four while keeping its positive observer. Twenty-four owner
+cases pass; server-test typechecking passed at `b0f063c62d36` before the final
+test-only reachability refinement. Independent lifetime-order, thenable and
+post-physical mutations each fail the intended assertion; exact restoration
+passes all twenty-four cases and leaves the tree clean.
+
+The full lost-reappraisal scenario still exceeds its original sixty-second
+bound, despite reaching later recovery phases. Currentness siblings pass; the
+serving qualification flag remains false. Its retained filesystem diagnostic
+observed about 2.95 million calls before the deadline, including 275,243 mutation-token
+opens. Those diagnostic edits were restored exactly. The separate 1,200-thread
+projection still exceeds ten seconds: phase/SQL measurements locate most cost in
+real append/transaction seeding, with material non-CPU elapsed time, rather than
+the batched read. No workload, bound, durability or classification changed.
+Neither failure is claimed repaired. Full native/portable authority, remaining
+semantic documentation and combined acceptance stay open.
+
 ### Reviewed provider-term renewal (2026-11-13)
 
 At `72b3b9a77c3c`, the fixed Anthropic text/input and Google text profiles
