@@ -3000,10 +3000,13 @@ Engines Station installs and signs in itself have two owners.
 installs a reviewed pin with consent (the manifest digest first, then each
 artifact, entry names and the unpacked tree) under
 `<STATION_HOME>/engines/<installId>/<version>/`, and `ACPProcess` resolves a
-`station-managed:<installId>` command to it at launch.
+`station-managed:<installId>` command to it at launch (the ACP adapter's
+readiness reads the same install).
 [`services/engine-host-auth/`](../../src-server/services/engine-host-auth/service.ts)
 holds the vault (`security/engine-host-auth.json`), the issuer, the
-`_kiro/secret/*` store and the Kiro device sign-in, and
+`_kiro/secret/*` store and the Kiro sign-ins (the device-code flow, and the
+Google/GitHub portal flow with its loopback callback in
+[`kiro-oidc/social.ts`](../../src-server/services/engine-host-auth/kiro-oidc/social.ts)), and
 `installEngineHostAuthResponders` registers the reviewed responders on a
 session or probe registry. Its import graph never reaches Station's own
 principals; launch facts are injected at bootstrap.
