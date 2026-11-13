@@ -6993,8 +6993,10 @@ describe('AcpAdapter.steerTurn', () => {
     // Nothing was cancelled, so the steer claims no interruption.
     expect(steer).not.toHaveProperty('steerInterruptedRun');
 
-    // The superseded prompt's `end_turn` does not end the steered turn.
+    // The superseded prompt's `end_turn` does not end the steered turn. Let
+    // its settlement run first, so a completion it caused would be next.
     processes[0]!.resolvePrompt('end_turn');
+    await new Promise<void>((resolve) => setImmediate(resolve));
     await processes[0]!.client.sessionUpdate({
       sessionId: 'native-kiro-cli',
       update: {
