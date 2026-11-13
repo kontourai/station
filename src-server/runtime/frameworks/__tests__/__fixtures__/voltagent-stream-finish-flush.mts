@@ -235,7 +235,7 @@ try {
   };
   assert.deepEqual(
     versions,
-    { core: '2.11.0', ai: '6.0.317' },
+    { core: '2.11.0', ai: '6.0.330' },
     'FLUSH_KEEPER_INSTALLED_VERSIONS',
   );
   entries = Object.fromEntries(
