@@ -172,7 +172,7 @@ const STATION_DOCS_TOOLS = [
     name: 'search_station_docs',
     title: 'Search documentation',
     description:
-      "Ranked search across Station's SHIPPED DOCUMENTATION, best match first. Ask in plain words; matching uses word stems and synonyms. Returns bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
+      "Ranked search across Station's SHIPPED DOCUMENTATION, best match first. Returns bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
     group: 'Documentation',
     readOnly: true,
   },
@@ -250,11 +250,7 @@ export function createStationDocsMcpServer(): McpServer {
       annotations: { readOnlyHint: true },
       _meta: { 'ai.kontour/tool-group': 'Documentation' },
       inputSchema: z.object({
-        query: z
-          .string()
-          .describe(
-            'What to look for, in plain words, e.g. "set up a cron job".',
-          ),
+        query: z.string().describe('Words to look for, e.g. "cron job".'),
         limit: z
           .number()
           .int()
