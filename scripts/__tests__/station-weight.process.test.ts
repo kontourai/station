@@ -118,7 +118,9 @@ describe.skipIf(!posix)('station-weight process tree ownership', () => {
 
 describe.skipIf(!posix)('station-weight leftover detection', () => {
   const nonce = randomBytes(16).toString('hex');
-  const scratch = `/tmp/station-weight-test-${nonce}`;
+  // Its own random name: a path containing the nonce would be excluded by
+  // the argument rule before the environment is read apart from arguments.
+  const scratch = `/tmp/station-weight-test-${randomBytes(8).toString('hex')}`;
   const startedAtMs = Date.now();
   const tagging = runTagging({
     nonce,
