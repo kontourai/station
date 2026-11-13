@@ -1,0 +1,7 @@
+{
+  "revision": "f449eb5e699897c325047b296a3ec69f83143ea4",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed display-only openRequestKinds against restored producer request types, unchanged lifecycle and exact inspection routing; ACP cursor/create_plan and Claude ExitPlanMode remain approvals. Focused snapshot and Attention-card tests pass; live providers unverified.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}
