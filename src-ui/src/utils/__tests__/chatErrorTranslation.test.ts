@@ -233,7 +233,7 @@ describe('translateChatError', () => {
       // That cause is this device's credential at Station, not the model
       // connection, so the hint points at the device's connection.
       expect(result.hint).toBe(
-        'This can be temporary. If it keeps happening, check this device’s connection to Station.',
+        'This can be temporary. If it keeps happening, check this device’s connection to this Station.',
       );
       expect(result.body).toBe(
         'The response ended before the reply finished, so nothing more arrived for this turn.',
