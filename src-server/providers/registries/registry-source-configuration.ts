@@ -44,7 +44,7 @@ const storedSource = z
     enabled: z.boolean(),
   })
   .strict();
-export const registryCatalogKind = z.enum(['skills', 'plugins', 'agents']);
+const registryCatalogKind = z.enum(['skills', 'plugins', 'agents']);
 const selectionSchema = z
   .object({
     sourceId: z.string().min(1).max(100),
@@ -159,7 +159,7 @@ export function legacyRegistrySourceKind(
  * source, selection or installed record changes: a source keeps its id, and
  * its old catalog stays the catalog of the kind it always provided.
  */
-export function migrateRegistrySourceConfiguration(
+function migrateRegistrySourceConfiguration(
   config: SourceConfig,
 ): SourceConfig {
   const users = new Map(config.sources.map((source) => [source.id, source]));

@@ -36,7 +36,7 @@ function defaultSkillRoots() {
 }
 
 /** The read bound for one SKILL.md, the same as a skill package file's. */
-export const SKILL_DOCUMENT_MAX_BYTES = 1024 * 1024;
+const SKILL_DOCUMENT_MAX_BYTES = 1024 * 1024;
 
 const missing = (error: unknown) =>
   error instanceof Error &&
