@@ -106,21 +106,27 @@ export async function downloadPinnedArtifact(
   // pipeline owns the write stream's lifecycle: an open or write failure
   // (missing or unwritable destination, full disk) rejects here instead of
   // surfacing as an unhandled 'error' event, and a backpressure wait cannot
-  // outlive a failed stream. Either way the file is closed before we return,
-  // so the caller can remove its staging directory.
+  // outlive a failed stream.
+  const file = createWriteStream(input.dest);
+  const closed = new Promise<void>((resolve) => file.once('close', resolve));
   try {
     await pipeline(
       response.body as unknown as AsyncIterable<Uint8Array>,
       checked,
-      createWriteStream(input.dest),
+      file,
     );
   } catch (error) {
+    // pipeline settles once the stream is destroyed, which can be before its
+    // asynchronous open has finished: wait for the descriptor to close, or
+    // the file appears after the caller has emptied its staging directory.
+    await closed;
     if (error instanceof PinnedArtifactError) throw error;
     throw new PinnedArtifactError(
       'download-failed',
       `The download from ${input.sourceName} stopped: ${(error as Error).message}`,
     );
   }
+  await closed;
   if (received !== input.bytes) {
     throw new PinnedArtifactError(
       'size-mismatch',

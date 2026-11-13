@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -75,6 +81,29 @@ describe('downloadPinnedArtifact', () => {
       }
     },
   );
+
+  // Callers remove their staging directory as soon as the download rejects.
+  // A refusal on the first chunk lands while the write stream is still
+  // opening; settling before it closes let the file appear after that
+  // removal (ENOTEMPTY, staging left behind) about half the time.
+  test('a rejected download has closed its file before it settles', async () => {
+    const base = makeTempDir('pinned-artifact-');
+    for (let i = 0; i < 40; i++) {
+      const staging = join(base, `s${i}`);
+      mkdirSync(staging);
+      const body = Buffer.alloc(31, 1);
+      const error = await failure(
+        downloadPinnedArtifact({
+          ...pinned(body, join(staging, 'a')),
+          bytes: 30,
+        }),
+      );
+      expect(error.reason).toBe('size-mismatch');
+      rmSync(staging, { recursive: true, force: true });
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      expect(existsSync(staging)).toBe(false);
+    }
+  });
 
   test('an over-length body still rejects with size-mismatch', async () => {
     const body = Buffer.alloc(128, 3);
