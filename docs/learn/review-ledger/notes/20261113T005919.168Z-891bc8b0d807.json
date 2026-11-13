@@ -1,0 +1,7 @@
+{
+  "revision": "bc414eabe16ad0d4a1ca403e9a83a9331a53f211",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Commit bc414eabe16a only changes the Skills detail pane's empty title from 'No skill selected' to 'Select a skill to see what it does' (and its test). The doc quotes the Browse Registry Skills / Browse Registry actions at ~1058, which are unchanged, and doesn't quote the detail-pane title.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SkillsView.test.tsx","src-ui/src/views/SkillsView.tsx"]}
+  ]
+}
