@@ -1,0 +1,7 @@
+{
+  "revision": "51be2299f66a1efa9145a327d9fd1ab57f6bd9d1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed final Run setup ordering: Agent, Model, Approval and Mode remain ordered when the existing choice labels change. Caller tests now enter setup to choose, then close it before Start; Home reads the unified summary. Existing approval, model-reset, transport and paste owners remain unchanged. Earlier 170 baseline and restored tests plus 33 caller tests passed; the expanded caller run caught and prompted the label-order repair. Final verification receipts are separate.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx"]}
+  ]
+}
