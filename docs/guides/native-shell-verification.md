@@ -704,10 +704,13 @@ sidecar supervisor itself has no boot or handshake timeout; it waits for the
 generation-tagged handshake or child exit.
 
 On macOS, pending activation may present a native-owned cover so the WebView
-can render while the proof proceeds. It shows the application icon and
-**Starting Station**; when the epoch becomes overdue it switches in place to
-**Station is taking longer than usual to start.** with native **Restart**
-(default) and **Quit** buttons, replacing the former modal alert. The read-only
+can render while the proof proceeds. It is drawn like the renderer startup
+screen at rest (palette for the window's appearance, channel mark and Fraunces
+wordmark, river track) with **Starting Station**; when the epoch becomes
+overdue it switches in place to **Station is taking longer than usual to
+start.**, the detail **It opens on its own when ready. A one-time upgrade after
+an update can take a few minutes.**, and native **Restart** (default) and
+**Quit** buttons, replacing the former modal alert. The read-only
 `startup_window_admitted` observation waits for a visible window and, on macOS,
 checks the main-thread view hierarchy for actual cover removal and restored
 WebView opacity. The readiness phase alone can precede that cover task. The

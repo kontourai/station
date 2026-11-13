@@ -132,7 +132,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/session-summary/` | Session summary records and the server-observed intent source they are derived from | Source |
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
 | `src-server/services/tailscale/` | This Station's public tailnet origin, asked of Tailscale rather than taken from a request | [Remote access threat model](../security/remote-access-threat-model.md) |
-| `src-server/services/webhooks/` | Inbound webhook HMAC authorization, replay ledger and audit store for `POST /api/webhooks/inbound`, configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
+| `src-server/services/webhooks/` | Station's bindings for the Telltale `webhook` source that verifies `POST /api/webhooks/inbound` (credential lookup, durable replay ledger, audit store), plus the start-grant check; configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
 | `src-server/services/work-item-providers/` | Local and flow-agents work-item provider backends behind one provider seam; GitHub tracker reads and Task follow-up polling (#4508) | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) |
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
@@ -1176,9 +1176,11 @@ reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
 StrictMode/remounts share one module-owned attempt. The host retains early
 page/mount facts until DesktopServerState exists and replays them in order.
 
-While waiting on macOS, the host can show a native startup cover laid out like
-the renderer startup screen: the application icon (which carries the channel
-art) centered at 96 pt and a short centered status line below it. The WebView
+While waiting on macOS, the host can show a native startup cover drawn like the
+renderer startup screen at rest: its background and text colors for the
+window's appearance, the channel mark and "tation" in Fraunces as one centered
+wordmark, the river track (with its moving crest unless Reduce Motion is on)
+and a short centered status line below it. The WebView
 stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
@@ -1224,8 +1226,9 @@ the in-app recovery UI, so it releases the loader at once for a terminal
 sidecar, or after that budget for a progressing one, and then stops polling.
 Because the mount commit sits outside `PlatformBootstrap`, identity commit plus
 renderer mount can reveal the window while the bootstrap is still authorizing. On macOS the cover switches
-in place to a "taking longer than usual" message with **Restart** (the default
-button) and **Quit**; a background (tray-only) launch defers it until
+in place to a "taking longer than usual" message, a line naming the usual cause
+(a one-time upgrade after an update), **Restart** (the default button) and
+**Quit**; a background (tray-only) launch defers it until
 activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
 that did not start, or an overdue cover task that failed) show a native dialog
 with **Restart**, **Quit** and **Keep Waiting**. The dialog does not block the
@@ -5136,8 +5139,10 @@ single-flight on each tick, and `stop()` aborts, awaits and closes it. The
 poller enforces each source's `pollIntervalMs` from the
 [Automation ledger](../../src-server/services/automation/automation-ledger.ts)'s
 poll state, lists completed workflow runs through the external monitor's REST
-transport and secret-binding credential path, and records each run through the
-[normalizer](../../src-server/services/automation/github-workflow-run.ts) and
+transport and secret-binding credential path, takes the runs in the window and
+the next cursor from Telltale's `githubPollStep`, and records each run through the
+[normalizer](../../src-server/services/automation/github-workflow-run.ts) (over
+Telltale's `normalizeGitHubWorkflowRun`) and
 [intake](../../src-server/services/automation/automation-intake.ts) as matched,
 no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Each rule has a mode: `off`, `observe` or `live`.
 Only a `live` rule opens an episode or retains an intent. For every matched rule,
