@@ -1,3 +1,7 @@
+import {
+  REGION_HOST_WARM_TIMEOUT_MS,
+  warmRegionHostImports,
+} from '../../workspace-panes/__tests__/warmRegionHostImports';
 /** @vitest-environment jsdom */
 
 import { dirname, resolve } from 'node:path';
@@ -5,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import {
   assertNoImportsSurvive,
   chromiumIsInstalled,
@@ -50,6 +54,8 @@ function Probe() {
   }, [value]);
   return null;
 }
+
+beforeAll(warmRegionHostImports, REGION_HOST_WARM_TIMEOUT_MS);
 
 beforeEach(() => {
   model = null;
