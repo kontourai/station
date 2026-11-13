@@ -329,13 +329,11 @@ test('an AskUserQuestion form keeps an exact Attention inspection route and inpu
     ok({ ...open, reference: exact, requiresAnswers: true }),
   );
   vi.stubGlobal('fetch', fetch);
-  window.matchMedia = vi
-    .fn()
-    .mockReturnValue({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   wrap(
     <>
       <ChatStatusPill
