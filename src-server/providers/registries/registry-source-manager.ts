@@ -210,6 +210,11 @@ export class RegistrySourceManager {
     string,
     { signature: string; provider: Provider }
   >();
+  /** One manifest reader per source, shared by its plugin and agent catalogs. */
+  private readonly manifests = new Map<
+    string,
+    { signature: string; provider: JsonManifestRegistryProvider }
+  >();
   private readonly snapshots = new Map<string, Snapshot>();
   private readonly statuses = new Map<string, Partial<RegistrySource>>();
   private readonly detecting = new Map<
@@ -499,7 +504,12 @@ export class RegistrySourceManager {
       snapshots,
       detections,
     });
-    for (const map of [this.providers, this.snapshots, this.statuses])
+    for (const map of [
+      this.providers,
+      this.manifests,
+      this.snapshots,
+      this.statuses,
+    ])
       for (const key of [...map.keys()]) if (owned(key)) map.delete(key);
   }
 
@@ -552,21 +562,24 @@ export class RegistrySourceManager {
         ? join(source.location, detection?.stationManifestPath ?? '')
         : source.location;
     const signature = `manifest|${manifestPath}`;
-    const manifest = cached(
-      `${source.id}#manifest`,
-      signature,
-      () =>
-        new JsonManifestRegistryProvider(
+    let manifest = this.manifests.get(source.id);
+    if (manifest?.signature !== signature) {
+      manifest = {
+        signature,
+        provider: new JsonManifestRegistryProvider(
           manifestPath,
           this.home,
           undefined,
           undefined,
           source.adapter === 'directory' ? { root: source.location } : {},
         ),
-    ) as JsonManifestRegistryProvider;
-    if (kind === 'plugins') return manifest;
+      };
+      this.manifests.set(source.id, manifest);
+    }
+    const reader = manifest.provider;
+    if (kind === 'plugins') return reader;
     return cached(snapshotKey(source.id, kind), signature, () =>
-      manifest.agentCatalog(),
+      reader.agentCatalog(),
     );
   }
 
