@@ -2063,15 +2063,16 @@ describe('Muse registration', () => {
 
   // Absent from `PROVIDER_MODEL_OPTION_SUPPORT` means "no known restriction",
   // so a caller's options were accepted and then silently ignored. #2452:
-  // `approvalMode` is read (serve applies it; exec reports what applied);
-  // nothing else is.
+  // `approvalMode` is read (serve applies it; exec reports what applied),
+  // and so is `effort` (the turn's reasoning tier); nothing else is.
   test('rejects modelOptions muse cannot apply instead of accepting them silently', () => {
     expect(
       unsupportedModelOptionKeys('muse', {
         approvalMode: 'ask',
         effort: 'high',
+        fastMode: true,
       }),
-    ).toEqual(['effort']);
+    ).toEqual(['fastMode']);
     expect(unsupportedModelOptionKeys('muse', {})).toEqual([]);
   });
 });
@@ -4275,5 +4276,104 @@ describe('Muse background work holds the turn (#2300)', () => {
       vi.advanceTimersByTimeAsync(50).then(() => 'none' as const),
     ]);
     expect(next).toBe('none');
+  });
+});
+
+describe('Muse reasoning effort on the exec path', () => {
+  /** Every event queued so far. The last read of the harness's iterator. */
+  async function drainQueued(harness: Harness): Promise<any[]> {
+    const events: any[] = [];
+    for (;;) {
+      const next = await Promise.race([
+        harness.iterator.next(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 30)),
+      ]);
+      if (!next || next.done) return events;
+      events.push(next.value);
+    }
+  }
+
+  async function turnArgv(
+    harness: Harness,
+    threadId: string,
+    turn: { modelOptions?: Record<string, unknown> } = {},
+  ) {
+    await harness.adapter.sendTurn({ threadId, input: 'ping', ...turn });
+    const child = harness.processes.at(-1)!;
+    await writeLines(child, MUSE_META_RUN_TERMINAL);
+    child.exit(0);
+    await flushIo();
+    return harness.spawnArgs.at(-1)!;
+  }
+
+  test('a turn effort rides --reasoning-effort, before the prompt separator, and is reported on turn.started', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+      cwd: '/tmp/project',
+    });
+    const args = await turnArgv(harness, 'thread-effort', {
+      modelOptions: { effort: 'xhigh' },
+    });
+    const flag = args.indexOf('--reasoning-effort');
+    expect(flag).toBeGreaterThan(0);
+    expect(args[flag + 1]).toBe('xhigh');
+    expect(flag).toBeLessThan(args.indexOf('--'));
+    const events = await drainQueued(harness);
+    const started = events.find((event) => event.method === 'turn.started');
+    expect(started?.metadata?.museReasoningEffort).toBe('xhigh');
+  });
+
+  test('a session-start effort applies to a turn that names none; a turn effort wins over it', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+      modelOptions: { effort: 'low' },
+    });
+    const first = await turnArgv(harness, 'thread-effort');
+    expect(first[first.indexOf('--reasoning-effort') + 1]).toBe('low');
+    const second = await turnArgv(harness, 'thread-effort', {
+      modelOptions: { effort: 'max' },
+    });
+    expect(second[second.indexOf('--reasoning-effort') + 1]).toBe('max');
+  });
+
+  test('no effort asked: no flag, no claim', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+    });
+    const args = await turnArgv(harness, 'thread-effort');
+    expect(args).not.toContain('--reasoning-effort');
+    const events = await drainQueued(harness);
+    const started = events.find((event) => event.method === 'turn.started');
+    expect(started).toBeDefined();
+    expect(started?.metadata ?? {}).not.toHaveProperty('museReasoningEffort');
+  });
+
+  test('an effort muse has no tier for is refused before anything spawns, at preflight and per turn', async () => {
+    const harness = createHarness();
+    await expect(
+      harness.adapter.preflightStart({
+        provider: 'muse',
+        threadId: 'thread-effort',
+        modelOptions: { effort: 'turbo' },
+      }),
+    ).rejects.toMatchObject({ kind: 'input_unsupported' });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-effort',
+    });
+    const refused = harness.adapter.sendTurn({
+      threadId: 'thread-effort',
+      input: 'ping',
+      modelOptions: { effort: 'turbo' },
+    });
+    await expect(refused).rejects.toBeInstanceOf(SendTurnRefusedError);
+    await expect(refused).rejects.toMatchObject({ kind: 'input_unsupported' });
+    expect(harness.spawnArgs).toEqual([]);
   });
 });

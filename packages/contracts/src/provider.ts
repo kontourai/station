@@ -735,9 +735,14 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     // (`museServeApprovalPlan`: MSP approval mode + host sandbox posture). A
     // session on the `muse exec` fallback cannot: it runs `--approval-mode
     // never` in muse's sandbox, and reports `approvalMode: 'auto'` as what
-    // applied, beside a `muse-serve-unavailable` warning. Nothing else in
-    // `modelOptions` is read, so nothing else is listed.
-    [PROVIDER_MUSE]: ['approvalMode'],
+    // applied, beside a `muse-serve-unavailable` warning.
+    // `effort` is read by `readMuseReasoningEffort` at start and on every
+    // turn and sent as the turn's tier: `turn/start.reasoningEffort` on serve,
+    // `--reasoning-effort` on exec. Station's effort words are all Muse tiers
+    // (`none|minimal|low|medium|high|xhigh|max|ultra`), so it maps by
+    // identity; a value outside that set is refused, never coerced. Nothing
+    // else in `modelOptions` is read, so nothing else is listed.
+    [PROVIDER_MUSE]: ['approvalMode', 'effort'],
   };
 
 /**

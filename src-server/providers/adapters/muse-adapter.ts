@@ -105,8 +105,11 @@ import type {
 } from './muse-adapter-types.js';
 import {
   isMuseProviderMode,
+  isMuseReasoningEffort,
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
+  MUSE_REASONING_EFFORTS,
+  type MuseReasoningEffort,
 } from './muse-adapter-types.js';
 import { museExecChildWorkNotReportedEvent } from './muse-serve-child-work.js';
 import type {
@@ -703,6 +706,28 @@ function museLaunch(args: readonly string[], envOverrides: NodeJS.ProcessEnv) {
   );
 }
 
+/**
+ * `modelOptions.effort` as a Muse tier, or `undefined` when none was asked
+ * for. A value muse has no tier for is refused before anything reaches the
+ * engine (`input_unsupported`), never coerced to a nearby tier and never
+ * dropped while the turn runs as if it had applied.
+ */
+export function readMuseReasoningEffort(
+  modelOptions: Record<string, unknown> | undefined,
+): MuseReasoningEffort | undefined {
+  const value = modelOptions?.effort;
+  if (value === undefined || value === null) return undefined;
+  if (isMuseReasoningEffort(value)) return value;
+  throw new SendTurnRefusedError(
+    `Muse Code has no reasoning effort ${JSON.stringify(
+      typeof value === 'string'
+        ? value.slice(0, MUSE_REFUSED_VALUE_MAX_CHARS)
+        : value,
+    )}. It offers: ${MUSE_REASONING_EFFORTS.join(', ')}.`,
+    'input_unsupported',
+  );
+}
+
 /** Exported for the #4520 spawn-level test; the adapter is its caller. */
 export function createMuseProcess(
   args: string[],
@@ -1148,6 +1173,14 @@ export class MuseAdapter implements ProviderAdapterShape {
     });
   }
 
+  /**
+   * A definitive refusal before the start boundary: an effort muse has no
+   * tier for can never start, so nothing is recorded as maybe-started.
+   */
+  async preflightStart(input: ProviderSessionStartInput): Promise<void> {
+    readMuseReasoningEffort(input.modelOptions);
+  }
+
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
@@ -1156,6 +1189,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     const startedAt = Date.now();
     const requestedApprovalMode = readApprovalMode(input.modelOptions);
+    const reasoningEffort = readMuseReasoningEffort(input.modelOptions);
     // chat-host-images: prepared once, here; the serve host and every exec
     // turn get this one folder, and none is created later in the session.
     const sessionTmpDir = engineSessionTmpDir(input.threadId);
@@ -1231,6 +1265,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       session,
       cwd: input.cwd,
       modelId: input.modelId,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
       stopped: false,
       ...(serve ? { serve } : {}),
       ...(sessionTmpDir ? { tmpDir: sessionTmpDir } : {}),
@@ -1470,6 +1505,17 @@ export class MuseAdapter implements ProviderAdapterShape {
         ),
       );
     }
+    let requestedEffort: MuseReasoningEffort | undefined;
+    try {
+      requestedEffort =
+        readMuseReasoningEffort(input.modelOptions) ?? record.reasoningEffort;
+    } catch (error) {
+      throw this.refuseSend(input.threadId, error as Error);
+    }
+    // Under `echo` the flag is dropped (`buildMuseExecArgs`), so no tier is
+    // claimed either.
+    const appliedEffort =
+      this.providerOverride === 'echo' ? undefined : requestedEffort;
     this.reportProviderNoticeOnce();
     this.reportRefusedTurnBudgetOnce();
     const turnId = crypto.randomUUID();
@@ -1513,6 +1559,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       // Omitted entirely when unset, which is the default: the argv is then
       // byte-identical to the one Station has always built.
       ...(this.providerOverride ? { provider: this.providerOverride } : {}),
+      ...(appliedEffort ? { reasoningEffort: appliedEffort } : {}),
     });
 
     let spawned: MuseSpawnResult;
@@ -1604,6 +1651,8 @@ export class MuseAdapter implements ProviderAdapterShape {
       // whatever was requested — `auto` in Station's vocabulary — so a
       // requested posture is answered with what actually applied.
       ...(readApprovalMode(input.modelOptions) ? { approvalMode: 'auto' } : {}),
+      // The `--reasoning-effort` this process was started with.
+      ...(appliedEffort ? { museReasoningEffort: appliedEffort } : {}),
       // Each bound appears only when it was declared, because only then
       // does anything enforce it. With neither (production), the
       // declaration says exactly that: this turn has no Station-imposed
@@ -1659,7 +1708,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     );
     let turnId: string;
     try {
+      const reasoningEffort =
+        readMuseReasoningEffort(input.modelOptions) ?? record.reasoningEffort;
       ({ turnId } = await serve.sendTurn({
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         prompt: input.input,
         displayPrompt: input.displayInput ?? input.input,
         ...(input.invocationId ? { invocationId: input.invocationId } : {}),

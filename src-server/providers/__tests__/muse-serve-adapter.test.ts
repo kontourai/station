@@ -299,13 +299,13 @@ describe('#2452 muse serve: approval mode', () => {
     expect(buildMuseServeArgs({ disableSandbox: false })).toEqual(['serve']);
   });
 
-  test('approvalMode is a muse model option the dispatcher admits', () => {
-    expect(unsupportedModelOptionKeys('muse', { approvalMode: 'ask' })).toEqual(
-      [],
+  test('approvalMode and effort are muse model options the dispatcher admits', () => {
+    expect(
+      unsupportedModelOptionKeys('muse', { approvalMode: 'ask', effort: 'high' }),
+    ).toEqual([]);
+    expect(unsupportedModelOptionKeys('muse', { serviceTier: 'fast' })).toEqual(
+      ['serviceTier'],
     );
-    expect(unsupportedModelOptionKeys('muse', { effort: 'high' })).toEqual([
-      'effort',
-    ]);
   });
 
   test('`ask` starts the MSP session in promptUnmatched on a sandboxed host, and reports it applied', async () => {
@@ -2857,5 +2857,143 @@ describe('Muse Code 1.4.18: request_user_input questions', () => {
         status: 'cancelled',
       }),
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Muse parity, slice 2. The session is the live 1.4.18 handshake (the steer
+// capture up to its first turn); frames after that are hand-written in the
+// MSP 1.4.18 schema shapes, from the live captures where one exists.
+
+/** The live `turn/start` ack shape (steer capture). */
+function turnAck(turnId: string) {
+  return {
+    commandId: turnId,
+    status: 'accepted',
+    turnId,
+    startedNewTurn: true,
+    disposition: 'started',
+  };
+}
+
+/** A live 1.4.18 session, idle, on the steer capture's real handshake. */
+async function liveSession(
+  h: Harness,
+  start: { modelOptions?: Record<string, unknown> } = {},
+): Promise<FakeMuseServeHost> {
+  const host = await firstHost(h, () =>
+    h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      cwd: '/workspace/probe/repo',
+      ...start,
+    }),
+  );
+  await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+    stopAt: captureIndex('steer', (msg) => msg.method === 'turn/start'),
+  });
+  await settle();
+  return host;
+}
+
+/** Sends a turn on `host` and acks it as the live host did. */
+async function dispatchTurn(
+  h: Harness,
+  host: FakeMuseServeHost,
+  turn: { modelOptions?: Record<string, unknown> } = {},
+  consumed: Set<SentFrame> = new Set(),
+): Promise<SentFrame> {
+  const sending = h.adapter.sendTurn({ threadId: THREAD, input: 'go', ...turn });
+  const request = await host.nextRequest('turn/start', consumed);
+  consumed.add(request);
+  reply(host, request, turnAck(TURN_1418));
+  await sending;
+  await settle();
+  return request;
+}
+
+/** One MSP notification on the live session. */
+function notify(
+  host: FakeMuseServeHost,
+  method: string,
+  params: Record<string, unknown>,
+) {
+  host.writeFrame({
+    jsonrpc: '2.0',
+    method,
+    params: { sessionId: SESSION_1418, ...params },
+  });
+}
+
+describe('Muse parity: reasoning effort on serve', () => {
+  test('a turn effort rides turn/start.reasoningEffort and is reported on that turn', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    const request = await dispatchTurn(h, host, {
+      modelOptions: { effort: 'high' },
+    });
+    expect(request.params).toMatchObject({
+      sessionId: SESSION_1418,
+      reasoningEffort: 'high',
+    });
+    const started = of(h.events, 'turn.started');
+    expect(started).toHaveLength(1);
+    expect(started[0].metadata).toMatchObject({
+      museTransport: 'serve',
+      museReasoningEffort: 'high',
+    });
+  });
+
+  test('the session-start effort applies when a turn names none', async () => {
+    const h = harness();
+    const host = await liveSession(h, { modelOptions: { effort: 'minimal' } });
+    const request = await dispatchTurn(h, host);
+    expect(request.params?.reasoningEffort).toBe('minimal');
+  });
+
+  test('no effort: turn/start carries no tier and the turn claims none', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    const request = await dispatchTurn(h, host);
+    expect(request.params).not.toHaveProperty('reasoningEffort');
+    expect(of(h.events, 'turn.started')[0].metadata).not.toHaveProperty(
+      'museReasoningEffort',
+    );
+  });
+
+  test('an effort muse has no tier for is refused before turn/start, and nothing is published', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    await expect(
+      h.adapter.sendTurn({
+        threadId: THREAD,
+        input: 'go',
+        modelOptions: { effort: 'turbo' },
+      }),
+    ).rejects.toMatchObject({ kind: 'input_unsupported' });
+    await settle();
+    expect(host.sent.filter((frame) => frame.method === 'turn/start')).toEqual(
+      [],
+    );
+    expect(of(h.events, 'turn.started')).toEqual([]);
+  });
+
+  test('a tier muse refuses at admission refuses the send and claims nothing', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    const sending = h.adapter.sendTurn({
+      threadId: THREAD,
+      input: 'go',
+      modelOptions: { effort: 'ultra' },
+    });
+    const request = await host.nextRequest('turn/start', new Set());
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      error: { code: -32602, message: 'reasoningEffort not offered' },
+    });
+    await expect(sending).rejects.toBeInstanceOf(SendTurnRefusedError);
+    await settle();
+    expect(of(h.events, 'turn.started')).toEqual([]);
   });
 });

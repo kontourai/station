@@ -54,6 +54,7 @@ import {
   type MuseServeSpawnResult,
   MuseServeTimeoutError,
 } from './muse-serve-rpc.js';
+import type { MuseReasoningEffort } from './muse-adapter-types.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
@@ -250,6 +251,11 @@ export interface MuseServeTurnInput {
   invocationId?: string;
   images: Array<{ mediaType: string; base64: string }>;
   modelId?: string;
+  /**
+   * `turn/start.reasoningEffort`: this turn's tier only (MSP: "sampled at
+   * submission for this turn"). Absent: muse's own standing default.
+   */
+  reasoningEffort?: MuseReasoningEffort;
   /** Present only when this turn carries a posture (see `approval-posture`). */
   approvalMode?: ApprovalMode;
   ambientContext?: string;
@@ -614,6 +620,9 @@ export class MuseServeSession {
           {
             commandId,
             sessionId,
+            ...(input.reasoningEffort
+              ? { reasoningEffort: input.reasoningEffort }
+              : {}),
             input: [
               { type: 'text', text: input.prompt },
               ...input.images.map((image) => ({
@@ -2572,6 +2581,11 @@ export class MuseServeSession {
         museApprovalMode: plan.museMode,
         museSandbox: plan.disableSandbox ? 'disabled' : 'enabled',
         ...(plan.stationMode ? { approvalMode: plan.stationMode } : {}),
+        // The tier this turn's `turn/start` carried, which muse admitted (a
+        // tier it refuses fails the send before this is published).
+        ...(input.reasoningEffort
+          ? { museReasoningEffort: input.reasoningEffort }
+          : {}),
         // #2269: no Station-imposed bound on a serve turn.
         supervision: { provider: 'muse', turnId: turn.turnId, startedAt },
       },
