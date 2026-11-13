@@ -13,7 +13,10 @@ import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import { installEngineHostAuthResponders } from '../engine-host-auth/responder.js';
 import type { ACPClientCallbacks } from './acp-bridge-types.js';
-import { registryLaunchEnvFor } from './acp-engine-descriptors.js';
+import {
+  ManagedRuntimeNotInstalledError,
+  registryLaunchEnvFor,
+} from './acp-engine-descriptors.js';
 import {
   type AcpDeclaredHandshake,
   parseAcpSessionModelState,
@@ -428,6 +431,20 @@ export const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
  */
 export const MAX_PENDING_CLEANUP_SIZE = MAX_CLEANUP_RETRY_ATTEMPTS - 1;
 
+/** Probe failures a surface may name in its own words. */
+export type AcpProbeFailureCode = 'managed-runtime-not-installed';
+
+/**
+ * The typed code for a probe failure Station can name: a managed engine that
+ * is not installed yet. Surfaces translate the code; they do not render the
+ * probe's free text.
+ */
+function probeFailureCode(err: unknown): { code?: AcpProbeFailureCode } {
+  return err instanceof ManagedRuntimeNotInstalledError
+    ? { code: 'managed-runtime-not-installed' }
+    : {};
+}
+
 /**
  * A probe failure reduced to text that may cross an API boundary.
  *
@@ -583,7 +600,12 @@ export class ACPProbe {
    * caused it. The message is redacted at capture (see `probeErrorMessage`),
    * which is what makes it projectable — not the absence of a stack.
    */
-  lastError: { message: string; phase: string } | null = null;
+  lastError: {
+    message: string;
+    phase: string;
+    /** A failure Station can name: see {@link probeFailureCode}. */
+    code?: AcpProbeFailureCode;
+  } | null = null;
   /** Whether the most recent failed run ran out of its handshake budget. */
   private lastFailureWasDeadline = false;
   /**
@@ -905,6 +927,7 @@ export class ACPProbe {
       this.lastError = {
         message: probeErrorMessage(error, this.config),
         phase: 'workspace preparation',
+        ...probeFailureCode(error),
       };
       this.lastFailureWasDeadline = false;
       this.logger.warn(
@@ -952,6 +975,7 @@ export class ACPProbe {
       this.lastError = {
         message: probeErrorMessage(err, this.config),
         phase: probePhase,
+        ...probeFailureCode(err),
       };
       this.lastFailureWasDeadline = false;
       throw err;
@@ -1113,6 +1137,7 @@ export class ACPProbe {
         // `process.start()` both launches and initializes; a command that
         // never launched failed at spawn, not while initializing.
         phase: isLaunchFailure(err) ? 'spawn' : probePhase,
+        ...probeFailureCode(err),
       };
       this.lastFailureWasDeadline = err instanceof ACPProbeDeadlineError;
       // archive#3404: "has this connection ever handshaked" is

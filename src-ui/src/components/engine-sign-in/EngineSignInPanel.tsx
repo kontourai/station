@@ -332,7 +332,8 @@ function ScopedEngineSignInPanel({
         </Button>
       </div>
       <small>{statusDetail(data)}</small>
-      {presentation && (
+      {/* Where the engine keeps its sign-in; not said when Station keeps it. */}
+      {presentation && data.status.source !== 'station-vault' && (
         <small>{hostActionCopy('engine-sign-in', presentation)}</small>
       )}
       {!signInAllowed && (

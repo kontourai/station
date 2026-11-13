@@ -269,6 +269,28 @@ test('a managed connection whose runtime is not installed fails before spawning,
   );
 });
 
+test('the probe records a managed engine that is not installed under a typed code', async () => {
+  registerManagedRuntimeInstalls({ installed: () => undefined });
+  const probe = new ACPProbe(
+    {
+      id: 'kiro-kas-bundle',
+      name: 'Kiro (KAS, no CLI)',
+      command: managedRuntimeCommand('kiro-kas'),
+      args: [],
+      enabled: true,
+    },
+    quiet,
+    home,
+    (options) => new ACPProcess(options),
+    20_000,
+  );
+  cleanups.push(() => probe.dispose());
+  expect(await probe.probe('request')).toBe(false);
+  expect(probe.lastError).toMatchObject({
+    code: 'managed-runtime-not-installed',
+  });
+});
+
 test('a managed connection carrying arguments of its own is refused', async () => {
   registerManagedRuntimeInstalls({
     installed: () => ({ runtime: process.execPath, script: '/nonexistent' }),

@@ -583,3 +583,21 @@ test('a signed-in engine offers sign-out; an installed one shows its version', a
     ).toBe(true),
   );
 });
+
+test('where the engine keeps its sign-in is said only when the engine keeps it', async () => {
+  serve(bundleView);
+  const { unmount } = renderPanel();
+  await screen.findByText(/Station keeps .*sign-in itself/);
+  expect(
+    screen.queryByText('The engine keeps its own sign-in on this computer.'),
+  ).toBeNull();
+  unmount();
+
+  serve(baseView);
+  renderPanel();
+  expect(
+    await screen.findByText(
+      'The engine keeps its own sign-in on this computer.',
+    ),
+  ).toBeTruthy();
+});

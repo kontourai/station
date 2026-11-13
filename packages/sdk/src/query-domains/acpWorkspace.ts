@@ -102,7 +102,15 @@ export interface ACPConnectionInfo {
    * this type finally admits it so a setup surface can say what happened
    * instead of "this provider needs more setup" (CI-R8).
    */
-  lastError?: { message: string; phase: string };
+  lastError?: {
+    message: string;
+    phase: string;
+    /**
+     * A failure Station can name (`managed-runtime-not-installed`); a surface
+     * says it in its own words rather than showing the probe's text.
+     */
+    code?: string;
+  };
 }
 
 export interface AcpSlashCommandDescriptor {
@@ -174,7 +182,15 @@ export interface ACPConnectionProbeStatus {
   id: string;
   name: string;
   status: string;
-  lastError?: { message: string; phase: string };
+  lastError?: {
+    message: string;
+    phase: string;
+    /**
+     * A failure Station can name (`managed-runtime-not-installed`); a surface
+     * says it in its own words rather than showing the probe's text.
+     */
+    code?: string;
+  };
 }
 
 export async function fetchACPConnectionProbeStatuses(): Promise<
