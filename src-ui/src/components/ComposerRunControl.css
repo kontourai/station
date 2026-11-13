@@ -1,6 +1,6 @@
 .composer-choices
   > .choice-trigger.composer-run-control:has(.composer-choice__icon) {
-  min-width: 0;
+  min-width: 44px;
   max-width: 100%;
   flex: 0 1 auto;
 }
