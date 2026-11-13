@@ -15,16 +15,40 @@ function github(repository, token) {
     throw new Error('GitHub repository and token are required');
   return async (path, body) => {
     const method = body ? 'POST' : 'GET';
-    const response = await fetch(`${API}/repos/${repository}${path}`, {
-      method,
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(30_000),
-    });
+    // Retry reads and note generation only: release creation may have succeeded
+    // before a response was lost and must not be blindly repeated.
+    const retrySafe = !body || path === '/releases/generate-notes';
+    let response;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(`${API}/repos/${repository}${path}`, {
+          method,
+          headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+          signal: AbortSignal.timeout(30_000),
+        });
+      } catch (error) {
+        if (
+          !retrySafe ||
+          attempt ||
+          !['TimeoutError', 'TypeError', 'AbortError'].includes(error?.name)
+        )
+          throw error;
+        continue;
+      }
+      const transient =
+        response.status >= 500 ||
+        response.status === 429 ||
+        (response.status === 403 &&
+          (response.headers.get('x-ratelimit-remaining') === '0' ||
+            response.headers.has('retry-after')));
+      if (!retrySafe || attempt || !transient) break;
+      await response.body?.cancel();
+    }
     if (response.status === 404 && !body) return null;
     if (!response.ok) {
       const safe = (value) =>
@@ -179,31 +203,45 @@ export async function generateServerReleaseNotes({
       : value.includes('-preview.')
         ? 'preview'
         : 'stable';
-  // Releases are paginated: desktop archives must not crowd server history out.
+  // API order is publication order, not version order. Promotion must span
+  // the preceding base version, rather than compare against its own prerelease.
+  const compare = (a, b) => {
+    const x = order(a),
+      y = order(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+      if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+    }
+    return (
+      Number(!a.includes('-')) - Number(!b.includes('-')) || a.localeCompare(b)
+    );
+  };
   let previous;
   let fallback;
   for (let page = 1; ; page++) {
     const releases = await api(`/releases?per_page=100&page=${page}`);
     if (!Array.isArray(releases)) throw new Error('Invalid release history');
-    fallback ??= releases.find(
-      (release) =>
-        !release.draft &&
-        /^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
-          release.tag_name ?? '',
-        ) &&
-        older(release.tag_name),
-    );
-    previous = releases.find(
-      (release) =>
-        !release.draft &&
-        release.tag_name !== tag &&
-        /^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
-          release.tag_name ?? '',
-        ) &&
-        releaseRing(release.tag_name) === ring &&
-        older(release.tag_name),
-    );
-    if (previous || releases.length < 100) break;
+    for (const release of releases) {
+      const candidate = release.tag_name;
+      if (
+        release.draft ||
+        !/^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
+          candidate ?? '',
+        ) ||
+        !older(candidate)
+      )
+        continue;
+      const lowerBase = order(candidate)
+        .slice(0, 3)
+        .some((part, i) => part !== order(tag)[i]);
+      if (lowerBase && (!fallback || compare(candidate, fallback.tag_name) > 0))
+        fallback = release;
+      if (
+        releaseRing(candidate) === ring &&
+        (!previous || compare(candidate, previous.tag_name) > 0)
+      )
+        previous = release;
+    }
+    if (releases.length < 100) break;
   }
   previous ??= fallback;
   if (!previous) throw new Error('Previous server release is unavailable');
@@ -211,6 +249,8 @@ export async function generateServerReleaseNotes({
   const before = await api(`/commits/${priorTag}`);
   if (!/^[a-f0-9]{40}$/.test(before?.sha ?? ''))
     throw new Error('Previous server source is unavailable');
+  if (before.sha === source)
+    throw new Error('Server release would compare its source to itself');
   const generated = await api('/releases/generate-notes', {
     tag_name: tag,
     target_commitish: source,
@@ -221,6 +261,11 @@ export async function generateServerReleaseNotes({
     throw new Error('Server release moved while generating notes');
   if (typeof generated?.body !== 'string' || !generated.body.trim())
     throw new Error('GitHub generated no release notes');
+  const changes = generated.body
+    .replace(/^.*(?:Full Changelog|\/compare\/).*$/gm, '')
+    .replace(/^#+.*$/gm, '')
+    .trim();
+  if (!changes) throw new Error('GitHub generated no change notes');
   return generated.body.replaceAll(
     `/compare/${priorTag}...${tag}`,
     `/compare/${before.sha}...${source}`,

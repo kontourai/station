@@ -775,6 +775,11 @@ describe('ConnectionBannerSource → Station details — blocked credential', ()
 });
 
 it('announces sustained loss once, waits for SSE catch-up, and keeps blips quiet', () => {
+  activeConnection = {
+    id: 'studio',
+    name: 'Studio',
+    url: 'https://station.example.test',
+  };
   connectionStatus.status = 'connected';
   const client = new QueryClient();
   const tree = () => (
@@ -791,7 +796,13 @@ it('announces sustained loss once, waits for SSE catch-up, and keeps blips quiet
   connectionStatus.failureStreak = 3;
   view.rerender(tree());
   expect(toastStore.getSnapshot()).toHaveLength(1);
-  expect(toastStore.getSnapshot()[0].message).toContain('Reconnecting');
+  expect(toastStore.getSnapshot()[0].message).toBe(
+    "Studio didn't answer in time. Reconnecting…",
+  );
+  expect(toastStore.getSnapshot()[0].duration).toBe(0);
+  expect(toastStore.getSnapshot()[0].dedupeKey).toBe(
+    'connection:studio:https://station.example.test',
+  );
   expect(toastStore.getSnapshot()[0].message).toContain(
     "didn't answer in time",
   );
@@ -814,6 +825,7 @@ it('announces sustained loss once, waits for SSE catch-up, and keeps blips quiet
 });
 
 it('does not announce recovery on initial connection or carry an outage across Station selections', () => {
+  connectionStatus.reason = 'timeout';
   connectionStatus.status = 'connected';
   const client = new QueryClient();
   const tree = () => (
@@ -836,3 +848,28 @@ it('does not announce recovery on initial connection or carry an outage across S
   view.rerender(tree());
   expect(toastStore.getSnapshot()).toHaveLength(0);
 });
+
+it.each([
+  'authentication-failed',
+  'identity-mismatch',
+  'unexpected-response',
+  'unsupported-capability-version',
+  'awaiting-approval',
+] as const)(
+  'does not duplicate the decision banner with a %s toast',
+  (reason) => {
+    connectionStatus.status = 'connected';
+    const client = new QueryClient();
+    const tree = () => (
+      <QueryClientProvider client={client}>
+        <ConnectionBannerSource />
+      </QueryClientProvider>
+    );
+    const view = render(tree());
+    connectionStatus.status = 'error';
+    connectionStatus.reason = reason;
+    connectionStatus.failureStreak = 3;
+    view.rerender(tree());
+    expect(toastStore.getSnapshot()).toHaveLength(0);
+  },
+);

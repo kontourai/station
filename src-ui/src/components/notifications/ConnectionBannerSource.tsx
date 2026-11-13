@@ -92,62 +92,6 @@ export function ConnectionBannerSource() {
   const stream = useSyncExternalStore(subscribeStreamConnectionState, () =>
     getStreamConnectionState(apiBase),
   );
-  const noticeRef = useRef({
-    scope: '',
-    connected: false,
-    lost: false,
-    toast: '',
-  });
-  useEffect(() => {
-    const scope = `${activeConnection?.id ?? 'local'}:${apiBase}`;
-    if (noticeRef.current.scope !== scope) {
-      if (noticeRef.current.toast) toastStore.dismiss(noticeRef.current.toast);
-      noticeRef.current = { scope, connected: false, lost: false, toast: '' };
-    }
-    const notice = noticeRef.current;
-    if (status === 'connected') {
-      notice.connected = true;
-      // Health recovery alone cannot declare an interrupted stream live.
-      if (
-        notice.lost &&
-        (stream.phase === 'caught-up' || stream.phase === 'unknown')
-      ) {
-        toastStore.dismiss(notice.toast);
-        notice.toast = toastStore.upsert({
-          dedupeKey: `connection-restored:${scope}`,
-          message: 'Server connection restored.',
-          tone: 'success',
-        });
-        notice.lost = false;
-      }
-    } else if (
-      status === 'error' &&
-      failureStreak >= 3 &&
-      notice.connected &&
-      !notice.lost
-    ) {
-      notice.lost = true;
-      const explanation = reason
-        ? connectionFailureCopy(reason, 'The server', endpoint).summary
-        : 'Server connection lost.';
-      notice.toast = toastStore.upsert({
-        dedupeKey: `connection-lost:${scope}`,
-        message: blocked
-          ? `${explanation} Reconnect needs attention.`
-          : `${explanation} Reconnecting…`,
-        tone: 'warning',
-      });
-    }
-  }, [
-    activeConnection?.id,
-    apiBase,
-    endpoint,
-    status,
-    failureStreak,
-    reason,
-    blocked,
-    stream.phase,
-  ]);
 
   useEffect(() => {
     if (!blocked) return;
@@ -235,6 +179,88 @@ export function ConnectionBannerSource() {
     reason !== 'unsupported-capability-version' &&
     reason !== 'awaiting-approval' &&
     (connectionFailureNeedsDecision(reason) || loopbackFromElsewhere);
+
+  const noticeRef = useRef({
+    scope: '',
+    connected: false,
+    lost: false,
+    toast: '',
+  });
+  useEffect(() => {
+    const scope = `${activeConnection?.id ?? 'local'}:${apiBase}`;
+    if (noticeRef.current.scope !== scope) {
+      if (noticeRef.current.toast) toastStore.dismiss(noticeRef.current.toast);
+      noticeRef.current = { scope, connected: false, lost: false, toast: '' };
+    }
+    const notice = noticeRef.current;
+    const decision =
+      showDecision ||
+      showCompat ||
+      credentialOwned ||
+      pendingApproval ||
+      reason === 'awaiting-approval';
+    if (status === 'error' && decision) {
+      if (notice.lost) toastStore.dismiss(notice.toast);
+      notice.lost = false;
+      return;
+    }
+    if (status === 'connected') {
+      notice.connected = true;
+      // Health recovery alone cannot declare an interrupted stream live.
+      if (
+        notice.lost &&
+        (stream.phase === 'caught-up' || stream.phase === 'unknown')
+      ) {
+        toastStore.dismiss(notice.toast);
+        notice.toast = toastStore.upsert({
+          dedupeKey: `connection:${scope}`,
+          message: 'Server connection restored.',
+          tone: 'success',
+        });
+        notice.lost = false;
+      }
+    } else if (
+      !showDecision &&
+      !showCompat &&
+      !credentialOwned &&
+      !pendingApproval &&
+      reason !== 'awaiting-approval' &&
+      status === 'error' &&
+      failureStreak >= 3 &&
+      notice.connected &&
+      !notice.lost
+    ) {
+      notice.lost = true;
+      const name = activeConnection?.name || 'Station';
+      const explanation =
+        reason === 'busy'
+          ? `${name} is busy.`
+          : reason === 'timeout'
+            ? `${name} didn't answer in time.`
+            : `Connection to ${name} lost.`;
+      notice.toast = toastStore.upsert({
+        dedupeKey: `connection:${scope}`,
+        message: blocked
+          ? `${explanation} Reconnect needs attention.`
+          : `${explanation} Reconnecting…`,
+        tone: 'warning',
+        duration: 0,
+      });
+    }
+  }, [
+    activeConnection?.id,
+    activeConnection?.name,
+    showDecision,
+    showCompat,
+    credentialOwned,
+    pendingApproval,
+    apiBase,
+    status,
+    failureStreak,
+    reason,
+    blocked,
+    stream.phase,
+  ]);
 
   const { data: compat } = useQuery({
     queryKey: ['host-compatibility', apiBase],

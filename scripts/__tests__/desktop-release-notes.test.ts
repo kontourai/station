@@ -99,7 +99,7 @@ test.each([401, 403, 503])(
         manifest: { version, notes: '- Notes' },
       }),
     ).rejects.toThrow(`HTTP ${status}`);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(status === 503 ? 2 : 1);
   },
 );
 
@@ -337,11 +337,16 @@ test('server notes fail closed without a previous release', async () => {
   ).rejects.toThrow('Previous server release');
 });
 
-test('the first stable release can use a published server prerelease as its baseline', async () => {
+test('the first stable release spans the highest preceding base version regardless of API order', async () => {
   const request = vi
     .fn()
     .mockResolvedValueOnce(
-      Response.json([{ tag_name: 'v0.1.12-preview.1', draft: false }]),
+      Response.json([
+        { tag_name: 'v0.1.12-preview.1', draft: false },
+        { tag_name: 'v0.1.9-nightly.99' },
+        { tag_name: 'v0.1.11-nightly.2' },
+        { tag_name: 'v0.1.10-nightly.99' },
+      ]),
     )
     .mockResolvedValueOnce(Response.json({ sha: previous }))
     .mockResolvedValueOnce(Response.json({ body: '- Stable server changes' }))
@@ -354,6 +359,61 @@ test('the first stable release can use a published server prerelease as its base
     token: options.token,
   });
   expect(JSON.parse(request.mock.calls[2][1].body).previous_tag_name).toBe(
-    'v0.1.12-preview.1',
+    'v0.1.11-nightly.2',
   );
 });
+
+test.each(['self', 'empty'])(
+  'server notes reject %s comparisons',
+  async (mode) => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json([{ tag_name: 'v0.1.10' }]))
+        .mockResolvedValueOnce(
+          Response.json({ sha: mode === 'self' ? source : previous }),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            body: '## What Changed\n**Full Changelog**: https://github.com/a/b/compare/v0.1.10...v0.1.11',
+          }),
+        )
+        .mockResolvedValueOnce(Response.json({ sha: previous })),
+    );
+    await expect(
+      generateServerReleaseNotes({
+        tag: 'v0.1.11',
+        source,
+        repository: options.repository,
+        token: options.token,
+      }),
+    ).rejects.toThrow(mode === 'self' ? 'itself' : 'no change notes');
+  },
+);
+test.each([503, 429, 403, 'timeout'])(
+  'note generation retries transient %s once',
+  async (status) => {
+    const request = vi.fn();
+    if (status === 'timeout')
+      request.mockRejectedValueOnce(
+        new DOMException('timeout', 'TimeoutError'),
+      );
+    else
+      request.mockResolvedValueOnce(
+        new Response('', {
+          status: Number(status),
+          headers: { 'retry-after': '1' },
+        }),
+      );
+    request
+      .mockResolvedValueOnce(Response.json({ sha: previous }))
+      .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+      .mockResolvedValueOnce(Response.json({ sha: previous }));
+    vi.stubGlobal('fetch', request);
+    await expect(generateDesktopReleaseNotes(options)).resolves.toBe(
+      '- Changes',
+    );
+    expect(request).toHaveBeenCalledTimes(4);
+  },
+);

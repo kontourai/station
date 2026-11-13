@@ -131,7 +131,7 @@ import { NotificationContainer } from './src-ui/src/components/notifications/Not
 function Harness() {
   const [open, setOpen] = useState(false);
   if (window.__scene.startsWith('notice-')) return <ToastProvider>
-    <button onClick={() => toastStore.upsert({ dedupeKey: 'connection-layout', message: window.__scene === 'notice-lost' ? "The server didn't answer in time. Reconnecting…" : 'Server connection restored.', tone: window.__scene === 'notice-lost' ? 'warning' : 'success' })}>Show connection notice</button>
+    <button onClick={() => toastStore.upsert({ dedupeKey: 'connection-layout', message: window.__scene === 'notice-lost' ? "Studio didn't answer in time. Reconnecting…" : 'Server connection restored.', tone: window.__scene === 'notice-lost' ? 'warning' : 'success' })}>Show connection notice</button>
     <NotificationContainer />
   </ToastProvider>;
   if (window.__scene === 'notes') return <WhatsNewDialog version="0.1.11-nightly.246303" nativeApp={false} serverKey="fixture" onClose={() => {}} />;
@@ -192,7 +192,7 @@ async function installReleaseFixtures(page: Page) {
       tag_name: 'v0.1.11-nightly.246303',
       name: 'Installed server release',
       draft: false,
-      body: '## Server changes\n- Restores connections after a server restart.\n- Shows the installed server changelog.',
+      body: '## Server changes\n- Restores connections after a server restart.\n- Shows the installed server changelog.\n\n## Installation\n\n```sh\ncurl https://example.test/install.sh | sh\n```',
     },
     {
       tag_name: 'v0.1.10',
@@ -348,6 +348,10 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(
         panel.getByText('Available server improvements.'),
       ).toBeVisible();
+      await expect(
+        panel.getByText('Installation', { exact: true }),
+      ).toHaveCount(0);
+      await expect(panel.getByText(/curl https/)).toHaveCount(0);
       await expectNoHorizontalScroll(page);
       await page.screenshot({
         path: testInfo.outputPath(`installed-${theme}-${viewport}.png`),
@@ -458,7 +462,7 @@ for (const theme of ['light', 'dark'] as const) {
           .click();
         const message =
           notice === 'lost'
-            ? "The server didn't answer in time. Reconnecting…"
+            ? "Studio didn't answer in time. Reconnecting…"
             : 'Server connection restored.';
         const card = page.locator('.toast-card');
         await expect(card).toContainText(message);

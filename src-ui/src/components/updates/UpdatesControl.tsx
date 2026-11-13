@@ -75,8 +75,17 @@ export function UpdatesControl({
         ? (state?.currentVersion ?? null)
         : readClientReleaseVersion(),
   );
+  const bundleVersion = profile.isDesktop
+    ? state?.currentVersion
+    : readClientReleaseVersion();
+  const duplicateServerNotes =
+    !profile.isTauri &&
+    (installedServer?.currentVersion === bundleVersion ||
+      new URL(server.apiBase, window.location.origin).origin ===
+        window.location.origin);
   const serverChangelog = usePostUpdateChangelog(
-    serverReady &&
+    !duplicateServerNotes &&
+      serverReady &&
       installedServer &&
       serverIdentityMatchesView(installedServer, server.identity)
       ? (installedServer.currentVersion ?? null)

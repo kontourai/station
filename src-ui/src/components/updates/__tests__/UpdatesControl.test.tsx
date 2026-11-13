@@ -779,3 +779,52 @@ test('simultaneous app and server upgrades mount one changelog dialog at a time'
   expect(within(serverDialog).getByText('Queued server changes')).toBeTruthy();
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
 });
+
+test.each(['version', 'origin'])(
+  'browser upgrades show one popup when sharing server %s',
+  async (seam) => {
+    profile.isDesktop = false;
+    profile.isTauri = false;
+    const oldVersion = status.currentVersion,
+      oldApi = context.apiBase;
+    status.currentVersion =
+      seam === 'version' ? '0.1.11-nightly.20261105.1' : '0.8.0-preview.1';
+    if (seam === 'origin') context.apiBase = window.location.origin;
+    try {
+      localStorage.setItem('station.release-notes.last-version', '0.1.10');
+      localStorage.setItem(
+        `station.release-notes.last-version.server:${context.apiBase}:${identity.instanceId}`,
+        '0.0.1',
+      );
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) =>
+          Response.json({
+            tag_name: decodeURIComponent(
+              new URL(url).pathname.split('/').at(-1)!,
+            ),
+            draft: false,
+            body: '- Browser upgrade changes',
+          }),
+        ),
+      );
+      render(<UpdatesControl onNavigate={vi.fn()} />);
+      await screen.findByRole('dialog', {
+        name: 'Updated to Station 0.1.11-nightly.20261105.1',
+      });
+      await screen.findByText('Browser upgrade changes');
+      fireEvent.click(
+        within(
+          screen.getByRole('dialog', {
+            name: 'Updated to Station 0.1.11-nightly.20261105.1',
+          }),
+        ).getByRole('button', { name: 'Done', exact: true }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    } finally {
+      status.currentVersion = oldVersion;
+      context.apiBase = oldApi;
+      profile.isTauri = true;
+    }
+  },
+);

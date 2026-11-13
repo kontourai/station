@@ -34,7 +34,9 @@ function NotesBody({ body }: { body: string }) {
           img: ({ alt }) => <span>{alt}</span>,
         }}
       >
-        {body}
+        {body
+          .replace(/^## Installation[^\n]*\n[\s\S]*?(?=^## |$(?![\s\S]))/gm, '')
+          .trim()}
       </ReactMarkdown>
     </div>
   );

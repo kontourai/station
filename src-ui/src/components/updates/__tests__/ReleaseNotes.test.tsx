@@ -124,3 +124,22 @@ test('a missing exact release never substitutes the rolling latest release', asy
   );
   expect(await screen.findByText('Newly published changelog')).toBeTruthy();
 });
+
+test('in-app changelogs omit installation instructions but retain later change sections', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        release(
+          'v0.1.11',
+          '## Features\n- Workspace changes\n\n## Installation\n\n```sh\ncurl https://example.test/install.sh | sh\n```\n\n## Fixes\n- Recovery fix',
+        ),
+      ),
+    ),
+  );
+  mount(<ReleaseNotes version="0.1.11" />);
+  await screen.findByText('Workspace changes');
+  expect(screen.queryByText('Installation')).toBeNull();
+  expect(screen.queryByText(/curl https/)).toBeNull();
+  expect(screen.getByText('Recovery fix')).toBeTruthy();
+});
