@@ -3,7 +3,6 @@
  * at phone/desktop widths. SDK responses and connection/platform identity are
  * controlled inputs; the panel, confirmation and service-progress UI are real.
  */
-import { copyFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -362,12 +361,6 @@ for (const theme of ['light', 'dark'] as const) {
       await page.screenshot({
         path: testInfo.outputPath(`installed-${theme}-${viewport}.png`),
       });
-      const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e');
-      mkdirSync(retained, { recursive: true });
-      copyFileSync(
-        testInfo.outputPath(`installed-${theme}-${viewport}.png`),
-        resolve(retained, `installed-${theme}-${viewport}.png`),
-      );
     });
   }
 }
@@ -557,16 +550,9 @@ for (const theme of ['light', 'dark'] as const) {
       await all.scrollIntoViewIfNeeded();
       await expect(all).toBeVisible();
       await expectNoHorizontalScroll(page);
-      const path = testInfo.outputPath(`long-notes-${theme}-${viewport}.png`);
       await page.screenshot({
         path: testInfo.outputPath(`long-notes-${theme}-${viewport}.png`),
       });
-      const retained = resolve(REPO_ROOT, 'gallery/diagnostics/ux-lane-e');
-      mkdirSync(retained, { recursive: true });
-      copyFileSync(
-        path,
-        resolve(retained, `long-notes-${theme}-${viewport}.png`),
-      );
     });
   }
 }

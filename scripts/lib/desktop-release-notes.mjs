@@ -48,7 +48,12 @@ function github(repository, token) {
       if (!retrySafe || attempt || !transient) break;
       const retryAfter = response.headers.get('retry-after');
       const seconds = retryAfter === null ? NaN : Number(retryAfter);
-      const reset = response.headers.get('x-ratelimit-reset');
+      // GitHub sends x-ratelimit-reset on nearly every response; it only says
+      // when to retry once the quota is actually exhausted.
+      const reset =
+        response.headers.get('x-ratelimit-remaining') === '0'
+          ? response.headers.get('x-ratelimit-reset')
+          : null;
       const requested =
         retryAfter === null && reset !== null
           ? Number(reset) * 1000 - Date.now()

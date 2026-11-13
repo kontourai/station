@@ -608,3 +608,34 @@ test.each([
     }
   },
 );
+
+test('a server error with quota remaining ignores the rate-limit reset', async () => {
+  vi.useFakeTimers();
+  try {
+    // GitHub sends x-ratelimit-reset on ordinary responses too; waiting for it
+    // here would stall a transient 502 for up to the 30s cap.
+    const reset = Math.floor(Date.now() / 1000) + 120;
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('', {
+          status: 502,
+          headers: {
+            'x-ratelimit-remaining': '4999',
+            'x-ratelimit-reset': String(reset),
+          },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ sha: previous }))
+      .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+      .mockResolvedValueOnce(Response.json({ sha: previous }));
+    vi.stubGlobal('fetch', request);
+    const result = generateDesktopReleaseNotes(options);
+    await vi.advanceTimersByTimeAsync(249);
+    expect(request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toBe('- Changes');
+  } finally {
+    vi.useRealTimers();
+  }
+});
