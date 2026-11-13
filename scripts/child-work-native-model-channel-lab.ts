@@ -15,6 +15,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { build } from 'esbuild';
+import { z } from 'zod/v3';
 import { NativeModelContainer } from '../src-server/services/connections/native-model-container.js';
 import { runLabCommand } from './lib/local-collaboration-process.mjs';
 
@@ -480,10 +481,50 @@ const result=capture.finish();if(result.truncated||result.invalidUtf8)throw Erro
         0,
         `${engine.name} terminal failure`,
       );
-      assert.ok(
-        observed.stdout.includes(`CONFINED_${engine.name.toUpperCase()}_REPLY`),
-        `${engine.name} model reply missing`,
-      );
+      const expected = `CONFINED_${engine.name.toUpperCase()}_REPLY`;
+      if (engine.name === 'claude') {
+        z.object({
+          type: z.literal('result'),
+          subtype: z.literal('success'),
+          is_error: z.literal(false),
+          result: z.literal(expected),
+        }).parse(JSON.parse(observed.stdout));
+      } else {
+        const events = String(observed.stdout)
+          .split('\n')
+          .filter(Boolean)
+          .map((line) =>
+            z
+              .object({
+                type: z.string(),
+                item: z
+                  .object({ type: z.string(), text: z.string().optional() })
+                  .optional(),
+              })
+              .parse(JSON.parse(line)),
+          );
+        assert.ok(
+          !events.some(
+            (event) =>
+              ['error', 'turn.failed'].includes(event.type) ||
+              event.item?.type === 'error',
+          ),
+          'Codex emitted an engine error',
+        );
+        assert.equal(
+          events.filter((event) => event.type === 'turn.completed').length,
+          1,
+        );
+        assert.ok(
+          events.some(
+            (event) =>
+              event.type === 'item.completed' &&
+              event.item?.type === 'agent_message' &&
+              event.item.text === expected,
+          ),
+          'Codex model reply missing',
+        );
+      }
       assert.ok(
         requests.length > before,
         `${engine.name} made no channel request`,
