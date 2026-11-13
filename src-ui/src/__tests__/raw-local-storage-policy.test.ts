@@ -56,6 +56,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
 // their storage keys internally, so the allowlist cannot be laundered through
 // a re-exported raw-key writer.
 const ALLOWED_COMPUTED_KEY_FILES = new Set([
+  'utils/retired-activity-storage.ts', // Module-private prefix; removes only legacy Activity keys, with no caller-supplied keys.
   'lib/project-onboarding-recovery.ts', // Exact Project creation/import recovery pointers derive keys from Station authority and Project/request identities; no public raw-key writer.
   'components/chat-dock/conversationContextBoundaryUiState.ts', // Boundary UI state is scoped by conversation id; `key` is module-private and every export takes the semantic id, never a raw key.
   'components/SplitPaneLayout.tsx', // Pane geometry is scoped by the caller-provided pane id.

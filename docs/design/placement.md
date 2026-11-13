@@ -11,6 +11,19 @@
 > callers; this review does not renew historical bundle measurements, screenshots,
 > browser gesture measurements or physical-device results.
 
+## Current amendment: session readers belong to Chat
+
+Activity and its Quick review pane are retired. Session destinations open in
+Chat, and child transcripts push onto a navigation stack owned by that chat
+pane. Home and the inbox own the work lists. The Activity-specific examples
+and measurements in the dated slices below describe their historical revision.
+
+Legacy `/activity`, `/sessions` and `?surface=activity` URLs open the named
+session in Chat, or the inbox without a session. Saved Activity region entries
+migrate to Home in `main` and Chat in a dock; an existing Chat keeps its original
+placement. Retired quick-review tabs are removed, and a dock emptied by this
+migration closes. Other pane order and selection are retained.
+
 Status: **accepted direction with an implemented core**. The dated sections
 record the decisions and sequence of the placement work. Read later amendments
 where an earlier slice says a capability is absent. The current source has both
@@ -254,7 +267,7 @@ every other route. These rules make it a region rather than a special case
   `?surface=home` deep link. Home is `hiddenFromNav` and has no palette
   entry.
 - **A `main` occupant's toggle returns it to the dock.** A surface's chord
-  (⌘⇧A for Activity) and its row in the folded Regions menu are one model
+  (⌘D for Chat) and its row in the folded Regions menu are one model
   command, `toggleSurface` (#1523; the toolbar carries no placement rule of its
   own, #1420): a dock occupant's region is hidden or shown, and a surface
   occupying `main` is moved to its default dock region — visible, Home left in
@@ -1323,7 +1336,7 @@ one arrangement, and no control at all that said whether a region was open
   renders no `RegionChromeBar`, so a surface holding it (Activity) leaves
   through: a dock region's chooser, which lists it as "Move here from Main"
   (#2154; #2143's "Show Activity here" offer row); its chord
-  (⌘⇧A, `toggleSurface`: to its default dock region, Home back in `main`);
+  (retired Activity chord; Chat uses ⌘D and `toggleSurface`);
   or the sidebar's Home row (`showSurface('home')` places Home, and the
   displaced surface is unplaced — its chord places it afresh in its dock,
   and its sidebar row makes it the page again). With every dock region occupied there is no pointer route in the

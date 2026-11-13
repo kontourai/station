@@ -17,6 +17,7 @@ import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
 } from './ChatDockHeaderMoreMenu';
+import { useIsChildChatCovered } from './ChildChatNavigationContext';
 import { inboxToggleLabel, workingChatsLabel } from './inbox-toggle-label';
 import {
   toggleSessionInventoryOccurrence,
@@ -180,6 +181,7 @@ export function ChatDockHeader({
   backgroundTasksBadgeHidden = false,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
+  const childCovered = useIsChildChatCovered();
   const slots = useRegionChromeSlots();
   // One hook for a variable number of per-session rows: `useShortcutDisplay`
   // is a hook and cannot be called inside the activity map.
@@ -193,7 +195,10 @@ export function ChatDockHeader({
   const absorbRegionActions = regionMenu?.absorb;
   // While this toolbar is in the bar, the region's commands are rows of its
   // More menu and the bar drops its own buttons for them.
-  useEffect(() => absorbRegionActions?.(), [absorbRegionActions]);
+  useEffect(
+    () => (childCovered ? undefined : absorbRegionActions?.()),
+    [absorbRegionActions, childCovered],
+  );
   const showInboxToggle = Boolean(workspaceControls?.showInboxToggle);
   const inventory = workspaceControls?.sessionInventory;
   const inventoryOccurrence = useSessionInventoryOccurrence(
@@ -413,7 +418,8 @@ export function ChatDockHeader({
   const leading = (
     <>
       {slots?.start === undefined ? inboxToggle : null}
-      {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
+      {chatIdentity &&
+      (!slots?.namesPane || retainIdentityInNamedPane || childCovered) ? (
         <div
           className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
         >
@@ -500,6 +506,7 @@ export function ChatDockHeader({
   // A full-screen placement has no region bar and ignores a region's slots —
   // except a bar that names the pane itself (the Coding layout's
   // breadcrumb, #3046), which it joins: its own bar would repeat the title.
+
   if (slots && (!fullscreen || slots.namesPane)) {
     return (
       <>

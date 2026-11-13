@@ -150,7 +150,14 @@ test.describe('subagent transcript cards', () => {
                   message: 1,
                   kind: 'tool-call',
                   name: 'Bash',
+                  toolCallId: 'child-tool-1',
                   input: 'gh pr view 3657 --repo kontourai/station',
+                },
+                {
+                  message: 2,
+                  kind: 'tool-result',
+                  toolCallId: 'child-tool-1',
+                  text: 'Checks passed',
                 },
               ],
             },
@@ -400,7 +407,7 @@ test.describe('subagent transcript cards', () => {
         ).toBe(true);
       }
       await expect(card.getByRole('img', { name: 'Codex' })).toBeVisible();
-      await expect(card.getByText('Completed')).toBeVisible();
+      await expect(card.getByText('Run finished')).toBeVisible();
       await expect(card.getByText('gpt-5.5')).toHaveCount(0);
       await expect(card.getByText('done', { exact: true })).toBeVisible();
       await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
@@ -581,7 +588,7 @@ test.describe('subagent transcript cards', () => {
 
     await expect(page.getByText(/Background task finished/)).toHaveCount(0);
     await expect(card.locator('.child-work-activity')).toHaveCount(0);
-    await expect(card.getByText('Completed')).toBeVisible();
+    await expect(card.getByText('Run finished')).toBeVisible();
     await expect(card.getByText('17:04')).toBeVisible();
     await expect(
       card.getByText(/^Verdict: merge as-is\. I found no blockers/),
@@ -618,7 +625,7 @@ test.describe('subagent transcript cards', () => {
     expect(box?.width ?? 0).toBeLessThanOrEqual(390);
     // The card's one action keeps the 44px phone floor and stays on screen.
     const viewTranscript = card.getByRole('button', {
-      name: 'View transcript',
+      name: 'Open chat',
     });
     const actionBox = await viewTranscript.boundingBox();
     expect(actionBox?.height ?? 0).toBeGreaterThanOrEqual(44);
@@ -628,12 +635,18 @@ test.describe('subagent transcript cards', () => {
     );
     await viewTranscript.click();
     await expect(
-      card.getByText('gh pr view 3657 --repo kontourai/station'),
+      page
+        .locator('.child-work-transcript')
+        .getByText('gh pr view 3657 --repo kontourai/station'),
     ).toBeVisible();
-    await card.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: testInfo.outputPath('subagent-card-expanded-mobile-390.png'),
     });
+    await page
+      .getByRole('navigation', { name: 'Chat breadcrumb' })
+      .getByRole('button')
+      .first()
+      .click();
     await card
       .getByRole('button', { name: /review station#3657 ADR freeze/ })
       .click();

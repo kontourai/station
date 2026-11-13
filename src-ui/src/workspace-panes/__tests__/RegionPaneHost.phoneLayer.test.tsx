@@ -30,11 +30,11 @@ import {
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 
-/** Whether the Activity pane's stand-in holds an unsaved edit (gap G2). */
+/** Whether the Agents pane's stand-in holds an unsaved edit (gap G2). */
 const activityDirty = vi.hoisted(() => ({ value: false }));
-vi.mock('../../views/SessionsView', async () => {
+vi.mock('../../workspace-panes/AgentsWorkspacePane', async () => {
   const { useUnsavedGuard } = await import('../../hooks/useUnsavedGuard');
-  function SessionsView() {
+  function AgentsWorkspacePane() {
     const { DiscardModal } = useUnsavedGuard(activityDirty.value);
     return (
       <div data-testid="sessions-view">
@@ -42,7 +42,7 @@ vi.mock('../../views/SessionsView', async () => {
       </div>
     );
   }
-  return { SessionsView };
+  return { AgentsWorkspacePane };
 });
 /** The open action Chat's pane sees: the region host's own controller. */
 const openProbe = vi.hoisted(() => ({
@@ -171,15 +171,15 @@ test('a pane open over Chat on a phone shows "‹ Chat" in its bar, and pressing
   // offered because there is nothing to go back from.
   expect(screen.queryByRole('button', { name: 'Back to Chat' })).toBeNull();
 
-  act(() => currentModel().showSurface('activity'));
+  act(() => currentModel().showSurface('workspace-agents'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
   await screen.findByTestId('sessions-view');
   // Over Chat, in Chat's own region — not a second shell.
   expect(currentModel().regions.bottom).toMatchObject({
-    panes: ['chat', 'activity'],
-    occupant: 'activity',
+    panes: ['chat', 'workspace-agents'],
+    occupant: 'workspace-agents',
     maximized: true,
   });
   expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
@@ -216,7 +216,7 @@ test('"‹ Chat" asks the layered pane’s own dirty guard, and no one else’s'
   try {
     renderShells();
     await waitFor(() => expect(model).not.toBeNull());
-    act(() => currentModel().showSurface('activity'));
+    act(() => currentModel().showSurface('workspace-agents'));
     await act(async () => {
       await vi.dynamicImportSettled();
     });
@@ -226,7 +226,7 @@ test('"‹ Chat" asks the layered pane’s own dirty guard, and no one else’s'
       await screen.findByRole('dialog', { name: /Unsaved Changes/ }),
     ).toBeTruthy();
     expect(unrelated).not.toHaveBeenCalled();
-    expect(currentModel().regions.bottom.occupant).toBe('activity');
+    expect(currentModel().regions.bottom.occupant).toBe('workspace-agents');
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     await waitFor(() =>
       expect(currentModel().regions.bottom.occupant).toBe('chat'),

@@ -1722,7 +1722,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed
   // bottom dock is its bar alone. A rule-text scan could not see an override.
-  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  // Renders the actual child chat DOM in Chromium at desktop and phone widths.
+  'src-ui/src/__tests__/child-transcript-navigation.test.tsx',
   'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
