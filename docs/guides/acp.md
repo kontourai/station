@@ -184,7 +184,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -699,6 +699,66 @@ shown as a transcript notice in the chat.
 | `_kiro/memory/create\|update\|delete\|import\|export\|sync` | Station's knowledge stores stay authoritative (ADR 0009); `list` and `get` are read-only and engine-attributed. |
 | `_kiro/session/rename` | No consumer. |
 
+### Google Antigravity
+
+The built-in `antigravity` entry runs `agy acp --process-per-session`, the
+ACP server inside Google's Antigravity CLI ([Google's ACP
+guide](https://antigravity.google/docs/cli/acp)). It replaced
+`agy_acp_server.par`, Google's earlier editor download; a saved connection
+keeps its own command. Evidence is a live run of CLI 1.5.8 on 2026-11-13,
+recorded in
+[`antigravity-1.5.8-session-frames.jsonl`](../../src-server/services/acp/__tests__/fixtures/antigravity-1.5.8-session-frames.jsonl)
+and the scripted profile
+[`antigravity-1.5.8.json`](../../src-server/providers/__tests__/fixtures/acp-scripted-profiles/antigravity-1.5.8.json).
+
+- **Detection and version.** Station looks for `agy` on `PATH`. `agy acp`
+  first shipped in CLI 1.5.0; 1.4.4 has no such command and answers nothing,
+  so the entry's `minimumVersion` (`agy --version`, 1.5.0) names an older
+  install and says to run `agy update`. The CLI also updates itself when it
+  runs interactively.
+- **Sign-in.** Signed out, `session/new` answers ACP `auth_required`
+  (`-32000 Authentication required`), which Station records as a sign-in
+  refusal. `agy models` is the status command: signed out it exits 1 with
+  "Please sign in to view available models"; signed in it exits 0. The
+  engine lists `oauth-personal` and `oauth-business`, which open a browser
+  on the computer Station runs on, so they suit a Station on your own
+  computer; `terminal-login` (offered because the sign-in process announces
+  `auth.terminal`), which Station runs as `agy acp --process-per-session
+  --login` in a terminal and which prints a link and takes the pasted code,
+  so it works for a remote Station; `gemini-api-key`, which reads the
+  `GEMINI_API_KEY` stored for the connection; and `agent-platform`, which
+  reads Google Cloud credentials from the host. The CLI's own sign-in is
+  shared with `agy acp`.
+- **Station's tools.** Without `--process-per-session` the engine declares no
+  `mcpCapabilities`, and Station's HTTP tool servers are skipped. With it, it
+  declares `http` and called a client HTTP MCP server with its headers.
+- **Questions** arrive as core `elicitation/create` forms (a `oneOf` choice
+  and a free-text `q1_other`) because Station announces `elicitation`.
+  Without it the engine prints the question as text and takes the next
+  prompt as the answer.
+- **Modes** (`default`, `accept-edits`, `auto`, `plan`), the `model` and
+  `thought_level` options, `available_commands_update`, `usage_update`
+  (context), images, cancel, `session/resume` and `session/load` are core
+  ACP and take the generic paths above. Its permission requests use string
+  ids, which the SDK answers as sent.
+- **Steering** is a mid-turn prompt (`prompt-handoff`, above).
+
+#### Antigravity features Station does not support
+
+| Feature | Why not |
+|---|---|
+| Managed install of the CLI | Google publishes it with its own installer and self-updater, and its release manifest is a moving "latest" document, so there is no versioned manifest for a reviewed pin. Station shows Google's install command instead. |
+| `_meta.antigravity.systemPrompt.append` on `session/new` | Station delivers an agent's instructions in the first turn for every engine; appending them to the engine's system prompt as well would send them twice. |
+| `_meta.antigravity.tier` (`session/new` names the account's plan) | No consumer; it describes the Google account, not the session. |
+| Subagents (`invoke_subagent`) as child work | The tool call carries the role and prompt but no child session id, and the child finishes inside the parent's turn, so the tool card already shows all there is. |
+| Rewind and fork | The engine declares neither. |
+| Text and data file attachments | The engine declares `embeddedContext` and answered from text sent as `resource` blocks (recorded). Station offers file input per adapter, not per engine, so every ACP engine refuses files today; offering them needs a per-connection gate in the composer and in orchestration. Images work. |
+| Signing out (`auth.logout`) | Station has no sign-out for any ACP engine. Run `agy`, then `/logout`, on the computer Station runs on. |
+| Usage limits and cost | ACP carries no quota or cost; Google's quota service is not a published contract. |
+| Text arriving after a turn's answer | 1.5.8 can send the last text chunk of a turn after answering its prompt. It has no message id to tell turns apart, so that chunk joins the next turn's reply. |
+| `/goal`, `/schedule`, `/swarm` and other engine commands | Offered as the engine lists them and sent as prompt text; their background work is the engine's own and is not tracked by Station. |
+| The older `agy_acp_server.par` | Superseded by `agy acp`. Add it as a custom engine if you still need it. |
+
 ## Tool Execution
 
 ### Tool Calls (Runtime → Station)
@@ -948,6 +1008,7 @@ and any a plugin contributes. Besides the launch fields above, an entry
 | `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
 | `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
 | `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
+| `minimumVersion` | Built-in entries only. `versionCommand` (argv) prints the installed version, `minimum` is the oldest working `major.minor.patch`, and `updateHint` says how to update. Read only after a check of the engine fails for a reason other than sign-in: the command runs bounded like a status command, and a version below `minimum` makes the failure `engine-update-required` with Station's own sentence naming both versions and the hint. A failed run or output without a version leaves it unnamed. |
 | `managedRuntime` | Built-in entries only. `installId` names a pinned install Station downloads with consent and verifies from its manifest digest (`@kontourai/station-contracts/managed-engine-install`); `argv` are the runtime's arguments, exactly one of them `{script}`, the install's entry script. |
 
 `validateACPEngineDescriptor` checks these fields and the entry's `name`,
@@ -961,7 +1022,7 @@ without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
 proxy variable is refused), or one that looks like a credential (a `KEY`,
 `TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
 lists as a credential variable). A plugin entry is also refused when it
-carries `launchEnv` or `managedRuntime`, reuses a built-in entry's id, or has a name that reads as
+carries `launchEnv`, `managedRuntime` or `minimumVersion`, reuses a built-in entry's id, or has a name that reads as
 a built-in's (compared after NFKC, case-folding and mapping common Cyrillic and
 Greek look-alikes), and every entry from a plugin provider registered as
 "Station", "Kontour" or a built-in engine's name is refused; the built-in card
@@ -1131,7 +1192,7 @@ If the binary is installed but not on the server's PATH, use an absolute path in
 
 ### Probe does not establish availability
 
-The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
+The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. An engine whose built-in entry sets a `minimumVersion` and whose installed version is older says so instead (`lastError.code` `engine-update-required`), with the update step. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
 
 - The subprocess exits immediately — run the command manually to see its output
 - The runtime doesn't speak ACP ndjson on stdio — verify it implements the ACP SDK server side
