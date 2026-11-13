@@ -3,7 +3,6 @@ import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
-import { usePostUpdateChangelog } from './usePostUpdateChangelog';
 
 const loadWhatsNew = () =>
   import('./WhatsNewDialog').then((module) => ({
@@ -16,34 +15,27 @@ export function PostUpdateChangelog({
   serverKey,
   updatesOpen,
   paused = false,
-  onPendingChange,
+  onClose,
 }: {
   version: string | null;
   nativeApp: boolean;
   serverKey?: string;
   updatesOpen: boolean;
   paused?: boolean;
-  onPendingChange?: (pending: boolean) => void;
+  onClose: () => void;
 }) {
-  const { pendingVersion, dismiss } = usePostUpdateChangelog(
-    version,
-    serverKey,
-  );
   useEffect(() => {
-    onPendingChange?.(!!pendingVersion);
-  }, [pendingVersion, onPendingChange]);
-  useEffect(() => {
-    if (updatesOpen) dismiss();
-  }, [updatesOpen, dismiss]);
-  if (!pendingVersion || updatesOpen || paused) return null;
+    if (updatesOpen) onClose();
+  }, [updatesOpen, onClose]);
+  if (!version || updatesOpen || paused) return null;
   return (
     <LazyBoundary
       load={loadWhatsNew}
       pending={
         <Dialog
-          title={`Updated ${serverKey ? 'server' : 'to Station'} ${pendingVersion}`}
+          title={`Updated ${serverKey ? 'server' : 'to Station'} ${version}`}
           closeLabel="Close what’s new"
-          onClose={dismiss}
+          onClose={onClose}
         >
           <SkeletonBlock count={1} label="Loading what’s new" />
         </Dialog>
@@ -52,17 +44,17 @@ export function PostUpdateChangelog({
         <Dialog
           title="What’s new"
           closeLabel="Close what’s new"
-          onClose={dismiss}
+          onClose={onClose}
         >
           <p>Could not load the changelog.</p>
           <Button onClick={retry}>Retry changelog</Button>
         </Dialog>
       )}
       componentProps={{
-        version: pendingVersion,
+        version: version,
         nativeApp,
         serverKey,
-        onClose: dismiss,
+        onClose,
       }}
     />
   );

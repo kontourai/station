@@ -21,6 +21,7 @@ import {
   useOpenUpdatesRequest,
   useUpdateNotices,
 } from './updatesEvents';
+import { usePostUpdateChangelog } from './usePostUpdateChangelog';
 import './Updates.css';
 
 const loadUpdatesPanel = () =>
@@ -62,7 +63,24 @@ export function UpdatesControl({
         }
       : notices.find((notice) => notice.progress)?.progress;
   const request = useOpenUpdatesRequest();
-  const [appChangelogPending, setAppChangelogPending] = useState(false);
+  const serverKey = `${server.apiBase}:${server.identity?.instanceId ?? ''}`;
+  // Resolve both pending versions before mounting either dialog: child effects
+  // cannot arbitrate focus/history when app and server upgrades arrive together.
+  const appChangelog = usePostUpdateChangelog(
+    profile.isDevBuild
+      ? null
+      : profile.isDesktop
+        ? (state?.currentVersion ?? null)
+        : readClientReleaseVersion(),
+  );
+  const serverChangelog = usePostUpdateChangelog(
+    serverReady &&
+      installedServer &&
+      serverIdentityMatchesView(installedServer, server.identity)
+      ? (installedServer.currentVersion ?? null)
+      : null,
+    serverKey,
+  );
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -118,29 +136,18 @@ export function UpdatesControl({
         )}
       </button>
       <PostUpdateChangelog
-        version={
-          profile.isDevBuild
-            ? null
-            : profile.isDesktop
-              ? (state?.currentVersion ?? null)
-              : readClientReleaseVersion()
-        }
+        version={appChangelog.pendingVersion}
         nativeApp={profile.isDesktop || profile.isMobile}
-        onPendingChange={setAppChangelogPending}
+        onClose={appChangelog.dismiss}
         updatesOpen={open}
       />
       <PostUpdateChangelog
-        key={`${server.apiBase}:${server.identity?.instanceId ?? ''}`}
-        version={
-          serverReady &&
-          installedServer &&
-          serverIdentityMatchesView(installedServer, server.identity)
-            ? (installedServer.currentVersion ?? null)
-            : null
-        }
-        serverKey={`${server.apiBase}:${server.identity?.instanceId ?? ''}`}
+        key={serverKey}
+        version={serverChangelog.pendingVersion}
+        serverKey={serverKey}
         nativeApp={false}
-        paused={appChangelogPending}
+        paused={!!appChangelog.pendingVersion}
+        onClose={serverChangelog.dismiss}
         updatesOpen={open}
       />
       {loaded && (

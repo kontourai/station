@@ -738,3 +738,44 @@ test('Updates shows the installed server changelog alongside an offered release'
   expect(await screen.findByText('Installed server fixes')).toBeTruthy();
   expect(await screen.findByText('Available server fixes')).toBeTruthy();
 });
+
+test('simultaneous app and server upgrades mount one changelog dialog at a time', async () => {
+  const app = desktopUpdateFixture('idle');
+  installFakeNativeUpdater(native, app);
+  localStorage.setItem('station.release-notes.last-version', '0.1.10');
+  localStorage.setItem(
+    `station.release-notes.last-version.server:${context.apiBase}:${identity.instanceId}`,
+    '0.7.0-preview.1',
+  );
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const tag = decodeURIComponent(new URL(url).pathname.split('/').at(-1)!);
+      return Response.json({
+        tag_name: tag,
+        draft: false,
+        body:
+          tag === 'v0.8.0-preview.1'
+            ? '- Queued server changes'
+            : '- App changes',
+      });
+    }),
+  );
+  render(<UpdatesControl onNavigate={vi.fn()} />);
+  const appDialog = await screen.findByRole('dialog', {
+    name: `Updated to Station ${app.currentVersion}`,
+  });
+  expect(
+    screen.queryByRole('dialog', { name: 'Updated server 0.8.0-preview.1' }),
+  ).toBeNull();
+  fireEvent.click(
+    await within(appDialog).findByRole('button', { name: 'Done', exact: true }),
+  );
+  const serverDialog = await screen.findByRole('dialog', {
+    name: 'Updated server 0.8.0-preview.1',
+  });
+  expect(
+    await within(serverDialog).findByText('Queued server changes'),
+  ).toBeTruthy();
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+});
