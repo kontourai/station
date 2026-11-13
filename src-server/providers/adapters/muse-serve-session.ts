@@ -865,9 +865,8 @@ export class MuseServeSession {
       await this.closeHost();
       throw error;
     }
-    // The session's goal predates this host, and resuming does not restate
-    // it (live 1.4.18): unknown until muse reports a change.
-    this.goal = undefined;
+    // `this.goal` stays unknown: the session's goal predates this host, and
+    // resuming does not restate it (live 1.4.18) until muse reports a change.
     this.model = readString(session.modelId) ?? input.modelId;
     return {
       museSessionId: sessionId,

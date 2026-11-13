@@ -4526,6 +4526,45 @@ describe("Muse parity: a serve session's goal", () => {
     ).toEqual({ commandId: expect.any(String), sessionId: expect.any(String) });
   });
 
+  test('an acknowledged pause that muse never shows as paused is indeterminate, not applied', async () => {
+    const h = harness();
+    const host = await liveSession(h);
+    const pausing = h.adapter.goals!.control(THREAD, { operation: 'pause' });
+    const request = await host.nextRequest('goal/pause', new Set());
+    // The schema's admission ack, with no `session/goalChanged` before it.
+    reply(host, request, {
+      commandId: request.params?.commandId,
+      status: 'accepted',
+    });
+    await expect(pausing).resolves.toEqual({ state: 'indeterminate' });
+  });
+
+  test("muse's missing_goal rejection says the resumed session has no goal", async () => {
+    const h = harness();
+    const { host } = await resumedSession(h);
+    const clearing = h.adapter.goals!.control(THREAD, { operation: 'clear' });
+    const request = await host.nextRequest('goal/clear', new Set());
+    const rejected = loadMuseServeCapture('resume-goal-fork').find(
+      (frame) =>
+        typeof (frame.msg.error as { message?: string } | undefined)
+          ?.message === 'string' &&
+        (frame.msg.error as { message: string }).message.includes('goal/clear'),
+    );
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: request.id,
+      error: rejected?.msg.error,
+    });
+    await expect(clearing).resolves.toEqual({
+      state: 'refused',
+      reason: 'invalid-command',
+    });
+    await expect(h.adapter.goals!.read(THREAD)).resolves.toMatchObject({
+      state: 'available',
+      goal: null,
+    });
+  });
+
   test('set and resume are unsupported (each would start a goal turn) and nothing reaches muse', async () => {
     const h = harness();
     const host = await liveSession(h);
