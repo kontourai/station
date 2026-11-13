@@ -1,0 +1,7 @@
+{
+  "revision": "cf08b835282862179603bf6260ebf7aaf119e9f3",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the Station mark border-color correction to the published --k-line token. No animation, transition or reduced-motion behavior changed. The committed geometry baseline passed; reverting the token produced the intended computed border-width assertion failure.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]}
+  ]
+}
