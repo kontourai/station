@@ -1,0 +1,9 @@
+{
+  "revision": "bab5e1ce8d8a3eee0cc443be00924105e26f5c6a",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Capture stays historical per media.json. AgentConnectionView change only moves where the engine page reads usage-limit evidence (its list row); the capture shows neither.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Recording stays historical per media.json. AgentConnectionView change only moves where the engine page reads usage-limit evidence (its list row); the recording shows neither.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}
