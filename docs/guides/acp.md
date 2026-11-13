@@ -106,8 +106,13 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    The `session/resume` or `session/load` answer carries the same `modes`,
    `configOptions` and `models` as `session/new`, and the adapter adopts them
    by the same rule, so a reopened session can still change mode and effort.
-   A field the answer leaves out keeps what the session already holds. A
-   reattach applies no start mode, model or effort.
+   A field the answer leaves out keeps what the session already holds. An
+   engine need not keep a conversation's model or options across processes
+   (Antigravity 1.5.8 resumes on its account default), so the start's
+   explicit model, mode and effort are applied again where the resumed
+   session differs. A value the session no longer advertises is skipped
+   rather than refusing the reopen, no governed default mode is applied,
+   and a governed session keeps its mode.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
@@ -204,7 +209,7 @@ There is no bespoke ACP SSE-chunk vocabulary anymore. The adapter emits the same
 | `tool.started` / `tool.progress` / `tool.completed` | Tool execution |
 | `request.opened` / `request.resolved` | Tool approval / permission requests |
 | `plan.updated` | The agent's current ordered plan, as a full replace (see Plan Rendering below) |
-| `token-usage.updated` | Context occupancy (`usage_update`); per-turn token figures from the prompt answer's `usage` (input, output, cache read and write, thought, total; ACP is declared `per-turn`, and no cost is read); an engine's own context reading (`contextPercent`) and cost in its own unit (`reportedCost`) |
+| `token-usage.updated` | Context occupancy (`usage_update`); per-turn token figures from the prompt answer's `usage` (input, output, cache read and write, thought, total), published only for an engine recorded reporting per-turn figures (`ACP_PER_TURN_PROMPT_USAGE_ENGINES`: Antigravity), so ACP is declared `per-turn`; no cost is read; an engine's own context reading (`contextPercent`) and cost in its own unit (`reportedCost`) |
 | `model.rerouted` | The engine moved work to another model (see Kiro extensions below) |
 | `engine-mcp.status` | The engine's own MCP servers and their state |
 | `extension.notification` | Namespaced, app-specific payload (see Extension Rendering below) |
@@ -717,7 +722,8 @@ and the scripted profile
 [`antigravity-1.5.8.json`](../../src-server/providers/__tests__/fixtures/acp-scripted-profiles/antigravity-1.5.8.json).
 
 - **Detection and version.** Station looks for `agy` on `PATH`. `agy acp`
-  first shipped in CLI 1.5.0; 1.4.4 has no such command and answers nothing,
+  first shipped in CLI 1.5.0; 1.4.4 has no such command and answers nothing
+  ([recorded](../../src-server/services/acp/__tests__/fixtures/antigravity-1.4.4-acp-help.txt)),
   so the entry's `minimumVersion` (`agy --version`, 1.5.0) names an older
   install and says to run `agy update`. The CLI also updates itself when it
   runs interactively.
@@ -747,7 +753,15 @@ and the scripted profile
   cancel, `session/resume` (whose answer re-advertises modes and options)
   and `session/load` are core ACP and take the generic paths above. Its permission requests use string
   ids, which the SDK answers as sent.
-- **Steering** is a mid-turn prompt (`prompt-handoff`, above).
+- **Steering** is a mid-turn prompt (`prompt-handoff`, above; capture
+  `mid-turn-steer`). Station's composer queues follow-ups for ACP engines,
+  so the hand-off runs through Station's steer command. While the engine
+  waits for an approval or question answer it refuses a new prompt, and the
+  refusal would end the turn, so Station refuses that steer instead and the
+  turn and its request stay open.
+- **In an open chat**, Station's composer does not send a changed mode, and
+  the effort picker is fixed after the chat starts. Both are Station limits
+  for every ACP engine; a new chat applies its chosen mode and effort.
 
 #### Antigravity features Station does not support
 
@@ -758,7 +772,8 @@ and the scripted profile
 | `_meta.antigravity.tier` (`session/new` names the account's plan) | No consumer; it describes the Google account, not the session. |
 | Subagents (`invoke_subagent`) as child work | The tool call carries the role and prompt but no child session id, and the child finishes inside the parent's turn, so the tool card already shows all there is. |
 | Rewind and fork | The engine declares neither. |
-| Text and data file attachments | The engine declares `embeddedContext` and answered from text sent as `resource` blocks (recorded). Station offers file input per adapter, not per engine, so every ACP engine refuses files today; offering them needs a per-connection gate in the composer and in orchestration. Images work. |
+| Effort levels that differ by model | The connection catalog offers the probe session's `thought_level` values on every model; a model with other levels refuses one it lacks when the turn applies it. |
+| Text and data file attachments | The engine declares `embeddedContext` and answered from text sent as `resource` blocks (capture `embedded-resource`). Station offers file input per adapter, not per engine, so every ACP engine refuses files today; offering them needs a per-connection gate in the composer and in orchestration. Images work. |
 | Signing out (`auth.logout`) | Station has no sign-out for any ACP engine. Run `agy`, then `/logout`, on the computer Station runs on. |
 | Usage limits and cost | ACP carries no quota or cost; Google's quota service is not a published contract. |
 | Engine-suggested titles (`session_info_update.title`) | Station has no event that carries an engine's title. Whether it may replace a Station-generated title, re-title itself, or title a continuation's root conversation is an open product decision. |

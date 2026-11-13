@@ -73,6 +73,7 @@ interface Engine {
   start: (
     threadId: string,
     resumeCursor?: unknown,
+    selection?: { modelId?: string; modelOptions?: Record<string, unknown> },
   ) => Promise<{ resumeCursor?: unknown }>;
   send: (
     threadId: string,
@@ -131,7 +132,7 @@ function launch(
         .split('\n')
         .filter(Boolean)
         .map((line) => JSON.parse(line)),
-    start: async (threadId, resumeCursor) =>
+    start: async (threadId, resumeCursor, selection) =>
       (await adapter.startSession({
         provider: 'acp',
         threadId,
@@ -139,6 +140,10 @@ function launch(
         confinement: 'workspace',
         metadata: { connectionId: CONNECTION_ID },
         ...(resumeCursor ? { resumeCursor } : {}),
+        ...(selection?.modelId ? { modelId: selection.modelId } : {}),
+        ...(selection?.modelOptions
+          ? { modelOptions: selection.modelOptions }
+          : {}),
       } as never)) as { resumeCursor?: unknown },
     send: async (threadId, input, modelOptions) =>
       (
@@ -174,6 +179,58 @@ const TEXT_TURN = [{ kind: 'text', text: 'ok' }];
 describe.skipIf(process.platform === 'win32')(
   'ACP session and prompt answers (real process, recorded Antigravity 1.5.8 profile)',
   () => {
+    test('a reopened session gets its model and effort back when the engine resumes on its defaults', async () => {
+      // The fake keeps options per process, so like Antigravity 1.5.8 (whose
+      // reattached conversation came back on the account default model) a
+      // relaunched engine resumes on the profile's defaults: model
+      // `gemini-4-argon`, thinking `medium`.
+      const selection = {
+        modelId: 'gemini-3.8-flash',
+        modelOptions: { effort: 'low' },
+      };
+      const engine = launch(PROFILE, TEXT_TURN);
+      const first = await engine.start('again', undefined, selection);
+      await engine.adapter.stopSession('again');
+      const before = engine.record().length;
+
+      await engine.start('again', first.resumeCursor, selection);
+      const afterReopen = engine.record().slice(before);
+      expect(afterReopen.map((entry) => entry.method)).toEqual([
+        'initialize',
+        'session/resume',
+        'session/set_config_option',
+        'session/set_config_option',
+      ]);
+      expect(
+        afterReopen
+          .filter((entry) => entry.method === 'session/set_config_option')
+          .map((entry) => entry.configId),
+      ).toEqual(['model', 'thought_level']);
+      const configured = engine.events
+        .filter((event) => event.method === 'session.configured')
+        .at(-1);
+      expect(JSON.stringify(configured)).toContain('gemini-3.8-flash');
+    });
+
+    test('a reopened session that already has its model and effort is not set again', async () => {
+      const selection = {
+        modelId: 'gemini-4-argon',
+        modelOptions: { effort: 'medium' },
+      };
+      const engine = launch(PROFILE, TEXT_TURN);
+      const first = await engine.start('same', undefined, selection);
+      await engine.adapter.stopSession('same');
+      const before = engine.record().length;
+
+      await engine.start('same', first.resumeCursor, selection);
+      expect(
+        engine
+          .record()
+          .slice(before)
+          .map((entry) => entry.method),
+      ).toEqual(['initialize', 'session/resume']);
+    });
+
     test('a reopened session changes mode and effort through what its resume answer advertised', async () => {
       // The recorded engine answers `session/resume` with the same modes and
       // config options as `session/new` (capture `subagent-cancel-resume-load`,
@@ -234,6 +291,37 @@ describe.skipIf(process.platform === 'win32')(
       expect(
         engine.events.find((event) => event.method === 'runtime.error'),
       ).toBeUndefined();
+    });
+
+    test("an engine not recorded reporting per-turn usage has its answer's usage left unpublished", async () => {
+      // Same recorded answer, but the handshake names another engine: its
+      // figures could be session totals, so none are summed as a turn's.
+      const answer = frame(
+        'station-capabilities-turn',
+        (entry) => entry.dir === 'E->C' && entry.msg.id === 5,
+      ).msg.result;
+      const initialize = PROFILE.initialize as Record<string, unknown>;
+      const engine = launch(
+        {
+          ...PROFILE,
+          initialize: {
+            ...initialize,
+            agentInfo: { name: 'Another ACP Engine', version: '1.0.0' },
+          },
+          promptResponse: { usage: answer.usage },
+        },
+        TEXT_TURN,
+      );
+      await engine.start('other');
+      const turnId = await engine.send('other', 'hi');
+      await engine.completed(turnId);
+      expect(
+        engine.events.filter(
+          (event) =>
+            event.method === 'token-usage.updated' &&
+            'promptTokens' in (event as object),
+        ),
+      ).toEqual([]);
     });
 
     test("a prompt answer's usage is that turn's token usage, beside the context pair", async () => {

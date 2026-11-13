@@ -75,7 +75,10 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     // the field unstable). A recorded engine's input figure falls from one
     // turn to the next (Antigravity 1.5.8, `antigravity-1.5.8-session-frames.jsonl`:
     // 10377 then 8610), which no running total does. `usage_update` events
-    // carry only the context pair and add nothing to a sum.
+    // carry only the context pair and add nothing to a sum. Only an engine
+    // recorded reporting per-turn figures has its answer's usage published
+    // (`ACP_PER_TURN_PROMPT_USAGE_ENGINES`, acp-adapter-events.ts), so every
+    // `acp` event with totals is per-turn by construction.
     ['acp', 'per-turn'],
   ]);
 

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   isAcpMethodNotFound,
@@ -100,5 +102,51 @@ describe('isAcpMethodNotFound', () => {
     expect(isAcpMethodNotFound({ code: -32601, message: 'nope' })).toBe(true);
     expect(isAcpMethodNotFound(new Error('Method not found'))).toBe(true);
     expect(isAcpMethodNotFound(new Error('Internal error'))).toBe(false);
+  });
+});
+
+describe('the recorded Antigravity steer behind prompt-handoff', () => {
+  test('the first prompt answers once the second arrives, and the work finishes under the second', () => {
+    // Capture `mid-turn-steer` (Antigravity CLI 1.5.8): prompt 5 runs
+    // `sleep 12`, prompt 6 is sent while it runs.
+    const frames = readFileSync(
+      fileURLToPath(
+        new URL(
+          '../../services/acp/__tests__/fixtures/antigravity-1.5.8-session-frames.jsonl',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((frame) => frame.capture === 'mid-turn-steer');
+    const at = (match: (msg: any) => boolean) =>
+      frames.findIndex((frame) => match(frame.msg));
+    const secondSent = at(
+      (msg) => msg.method === 'session/prompt' && msg.id === 6,
+    );
+    const firstAnswered = at((msg) => msg.id === 5 && 'result' in msg);
+    const toolDone = at(
+      (msg) =>
+        msg.params?.update?.sessionUpdate === 'tool_call_update' &&
+        msg.params.update.status === 'completed',
+    );
+    const secondAnswered = at((msg) => msg.id === 6 && 'result' in msg);
+    expect(
+      [secondSent, firstAnswered, toolDone, secondAnswered].every(
+        (index) => index >= 0,
+      ),
+    ).toBe(true);
+    expect(secondSent).toBeLessThan(firstAnswered);
+    expect(firstAnswered).toBeLessThan(toolDone);
+    expect(toolDone).toBeLessThan(secondAnswered);
+    expect(frames[firstAnswered].msg.result.stopReason).toBe('end_turn');
+    // Separate model calls, not a running total: the second answer's input
+    // is below the first's.
+    expect(frames[secondAnswered].msg.result.usage.inputTokens).toBeLessThan(
+      frames[firstAnswered].msg.result.usage.inputTokens,
+    );
   });
 });

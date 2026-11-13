@@ -391,7 +391,8 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       credentialEnvVars: ['GEMINI_API_KEY'],
     },
     // `agy acp` arrived in Antigravity CLI 1.5.0; 1.4.4 has no such command
-    // and never answers. `agy --version` prints the bare version.
+    // and never answers (services/acp/__tests__/fixtures/
+    // antigravity-1.4.4-acp-help.txt). `agy --version` prints the bare version.
     minimumVersion: {
       versionCommand: ['agy', '--version'],
       minimum: '1.5.0',

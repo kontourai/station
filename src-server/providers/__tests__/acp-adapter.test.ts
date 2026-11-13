@@ -7019,6 +7019,112 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test('an Antigravity steer waits for the answer to an open request instead of breaking the turn', async () => {
+    // Antigravity 1.5.8 refuses a mid-turn prompt while the running one waits
+    // on a permission or question answer (seen in a live Station run).
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'agy', args: ['acp', '--process-per-session'] },
+      ],
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = {
+          name: 'Antigravity ACP Server',
+          version: '1.5.8',
+        };
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-agy-steer-pending',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-agy-steer-pending',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const answered = requestPermission(processes[0]!.client, 'tool-pending');
+    const opened = await nextEvent(iterator, 'request.opened');
+
+    await expect(
+      adapter.steerTurn('thread-agy-steer-pending', 'go left', turn.turnId),
+    ).rejects.toMatchObject({
+      name: 'ProviderRefusalError',
+      kind: 'conflict',
+      message: expect.stringContaining('waits for your answer'),
+    });
+    // Nothing reached the engine, and the request is still open to answer.
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    await adapter.respondToRequest(
+      'thread-agy-steer-pending',
+      (opened as { requestId: string }).requestId,
+      'accept',
+    );
+    await expect(answered).resolves.toMatchObject({
+      outcome: { outcome: 'selected' },
+    });
+    processes[0]!.resolvePrompt('end_turn');
+    let event = await nextEvent(iterator, 'turn.completed');
+    while (event.method !== 'turn.completed')
+      event = await nextEvent(iterator, 'turn.completed');
+    expect(event).toMatchObject({ turnId: turn.turnId });
+    await adapter.stopAll();
+  });
+
+  test('a turn running a routed engine command is not taken over by a prompt hand-off', async () => {
+    // An engine with the hand-off steer that also routes a declared command:
+    // the running request is not a session/prompt, so the steer cancels and
+    // re-prompts as for any engine.
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'agy', args: ['acp', '--process-per-session'] },
+      ],
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = {
+          name: 'Antigravity ACP Server',
+          version: '1.5.8',
+        };
+        proc.initResult!.agentCapabilities._meta = {
+          acme: { extensionMethods: ['_kiro/session/context'] },
+        };
+        proc.extMethod = async (method, params) => {
+          proc.extMethodCalls.push({ method, params });
+          // Still running when the steer arrives.
+          return new Promise((resolve) => setTimeout(() => resolve({}), 300));
+        };
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-agy-steer-command',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-agy-steer-command',
+      input: '/context',
+    });
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_kiro/session/context',
+    ]);
+
+    await adapter.steerTurn('thread-agy-steer-command', 'go left', turn.turnId);
+
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toEqual([
+      [{ type: 'text', text: 'go left' }],
+    ]);
+    await adapter.stopAll();
+  });
+
   test('Grok injects via _x.ai/interject without cancelling the turn', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [
