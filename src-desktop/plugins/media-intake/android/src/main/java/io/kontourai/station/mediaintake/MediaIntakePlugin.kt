@@ -88,7 +88,7 @@ class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
     KeyboardImageIntake.install(webView) { uris, release ->
       if (!KeyboardImageIntake.appOrigin(webView.url)) { release.release(); return@install }
       val id = JSONObject.quote(UUID.randomUUID().toString())
-      webView.evaluateJavascript("$bridge;window.__stationImagePaste.capture($id)") { captured ->
+      webView.evaluateJavascript(appScript("$bridge;window.__stationImagePaste.capture($id)")) { captured ->
         if (captured != "true") {
           release.release()
           Toast.makeText(activity, if (captured == "\"busy\"") "Wait for the pending images to finish." else "Focus a chat composer to insert an image.", Toast.LENGTH_SHORT).show()
@@ -99,10 +99,10 @@ class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
               try {
                 val images = readImages(uris, "pasted-image")
                 val payload = filesResult(images).toString()
-                webView.post { if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript("window.__stationImagePaste?.deliver($id,$payload)", null) }
+                webView.post { if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.deliver($id,$payload)"), null) }
               } catch (error: Exception) {
                 webView.post {
-                  if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript("window.__stationImagePaste?.cancel($id)", null)
+                  if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.cancel($id)"), null)
                   Toast.makeText(activity, (error as? IntakeRefused)?.message ?: "Station could not read the images.", Toast.LENGTH_SHORT).show()
                 }
               } finally {
@@ -111,7 +111,7 @@ class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
             }
           } catch (_: java.util.concurrent.RejectedExecutionException) {
             release.release()
-            if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript("window.__stationImagePaste?.cancel($id)", null)
+            if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.cancel($id)"), null)
           }
         }
       }

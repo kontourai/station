@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// @vitest-environment-options {"url":"http://tauri.localhost/"}
 /**
  * Paste image: one reader (`readClipboardImageFiles`) feeds each composer's
  * own select path. The composer cases run the real default sources: under
@@ -14,6 +15,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { JSDOM } from 'jsdom';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
@@ -454,6 +456,29 @@ const KEYBOARD_PAYLOAD = {
 };
 
 describe('Android keyboard image bridge into real composers', () => {
+  test('the bridge refuses installation in a foreign document', () => {
+    const foreign = new JSDOM(
+      '<textarea data-native-image-paste="foreign"></textarea>',
+      {
+        url: 'https://foreign.example/',
+        runScripts: 'outside-only',
+      },
+    );
+    try {
+      const source = readFileSync(
+        resolve(
+          import.meta.dirname,
+          '../../../src-desktop/plugins/media-intake/android/src/main/assets/station-image-paste.js',
+        ),
+        'utf8',
+      );
+      foreign.window.eval(source);
+      expect('__stationImagePaste' in foreign.window).toBe(false);
+    } finally {
+      foreign.window.close();
+    }
+  });
+
   test('reply receives a keyboard image through its attachment select path once', () => {
     const props = renderChatInput();
     const field = screen.getByRole('textbox', { name: 'Message' });

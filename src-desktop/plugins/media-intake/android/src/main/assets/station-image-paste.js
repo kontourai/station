@@ -1,8 +1,9 @@
 // Runs in the main WebView. Capture before native I/O; never retarget a late read.
 (() => {
+  if (location.origin !== 'http://tauri.localhost') return;
   if (window.__stationImagePaste) return;
   const pending = new Map();
-  const appOrigin = location.origin;
+  const appOrigin = 'http://tauri.localhost';
   const eligible = () => {
     const target = document.activeElement;
     return location.origin === appOrigin && target instanceof HTMLTextAreaElement &&

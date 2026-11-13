@@ -192,6 +192,7 @@ class KeyboardImageIntakeTest {
     shadowOf(Looper.getMainLooper()).idle()
     assertTrue(scripts.last() + " toast=" + org.robolectric.shadows.ShadowToast.getTextOfLatestToast(), scripts.any { it.contains(".deliver(") && it.contains("pasted-image-1.png") })
     assertEquals(2, releases)
+    assertTrue(scripts.all { it.startsWith("if (location.origin === 'http://tauri.localhost') {") })
     shadowOf(next.contentResolver).registerInputStream(uri, java.io.ByteArrayInputStream(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)))
     @Suppress("UNCHECKED_CAST")
     val session = MediaIntakePlugin::class.java.getDeclaredField("session").apply { isAccessible = true }.get(plugin) as ShareIntakeSession<Uri>

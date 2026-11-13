@@ -16,7 +16,10 @@ import android.webkit.WebView
 import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Wry's generated overrides call this; implementation stays in the maintained plugin. */
+/** Recheck inside the JS world too: navigation can race native WebView.url. */
+internal fun appScript(script: String): String =
+  "if (location.origin === 'http://tauri.localhost') { $script }"
+
 internal class ImageReadGrant(private val relinquish: () -> Unit = {}) {
   private val released = AtomicBoolean(false)
   private val handler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -28,6 +31,7 @@ internal class ImageReadGrant(private val relinquish: () -> Unit = {}) {
   }
 }
 
+/** Wry's generated overrides call this; implementation stays in the maintained plugin. */
 object KeyboardImageIntake {
   internal var bind: ((WebView) -> Unit)? = null
   @JvmStatic fun attached(view: WebView) { bind?.invoke(view) }
@@ -96,7 +100,7 @@ object KeyboardImageIntake {
       private fun offerImagePaste(mode: ActionMode, menu: Menu): Boolean {
         if (!appOrigin(view.url)) return false
         val bridge = view.context.assets.open("station-image-paste.js").bufferedReader().use { it.readText() }
-        view.evaluateJavascript("$bridge;window.__stationImagePaste?.eligible() === true") { result ->
+        view.evaluateJavascript(appScript("$bridge;window.__stationImagePaste?.eligible() === true")) { result ->
           if (alive && eligible != (result == "true")) {
             eligible = result == "true"
             if (!eligible) removeImagePaste(menu)
