@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createStationDocsMcpServer } from '../station-docs-mcp-server.js';
+import questionFixture from './fixtures/station-docs-questions.json';
 
 /**
  * #4831: search_station_docs ranks Station's shipped Corpus bundle with
@@ -17,14 +16,7 @@ interface Question {
   knownMiss?: string;
 }
 
-const { questions } = JSON.parse(
-  readFileSync(
-    fileURLToPath(
-      new URL('./fixtures/station-docs-questions.json', import.meta.url),
-    ),
-    'utf8',
-  ),
-) as { questions: Question[] };
+const { questions } = questionFixture as { questions: Question[] };
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }> };
 
