@@ -1121,7 +1121,9 @@ A saved `kiro` connection keeps its own arguments.
    `<Station home>/engines/kiro-kas/0.66.104/`. A download that cannot be
    written (a full disk, an unwritable directory) fails the install and
    leaves nothing staged. Nothing updates on its own: a new version arrives
-   with a Station release. Until it is installed, a chat and the engine's
+   with a Station release. `station home backup` and update rollback skip
+   `engines/`, because each pinned version can be downloaded again. Until it
+   is installed, a chat and the engine's
    **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
    Installing needs permission to operate Station on a paired device.
 2. **Sign in.** Choose **AWS Builder ID**, or **IAM Identity Center** with
