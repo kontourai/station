@@ -206,11 +206,16 @@ describe.skipIf(process.platform === 'win32')(
           .filter((entry) => entry.method === 'session/set_config_option')
           .map((entry) => entry.configId),
       ).toEqual(['model', 'thought_level']);
-      const configured = engine.events
-        .filter((event) => event.method === 'session.configured')
-        .at(-1) as { metadata?: Record<string, unknown> } | undefined;
-      // What the engine now runs, not only what was asked for.
-      expect(configured?.metadata?.reportedModel).toBe('gemini-3.8-flash');
+      // The reopen's own `session.configured` (the start's is the first),
+      // saying what the engine now runs, not only what was asked for.
+      const configured = (await waitFor(
+        () =>
+          engine.events.filter(
+            (event) => event.method === 'session.configured',
+          )[1],
+        'the reopen session.configured',
+      )) as { metadata?: Record<string, unknown> };
+      expect(configured.metadata?.reportedModel).toBe('gemini-3.8-flash');
     });
 
     test('a reopen whose effort the resumed session does not offer is skipped, not refused', async () => {
