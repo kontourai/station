@@ -1,0 +1,7 @@
+{
+  "revision": "00098d3c52aaaa7a237fa3df99806bf0df2e59f1",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Reviewed test runner substitution of locked Wry source with a stub Chromium superclass, keeping generated overrides intact. Runtime assertions catch discarded input and menu wrappers; both strengthened mutations reached assertions. 99 Kotlin tests baseline/restored; APK packaging and physical behavior unverified.","inputs":["docs/guides/android-build.md"]}
+  ]
+}
