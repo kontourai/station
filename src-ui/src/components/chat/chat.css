@@ -1803,10 +1803,9 @@
   display: none;
 }
 
-/* Said in the chip caption on a wide composer; its own line on a narrow one
-   (see the container query below). */
+/* The next-send destination stays visible while Run setup is closed. */
 .chat-input__next-turn-notice {
-  display: none;
+  display: block;
   flex-basis: 100%;
   margin: 0;
   padding-inline: var(--k-space-1);
@@ -3656,5 +3655,24 @@
   display: contents;
 }
 .chat-dock__reader[hidden] {
+  display: none;
+}
+
+/* Tools lead; setup and Send share the trailing edge without wrapping. */
+.chat-input .chat-controls-row {
+  flex-wrap: nowrap;
+}
+.chat-input .chat-controls-row > .composer-choices.chat-input__settings {
+  flex: 0 1 auto;
+  min-width: 44px;
+  max-width: 45%;
+  overflow: visible;
+}
+.chat-controls-row > .chat-input__send-group {
+  margin-inline-start: 0;
+}
+.chat-input__meta:not(
+  :has(.chat-input__next-turn-notice, .chat-status-pill, .chat-scroll-to-bottom)
+) {
   display: none;
 }

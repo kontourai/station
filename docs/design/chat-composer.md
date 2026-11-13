@@ -14,6 +14,20 @@
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
+## Run setup in the composer toolbar
+
+Reply and start composers share one bottom row inside the input box: attachment,
+voice and other tools on the left, then Run setup immediately beside Send or
+Start on the right. The reply's next-turn destination notice and conversation
+status/resync action stay above the box when present.
+
+Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
+secondary-weight Agent · model label, and the shared caret. Safety warnings stay
+on the marks. The Agent name truncates first; in narrow composers the label
+hides, keeping marks and caret. The full summary remains in the accessible name
+and hover title, and the touch target stays at least 44px. The existing setup
+owner opens above the toolbar on desktop and as a bottom sheet on phones.
+
 ## Interaction stability and conversation continuity
 
 For a memory-exhausted turn restored from history, the dock offers Continue
@@ -118,7 +132,7 @@ source and workspace controls, with specialist management still in Settings.
 
 Home and the chat dock share one start composer (`StartComposer`, driven in
 the dock by `NewChatModal`). Both use a heading with the inline Project picker,
-compact Agent and Model controls inside the message box, and a Station/location
+a compact Run setup control beside Start inside the message box, and a Station/location
 line below it.
 
 **New chat** is not a dialog. It opens a draft in the chat dock's body, in place
@@ -157,7 +171,7 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   the person moves focus or clicks away (a window switch does not count).
 
 The Project page opens on Overview and keeps its shared Project Room separate
-from direct Agent conversations. Separate Agent and Engine & model controls sit
+from direct Agent conversations. The shared Run setup control sits
 inside the composer beside Start and, while the `visual-skills` Feature Preview
 is on, the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -1337,7 +1351,7 @@ and terminal undo retain their keys.
 
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
-Agent, model, Mode and Approval retain their separate controls. Basis stays
+Agent, model, Mode and Approval remain choices inside Run setup. Basis stays
 answer-scoped. Chat inventory and Browse turns are conversation overflow actions.
 
 The dev UI proxy uses the production unavailable envelope during API restarts.

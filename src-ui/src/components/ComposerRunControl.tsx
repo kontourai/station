@@ -162,6 +162,7 @@ export function ComposerRunControl({
               )}
             </span>
           }
+          title={summary}
           aria-label={summary}
           data-testid="run-setup-trigger"
           aria-haspopup="dialog"

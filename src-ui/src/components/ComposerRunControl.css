@@ -75,3 +75,31 @@
   text-overflow: ellipsis;
   white-space: pre;
 }
+
+/* A toolbar pill: the painted surface is quiet; the hit area remains 44px. */
+.composer-choices > .choice-trigger.composer-run-control {
+  min-width: 44px;
+  min-height: 44px;
+  border-color: transparent;
+  border-radius: var(--k-radius-full);
+  background: transparent;
+  box-shadow: none;
+  color: var(--k-text-muted);
+  font-weight: 400;
+}
+.composer-choices > .choice-trigger.composer-run-control:hover,
+.composer-choices > .choice-trigger.composer-run-control[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--k-text) 7%, transparent);
+}
+.composer-run-control .composer-choice__value {
+  font-weight: 400;
+}
+/* Use the available composer width, including a narrow desktop dock. */
+@container (max-width: 310px) {
+  .composer-run-control .chat-input__chip-stack {
+    display: none;
+  }
+  .composer-choices > .choice-trigger.composer-run-control {
+    flex: none;
+  }
+}

@@ -1735,6 +1735,7 @@ function withGalleryProjectsList(
   readyAgent = false,
   fullAccess = false,
   modelName = 'Gallery model',
+  agentName = 'Station',
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
@@ -1766,7 +1767,7 @@ function withGalleryProjectsList(
                 data: [
                   {
                     slug: 'station',
-                    name: 'Station',
+                    name: agentName,
                     source: 'local',
                     engineId: fullAccess ? 'claude' : 'station-agent',
                     ...(fullAccess
@@ -5418,6 +5419,153 @@ const SCREENS: Screen[] = [
       }),
     ),
   ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [320, 360, 390, 412, 1440].flatMap((width) =>
+      ['short', 'long'].map((names): Screen => {
+        let fixturePage: Page;
+        const id = `reply-composer-${theme}-${width}-${names}`;
+        const model =
+          names === 'long'
+            ? 'reasoning-model-with-a-very-long-version-id-2026'
+            : 'Mini';
+        const agent =
+          names === 'long'
+            ? 'Research assistant with an unusually long name'
+            : 'Station';
+        const hooks = withGalleryProjectsList(
+          [],
+          async (page) => {
+            await page.evaluate(
+              (theme) =>
+                document.documentElement.setAttribute('data-theme', theme),
+              theme,
+            );
+            const composer = page
+              .locator('.chat-input')
+              .filter({ visible: true })
+              .last();
+            await expect(
+              composer.getByRole('textbox', { name: 'Message', exact: true }),
+            ).toBeVisible();
+            const trigger = composer.getByTestId('run-setup-trigger');
+            await expect(trigger).toHaveAccessibleName(new RegExp(agent));
+            await expect(trigger).toHaveAttribute('title', new RegExp(model));
+            const send = composer.locator('.chat-input__send-btn');
+            const controlBox = (await trigger.boundingBox())!;
+            const sendBox = (await send.boundingBox())!;
+            const composerBox = (await composer.boundingBox())!;
+            expect(
+              Math.abs(
+                controlBox.y +
+                  controlBox.height / 2 -
+                  sendBox.y -
+                  sendBox.height / 2,
+              ),
+            ).toBeLessThanOrEqual(1);
+            expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(
+              sendBox.x,
+            );
+            expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(
+              composerBox.x + composerBox.width,
+            );
+            expect(controlBox.width).toBeGreaterThanOrEqual(44);
+            expect(controlBox.height).toBeGreaterThanOrEqual(44);
+            expect(
+              await composer.evaluate((el) => el.scrollWidth <= el.clientWidth),
+            ).toBe(true);
+            if (width === 320)
+              await expect(
+                trigger.locator('.chat-input__chip-stack'),
+              ).toBeHidden();
+          },
+          true,
+          false,
+          model,
+          agent,
+        );
+        return {
+          name: id,
+          title: `Reply composer — ${names} names`,
+          path: `/?dock=open&chat=${id}`,
+          viewport: { width, height: width === 1440 ? 900 : 915 },
+          captureTheme: theme,
+          ...hooks,
+          beforeGoto: async (page) => {
+            fixturePage = page;
+            await hooks.beforeGoto?.(page);
+            await page.addInitScript((conversation) => {
+              if (
+                new URLSearchParams(location.search).get('chat') !==
+                conversation
+              )
+                return;
+              const original = window.fetch.bind(window);
+              window.fetch = async (input, init) => {
+                const url =
+                  input instanceof Request ? input.url : String(input);
+                if (
+                  new URL(url, location.href).pathname !==
+                  '/api/orchestration/events'
+                )
+                  return original(input, init);
+                return new Response(
+                  new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      init?.signal?.addEventListener(
+                        'abort',
+                        () => controller.close(),
+                        { once: true },
+                      );
+                    },
+                  }),
+                  { headers: { 'Content-Type': 'text/event-stream' } },
+                );
+              };
+            }, id);
+            await page.route(
+              '**/api/orchestration/sessions/read-model',
+              orchestrationSessionFixture({ threadId: id }),
+            );
+            await seedActiveChatSession(page, {
+              conversationId: id,
+              agentSlug: 'station',
+              title: 'Toolbar layout',
+            });
+            await mockRuntimeConversation(page, {
+              id,
+              agentSlug: 'station',
+              title: 'Toolbar layout',
+              provider: 'station-agent',
+              model,
+              canContinue: true,
+              turns: () =>
+                buildLongSessionTurns({
+                  threadId: id,
+                  provider: 'station-agent',
+                  turnCount: 1,
+                  replyText: () => 'Ready for your next message.',
+                }),
+            });
+          },
+          cleanup: async () => {
+            const page = fixturePage;
+            await hooks.cleanup?.();
+            await page.unroute('**/api/orchestration/sessions/read-model');
+            await page.unroute(`**/api/conversations/${id}/open`);
+            await page.unroute(
+              `**/api/orchestration/conversations/${id}/inbox`,
+            );
+            await page.unroute(
+              `**/api/orchestration/conversations/${id}/event-window**`,
+            );
+            await page.unroute(
+              `**/api/orchestration/sessions/${id}/turns/*/basis`,
+            );
+          },
+        };
+      }),
+    ),
+  ),
   ...[390, 412].map(
     (width): Screen => ({
       name: `run-setup-full-access-${width}`,
@@ -5480,6 +5628,25 @@ const SCREENS: Screen[] = [
               );
             const trigger = draft.getByTestId('run-setup-trigger');
             await expect(trigger).toContainText('Station · Mini');
+            const setupBox = (await trigger.boundingBox())!;
+            const startBox = (await draft
+              .getByRole('button', { name: 'Start', exact: true })
+              .boundingBox())!;
+            expect(
+              Math.abs(
+                setupBox.y +
+                  setupBox.height / 2 -
+                  startBox.y -
+                  startBox.height / 2,
+              ),
+            ).toBeLessThanOrEqual(1);
+            expect(setupBox.x + setupBox.width).toBeLessThanOrEqual(startBox.x);
+            expect(
+              await draft
+                .locator('.start-composer__box')
+                .evaluate((el) => el.scrollWidth <= el.clientWidth),
+            ).toBe(true);
+
             await expect(
               trigger.locator('[data-brand-key="station"]'),
             ).toHaveCount(1);

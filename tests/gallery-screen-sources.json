@@ -599,6 +599,86 @@
       "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
       "src-ui/src/views/ProjectPage.tsx",
       "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "reply-composer-dark-320-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-320-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-360-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-360-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-390-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-390-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-412-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-412-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-1440-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-dark-1440-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-320-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-320-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-360-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-360-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-390-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-390-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-412-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-412-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-1440-short": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "reply-composer-light-1440-long": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
     ]
   }
 }

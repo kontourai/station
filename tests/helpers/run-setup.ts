@@ -10,7 +10,12 @@ export async function openRunSetup(scope: Scope): Promise<Locator> {
   const page = owningPage(scope);
   const panel = page.getByRole('dialog', { name: 'Run setup', exact: true });
   if (!(await panel.isVisible())) {
-    await scope.getByTestId('run-setup-trigger').last().click();
+    // Both composer owners place setup in the bottom toolbar next to Send/Start.
+    await scope
+      .locator('.chat-controls-row, .start-composer__bar')
+      .getByTestId('run-setup-trigger')
+      .last()
+      .click();
   }
   await expect(panel).toBeVisible();
   return panel;

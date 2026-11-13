@@ -569,3 +569,25 @@
   border-radius: var(--k-radius-sm);
   margin-right: var(--k-space-2);
 }
+
+.start-composer__actions {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.start-composer__actions > .start-composer__tools {
+  flex: none;
+  margin-inline-end: auto;
+}
+.start-composer__actions > .start-composer__chips {
+  flex: 0 1 auto;
+  max-width: 55%;
+  min-width: 44px;
+  overflow: visible;
+}
+.start-composer__start {
+  flex: none;
+}
+
+.start-composer {
+  container-type: inline-size;
+}
