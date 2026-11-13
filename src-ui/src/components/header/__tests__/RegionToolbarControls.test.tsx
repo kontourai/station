@@ -1077,7 +1077,7 @@ describe('RegionToolbarControls', () => {
       within(screen.getByRole('menu', { name: 'Region surfaces' }))
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat from the dock', 'Show Agents in the dock']);
+    ).toEqual(['Hide Chat from the dock']);
     // Flat, not grouped: the folded list is one Show/Hide per surface.
     expect(
       within(
@@ -1093,42 +1093,6 @@ describe('RegionToolbarControls', () => {
    * `Show <title>` checkbox an unplaced surface gets, which would reveal it
    * where it already is and read as nothing happening.
    */
-  test('the folded menu offers to move a main occupant to the dock, and to show an unplaced one', () => {
-    harness.bottomOnly = true;
-    harness.isMobile = false;
-    Object.assign(harness.regions.main, {
-      panes: ['workspace-agents'],
-      occupant: 'workspace-agents',
-    });
-    const { rerender } = render(<RegionToolbarControls />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    const menu = screen.getByRole('menu', { name: 'Region surfaces' });
-    expect(
-      within(menu)
-        .getAllByRole('menuitemcheckbox')
-        .map((item) => item.textContent),
-    ).toEqual(['Hide Chat from the dock']);
-    const move = within(menu).getByRole('menuitem', {
-      name: 'Move Agents to the dock',
-    });
-    expect(move.hasAttribute('aria-checked')).toBe(false);
-    expect(within(menu).queryByText('Show Agents in the dock')).toBeNull();
-    fireEvent.click(move);
-    expectOnlyToggle('workspace-agents');
-    expect(screen.queryByRole('menu')).toBeNull();
-
-    // Once the model has moved it out of `main`, the row is a toggle again.
-    Object.assign(harness.regions.main, { panes: ['home'], occupant: 'home' });
-    rerender(<RegionToolbarControls />);
-    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    expect(
-      within(screen.getByRole('menu', { name: 'Region surfaces' }))
-        .getAllByRole('menuitemcheckbox')
-        .map((item) => item.textContent),
-    ).toEqual(['Hide Chat from the dock', 'Show Agents in the dock']);
-    expect(screen.queryByRole('menuitem')).toBeNull();
-  });
 
   /**
    * #2046 2b, D2: the folded rows are per REGION, in the region's TAB ORDER.
@@ -1193,10 +1157,7 @@ describe('RegionToolbarControls', () => {
     // pin in `region-model.test.ts`, which asserts `shortcut` is undefined per
     // catalog entry.
     render(<RegionToolbarControls />);
-    expect([...harness.shortcuts.keys()].sort()).toEqual([
-      'activity.toggle',
-      'dock.toggle',
-    ]);
+    expect([...harness.shortcuts.keys()].sort()).toEqual(['dock.toggle']);
   });
 
   /**
@@ -1450,10 +1411,10 @@ describe('RegionToolbarControls', () => {
         .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
-      screen
-        .getByRole('menuitemcheckbox', { name: 'Show Agents in the dock' })
-        .getAttribute('aria-checked'),
-    ).toBe('false');
+      screen.queryByRole('menuitemcheckbox', {
+        name: 'Show Agents in the dock',
+      }),
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' }),
     );
@@ -1465,10 +1426,10 @@ describe('RegionToolbarControls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     fireEvent.click(
       screen.getByRole('menuitemcheckbox', {
-        name: 'Show Agents in the dock',
+        name: 'Show Chat in the dock',
       }),
     );
-    expectOnlyToggle('workspace-agents', 2);
+    expectOnlyToggle('chat', 2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     const backdrop = screen.getByRole('button', {
