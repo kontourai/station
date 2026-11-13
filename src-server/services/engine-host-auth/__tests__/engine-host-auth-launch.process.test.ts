@@ -25,6 +25,8 @@ import {
 import {
   engineLaunchFactsFor,
   ManagedRuntimeNotInstalledError,
+  registryAuthFor,
+  registryLaunchEnvFor,
 } from '../../acp/acp-engine-descriptors.js';
 import {
   AcpInboundExtensionRegistry,
@@ -317,3 +319,31 @@ test.skipIf(process.platform === 'win32')(
   },
   60_000,
 );
+
+test('descriptor lookups key a managed engine by its install id, never by the runtime name', () => {
+  expect(
+    registryAuthFor({ command: managedRuntimeCommand('kiro-kas') })?.auth
+      .signInHint,
+  ).toMatch(/sign in to Kiro here/);
+  // A custom connection running node shares nothing with the managed engine.
+  expect(registryAuthFor({ command: process.execPath })).toBeUndefined();
+  expect(registryAuthFor({ command: 'node' })).toBeUndefined();
+  // kiro-cli entries name Station to kiro-cli; the bundle runs no kiro-cli.
+  expect(registryLaunchEnvFor({ command: 'kiro-cli' })).toEqual({
+    KIRO_CLI_CLIENT_APPLICATION: 'station',
+  });
+  expect(
+    registryLaunchEnvFor({ command: managedRuntimeCommand('kiro-kas') }),
+  ).toBeUndefined();
+  expect(
+    engineLaunchFactsFor({ command: managedRuntimeCommand('kiro-kas') }),
+  ).toEqual({
+    builtinDescriptor: true,
+    argv: [
+      '--experimental-wasm-modules',
+      '{script}',
+      '--transport=stdio',
+      '--auth=acp-callback',
+    ],
+  });
+});
