@@ -1731,6 +1731,7 @@ function withGalleryProjectsList(
   assertions: (page: Page) => Promise<void>,
   readyAgent = false,
   fullAccess = false,
+  modelName = 'Gallery model',
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
@@ -1742,13 +1743,13 @@ function withGalleryProjectsList(
       if (readyAgent) {
         const connection = modelConnectionFixture({
           id: 'gallery-model',
-          name: 'Gallery model',
+          name: modelName,
           config: {
             defaultModel: 'gallery-model',
             modelOptions: [
               {
                 id: 'gallery-model',
-                name: 'Gallery model',
+                name: modelName,
                 originalId: 'gallery-model',
               },
             ],
@@ -1808,9 +1809,7 @@ function withGalleryProjectsList(
                   agentConnectionFixture({
                     id: 'claude',
                     config: {
-                      modelOptions: [
-                        { id: 'gallery-model', name: 'Gallery model' },
-                      ],
+                      modelOptions: [{ id: 'gallery-model', name: modelName }],
                     },
                   }),
                 ],
@@ -5240,6 +5239,7 @@ const SCREENS: Screen[] = [
       },
       true,
       true,
+      'Mini',
     ),
   },
   ...(['dark', 'light'] as const).flatMap((theme) =>
@@ -5259,7 +5259,7 @@ const SCREENS: Screen[] = [
                 document.documentElement.setAttribute('data-theme', 'light'),
               );
             const trigger = draft.getByTestId('run-setup-trigger');
-            await expect(trigger).toContainText('Station · Gallery model');
+            await expect(trigger).toContainText('Station · Mini');
             await expect(
               trigger.locator('[data-brand-key="station"]'),
             ).toHaveCount(2);
@@ -5269,6 +5269,8 @@ const SCREENS: Screen[] = [
             ).toBeHidden();
           },
           true,
+          false,
+          'Mini',
         ),
       }),
     ),
