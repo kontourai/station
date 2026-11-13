@@ -423,7 +423,11 @@ test.each([
       activity: {
         conversationId: 'c',
         asOfSequence: 3,
-        runningChildWork: { count: 0, producers: [], followUpPending: true as const },
+        runningChildWork: {
+          count: 0,
+          producers: [],
+          followUpPending: true as const,
+        },
       },
     },
     'Waiting for background reply',
