@@ -1926,7 +1926,9 @@ engine answers `409`. Otherwise it answers the engine's
 where it gave them), `failed` (with a message), `not-declared` (this engine
 has no reconnect call), or `unsupported` (the Session's adapter has none).
 Station decides nothing from the answer; a later `engine-mcp.status` reports
-the server's new state.
+the server's new state. A report carries `reconnect: true` only when the
+Session's engine declares a reconnect Station can send; clients offer
+Reconnect and Sign in only then.
 
 ### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
 
