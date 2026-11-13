@@ -336,7 +336,8 @@ channel falls back to the highest older version across preceding-base Releases
 and plain stable git tags. Desktop and rolling tags are excluded. Moved tags
 stop publication. Missing predecessors or source commits, identical source bounds,
 and empty change notes are availability failures for Nightly: publication warns
-with the reason and retains installation instructions alone. Stable and preview
+with a fixed reason category (never GitHub response details or token scopes) and
+retains installation instructions alone. Stable and preview
 still refuse missing predecessors, but identical sources or empty changes produce
 a clear “No changes since” line. Comparison links retain commit bounds.
 Generated notes retain at most 100 entries and stay below 50,000 characters,
@@ -344,8 +345,8 @@ leaving room for installation instructions. Truncated bodies report the omitted
 change count and keep a full comparison link.
 
 Reads and note generation retry transient API failures once, honoring
-Retry-After or the rate-limit reset time up to 30 seconds (otherwise a short
-backoff). Configuration and invalid-history errors stop all channels.
+Retry-After, or the rate-limit reset time once the quota is exhausted, up to 30
+seconds (otherwise a short backoff). Configuration and invalid-history errors stop all channels.
 Stable and preview also stop on API availability errors. This source wiring does
 not qualify an end-to-end publication, and existing release bodies are not rewritten.
 
