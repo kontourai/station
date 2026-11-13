@@ -1119,6 +1119,29 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // and `goal/clear` on serve; `goal/set` and `goal/resume` start a goal
     // turn on an idle session (`muse-serve-1.4.18-goal-set-pause`) and are
     // not offered.
+    //
+    // Sign-in (#1942, not a matrix cell): credential profiles through the
+    // generic app-home surface. A profile is an XDG config root
+    // (`museAppHomeEnv`); `muse login` relays its device code
+    // (live 1.4.18 through `DeviceCodeLoginManager`, cancelled before
+    // approval; `app-home-muse.routes.test.ts`), and serve hosts and exec
+    // turns spawn under the profile (`muse-serve-adapter.test.ts`,
+    // `muse-adapter.test.ts`). API-key sign-in is not offered.
+    //
+    // MCP status (not a matrix cell): `muse mcp list --json` at session start
+    // → `engine-mcp.status`, `scope: 'engine-config'`, enabled servers
+    // `configured` (stable MSP reports no connection state and has no
+    // reconnect, so none is declared; `muse-mcp-status.test.ts`).
+    // `approval/reviewing` → `tool.progress` on the held call (schema-built
+    // frame, no live capture; `muse-serve-adapter.test.ts`).
+    //
+    // Managed install: not offered. The release channel, manifest (sha256
+    // and size per platform) and binary were fetchable without an account
+    // on 2026-11-13, so a pin is possible, but the managed-install
+    // abstraction is keyed on built-in ACP descriptors. Readiness and
+    // sign-in probes run with `MUSE_NO_AUTO_UPDATE=1 MUSE_LOGIN=0`
+    // (`MUSE_UNATTENDED_LAUNCHER_ENV`) so the launcher never downloads or
+    // prompts during a probe.
     durability: STEERING_ENGINE_DURABILITY,
     // Adopting a muse session Station did not start needs an
     // attached-session source that lists them (`session/list`); none
