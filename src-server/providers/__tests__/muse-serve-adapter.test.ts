@@ -2528,38 +2528,47 @@ describe('#1952 Muse Code 1.4.18: steering a running serve turn', () => {
     ).toMatchObject([{ turnId, prompt: STEER_TEXT }]);
   });
 
-  test('a steer muse says joined another turn is indeterminate and shows nothing', async () => {
-    const h = harness();
-    const host = await startServe(h);
-    let sent: Promise<{ turnId: string }> | undefined;
-    await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
-      stopAt: captureIndex('steer', (msg) => msg.method === 'turn/steer'),
-      onDrivenRequest: (method) => {
-        if (method !== 'turn/start') return undefined;
-        sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
-        return sent;
-      },
-    });
-    const { turnId } = await sent!;
-    const steering = h.adapter.steerTurn(THREAD, STEER_TEXT, turnId);
-    const request = await host.nextRequest('turn/steer', new Set());
-    host.writeFrame({
-      jsonrpc: '2.0',
-      id: request.id,
-      result: { commandId: request.params?.commandId, status: 'accepted' },
-    });
-    const outcome = await steering.then(
-      () => 'resolved',
-      (error: unknown) => error,
-    );
-    expect(outcome).toBeInstanceOf(Error);
-    expect(outcome).not.toBeInstanceOf(ProviderTurnEndedError);
-    expect(
-      of(h.events, 'turn.started').filter(
-        (event) => event.inputKind === 'steer',
-      ),
-    ).toEqual([]);
-  });
+  test.each([
+    [
+      'names no turn',
+      (commandId: unknown) => ({ commandId, status: 'accepted' }),
+    ],
+    ['is not a result object', () => null],
+  ])(
+    'a steer reply that %s is indeterminate and shows nothing',
+    async (_label, result) => {
+      const h = harness();
+      const host = await startServe(h);
+      let sent: Promise<{ turnId: string }> | undefined;
+      await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+        stopAt: captureIndex('steer', (msg) => msg.method === 'turn/steer'),
+        onDrivenRequest: (method) => {
+          if (method !== 'turn/start') return undefined;
+          sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+          return sent;
+        },
+      });
+      const { turnId } = await sent!;
+      const steering = h.adapter.steerTurn(THREAD, STEER_TEXT, turnId);
+      const request = await host.nextRequest('turn/steer', new Set());
+      host.writeFrame({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: result(request.params?.commandId),
+      });
+      const outcome = await steering.then(
+        () => 'resolved',
+        (error: unknown) => error,
+      );
+      expect(outcome).toBeInstanceOf(Error);
+      expect(outcome).not.toBeInstanceOf(ProviderTurnEndedError);
+      expect(
+        of(h.events, 'turn.started').filter(
+          (event) => event.inputKind === 'steer',
+        ),
+      ).toEqual([]);
+    },
+  );
 
   test('a steer naming a turn that is not running is refused before anything reaches muse', async () => {
     const h = harness();
