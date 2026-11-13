@@ -2024,7 +2024,7 @@ export const acpResumeSessions = meter.createCounter(
   'station.acp.resume_sessions',
   {
     description:
-      "ACP sessions reattached via session/resume or session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'resumed'|'loaded'|'load-unsupported')",
+      "ACP sessions reattached via session/resume or session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'resumed'|'loaded'|'load-unsupported'|'other-session', the last when the engine's answer named a different session than the one asked for)",
   },
 );
 

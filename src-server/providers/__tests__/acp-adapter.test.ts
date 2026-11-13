@@ -3037,6 +3037,114 @@ describe('AcpAdapter', () => {
       expect(processes[0].loadSessionCalls).toBe(0);
     });
 
+    /**
+     * `_meta` exactly as Hermes builds it for a new/load/resume answer
+     * (NousResearch/hermes-agent acp_adapter/provenance.py
+     * build_session_provenance; v0.22.0 e06df9c2eae6, unchanged at v0.23.1).
+     * `acpSessionId` is the session the answer is about.
+     */
+    const hermesAnswer = (acpSessionId: string) => ({
+      _meta: {
+        hermes: {
+          sessionProvenance: {
+            acpSessionId,
+            currentHermesSessionId: '20261113_101500_ab12cd',
+            rootHermesSessionId: '20261113_101500_ab12cd',
+            parentHermesSessionId: null,
+            sessionKind: 'root',
+            compressionDepth: 0,
+          },
+        },
+      },
+    });
+    /** What Hermes's `initialize` says about itself (gateway_server.py, server.py). */
+    const asHermes = (proc: FakeAcpProcess) => {
+      proc.initResult!.agentInfo = { name: 'hermes-agent', version: '0.22.0' };
+    };
+    const resumeKiroCursor = (threadId: string) => ({
+      provider: 'acp' as const,
+      threadId,
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      resumeCursor: {
+        acpSessionId: 'native-kiro-cli',
+        connectionId: 'kiro',
+        connectionFingerprint: kiroFingerprint(),
+      },
+    });
+
+    test('a resume the engine answers by naming a new session fails the start', async () => {
+      // Hermes's in-process agent (`hermes acp` up to v0.22.0) answers a
+      // resume of an unknown id by creating a session and returning success
+      // (acp_adapter/server.py resume_session: "not found, creating new").
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          asHermes(proc);
+          proc.resumeSessionResult = hermesAnswer(
+            '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-resume-replaced')),
+      ).rejects.toThrow('did not restore this conversation');
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      // A failed resume is not retried as a load.
+      expect(processes[0].loadSessionCalls).toBe(0);
+    });
+
+    test('a load the engine answers by naming a new session fails the start too', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asHermes(proc);
+          proc.loadSessionResult = hermesAnswer(
+            '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-load-replaced')),
+      ).rejects.toThrow('did not restore this conversation');
+      expect(processes[0].loadSessionCalls).toBe(1);
+    });
+
+    test('a resume the engine answers naming the requested session stands', async () => {
+      // The gateway viewer (`hermes acp` from v0.22.1) names the id the
+      // editor asked for (gateway_server.py _resume, editor_id).
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          asHermes(proc);
+          proc.resumeSessionResult = hermesAnswer('native-kiro-cli');
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-resume-same')),
+      ).resolves.toMatchObject({ threadId: 'thread-resume-same' });
+      expect(processes[0].resumeSessionCalls).toBe(1);
+    });
+
+    test('the provenance field is read only from an engine whose handshake names it', async () => {
+      // The same `_meta` from an engine that does not identify as Hermes is
+      // not a fact Station has reviewed, so it decides nothing.
+      const { adapter } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          proc.resumeSessionResult = hermesAnswer(
+            '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-resume-unreviewed')),
+      ).resolves.toMatchObject({ threadId: 'thread-resume-unreviewed' });
+    });
+
     /** Start a resume whose `session/load` stays open until released. */
     const startHeldReattach = async (
       threadId: string,

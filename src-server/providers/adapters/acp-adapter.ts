@@ -273,6 +273,7 @@ import {
   type AcpToolServerSkipReason,
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
+import { assertAcpReattachedRequestedSession } from './acp-reattach-identity.js';
 import {
   acpSessionContinuity,
   readAcpRewindAnswer,
@@ -2060,9 +2061,10 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.reattaching = true;
         try {
           let outcome: 'resumed' | 'loaded';
+          let answer: unknown;
           if (reattach === 'resume') {
             try {
-              await acpProcess.resumeSession(
+              answer = await acpProcess.resumeSession(
                 acpSessionId,
                 cwd,
                 passthroughMcpServers,
@@ -2079,7 +2081,7 @@ export class AcpAdapter implements ProviderAdapterShape {
               ) {
                 throw error;
               }
-              await acpProcess.loadSession(
+              answer = await acpProcess.loadSession(
                 acpSessionId,
                 cwd,
                 passthroughMcpServers,
@@ -2090,13 +2092,29 @@ export class AcpAdapter implements ProviderAdapterShape {
           } else {
             // Sent again on load: the engine registers client agents per
             // session process and has none after a restart.
-            await acpProcess.loadSession(
+            answer = await acpProcess.loadSession(
               acpSessionId,
               cwd,
               passthroughMcpServers,
               sessionMeta,
             );
             outcome = 'loaded';
+          }
+          // An engine that answered with a new session in place of this one
+          // fails the resume: continuing would run the conversation against
+          // an engine that holds none of it.
+          try {
+            assertAcpReattachedRequestedSession(
+              acpProcess.initResult,
+              acpSessionId,
+              answer,
+            );
+          } catch (error) {
+            acpResumeSessions.add(1, {
+              connectionId: config.id,
+              outcome: 'other-session',
+            });
+            throw error;
           }
           // The SDK dispatches each notification without awaiting it before
           // reading the next message, so the last replayed updates can still
@@ -4215,15 +4233,25 @@ export class AcpAdapter implements ProviderAdapterShape {
             cwd,
             record.mcpServers ?? [],
           );
+          assertAcpReattachedRequestedSession(
+            next.initResult,
+            cursor.acpSessionId,
+            resumed,
+          );
           configOptions = resumed.configOptions ?? undefined;
           return;
         }
         record.suppressSessionUpdates = true;
         try {
-          await next.loadSession(
+          const loaded = await next.loadSession(
             cursor.acpSessionId,
             cwd,
             record.mcpServers ?? [],
+          );
+          assertAcpReattachedRequestedSession(
+            next.initResult,
+            cursor.acpSessionId,
+            loaded,
           );
         } finally {
           record.suppressSessionUpdates = false;

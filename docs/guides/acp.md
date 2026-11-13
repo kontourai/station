@@ -103,6 +103,19 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    advertises `loadSession`. Any other resume failure fails the start rather
    than loading: the fallback is closed, so an unexplained resume failure is
    reported instead of hidden behind a replayed load.
+   ACP's load and resume answers carry no session id, so the protocol cannot
+   say when an engine answered by starting a new, empty session instead.
+   Where an engine names the session it attached in its own `_meta`, a small
+   table in `acp-reattach-identity.ts` reads that name, keyed on the engine's
+   handshake: Hermes (`agentInfo.name` `hermes-agent`) names it in
+   `_meta.hermes.sessionProvenance.acpSessionId`. Hermes up to v0.22.0
+   answers a resume of an unknown id by creating a session and returning
+   success. When the named session is not the one Station asked for, the
+   start fails like any other resume failure (counted as `other-session` on
+   `station.acp.resume_sessions`) rather than running the conversation
+   against an engine that holds none of it. The same check applies when the
+   approval-floor relaunch reattaches. An answer without the field, or from
+   another engine, decides nothing.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
