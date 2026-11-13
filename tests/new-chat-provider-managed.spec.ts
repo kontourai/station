@@ -3,7 +3,7 @@ import { contrastRatio } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { MODEL_PICKER_NAME } from './helpers/model-picker';
-import { runSetupControl } from './helpers/run-setup';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
 
@@ -270,6 +270,7 @@ async function chooseProject(
   page: import('@playwright/test').Page,
   name: string | RegExp,
 ) {
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('button', { name: /^Project: / })
     .click();
@@ -408,12 +409,10 @@ test('provider-managed project ignores a stale unsupported project model even wh
     ),
   ).toBeVisible();
   const again = await openAgentList(page);
-  await (
-    await runSetupControl(
-      again.locator('.new-chat-modal__agent-row', { hasText: 'Station' }),
-      (panel) => panel.getByRole('button', { name: /^Model: / }),
-    )
-  ).click();
+  await again
+    .locator('.new-chat-modal__agent-row', { hasText: 'Station' })
+    .getByRole('button', { name: /^Model: / })
+    .click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await expect(picker.getByRole('option', { name: /Llama 3.2/ })).toBeVisible();
   await expect(
@@ -680,6 +679,7 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
 
   // Close: Escape in the draft. It sits in the dock body, so there is no
   // outside overlay to click.
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .press('Escape');
@@ -937,6 +937,7 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   await expect(agents).toHaveCount(0);
 
   // Escape dismisses the draft (a phone leaves it for a chat instead).
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .press('Escape');
@@ -1060,6 +1061,7 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
       ),
     });
   });
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill('Plan the change');

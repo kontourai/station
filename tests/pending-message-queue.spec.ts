@@ -182,7 +182,10 @@ async function openRuntimeSession(
   });
   await page.goto('/?dock=open');
   await dismissSetupLauncher(page);
-  const add = page.locator('.chat-dock__tab-actions .chat-dock__new').last();
+  const add = page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .first();
   await expect(add).toBeVisible({ timeout: 15_000 });
   await add.click();
   const modal = page.getByRole('region', { name: 'New chat', exact: true });
