@@ -924,7 +924,21 @@ export function isBoundExtensionNotification(
   return extensionNotificationBinding(namespace, type) !== undefined;
 }
 
+/**
+ * At most this many distinct unbound (provider, namespace, type) keys are
+ * remembered. Engines choose the names, so the set is bounded; past the cap
+ * a new key is not noticed again, only counted
+ * ({@link unboundExtensionNoticeOverflow}).
+ */
+export const UNBOUND_EXTENSION_NOTICE_KEYS_MAX = 256;
+
 const unboundFirstSeen = new Set<string>();
+let unboundOverflow = 0;
+
+/** Unbound notifications not noticed because the key set was full. */
+export function unboundExtensionNoticeOverflow(): number {
+  return unboundOverflow;
+}
 
 export function unboundExtensionNoticeKey(
   provider: string,
@@ -934,7 +948,11 @@ export function unboundExtensionNoticeKey(
   return `${provider}\0${namespace}\0${type}`;
 }
 
-/** True the first time this process sees an unbound (namespace, type, provider). */
+/**
+ * True the first time this process sees an unbound (namespace, type,
+ * provider), while fewer than {@link UNBOUND_EXTENSION_NOTICE_KEYS_MAX} keys
+ * have been seen.
+ */
 export function takeUnboundExtensionNotice(
   provider: string,
   namespace: string,
@@ -942,6 +960,10 @@ export function takeUnboundExtensionNotice(
 ): boolean {
   const key = unboundExtensionNoticeKey(provider, namespace, type);
   if (unboundFirstSeen.has(key)) return false;
+  if (unboundFirstSeen.size >= UNBOUND_EXTENSION_NOTICE_KEYS_MAX) {
+    unboundOverflow += 1;
+    return false;
+  }
   unboundFirstSeen.add(key);
   return true;
 }
