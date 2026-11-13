@@ -1,0 +1,7 @@
+{
+  "revision": "6dabc8dcd84c57b9c99002757afca89879fcab30",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md change adds one sentence on the engine header reading Not loaded when the engine list could not be loaded; the machine-relationship claims that cite the guide are unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}
