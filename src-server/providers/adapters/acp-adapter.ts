@@ -211,6 +211,7 @@ import {
   mapAcpDecisionToApprovalStatus,
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
+  mapAcpPromptUsage,
   mapAcpSessionUpdate,
   mapAcpStopReasonToTurnCompletion,
 } from './acp-adapter-events.js';
@@ -4968,6 +4969,21 @@ export class AcpAdapter implements ProviderAdapterShape {
           command: record.command,
           args: record.args,
         });
+        // What this prompt consumed belongs to its turn even when the turn
+        // was interrupted or steered past it, so it is published before the
+        // ownership checks below (a stopped session publishes nothing).
+        const usage = mapAcpPromptUsage(response.usage);
+        if (usage && !record.stopping && this.sessions.get(threadId) === record)
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'token-usage.updated',
+            ...usage,
+          });
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;

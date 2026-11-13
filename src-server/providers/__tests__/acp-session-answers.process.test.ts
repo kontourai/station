@@ -4,7 +4,7 @@
  * through the real `ACPProcess`, driven by the profile recorded from
  * Antigravity CLI 1.5.8 (`fixtures/acp-scripted-profiles`). The behavior is
  * engine-agnostic; that engine is the recorded one that advertises
- * `session/resume` and a `thought_level` option.
+ * `session/resume`, a `thought_level` option and a prompt answer's `usage`.
  * What the engine received is read from the fake's own record.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -12,6 +12,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
+import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
@@ -232,6 +234,92 @@ describe.skipIf(process.platform === 'win32')(
       expect(
         engine.events.find((event) => event.method === 'runtime.error'),
       ).toBeUndefined();
+    });
+
+    test("a prompt answer's usage is that turn's token usage, beside the context pair", async () => {
+      // The first turn of capture `station-capabilities-turn`: its last
+      // `usage_update` and the `usage` its prompt answer carried.
+      const answer = frame(
+        'station-capabilities-turn',
+        (entry) => entry.dir === 'E->C' && entry.msg.id === 5,
+      ).msg.result;
+      const contextUpdate = frame(
+        'station-capabilities-turn',
+        (entry) =>
+          entry.msg.params?.update?.sessionUpdate === 'usage_update' &&
+          entry.msg.params.update.used === 8340,
+      ).msg.params.update;
+      expect(answer.usage).toEqual({
+        inputTokens: 10377,
+        outputTokens: 48,
+        cachedReadTokens: 6170,
+        cachedWriteTokens: 0,
+        thoughtTokens: 0,
+        totalTokens: 16595,
+      });
+
+      const engine = launch(
+        { ...PROFILE, promptResponse: { usage: answer.usage } },
+        [
+          { kind: 'update', update: contextUpdate },
+          { kind: 'text', text: 'red, blue' },
+        ],
+      );
+      await engine.start('usage');
+      const turnId = await engine.send('usage', 'Which color?');
+      await engine.completed(turnId);
+
+      const turnEvents = engine.events.filter(
+        (event) => (event as { turnId?: string }).turnId === turnId,
+      );
+      const usage = turnEvents.filter(
+        (event) => event.method === 'token-usage.updated',
+      );
+      expect(usage).toHaveLength(2);
+      expect(usage[0]).toMatchObject({
+        contextTokens: 8340,
+        contextWindowTokens: 1048576,
+      });
+      expect(usage[0]).not.toHaveProperty('promptTokens');
+      const reported = usage[1];
+      expect(reported).toMatchObject({
+        provider: 'acp',
+        promptTokens: 10377,
+        completionTokens: 48,
+        totalTokens: 16595,
+        cacheReadTokens: 6170,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+      });
+      for (const absent of [
+        'contextTokens',
+        'contextWindowTokens',
+        'reportedCost',
+        'reportedCostUsd',
+      ])
+        expect(reported).not.toHaveProperty(absent);
+      // Published before the turn ends, so the turn's record holds it.
+      expect(turnEvents.indexOf(usage[1])).toBeLessThan(
+        turnEvents.findIndex((event) => event.method === 'turn.completed'),
+      );
+
+      // The session fold counts it once and keeps the context pair.
+      expect(foldUsageEvents(engine.events)).toMatchObject({
+        inputTokens: 10377,
+        outputTokens: 48,
+        totalTokens: 16595,
+        cacheReadTokens: 6170,
+        contextTokens: 8340,
+        contextWindowTokens: 1048576,
+      });
+      // And the turn's own provenance reads it as this turn's usage.
+      const envelope = assembleTurnProvenanceEnvelopes(engine.events).find(
+        (entry) => entry.turnId === turnId,
+      );
+      expect(envelope?.usage).toMatchObject({
+        state: 'observed',
+        value: { inputTokens: 10377, outputTokens: 48, totalTokens: 16595 },
+      });
     });
   },
 );
