@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import fs, { readFileSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import {
   ContinuationPublicationUncertainError,
@@ -103,7 +104,35 @@ test('pass-through final transaction observer reaches body and durable return on
 }) => {
   const f = await setupFinalizer(signal);
   const noEffects = observeNoFinalizerEffects(f);
-  const observer = observeFinalTransaction(f, 'return', () => {});
+  const registry = fs.statSync(
+    join(f.h.f.home, 'security', 'paired-devices.json'),
+    { bigint: true },
+  );
+  const open = fs.openSync;
+  let measuring = false;
+  let registryReads = 0;
+  const reads = vi
+    .spyOn(fs, 'openSync')
+    .mockImplementation((path, flags, mode) => {
+      const descriptor = open(path, flags, mode);
+      if (measuring) {
+        const status = fs.fstatSync(descriptor, { bigint: true });
+        if (status.dev === registry.dev && status.ino === registry.ino)
+          registryReads++;
+      }
+      return descriptor;
+    });
+  syncBuiltinESMExports();
+  const observer = observeFinalTransaction(f, 'return', () => {
+    const guard = observer.guards[0];
+    assert.ok(guard);
+    measuring = true;
+    try {
+      guard();
+    } finally {
+      measuring = false;
+    }
+  });
   try {
     const result = await finalizeFixture(f);
     assert.equal(result.result.replayed, false);
@@ -111,11 +140,29 @@ test('pass-through final transaction observer reaches body and durable return on
     assert.equal(observer.reached, 1);
     assert.equal(observer.completedBodies, 1);
     noEffects();
-    for (const guard of observer.guards)
-      assert.throws(guard, { code: 'rounds_transaction_parent_unavailable' });
+    assert.ok(registryReads > 0, 'the real paired-registry observer must run');
+    assert.ok(
+      registryReads <= 12,
+      `one finalizer guard opened the paired registry ${registryReads} times; maximum 12`,
+    );
+    const activeReads = registryReads;
+    measuring = true;
+    try {
+      for (const guard of observer.guards)
+        assert.throws(guard, { code: 'rounds_transaction_parent_unavailable' });
+    } finally {
+      measuring = false;
+    }
+    assert.equal(
+      registryReads,
+      activeReads,
+      'retired guards must refuse before registry reads',
+    );
   } finally {
     noEffects.restore();
     observer.restore();
+    reads.mockRestore();
+    syncBuiltinESMExports();
     await closeFinalizer(f);
   }
 }, 60_000);
