@@ -865,6 +865,11 @@ describe('retired Activity route (#928)', () => {
       '/notifications?openedNotification=n%201&dock=open&chat=c%201',
     ],
     ['/activity?session=a%20b', '/?surface=chat&session=a%20b'],
+    [
+      '/?surface=activity&session=t1&messageSession=t1&messageDirection=sent&messageRequest=r1&extra=y',
+      '/?surface=chat&session=t1&messageSession=t1&messageDirection=sent&messageRequest=r1',
+    ],
+    ['/activity?session=%20%20&messageRequest=r1', '/notifications'],
     ['/activity?session=x%26y%3Dz', '/?surface=chat&session=x%26y%3Dz'],
     [
       '/sessions?session=thread%2Falpha&focus=evidence',

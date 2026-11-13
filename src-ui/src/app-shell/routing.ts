@@ -167,7 +167,7 @@ export function getLegacyPathRedirect(path: string): string | null {
     legacyParams.get('surface') === 'activity' ||
     RETIRED_ACTIVITY_PATHS.has(pathname)
   ) {
-    const session = legacyParams.get('session');
+    const session = legacyParams.get('session')?.trim() || null;
     const translated: [string, string][] = session
       ? [
           ['surface', 'chat'],
@@ -176,7 +176,11 @@ export function getLegacyPathRedirect(path: string): string | null {
       : [];
     if (session && legacyParams.get('focus') === 'evidence')
       translated.push(['focus', 'evidence']);
-    for (const key of ['openedNotification', 'dock', 'chat']) {
+    // Message anchors keep a copied link's exact-message jump.
+    const kept = session
+      ? ['messageSession', 'messageDirection', 'messageRequest']
+      : [];
+    for (const key of [...kept, 'openedNotification', 'dock', 'chat']) {
       const value = legacyParams.get(key);
       if (value !== null) translated.push([key, value]);
     }

@@ -33,14 +33,11 @@ test.each(['activity', 'chat'])(
       expect(model.surfaceIntents.chat?.session).toBe('record-1'),
     );
     const intent = model.surfaceIntents.chat!;
-    expect(intent.messageAnchor).toEqual(
-      surface === 'chat'
-        ? {
-            direction: 'sent',
-            requestKey: 'request-1',
-          }
-        : undefined,
-    );
+    // A legacy activity link keeps its exact-message jump through the redirect.
+    expect(intent.messageAnchor).toEqual({
+      direction: 'sent',
+      requestKey: 'request-1',
+    });
     expect(model.surfaceIntents.activity).toBeUndefined();
     act(() => model.consumeSurfaceIntent('chat', intent.token));
     expect(model.surfaceIntents.chat).toBeUndefined();
