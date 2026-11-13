@@ -125,7 +125,7 @@ test.describe('project icons', () => {
   test('an icon set in settings appears in the sidebar, a Home row and the project switcher', async ({
     page,
     authenticatedRequest,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(150_000);
     // The settings page's People and access section answers a Station without
     // project sharing with a 501, which browser health counts (a gap that
@@ -229,6 +229,25 @@ test.describe('project icons', () => {
     await expect(
       page.getByRole('img', { name: 'Current image' }),
     ).toBeVisible();
+    for (const theme of ['dark', 'light']) {
+      for (const width of [390, 412, 1440]) {
+        await page.setViewportSize({
+          width,
+          height: width === 1440 ? 900 : 915,
+        });
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        await expect(
+          page.getByRole('button', { name: 'No icon', exact: true }),
+        ).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath(`settings-icon-${theme}-${width}.png`),
+          fullPage: true,
+        });
+      }
+    }
     const saved = page.waitForResponse(
       (response) =>
         response.url().endsWith(`/api/projects/${projectSlug}`) &&

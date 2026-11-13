@@ -1,5 +1,5 @@
 import type { Dirent } from 'node:fs';
-import { readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import {
   PROJECT_ICON_MAX_IMAGE_BYTES,
@@ -64,6 +64,14 @@ async function directoryStamp(path: string): Promise<string> {
   return `${info.mtimeMs}:${info.ctimeMs}:${info.ino}`;
 }
 async function rememberMissing(path: string): Promise<void> {
+  // A dangling link can become readable when its target changes elsewhere.
+  // Its own parent timestamp is insufficient to cache that absence.
+  try {
+    await lstat(path);
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return;
+  }
   let directory = dirname(path);
   while (true) {
     try {

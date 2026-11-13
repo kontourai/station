@@ -64,6 +64,7 @@ export interface ProjectIconPickerProps {
   value: string;
   onChange: (icon: string, disabled?: boolean) => void;
   onUseDetected?: () => void;
+  iconDisabled?: boolean;
   /** Artwork discovered in the project's folder (`useProjectIconCandidatesQuery`). */
   candidates: readonly ProjectIconCandidate[];
   /** True while discovery is reading the folder. */
@@ -89,6 +90,7 @@ export function ProjectIconPicker({
   fetching,
   idPrefix,
   onUseDetected,
+  iconDisabled,
 }: ProjectIconPickerProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -139,7 +141,7 @@ export function ProjectIconPicker({
         <button
           type="button"
           className="editor-btn editor-btn--small project-icon-picker__none"
-          aria-pressed={value === ''}
+          aria-pressed={value === '' && iconDisabled === true}
           onClick={() => choose('', true)}
         >
           No icon

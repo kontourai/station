@@ -581,6 +581,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                   {iconPickerOpen && (
                     <ProjectIconPicker
                       idPrefix="project-settings-icon"
+                      iconDisabled={form.iconDisabled}
                       name={form.name}
                       value={legacyIcon ? '' : (form.icon ?? '')}
                       onUseDetected={() =>
