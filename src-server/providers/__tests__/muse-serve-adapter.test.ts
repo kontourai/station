@@ -3553,9 +3553,12 @@ describe('Muse parity: the model catalog through a short-lived host (#2266)', ()
     const controller = new AbortController();
     const reading = h.adapter.listModelCatalog!({ signal: controller.signal });
     await h.hosts[0]?.nextRequest('model/list', new Set());
+    const abortedAt = Date.now();
     controller.abort(new Error('caller gave up'));
     await expect(reading).rejects.toThrow('caller gave up');
     expect(terminated).toBe(true);
+    // Settled by the abort itself, not by the 2 s request deadline.
+    expect(Date.now() - abortedAt).toBeLessThan(1_000);
   });
 
   test('an exec-only adapter and the echo override expose no catalog and no quota', () => {
