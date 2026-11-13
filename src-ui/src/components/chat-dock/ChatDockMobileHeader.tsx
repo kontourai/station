@@ -246,22 +246,37 @@ export function ChatDockMobileHeader({
             {collapsedExtent ? <ExpandGlyph /> : <ArrowDownGlyph />}
           </button>
         ) : null}
-        {extentToggle && !collapsedExtent && (
+        {hasConversation || showConnection ? (
           <button
+            ref={chatActionsTriggerRef}
             type="button"
-            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
-            aria-label={
-              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={isOverflowOpen}
+            aria-label="Chat actions"
+            aria-describedby={
+              activitySummary ? activityDescriptionId : undefined
             }
             title={
-              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+              activitySummary ? `Chat actions — ${activitySummary}` : undefined
             }
             data-no-dock-drag=""
-            onClick={extentToggle.onToggle}
+            onClick={() => setIsOverflowOpen((open) => !open)}
           >
-            {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
+            <span aria-hidden="true">⋯</span>
+            {activitySummary && (
+              <>
+                <span
+                  className="chat-dock__mobile-activity-dot"
+                  aria-hidden="true"
+                />
+                <span id={activityDescriptionId} className="sr-only">
+                  {activitySummary}
+                </span>
+              </>
+            )}
           </button>
-        )}
+        ) : null}
         {projectSwitcher && !agentIdentity && (
           <button
             ref={projectTriggerRef}
@@ -345,37 +360,22 @@ export function ChatDockMobileHeader({
         </span>
       </div>
       <div className="chat-dock__mobile-actions">
-        {hasConversation || showConnection ? (
+        {extentToggle && !collapsedExtent && (
           <button
-            ref={chatActionsTriggerRef}
             type="button"
-            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
-            aria-haspopup="dialog"
-            aria-expanded={isOverflowOpen}
-            aria-label="Chat actions"
-            aria-describedby={
-              activitySummary ? activityDescriptionId : undefined
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
+            aria-label={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
             }
             title={
-              activitySummary ? `Chat actions — ${activitySummary}` : undefined
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
             }
             data-no-dock-drag=""
-            onClick={() => setIsOverflowOpen((open) => !open)}
+            onClick={extentToggle.onToggle}
           >
-            <span aria-hidden="true">⋯</span>
-            {activitySummary && (
-              <>
-                <span
-                  className="chat-dock__mobile-activity-dot"
-                  aria-hidden="true"
-                />
-                <span id={activityDescriptionId} className="sr-only">
-                  {activitySummary}
-                </span>
-              </>
-            )}
+            {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
           </button>
-        ) : null}
+        )}
         <button
           type="button"
           className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"

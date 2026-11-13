@@ -1471,6 +1471,7 @@ export function NewChatModal({
           accent: isGlobal ? undefined : accents.get(selectedContext),
           icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
           folder: workspaceHintText(workspaceHint),
+          folderTitle: 'path' in workspaceHint ? workspaceHint.path : undefined,
         };
   const contextSelected = Boolean(
     draftContext?.items.some((item) =>

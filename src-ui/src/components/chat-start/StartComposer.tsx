@@ -159,6 +159,7 @@ export type StartProjectChip =
       isGlobal: boolean;
       /** The folder the chat runs in, as the project menu also states. */
       folder?: string;
+      folderTitle?: string;
     };
 
 export interface StartContextItem {
@@ -346,7 +347,7 @@ export function StartComposer({
           className={`choice-trigger start-composer__project${draft ? ' start-composer__chip' : ''}`}
           aria-haspopup={projectFixed ? undefined : 'dialog'}
           aria-label={`Project: ${project.label}`}
-          title={project.folder}
+          title={project.folderTitle ?? project.folder}
           disabled={projectFixed}
           onClick={(event) => onOpenProject(event.currentTarget)}
         >
@@ -636,7 +637,10 @@ export function StartComposer({
       <div className="start-composer__location">
         {stationControl}
         {project.status === 'ready' && project.folder && (
-          <span className="start-composer__folder" title={project.folder}>
+          <span
+            className="start-composer__folder"
+            title={project.folderTitle ?? project.folder}
+          >
             {project.folder}
           </span>
         )}

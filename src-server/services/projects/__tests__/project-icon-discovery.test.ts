@@ -2,7 +2,10 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { discoverProjectIconCandidates } from '../project-icon-discovery.js';
+import {
+  discoverProjectIconCandidates,
+  withDiscoveredProjectIcon,
+} from '../project-icon-discovery.js';
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 
@@ -48,6 +51,28 @@ describe('project icon discovery', () => {
     symlinkSync(join(outside, 'logo.png'), join(root, 'logo.png'));
 
     await expect(discoverProjectIconCandidates(root)).resolves.toEqual([]);
+  });
+
+  test('discovers bounded monorepo public artwork and derives a default only for a repository', async () => {
+    const root = workspace();
+    mkdirSync(join(root, 'apps', 'web', 'public'), { recursive: true });
+    writeFileSync(join(root, 'apps', 'web', 'public', 'favicon.png'), PNG);
+    expect((await discoverProjectIconCandidates(root))[0].relativePath).toBe(
+      'apps/web/public/favicon.png',
+    );
+    const project: { workingDirectory: string; icon?: string } = {
+      workingDirectory: root,
+    };
+    expect(await withDiscoveredProjectIcon(project)).toBe(project);
+    mkdirSync(join(root, '.git'));
+    const displayed = await withDiscoveredProjectIcon(project);
+    expect(displayed.icon).toBe(
+      `data:image/png;base64,${PNG.toString('base64')}`,
+    );
+    expect(project).not.toHaveProperty('icon');
+    expect(await withDiscoveredProjectIcon({ ...project, icon: '🐈' })).toEqual(
+      { ...project, icon: '🐈' },
+    );
   });
 
   test('fails without leaking filesystem details for inaccessible paths', async () => {

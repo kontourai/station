@@ -73,7 +73,7 @@ export const NO_PROJECT_LABEL = 'No project';
  * the engine: `'home'` or `'managed'`.
  */
 export type NewChatWorkspaceHint =
-  | { kind: 'project'; path: string }
+  | { kind: 'project'; path: string; repository?: string }
   | { kind: 'connection'; path: string }
   | { kind: 'home' }
   | { kind: 'managed' }
@@ -90,6 +90,8 @@ export type NewChatWorkspaceHint =
 /** The hint as one sentence, for a chip's folder line and the menu. */
 export function workspaceHintText(hint: NewChatWorkspaceHint): string {
   switch (hint.kind) {
+    case 'project':
+      return `Runs in ${hint.repository ?? hint.path}`;
     case 'home':
       return 'Runs in your home folder (~)';
     case 'managed':
@@ -263,7 +265,17 @@ export function resolveNewChatWorkspaceHint({
       : { kind: 'unchecked', reason: project.runsAt.reason };
   }
   const projectDirectory = project ? projectRunDirectory(project) : undefined;
-  if (projectDirectory) return { kind: 'project', path: projectDirectory };
+  if (projectDirectory) {
+    const remote = project?.repositorySource?.canonicalRemote;
+    const repository = remote
+      ?.replace(/^https?:\/\//, '')
+      .replace(/\.git$/, '');
+    return {
+      kind: 'project',
+      path: projectDirectory,
+      ...(repository ? { repository } : {}),
+    };
+  }
 
   const connectionId = agent?.execution?.agentConnectionId;
   const connectionDirectory = connectionId

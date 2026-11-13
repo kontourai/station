@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import {
   PROJECT_ICON_MAX_IMAGE_BYTES,
@@ -115,6 +115,28 @@ export async function discoverProjectIconCandidates(
     });
   }
 
+  // Bounded, shallow monorepo scan; readCandidate confines every real path.
+  const publicPaths: Array<[string, ProjectIconCandidate['source']]> = [];
+  for (const parent of ['', 'apps', 'packages']) {
+    const entries = await readdir(resolve(root, parent), {
+      withFileTypes: true,
+    }).catch(() => []);
+    for (const entry of entries
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 64)) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      for (const file of [
+        'favicon.ico',
+        'favicon.png',
+        'apple-touch-icon.png',
+      ]) {
+        publicPaths.push([
+          resolve(root, parent, entry.name, 'public', file),
+          'favicon',
+        ]);
+      }
+    }
+  }
   const ranked: Array<[string, ProjectIconCandidate['source']]> = [
     ...(await manifestPaths(root)).map(
       (path) => [path, 'manifest'] as [string, ProjectIconCandidate['source']],
@@ -127,6 +149,7 @@ export async function discoverProjectIconCandidates(
         ],
     ),
   ];
+  ranked.push(...publicPaths);
   const seen = new Set<string>();
   const candidates: ProjectIconCandidate[] = [];
   for (const [candidatePath, source] of ranked) {
@@ -138,4 +161,20 @@ export async function discoverProjectIconCandidates(
     if (candidates.length >= MAX_CANDIDATES) break;
   }
   return candidates;
+}
+
+/** Derived display metadata only: the stored Project is never mutated. */
+export async function withDiscoveredProjectIcon<
+  T extends { icon?: string; workingDirectory?: string },
+>(project: T): Promise<T> {
+  if (project.icon || !project.workingDirectory) return project;
+  try {
+    const root = resolve(expandTilde(project.workingDirectory));
+    // A folder containing several repositories is not one repository.
+    await stat(resolve(root, '.git'));
+    const [candidate] = await discoverProjectIconCandidates(root);
+    return candidate ? { ...project, icon: candidate.dataUrl } : project;
+  } catch {
+    return project;
+  }
 }

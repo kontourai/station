@@ -225,6 +225,15 @@ async function openActions() {
 }
 
 describe('mobile conversation focus', () => {
+  test('puts chat actions before identity and full screen after identity', () => {
+    renderHeader({ extentToggle: { maximized: false, onToggle: vi.fn() } });
+    const actions = screen.getByRole('button', { name: 'Chat actions' });
+    const extent = screen.getByRole('button', { name: 'Full screen chat' });
+    expect(actions.closest('.chat-dock__mobile-leading')).not.toBeNull();
+    expect(extent.closest('.chat-dock__mobile-actions')).not.toBeNull();
+    fireEvent.click(extent);
+  });
+
   test('keeps conversation switching direct and leaves future-project choice out of the active chat', () => {
     const onToggleInbox = vi.fn();
     renderHeader({

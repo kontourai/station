@@ -601,6 +601,7 @@ export function useScopedMemberProjectSharedTaskDetails(
 }
 
 export interface ProjectMetadata {
+  repositorySource?: import('@kontourai/station-contracts/project').ProjectRepositorySource;
   version?: 'station.member-project/v1';
   kind?: 'member-project';
   id: string;

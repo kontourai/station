@@ -46,6 +46,7 @@ import {
 import { SubagentTranscriptCard } from '../../chat/SubagentTranscriptCard';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
+import { ChatDockMobileHeader } from '../../chat-dock/ChatDockMobileHeader';
 import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
@@ -57,6 +58,7 @@ const css = [
   '../../header/HeaderMenu.css',
   '../WorkGroupLabel.css',
   '../../chat-dock/ChatDockInboxPanel.css',
+  '../../chat-dock/ChatDockHeader.css',
   '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
   '../../icons/BrandIcon.css',
@@ -237,6 +239,86 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     await browser?.close();
   });
   afterEach(() => cleanup());
+
+  test('renders lane D Station identity and mobile header controls at desktop and phone widths', async () => {
+    seed();
+    const row = item({
+      id: 'lane-d-peer',
+      title: 'Review the latest repository changes',
+      projectLabel: 'Station',
+      projectSlug: 'station',
+      environmentLabel: 'Build Station',
+    });
+    const { container, unmount } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatDockMobileHeader
+          showDrawerToggle={false}
+          showConnection
+          sessionTitle="Repository review"
+          agentIdentity={null}
+          projectSwitcher={null}
+          activeCount={1}
+          unreadCount={0}
+          inboxTriggerRef={createRef<HTMLButtonElement>()}
+          onToggleInbox={vi.fn()}
+          onToggleSidebar={vi.fn()}
+          onDragPointerDown={vi.fn()}
+          onDragClickCapture={vi.fn()}
+          dockToggle={null}
+          extentToggle={{ maximized: false, onToggle: vi.fn() }}
+          onNewChat={vi.fn()}
+          overflow={{} as never}
+        />
+        <InboxRow
+          item={row}
+          isCurrent={false}
+          isSnoozed={false}
+          isOpenChat
+          now={NOW}
+          onActivate={vi.fn()}
+          hoverCard={false}
+          projectIcon="🚉"
+        />
+      </QueryClientProvider>,
+    );
+    const markup = container.innerHTML;
+    unmount();
+    const artifacts = resolve(REPO_ROOT, '.surface/ux-lane-D');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 412, 1440])
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 915 } });
+        try {
+          await pg.setContent(
+            page(markup).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          await expect(
+            pg.getByText('Station: Build Station').count(),
+          ).resolves.toBe(1);
+          const order = await pg.evaluate(() => {
+            const actions = document
+              .querySelector('[aria-label="Chat actions"]')!
+              .getBoundingClientRect();
+            const extent = document
+              .querySelector('[aria-label="Full screen chat"]')!
+              .getBoundingClientRect();
+            return {
+              actions: actions.x,
+              extent: extent.x,
+              overflow: document.body.scrollWidth > innerWidth,
+            };
+          });
+          expect(order.actions).toBeLessThan(order.extent);
+          expect(order.overflow).toBe(false);
+          await pg.screenshot({
+            path: resolve(artifacts, `identity-header-${width}-${theme}.png`),
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+  });
 
   test('a Task family keeps its work-chat disclosure readable without horizontal overflow', async () => {
     const tasks = [

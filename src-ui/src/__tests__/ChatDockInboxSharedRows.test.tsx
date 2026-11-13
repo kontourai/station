@@ -429,7 +429,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />
     );
     try {
-      act(() => navigationStore.navigate('/projects/alpha'));
+      act(() => navigationStore.navigate('/projects/alpha/layouts/coding'));
       const mounted = render(panel());
       const scope = () =>
         screen.getByRole('combobox', {
@@ -440,6 +440,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       expect(scope().value).toBe('all');
       expect(screen.getByText('No project chat')).toBeTruthy();
       fireEvent.change(scope(), { target: { value: 'current-project' } });
+      expect(scope().selectedOptions[0].textContent).toBe('Alpha');
       expect(screen.getByText('Alpha project work')).toBeTruthy();
       expect(screen.queryByText('No project chat')).toBeNull();
       act(() => navigationStore.navigate('/'));

@@ -154,6 +154,8 @@ export interface ProjectCreationRequest {
 }
 
 export interface ProjectMetadata {
+  /** Verified repository acquisition, when this Project has one. */
+  repositorySource?: ProjectRepositorySource;
   id: string;
   slug: string;
   name: string;

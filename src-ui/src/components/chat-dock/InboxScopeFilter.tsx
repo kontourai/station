@@ -39,7 +39,17 @@ export function useInboxScope(
   // biome-ignore lint/correctness/useExhaustiveDependencies: snooze version invalidates the persisted map read
   return useMemo(() => {
     const options = new Map([
-      [INBOX_SCOPE_CURRENT_PROJECT, 'Current project'],
+      [
+        INBOX_SCOPE_CURRENT_PROJECT,
+        routeProject
+          ? (items.find(
+              (item) =>
+                !item.environmentId &&
+                !facts?.get(item.id)?.station &&
+                item.projectSlug === routeProject,
+            )?.projectLabel ?? routeProject)
+          : 'All work',
+      ],
       ['all', 'All work'],
       ['station:local', 'This Station'],
     ]);
@@ -101,6 +111,7 @@ export function useInboxScope(
       items: filtered,
       options,
       value: inboxScope,
+      effectiveValue: scope,
       hiddenAttention,
       onChange: (value: string) => setDeviceSetting('inboxScope', value),
     };

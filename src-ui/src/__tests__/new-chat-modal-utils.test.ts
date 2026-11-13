@@ -1668,6 +1668,18 @@ describe('new-chat-modal-utils', () => {
    * read back `/private/tmp/s1089-elsewhere` — while this control said
    * "~ (defaults to home)".
    */
+  test('uses verified repository identity in the workspace label and retains the path', () => {
+    const hint = {
+      kind: 'project' as const,
+      path: '/work/station',
+      repository: 'github.com/kontourai/station',
+    };
+    expect(workspaceHintText(hint)).toBe(
+      'Runs in github.com/kontourai/station',
+    );
+    expect(hint.path).toBe('/work/station');
+  });
+
   describe('resolveNewChatWorkspaceHint (#1089)', () => {
     const acpConnections = [
       { id: 'oc-elsewhere', cwd: '/tmp/s1089-elsewhere', currentModel: null },
