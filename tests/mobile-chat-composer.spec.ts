@@ -3190,11 +3190,9 @@ for (const viewport of [
       panel.locator('.chat-input__model-btn'),
     );
     await expect(modelButton).toBeVisible();
-    await expect(
-      await runSetupControl(modelButton, (panel) =>
-        panel.locator('.chat-input__model-name'),
-      ),
-    ).toHaveText('Selected Test Model');
+    await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
+      'Selected Test Model',
+    );
     await expect(modelButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
@@ -3225,11 +3223,13 @@ for (const viewport of [
     });
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
-    const railControlBox = await (
-      await runSetupControl(page, (panel) =>
-        panel.locator('.chat-input__agent-btn'),
-      )
-    ).boundingBox();
+    await closeRunSetup(page);
+    await expect(
+      page.getByRole('dialog', { name: 'Run setup', exact: true }),
+    ).toBeHidden();
+    const railControlBox = await page
+      .getByTestId('run-setup-trigger')
+      .boundingBox();
     expect(reconnectBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
     expect(railControlBox).not.toBeNull();
@@ -4253,11 +4253,9 @@ for (const width of [320, 390, 1280]) {
         'Claude',
       );
       await expect(agent).toHaveCSS('opacity', '1');
-      await expect(
-        await runSetupControl(model, (panel) =>
-          panel.locator('.chat-input__model-name'),
-        ),
-      ).toHaveText('Selected Test Model');
+      await expect(model.locator('.chat-input__model-name')).toHaveText(
+        'Selected Test Model',
+      );
       await expect(model).toHaveAttribute(
         'title',
         /^Engine & model: Claude Selected Test Model/,

@@ -1175,7 +1175,9 @@ export function ChatInputArea({
               <>
                 {agentIcon}
                 {(() => {
-                  const engine = parseEngineId(executionEngineId);
+                  const engine = parseEngineId(
+                    acpApproval?.engineId ?? executionEngineId,
+                  );
                   return engine && hasBundledEngineMark(engine) ? (
                     <BrandIcon name="" engineId={engine} size={20} />
                   ) : null;
@@ -1210,11 +1212,9 @@ export function ChatInputArea({
             )}
             <ComposerChoice
               ref={modelButtonRef}
-              safetyLabel={
-                currentExecutionAgentId || isOverride
-                  ? 'Conversation override'
-                  : undefined
-              }
+              changedForConversation={Boolean(
+                currentExecutionAgentId || isOverride,
+              )}
               onClick={canModelSelect ? onModelOpen : undefined}
               aria-disabled={!canModelSelect}
               className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}

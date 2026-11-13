@@ -2394,6 +2394,11 @@ test.each([undefined, 'claude'])(
       agentIcon: <span>Agent mark</span>,
     });
     const trigger = screen.getByTestId('run-setup-trigger');
+    await waitFor(() =>
+      expect(trigger.querySelector('[data-brand-key="claude"]') !== null).toBe(
+        executionEngineId === 'claude',
+      ),
+    );
     expect(trigger.textContent).not.toContain('EN');
     expect(trigger.textContent).toContain('Writer');
     expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
@@ -2408,9 +2413,10 @@ test.each([
   (override) => {
     renderChatInputArea(override);
     const trigger = screen.getByTestId('run-setup-trigger');
-    expect(trigger.textContent).toContain('⚠');
+    expect(trigger.textContent).not.toContain('⚠');
+    expect(trigger.textContent).toContain('·');
     expect(trigger.getAttribute('aria-label')).toContain(
-      'Conversation override',
+      'changed for this conversation',
     );
   },
 );
@@ -2427,4 +2433,22 @@ test('reply setup omits an unresolved model instead of naming Model', () => {
       .getByTestId('run-setup-trigger')
       .querySelector('.composer-choice__value')?.textContent,
   ).toBe('Writer');
+});
+
+test('ACP reply setup uses the connection engine mark', async () => {
+  renderChatInputArea({
+    executionEngineId: 'acp',
+    acpApproval: {
+      engineId: 'opencode',
+      engineName: 'OpenCode',
+      control: 'station',
+    },
+  });
+  await waitFor(() =>
+    expect(
+      screen
+        .getByTestId('run-setup-trigger')
+        .querySelector('[data-brand-key="opencode"]'),
+    ).not.toBeNull(),
+  );
 });

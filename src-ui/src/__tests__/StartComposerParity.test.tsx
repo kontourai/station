@@ -2412,6 +2412,9 @@ test('start setup exposes an execution override independently of approval state'
     />,
   );
   const trigger = screen.getByTestId('run-setup-trigger');
-  expect(trigger.textContent).toContain('⚠');
-  expect(trigger.getAttribute('aria-label')).toContain('Conversation override');
+  expect(trigger.textContent).not.toContain('⚠');
+  expect(trigger.textContent).toContain('·');
+  expect(trigger.getAttribute('aria-label')).toContain(
+    'changed for this conversation',
+  );
 });

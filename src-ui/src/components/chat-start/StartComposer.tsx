@@ -574,11 +574,9 @@ export function StartComposer({
                       : undefined
                   }
                   onClick={(event) => onOpenAgents(event.currentTarget)}
-                  safetyLabel={
-                    agent.status === 'ready' && agent.executionAgentId
-                      ? 'Conversation override'
-                      : undefined
-                  }
+                  changedForConversation={Boolean(
+                    agent.status === 'ready' && agent.executionAgentId,
+                  )}
                   caption="Agent"
                   value={agentText}
                   icon={

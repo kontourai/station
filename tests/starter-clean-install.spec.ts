@@ -101,9 +101,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       .getByRole('button', { name: /^Ollama/ })
       .first()
       .click();
-    await closeRunSetup(page);
     await page.getByLabel('Name').fill('Clean Install Ollama');
-    await closeRunSetup(page);
     await page.getByLabel('Base URL').fill(ollama.origin);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(page).toHaveURL(/\/connections\/models\/[^/?]+(?:\?|$)/);

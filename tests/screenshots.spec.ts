@@ -9,7 +9,10 @@ import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
-import { modelConnectionFixture } from './helpers/connection-fixtures';
+import {
+  agentConnectionFixture,
+  modelConnectionFixture,
+} from './helpers/connection-fixtures';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -1727,6 +1730,7 @@ function withGalleryProjectsList(
   projects: GalleryProjectFixture[],
   assertions: (page: Page) => Promise<void>,
   readyAgent = false,
+  fullAccess = false,
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
@@ -1760,7 +1764,15 @@ function withGalleryProjectsList(
                     slug: 'station',
                     name: 'Station',
                     source: 'local',
-                    engineId: 'station-agent',
+                    engineId: fullAccess ? 'claude' : 'station-agent',
+                    ...(fullAccess
+                      ? {
+                          execution: {
+                            agentConnectionId: 'claude',
+                            approvalMode: 'never',
+                          },
+                        }
+                      : {}),
                     engineDefault: true,
                     available: true,
                     model: 'gallery-model',
@@ -1786,6 +1798,26 @@ function withGalleryProjectsList(
           ),
         );
       }
+      if (fullAccess)
+        cleanups.push(
+          await withRoute(page, '**/api/connections/agents', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: [
+                  agentConnectionFixture({
+                    id: 'claude',
+                    config: {
+                      modelOptions: [
+                        { id: 'gallery-model', name: 'Gallery model' },
+                      ],
+                    },
+                  }),
+                ],
+              },
+            }),
+          ),
+        );
       for (const project of projects) {
         cleanups.push(
           await withRoute(
@@ -5188,6 +5220,55 @@ const SCREENS: Screen[] = [
               viewport.height,
             );
           },
+        ),
+      }),
+    ),
+  ),
+  {
+    name: 'run-setup-full-access-412',
+    title: 'Run setup — full access',
+    path: '/?dock=open',
+    viewport: { width: 412, height: 915 },
+    ...withGalleryProjectsList(
+      [],
+      async (page) => {
+        const draft = await openGalleryNewChatDraft(page);
+        const trigger = draft.getByTestId('run-setup-trigger');
+        await expect(trigger).toContainText('⚠');
+        await expect(trigger).toHaveAccessibleName(/Full access/);
+        await expect(trigger).toBeInViewport();
+      },
+      true,
+      true,
+    ),
+  },
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        name: `run-setup-filled-${theme}-${viewport.width}`,
+        title: `Filled run setup — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        captureTheme: theme,
+        ...withGalleryProjectsList(
+          [],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByTestId('run-setup-trigger');
+            await expect(trigger).toContainText('Station · Gallery model');
+            await expect(
+              trigger.locator('[data-brand-key="station"]'),
+            ).toHaveCount(2);
+            await expect(trigger).toBeInViewport();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup', exact: true }),
+            ).toBeHidden();
+          },
+          true,
         ),
       }),
     ),

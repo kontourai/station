@@ -776,7 +776,6 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       const transcript = transcriptLocator(page);
       await closeRunSetup(page);
       await textarea.fill('First prompt.');
-      await closeRunSetup(page);
       await textarea.press('Enter');
       await expect.poll(() => shell.executionRequests.length).toBe(1);
       await completeDispatchedTurn(page, {
@@ -790,7 +789,6 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       await shell.markCurrentSessionTerminal(RESEND_CONVERSATION);
       await closeRunSetup(page);
       await textarea.fill('Second prompt.');
-      await closeRunSetup(page);
       await textarea.press('Enter');
       await expect.poll(() => shell.executionRequests.length).toBe(2);
       const secondSessionId = shell.sessionIds(RESEND_CONVERSATION).at(-1);

@@ -649,3 +649,27 @@ export function withoutLegacyApprovalMode(
   const { approvalMode: _dropped, ...rest } = bag;
   return rest;
 }
+
+/** Risk and neutral conversation changes stay distinct on the setup trigger. */
+export function approvalChoiceIndicators({
+  mode,
+  override,
+  refused = false,
+  pending = false,
+}: {
+  mode: ApprovalMode;
+  override: boolean;
+  refused?: boolean;
+  pending?: boolean;
+}) {
+  return {
+    safetyLabel:
+      [
+        mode === 'never' ? 'Full access' : '',
+        refused ? 'Approval refused' : pending ? 'Approval pending' : '',
+      ]
+        .filter(Boolean)
+        .join('; ') || undefined,
+    changedForConversation: override,
+  };
+}

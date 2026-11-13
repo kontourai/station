@@ -83,3 +83,27 @@ test('exposes exceptional safety state on the closed trigger', () => {
   result.rerender(view());
   expect(trigger.textContent).not.toContain('⚠');
 });
+
+test('neutral conversation changes and approval risk remain separate on the closed trigger', () => {
+  const view = (safetyLabel?: string) => (
+    <ComposerRunControl label="Writer" icon={null}>
+      <ComposerChoice
+        caption="Approval"
+        value="Ask"
+        aria-label="Approval: Ask"
+        changedForConversation
+        safetyLabel={safetyLabel}
+      />
+    </ComposerRunControl>
+  );
+  const result = render(view());
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.textContent).toContain('·');
+  expect(trigger.textContent).not.toContain('⚠');
+  expect(trigger.getAttribute('aria-label')).toContain(
+    'changed for this conversation',
+  );
+  result.rerender(view('Full access'));
+  expect(trigger.textContent).toContain('⚠');
+  expect(trigger.getAttribute('aria-label')).toContain('Full access');
+});

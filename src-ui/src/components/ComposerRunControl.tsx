@@ -24,16 +24,25 @@ export function ComposerRunControl({
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const [summaries, setSummaries] = useState<
-    Record<string, { label: string; safety?: string }>
+    Record<string, { label: string; safety?: string; changed?: boolean }>
   >({});
   const publish = useCallback(
-    (id: string, label: string | undefined, safety?: string) => {
+    (
+      id: string,
+      label: string | undefined,
+      safety?: string,
+      changed?: boolean,
+    ) => {
       setSummaries((current) => {
-        if (current[id]?.label === label && current[id]?.safety === safety)
+        if (
+          current[id]?.label === label &&
+          current[id]?.safety === safety &&
+          current[id]?.changed === changed
+        )
           return current;
         const next = { ...current };
         if (label === undefined) delete next[id];
-        else next[id] = { label, safety };
+        else next[id] = { label, safety, changed };
         return next;
       });
     },
@@ -57,7 +66,15 @@ export function ComposerRunControl({
       choices.flatMap(({ safety }) => (safety ? safety.split('; ') : [])),
     ),
   ];
-  const summary = [...new Set([label, ...details, ...safety])].join('; ');
+  const changed = choices.some((choice) => choice.changed);
+  const summary = [
+    ...new Set([
+      label,
+      ...details,
+      ...safety,
+      ...(changed ? ['changed for this conversation'] : []),
+    ]),
+  ].join('; ');
   return (
     <>
       {loadingLabel ? (
@@ -73,6 +90,7 @@ export function ComposerRunControl({
           icon={
             <>
               {icon}
+              {changed && <span aria-hidden="true">·</span>}
               {safety.length > 0 && (
                 <span
                   className="composer-run-control__safety"

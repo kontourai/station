@@ -19,12 +19,14 @@ type ComposerChoiceProps = Omit<
   icon?: ReactNode;
   valueClassName?: string;
   safetyLabel?: string;
+  changedForConversation?: boolean;
 };
 
 /** Shared presentation; the caller owns the selected value and picker. */
 export function ComposerChoice({
   caption,
   safetyLabel,
+  changedForConversation,
   value,
   icon,
   valueClassName,
@@ -35,9 +37,9 @@ export function ComposerChoice({
   const id = useId();
   const label = props['aria-label'];
   useLayoutEffect(() => {
-    publish?.(id, label, safetyLabel);
+    publish?.(id, label, safetyLabel, changedForConversation);
     return () => publish?.(id, undefined);
-  }, [publish, id, label, safetyLabel]);
+  }, [publish, id, label, safetyLabel, changedForConversation]);
   return (
     <button
       type="button"
