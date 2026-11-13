@@ -26,11 +26,11 @@ const INPUT_RESERVATION = 1_048_576;
 const SDK = [
   [
     'dist/index.mjs',
-    'd1260d801747f70387ce95708039b27bc3cab2d3b9eb1ab29860563ada937bae',
+    '996a9b1ecf1075492d5ca47c39d37b407b8151f9ba27b1922850218db2a7288b',
   ],
   [
     'package.json',
-    '179de7080b24fbb218b36cdc061a850510aa3ccff233812191f8d5890c33a525',
+    'cbbf49732c77fcb78d82e958c63af8b46e197b62ac4cc873d1091bbd598e3612',
   ],
 ] as const;
 const SOURCES = [
@@ -189,13 +189,13 @@ export class GoogleSealedPreparation {
       sourceRevision: source.source.source_admission_receipt.digest,
       optionsSha256: boundedApiWireOptionsSha256('google', wire),
       sdkPackage: '@ai-sdk/google',
-      sdkVersion: '3.0.139',
+      sdkVersion: '3.0.141',
     };
     const id = `google-text:${sha(canonicalJson(binding))}`;
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://ai.google.dev/gemini-api/docs/pricing',
-      revision: 'flash-lite25-text-20261031-sdk30139',
+      revision: 'flash-lite25-text-20261031-sdk30141',
       sourceSha256s: SOURCES,
       validFromMs: VALID_FROM,
       expiresAtMs: EXPIRES,

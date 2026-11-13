@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, test, vi } from 'vitest';
 import { GoogleSealedPreparation } from '../../../runtime/conversation/google-sealed-preparation.js';
 import {
@@ -28,7 +29,10 @@ const remaining = {
 };
 afterEach(() => vi.restoreAllMocks());
 
-async function prepare(observed = { starts: 0 }) {
+async function prepare(
+  observed = { starts: 0 },
+  errorStatus?: 'UNAVAILABLE' | 'RESOURCE_EXHAUSTED',
+) {
   vi.spyOn(Date, 'now').mockReturnValue(NOW);
   const f = await fixture();
   const initial = await sdkCredentialFixture(f, 'google');
@@ -44,6 +48,7 @@ async function prepare(observed = { starts: 0 }) {
   const preparation = await GoogleSealedPreparation.create();
   const configuration = {
     provider: 'google' as const,
+    ...(errorStatus ? { outputDelivery: 'streamed' as const } : {}),
     modelId: selected.modelId,
     credential: selected.credential,
     preparation,
@@ -55,6 +60,11 @@ async function prepare(observed = { starts: 0 }) {
     signal: new AbortController().signal,
     rawFetch: async () => {
       observed.starts++;
+      if (errorStatus)
+        return new Response(
+          `data: ${JSON.stringify({ error: { code: null, message: 'Controlled stream failure', status: errorStatus } })}\n\n`,
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
       return new Response(
         JSON.stringify({
           modelVersion: MODEL,
@@ -96,6 +106,32 @@ async function prepare(observed = { starts: 0 }) {
     prepared,
     observed,
   };
+}
+
+async function driverFor(
+  p: Awaited<ReturnType<typeof prepare>>,
+  captured = inspectSdkSourceWire(p.owner, p.prepared.sdkHandle),
+) {
+  return publicFenceFixture(
+    p.f,
+    p.prepared.source,
+    p.owner,
+    p.prepared.sdkHandle,
+    captured.wire,
+    () => {},
+    {
+      protocol: 'rounds',
+      provider: 'google',
+      modelId: MODEL,
+      allocation: {
+        inputTokens: remaining.inputTokens,
+        outputTokens: remaining.outputTokens,
+        costMicros: remaining.costMicros,
+      },
+      contract: captured.contract,
+      now: Date.now,
+    },
+  );
 }
 
 test('Google issuer binds real source and credentials to budget-zero final wire and retained round accounting', async () => {
@@ -140,26 +176,7 @@ test('Google issuer binds real source and credentials to budget-zero final wire 
     { code: 'sdk_configuration_unsupported' },
   );
   assert.throws(() => p.preparation.assertSelection('anthropic', MODEL));
-  const driver = await publicFenceFixture(
-    p.f,
-    p.prepared.source,
-    p.owner,
-    p.prepared.sdkHandle,
-    captured.wire,
-    () => {},
-    {
-      protocol: 'rounds',
-      provider: 'google',
-      modelId: MODEL,
-      allocation: {
-        inputTokens: remaining.inputTokens,
-        outputTokens: remaining.outputTokens,
-        costMicros: remaining.costMicros,
-      },
-      contract: captured.contract,
-      now: Date.now,
-    },
-  );
+  const driver = await driverFor(p, captured);
   await driver.run();
   assert.equal(p.observed.starts, 1, String(driver.invocationFailure));
   assert.equal(driver.relayCalls, 0);
@@ -169,6 +186,13 @@ test('Google issuer binds real source and credentials to budget-zero final wire 
     costMicros: 11,
   });
   await sdkDisposalPromise(p.owner, p.prepared.sdkHandle);
+  const installed = JSON.parse(
+    readFileSync(
+      new URL(import.meta.resolve('@ai-sdk/google/package.json')),
+      'utf8',
+    ),
+  );
+  assert.equal(facts.binding.sdkVersion, installed.version);
 });
 
 test('Google profile freshness is fixed to retained public snapshots and cannot renew at startup', async () => {
@@ -235,5 +259,30 @@ test.each(['thinking', 'tools', 'source', 'tier'] as const)(
     });
     assert.equal(refused, true);
     assert.equal(observed.starts, 0);
+  },
+);
+
+test.each(['UNAVAILABLE', 'RESOURCE_EXHAUSTED'] as const)(
+  'Google retryable streamed %s error retains unknown usage without another physical request',
+  async (status) => {
+    const p = await prepare({ starts: 0 }, status);
+    try {
+      const driver = await driverFor(p);
+      await driver.run();
+      assert.ok(driver.invocationFailure);
+      assert.equal(p.observed.starts, 1);
+      assert.equal(driver.relayCalls, 0);
+      const ledger = await driver.ledger();
+      assert.equal(ledger.invocations.length, 1);
+      assert.equal(ledger.invocations[0].usage, null);
+      assert.deepEqual(ledger.invocations[0].allocation, {
+        inputTokens: remaining.inputTokens,
+        outputTokens: remaining.outputTokens,
+        costMicros: remaining.costMicros,
+      });
+    } finally {
+      await sdkDisposalPromise(p.owner, p.prepared.sdkHandle);
+      p.f.owner.releaseSnapshot(p.sealed.capability);
+    }
   },
 );
