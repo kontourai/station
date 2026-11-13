@@ -10,7 +10,6 @@ import {
   firstRunDockNudge,
   inboxPanelMounts,
   markDockFirstRunSeen,
-  projectDisplayName,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -280,26 +279,6 @@ describe('chatModelLabel (#3309)', () => {
   test('no reported model is null — not "Model not reported" in an identity row', () => {
     expect(chatModelLabel(undefined, CATALOG)).toBeNull();
     expect(chatModelLabel('', CATALOG)).toBeNull();
-  });
-});
-
-describe('projectDisplayName', () => {
-  const PROJECTS = [
-    { slug: 'alpha', name: 'Alpha' },
-    { slug: 'beta', name: 'Beta' },
-  ];
-
-  test('looks up the display name by slug', () => {
-    expect(projectDisplayName('alpha', PROJECTS)).toBe('Alpha');
-  });
-
-  test('falls back to the slug itself when the project is not in the list', () => {
-    expect(projectDisplayName('ghost', PROJECTS)).toBe('ghost');
-  });
-
-  test('null/undefined in, null out — never invents a name for "nothing bound"', () => {
-    expect(projectDisplayName(null, PROJECTS)).toBeNull();
-    expect(projectDisplayName(undefined, PROJECTS)).toBeNull();
   });
 });
 

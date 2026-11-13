@@ -206,20 +206,6 @@ interface ProjectNameLookup {
   name: string;
 }
 
-/**
- * Plain slug -> display-name lookup, falling back to the slug itself when
- * the project isn't in the list (e.g. a stale reference mid-fetch). `null`
- * in, `null` out — every caller below already has its own "nothing bound"
- * branch and this must never invent a name for it.
- */
-export function projectDisplayName(
-  slug: string | null | undefined,
-  projects: ProjectNameLookup[],
-): string | null {
-  if (!slug) return null;
-  return projects.find((project) => project.slug === slug)?.name ?? slug;
-}
-
 interface DockProjectNameInput {
   /** The project CHAT-SCOPE filter (or a full-screen placement's own immutable project) — wins unconditionally. */
   scopedProjectSlug: string | null | undefined;
