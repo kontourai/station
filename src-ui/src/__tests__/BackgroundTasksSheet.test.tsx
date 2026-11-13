@@ -154,7 +154,7 @@ describe('BackgroundTasksSheet', () => {
     ).toBeNull();
   });
 
-  test('elapsed time renders as m:ss and ticks forward with the shared 1s timer', () => {
+  test('elapsed time renders in duration words and ticks forward with the shared 1s timer', () => {
     renderSheet({
       running: [
         runningEntry({
@@ -163,12 +163,12 @@ describe('BackgroundTasksSheet', () => {
       ],
       finished: [],
     });
-    expect(screen.getByText(/Tool · 1:05/)).not.toBeNull();
+    expect(screen.getByText('Tool · 1m 5s')).not.toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(screen.getByText(/Tool · 1:07/)).not.toBeNull();
+    expect(screen.getByText('Tool · 1m 7s')).not.toBeNull();
   });
 
   test('Recent activity section is collapsed by default and shows an outcome chip once expanded', () => {

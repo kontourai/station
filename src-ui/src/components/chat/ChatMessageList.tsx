@@ -2162,10 +2162,9 @@ function ChatMessageListComponent({
                         hideProgressSilence={progressSilenceShownElsewhere}
                         statusLabel={
                           waitingApprovalCount > 0
-                            ? attentionWord(
-                                requestAttentionKind(activeSession) ??
-                                  'approval',
-                              )
+                            ? requestAttentionKind(activeSession) === 'answer'
+                              ? attentionWord('answer')
+                              : 'Waiting for approval'
                             : activeSession.orchestrationStatus ===
                                   'awaiting-approval' &&
                                 chatWaitsOnUser(activeSession)
