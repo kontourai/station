@@ -398,7 +398,7 @@ test.describe('replay state coverage', () => {
         );
       expect(durations.length).toBe(3);
       expect(durations.every((duration) => duration <= 0.01)).toBe(true);
-      await expect(page.locator('.elapsed-wait')).toContainText('0:28');
+      await expect(page.locator('.elapsed-wait')).toContainText('28s');
     });
   }
 });

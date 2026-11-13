@@ -362,7 +362,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           ).toContain('75 documents');
           expect(
             await card.locator('.subagent-card__elapsed').textContent(),
-          ).toBe('6:37');
+          ).toBe('6m 37s');
           expect(
             await pg.evaluate(
               () => document.documentElement.scrollWidth > innerWidth,

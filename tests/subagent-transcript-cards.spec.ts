@@ -403,7 +403,7 @@ test.describe('subagent transcript cards', () => {
       await expect(card.getByText('Completed')).toBeVisible();
       await expect(card.getByText('gpt-5.5')).toHaveCount(0);
       await expect(card.getByText('done', { exact: true })).toBeVisible();
-      await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
+      await expect(card.locator('.subagent-card__elapsed')).toHaveText('5s');
       await card.scrollIntoViewIfNeeded();
       await expectDockFits(page);
       const desktopBox = await card.boundingBox();
@@ -533,7 +533,7 @@ test.describe('subagent transcript cards', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 
     await expect(card.getByText('claude-opus-5-5')).toHaveCount(0);
-    await expect(card.getByText('6:12')).toBeVisible();
+    await expect(card.getByText('6m 12s')).toBeVisible();
     await expectDockFits(page);
     await card.screenshot({
       path: testInfo.outputPath('subagent-card-running-desktop.png'),
@@ -582,7 +582,7 @@ test.describe('subagent transcript cards', () => {
     await expect(page.getByText(/Background task finished/)).toHaveCount(0);
     await expect(card.locator('.child-work-activity')).toHaveCount(0);
     await expect(card.getByText('Completed')).toBeVisible();
-    await expect(card.getByText('17:04')).toBeVisible();
+    await expect(card.getByText('17m 4s')).toBeVisible();
     await expect(
       card.getByText(/^Verdict: merge as-is\. I found no blockers/),
     ).toBeVisible();
@@ -596,7 +596,7 @@ test.describe('subagent transcript cards', () => {
       .click();
     await expect(card.getByText('No further action needed.')).toBeVisible();
     await expect(
-      card.getByText('48,210 tokens · 37 tool uses · ran 17:04'),
+      card.getByText('48,210 tokens · 37 tool uses · ran 17m 4s'),
     ).toBeVisible();
     await card.screenshot({
       path: testInfo.outputPath('subagent-card-expanded-desktop.png'),

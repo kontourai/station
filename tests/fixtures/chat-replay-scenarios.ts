@@ -110,7 +110,7 @@ export const chatReplayScenarios = [
       { kind: 'clock', atMs: 28_000 },
     ]),
     text: 'Thinking for',
-    timer: '0:28',
+    timer: '28s',
     streaming: true,
   },
 
@@ -118,7 +118,7 @@ export const chatReplayScenarios = [
     name: 'waiting before content',
     tape: tape([start(), { kind: 'clock', atMs: 28_000 }]),
     text: 'Working',
-    timer: '0:28',
+    timer: '28s',
     streaming: true,
   },
   {
@@ -182,7 +182,7 @@ export const chatReplayScenarios = [
       { kind: 'clock', atMs: 20_000 },
     ]),
     text: 'Waiting for approval',
-    timer: '0:20',
+    timer: '20s',
     streaming: true,
   },
   {

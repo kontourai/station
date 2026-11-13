@@ -382,7 +382,7 @@ describe('Activity list', () => {
     // The status ladder's line — the same words the dock row prints for
     // this session: the word, the tool, the turn's elapsed time.
     expect(within(meta).getByTestId('activity-row-state').textContent).toBe(
-      'Running · Bash · 3m',
+      'Running · Bash · 3m 0s',
     );
     // The tool is what it is doing, not how it ended: a running row carries
     // no terminal attribution.
@@ -1123,11 +1123,15 @@ describe('Home, the dock and Activity agree on one item', () => {
     });
     expect(read()).toEqual({ home: '25s', dock: '25s', activity: '25s' });
 
-    // Past the minute, the coarse vocabulary: minutes, no seconds.
+    // Live durations retain seconds past the minute.
     act(() => {
       vi.advanceTimersByTime(4 * 60_000);
     });
-    expect(read()).toEqual({ home: '4m', dock: '4m', activity: '4m' });
+    expect(read()).toEqual({
+      home: '4m 25s',
+      dock: '4m 25s',
+      activity: '4m 25s',
+    });
   });
 
   test('attention headings use visible shared count formatting on every surface', () => {
