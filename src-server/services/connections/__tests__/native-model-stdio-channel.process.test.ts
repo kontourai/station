@@ -261,6 +261,7 @@ test('each actual response write re-enters the captured host delivery port and r
     });
   } finally {
     finish();
+    await f.channel.settled.catch(() => {});
   }
 });
 

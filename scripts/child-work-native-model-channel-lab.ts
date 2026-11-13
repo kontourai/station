@@ -63,7 +63,26 @@ try {
   assert.ok(endpoint);
   assert.ok(endpoint.startsWith('unix:///'));
   const prefix = ['--host', endpoint, '--config', dockerConfig];
-  await build({
+  receipt.sourceSha256s = Object.fromEntries(
+    [
+      'scripts/child-work-native-model-channel-lab.ts',
+      'scripts/lib/local-collaboration-process.mjs',
+      'scripts/lib/owned-process.mjs',
+      'src-server/services/connections/native-model-container.ts',
+      'src-server/services/connections/native-model-stdio-channel.ts',
+      'src-server/services/connections/native-model-stdio-protocol.ts',
+      'src-server/services/connections/native-model-stdio-worker.ts',
+      'src-server/services/infra/process-utils.ts',
+      'pnpm-lock.yaml',
+    ].map((path) => [
+      path,
+      createHash('sha256')
+        .update(readFileSync(join(root, path)))
+        .digest('hex'),
+    ]),
+  );
+  const bundled = await build({
+    metafile: true,
     entryPoints: [
       join(
         root,
@@ -78,6 +97,14 @@ try {
     legalComments: 'eof',
     logLevel: 'silent',
   });
+  receipt.workerInputSha256s = Object.fromEntries(
+    Object.keys(bundled.metafile.inputs).map((path) => [
+      path,
+      createHash('sha256')
+        .update(readFileSync(resolve(root, path)))
+        .digest('hex'),
+    ]),
+  );
   receipt.workerSha256 = createHash('sha256')
     .update(readFileSync(join(context, 'native-model-worker.mjs')))
     .digest('hex');

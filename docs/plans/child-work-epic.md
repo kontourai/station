@@ -55,6 +55,15 @@ and cancellation/create races still need executable controls. Inherited-native
 admission remains refused and both production qualification flags stay false.
 The full epic remains NOT_READY.
 
+The initial body-delivery mutation escaped the original response-failure test:
+a later denied end frame hid earlier body delivery. The strengthened test holds
+provider completion until the native client observes its first chunk. Bypassing
+only the body delivery port then exposes 23 private bytes and fails the intended
+zero-byte assertion; byte-exact restoration passes all six cases. Its first
+stronger fixture run also retained an unhandled close-after-cancel error; explicit
+stream cancellation fixes the fixture before the passing mutation/restoration.
+No production guard or bound was weakened.
+
 ### Current native wrong-ACK/retry checkpoint (2026-11-13)
 
 Main through `ce3f22639a3d` is merged normally at `5b9e52de11d0`.
