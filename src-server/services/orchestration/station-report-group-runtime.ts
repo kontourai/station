@@ -345,7 +345,7 @@ export class StationReportGroupRuntime {
       : await writer.runOwnedLease(context.req.raw.signal, async (lease) =>
           prepare((body) => writer.runWithLease(lease, body)),
         );
-    current();
+    await writer.runRequest(context.req.raw.signal, current);
     return current;
   }
   async withResponseCurrent<Value>(

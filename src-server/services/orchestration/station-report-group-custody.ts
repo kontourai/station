@@ -1722,7 +1722,7 @@ export class StationReportGroupCustody {
         return { value: record.observation, captured };
       },
     );
-    captured.current();
+    await writer.runRequest(context.req.raw.signal, captured.current);
     return value;
   }
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
-import { test, vi } from 'vitest';
+import { onTestFinished, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
   GateTestAdapter,
@@ -13,6 +13,10 @@ import {
   projectBindingStorePath,
 } from '../../projects/project-binding-store.js';
 import { projectManifestPath } from '../../projects/project-manifest-store.js';
+import {
+  type HomeWriterLease,
+  HomeWriterOwner,
+} from '../../ssh/home-writer-owner.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -122,12 +126,60 @@ test('the response authorizer shares one home hold and refuses revocation on the
     adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
     logger: { debug() {}, warn() {} },
   });
+  onTestFinished(async () => {
+    await orchestration.shutdown();
+    eventStore.close();
+  });
   const runtime = new StationReportGroupRuntime({
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
   });
-  const current = await runtime.authorizeResponse(h.f.context());
+  const writer = await HomeWriterOwner.forHome(h.f.home);
+  const runOwnedLease = HomeWriterOwner.prototype.runOwnedLease;
+  let competing: HomeWriterLease | undefined;
+  let releaseTimer: ReturnType<typeof setImmediate> | undefined;
+  let competingReleased = false;
+  let releaseCompeting: Promise<void> | undefined;
+  const retirement = vi
+    .spyOn(HomeWriterOwner.prototype, 'runOwnedLease')
+    .mockImplementationOnce(async function <Value>(
+      this: HomeWriterOwner,
+      signal: AbortSignal,
+      body: (lease: HomeWriterLease) => Promise<Value>,
+    ): Promise<Value> {
+      const value = await (runOwnedLease<Value>).call(this, signal, body);
+      const other = await writer.acquire(signal);
+      competing = other;
+      releaseCompeting = new Promise<void>((resolve, reject) => {
+        releaseTimer = setImmediate(() => {
+          void other.release().then(() => {
+            competingReleased = true;
+            resolve();
+          }, reject);
+        });
+      });
+      void releaseCompeting.catch(() => {});
+      return value;
+    });
+  let current: Awaited<ReturnType<typeof runtime.authorizeResponse>>;
+  try {
+    current = await runtime.authorizeResponse(h.f.context());
+    assert.ok(
+      competing,
+      'a real second Home owner must enter after capture retirement',
+    );
+    assert.equal(
+      competingReleased,
+      true,
+      'response capture must wait for the competing Home owner',
+    );
+    await releaseCompeting;
+  } finally {
+    retirement.mockRestore();
+    if (releaseTimer) clearImmediate(releaseTimer);
+    await competing?.release();
+  }
   const link = fs.linkSync;
   let holds = 0;
   const observe = vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
@@ -148,8 +200,6 @@ test('the response authorizer shares one home hold and refuses revocation on the
   } finally {
     observe.mockRestore();
     syncBuiltinESMExports();
-    await orchestration.shutdown();
-    eventStore.close();
   }
 });
 
