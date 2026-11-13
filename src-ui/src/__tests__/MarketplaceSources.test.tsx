@@ -227,9 +227,10 @@ test('a kinds-filtered view includes a source that supplies that kind beside its
   render(
     <MarketplaceSources selected="all" onSelect={select} kinds={['plugins']} />,
   );
+  // An option reads "<label> — <location>"; compare the label part.
   const options = within(screen.getByLabelText('Browse marketplace'))
     .getAllByRole('option')
-    .map((option) => option.textContent);
+    .map((option) => option.textContent?.split(' — ')[0]);
   expect(options).toContain('Mixed folder');
   // Recognized-but-not-installable plugins do not make a source a plugin catalog.
   expect(options).not.toContain('example-org/example-skills-and-plugin');
@@ -406,24 +407,79 @@ test.each([
   expect(select).not.toHaveBeenCalled();
 });
 
-test('sources that share a name are told apart by their location', () => {
+const DEFAULT_SOURCES = [
+  ['codex-user', 'Codex skills · user', '/home/someone/.codex/skills'],
+  [
+    'claude-user',
+    'Claude skills · user',
+    '/home/someone/.claude/.agents/skills',
+  ],
+  [
+    'codex-app',
+    'Codex skills · Station app home',
+    '/home/someone/station/app-homes/codex/skills',
+  ],
+  [
+    'claude-app',
+    'Claude skills · Station app home',
+    '/home/someone/station/app-homes/claude/skills',
+  ],
+  [
+    'default-repo',
+    'anthropics/skills (default)',
+    'github:anthropics/skills/main/skills',
+  ],
+] as const;
+
+const labelKey = (label: string) =>
+  label.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+test('default sources have unique labels that do not differ only by punctuation, and options show where each reads', () => {
+  for (const [id, displayName, location] of DEFAULT_SOURCES)
+    extraSources.push({
+      id,
+      kind: 'skills',
+      displayName,
+      origin: 'configured',
+      location,
+      adapter: location.startsWith('github:') ? 'github' : 'directory',
+      enabled: true,
+      status: 'ready',
+    });
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const options = within(screen.getByLabelText('Browse marketplace'))
+    .getAllByRole('option')
+    .map((option) => option.textContent ?? '');
+  const labels = DEFAULT_SOURCES.map(
+    ([, name]) => options.find((option) => option.startsWith(`${name} — `))!,
+  );
+  expect(labels.every(Boolean)).toBe(true);
+  expect(labels).toContain(
+    'anthropics/skills (default) — github.com/anthropics/skills/skills @ main',
+  );
+  expect(labels).toContain('Codex skills · user — …/someone/.codex/skills');
+  const keys = labels.map((label) => labelKey(label.split(' — ')[0]!));
+  expect(new Set(keys).size).toBe(keys.length);
+});
+
+test('sources a person named alike are told apart by more than punctuation', () => {
   extraSources.push(
     {
-      id: 'codex-skills',
+      id: 'dotted',
       kind: 'skills',
       displayName: 'Local skills',
-      origin: 'configured',
-      location: '/home/someone/.codex/skills',
+      origin: 'user',
+      location: '/a/.codex/skills',
       adapter: 'directory',
       enabled: true,
       status: 'ready',
     },
     {
-      id: 'agents-skills',
+      id: 'plain',
       kind: 'skills',
       displayName: 'Local skills',
-      origin: 'configured',
-      location: '/home/someone/.claude/.agents/skills',
+      origin: 'user',
+      location: '/b/codex/skills',
       adapter: 'directory',
       enabled: true,
       status: 'ready',
@@ -432,12 +488,12 @@ test('sources that share a name are told apart by their location', () => {
   render(<MarketplaceSources selected="all" onSelect={select} />);
   const options = within(screen.getByLabelText('Browse marketplace'))
     .getAllByRole('option')
-    .map((option) => option.textContent);
-  expect(options).toContain('Local skills · …/.codex/skills');
-  expect(options).toContain('Local skills · …/.agents/skills');
-  expect(
-    screen.getByText('Local skills · …/.codex/skills', { selector: 'strong' }),
-  ).toBeTruthy();
+    .map((option) => option.textContent?.split(' — ')[0] ?? '')
+    .filter((label) => label.startsWith('Local skills'));
+  expect(options).toHaveLength(2);
+  expect(labelKey(options[0]!)).not.toBe(labelKey(options[1]!));
+  // The card shows the same distinguishing label.
+  expect(screen.getByText(options[0]!, { selector: 'strong' })).toBeTruthy();
 });
 
 test('an added source that reads the same repository as a default one says they overlap', () => {

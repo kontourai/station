@@ -16,6 +16,7 @@ import {
   distinctLabels,
   isBrowsable,
   kindTone,
+  locationHint,
   overlappingSources,
   statusTone,
   suppliedKinds,
@@ -176,6 +177,7 @@ export function MarketplaceSources({
             {visible.map((source) => (
               <option key={source.id} value={source.id}>
                 {labels.get(source.id) ?? source.displayName}
+                {locationHint(source) ? ` — ${locationHint(source)}` : ''}
                 {!source.enabled ? ' (disabled)' : ''}
               </option>
             ))}

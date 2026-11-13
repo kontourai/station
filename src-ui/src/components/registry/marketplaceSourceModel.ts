@@ -94,10 +94,17 @@ export function coverageLabel(source: RegistrySource): string | undefined {
 const pathSegments = (location: string) =>
   location.split(/[\\/:]+/).filter(Boolean);
 
+/** A label reduced to letters and digits, so punctuation cannot be the only difference. */
+export function labelKey(label: string): string {
+  return label.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
 /**
- * Labels that tell sources with the same name apart: a name shared by several
- * sources gets the shortest tail of its location that no other source with
- * that name shares (`Local skills · …/.codex/skills`).
+ * Labels that tell sources apart. Station names its default sources by
+ * engine, owner and scope; a name that still repeats (two sources a person
+ * named alike) gets the shortest tail of its location that no other source
+ * with that name shares once punctuation is ignored, so `…/.codex/skills`
+ * and `…/codex/skills` never pass as different.
  */
 export function distinctLabels(
   sources: readonly RegistrySource[],
@@ -105,29 +112,31 @@ export function distinctLabels(
   const labels = new Map<string, string>();
   const groups = new Map<string, RegistrySource[]>();
   for (const source of sources) {
-    const key = source.displayName.toLocaleLowerCase();
+    const key = labelKey(source.displayName);
     groups.set(key, [...(groups.get(key) ?? []), source]);
   }
+  const segmentsOf = (source: RegistrySource) =>
+    pathSegments(source.location ?? source.owner ?? source.id);
   for (const group of groups.values()) {
     if (group.length === 1) {
       labels.set(group[0]!.id, group[0]!.displayName);
       continue;
     }
     for (const source of group) {
-      const segments = pathSegments(
-        source.location ?? source.owner ?? source.id,
-      );
-      let tail = segments.slice(-1).join('/');
+      const segments = segmentsOf(source);
+      let tail = segments.join('/');
       for (let length = 1; length <= segments.length; length += 1) {
-        tail = segments.slice(-length).join('/');
+        const candidate = segments.slice(-length).join('/');
         const clash = group.some(
           (other) =>
             other.id !== source.id &&
-            pathSegments(other.location ?? other.owner ?? other.id)
-              .slice(-length)
-              .join('/') === tail,
+            labelKey(segmentsOf(other).slice(-length).join('/')) ===
+              labelKey(candidate),
         );
-        if (!clash) break;
+        if (!clash) {
+          tail = candidate;
+          break;
+        }
       }
       labels.set(
         source.id,
@@ -136,6 +145,22 @@ export function distinctLabels(
     }
   }
   return labels;
+}
+
+/**
+ * The part of a source's location a selector option shows beside its label:
+ * a repository with its branch and folder, or the last folders of a path.
+ */
+export function locationHint(source: RegistrySource): string | undefined {
+  const location = source.location;
+  if (!location) return undefined;
+  const key = location.match(/^github:([^/]+)\/([^/]+)\/([^/]+)\/?(.*)$/);
+  if (key)
+    return `github.com/${key[1]}/${key[2]}${key[4] ? `/${key[4]}` : ''} @ ${key[3]}`;
+  const url = location.match(/^https:\/\/(github\.com\/[^/]+\/[^/]+)/);
+  if (url) return `${url[1]}${source.ref ? ` @ ${source.ref}` : ''}`;
+  const segments = pathSegments(location);
+  return segments.length > 3 ? `…/${segments.slice(-3).join('/')}` : location;
 }
 
 /** The repository or folder a location names, for overlap checks. */
