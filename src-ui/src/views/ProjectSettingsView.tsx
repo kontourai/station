@@ -575,7 +575,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                     !project.iconDisabled &&
                     !form.icon && (
                       <p className="project-settings__icon-notice">
-                        Detected icon · Choose None to hide it.
+                        Detected icon · Choose No icon to hide it.
                       </p>
                     )}
                   {iconPickerOpen && (

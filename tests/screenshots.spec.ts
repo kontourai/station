@@ -2627,7 +2627,7 @@ function taskCapabilityScreens(): Screen[] {
       let pageForCleanup: Page | undefined;
       let projectCreated = false;
       const screen: Screen = {
-        name: `task-capabilities-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
+        name: `task-capabilities-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
         title: `Task capabilities — ${theme}, ${viewport.width}px`,
         path: '/',
         viewport,
@@ -3081,7 +3081,7 @@ function projectRepositorySourceScreens(): Screen[] {
         let created = false;
         let previousPreview = false;
         return {
-          name: `project-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
+          name: `project-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
           title: `Project repository sources — ${theme}, ${viewport.width}px`,
           path: `/projects/${slug}/edit?section=resources`,
           viewport,
@@ -5186,6 +5186,34 @@ const SCREENS: Screen[] = [
     viewport,
     ...overlayDockProjectMismatchHooks(true),
   })),
+  ...[DESKTOP, { width: 412, height: 915 }].map(
+    (viewport): Screen => ({
+      name: `detected-project-${viewport.width === 412 ? 'phone' : 'desktop'}`,
+      title: 'Project picker — detected artwork and repository identity',
+      path: '/?dock=open',
+      viewport,
+      ...withGalleryProjectsList(
+        [
+          {
+            slug: 'demo-project',
+            name: 'Demo Project',
+            workingDirectory: '/work/station',
+            repositoryDisplay: 'github.com/kontourai/station',
+            derivedIcon:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==',
+          },
+        ],
+        async (page) => {
+          const draft = await openGalleryNewChatDraft(page);
+          await chooseGalleryNewChatProject(page, draft, 'Demo Project');
+          await draft.getByRole('button', { name: /^Project: / }).click();
+          await expect(
+            page.getByRole('dialog', { name: 'Choose project' }),
+          ).toBeVisible();
+        },
+      ),
+    }),
+  ),
   {
     name: 'active-chat-phone',
     title: 'Active chat header — actions and Station identity',

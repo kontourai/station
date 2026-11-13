@@ -2,6 +2,12 @@
   "schemaVersion": 2,
   "screens": [
     {
+      "name": "active-chat-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "61ada5a062f0cff89ec64fd3f0b1dde91f4cb213201f3888abc398686d5ec7a5"
+    },
+    {
       "name": "agent-editor",
       "width": 1440,
       "height": 900,
@@ -65,7 +71,7 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "fbdcbaef2daed74a15fc1eab36708257ad7defc51bf9009057b650c07330e14d"
+      "sha256": "561ea168f5cfce8030e091d4d8c45018a2a5764238a2ca0e8c0092f2ea81b35b"
     },
     {
       "name": "developer-telemetry",
@@ -125,7 +131,7 @@
       "name": "mobile-chat-dock-header-320",
       "width": 320,
       "height": 568,
-      "sha256": "98abc71f047be10a90dfa0ef772473f14fa6d6921d4de80787be1b14e27f89c1"
+      "sha256": "05d873c5598cc41940e24637e0afca8f43317207ced8ff5f6bf2c79b40c97f72"
     },
     {
       "name": "mobile-connections",
@@ -203,25 +209,37 @@
       "name": "new-chat-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "5876e95d3445d1863270efe67638477d68697c1a8fa988ce9b14e26aeab22ffd"
+      "sha256": "7936f9f0c0dd4aec9bf79709ec433cc3b5643029d8bf90c0c2a245e1d26b4a78"
     },
     {
       "name": "new-chat-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "de5a049608091af532534115b9cfdbc0096b91978a7e9cb44c33914a05d8993e"
+      "sha256": "4728837110a087e0f13f526bb6b26755fb5c492b87dc466fbc13af5a306460e0"
+    },
+    {
+      "name": "new-chat-dark-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "450525809069bb896318b1f6f0dbecc45027aae5dc3a3b1066f9273e5ec0fc90"
     },
     {
       "name": "new-chat-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "4f8ab07229b7454d1fc409fd597103796f695f8b4cef494cb7dd60274556cd92"
+      "sha256": "aec5cdcc5d3e74d782006eed8500407deba81e175824847d6b93de1b25263aa2"
     },
     {
       "name": "new-chat-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "d4eb8d6a4c9b64405846f00c91bd29dc41193563038148f909857711f2977dbc"
+      "sha256": "24293dc10231dc7ce01cbc85c087b26b3126e430201692dcaa3642cccadab551"
+    },
+    {
+      "name": "new-chat-light-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "43272ec5c919e455ad03a718963eb4356bb3ae3ed6f9956ee1b0a0ff0d13e252"
     },
     {
       "name": "overlay-add-job-modal",

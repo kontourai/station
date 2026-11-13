@@ -204,7 +204,7 @@ available; removing the Home card does not enable, disable or restart them.
 Operator Project list and detail reads return detected repository artwork as
 `derivedIcon`, separate from the saved `icon`. Shared display controls use it
 only when there is no saved icon and detection is enabled. Settings labels it
-as detected; choosing **None** saves `iconDisabled` and suppresses detection.
+as detected; choosing **No icon** saves `iconDisabled` and suppresses detection.
 Choosing an icon enables display again. Detection requires a repository root
 (including a worktree with a `.git` file), stops at the first valid image under
 12 KiB, and caches decoded candidates by real path, size and modification time.
