@@ -200,7 +200,10 @@ events. Source-home continuations and older events without this observation
 remain unattributed. A process restart does not inherit a previous process's
 account observation. Account filtering excludes unattributed receipts; it never
 assigns old costs to today's active account. Capture counts still describe the
-engine, and account results disclose this attribution gap.
+engine, and account results disclose this attribution gap. Engine activity is
+selected inside Station's bounded observation window, so a busy engine does not
+crowd a quiet one out, and an engine with no usage in the window reports unknown
+capture rather than another engine's coverage.
 
 Reported costs and estimates remain separate. **Tokens**, **Reported cost** and
 **Estimated cost** select the daily chart measure. A cost measure with no values

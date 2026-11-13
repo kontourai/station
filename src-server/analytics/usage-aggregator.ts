@@ -49,6 +49,7 @@ interface OrchestrationUsageSource {
       cursor?: string;
       pageSize?: number;
       aggregate?: boolean;
+      filter?: import('../services/orchestration/event-store.js').UsageReceiptFilter;
     },
   ): {
     receipts: UsageReceipt[];
@@ -388,6 +389,7 @@ export class UsageAggregator {
       cursor?: string;
       pageSize?: number;
       aggregate?: boolean;
+      filter?: import('../services/orchestration/event-store.js').UsageReceiptFilter;
     },
   ):
     | {

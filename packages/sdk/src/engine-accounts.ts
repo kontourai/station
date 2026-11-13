@@ -407,7 +407,7 @@ export function useCreateEngineAccountMutation(
   });
 }
 export function useEngineActivityQuery(
-  engine: 'claude' | 'codex',
+  engine: string,
   days: 7 | 30,
   scope: ApiRequestScope,
   enabled: boolean,

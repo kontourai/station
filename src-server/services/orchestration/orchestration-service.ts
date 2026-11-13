@@ -7555,6 +7555,7 @@ export class OrchestrationService {
       cursor?: string;
       pageSize?: number;
       aggregate?: boolean;
+      filter?: import('./event-store.js').UsageReceiptFilter;
     },
   ): {
     receipts: import('@kontourai/station-contracts/usage-rollup').UsageReceipt[];

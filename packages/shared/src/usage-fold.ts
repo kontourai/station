@@ -10,11 +10,13 @@ export {
   CUMULATIVE_USAGE_PROVIDERS,
   cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
+  isDeclaredUsageProvider,
   isValidContextObservation,
   PROVIDER_PROMPT_CACHE_INCLUSIVITY,
   PROVIDER_USAGE_SCOPE,
   type ProviderUsageScope,
   providerPromptCacheInclusivity,
+  providerReportsContextOccupancyOnly,
   providerUsageScope,
 } from './usage-semantics.js';
 

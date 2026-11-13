@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). Checked the ownership rows naming OrchestrationService (engine caller) and EventStore (persisted events/projections/replay); unaffected.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
