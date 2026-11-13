@@ -273,6 +273,8 @@ describe.skipIf(process.platform === 'win32')(
         'the reopen session.configured',
       )) as { metadata?: Record<string, unknown> };
       expect(configured.metadata?.reportedModel).toBe('gemini-4-argon');
+      // `effectiveModel` stays what was requested; it is never observed.
+      expect(configured.metadata?.effectiveModel).toBe('retired-model');
     });
 
     test('a reopen applies an effort to an option that lists no values', async () => {
