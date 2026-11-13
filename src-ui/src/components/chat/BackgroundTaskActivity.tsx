@@ -92,17 +92,37 @@ export function RunningBackgroundTaskLines({
 /**
  * The running lines for one chat, live. Its own component so the one-second
  * elapsed clock re-renders these lines, not the transcript around them.
+ *
+ * A task the transcript already draws as its card (`cardedTaskIds`: child ids
+ * and spawning call ids) is left out; the card carries its own activity and
+ * elapsed time. With every running task carded, nothing is listed.
  */
 export function ChatRunningBackgroundTasks({
   chatThreadId,
   source,
+  cardedTaskIds,
 }: {
   chatThreadId: string;
   source?: StationStateSource;
+  cardedTaskIds?: ReadonlySet<string>;
 }) {
   // The store key the Agents pane resolves for the same chat.
   const chatKey = useChatStoreKey(chatThreadId);
   const { running } = useChatBackgroundTasks(chatKey, source);
+  const uncarded = cardedTaskIds?.size
+    ? running.filter((entry) => !cardedTaskIds.has(entry.id))
+    : running;
+  return uncarded.length > 0 ? (
+    <UncardedRunningLines running={uncarded} />
+  ) : null;
+}
+
+/** Holds the ticking clock only while there are lines to tick. */
+function UncardedRunningLines({
+  running,
+}: {
+  running: readonly BackgroundTaskEntry[];
+}) {
   const now = useElapsedClock();
   return <RunningBackgroundTaskLines running={running} now={now} />;
 }
