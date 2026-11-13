@@ -292,6 +292,15 @@ for (const theme of ['light', 'dark'] as const) {
         .click();
       const panel = page.getByRole('dialog', { name: 'Updates', exact: true });
       await expect(
+        panel.getByText('Available server improvements.'),
+      ).toBeVisible();
+      // Retain the panel before the installed-note assertion for failure diagnosis.
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `changelog-readiness-${theme}-${viewport}.png`,
+        ),
+      });
+      await expect(
         panel.getByText('Shows the installed server changelog.'),
       ).toBeVisible();
       await expect(
