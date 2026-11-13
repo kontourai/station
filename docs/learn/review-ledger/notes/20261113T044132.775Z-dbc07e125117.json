@@ -1,0 +1,7 @@
+{
+  "revision": "f4ce43da21967e12d0809f574d463d160f31747d",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Rechecked the formatting-only wrap of the anchored Cargo extension matcher after the six fix-round reviews. No control flow, notification case list, vector, encryption, delivery, registration or tap-route behavior changed. The committed runner retains the keyboard hook guard and all existing notification required tests.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}
