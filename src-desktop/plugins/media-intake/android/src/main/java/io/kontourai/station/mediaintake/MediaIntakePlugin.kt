@@ -17,7 +17,11 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import java.util.UUID
 import java.util.concurrent.Executors
+import org.json.JSONObject
 
 internal const val SHARED_IMAGES_EVENT = "sharedImages"
 private const val TAKEN_PREFERENCES = "station_media_intake"
@@ -37,6 +41,7 @@ private const val TAKEN_KEYS = "taken_shares"
  */
 @TauriPlugin
 class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
+  private var intakeView: WebView? = null
   private val reads = Executors.newSingleThreadExecutor()
 
   private val session = ShareIntakeSession<Uri>(
@@ -72,6 +77,43 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
 
   override fun load(webView: WebView) {
     session.onLoad(activity.intent?.let(::facts), ShareIntentBuffer.intents.take()?.let(::facts))
+    intakeView = webView
+    val bridge = activity.assets.open("station-image-paste.js").bufferedReader().use { it.readText() }
+    KeyboardImageIntake.install(webView) { uris, release ->
+      val id = JSONObject.quote(UUID.randomUUID().toString())
+      webView.evaluateJavascript("$bridge;window.__stationImagePaste.capture($id)") { captured ->
+        if (captured != "true") {
+          release()
+          Toast.makeText(activity, "Focus a chat composer to insert an image.", Toast.LENGTH_SHORT).show()
+        } else {
+          try {
+            reads.execute {
+              try {
+                val images = readImages(uris, "pasted-image")
+                val payload = filesResult(images).toString()
+                webView.post { webView.evaluateJavascript("window.__stationImagePaste?.deliver($id,$payload)", null) }
+              } catch (error: Exception) {
+                webView.post {
+                  webView.evaluateJavascript("window.__stationImagePaste?.cancel($id)", null)
+                  Toast.makeText(activity, (error as? IntakeRefused)?.message ?: "Station could not read the images.", Toast.LENGTH_SHORT).show()
+                }
+              } finally {
+                release()
+              }
+            }
+          } catch (_: java.util.concurrent.RejectedExecutionException) {
+            release()
+            webView.evaluateJavascript("window.__stationImagePaste?.cancel($id)", null)
+          }
+        }
+      }
+    }
+  }
+
+  override fun onDestroy(activity: AppCompatActivity) {
+    intakeView?.let(KeyboardImageIntake::uninstall)
+    intakeView = null
+    reads.shutdown()
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -129,18 +171,7 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
   private fun readOffMainThread(invoke: Invoke, prefix: String, uris: () -> List<Uri>) {
     reads.execute {
       try {
-        val resolver = activity.contentResolver
-        val images = sources.read(
-          uris(),
-          prefix,
-          open = { resolver.openInputStream(it) },
-          displayName = { uri ->
-            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-              if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
-          },
-          encodeBase64 = { Base64.encodeToString(it, Base64.NO_WRAP) },
-        )
+        val images = readImages(uris(), prefix)
         invoke.resolve(filesResult(images))
       } catch (refused: IntakeRefused) {
         invoke.reject(refused.message)
@@ -148,6 +179,20 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
         invoke.reject("Station could not read the images.")
       }
     }
+  }
+
+  private fun readImages(uris: List<Uri>, prefix: String): List<IntakeImage> {
+    val resolver = activity.contentResolver
+    return sources.read(
+      uris, prefix,
+      open = { resolver.openInputStream(it) },
+      displayName = { uri ->
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+          if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+      },
+      encodeBase64 = { Base64.encodeToString(it, Base64.NO_WRAP) },
+    )
   }
 
   private fun filesResult(images: List<IntakeImage>): JSObject {

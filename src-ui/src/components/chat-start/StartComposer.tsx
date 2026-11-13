@@ -456,6 +456,11 @@ export function StartComposer({
         )}
         <textarea
           ref={fieldRef}
+          data-native-image-paste={
+            files && !pending
+              ? JSON.stringify([project, agent.status])
+              : undefined
+          }
           className="editor-textarea start-composer__input"
           aria-label="What would you like done?"
           placeholder={placeholder}

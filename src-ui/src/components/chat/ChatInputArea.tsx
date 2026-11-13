@@ -1466,6 +1466,11 @@ export function ChatInputArea({
           )}
           <textarea
             ref={textareaRef}
+            data-native-image-paste={JSON.stringify([
+              sessionId,
+              activeConversationId,
+              mentionAuthority,
+            ])}
             // The placeholder changes with the turn and is empty while
             // sending is refused, so it cannot be the field's name (#4403).
             aria-label="Message"

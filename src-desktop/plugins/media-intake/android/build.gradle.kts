@@ -17,5 +17,7 @@ android {
 }
 dependencies {
     implementation(project(":tauri-android"))
+    implementation("androidx.appcompat:appcompat:1.6.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }
