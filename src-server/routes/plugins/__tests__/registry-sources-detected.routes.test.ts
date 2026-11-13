@@ -41,6 +41,7 @@ import {
   readConfinedFile,
 } from '../../../providers/registries/confined-local-read.js';
 import { FilesystemSkillRegistryProvider } from '../../../providers/registries/filesystem-skill-registry.js';
+import { GitHubSkillRegistryProvider } from '../../../providers/registries/github-skill-registry.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { registerManifestRegistryProvider } from '../../../providers/registries/register-manifest-registry.js';
 import {
@@ -1188,7 +1189,10 @@ describe('an earlier Station can still read the configuration', () => {
 });
 
 describe('default sources have names that tell them apart', () => {
-  test('each default local skill folder is named for its engine and owner, not "Local skills"', async () => {
+  const normalized = (name: string) =>
+    name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+  test('every default source has a unique name that does not differ only by punctuation', async () => {
     const { json } = setup();
     const home = '/home/someone';
     registerSkillRegistryProvider(
@@ -1199,16 +1203,28 @@ describe('default sources have names that tell them apart', () => {
         `${home}/station/app-homes/claude/skills`,
       ]),
     );
-    const names = (await json<{ data: RegistrySource[] }>('/sources')).data
-      .filter((source) => source.adapter === 'directory')
-      .map((source) => source.displayName);
-    expect(names).toEqual([
+    registerSkillRegistryProvider(
+      new GitHubSkillRegistryProvider({
+        owner: 'anthropics',
+        repo: 'skills',
+        path: 'skills',
+        branch: 'main',
+      }),
+    );
+    const defaults = (
+      await json<{ data: RegistrySource[] }>('/sources')
+    ).data.filter((source) => source.origin === 'configured');
+    expect(defaults.map((source) => source.displayName)).toEqual([
       'Codex skills · user',
       'Claude skills · user',
-      'Codex skills · Station',
-      'Claude skills · Station',
+      'Codex skills · Station profile',
+      'Claude skills · Station profile',
+      'anthropics/skills (default)',
     ]);
-    expect(new Set(names).size).toBe(names.length);
+    const keys = defaults.map((source) => normalized(source.displayName));
+    expect(new Set(keys).size).toBe(keys.length);
+    // The location that tells them apart stays on the row.
+    expect(defaults.every((source) => source.location)).toBe(true);
   });
 });
 
