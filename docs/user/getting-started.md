@@ -999,7 +999,7 @@ list above the composer, states the risk and removes it only after **I checked, 
 every open window. It does not hold back the messages written after
 it.
 
-The chat status says **Needs answer** for questions and **Needs approval** for
+The chat status says **Needs input** for questions and **Needs approval** for
 tool permissions. Approval takes priority when both wait. Background work keeps
 its count and elapsed time visible after the main turn ends. Elapsed time uses
 words such as **2m 1s**.

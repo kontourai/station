@@ -46,7 +46,7 @@ test('the plan strip reads input kinds from its real session projection, with pe
   });
   expect(
     deriveWorkflowRuntimeStrip(workflowPlanRuntimeState(question))?.label,
-  ).toBe('Needs answer (1)');
+  ).toBe('Needs input (1)');
   const mixed = session({
     ...question,
     pendingApprovals: ['q', 'p'],

@@ -2,7 +2,7 @@ import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestr
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -712,6 +712,14 @@ export function buildOrchestrationSessionSummary(options: {
   const openRequestIds = options.openRequestIds?.filter(
     (id) => !settledRequestIds.has(id),
   );
+  const latestRequests = new Map<
+    string,
+    Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>
+  >();
+  for (const event of events) {
+    if (event.method === 'request.opened')
+      latestRequests.set(event.requestId, event);
+  }
   const summary: OrchestrationSessionSummary = {
     durability: options.readDurabilityProfile?.(base.provider),
     provider: base.provider,
@@ -786,21 +794,9 @@ export function buildOrchestrationSessionSummary(options: {
           openRequestIds: [...openRequestIds],
           openRequestKinds: Object.fromEntries(
             openRequestIds.flatMap((id) => {
-              const event = options.events
-                ?.slice()
-                .reverse()
-                .find(
-                  (event) =>
-                    event.method === 'request.opened' && event.requestId === id,
-                );
+              const event = latestRequests.get(id);
               if (!event || event.method !== 'request.opened') return [];
-              const kind =
-                event.requestType === 'input' ||
-                (event.payload?.toolName !== 'cursor/create_plan' &&
-                  event.payload?.toolName !== 'ExitPlanMode' &&
-                  inputRequestFromRequestEvent(event))
-                  ? 'input'
-                  : 'approval';
+              const kind = isInputRequestEvent(event) ? 'input' : 'approval';
               return [[id, kind] as const];
             }),
           ),

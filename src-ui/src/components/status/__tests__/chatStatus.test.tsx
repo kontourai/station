@@ -402,7 +402,7 @@ describe('ChatStatusPill', () => {
 });
 
 test.each([
-  [{ inputCount: 1 }, 'Needs answer'],
+  [{ inputCount: 1 }, 'Needs input'],
   [{ inputCount: 2, approvalCount: 1 }, 'Needs approval'],
   [
     {

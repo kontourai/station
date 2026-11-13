@@ -427,13 +427,13 @@ function WindowQuestionPill({
   return <>{pill}</>;
 }
 
-test('a question found only in the event window renders Needs answer without snapshot metadata', async () => {
+test('a question found only in the event window renders Needs input without snapshot metadata', async () => {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <WindowQuestionPill />
     </QueryClientProvider>,
   );
-  await waitFor(() => expect(pill()?.textContent).toContain('Needs answer'));
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs input'));
 });
 
 test('known window input outranks an older conservative approval hint', async () => {
@@ -442,5 +442,5 @@ test('known window input outranks an older conservative approval hint', async ()
       <WindowQuestionPill approvalHint />
     </QueryClientProvider>,
   );
-  await waitFor(() => expect(pill()?.textContent).toContain('Needs answer'));
+  await waitFor(() => expect(pill()?.textContent).toContain('Needs input'));
 });

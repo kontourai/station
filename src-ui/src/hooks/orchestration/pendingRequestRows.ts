@@ -5,7 +5,10 @@ import {
   requestBoundCallIds,
 } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import {
+  inputRequestFromRequestEvent,
+  isInputRequestEvent,
+} from '@kontourai/station-shared/input-request';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
@@ -185,13 +188,7 @@ export function unansweredApprovalRequests(
       state: 'awaiting-approval',
       needsApproval: true,
       approvalId: request.requestId,
-      requestKind:
-        request.requestType === 'input' ||
-        (inputRequest &&
-          request.payload?.toolName !== 'cursor/create_plan' &&
-          request.payload?.toolName !== 'ExitPlanMode')
-          ? 'input'
-          : 'approval',
+      requestKind: isInputRequestEvent(request) ? 'input' : 'approval',
       ...(inputRequest ? { inputRequest } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,

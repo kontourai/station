@@ -5,6 +5,7 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  isInputRequestEvent,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
@@ -61,13 +62,7 @@ export function handleRequestOpenedEvent(
     pendingApprovals,
     pendingRequestKinds: {
       ...chat.pendingRequestKinds,
-      [event.requestId]:
-        event.requestType === 'input' ||
-        (event.payload?.toolName !== 'cursor/create_plan' &&
-          event.payload?.toolName !== 'ExitPlanMode' &&
-          inputRequestFromRequestEvent(event))
-          ? 'input'
-          : 'approval',
+      [event.requestId]: isInputRequestEvent(event) ? 'input' : 'approval',
     },
     pendingApprovalTurnIds:
       typeof event.turnId === 'string'

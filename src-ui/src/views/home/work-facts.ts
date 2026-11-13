@@ -262,7 +262,7 @@ export function buildWorkFacts({
       const attention = moreUrgentAttention(
         moreUrgentAttention(
           session && orchestrationLifecycleLabel(session) === 'Needs attention'
-            ? sessionAttentionKind(session)
+            ? sessionAttentionKind(session, chat?.answeredApprovals)
             : undefined,
           chat ? chatAttentionKind(chat) : undefined,
         ),

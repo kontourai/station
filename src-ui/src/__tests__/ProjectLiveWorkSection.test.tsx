@@ -258,7 +258,7 @@ describe('ProjectLiveWorkSection', () => {
     const LANE_VOCABULARY: Record<string, string[]> = {
       needsYou: [
         'Needs approval',
-        'Needs answer',
+        'Needs input',
         'Waiting on you',
         'Interrupted',
         'Blocked',

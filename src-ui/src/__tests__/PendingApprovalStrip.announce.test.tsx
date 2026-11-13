@@ -180,7 +180,7 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
       ]),
     );
     expect(liveRegion().textContent).toBe(
-      'Needs answer: Session storage on SQLite…',
+      'Needs input: Session storage on SQLite…',
     );
   });
 });

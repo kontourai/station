@@ -116,7 +116,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(QUESTION_IN_OPEN_TURN)).toEqual({
       rung: 'answer',
       lane: 'needsYou',
-      line: 'Needs answer',
+      line: 'Needs input',
     });
   });
 
@@ -380,7 +380,7 @@ const TABLE: ReadonlyArray<
     'needs answer',
     { lifecycleLabel: 'Needs attention' },
     { attention: 'answer' },
-    'Needs answer',
+    'Needs input',
     'needsYou',
     'needsYou',
   ],
@@ -770,10 +770,10 @@ describe('status facts for chat, task and merged rows', () => {
   );
 
   it.each([
-    ['in_progress', 1, 'Task · Needs answer', 'needsYou', 'answer'],
-    ['todo', 2, 'Task · Needs answer', 'needsYou', 'answer'],
+    ['in_progress', 1, 'Task · Needs input', 'needsYou', 'answer'],
+    ['todo', 2, 'Task · Needs input', 'needsYou', 'answer'],
     // The answer is what a person can act on, ahead of the lock.
-    ['blocked', 1, 'Task · Needs answer', 'needsYou', 'answer'],
+    ['blocked', 1, 'Task · Needs input', 'needsYou', 'answer'],
     ['in_progress', 0, 'Task · In progress', 'idle', 'idle'],
     // A finished Task's leftover question asks nobody.
     ['done', 3, 'Task · Done', 'finished', 'done'],
@@ -841,4 +841,60 @@ describe('status facts for chat, task and merged rows', () => {
     expect(settled.facts?.attention).toBeUndefined();
     expect(settled.facts?.activity).toBeUndefined();
   });
+});
+
+describe('blocking forms from server summaries across work surfaces', () => {
+  it.each([false, true])(
+    'uses Needs input with a real session and chat=%s',
+    (withChat) => {
+      const summary = folded('approvalInOpenTurn', {
+        pendingReview: false,
+        openRequestIds: ['form'],
+        blockingOpenRequestIds: ['form'],
+        openRequestKinds: { form: 'input' },
+      });
+      const chats = withChat
+        ? {
+            c1: {
+              ...createDefaultChatState(),
+              conversationId: summary.threadId,
+              orchestrationStatus: 'awaiting-approval' as const,
+              pendingApprovals: ['form'],
+              pendingRequestKinds: { form: 'input' as const },
+            },
+          }
+        : {};
+      const items = buildHomeWorkItems({
+        chats,
+        sessions: [summary],
+        tasks: [],
+        agents: [],
+      });
+      const facts = buildWorkFacts({ items, chats, sessions: [summary] });
+      expect(items).toHaveLength(1);
+      expect(workStatus(items[0], NOW, facts.get(items[0].id)).word).toBe(
+        'Needs input',
+      );
+      expect(sessionWorkStatus(summary, [], NOW).word).toBe('Needs input');
+      const mixed = {
+        ...summary,
+        blockingOpenRequestIds: ['form', 'permission'],
+        openRequestKinds: {
+          form: 'input' as const,
+          permission: 'approval' as const,
+        },
+      };
+      expect(sessionWorkStatus(mixed, [], NOW).word).toBe('Needs approval');
+      const mixedFacts = buildWorkFacts({ items, chats, sessions: [mixed] });
+      expect(workStatus(items[0], NOW, mixedFacts.get(items[0].id)).word).toBe(
+        'Needs approval',
+      );
+      expect(
+        sessionWorkStatus({ ...summary, pendingReview: true }, [], NOW).word,
+      ).toBe('Needs approval');
+      expect(
+        sessionWorkStatus({ ...summary, openRequestKinds: {} }, [], NOW).word,
+      ).toBe('Needs approval');
+    },
+  );
 });

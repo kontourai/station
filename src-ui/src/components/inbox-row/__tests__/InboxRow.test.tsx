@@ -1397,5 +1397,5 @@ it('renders the answer rung for an input request after server projection', () =>
       pendingReview: false,
     }),
   );
-  expect(statusText()).toBe('Needs answer');
+  expect(statusText()).toBe('Needs input');
 });

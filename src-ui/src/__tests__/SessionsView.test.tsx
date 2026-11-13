@@ -4343,7 +4343,7 @@ describe('SessionsView', () => {
       const LANE_VOCABULARY: Record<string, string[]> = {
         'Needs you': [
           'Needs approval',
-          'Needs answer',
+          'Needs input',
           'Waiting on you',
           'Interrupted',
           'Blocked',

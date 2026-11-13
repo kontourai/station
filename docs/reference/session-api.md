@@ -2488,7 +2488,7 @@ metadata uses conservative approval display until a validated form is read. Olde
 classified from their validated input-request payload when the host projects
 its summary.
 
-The conversation pill and Inbox use **Needs answer** for input and **Needs
+The conversation pill and Inbox use **Needs input** for input and **Needs
 approval** for permission. Permission takes precedence when both wait, matching
 the attention ladder. Requests answered locally stop asking for attention while
 the engine confirms delivery. With no main turn open, the pill still shows

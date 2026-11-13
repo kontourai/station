@@ -359,7 +359,7 @@ test('an AskUserQuestion form keeps an exact Attention inspection route and inpu
       />
     </>,
   );
-  expect(screen.getAllByText('Needs answer').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('Needs input').length).toBeGreaterThan(0);
   fireEvent.click(screen.getByRole('button', { name: 'Inspect request' }));
   expect(
     await screen.findByText('Answer the agent’s questions in the chat.'),

@@ -301,7 +301,7 @@ describe('#2316 inline approval card', () => {
     );
     await waitFor(() =>
       expect(screen.getByTestId('streaming-message').dataset.statusLabel).toBe(
-        'Needs answer',
+        'Needs input',
       ),
     );
   });

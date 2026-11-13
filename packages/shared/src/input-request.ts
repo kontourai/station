@@ -1020,3 +1020,18 @@ export function inputRequestOutcome(
       return 'cancelled';
   }
 }
+
+/** Classify display requests without mistaking plan decisions for input forms. */
+export function isInputRequestEvent(event: {
+  requestType?: string;
+  provider?: string;
+  title?: string;
+  payload?: Record<string, unknown>;
+}): boolean {
+  return (
+    event.requestType === 'input' ||
+    (event.payload?.toolName !== 'cursor/create_plan' &&
+      event.payload?.toolName !== 'ExitPlanMode' &&
+      inputRequestFromRequestEvent(event) !== null)
+  );
+}

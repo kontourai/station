@@ -43,7 +43,7 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // it; `work-status.test.ts` pins its lane.
   needsYou: new Set([
     'Needs approval',
-    'Needs answer',
+    'Needs input',
     'Interrupted',
     'Blocked',
     'Waiting on you',
@@ -473,7 +473,7 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Approval required', 'Needs approval'],
   ['Approval needed', 'Needs approval'],
   ['approvals needed', 'Needs approval (n)'],
-  ['Needs your answer', 'Needs answer'],
+  ['Needs your answer', 'Needs input'],
   ['Engine complete', 'Done'],
   ['Engine running', 'Running'],
   ['Tool activity running', 'Running · tool'],
@@ -611,7 +611,7 @@ describe('one vocabulary on the work surfaces', () => {
     // "Needs approval"; nothing else may spell a rung's word.
     const WORDS = [
       "'Needs approval'",
-      "'Needs answer'",
+      "'Needs input'",
       "'Interrupted'",
       "'Read only'",
       "'Idle'",

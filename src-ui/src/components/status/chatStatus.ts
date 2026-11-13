@@ -1,4 +1,5 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { retryActivityLabel } from '../../utils/chat-activity';
@@ -126,7 +127,7 @@ export function deriveChatStatus(
       kind: 'approval',
       tone: 'attention',
       glyph: 'approval',
-      label: 'Needs approval',
+      label: SESSION_STATUS_WORDS.approval,
       count: input.approvalCount > 1 ? input.approvalCount : undefined,
       details: [],
       action: 'reveal-approval',
@@ -137,7 +138,7 @@ export function deriveChatStatus(
       kind: 'answer',
       tone: 'attention',
       glyph: 'attention',
-      label: 'Needs answer',
+      label: SESSION_STATUS_WORDS.answer,
       count: input.inputCount! > 1 ? input.inputCount : undefined,
       details: [],
       action: 'reveal-approval',

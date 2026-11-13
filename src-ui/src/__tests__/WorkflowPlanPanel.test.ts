@@ -330,7 +330,7 @@ test('input waits outrank tool activity and answered waits do not claim user att
       isProcessingStep: true,
       status: 'running',
     })?.label,
-  ).toBe('Needs answer (2)');
+  ).toBe('Needs input (2)');
   expect(
     deriveWorkflowRuntimeStrip({ pendingInputs: 2, pendingApprovals: 1 })
       ?.label,

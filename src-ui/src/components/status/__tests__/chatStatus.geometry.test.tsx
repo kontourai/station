@@ -1,13 +1,24 @@
 /** @vitest-environment jsdom */
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { chromium } from '@playwright/test';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render } from '@testing-library/react';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { resolveCssImports } from '../../../../../tests/helpers/css-cascade-fixture';
+import { buildOrchestrationItems } from '../../../views/home/home-view-model';
+import { buildWorkFacts } from '../../../views/home/work-facts';
+import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
+import { renderHomeWorkRow } from '../../home/HomeWorkRow';
 import { InboxRowStatusLine } from '../../inbox-row/InboxRowStatus';
 import { ChatStatusPill } from '../ChatStatusPill';
 import { deriveChatStatus } from '../chatStatus';
+
+vi.mock('../../../contexts/ApiBaseContext', async (original) => ({
+  ...(await original<typeof import('../../../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => null,
+}));
 
 // Browser-backed presentation fixture: real React markup and app CSS; no provider or Station instance.
 test('request and background pills fit desktop and phone in both themes', async () => {
@@ -16,6 +27,7 @@ test('request and background pills fit desktop and phone in both themes', async 
   const states = [
     { ...base, approvalCount: 1 },
     { ...base, inputCount: 1 },
+    { ...base, inputCount: 1, approvalCount: 1 },
     {
       ...base,
       activity: {
@@ -29,46 +41,108 @@ test('request and background pills fit desktop and phone in both themes', async 
       },
     },
   ];
+  const sessions: OrchestrationSessionSummary[] = [
+    'Form only',
+    'Permission only',
+    'Both',
+  ].map((title, i) => ({
+    provider: 'claude',
+    threadId: `request-${i}`,
+    title,
+    status: 'running',
+    lifecycleState: 'review_pending',
+    pendingReview: i !== 0,
+    openRequestIds:
+      i === 2 ? ['form', 'permission'] : [i === 0 ? 'form' : 'permission'],
+    blockingOpenRequestIds:
+      i === 2 ? ['form', 'permission'] : [i === 0 ? 'form' : 'permission'],
+    openRequestKinds: { form: 'input', permission: 'approval' },
+    answerability: { answerable: true },
+    controlMode: 'station-owned',
+    isLoaded: true,
+    isPersisted: true,
+    eventCount: 2,
+    createdAt: new Date(now).toISOString(),
+    updatedAt: new Date(now).toISOString(),
+  }));
+  const items = buildOrchestrationItems(sessions, []);
+  const workFacts = buildWorkFacts({ items, sessions });
   const view = render(
-    <div>
-      {states.map((input, index) => (
-        <div key={index} style={{ marginBottom: 24 }}>
-          <ChatStatusPill
-            status={deriveChatStatus(input)}
-            onRevealApproval={() => {}}
+    <QueryClientProvider client={new QueryClient()}>
+      <div>
+        <h2>Composer pills: permission, form, both, background</h2>
+        {states.map((input, index) => (
+          <div key={index} style={{ marginBottom: 24 }}>
+            <ChatStatusPill
+              status={deriveChatStatus(input)}
+              onRevealApproval={() => {}}
+            />
+          </div>
+        ))}
+        <h2>Inbox</h2>
+        {items.map((item) => (
+          <InboxRow
+            key={item.id}
+            item={item}
+            now={now}
+            facts={workFacts.get(item.id)}
+            isCurrent={false}
+            isSnoozed={false}
+            isOpenChat={false}
+            chrome="touch"
+            onActivate={() => {}}
           />
-        </div>
-      ))}
-      <InboxRowStatusLine
-        id="running-row"
-        now={now}
-        status={{
-          rung: 'running',
-          lane: 'running',
-          word: 'Running',
-          detail: 'Bash',
-          tone: 'active',
-          since: now - 121000,
-          line: 'Running · Bash · 2m 1s',
-        }}
-      />
-      <InboxRowStatusLine
-        id="input-row"
-        now={now}
-        status={{
-          rung: 'answer',
-          word: 'Needs answer',
-          line: 'Needs answer',
-          lane: 'needsYou',
-          tone: 'attention',
-        }}
-      />
-    </div>,
+        ))}
+        <h2>Home · Needs you</h2>
+        {items.map((item) =>
+          renderHomeWorkRow({
+            task: { ...item, stableId: item.id },
+            agents: [],
+            isWoken: false,
+            onOpen: () => {},
+            context: {
+              now,
+              workFacts,
+              detailsFor: null,
+              setDetailsFor: () => {},
+              chrome: 'touch',
+            },
+          }),
+        )}
+        <InboxRowStatusLine
+          id="running-row"
+          now={now}
+          status={{
+            rung: 'running',
+            lane: 'running',
+            word: 'Running',
+            detail: 'Bash',
+            tone: 'active',
+            since: now - 121000,
+            line: 'Running · Bash · 2m 1s',
+          }}
+        />
+        <InboxRowStatusLine
+          id="input-row"
+          now={now}
+          status={{
+            rung: 'answer',
+            word: 'Needs input',
+            line: 'Needs input',
+            lane: 'needsYou',
+            tone: 'attention',
+          }}
+        />
+      </div>
+    </QueryClientProvider>,
   );
   const css = [
     '../../../index.css',
     '../live-status.css',
     '../../inbox-row/InboxRow.css',
+    '../../home/HomeWorkRow.css',
+    '../../icons/BrandIcon.css',
+    '../../icons/ProjectIcon.css',
   ]
     .map((p) => resolveCssImports(resolve(import.meta.dirname, p)))
     .join('\n');
@@ -88,8 +162,8 @@ test('request and background pills fit desktop and phone in both themes', async 
           );
           await page.evaluate(() => document.fonts.ready);
           expect(
-            await page.getByText('Needs answer', { exact: true }).count(),
-          ).toBe(2);
+            await page.getByText('Needs input', { exact: true }).count(),
+          ).toBe(4);
           expect(
             await page
               .getByText('2 background tasks running', { exact: true })
@@ -102,6 +176,7 @@ test('request and background pills fit desktop and phone in both themes', async 
           ).toBe(false);
           await page.screenshot({
             path: resolve(artifacts, `status-${width}-${theme}.png`),
+            fullPage: true,
           });
         } finally {
           await page.close();

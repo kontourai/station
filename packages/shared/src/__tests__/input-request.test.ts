@@ -14,6 +14,7 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  isInputRequestEvent,
   readInputRequestForm,
   readInputRequestResponse,
   readLegacyHarnessQuestions,
@@ -746,4 +747,25 @@ describe('inputRequestSummary', () => {
   test('a short single line is returned whole', () => {
     expect(inputRequestSummary('  Which mode?  ')).toBe('Which mode?');
   });
+});
+
+test('shared request classification preserves plan decisions and legacy input type', () => {
+  for (const toolName of ['ExitPlanMode', 'cursor/create_plan']) {
+    expect(
+      isInputRequestEvent({ payload: { toolName, inputRequest: FORM } }),
+    ).toBe(false);
+    expect(
+      isInputRequestEvent({
+        requestType: 'input',
+        payload: { toolName, inputRequest: FORM },
+      }),
+    ).toBe(true);
+  }
+  expect(
+    isInputRequestEvent({
+      payload: { toolName: 'AskUserQuestion', inputRequest: FORM },
+    }),
+  ).toBe(true);
+  expect(isInputRequestEvent({ requestType: 'input' })).toBe(true);
+  expect(isInputRequestEvent({ requestType: 'permission' })).toBe(false);
 });
