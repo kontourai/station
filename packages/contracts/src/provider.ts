@@ -851,7 +851,7 @@ export const SESSION_REWIND_AFFECTED_PATHS_MAX = 50;
  * Why a rewind was refused before anything reached the engine.
  * - `unsupported`: this session's engine declared no in-place rewind.
  * - `not-live`: no engine process holds this session now.
- * - `turn-running`: a turn is running; stop it first.
+ * - `turn-running`: a turn, or another rewind, is running; stop it first.
  * - `unknown-turn`: the engine never reported an id for that turn in this
  *   process (an older turn, one from before a restart, one Station no
  *   longer keeps, or one an earlier rewind already hid).

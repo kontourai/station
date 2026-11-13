@@ -570,9 +570,16 @@ How the events behave:
   {type}}]`; each terminal entry is settled and the running ones are the
   authoritative running set) and the agent service's `tool_call` /
   `tool_call_update` whose `_meta.kiro.kind` is `agent-subtask` (named by
-  `agentSubtaskId`; the call is still shown as a tool call). Any other ACP
-  engine's session publishes `not-reported` at start, so a surface never reads
-  its silence as nothing running. No ACP subagent can be stopped on its own.
+  `agentSubtaskId`; the call is still shown as a tool call). Each wire is read
+  only on a session whose handshake identifies that reporter (kiro-cli's
+  `agentInfo.name` for the roster, the `kiro` capability namespace for
+  `agent-subtask`). Any other ACP engine's session publishes `not-reported` at
+  start, and the same frames from it are ignored, so a surface never reads
+  its silence as nothing running. A roster restating a finished child settles
+  it once. A roster with more than 64 running children
+  (`CHILD_WORK_ITEMS_MAX_PER_REPORTER`) publishes no running set, since a cut
+  one would mark the rest ended, and is logged; an `agent-subtask` past 64
+  running is not tracked and is logged. No ACP subagent can be stopped on its own.
   The roster's opaque `extension.notification` stays host chrome. Neither wire
   has a live capture (kirocrew's live captures omit the roster because it names
   the host's agents); the shapes are kirocrew's test vectors.
@@ -656,7 +663,12 @@ session's own continuity, which
   (`turn-running`), for a turn whose prompt id this engine process did not
   report or an earlier rewind already hid (`unknown-turn`), on an engine that
   declared none (`unsupported`), and on a session no process holds
-  (`not-live`). The transcript keeps every turn. A `runtime.warning`
+  (`not-live`). While the engine answers, the session starts no turn: a send
+  is refused retryably (`busy`), and a second rewind is refused
+  `turn-running`. The marker names only turns whose prompt id the engine
+  reported; a later turn with none (an engine that skipped the report) is
+  still hidden by the engine but is not marked rewound in the transcript.
+  The transcript keeps every turn. A `runtime.warning`
   (`code: acp.session-rewound`, `ACP_SESSION_REWOUND_CODE`, details
   `beforeTurnId`, `hiddenTurnIds`, `affectedFileCount`) records the rewind;
   the transcript draws it as a marker row and shows each hidden turn dimmed

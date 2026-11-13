@@ -59,7 +59,10 @@ function harness(overrides: Partial<AcpMapperContext> = {}) {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
-  const state: AcpMapperState = {};
+  // A Kiro session: its handshake names both subagent wires.
+  const state: AcpMapperState = {
+    acpSubagentWires: new Set(['roster', 'agent-subtask']),
+  };
   const warn = vi.fn();
   const ctx: AcpMapperContext = {
     provider: 'acp',
@@ -459,6 +462,70 @@ describe('engine extension events: kirocrew golden frames', () => {
     ]);
     // The opaque envelope is still published beside it (host chrome).
     expect(of('extension.notification')).toHaveLength(1);
+  });
+
+  test('a session whose handshake names no subagent wire maps none of the Kiro subagent frames', () => {
+    const { feed, of, state } = harness();
+    state.acpSubagentWires = new Set();
+    for (const msg of pick(
+      (msg) =>
+        msg.method === '_kiro.dev/subagent/list_update' ||
+        msg.params?.update?._meta?.kiro?.kind === 'agent-subtask',
+    ))
+      feed(msg);
+    expect(of('child-work.updated')).toEqual([]);
+    // Each wire is gated on its own: the roster alone does not admit the
+    // agent-service tool calls.
+    state.acpSubagentWires = new Set(['roster']);
+    for (const msg of pick(
+      (msg) => msg.params?.update?._meta?.kiro?.kind === 'agent-subtask',
+    ))
+      feed(msg);
+    expect(of('child-work.updated')).toEqual([]);
+  });
+
+  test('a repeated roster settles a finished child once', () => {
+    const { feed, of } = harness();
+    const [roster] = pick(
+      (msg) => msg.method === '_kiro.dev/subagent/list_update',
+    );
+    feed(roster!);
+    feed(structuredClone(roster!));
+    expect(
+      of('child-work.updated').filter((event) => event.delta.kind === 'settle'),
+    ).toHaveLength(1);
+  });
+
+  test('a roster past the child-work bound publishes no running set, and says so', () => {
+    const { feed, of, warn } = harness();
+    // CHILD_WORK_ITEMS_MAX_PER_REPORTER is 64: 64 running children are one
+    // snapshot, 65 are none.
+    const roster = (count: number) => ({
+      method: '_kiro.dev/subagent/list_update',
+      params: {
+        subagents: Array.from({ length: count }, (_, index) => ({
+          sessionId: `sub-${index}`,
+          status: { type: 'working' },
+        })),
+      },
+    });
+    feed(roster(64));
+    expect(of('child-work.updated')).toEqual([
+      expect.objectContaining({
+        delta: expect.objectContaining({
+          kind: 'snapshot',
+          running: expect.arrayContaining([
+            expect.objectContaining({ childId: 'sub-63' }),
+          ]),
+        }),
+      }),
+    ]);
+    feed(roster(65));
+    expect(of('child-work.updated')).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(
+      'ACP subagent roster exceeds the child-work bound; its running set is not published',
+      { running: 65, max: 64 },
+    );
   });
 
   test('a subagent frame with no usable id, or an unknown status word, maps fail-closed', () => {

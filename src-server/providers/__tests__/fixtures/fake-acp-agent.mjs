@@ -37,7 +37,8 @@
 //                        `wait-ms` {ms}, `session-update` {update} (one
 //                        `session/update` sent as given)
 // Client-to-engine extension requests are answered from the profile's
-// `extMethodAnswers` ({ "<method>": { result } | { error } }) and recorded as
+// `extMethodAnswers` ({ "<method>": { result } | { error }, optional
+// `delayMs` before answering }) and recorded as
 // `{ extMethod, params }`; any other is refused -32601. `session/load`,
 // `session/fork` and `session/delete` are answered and recorded too.
 //
@@ -379,10 +380,12 @@ const app = acp
       await runStep(step, params.sessionId, client);
     return { stopReason: 'end_turn' };
   })
-  .onRequest('*', ({ method, params }) => {
+  .onRequest('*', async ({ method, params }) => {
     record({ extMethod: method, params });
     const answer = profile.extMethodAnswers?.[method];
     if (!answer) throw acp.RequestError.methodNotFound(method);
+    if (answer.delayMs)
+      await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
     if (answer.error)
       throw new acp.RequestError(
         answer.error.code,

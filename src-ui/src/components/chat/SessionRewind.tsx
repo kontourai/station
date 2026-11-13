@@ -11,7 +11,9 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -75,10 +77,17 @@ export function sessionRewindFailureText(
  */
 export function SessionRewindProvider({
   executionThreadId,
+  openTurnId,
   children,
 }: {
   /** The session that holds the engine now; absent on a read-only view. */
   executionThreadId: string | undefined;
+  /**
+   * The conversation's open turn, when one is open. A turn's start is when
+   * an idle session's engine comes back, and its end is when a rewind can
+   * run, so each change re-reads the continuity.
+   */
+  openTurnId?: string;
   children: ReactNode;
 }) {
   const connection = useOptionalConversationConnection();
@@ -86,6 +95,17 @@ export function SessionRewindProvider({
   const continuity = useSessionLiveContinuityQuery(executionThreadId, apiBase, {
     readTarget: connection?.station,
   });
+  const { refetch: refetchContinuity } = continuity;
+  const firstTurnRead = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `openTurnId` is the trigger, not an input; each change re-reads.
+  useEffect(() => {
+    // Mounting already read it; only a later change re-reads.
+    if (firstTurnRead.current) {
+      firstTurnRead.current = false;
+      return;
+    }
+    if (executionThreadId) void refetchContinuity();
+  }, [openTurnId, executionThreadId, refetchContinuity]);
   const rewind = useRewindSessionToTurnMutation(
     apiBase,
     connection?.requestScope,

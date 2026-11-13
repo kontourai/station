@@ -630,6 +630,42 @@ describe.skipIf(process.platform === 'win32')(
       });
     });
 
+    test('no turn starts while a rewind waits on the engine, and the rewind hides only what it was asked to', async () => {
+      const engine = launch(
+        {
+          ...profileOf('kiro-v3'),
+          extMethodAnswers: {
+            ...(profileOf('kiro-v3').extMethodAnswers as Record<
+              string,
+              unknown
+            >),
+            '_kiro/checkpoint/revertMultiple': {
+              delayMs: 800,
+              result: { success: true, affectedFiles: [], totalFiles: 0 },
+            },
+          },
+        },
+        [{ kind: 'user-message-id' }, { kind: 'text', text: 'ok' }],
+      );
+      await engine.start('rewind-race');
+      const first = await engine.send('rewind-race', 'one');
+      await engine.completed(first);
+      const rewinding = engine.adapter.rewindSession('rewind-race', first);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await expect(engine.send('rewind-race', 'two')).rejects.toMatchObject({
+        name: 'SendTurnRefusedError',
+      });
+      expect(await rewinding).toMatchObject({
+        kind: 'rewound',
+        hiddenTurnIds: [first],
+      });
+      expect(
+        engine.record().filter((entry) => entry.method === 'session/prompt'),
+      ).toHaveLength(1);
+      // Once the engine answered, the session takes turns again.
+      await engine.completed(await engine.send('rewind-race', 'three'));
+    });
+
     test('rewind is refused on an engine that declares none, and on a stopped session', async () => {
       const v2 = launch(profileOf('kiro-v2'), [{ kind: 'text', text: 'ok' }]);
       await v2.start('no-rewind');
@@ -816,8 +852,35 @@ describe.skipIf(process.platform === 'win32')(
           'utf8',
         ),
       );
-      const engine = launch(goose);
+      // It sends both Kiro subagent wires anyway: neither is read.
+      const engine = launch(goose, [
+        {
+          kind: 'notification',
+          method: '_kiro.dev/subagent/list_update',
+          params: {
+            sessionId: '$sessionId',
+            subagents: [{ sessionId: 'sub-1', status: { type: 'working' } }],
+          },
+        },
+        {
+          kind: 'session-update',
+          update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'tc-sub',
+            title: 'Sub-agent: researcher',
+            status: 'in_progress',
+            _meta: { kiro: { kind: 'agent-subtask', agentSubtaskId: 'sa-1' } },
+          },
+        },
+        { kind: 'text', text: 'ok' },
+      ]);
       await engine.start('no-subagents');
+      await engine.completed(await engine.send('no-subagents', 'go'));
+      expect(
+        engine.events
+          .filter((event) => event.method === 'child-work.updated')
+          .map((event) => (event as { delta: { kind: string } }).delta.kind),
+      ).toEqual(['not-reported']);
       expect(
         await waitFor(
           () =>

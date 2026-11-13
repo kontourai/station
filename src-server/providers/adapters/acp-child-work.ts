@@ -24,8 +24,17 @@ import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '../adapter-s
 
 /** The adapter-owned state these readers keep (part of the session record). */
 export interface AcpChildWorkState {
+  /**
+   * The subagent wires this session's handshake identifies its engine as
+   * sending (`acpSubagentWires`), set by the adapter at session start. A
+   * frame on any other wire publishes nothing: the session already said its
+   * child work is not reported.
+   */
+  acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
   /** Running subagents a v3 `agent-subtask` frame reported, by child id. */
   acpSubagents?: Map<string, ChildWorkItem>;
+  /** Roster children already settled, so a repeated roster does not settle them again. */
+  acpSettledSubagents?: Set<string>;
 }
 
 export interface AcpChildWorkContext {
@@ -33,7 +42,12 @@ export interface AcpChildWorkContext {
   activeTurnId?: string;
   publish: (event: CanonicalRuntimeEvent) => void;
   state?: AcpChildWorkState;
+  logger?: {
+    warn: (message: string, fields?: Record<string, unknown>) => void;
+  };
 }
+
+export type AcpSubagentWire = 'roster' | 'agent-subtask';
 
 /**
  * Engines whose subagent frames this module maps, keyed on what the live
@@ -43,30 +57,34 @@ export interface AcpChildWorkContext {
  */
 const ACP_SUBAGENT_REPORTERS: ReadonlyArray<{
   identity: AcpHandshakeIdentity;
-  wire: string;
+  wire: AcpSubagentWire;
   observed: string;
 }> = [
   {
+    // `_kiro.dev/subagent/list_update`
     identity: { agentInfoName: 'Kiro CLI Agent' },
-    wire: '_kiro.dev/subagent/list_update',
+    wire: 'roster',
     observed:
       'kirocrew test/fixtures/acp_frames/kiro/notifications.jsonl; dashboard/chat_turn/native_cards.py _native_subagent_sync',
   },
   {
+    // `tool_call` with `_meta.kiro.kind: agent-subtask`
     identity: { capabilityMetaNamespace: 'kiro' },
-    wire: 'tool_call _meta.kiro.kind = agent-subtask',
+    wire: 'agent-subtask',
     observed:
       'kirocrew acp/session_handle_native_children.py _handle_kas_subagent; test/test_kas_subagent_progress.py',
   },
 ];
 
-/** Whether this session's engine is one whose subagent frames are mapped. */
-export function acpReportsSubagents(
+/** The subagent wires this session's engine is identified as sending. */
+export function acpSubagentWires(
   handshake: AcpIdentityHandshake | null | undefined,
-): boolean {
-  if (!handshake) return false;
-  return ACP_SUBAGENT_REPORTERS.some(({ identity }) =>
-    matchesAcpHandshakeIdentity(handshake, identity),
+): ReadonlySet<AcpSubagentWire> {
+  if (!handshake) return new Set();
+  return new Set(
+    ACP_SUBAGENT_REPORTERS.filter(({ identity }) =>
+      matchesAcpHandshakeIdentity(handshake, identity),
+    ).map(({ wire }) => wire),
   );
 }
 
@@ -107,6 +125,8 @@ export function acpChildWorkNotReportedEvent(
 }
 
 const CHILD_ID_MAX_CHARS = 256;
+/** Bound on roster children remembered as settled per session; oldest first out. */
+const CHILD_WORK_SETTLED_IDS_MAX = 1024;
 const LABEL_MAX_CHARS = 200;
 
 function childId(value: unknown): string | undefined {
@@ -226,7 +246,9 @@ export function publishAcpSubagentRoster(
   params: Record<string, unknown>,
   ctx: AcpChildWorkContext,
 ): void {
+  if (!ctx.state?.acpSubagentWires?.has('roster')) return;
   if (!Array.isArray(params.subagents)) return;
+  const settled = (ctx.state.acpSettledSubagents ??= new Set());
   const running: ChildWorkItem[] = [];
   const seen = new Set<string>();
   for (const entry of params.subagents) {
@@ -246,9 +268,26 @@ export function publishAcpSubagentRoster(
       kindLabel: label(entry.role) ?? label(entry.agentName),
     });
     const status = childStatus(statusWord);
-    if (!status.running) publishSettle(ctx, item, status.status);
-    else if (running.length < CHILD_WORK_ITEMS_MAX_PER_REPORTER)
-      running.push(item);
+    if (status.running) running.push(item);
+    else if (!settled.has(id)) {
+      // The roster restates finished children every time; each is settled
+      // once. The set is bounded like the registry it feeds.
+      settled.add(id);
+      if (settled.size > CHILD_WORK_SETTLED_IDS_MAX)
+        settled.delete(settled.values().next().value as string);
+      publishSettle(ctx, item, status.status);
+    }
+  }
+  // The running set is authoritative: a child it leaves out reads
+  // `unresolved`. One cut to the registry's bound would mark live children
+  // ended, so an oversized roster publishes no running set at all and the
+  // last one stands.
+  if (running.length > CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
+    ctx.logger?.warn(
+      'ACP subagent roster exceeds the child-work bound; its running set is not published',
+      { running: running.length, max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
+    );
+    return;
   }
   publishSnapshot(ctx, running);
 }
@@ -266,7 +305,7 @@ export function publishAcpAgentSubtask(
   ctx: AcpChildWorkContext,
 ): void {
   const id = childId(meta.agentSubtaskId);
-  if (!id || !ctx.state) return;
+  if (!id || !ctx.state?.acpSubagentWires?.has('agent-subtask')) return;
   const roster = (ctx.state.acpSubagents ??= new Map());
   const known = roster.get(id);
   const title = label(update.title);
@@ -283,7 +322,15 @@ export function publishAcpAgentSubtask(
   const status = childStatus(statusWord);
   if (status.running) {
     if (known) return;
-    if (roster.size >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) return;
+    // Past the registry's bound a new child is not tracked: it is never
+    // shown running, and its end is ignored. Logged, so the gap is visible.
+    if (roster.size >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
+      ctx.logger?.warn(
+        'ACP agent-subtask past the child-work bound is not tracked',
+        { max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
+      );
+      return;
+    }
     roster.set(id, item);
     publishSnapshot(ctx, [...roster.values()]);
     return;

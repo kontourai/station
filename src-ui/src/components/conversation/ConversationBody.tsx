@@ -1876,6 +1876,7 @@ function LiveConversationBody({
           ? undefined
           : (activeSession.currentSessionId ?? activeSession.id)
       }
+      openTurnId={activeSession.conversationActivity?.openTurn?.turnId}
     >
       {!activeSession.replay && (
         <CoordinatorToolsNotice

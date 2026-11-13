@@ -161,6 +161,25 @@ describe('Rewind conversation to here', () => {
     expect(screen.getByText('no actions')).toBeTruthy();
   });
 
+  test('a turn starting or ending re-reads the continuity, so an engine started by that turn is seen', () => {
+    const tree = (openTurnId?: string) => (
+      <SessionRewindProvider
+        executionThreadId="session-1"
+        openTurnId={openTurnId}
+      >
+        <Row sessionId="session-1" turnId="turn-2" />
+      </SessionRewindProvider>
+    );
+    const { rerender } = render(tree());
+    expect(refetch).not.toHaveBeenCalled();
+    rerender(tree('turn-3'));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    rerender(tree('turn-3'));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    rerender(tree(undefined));
+    expect(refetch).toHaveBeenCalledTimes(2);
+  });
+
   test('a read-only view offers nothing', () => {
     view({ sessionId: 'session-1', turnId: 'turn-2' }, {});
     expect(screen.getByText('no actions')).toBeTruthy();

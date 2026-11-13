@@ -293,7 +293,8 @@ function replayAcpFrames(
     session,
     activeTurnId: 'turn-acp',
     publish: (event) => events.push(event),
-    state: {},
+    // A Kiro session: its handshake names both subagent wires.
+    state: { acpSubagentWires: new Set(['roster', 'agent-subtask']) },
     toolUpdateSupervisor: new AcpToolUpdateSupervisor(session, (event) =>
       events.push(event),
     ),

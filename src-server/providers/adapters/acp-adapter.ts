@@ -231,8 +231,9 @@ import {
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
 import {
+  type AcpSubagentWire,
   acpChildWorkNotReportedEvent,
-  acpReportsSubagents,
+  acpSubagentWires,
 } from './acp-child-work.js';
 import {
   acpCommandAnswer,
@@ -801,6 +802,10 @@ export interface AcpSessionRecord {
    * option the engine sends after answering `session/new`.
    */
   configOptionWaiters?: Set<() => void>;
+  /** The subagent wires the handshake identified (`acp-child-work.ts`). */
+  acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
+  /** An in-place rewind is waiting on the engine; no turn may start. */
+  rewinding?: boolean;
   turnMessages?: Array<{
     turnId: string;
     firstMessageId: string;
@@ -1535,6 +1540,9 @@ export class AcpAdapter implements ProviderAdapterShape {
 
     try {
       await acpProcess.start();
+      // Known from `initialize` on, so a subagent frame during session start
+      // is read under the same identity.
+      record.acpSubagentWires = acpSubagentWires(acpProcess.initResult);
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.startedPublished = true;
       this.publish({
@@ -2345,7 +2353,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // ACP has no subagent concept: an engine whose handshake names no
       // subagent reporter cannot say what runs under it, which is not the
       // same as nothing running.
-      if (!acpReportsSubagents(acpProcess.initResult))
+      if (!record.acpSubagentWires?.size)
         this.publish(acpChildWorkNotReportedEvent(input.threadId));
 
       return session;
@@ -2551,9 +2559,11 @@ export class AcpAdapter implements ProviderAdapterShape {
     // send that provably never started. The turn-start coordinator does not
     // refuse this case first: it serializes turn STARTS, and an accepted
     // turn that is still running does not block its claim.
-    if (record.activeTurnId) {
+    if (record.activeTurnId || record.rewinding) {
       throw new SendTurnRefusedError(
-        `ACP session '${input.threadId}' already has an active turn.`,
+        record.rewinding
+          ? `ACP session '${input.threadId}' is rewinding.`
+          : `ACP session '${input.threadId}' already has an active turn.`,
         'busy',
       );
     }
@@ -2713,6 +2723,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       if (applied.configOptions) record.configOptions = applied.configOptions;
     }
+    // A rewind that began while this send prepared the engine owns the
+    // session until it answers; the send is refused retryably, before its
+    // prompt reached the engine.
+    if (record.rewinding || record.activeTurnId)
+      throw new SendTurnRefusedError(
+        `ACP session '${input.threadId}' is busy rewinding or running a turn.`,
+        'busy',
+      );
     record.activeTurnId = turnId;
     record.activeTurnOrigin =
       input.invocationId === undefined
@@ -3427,11 +3445,17 @@ export class AcpAdapter implements ProviderAdapterShape {
       return { kind: 'refused', reason: 'not-live' };
     const binding = resolveAcpRewind(record.process.initResult);
     if (!binding) return { kind: 'refused', reason: 'unsupported' };
-    if (record.activeTurnId) return { kind: 'refused', reason: 'turn-running' };
-    const turns = record.turnMessages ?? [];
+    if (record.activeTurnId || record.rewinding)
+      return { kind: 'refused', reason: 'turn-running' };
+    // A snapshot: the ledger the engine is rewound against, whatever the
+    // live record holds when its answer arrives.
+    const turns = [...(record.turnMessages ?? [])];
     const index = turns.findIndex((entry) => entry.turnId === turnId);
     const point = turns[index];
     if (!point) return { kind: 'refused', reason: 'unknown-turn' };
+    // `sendTurn` refuses to start a turn while this is set, so no turn can
+    // reach the engine (or this ledger) between the request and its answer.
+    record.rewinding = true;
     let answer: ReturnType<typeof readAcpRewindAnswer>;
     try {
       answer = readAcpRewindAnswer(
@@ -3450,6 +3474,8 @@ export class AcpAdapter implements ProviderAdapterShape {
             ? failure.message
             : `${record.engineName} has no rewind on this session.`,
       };
+    } finally {
+      record.rewinding = false;
     }
     if (!answer.success)
       return {
