@@ -8,6 +8,7 @@ import {
   useRef,
 } from 'react';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
+import { useClipboardImagePaste } from '../../hooks/useClipboardImagePaste';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
@@ -16,7 +17,7 @@ import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { Button } from '../Button';
 import { ComposerAttachmentStrip } from '../chat/ComposerAttachmentStrip';
 import { IconButton } from '../IconButton';
-import { AttachmentGlyph } from '../icons/Glyph';
+import { AttachmentGlyph, PasteGlyph } from '../icons/Glyph';
 import { composerEnterAction, useTouchKeyboard } from './composerKeys';
 import './RoomComposer.css';
 import { useKeepAboveKeyboard } from './useKeepAboveKeyboard';
@@ -126,6 +127,12 @@ export function RoomComposer({
   });
   const picker = useFileAttachment({
     onFilesSelected: (files) => port?.selectFiles(files),
+  });
+  // Paste image: mobile WebViews offer no Paste for an image-only clipboard,
+  // so the clipboard's images enter through the same port as Attach.
+  const clipboard = useClipboardImagePaste({
+    onFiles: async (files) => port?.selectFiles(files),
+    onMessage: (message) => port?.setError(message),
   });
 
   const send = () => {
@@ -252,6 +259,17 @@ export function RoomComposer({
               >
                 <AttachmentGlyph />
               </IconButton>
+              {clipboard.available && (
+                <IconButton
+                  aria-label="Paste image"
+                  title="Paste image"
+                  className="room-composer__tool"
+                  disabled={attachLocked || port.busy || clipboard.pending}
+                  onClick={() => void clipboard.paste()}
+                >
+                  <PasteGlyph />
+                </IconButton>
+              )}
             </>
           )}
           {tools}

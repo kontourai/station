@@ -38,3 +38,16 @@
   color: var(--k-text-muted);
   line-height: 1.4;
 }
+
+/* Station switcher status lines: a state, then its reason and age. Rows get
+   vertical room so a wrapped line never runs into the next Station's name. */
+.station-switcher__identity {
+  gap: 2px;
+}
+/* Compound: `.menu-row` (index.css) resets padding at equal specificity. */
+.menu-row.station-switcher__row {
+  padding-block: var(--k-space-2);
+}
+.station-switcher__status {
+  line-height: 1.3;
+}

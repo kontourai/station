@@ -297,3 +297,74 @@ describe("a delegated result into a parent that is not a Task's (#4512 review)",
     ).toBe('interactive');
   });
 });
+
+/**
+ * #4827 fix round 2: a message a person typed and queued keeps its mark
+ * through the inbox, so placement stamps the turn as theirs; nothing else
+ * placed from the inbox is marked.
+ */
+describe('a queued message keeps whether a person typed it (#4827)', () => {
+  const person = origin({ kind: 'operator' });
+
+  test('placement forwards the mark of an entry a person typed', async () => {
+    const { place } = await port();
+    const placed = await place('session-unbound', {
+      message: 'Then force-push it.',
+      actor,
+      clientOrigin: person,
+      authoredBy: 'person',
+    });
+    expect(placed.input.personAuthored).toBe(true);
+  });
+
+  test.each([
+    ['an unmarked entry from a person credential', { clientOrigin: person }],
+    [
+      "a child's result",
+      {
+        clientOrigin: origin(
+          { kind: 'internal' },
+          { kind: 'delegation-result', sessionId: 'child' },
+        ),
+      },
+    ],
+  ])('placement does not mark %s', async (_label, extra) => {
+    const { place } = await port();
+    const placed = await place('session-unbound', {
+      message: 'm',
+      actor,
+      ...extra,
+    });
+    expect(placed.input.personAuthored).toBeUndefined();
+  });
+
+  test('a stored entry keeps the mark and reads back nothing else as one', async () => {
+    const { decodePayload } = await import(
+      '../../../services/orchestration/thread-inbox.js'
+    );
+    const store = new EventStore(
+      join(makeTempDir('station-start-ports-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    const inbox = store.threadInboxStore();
+    for (const [key, authoredBy] of [
+      ['marked', 'person'],
+      ['forged', 'agent'],
+    ] as const)
+      inbox.submit({
+        conversationId: 'c',
+        clientTurnId: key,
+        payload: {
+          message: 'm',
+          actor,
+          clientOrigin: person,
+          authoredBy: authoredBy as 'person',
+        },
+        now: Date.now(),
+      });
+    const read = (key: string) =>
+      decodePayload(inbox.read('c', key)!.payload)?.authoredBy;
+    expect(read('marked')).toBe('person');
+    expect(read('forged')).toBeUndefined();
+  });
+});

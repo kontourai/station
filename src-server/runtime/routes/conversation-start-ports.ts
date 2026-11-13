@@ -51,6 +51,8 @@ export interface RecordedActorContinuation {
   inboxPlacement?: true;
   automaticBackground?: true;
   dispatchOrigin?: TurnDispatchOrigin;
+  /** #4827: forwarded from a queued entry a person typed; see `authoredBy`. */
+  personAuthored?: true;
 }
 
 /**
@@ -165,6 +167,9 @@ export function inboxPlacementStartPort(deps: StartPortDeps) {
         principal: payload.actor.principal,
         ownerAttribution: payload.actor.ownerAttribution,
         clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
+        ...(payload.authoredBy === 'person'
+          ? { personAuthored: true as const }
+          : {}),
         ...(payload.ambientContext
           ? { ambientContext: payload.ambientContext }
           : {}),

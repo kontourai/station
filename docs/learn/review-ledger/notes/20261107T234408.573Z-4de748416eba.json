@@ -1,0 +1,7 @@
+{
+  "revision": "0b13b4d266a290b7ff5d17d4fe042069dc3b359c",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Changed input is docs/learn/walkthroughs.md, where one caption sentence gained 'row status badges' among the changes the Connections captures predate. Checked the 'Successful persistence does not establish usable presentation' section: it cites #2843/#2844 and says the walkthroughs retain observed appearance and distinguish persisted state from sample responses; the walkthroughs still do both, so the claim is unaffected.","inputs":["docs/architecture/abstraction-review.md","docs/learn/walkthroughs.md"]}
+  ]
+}

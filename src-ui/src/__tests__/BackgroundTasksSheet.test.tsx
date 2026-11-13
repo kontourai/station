@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { BackgroundTaskEntry } from '../contexts/background-tasks-store';
+import { formatDateTime } from '../utils/relativeTime';
 import type { SessionIconAgent } from '../utils/sessionDisplay';
 
 const agents: SessionIconAgent[] = [];
@@ -136,9 +137,9 @@ describe('BackgroundTasksSheet', () => {
   test('renders the empty state when there are no running or finished tasks', () => {
     renderSheet({ running: [], finished: [] });
     expect(screen.getByText('Nothing to show')).not.toBeNull();
-    expect(screen.getByText(/Recent activity only/).textContent).toContain(
-      'closed-chat history may be missing.',
-    );
+    expect(
+      screen.getByText('Recent tasks only. Remote tasks are in Activity.'),
+    ).not.toBeNull();
   });
 
   test('renders a Running section with a count and the Activity disclosure', () => {
@@ -147,9 +148,7 @@ describe('BackgroundTasksSheet', () => {
       finished: [],
     });
     expect(screen.getByText('Running (2)')).not.toBeNull();
-    expect(
-      screen.getByText(/Find remote delegations in Activity\./),
-    ).not.toBeNull();
+    expect(screen.getByText(/Remote tasks are in Activity\./)).not.toBeNull();
     expect(
       screen.queryByText('Remote delegations appear on the Sessions page.'),
     ).toBeNull();
@@ -212,13 +211,75 @@ describe('BackgroundTasksSheet', () => {
     expect(screen.getAllByText('Investigate flaky test').length).toBe(2);
   });
 
-  test('a running entry with no detail renders a disabled (non-expandable) row', () => {
+  /**
+   * The collapsed row clips its title to one line and shows no times, so a
+   * row with no progress text and no transcript still opens onto its full
+   * title, status and timing. Restoring the old "no detail → disabled row"
+   * gate fails the click; dropping the facts list fails the reads.
+   */
+  test('a row with no detail still expands onto its full title, tool and timing', () => {
+    const title =
+      'CI failures and merges for every open pull request in the release queue';
+    const startedAt = Date.parse('2026-07-29T00:00:05.000Z');
+    const endedAt = Date.parse('2026-07-29T00:01:00.000Z');
     renderSheet({
-      running: [runningEntry({ detail: undefined })],
-      finished: [],
+      running: [
+        runningEntry({
+          title: 'Run tests',
+          toolName: 'local_bash',
+          toolInput: 'pnpm vitest run',
+        }),
+      ],
+      finished: [
+        finishedEntry({
+          title,
+          delegationTitle: 'Release queue sweep',
+          latestTool: 'local_bash',
+          detail: undefined,
+          startedAt,
+          endedAt,
+          state: 'failed',
+        }),
+      ],
     });
-    const row = screen.getByRole('button', { name: /Run tests/ });
-    expect(row.hasAttribute('disabled')).toBe(true);
+    const facts = (row: HTMLElement) => {
+      fireEvent.click(row);
+      expect(row.getAttribute('aria-expanded')).toBe('true');
+      const list = row
+        .closest('li')
+        ?.querySelector('.background-tasks-sheet__facts');
+      expect(list).not.toBeNull();
+      return Object.fromEntries(
+        [...list!.querySelectorAll('dt')].map((dt) => [
+          dt.textContent,
+          dt.nextElementSibling?.textContent,
+        ]),
+      );
+    };
+
+    const runningRow = screen.getByRole('button', { name: /Run tests/ });
+    expect(runningRow.hasAttribute('disabled')).toBe(false);
+    expect(facts(runningRow)).toMatchObject({
+      Task: 'Run tests',
+      Tool: 'local_bash',
+      Input: 'pnpm vitest run',
+      Status: 'Running',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Recent activity/ }));
+    const finished = facts(
+      screen.getByRole('button', { name: new RegExp(title) }),
+    );
+    expect(finished).toMatchObject({
+      Task: title,
+      Delegation: 'Release queue sweep',
+      'Latest tool': 'local_bash',
+      Started: formatDateTime(startedAt),
+      Ended: formatDateTime(endedAt),
+    });
+    expect(finished.Started).not.toBe(finished.Ended);
+    // The outcome is already the row's chip.
+    expect(finished.Status).toBeUndefined();
   });
 
   test('a running entry with detail expands on click to reveal it', () => {
@@ -404,7 +465,11 @@ describe('BackgroundTasksSheet', () => {
     ).toBe(true);
     expect(screen.getByText('150 tokens · 1 tool use')).not.toBeNull();
     expect(screen.queryByText('Audit the release workflow')).toBeNull();
-    expect(screen.getByText('Run tests')).not.toBeNull();
+    expect(
+      screen.getByText('Run tests', {
+        selector: '.background-tasks-sheet__title',
+      }),
+    ).not.toBeNull();
   });
 
   // archive#4196: "N tokens" must not present a cache-exclusive figure as

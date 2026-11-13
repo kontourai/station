@@ -118,6 +118,7 @@ import {
   QueryClient,
   QueryClientProvider,
   useQuery,
+  useQueryClient,
 } from '@tanstack/react-query';
 import {
   type AsyncStorage,
@@ -137,7 +138,7 @@ import {
   notifyPluginCommandEffectAuthoritySwitch,
   notifyPluginCommandEffectCookieAuthEligibility,
 } from '../components/plugin-command-effect-switch-signal';
-import { StartupScreen } from '../components/StartupScreen';
+import { StationConnectingScreen } from '../components/StationConnectingScreen';
 import { retireStationConnectionRegistries } from '../connections/station-connection-registry';
 import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
 import {
@@ -380,6 +381,19 @@ export function AuthorityQueryProvider({
   const reobserve = useCallback(() => {
     void refetchObservation();
   }, [refetchObservation]);
+  // A first read still in flight has no data, and React Query's `refetch`
+  // joins such a fetch rather than restarting it. "Try again" therefore
+  // RESETS the query: that aborts the stuck read and refetches from an empty
+  // state. `cancelQueries` would revert to the pre-fetch state instead, which
+  // for a re-read of a previously verified key is a settled success, and
+  // would verify a non-live observation for a render.
+  const observationClient = useQueryClient();
+  const observationKeyText = JSON.stringify(observationKey);
+  const restartObservation = useCallback(() => {
+    const queryKey: unknown[] | null = JSON.parse(observationKeyText);
+    if (!queryKey) return;
+    void observationClient.resetQueries({ queryKey, exact: true });
+  }, [observationClient, observationKeyText]);
 
   // A cached success from a previous activation must never verify the
   // current one: while the current key's fetch is in flight React Query
@@ -681,7 +695,14 @@ export function AuthorityQueryProvider({
     // Let the native aggregate seed before boot-critical hooks mount; otherwise
     // it would compete with the individual requests it is meant to replace.
     if (profile.isTauri && nativeBootFinished !== active.queryClient) {
-      return <StartupScreen message="Loading Station" />;
+      // The Station already answered; only its data is still loading.
+      return (
+        <StationConnectingScreen
+          key={`${observationKeyText}:loading`}
+          step="Loading Station"
+          answered
+        />
+      );
     }
     return (
       <AuthorityPersistenceContext.Provider
@@ -744,7 +765,13 @@ export function AuthorityQueryProvider({
     <AuthorityPersistenceContext.Provider
       value={{ status: 'unavailable', namespace: null, observation: null }}
     >
-      <StartupScreen message="Checking Station access" />
+      <StationConnectingScreen
+        // Keyed on the observation's identity: a credential change starts a
+        // new read, so it starts a new wait too.
+        key={`${observationKeyText}:checking`}
+        step="Checking Station access"
+        onRetry={restartObservation}
+      />
     </AuthorityPersistenceContext.Provider>
   );
 }

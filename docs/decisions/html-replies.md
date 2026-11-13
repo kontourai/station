@@ -37,7 +37,9 @@ forwards only bounded HTTP(S) link requests. It has no MCP AppBridge, tool calls
 resource reads, message sending, or session APIs. Even a forged link message
 requires confirmation in trusted Station chrome before external opening.
 The viewer checks both the frame window and its exact origin on every message.
-An absent or same-origin frame configuration refuses rendering.
+A same-origin frame configuration refuses rendering. A client the frame
+listener cannot serve renders in the opaque-origin fallback described in the
+remote-client amendment.
 
 `prepareHtmlReply` accepts a caller-owned authorized workspace root, never a
 root chosen by public tool input. Quoted absolute PNG/JPEG/GIF/WebP paths in
@@ -231,3 +233,27 @@ named skip with the missing executable path. The process-heavy CI lane installs
 Chromium alone, so WebKit viewer-residual evidence is local-only and is not a
 claim of WebKit verification by that lane. Neither engine's absence is treated
 as a passing browser execution.
+
+## Remote-client amendment (2026-11-12, #4821)
+
+The sandbox listener binds the host's loopback, so only a browser on the
+Station host can reach it. Every client used to receive its origin, and the
+phone app showed a refused connection instead of the reply. The owner chose to
+render for those clients rather than refuse:
+
+- The server offers the origin only when `isSameMachineBrowserCaller` holds:
+  for page reads, visual-file previews, and the MCP Apps origin in
+  `/config/app` and `/api/boot`. Plugin frames still receive it, because they
+  have no fallback.
+- Without it, `HtmlReply` renders the same page document in one
+  `sandbox="allow-scripts"` frame with an opaque origin. The page's CSP still
+  comes first, the theme is written as CSS, and links are accepted only from
+  that frame with origin `null`.
+
+Accepted residual risks, for those clients only: there is no outer proxy frame,
+so the page is a direct child of Station's window (listeners pinned to exact
+origins still refuse `null`); and the page inherits the app's CSP rather than
+`frame-src 'none'`, which may also block its inline scripts.
+
+Evidence: `runtime-routes-html-replies.test.ts` and `HtmlReply.test.tsx`; fault
+injection of either rule fails its test.

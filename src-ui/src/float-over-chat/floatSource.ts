@@ -62,3 +62,14 @@ export function deviceFloatSourceKey(device: {
 }): string {
   return `device:${encodeURIComponent(device.hostId)}:${device.platform}:${encodeURIComponent(device.deviceId)}`;
 }
+
+/** Visibility is scoped separately from persisted dismissal identity. */
+export function browserShownSourceKey(
+  browserSessionId: string,
+  apiBase: string,
+  authorityKey: string | undefined,
+): string {
+  return authorityKey
+    ? `browser-shown:${JSON.stringify([apiBase, authorityKey, browserSessionId])}`
+    : browserFloatSourceKey(browserSessionId);
+}

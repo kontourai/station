@@ -402,6 +402,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/chat-replay.spec.ts',
     'tests/transcript-load-stability.spec.ts',
     'tests/chat-history-reopen.spec.ts',
+    // Every API read is a route of mockChatShell and the spec's own fixtures.
+    'tests/chat-dock-inbox-open.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
@@ -426,6 +428,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-provider-picker.spec.ts',
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
+    'tests/inline-browser-activity.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
     'tests/approval-spilled-content.spec.ts',
@@ -455,6 +458,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   ],
   sharedInstanceExclusive: [
     'tests/station-connection-chat.spec.ts',
+    // Creates real Projects, channels and read markers on the instance.
+    'tests/project-channel-navigation.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
@@ -1192,6 +1197,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/project-channel-navigation.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4794/#4795 on a real Station: server read markers drive sidebar bold and clear for a second client; keyboard Up/Down/Enter; phone channel list pushes a full-screen channel, send, thread page, Back restores the list scroll; no horizontal scroll at 390 and 360.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-dock-inbox-open.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      '#4814: a stored conversation with no open chat opens its transcript from the dock inbox; the selection survives the bind that sets the row chatSessionId.',
+    exceptions: [],
+  },
+  {
     path: 'tests/toolbar-reachability.spec.ts',
     bucket: 'product',
     surface: 'App toolbar',
@@ -1617,6 +1642,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted orchestration chat flow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/inline-browser-activity.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Browser activity',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real conversation rendering with scoped browser-session fixtures: preview-off fallback, browser/tool grouping, Float and Bring back, settled history, and phone/desktop captures in both themes. The unavailable stream fixture does not qualify frame delivery.',
     exceptions: [],
   },
   {

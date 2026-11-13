@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Checked top status note against ConnectionsHub.tsx (CONNECTIONS_RESOLVE_WAIT_MS 1.5 s, SkeletonBlock loading state, resolves once to firstNeedingAttention or /connections/models) and connection-health.ts needsAttention (resting states unmarked, policy-refused engine unmarked); edited the note to match. Section 4 (unified-hub readiness list) is labelled historical and was left as is; rail sections in connection-sections.ts unchanged (only ENGINE_DETAIL_TABS added). providerCatalog.tsx change is a type export only.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
+  ]
+}

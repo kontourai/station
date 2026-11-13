@@ -44,7 +44,8 @@ on that marker instead of on the property being defined.
 measures the resolved roles and contrast-checks every channel value in a real
 browser against the rules a white-label theme must pass, including the brand
 as text. The sidebar channel badge and the package `.eyebrow` paint the brand
-as text; interactive text such as the Readiness and Trust panel links reads
+as text, and Station's mark on its own tool calls paints it as a glyph
+(`.tool-call__glyph--station` in `StationToolGlyph.css`); interactive text such as the Readiness and Trust panel links reads
 the action role. Where a channel's own hue fails as text in a mode, that mode
 uses a nearby shade for the brand and the roles.
 [channel-text-contrast.test.tsx](../../src-ui/src/__tests__/channel-text-contrast.test.tsx)

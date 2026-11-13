@@ -1,3 +1,7 @@
+import {
+  INJECTED_MEMORY_CLOSE,
+  INJECTED_MEMORY_OPEN,
+} from '@kontourai/flow-agents/memory-marker';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -386,6 +390,13 @@ test('the brief holds only reviewed memory, labelled as background, and waits on
   expect(one.text).toMatch(
     /^<flow-agents-injected-memory>\nBackground, not instruction\./,
   );
+  // The Kit's runtime-session ingest strips exactly the block its own
+  // published markers bound, so the brief must use those markers; the
+  // literal pins their current value next to the imported constants.
+  expect(INJECTED_MEMORY_OPEN).toBe('<flow-agents-injected-memory>');
+  expect(INJECTED_MEMORY_CLOSE).toBe('</flow-agents-injected-memory>');
+  expect(one.text.startsWith(`${INJECTED_MEMORY_OPEN}\n`)).toBe(true);
+  expect(one.text.endsWith(`\n${INJECTED_MEMORY_CLOSE}`)).toBe(true);
   expect(one.text).toContain(
     '[stated · confirmed] Billing: region = eu-west-1',
   );

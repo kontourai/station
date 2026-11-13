@@ -1,0 +1,7 @@
+{
+  "revision": "3c49101de1ce3239d166abacbeaf2d8ab1c0df30",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-read for the connect.md checkedAt addition and the switcher copy: the Station vocabulary rules (Station, Forget, no host/profile/connection for the record) still hold; new copy says Station and uses connection only in the connectivity sense. No glossary change needed.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

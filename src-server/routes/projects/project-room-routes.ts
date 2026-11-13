@@ -1,5 +1,6 @@
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import {
+  PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
   parseProjectRoomAgentRequestInput,
   parseProjectRoomAppendInput,
   parseProjectRoomChannelCreateInput,
@@ -11,6 +12,7 @@ import {
 } from '@kontourai/station-contracts/project-room';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import { ProjectNotFoundError } from '../../domain/project-file-transactions.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type {
@@ -109,6 +111,12 @@ export function createProjectRoomRoutes(
         );
       if (error instanceof ProjectMembershipRefusal)
         return c.json({ error: { code: 'project_room_access_changed' } }, 403);
+      // No such Project on this Station: not an outage (#4855).
+      if (error instanceof ProjectNotFoundError)
+        return c.json(
+          { error: { code: PROJECT_ROOM_PROJECT_NOT_FOUND_CODE } },
+          404,
+        );
       logger.error('Project Room operation unavailable', { error });
       return c.json({ error: { code: 'project_room_unavailable' } }, 503);
     }

@@ -127,12 +127,12 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/feature-previews/` | The registry of feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
-| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
+| `src-server/services/read-markers/` | Server-kept read state per person and conversation: agent conversations by content version (the event store's maintained `orchestration_thread_content` projection), Project rooms (every channel, `#general` included) and Task rooms by record sequence, all in `read-markers.json`; monotonic, never past the current version, batched summary, one-time upgrade from the time-based format (#3075) | [Read marker contracts](../reference/contracts.md#read-marker-contracts) |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
 | `src-server/services/session-summary/` | Session summary records and the server-observed intent source they are derived from | Source |
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
 | `src-server/services/tailscale/` | This Station's public tailnet origin, asked of Tailscale rather than taken from a request | [Remote access threat model](../security/remote-access-threat-model.md) |
-| `src-server/services/webhooks/` | Inbound webhook HMAC authorization, replay ledger and audit store for `POST /api/webhooks/inbound`, configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
+| `src-server/services/webhooks/` | Station's bindings for the Telltale `webhook` source that verifies `POST /api/webhooks/inbound` (credential lookup, durable replay ledger, audit store), plus the start-grant check; configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
 | `src-server/services/work-item-providers/` | Local and flow-agents work-item provider backends behind one provider seam; GitHub tracker reads and Task follow-up polling (#4508) | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) |
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
@@ -524,10 +524,16 @@ limits and the remaining encrypted-path acceptance.
 ## RegistrySourceManager
 
 [The source manager](../../src-server/providers/registries/registry-source-manager.ts)
-composes the existing visible Skill/plugin providers with user-added local
-Skill directories, public GitHub libraries and local/HTTPS Station manifests.
-It persists source configuration and last successful bounded snapshots under
-the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
+composes the existing visible Skill/plugin providers with sources a person
+adds by location and optional ref. [Detection](../../src-server/providers/registries/registry-source-detection.ts)
+reads each source within fixed bounds, refusing rather than truncating past
+them, and [reads a folder source only inside itself](../../src-server/providers/registries/confined-local-read.ts),
+following no link. Root indexes (a Station manifest, a Claude Code marketplace) decide the
+kinds they declare, a structural scan finds the rest, and one source can supply
+skills, plugins and agents through one catalog entry per kind
+([decision](../decisions/registry-sources-detected-by-structure.md)). It
+persists source configuration, detections and last successful bounded snapshots
+under the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
 refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
 and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
 uses the current local inventory and source ownership aliases for live and
@@ -1176,9 +1182,11 @@ reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
 StrictMode/remounts share one module-owned attempt. The host retains early
 page/mount facts until DesktopServerState exists and replays them in order.
 
-While waiting on macOS, the host can show a native startup cover laid out like
-the renderer startup screen: the application icon (which carries the channel
-art) centered at 96 pt and a short centered status line below it. The WebView
+While waiting on macOS, the host can show a native startup cover drawn like the
+renderer startup screen at rest: its background and text colors for the
+window's appearance, the channel mark and "tation" in Fraunces as one centered
+wordmark, the river track (with its moving crest unless Reduce Motion is on)
+and a short centered status line below it. The WebView
 stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
@@ -1224,8 +1232,9 @@ the in-app recovery UI, so it releases the loader at once for a terminal
 sidecar, or after that budget for a progressing one, and then stops polling.
 Because the mount commit sits outside `PlatformBootstrap`, identity commit plus
 renderer mount can reveal the window while the bootstrap is still authorizing. On macOS the cover switches
-in place to a "taking longer than usual" message with **Restart** (the default
-button) and **Quit**; a background (tray-only) launch defers it until
+in place to a "taking longer than usual" message, a line naming the usual cause
+(a one-time upgrade after an update), **Restart** (the default button) and
+**Quit**; a background (tray-only) launch defers it until
 activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
 that did not start, or an overdue cover task that failed) show a native dialog
 with **Restart**, **Quit** and **Keep Waiting**. The dialog does not block the
@@ -1912,6 +1921,42 @@ drives that composition through the real boundary, guard and routes per
 credential channel, with a real thread inbox. A person reads a conversation
 schedule with conversation read access; an agent may read its own.
 
+**Automation proposals (#4830).** `propose_automation_source` and
+`propose_automation_rule` follow the same pattern for Automation sources and
+rules ([decision](../decisions/agent-proposed-automations.md)). The
+[routes](../../src-server/routes/orchestration/automation-proposals.ts) read
+the conversation from the verified caller. Only a Session that acts for a
+recorded owner may propose, and only from a calling turn that started with
+the shared person mark (#4848). The calling turn is the Session's running
+turn by its persisted lifecycle fold
+(`OrchestrationService.stationControlCallingTurn`); it is `pending` while
+`ClientOriginTurnPropagation.holdsTurnStart` holds a start not yet stored.
+`proposingTurnId` decides, and the insert decides again inside its write
+transaction for the same turn. The calling turn is inferred, not known: a
+concurrent steer can clear a delegated continuation's reservation (known
+race), and an invocationless legacy start can leave a Session stuck
+`pending`; a turn-bound credential replaces the inference ([#4882](https://github.com/kontourai/station/issues/4882)). Everything else
+refuses (fail closed), including a delegated result that continues in a
+person's chat with `dispatchOrigin: interactive`.
+[Validation](../../src-server/services/automation/automation-proposals.ts)
+refuses anything wider than the caller's dispatch scope: actions other than
+`dispatch-task`, `auto` approval, and authority-bearing keys. The proposal
+records the untrusted-content mark (#3483) of the conversation, or of a child
+it delegated to, with Station's plain description, as a row on `EventStore`'s
+connection. It creates nothing. The chat schedule read lists open proposals
+as `automationProposals`, with the conversation's current untrusted mark
+(`untrustedContentNow`). A person's Confirm also needs the operator in
+person. It reruns the scope rule for the recorded proposer and requires each
+recorded Agent binding (slug, Project, definition digest) to be unchanged,
+before claiming and again inside the store's creation and enabling locks.
+It creates through `AutomationStore` under an id derived from the proposal
+(`automationIdForProposal`), so retries and startup reconciliation adopt
+rather than duplicate. It creates disabled or `observe` unless the
+confirmation sets `enable`, and records the mark at confirm. The
+[authority test](../../src-server/security/__tests__/automation-proposal-authority.routes.test.ts)
+drives the composition through the real boundary, guard, `EventStore`,
+`AutomationStore` and untrusted-content ledger.
+
 ## SessionDigest
 
 An agent deciding whether a peer Session is worth a full transcript read needs
@@ -1946,7 +1991,9 @@ position, the oldest returned turn's `turn.started` global sequence.
 computes: a fact that was not recorded is absent, and a turn whose engine
 reports no tool kinds says `filesReported: false` instead of implying no files;
 and a turn with no terminal event is `open`, not
-guessed. Each field is bounded and says when it was collapsed, so a page ends
+guessed. A Station tool's count also carries a bare-form `label` from
+[`station-tool-phrases`](../../packages/contracts/src/station-tool-phrases.ts)
+(#3418). Each field is bounded and says when it was collapsed, so a page ends
 for the byte cap, never by cutting a turn, and paging covers each turn once.
 Delegated children are the Sessions Station derived as launched from the
 conversation (`listSessionsNamingParents`, `stationDerived`) that started within
@@ -2311,7 +2358,9 @@ anything else as `unknown`. Who passes what:
   context Station derived or attested (`executeExecutionTargetMessage`, by
   its `caller-derived`/`runtime-attested` provenance; Station Control
   `send_message` arrives through `/chat/delegated`), pass `delegation` when
-  it starts a new conversation or the conversation's current Session is
+  it starts a new conversation (including one whose id the send names but no
+  Session holds yet, #4830; an unreadable lineage counts as new) or the
+  conversation's current Session is
   itself unattended (`OrchestrationService.sessionDispatchFacts`: bound to a
   Task, or a Station-derived delegated child); an agent's message into a
   person's own chat passes `unknown`. A requester's own `direct-claim`
@@ -2345,7 +2394,17 @@ unrecognised value, including every event persisted before the field, as
 `unknown`. Steers and engine-opened turns carry none. The value is the
 admitting Station's claim: a `turn.started` mirrored from another Station
 carries that Station's, so restart recovery must act only on this Station's
-own Sessions. Its one consumer is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+own Sessions. The [approval guardian](../../src-server/services/approvals/guardian-conversation.ts)
+reads it only as a routing fact (#4827): an `interactive` newest turn is what
+lets an external engine's guardian escalation ask a person. It never reads the
+field as authorship, because a child's result delivered into a person's chat
+is `interactive` too. Authorship is a separate, positive mark: the same
+propagation stamps `authoredBy: 'person'` only for a send or steer that a
+composer route proved a person typed (`personTypedRequest`), or that such a
+route queued on the inbox, and drops any value an adapter supplies.
+[`isPersonAuthoredTurn` and `isCurrentTurnPersonAuthored`](../../src-server/services/orchestration/turn-authorship.ts)
+are the one shared reading of it. The dispatch origin's one consumer that
+acts on a Session is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 (preview `continue-unattended-after-restart`): after boot it continues each
 `task-dispatch` or `delegation` turn interrupted-turn recovery settled
 (`whenInterruptedTurnsRecovered`), once, through the conversation inbox under
@@ -3659,6 +3718,36 @@ The operator and member Project pages mount the scoped Room. Focused store,
 access, SDK and UI tests cover those owners; production mounting, provider-backed
 execution and two-principal browser acceptance require separate runtime evidence.
 Custom channels and Task hierarchy are not implied by this Room contract.
+
+**Channel navigation (#4794, #4795).** The room destination's channel and open
+thread are route state (`?section=room&channel=<id>&thread=<messageId>`;
+[`project-navigation.ts`](../../src-ui/src/views/project-page/project-navigation.ts),
+[`project-room-navigation.ts`](../../src-ui/src/views/project-page/project-room-navigation.ts)),
+so the sidebar, links and Back all address them; opening one is a pushed entry
+that asks the room's unsaved-send guard first. A thread is a channel message and
+the replies whose `replyTo` chain reaches it; with threads on, those replies leave
+the channel stream for the root's summary, and every send from the open thread
+replies to its root, read from the route; an open thread keeps its own unsent
+draft, so text never moves between a thread and its channel. A thread link to
+a root older than the loaded history pages back to it, one window per settled
+page, within `PROJECT_ROOM_HISTORY_MAX_PAGES`. Reading only through a thread
+leaves the channel unread until the channel itself is shown. [`ProjectConversationList`](../../src-ui/src/components/project-conversations/ProjectConversationList.tsx)
+lists a Project's live channels (the server's order) and the Task rooms the
+read-marker summary can read, newest updated first and capped, in one summary
+request per Project ([`useProjectConversationIndex`](../../src-ui/src/components/project-conversations/useProjectConversationIndex.ts)).
+Unread is the summary's own `unread`; a failed summary keeps the rows at
+normal weight with its own retry. A Task room's working mark is its Task's
+Session in the Project's Running lane (`projectLiveLanes`). Channels have no
+working mark and no row has a mention mark until #4800 and #4799 supply them. The
+sidebar renders it under the expanded Project (lazily, off the shell bundle); a
+phone renders it as the Project page, opens each channel as a full-screen
+conversation and restores the list's scroll position on return
+([`useListScrollMemory`](../../src-ui/src/views/project-page/useListScrollMemory.ts)).
+[`useMarkRoomRead`](../../src-ui/src/components/room/useMarkRoomRead.ts) marks a
+channel read through the newest message its history read showed (seqs count
+messages, so that is the version on screen; a held or failed read marks
+nothing) and a Task room through its history checkpoint's `throughSeq`, while
+the document is visible.
 
 ## ProjectTaskRoom
 
@@ -5065,8 +5154,10 @@ single-flight on each tick, and `stop()` aborts, awaits and closes it. The
 poller enforces each source's `pollIntervalMs` from the
 [Automation ledger](../../src-server/services/automation/automation-ledger.ts)'s
 poll state, lists completed workflow runs through the external monitor's REST
-transport and secret-binding credential path, and records each run through the
-[normalizer](../../src-server/services/automation/github-workflow-run.ts) and
+transport and secret-binding credential path, takes the runs in the window and
+the next cursor from Telltale's `githubPollStep`, and records each run through the
+[normalizer](../../src-server/services/automation/github-workflow-run.ts) (over
+Telltale's `normalizeGitHubWorkflowRun`) and
 [intake](../../src-server/services/automation/automation-intake.ts) as matched,
 no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Each rule has a mode: `off`, `observe` or `live`.
 Only a `live` rule opens an episode or retains an intent. For every matched rule,
@@ -5666,6 +5757,15 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
+The off-by-default **Inline browser activity** preview places the same browser
+beside its qualified transcript calls. The conversation boundary supplies the
+Station request scope; exact session selection also requires the Project,
+principal and conversation binding. Inline and floating placements share
+`float-over-chat/BrowserSessionSurface.tsx`, including input, page dialogs and
+navigation. Existing source-visibility arbitration suppresses duplicate viewers.
+Settled activities summarize tool history without inventing historical frames;
+recording remains explicit. The [delivery plan](../plans/browser-activity-inline.md)
+names the owners, limitations and verification cases.
 `BrowserTabs.tsx` persists bounded,
 ordered exact-session references through the pane wrapper, and discovers popup
 sessions. The Chromium host adopts the actual popup target and original request;
@@ -5769,6 +5869,16 @@ Retry is offered only for a batch the host refused before dispatching any of it
 (`surface-busy`), kept whole as one gesture with the control epoch it was made
 at, and dropped when control changes hands. The registry cannot cancel an arbitrary producer effect already in flight.
 
+Human viewers lazily register an authenticated input source through the existing
+lease route. `useLiveSurface` captures that source and transport for teardown;
+the registry seals the retiring source before cancelling its held input on the
+serialized dispatch chain. A newer source's press is preserved. Failed neutral
+cleanup retains held-input custody and fences further input until whole-surface
+cleanup succeeds. Registration refusal or an invalid source drops pending input;
+only a later user action registers again, without replaying refused events.
+Replacing the transport also reconnects frames. See the
+[wire and recovery contract](../reference/browser-and-devices.md#agent-authority-and-human-input).
+
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
 Browser; unregistering the generation also cancels and joins its recordings.
@@ -5806,7 +5916,15 @@ refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
 never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
-coalesces input through one in-flight POST. It opens a frame stream only with a
+coalesces input through one in-flight POST. It lazily registers a per-viewer
+input source on the first input. Target,
+transport or viewer retirement seals that source and queues cancellation behind
+prior dispatch. The registry rejects sealed and foreign source IDs at queued
+dispatch and cancels only source-owned presses, preserving newer same-person
+input. Failed neutral cleanup retains its pressed snapshot and fences further
+input until a whole-surface cleanup succeeds. Legacy batches remain accepted;
+the current viewer does not silently fall back when registration is unavailable.
+Frame streams remain separate from source registration and open only with a
 slot from `liveSurfaceStreamAdmission.ts`: two per origin, shared across tabs
 through Web Locks (per page where Web Locks is missing), so input and lease
 requests keep a connection; a viewer past the cap reads `queued`. A viewer

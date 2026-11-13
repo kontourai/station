@@ -74,6 +74,7 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { createGuardianConversationReader } from '../../services/approvals/guardian-conversation.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { configurePlatformMutationGate } from '../../services/evidence/platform-mutation-gate.js';
@@ -1171,6 +1172,9 @@ export async function initializeRuntime(
           logger,
           modelCatalog,
           projectHomeDir: configLoader.getProjectHomeDir(),
+          readConversation: createGuardianConversationReader(
+            orchestrationEventStore,
+          ),
         }),
       })) as Record<string, Agent>,
     createVoltAgentInstance,

@@ -1,0 +1,7 @@
+{
+  "revision": "a0660d5095e385d42c5b2b7674610898f61a6898",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-read the Background tasks claims (running-count row placement, the dock's open path and count sources). This change alters only the phone sheet's safe-area geometry, every row expanding onto title/status/times/tool/input, and tool cards keeping toolName/toolInput; none of the recorded placement claims change.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/BackgroundTasksSheet.css","src-ui/src/components/chat-dock/backgroundTaskRows.tsx","src-ui/src/contexts/background-tasks-store.ts"]}
+  ]
+}

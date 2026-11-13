@@ -849,6 +849,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   // same tree reserved-plugin-identities.test.ts walks.
   'src-server/routes/plugins/__tests__/plugin-command-effect-withdrawal-sites.test.ts',
   'src-server/runtime/conversation/__tests__/ui-block-provenance-writer-inventory.test.ts',
+  // Walks src-server for who may decide or carry the person-authorship mark
+  // and pins a classification for every turn-producing file (#4827).
+  'src-server/security/__tests__/person-authorship-ingress.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/__tests__/store-async-lock-cutover.scan.test.ts',
   'src-server/services/devices/__tests__/device-host-resolver.test.ts',

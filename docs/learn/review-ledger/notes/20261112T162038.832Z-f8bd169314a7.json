@@ -1,0 +1,7 @@
+{
+  "revision": "b0c93995ebd9961f41267104fbccd9edd6c1f946",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"Rechecked after merging main (#4702 save guidance, #4786 shared status helpers, confinement). AgentConnectionView change in this branch is biome formatting of the Retry check gate (still hidden for policy-refused engines); connection-health now builds model input through providerCatalog modelCatalogInput, same fields. Readiness labels (Limited refuses dispatch, Not allowed has no fix), the Retry check wording and smoke-confidence claims still match the code.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}

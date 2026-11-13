@@ -68,6 +68,9 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+// #4695: each Session's latest-turn window, as the plan line reads it.
+const useOrchestrationSessionActivityQuery = vi.hoisted(() => vi.fn());
+let activityWindows: Record<string, Record<string, unknown>> = {};
 const agentCatalog: never[] = [];
 vi.mock('../views/sessions/conversation-groups', { spy: true });
 // Every config this render passed to the sessions query, so the list's own
@@ -221,6 +224,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     },
     fetchOrchestrationSession: (threadId: string, apiBase: string) =>
       readRoutedSession(threadId, apiBase),
+    useOrchestrationSessionActivityQuery,
     usePairedDevicesQuery,
     usePullRequestContextQuery: () => ({ data: { available: false } }),
     usePullRequestsQuery: () => ({ data: undefined }),
@@ -616,6 +620,11 @@ describe('SessionsView', () => {
     feedEvents = [];
     workflowTasksByProject = {};
     sessionsQueryError = null;
+    activityWindows = {};
+    useOrchestrationSessionActivityQuery.mockReset();
+    useOrchestrationSessionActivityQuery.mockImplementation(
+      (threadId: string) => ({ data: activityWindows[threadId] }),
+    );
     pairedDevices = [];
     usePairedDevicesQuery.mockReset();
     usePairedDevicesQuery.mockImplementation(() => ({ data: pairedDevices }));
@@ -1167,6 +1176,114 @@ describe('SessionsView', () => {
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
       true,
     );
+  });
+
+  test("#4695: Activity rows read their Session's agent-reported plan; a plan-less Session and a Draft show none", () => {
+    const base = { ...sessions[0], delegation: undefined, projectSlug: 'demo' };
+    sessions = [
+      {
+        ...base,
+        threadId: 'thread-planned',
+        displayTitle: 'Planned session',
+        status: 'running',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+      },
+      {
+        ...base,
+        threadId: 'thread-unplanned',
+        displayTitle: 'Unplanned session',
+        status: 'running',
+        lifecycleState: 'running',
+        hasActiveTurn: true,
+      },
+      {
+        ...base,
+        threadId: 'thread-ended',
+        displayTitle: 'Ended session',
+        status: 'failed',
+        lifecycleState: 'failed',
+        hasActiveTurn: false,
+      },
+      {
+        ...base,
+        threadId: 'thread-draft',
+        displayTitle: 'Draft session',
+        status: 'idle',
+        lifecycleState: 'queued',
+        hasActiveTurn: false,
+        draft: true,
+      },
+    ];
+    const plan = (threadId: string, lifecycleState: string) => ({
+      session: { threadId, lifecycleState },
+      events: [
+        { sequence: 1, event: { method: 'turn.started', turnId: 'turn-1' } },
+        {
+          sequence: 2,
+          event: {
+            method: 'plan.updated',
+            turnId: 'turn-1',
+            entries: [
+              { content: 'Read', status: 'completed' },
+              { content: 'Edit', status: 'in_progress' },
+              { content: 'Test', status: 'pending' },
+            ],
+          },
+        },
+      ],
+    });
+    activityWindows = {
+      'thread-planned': plan('thread-planned', 'running'),
+      'thread-unplanned': {
+        session: { threadId: 'thread-unplanned', lifecycleState: 'running' },
+        events: [
+          { sequence: 1, event: { method: 'turn.started', turnId: 'turn-1' } },
+        ],
+      },
+      'thread-ended': plan('thread-ended', 'failed'),
+      // Even a cached plan never shows on a Draft: it never ran.
+      'thread-draft': plan('thread-draft', 'queued'),
+    };
+    renderView();
+
+    // The plan is part of the row's description, in words.
+    const planned = screen.getByRole('button', {
+      name: 'Planned session',
+      description: /, Agent-reported plan: 1 of 3 steps done$/,
+    });
+    expect(
+      planned.querySelector('.split-pane__item-subtitle')?.textContent,
+    ).toContain('Agent plan 1/3');
+    // The running row reads this Station's Session and keeps refreshing.
+    expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+      'thread-planned',
+      'http://test.local',
+      expect.objectContaining({ enabled: true, refetchInterval: 5_000 }),
+    );
+
+    expect(
+      rowButton('Unplanned session').querySelector('.task-plan-progress'),
+    ).toBeNull();
+    // An ended row still shows how far its plan got, read once.
+    expect(
+      screen.getByRole('button', {
+        name: 'Ended session',
+        description: /, Agent-reported plan: 1 of 3 steps done, stopped$/,
+      }).textContent,
+    ).toContain('Agent plan 1/3 · Stopped');
+    expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+      'thread-ended',
+      'http://test.local',
+      expect.objectContaining({ enabled: true, refetchInterval: undefined }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '1 older draft' }));
+    expect(rowButton('Draft session').textContent).not.toContain('Agent plan');
+    expect(
+      useOrchestrationSessionActivityQuery.mock.calls.some(
+        ([threadId]) => threadId === 'thread-draft',
+      ),
+    ).toBe(false);
   });
 
   // #765 residue (A2-adjacent): the runtime opens one engine session per
@@ -2278,7 +2395,7 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(within(detail).queryByLabelText('Message')).toBeNull();
-    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
+    expect(within(detail).queryByLabelText('Answer this request')).toBeNull();
     expect(
       within(detail).getByText('Open the session to answer this request.'),
     ).toBeTruthy();
@@ -2422,7 +2539,7 @@ describe('SessionsView', () => {
 
     expect(screen.queryByLabelText('Message')).toBeNull();
     expect(screen.queryByLabelText('Message')).toBeNull();
-    expect(screen.queryByLabelText('Answer this session')).toBeNull();
+    expect(screen.queryByLabelText('Answer this request')).toBeNull();
   });
 
   // (archive#1170): a genuine fetch failure used to
@@ -2655,7 +2772,7 @@ describe('SessionsView', () => {
     expect(
       within(detail).getByRole('link', { name: 'Open session' }),
     ).toBeTruthy();
-    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
+    expect(within(detail).queryByLabelText('Answer this request')).toBeNull();
 
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
@@ -2862,9 +2979,7 @@ describe('SessionsView', () => {
     streamFlags = { connectionInterrupted: true };
     renderView('external:claude:terminal-1');
     expect(
-      screen.getByText(
-        "Station isn't responding right now — retrying automatically.",
-      ),
+      screen.getByText("Station isn't responding. Retrying automatically."),
     ).toBeTruthy();
   });
 
@@ -3061,11 +3176,7 @@ describe('SessionsView', () => {
       'Station says this continuation cannot be retried safely from this state.',
     );
     expect(continueButton.getAttribute('disabled')).not.toBeNull();
-    expect(
-      screen.queryByText(
-        'Retry safely — Station will not duplicate the continuation.',
-      ),
-    ).toBeNull();
+    expect(screen.queryByText("Retrying won't continue it twice.")).toBeNull();
     expect(
       screen.queryByText(/Browser storage is unavailable or corrupt/),
     ).toBeNull();

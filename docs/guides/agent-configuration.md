@@ -389,8 +389,8 @@ prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
 
 An approval-guardian allow has the same limits on these engines (#2947). The
 guardian reviews the tool's name and arguments (and, on ACP, the call's
-title); it isn't shown the session's working directories or why the engine
-asks. On Claude Code its allow answers a plain call without a prompt, unless an
+title) against what the person typed in the conversation; it isn't shown the
+session's working directories or why the engine asks. On Claude Code its allow answers a plain call without a prompt, unless an
 effective authored Ask rule requires approval, for the input it reviewed, and everything in the list above still reaches a person,
 including a read outside the working directories that the guardian allowed.
 Like a `Bash` pattern, a guardian allow answers a chained Bash command that
@@ -398,7 +398,8 @@ carries no command-analysis warning,
 including the chained-command gaps described above: an ask rule or an
 outside-directory write hidden inside the chain does not prompt. On ACP engines its allow answers any call except a
 plan exit, a question, or a sandbox network-host ask. A guardian deny in
-`enforce` mode still blocks the call. A delegated child that cannot grant
+`enforce` mode still blocks the call, except the escalation described in
+[What the guardian sees](#what-the-approval-guardian-sees). A delegated child that cannot grant
 approvals is denied an escalation at once, guardian allow or not. With the
 guardian enabled, a headless run on these engines that reaches an escalation
 waits on an approval request where it used to run on the guardian's allow.
@@ -475,6 +476,70 @@ built-in destructive or sensitive tool-class ceiling on guardian allows.
 Explicit `askBeforeUse` rules, Project policy and the preceding allow/block and
 config-protection checks still bound execution.
 
+### What the approval guardian sees
+
+The guardian ([source](../../src-server/services/approvals/approval-guardian.ts))
+judges a call against what the person asked for (#4827). Its prompt holds:
+
+- **What the person typed in this conversation**, oldest first: the prompts
+  of turns Station marked `authoredBy: 'person'`, steers included. Station
+  sets that mark only where a person typed into one of its own clients: a
+  send or steer from the web, desktop or mobile chat composer, or a message
+  the composer queued on the conversation's inbox, made with the operator's
+  credential or session or a paired personal device. Everything else is
+  excluded, whatever credential it used. That covers:
+  - `/chat/delegated` (including a peer Station's delegation) and
+    `/chat/background`;
+  - handoffs and memory continuations;
+  - Discord and other chat bridges, and voice;
+  - webhooks, Tasks, Automations and Project or Task rooms;
+  - an agent's Station Control sends;
+  - the CLI and MCP clients.
+
+  An engine or adapter cannot set the mark; Station drops it if one tries.
+  A server-expanded MCP prompt is excluded even from the composer: the
+  person chose the command, but the MCP server wrote the text. Tool results
+  and replies are never included. The prompts are read across the
+  conversation's newest 16 Sessions. The newest 20 are kept, each cut to
+  1,500 characters, and older ones are dropped past 8,000 characters in
+  total. When older messages are left out, including those in Sessions past
+  the 16th, the prompt says earlier messages are not shown. When nobody
+  typed anything (a scheduled or delegated run), the prompt says so, so no
+  "only if asked" rule can be met. The same test is available to other
+  features as `isPersonAuthoredTurn` and `isCurrentTurnPersonAuthored`
+  ([source](../../src-server/services/orchestration/turn-authorship.ts)).
+- **The call**: the agent, and the tool's name, description and arguments,
+  each inside a per-review random fence marking them as tool-authored data.
+
+It decides by three built-in rule lists, and the Settings **Guardian
+instructions** are added after them as house rules:
+
+- *Never*: sending credentials anywhere, touching Station's own home or
+  configuration, and disabling Station's checks.
+- *Only if the person asked for exactly this*: download-and-run, sending
+  private files to an address the person did not name, mass deletion,
+  destructive git, startup files, keys and hooks, sudo, publishing, and
+  spending money. A general request is not enough: "clean up the repo" does
+  not authorize a force push.
+- *Ordinary work, allowed*: project edits, installing declared dependencies,
+  building and testing, and a normal push.
+
+**Escalation in `enforce` mode.** After the guardian has denied three calls in
+a row in one conversation, or 20 in all, its next denial becomes a required
+approval request to the person, through the same approval inbox as any other,
+instead of another automatic deny. An allow, or an escalation, starts a new
+run of three. This happens only when a person can answer: on Station's engine,
+a chat with a live approval channel; on an external engine, a conversation
+whose current turn a person sent; never for a delegated child that cannot
+grant approvals. Otherwise the denial stands, as before. The counts are kept
+per conversation, so a successor Session continues them. They live in server
+memory, so a restart starts them again.
+
+An escalated request does not show the guardian's reason yet (#4849). It
+reads like any other approval for the call, with nothing saying the guardian
+refused it. The reason is only in the server log ("Approval guardian kept
+refusing; asking the person instead").
+
 Structured generation now reaches the configured model on both VoltAgent and
 Strands. Previously, their schema adapter errors made guardian reviews fall back
 to `defer`; configured guardians can now issue real `allow` and `deny` decisions.
@@ -523,7 +588,7 @@ approval paths; these hooks do not establish external policy enforcement.
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
 | `beforeToolCall` | Before any tool executes | Checks auto-approve and the untrusted-content permission; triggers approval flow if needed |
-| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted |
+| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted, or from the HTTP request built-in |
 | `endInvocation` | Once when the turn ends, including on error and abort | Releases the turn's untrusted-content state; the conversation's mark stays until a person clears it |
 | `afterInvocation` | After the full turn completes | Updates conversation stats (tokens, cost, tool call count) in the memory adapter |
 

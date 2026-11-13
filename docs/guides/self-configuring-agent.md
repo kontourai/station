@@ -152,6 +152,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
   for an agent on any engine to check back in its own chat later, or to ask
   the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
+- `propose_automation_source`, `propose_automation_rule` and
+  `list_automation_proposals` to ask the person for a GitHub Automation source
+  or rule ([Propose an automation](#propose-an-automation))
 - `terminal_run` and `terminal_read` to run a shell command in a terminal in
   the chat's working directory and read its exit and output. The person sees
   the exact command and directory and approves or declines each run; no
@@ -656,7 +659,8 @@ inputs: nothing names a Project, an owner, or a host.
   turn's last terminal event (`completed`, `failed` for a `runtime.error`,
   `interrupted` for an abort or a `cancelled` finish, or `open` when none is
   recorded), tool calls by name (`otherTools` counts the names beyond the first
-  eight), `files` (only a successful call whose engine reported an edit, delete
+  eight; a Station tool also has a plain-language `label`, such as "Wait for a
+  Session"), `files` (only a successful call whose engine reported an edit, delete
   or move kind and a path argument, and a path is never guessed from a tool's
   name), `filesReported: false` on a turn that called tools none of which carried
   an engine-reported tool kind (a missing `files` there means unknown, not none;
@@ -928,6 +932,56 @@ has no scheduler to approve with, refuses proposals
 (`job_proposal_unavailable`).
 
 The refusal an agent gets from `add_job` names both tools.
+
+### Propose an automation
+
+An agent cannot create an Automation source or rule. It can ask for one
+([decision](../decisions/agent-proposed-automations.md)):
+
+- `propose_automation_source` proposes a `github-poll` source: a `name`, a
+  `repository` (`owner/repo`), an optional `pollIntervalMs`, and optional
+  `grants`. Each grant names a Project id, an Agent slug and
+  `["dispatch-task"]`.
+- `propose_automation_rule` proposes a rule on an existing `sourceId`, or on
+  the `sourceProposalId` of a source this chat proposed. It takes a `match`
+  on `github.workflow_run.completed` fields, an optional `episode`, a
+  `dispatch-task` `action` (Project id, Agent slug, instructions, budget) and
+  a `rateLimit`.
+
+Station answers with the proposal's id and the description the person will
+see. The person confirms or declines it on a card in this chat; nothing is
+created before they confirm. A confirmed source starts disabled and a
+confirmed rule starts observing, unless the person turns it on in the same
+step. A rule on a proposed source can be confirmed only after that source.
+`list_automation_proposals` shows what became of each proposal, including a
+confirmed source's id.
+
+A proposal is refused (`automation_proposal_exceeds_authority`) when it would
+grant more than this chat could do itself:
+
+- a Project or Agent outside the chat's dispatch scope;
+- an action other than `dispatch-task`;
+- `approvalMode: "auto"`;
+- `fullAccessGrant`, a credential, a secret, `enabled` or `mode`.
+
+Only a turn a person typed into Station's composer can propose
+(`automation_proposal_unattended`). A turn started by anything else cannot:
+an automation, a delegated child's result in the person's chat, a peer
+Station, the CLI, an MCP prompt, a Task dispatch or a check-back. Station
+infers which turn made the call from the Session's state. A known race lets
+a concurrent steer clear a delegated continuation's pending reservation, so
+an agent continuation can still create a proposal card. The person's
+confirmation is required either way and is the authority boundary. An
+invocationless legacy turn start can also leave the Session refusing
+proposals until it exits. A turn-bound credential will fix both
+([#4882](https://github.com/kontourai/station/issues/4882)). If this chat has read content written by
+others (#3483), when it proposes or at any time before the person answers,
+the card tells the person so. The card shows Station's own description, and
+apart from it, under "Written by the agent", the name, conditions, reason
+and complete instructions you gave. When the person confirms, Station checks
+again that this chat could still start work for each Agent named, and that
+each Agent is unchanged. A chat may have 3 proposals
+waiting and make 10 an hour.
 
 ### Scheduled jobs
 

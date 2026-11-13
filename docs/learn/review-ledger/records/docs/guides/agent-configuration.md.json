@@ -258,7 +258,13 @@
 
     "src-server/providers/__tests__/engine-oauth-mcp.test.ts",
 
-    "packages/shared/src/tool-server-credential-store.ts"
+    "packages/shared/src/tool-server-credential-store.ts",
+
+    "src-server/services/approvals/guardian-conversation.ts",
+
+    "src-server/services/orchestration/turn-authorship.ts",
+
+    "src-server/security/person-authorship.ts"
   ],
 
   "checks": [

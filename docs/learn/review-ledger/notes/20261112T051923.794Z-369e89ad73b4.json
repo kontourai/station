@@ -1,0 +1,7 @@
+{
+  "revision": "3c49101de1ce3239d166abacbeaf2d8ab1c0df30",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Re-read for the connections.md switcher and switching-screen edits; this guide only routes to Connections for setup and states no switcher reachability or switching behavior, so no change needed.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

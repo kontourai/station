@@ -1,4 +1,5 @@
 import {
+  type ConnectionFailureReason,
   type ConnectionIndicatorState,
   ConnectionStatusDot,
   type SavedConnection,
@@ -19,13 +20,15 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
+  describeStationRow,
   forgetStationProbe,
   isProbeable,
   matchesStationFilter,
+  needsAccess,
   orderStations,
   probeStation,
   readRecentStations,
-  type StationReachability,
+  type StationProbe,
 } from '../../lib/stationSwitcher';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { ManagedRemoteClientsNote } from '../managed/ManagedRemoteClientsNote';
@@ -36,6 +39,8 @@ import './HeaderMenu.css';
 
 /** Below this many Stations a filter field is more clutter than help. */
 const FILTER_THRESHOLD = 5;
+/** How often the open menu re-reads "checked … ago" against the clock. */
+const AGE_TICK_MS = 15_000;
 
 function errorText(error: unknown): string {
   return describeStationFailure(error).body;
@@ -60,6 +65,8 @@ export function StationSwitcherMenu({
   activeConnectionId,
   activeStatus,
   activeStatusLabel,
+  activeReason = null,
+  activeCheckedAt = null,
   onSelect,
   onForget,
   canForget: canForgetStation,
@@ -73,6 +80,10 @@ export function StationSwitcherMenu({
   activeConnectionId?: string;
   activeStatus: ConnectionIndicatorState;
   activeStatusLabel: string;
+  /** Why the active Station's last health check failed, if it did. */
+  activeReason?: ConnectionFailureReason | null;
+  /** When the active Station's health was last checked (epoch ms). */
+  activeCheckedAt?: number | null;
   onSelect: (connection: SavedConnection) => Promise<void>;
   onForget: (connection: SavedConnection) => Promise<void>;
   /** Whether this device can forget the Station here at all. */
@@ -99,9 +110,12 @@ export function StationSwitcherMenu({
   const [armedId, setArmedId] = useState<string | null>(null);
   const [bulkArmed, setBulkArmed] = useState(false);
   const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
-  const [reachability, setReachability] = useState<
-    Record<string, StationReachability>
-  >({});
+  const [probes, setProbes] = useState<Record<string, StationProbe>>({});
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), AGE_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
   // Read once per opening: the order must not shuffle under the pointer.
   const [recent] = useState(readRecentStations);
   const promptId = useId();
@@ -171,11 +185,9 @@ export function StationSwitcherMenu({
       if (connection.id === activeConnectionId || !isProbeable(connection))
         continue;
       void probeStation(connection.url).then((result) => {
-        if (live)
-          setReachability((current) => ({
-            ...current,
-            [connection.id]: result,
-          }));
+        if (!live) return;
+        setProbes((current) => ({ ...current, [connection.id]: result }));
+        setNow(Date.now());
       });
     }
     return () => {
@@ -240,7 +252,8 @@ export function StationSwitcherMenu({
 
   const unreachable = ordered.filter(
     (connection) =>
-      canForget(connection) && reachability[connection.id] === 'unreachable',
+      canForget(connection) &&
+      probes[connection.id]?.reachability === 'unreachable',
   );
 
   const onRowKeyDown = (
@@ -284,21 +297,23 @@ export function StationSwitcherMenu({
     }
   };
 
-  const statusLabel = (connection: SavedConnection) => {
-    if (switchingId === connection.id) return 'Switching…';
-    if (connection.id === activeConnectionId) return activeStatusLabel;
-    if (isUnavailable(connection)) return 'Not running';
-    if (
-      connection.credentialState === 'required' ||
-      connection.lastError?.reason === 'authentication-failed'
-    )
-      return 'Needs access';
-    const probed = reachability[connection.id];
-    if (probed === 'online') return 'Online';
-    if (probed === 'unreachable') return 'Unreachable';
-    if (isProbeable(connection) && !probed) return '';
-    return connection.lastError ? "Can't connect" : '';
-  };
+  const rowStatus = (connection: SavedConnection) =>
+    describeStationRow({
+      connection,
+      now,
+      switching: switchingId === connection.id,
+      active:
+        connection.id === activeConnectionId
+          ? {
+              label: activeStatusLabel,
+              reason: activeReason,
+              healthy: activeStatus === 'connected',
+              checkedAt: activeCheckedAt,
+            }
+          : undefined,
+      probeable: isProbeable(connection),
+      probe: probes[connection.id],
+    });
 
   return createPortal(
     <>
@@ -356,14 +371,20 @@ export function StationSwitcherMenu({
             {visible.map((connection, index) => {
               const current = connection.id === activeConnectionId;
               const unavailable = isUnavailable(connection);
-              const probed = reachability[connection.id];
+              const probed = probes[connection.id]?.reachability;
+              const { label, detail } = rowStatus(connection);
+              // A fresh probe outranks a saved network failure it may have
+              // outlived, but not a refusal: an anonymous handshake answering
+              // says nothing about whether this device is still accepted.
               const status: ConnectionIndicatorState = current
                 ? activeStatus
-                : probed === 'unreachable' || connection.lastError
-                  ? 'error'
+                : needsAccess(connection)
+                  ? 'needs-credential'
                   : probed === 'online'
                     ? 'connected'
-                    : 'idle';
+                    : probed === 'unreachable' || connection.lastError
+                      ? 'error'
+                      : 'idle';
               // One display name: the active row says what the chip that
               // opened this menu says (#4402 reads the seeded "Default" as the
               // machine's name). Only the active Station's host is known
@@ -372,15 +393,8 @@ export function StationSwitcherMenu({
                 (current ? activeDisplayName : undefined) ||
                 connection.name ||
                 connection.url;
-              const label = statusLabel(connection);
               const armed = armedId === connection.id;
-              // A healthy peer says so with its dot alone; text is for the
-              // active Station and for anything that needs attention.
-              const shown = armed
-                ? 'Forget on this device?'
-                : label === 'Online'
-                  ? ''
-                  : label;
+              const summary = detail ? `${label} · ${detail}` : label;
               return (
                 <div
                   key={connection.id}
@@ -392,7 +406,7 @@ export function StationSwitcherMenu({
                     role="menuitemradio"
                     data-station-row=""
                     aria-checked={current}
-                    aria-label={label ? `${name} — ${label}` : name}
+                    aria-label={`${name} — ${summary}`}
                     aria-describedby={
                       armed ? `${promptId}-${index}` : undefined
                     }
@@ -411,14 +425,24 @@ export function StationSwitcherMenu({
                       <span className="station-switcher__name" title={name}>
                         {name}
                       </span>
-                      {shown && (
-                        <span
-                          id={`${promptId}-${index}`}
-                          className="station-switcher__status"
-                        >
-                          {shown}
-                        </span>
-                      )}
+                      <span
+                        id={`${promptId}-${index}`}
+                        className="station-switcher__status"
+                      >
+                        {armed ? (
+                          'Forget on this device?'
+                        ) : (
+                          <>
+                            {label}
+                            {detail && (
+                              <span className="station-switcher__detail">
+                                {' · '}
+                                {detail}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
                     </span>
                     {current && <span aria-hidden="true">✓</span>}
                   </button>

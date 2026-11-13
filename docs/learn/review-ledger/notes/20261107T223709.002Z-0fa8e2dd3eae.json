@@ -1,0 +1,13 @@
+{
+  "revision": "9ab33a286b2e32b7fa85d04d2942acea464fe6d3",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Retained historical composer-redesign comparison at its recorded capturedRevision. Reviewed this branch's StartComposer delta: it adds a Paste image tool beside Attach that renders only on a mobile native host reporting clipboard-image or a coarse-pointer browser with navigator.clipboard.read. This image neither shows nor claims that control and is not current evidence for it. No recapture or new visual claim.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Retained historical composer-redesign comparison at its recorded capturedRevision. Reviewed this branch's StartComposer delta: it adds a Paste image tool beside Attach that renders only on a mobile native host reporting clipboard-image or a coarse-pointer browser with navigator.clipboard.read. This image neither shows nor claims that control and is not current evidence for it. No recapture or new visual claim.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Retained historical composer-redesign comparison at its recorded capturedRevision. Reviewed this branch's StartComposer delta: it adds a Paste image tool beside Attach that renders only on a mobile native host reporting clipboard-image or a coarse-pointer browser with navigator.clipboard.read. This image neither shows nor claims that control and is not current evidence for it. No recapture or new visual claim.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Retained historical composer-redesign comparison at its recorded capturedRevision. Reviewed this branch's StartComposer delta: it adds a Paste image tool beside Attach that renders only on a mobile native host reporting clipboard-image or a coarse-pointer browser with navigator.clipboard.read. This image neither shows nor claims that control and is not current evidence for it. No recapture or new visual claim.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

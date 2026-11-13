@@ -21,7 +21,21 @@ work. Evidence and receipts support the decision to accept a result. Qualify
 the personal coding loop and the real two-person journey separately; the
 existence of their components does not establish a complete experience.
 
+The outcome line for product copy is “Know what your agents built — and why it
+was allowed to ship.” It says in plain language what the
+[constitution's mission](constitution.md#mission) promises: evidence and
+receipts that help people decide what to accept. The “why” is the checks,
+evidence and receipts attached to the work, not a verdict Station invents. Use
+the line where those receipts are visible. It does not claim that every Task
+has a gate, or that a passed check is an approval.
+
 The public promise is “Code from anywhere. On your own, or with your team.”
+This sentence is its single source. The README tagline, the Pages home title,
+descriptions, social tags and headline, and the `corpus.json` purpose and
+tagline repeat it word for word, and `npm run docs:public:hygiene` fails when
+one of them drifts. Change the wording here first. The GitHub repository
+description is checked by hand, as
+[Verify the change](../guides/documentation.md#verify-the-change) describes.
 Use concrete supporting copy and keep current sharing limits in the owning
 guides and team FAQ. This wording does not qualify a complete two-person
 workflow.

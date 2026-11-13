@@ -1,0 +1,7 @@
+{
+  "revision": "af439bde587ae8929d470e533d5878bb39334fac",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Only change to docs/ui/responsive-action-surfaces.txt is one appended covered entry for src-ui/src/components/StationConnectingScreen.tsx (ActionRow actions, evidence in authorityQueryIsolation.test.tsx and 390/1440px renders); responsive-surface-ratchet.mjs passes. The inventory's format, the guide's recording rule and ratchet description are unchanged, so no prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

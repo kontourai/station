@@ -78,6 +78,13 @@ export interface BackgroundTaskEntry {
   title: string;
   delegationTitle?: string;
   detail?: string;
+  /** A tool card's tool, kept even when a description names the card. */
+  toolName?: string;
+  /**
+   * A tool card's arguments as one bounded display line (the command, path,
+   * URL or query it ran with), so the expanded row says what ran.
+   */
+  toolInput?: string;
   latestTool?: string;
   /**
    * When the card's work started, on this client's clock basis. #2459:
@@ -323,6 +330,47 @@ function pruneUnrepresentedBindings(
     : { ...state, delegateParents };
 }
 
+const TOOL_INPUT_LIMIT = 240;
+const TOOL_INPUT_KEYS = [
+  'command',
+  'cmd',
+  'file_path',
+  'path',
+  'url',
+  'query',
+  'pattern',
+  'prompt',
+] as const;
+
+/**
+ * The argument a reader recognizes the call by, else the arguments as JSON,
+ * as a single display line of at most TOOL_INPUT_LIMIT characters. A display
+ * summary, never a value anything executes or parses back.
+ */
+function toolInputSummary(
+  args: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!args) return undefined;
+  const named = TOOL_INPUT_KEYS.map((key) => args[key]).find(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+  let text = named;
+  if (text === undefined) {
+    const { description: _description, ...rest } = args;
+    if (Object.keys(rest).length === 0) return undefined;
+    try {
+      text = JSON.stringify(rest);
+    } catch {
+      return undefined;
+    }
+  }
+  const line = text.replace(/\s+/g, ' ').trim();
+  if (!line) return undefined;
+  return line.length > TOOL_INPUT_LIMIT
+    ? `${line.slice(0, TOOL_INPUT_LIMIT - 1)}…`
+    : line;
+}
+
 function foldToolStarted(
   state: BackgroundTasksState,
   event: Extract<OrchestrationEvent, { method: 'tool.started' }>,
@@ -333,12 +381,15 @@ function foldToolStarted(
       : undefined;
   const description =
     typeof args?.description === 'string' ? args.description : undefined;
+  const toolInput = toolInputSummary(args);
   const entry: BackgroundTaskEntry = {
     id: event.toolCallId,
     kind: 'tool',
     source: 'tool-event',
     chatThreadId: event.threadId,
     title: description || event.toolName,
+    toolName: event.toolName,
+    ...(toolInput ? { toolInput } : {}),
     startedAt: parseTime(event.createdAt, Date.now()),
     state: 'running',
   };

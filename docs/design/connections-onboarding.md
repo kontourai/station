@@ -16,8 +16,10 @@
 > contract for follow-up slices; revise it — not just the code — when direction changes.
 >
 > The current Connections rail has **Models, Engines, Tools, Knowledge and Computers**,
-> owned by `connection-sections.ts`. `/connections` resolves to the first section needing
-> attention, or Models. The earlier unified Providers overview and its delivery tables
+> owned by `connection-sections.ts`. `/connections` shows a loading state until the section
+> lists load, or for up to 1.5 seconds, then resolves to the first section needing
+> attention, or Models. Resting states (such as a saved, untested model connection or an
+> engine the managed policy refuses) do not mark a section. The earlier unified Providers overview and its delivery tables
 > below are historical interface direction. Model setup uses the Models detail pane;
 > engine setup has its own Add engine flow. Legacy URLs redirect to the corresponding
 > section. Provider presets and explicit configuration remain shared design rules.
@@ -55,10 +57,10 @@ that run explicitly after the work entry.
 New chat opens the start composer (Agent and project chips, Start) as a draft
 in the chat dock. A setup helper appears when the
 selected Agent cannot respond. It shows server-supplied prerequisites and links
-to engine installation instructions, existing account sign-in, or Model setup.
-For the built-in Station assistant, **Choose AI for Station** opens the existing
-engine chooser, including ready external apps, before requiring a new Model
-account. Installation commands are display guidance, never automatic execution. The
+to engine installation instructions, existing account sign-in, or **Add a
+model connection**. For Station's own agent, **Choose AI for Station** opens the
+existing engine chooser, including ready external engines, before requiring a
+new model connection. Installation commands are display guidance, never automatic execution. The
 existing setup-return owner retains the draft and revalidates the same Station
 access before returning. Choosing a ready replacement in the draft still waits
 for Send; Home’s automatic goal path continues to use a runnable recommendation.

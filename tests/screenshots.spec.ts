@@ -28,8 +28,11 @@ import {
 } from './helpers/keyboard-emulation';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
+  GALLERY_DESIGN_ROOM_ID,
+  installProjectConversationsFixture,
   installProjectRoomFixture,
   installTaskRoomFixture,
+  NAVIGATION_THREAD_ROOT,
   type ProjectRoomScene,
   type TaskRoomScene,
 } from './helpers/room-gallery-fixtures';
@@ -3466,7 +3469,10 @@ function roomConversationScreens(): Screen[] {
             created = true;
             const project = (await response.json()).data;
             if (room === 'project') {
-              if (scene === 'keyboard' && viewport.width === MOBILE.width)
+              if (
+                (scene === 'keyboard' || scene === 'channels') &&
+                viewport.width === MOBILE.width
+              )
                 await installKeyboardEmulation(page);
               // A current host serves reactions, edits, deletes and files
               // (#4796, #4797, #4812); the room offers them only on this flag.
@@ -3703,25 +3709,38 @@ function roomConversationScreens(): Screen[] {
               // #4792 on the shared conversation: switch to #design, keep a
               // draft across a real reload, then show the channel list over
               // that channel's conversation.
+              const phone = viewport.width === MOBILE.width;
+              // On a phone the switcher is in the channel's ⋯ sheet (#4795).
               const openChannels = async () => {
-                await roomRegion
-                  .getByRole('button', { name: /switch channel$/ })
-                  .click();
+                if (phone) {
+                  await roomRegion
+                    .getByRole('button', { name: 'Channel options' })
+                    .click();
+                  await page
+                    .getByRole('dialog', { name: /^#/ })
+                    .getByRole('button', { name: 'Switch channel' })
+                    .click();
+                } else
+                  await roomRegion
+                    .getByRole('button', { name: /switch channel$/ })
+                    .click();
                 return page.getByRole('dialog', { name: 'Channels' });
               };
+              const expectChannel = (region: Locator, name: string) =>
+                expect(
+                  phone
+                    ? region.getByRole('heading', { level: 2, name })
+                    : region.getByRole('button', {
+                        name: new RegExp(`^${name}\\b.*switch channel$`),
+                      }),
+                ).toBeVisible();
               const list = await openChannels();
               await list
                 .getByRole('button', { name: 'design', exact: true })
                 .click();
+              await expectChannel(roomRegion, 'design');
               await expect(
-                roomRegion.getByRole('button', {
-                  name: /^design\b.*switch channel$/,
-                }),
-              ).toBeVisible();
-              await expect(
-                conversation.getByText(
-                  'New checkout screens are up for review.',
-                ),
+                roomRegion.getByText('New checkout screens are up for review.'),
               ).toBeVisible();
               const draftText = 'Shorter CTA: “Pay now”';
               await composer.fill(draftText);
@@ -3729,11 +3748,7 @@ function roomConversationScreens(): Screen[] {
               const reloaded = page.getByRole('region', {
                 name: 'Project room',
               });
-              await expect(
-                reloaded.getByRole('button', {
-                  name: /^design\b.*switch channel$/,
-                }),
-              ).toBeVisible();
+              await expectChannel(reloaded, 'design');
               await expect(
                 reloaded.getByRole('textbox', { name: /^Message/ }),
               ).toHaveValue(draftText);
@@ -3742,6 +3757,33 @@ function roomConversationScreens(): Screen[] {
                   document.documentElement.setAttribute('data-theme', selected),
                 theme,
               );
+              if (viewport.width === MOBILE.width) {
+                // #4810's keyboard keep-above, inside a non-default channel:
+                // the focused composer and Send stay above a 300px keyboard.
+                const field = reloaded.getByRole('textbox', {
+                  name: /^Message/,
+                });
+                await field.click();
+                await emulateKeyboard(page, 300);
+                const send = reloaded.getByRole('button', { name: /^Send/ });
+                await expect
+                  .poll(
+                    async () => {
+                      const box = await send.boundingBox();
+                      const visible = await page.evaluate(
+                        () =>
+                          window.visualViewport!.offsetTop +
+                          window.visualViewport!.height,
+                      );
+                      return box ? box.y + box.height - visible : Infinity;
+                    },
+                    { message: 'Send ends below the visible viewport (px)' },
+                  )
+                  .toBeLessThanOrEqual(0);
+                await expect(field).toBeFocused();
+                await expect(field).toHaveValue(draftText);
+                await emulateKeyboard(page, 0);
+              }
               const reopened = await openChannels();
               await expect(
                 reopened.getByRole('button', { name: 'design', exact: true }),
@@ -3898,14 +3940,38 @@ function roomConversationScreens(): Screen[] {
               ).toBeDisabled();
             }
             if (scene === 'deleted') {
-              const tombstone = conversation.getByText('Message deleted');
+              // The deleted message keeps its place, takes no actions, and
+              // its thread stays reachable from it (#4797 with #4795).
+              const tombstone = conversation
+                .locator('.room-row')
+                .filter({ has: page.getByText('Message deleted') });
               await expect(tombstone).toBeVisible();
-              // The reply under it still names whom it answered.
               await expect(
-                messageRow('Which FAQ do you mean, the billing one?').getByText(
-                  'Jonas Berg',
-                ),
-              ).toBeVisible();
+                tombstone.getByRole('button', { name: /^More actions/ }),
+              ).toHaveCount(0);
+              const summary = tombstone.getByRole('button', {
+                name: /1 reply/,
+              });
+              await expect(summary).toBeVisible();
+              if (viewport.width === MOBILE.width) {
+                // The phone's thread page: the tombstone as its root, the
+                // reply under it.
+                await summary.click();
+                const threadList = roomRegion.getByRole('list', {
+                  name: 'Thread',
+                });
+                await expect(
+                  threadList.getByText('Message deleted'),
+                ).toBeVisible();
+                await expect(
+                  threadList.getByText(
+                    'Which FAQ do you mean, the billing one?',
+                  ),
+                ).toBeVisible();
+                await expect(
+                  roomRegion.getByRole('textbox', { name: 'Reply in thread' }),
+                ).toBeVisible();
+              }
             }
             if (scene === 'attachment') {
               await expect(
@@ -4039,8 +4105,191 @@ function roomConversationScreens(): Screen[] {
   );
 }
 
+/**
+ * Channel navigation (#4794, #4795): the Project's channel list (the phone's
+ * Project page; at 1440 the sidebar with one Project expanded and one
+ * collapsed), a channel opened by its address, and a thread. Unread state
+ * comes from the read-marker fixture.
+ *
+ * The phone list is shot in a tall phone frame, the whole page at once: the
+ * collapsed dock overlays the bottom band of the page's scrollport, and in
+ * a 844px frame some control of this page always sits behind it.
+ */
+const CHANNEL_NAV_SCENES = ['list', 'conversation', 'thread'] as const;
+const PHONE_PAGE = { width: MOBILE.width, height: 1200 } as const;
+
+function channelNavigationScreens(): Screen[] {
+  return CHANNEL_NAV_SCENES.flatMap((scene) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE].map(
+        (viewport): Screen => {
+          const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+          const phone = viewport.width === MOBILE.width;
+          const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
+          const other = `${slug}-site`;
+          let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+          const created: string[] = [];
+          const cleanups: (() => Promise<void>)[] = [];
+          const query =
+            scene === 'conversation'
+              ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
+              : scene === 'thread'
+                ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
+                : '';
+          const screen: Screen = {
+            name: `channel-nav-${scene}-${theme}-${width}`,
+            title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
+            path: `/projects/${slug}${query}`,
+            viewport,
+            async beforeGoto(page) {
+              request = createAuthenticatedE2ERequest(page.request);
+              const createProject = async (
+                name: string,
+                projectSlug: string,
+              ) => {
+                const response = await request.post(
+                  `${resolveE2EApiBase()}/api/projects`,
+                  { data: { name, slug: projectSlug } },
+                );
+                expect(response.ok()).toBe(true);
+                created.push(projectSlug);
+                return (await response.json()).data as { id: string };
+              };
+              const project = await createProject('Onboarding revamp', slug);
+              // A second Project stays collapsed in the sidebar.
+              await createProject('Kontour site', other);
+              const room = await installProjectRoomFixture(page, {
+                slug,
+                projectId: project.id,
+                scene: 'navigation',
+              });
+              cleanups.push(room.cleanup);
+              const conversations = await installProjectConversationsFixture(
+                page,
+                { slug, projectId: project.id },
+              );
+              cleanups.push(conversations.cleanup);
+            },
+            async afterGoto(page) {
+              await page.evaluate(
+                (selected) =>
+                  document.documentElement.setAttribute('data-theme', selected),
+                theme,
+              );
+              const sidebar = page.getByRole('navigation', {
+                name: 'Primary navigation',
+              });
+              // Unread and working come from the read-marker and session
+              // fixtures; the rows below are the server's answer.
+              const expectProjectList = async (list: Locator) => {
+                await expect(
+                  list.getByRole('button', { name: 'general, 3 unread' }),
+                ).toHaveClass(/conversation-list__row--unread/);
+                await expect(
+                  list.getByRole('button', { name: 'design', exact: true }),
+                ).toBeVisible();
+                await expect(
+                  list.getByRole('button', {
+                    name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
+                  }),
+                ).toBeVisible();
+                // A Task whose room never opened is not a Task room.
+                await expect(
+                  list.getByRole('button', { name: /Rename the onboarding/ }),
+                ).toHaveCount(0);
+              };
+              const room = page.getByRole('region', {
+                name: 'Project room',
+                exact: true,
+              });
+              if (scene === 'conversation' || scene === 'thread') {
+                await expect(room).toBeVisible();
+                if (scene === 'conversation') {
+                  await expect(
+                    room.getByText('New checkout screens are up for review.'),
+                  ).toBeVisible();
+                  if (phone) {
+                    await expect(
+                      room.getByRole('heading', { level: 2, name: 'design' }),
+                    ).toBeVisible();
+                    await expectTouchTarget(
+                      room.getByRole('button', {
+                        name: 'Back to Onboarding revamp',
+                      }),
+                      'Back',
+                    );
+                    await expectTouchTarget(
+                      room.getByRole('button', { name: 'Channel options' }),
+                      'Channel options',
+                    );
+                  } else {
+                    // Opening #design marked it read: the sidebar's row is
+                    // current and plain.
+                    const row = sidebar.getByRole('button', {
+                      name: 'design',
+                      exact: true,
+                    });
+                    await expect(row).toHaveAttribute('aria-current', 'page');
+                    await expect(row).not.toHaveClass(
+                      /conversation-list__row--unread/,
+                    );
+                  }
+                } else {
+                  await expect(
+                    room.getByText('Both numbers are fixed in the draft now.'),
+                  ).toBeVisible();
+                  await expect(
+                    room.getByRole('heading', { name: 'Thread' }),
+                  ).toBeVisible();
+                  await expect(
+                    room.getByRole('textbox', { name: 'Reply in thread' }),
+                  ).toBeVisible();
+                }
+                await page.mouse.move(0, 0);
+                return;
+              }
+              if (phone) {
+                const list = page.getByRole('main');
+                await expectProjectList(list);
+                await expectTouchTarget(
+                  list.getByRole('button', { name: 'design', exact: true }),
+                  'Channel row',
+                );
+              } else {
+                await expectProjectList(sidebar);
+                // The other Project stays collapsed: no rows of its own.
+                await expect(
+                  sidebar.getByRole('button', {
+                    name: 'Kontour site',
+                    exact: true,
+                  }),
+                ).toBeVisible();
+                await expect(
+                  sidebar.getByRole('list', { name: 'Channels' }),
+                ).toHaveCount(1);
+              }
+              await page.mouse.move(0, 0);
+            },
+            async cleanup() {
+              for (const release of cleanups.splice(0)) await release();
+              for (const projectSlug of created.splice(0)) {
+                const removed = await request.delete(
+                  `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+                );
+                expect(removed.ok()).toBe(true);
+              }
+            },
+          };
+          return screen;
+        },
+      ),
+    ),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...roomConversationScreens(),
+  ...channelNavigationScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),
@@ -6247,7 +6496,15 @@ test('build gallery — capture key screens', async ({ page }) => {
           screen,
           file,
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          // Preserve the already bounded per-screen console/page errors when
+          // a render assertion fails; the fallback PNG alone cannot explain
+          // a lazy-boundary failure. Failure and capture counts stay intact.
+          error: [
+            error instanceof Error ? error.message : String(error),
+            ...(browserErrors.length
+              ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
+              : []),
+          ].join('\n'),
         });
       } finally {
         await screen.cleanup?.();

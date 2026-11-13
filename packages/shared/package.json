@@ -141,11 +141,11 @@
   },
   "dependencies": {
     "@kontourai/station-contracts": "^0.13.0",
-    "@kontourai/thread": "0.5.0",
+    "@kontourai/thread": "0.7.0",
     "@modelcontextprotocol/client": "2.4.0",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
-    "jose": "6.2.15",
-    "koffi": "3.3.6"
+    "jose": "6.2.17",
+    "koffi": "3.3.7"
   }
 }

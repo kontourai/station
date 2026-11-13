@@ -11,6 +11,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | Topic | Status | Decision |
 | --- | --- | --- |
 | [agent-authored-tracker-updates](./agent-authored-tracker-updates.md) | current | Agents keep tracker items current through comments and PR links, not status sync |
+| [agent-proposed-automations](./agent-proposed-automations.md) | current | An agent proposes Automation sources and rules; a person confirms |
 | [automations-unify-schedules](./automations-unify-schedules.md) | current | Automations are scheduled work that runs in a conversation, on any engine |
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
 | [browser-viewport-is-shared-fit-is-per-viewer](./browser-viewport-is-shared-fit-is-per-viewer.md) | current | The Browser page viewport is shared by every viewer; each viewer's fit and zoom are local |
@@ -23,6 +24,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
 | [project-room-realtime](./project-room-realtime.md) | current | Keep Room durability independent of realtime transport and harden SSE first |
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
+| [registry-sources-detected-by-structure](./registry-sources-detected-by-structure.md) | current | A registry source is a location; what it provides is detected from the structure of its content |
 | [revision-evidence-freeze-policy](./revision-evidence-freeze-policy.md) | current | Freeze Task room revision evidence only when a consumer references it |
 | [tailscale-serve-own-origin](./tailscale-serve-own-origin.md) | current | A Station trusts its own daemon-attested Tailscale Serve HTTPS origin without ALLOWED_ORIGINS |
 | [task-tracker-followups](./task-tracker-followups.md) | current | Bounded GitHub follow-ups for tracker-backed Tasks |

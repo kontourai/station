@@ -109,6 +109,9 @@ const CANONICAL_VIEWS = [
   { type: 'connections-engine-new', providerId: 'custom' },
   { type: 'connections-engines' },
   { type: 'connections-engine-edit', id: 'engine' },
+  { type: 'connections-engine-edit', id: 'engine', tab: 'usage' },
+  // An id holding `/` is encoded, so it round-trips.
+  { type: 'connections-engine-edit', id: 'team/engine', tab: 'settings' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 'tool' },
   { type: 'connections-knowledge' },
@@ -757,6 +760,52 @@ describe('app-shell routing', () => {
     expect(
       getPathForView({ type: 'connections-engine-edit', id: 'demo' }),
     ).toBe('/connections/engines/demo');
+  });
+
+  test('an engine detail takes an allow-listed tab segment; any other is not found', () => {
+    expect(resolveViewFromPath('/connections/engines/claude/accounts')).toEqual(
+      { type: 'connections-engine-edit', id: 'claude', tab: 'accounts' },
+    );
+    expect(
+      getPathForView({
+        type: 'connections-engine-edit',
+        id: 'claude',
+        tab: 'accounts',
+      }),
+    ).toBe('/connections/engines/claude/accounts');
+    // The 4th segment used to be dropped silently.
+    for (const path of [
+      '/connections/engines/claude/bogus',
+      '/connections/engines/claude/usage/extra',
+    ])
+      expect(resolveViewFromPath(path)).toEqual({ type: 'not-found', path });
+    // No tab, or a trailing slash, is the detail itself.
+    for (const path of [
+      '/connections/engines/claude',
+      '/connections/engines/claude/',
+    ])
+      expect(resolveViewFromPath(path)).toEqual({
+        type: 'connections-engine-edit',
+        id: 'claude',
+      });
+    // A trailing slash is the same route, with a tab too.
+    expect(resolveViewFromPath('/connections/engines/claude/usage/')).toEqual({
+      type: 'connections-engine-edit',
+      id: 'claude',
+      tab: 'usage',
+    });
+    expect(
+      getPathForView({ type: 'connections-engine-edit', id: 'team/engine' }),
+    ).toBe('/connections/engines/team%2Fengine');
+    // The add flow's deep link is not an engine id with a tab.
+    expect(resolveViewFromPath('/connections/engines/new/opencode')).toEqual({
+      type: 'connections-engine-new',
+      providerId: 'opencode',
+    });
+    expect(resolveViewFromPath('/connections/engines/new')).toEqual({
+      type: 'connections-engine-edit',
+      id: 'new',
+    });
   });
 
   test('getPathForView emits /registry/:tab when a tab is set', () => {

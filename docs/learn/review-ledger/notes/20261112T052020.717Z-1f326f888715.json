@@ -1,0 +1,15 @@
+{
+  "revision": "aa3d91801c1f04fd67b54335e1eff7192cacb3c6",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md and the package exports gained station-tool-phrases (#3418), a pure, environment-free helper over its own phrase table with no Node built-ins, as this scope requires; the scope rules are unchanged.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"package.json exports gained ./station-tool-phrases (#3418); the README's claim that package.json subpaths are the authoritative inventory, and its import guidance, still hold.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Added the generated src-ui/src/components/icons/station-mark.ts output and checked it against generate-app-icons.mjs (stationMarkModule, DIRECT_OUTPUTS) and station-icon.test.ts (module equals the generator and carries the Android status-bar path). The index.css change is the mark's colour rule (#3418).","inputs":["src-desktop/icons/README.md","scripts/__tests__/station-icon.test.ts","scripts/generate-app-icons.mjs","src-ui/src/index.css"]},
+
+    {"path":"src-server/AGENTS.md","note":"module-map.md changed only by the SessionDigest label sentence (#3418); this scope's routing and server rules are unaffected.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"ConversationBody wraps only its live body in StationSessionTitlesProvider (#3418), reading Sessions through the existing SDK query hook as this scope requires; record density and the shared-owner table are unchanged. module-map.md changed only by the digest sentence.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

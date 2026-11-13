@@ -55,6 +55,39 @@ Feature Preview is on. See
 [Agent tools and approvals](../reference/browser-and-devices.md#agent-authority-and-human-input)
 for the full rules.
 
+## Browser activity in a conversation
+
+Enable **Inline browser activity** in **Settings → Advanced → Feature
+previews** to try a browser view beside its tool calls. It is off by default.
+The card uses the existing browser session, profile and control checks. It
+does not open a second browser or grant an agent more access.
+
+Browser actions keep their ordinary result, failure and approval controls.
+The inline view follows an exact session named by those calls, and only when
+the session belongs to the conversation and your Project profile. Missing
+identity or unavailable access leaves the calls visible without choosing a
+different browser. Conversation adapters without matching Station authority
+do not offer the view.
+
+Use **Float** to keep watching while scrolling, **Bring back** to return to
+the card, or **Open in pane** for the Browser workspace. These placements
+show the same page and login. A visible pane takes precedence over the
+inline view. Hiding a viewer ends its frame subscription, not its browser
+session.
+
+A card's **Take control**, **Release control** and **Full screen** actions use
+the shared live-view controls. When a viewer disappears, it releases its own
+held keys and buttons without ending the browser session or releasing another
+viewer's newer input. If neutral cleanup fails, further input is refused until
+cleanup succeeds; changing placement is not evidence that the page is ready.
+
+A finished activity summarizes its calls; it does not present the current
+page as a historical screenshot. Recording is a separate, explicit action
+with the existing [Browser recording](#record-a-task-walkthrough) controls
+and limits. This preview does not automatically retain a per-turn screen
+replay. See the [implementation plan](../plans/browser-activity-inline.md)
+for the shared owners and promotion evidence.
+
 ## The ⋯ menu
 
 Everything except tabs, navigation, the address bar and the driver chip is in

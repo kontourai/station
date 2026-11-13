@@ -136,7 +136,25 @@
 
     "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
 
-    "src-ui/src/workspace-panes/PaneOverflowMenu.tsx"
+    "src-ui/src/workspace-panes/PaneOverflowMenu.tsx",
+
+    "src-ui/src/components/browser-activity/InlineBrowserActivity.tsx",
+
+    "src-ui/src/components/chat/BrowserActivityRun.tsx",
+
+    "src-ui/src/components/chat/BrowserActivityContext.tsx",
+
+    "src-ui/src/components/chat/browser-activity-calls.ts",
+
+    "src-ui/src/float-over-chat/BrowserSessionSurface.tsx",
+
+    "src-ui/src/float-over-chat/useBrowserSessionReads.ts",
+
+    "src-ui/src/float-over-chat/BoundBrowserActivityProvider.tsx",
+
+    "src-ui/src/float-over-chat/shownSources.ts",
+
+    "tests/inline-browser-activity.spec.ts"
   ],
 
   "checks": [

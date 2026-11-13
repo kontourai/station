@@ -226,9 +226,12 @@ Known limits:
   Codex sessions build their own context; Station does not write their brief
   files.
 - **Recall is a plain word match** over claims, titles and excerpts, and the
-  brief applies a smaller version of the Kit's rules. The Kit's question-answering
-  recall, brief compiler, envelope decoder and marker are not yet published
-  ([flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)).
+  brief applies a smaller version of the Kit's rules. Flow Agents 9.14 publishes
+  the Kit's question-answering recall, brief compiler, envelope decoder and marker
+  (`@kontourai/flow-agents/memory-recall`, `/memory-brief`, `/memory-envelope`,
+  `/memory-marker`; [flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)),
+  and Station takes the brief's markers from `/memory-marker`. It still decodes
+  envelopes, compiles the brief and matches recall with its own code.
 
 ### Measuring whether review is worth it
 

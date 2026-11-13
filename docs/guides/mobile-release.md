@@ -296,6 +296,7 @@ package evidence.
 | Camera | Android `CAMERA` plus optional camera hardware; iOS camera rationale | Scan a pairing QR code. |
 | Microphone | Android `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` plus optional microphone hardware; iOS microphone rationale | Voice conversations with an agent. |
 | Notifications | Android `POST_NOTIFICATIONS` | Show requested Station attention on supported Android releases. |
+| Shared images | Android MainActivity `image/*` `SEND`/`SEND_MULTIPLE` intent filter; no permission | Receive images shared from another app into a conversation or a new chat. |
 
 The Android activity uses the maintained Android platform contract
 `windowSoftInputMode="adjustResize"`.

@@ -450,7 +450,11 @@
 
     "src-server/routes/integrations/integration-status-routes.ts",
 
-    "src-server/routes/integrations/__tests__/integration-status-routes.test.ts"
+    "src-server/routes/integrations/__tests__/integration-status-routes.test.ts",
+
+    "src-ui/src/views/connections-hub/connection-health.ts",
+
+    "src-ui/src/views/connections-hub/connection-section-signals.ts"
   ],
 
   "checks": [

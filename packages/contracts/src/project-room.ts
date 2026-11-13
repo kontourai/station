@@ -31,6 +31,21 @@ export const PROJECT_ROOM_LIMITS = {
 /** Name the migration gives a Project's existing room. */
 export const PROJECT_ROOM_DEFAULT_CHANNEL_NAME = 'general';
 /**
+ * The 404 code a room route answers when the Project itself does not exist
+ * on this Station. Distinct from `project_room_not_found` (the Project exists
+ * but its room was never opened) and from a bare 404 (a host that predates
+ * the route), so a client shows "no such Project" rather than offering to
+ * open a room or retry an unavailable one.
+ */
+export const PROJECT_ROOM_PROJECT_NOT_FOUND_CODE =
+  'project_room_project_not_found';
+/**
+ * The 409 code a message route answers when the caller may not change that
+ * message: only its person author may edit or delete it, and nobody edits an
+ * Agent's (#4797). Not a 403, which clients read as lost access.
+ */
+export const PROJECT_ROOM_FORBIDDEN_CODE = 'project_room_forbidden';
+/**
  * A named channel in a Project. Each channel is one room: `channelId` is that
  * room's `roomId`, which keys its messages, shared note and Agent requests.
  */

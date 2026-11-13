@@ -1,7 +1,9 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
+import type { WorkLane } from '../../views/home/work-status';
 import {
   projectTaskPlanProgress,
+  sessionPlanProgressRead,
   taskPlanProgressLabel,
 } from '../taskPlanProgress';
 
@@ -184,5 +186,32 @@ describe('projectTaskPlanProgress', () => {
     expect(taskPlanProgressLabel(progress!)).toBe(
       'Agent-reported plan: 0 of 1 step done',
     );
+  });
+});
+
+describe('sessionPlanProgressRead', () => {
+  test('reads every lane the ladder files a Session in but Drafts, refreshing running and needs-you rows', () => {
+    const lanes: Record<WorkLane, true> = {
+      needsYou: true,
+      running: true,
+      idle: true,
+      finished: true,
+      drafts: true,
+      external: true,
+    };
+    const reads = Object.fromEntries(
+      (Object.keys(lanes) as WorkLane[]).map((lane) => [
+        lane,
+        sessionPlanProgressRead({ lane }),
+      ]),
+    );
+    expect(reads).toEqual({
+      needsYou: 'live',
+      running: 'live',
+      idle: 'settled',
+      finished: 'settled',
+      drafts: 'skip',
+      external: 'settled',
+    });
   });
 });

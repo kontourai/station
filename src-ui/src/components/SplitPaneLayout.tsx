@@ -73,7 +73,7 @@ function detailRootClassName(
   return `split-pane__right${rightVisible ? ' split-pane__right--visible' : ''}${showMobileDetailSheet ? ' split-pane__right--sheet' : ''}${placement === 'portaled' ? ' split-pane__right--portaled' : ''}`;
 }
 
-interface SplitPaneItem {
+export interface SplitPaneItem {
   id: string;
   name: string;
   subtitle?: React.ReactNode;
@@ -1645,7 +1645,11 @@ export function SplitPaneCompanion({
 }: {
   children?: React.ReactNode;
   companion?: React.ReactNode;
-  sheet?: { label: string; onDismiss(): void };
+  /**
+   * The companion on a phone. `page` fills the screen instead of rising as a
+   * sheet (a room's thread, #4795); Back still closes it.
+   */
+  sheet?: { label: string; onDismiss(): void; page?: boolean };
   className?: string;
   /** A local supporting inspection slot; its content marks itself with data-companion-content. */
   inspection?: {
@@ -1683,7 +1687,10 @@ export function SplitPaneCompanion({
               closeLabel={`Close ${sheet.label.toLowerCase()}`}
               onClose={sheet.onDismiss}
               size="lg"
-              panelClassName="split-pane-companion__sheet"
+              panelClassName={`split-pane-companion__sheet${sheet.page ? ' split-pane-companion__page' : ''}`}
+              overlayClassName={
+                sheet.page ? 'split-pane-companion__page-overlay' : undefined
+              }
             >
               {companion}
             </Dialog>

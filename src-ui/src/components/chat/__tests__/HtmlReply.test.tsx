@@ -27,15 +27,61 @@ const page = {
 };
 const origin = 'https://sandbox.example';
 
-test('refuses the app origin and loads HTML only after the isolated frame identifies itself', () => {
+test('without a reachable distinct origin, renders in an opaque-origin sandbox that never loads by message', () => {
+  vi.stubGlobal('navigator', { userActivation: { isActive: true } });
+  document.documentElement.style.setProperty('--k-bg', '#0a0e13');
+  // A value that would close the declaration is dropped, never written.
+  document.documentElement.style.setProperty('--k-text', 'red;}</style>');
+  // The app's own origin is not distinct, and an empty origin is what the
+  // server answers a client that cannot reach the loopback frame listener.
+  for (const unreachable of [window.location.origin, '']) {
+    const view = render(
+      <HtmlReply page={page} frameOrigin={unreachable} theme="light" />,
+    );
+    const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
+    // No allow-same-origin: the frame's scripts cannot reach Station's origin.
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(frame.getAttribute('src')).toBeNull();
+    const document_ = frame.getAttribute('srcdoc') ?? '';
+    expect(document_).toContain(page.html);
+    expect(document_).toContain('--background:#0a0e13;');
+    expect(document_).toContain('color-scheme:light');
+    expect(document_).not.toContain('--foreground:');
+    expect(document_).not.toContain('red;}');
+    // The authored bytes still follow the page's own Content Security Policy.
+    expect(document_.indexOf('Content-Security-Policy')).toBeLessThan(
+      document_.indexOf(page.html),
+    );
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+    const send = (data: unknown, sender: string) =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data,
+            source: frame.contentWindow,
+            origin: sender,
+          }),
+        );
+      });
+    // A page claiming to be the proxy gets nothing posted back.
+    send({ type: 'html-reply-ready' }, 'null');
+    expect(post).not.toHaveBeenCalled();
+    // Links are honoured only from the opaque frame itself.
+    send(
+      { type: 'html-reply-link', url: 'https://example.com/' },
+      'https://evil.example',
+    );
+    expect(screen.queryByText('Open link from visual reply?')).toBeNull();
+    send({ type: 'html-reply-link', url: 'https://example.com/' }, 'null');
+    expect(screen.getByText('Open link from visual reply?')).toBeTruthy();
+    view.unmount();
+  }
+});
+
+test('loads HTML only after the isolated frame identifies itself', () => {
   const view = render(
-    <HtmlReply page={page} frameOrigin={window.location.origin} theme="dark" />,
+    <HtmlReply page={page} frameOrigin={origin} theme="dark" />,
   );
-  expect(screen.queryByTitle('Visual reply')).toBeNull();
-  expect(
-    screen.getByText('Visual replies require an isolated frame origin.'),
-  ).toBeTruthy();
-  view.rerender(<HtmlReply page={page} frameOrigin={origin} theme="dark" />);
   const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
   const post = vi.spyOn(frame.contentWindow!, 'postMessage');
   const ready = (source: unknown, sender: string) =>

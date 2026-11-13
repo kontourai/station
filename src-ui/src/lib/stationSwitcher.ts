@@ -1,9 +1,13 @@
-import type { SavedConnection } from '@kontourai/station-connect';
+import type {
+  ConnectionFailureReason,
+  SavedConnection,
+} from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
+import { relativeTime } from '../utils/relativeTime';
 
 const RECENT_KEY = 'station.switcher.recent';
 const RECENT_LIMIT = 20;
-const PROBE_TIMEOUT_MS = 2_500;
+export const PROBE_TIMEOUT_MS = 2_500;
 const PROBE_FRESH_MS = 30_000;
 
 /** Saved Station ids, most recently used first. */
@@ -85,9 +89,18 @@ export function isProbeable(
   return pageProtocol !== 'https:' || LOOPBACK_HOSTS.has(target.hostname);
 }
 
+/** What one probe learned, and when it learned it. */
+export interface StationProbe {
+  reachability: StationReachability;
+  /** When the probe settled (epoch ms). */
+  checkedAt: number;
+  /** Why an unreachable probe failed: its deadline, or a network error. */
+  failure?: 'timeout' | 'network';
+}
+
 const probeCache = new Map<
   string,
-  { at: number; result: Promise<StationReachability> }
+  { at: number; result: Promise<StationProbe> }
 >();
 
 /**
@@ -96,7 +109,7 @@ const probeCache = new Map<
  * An answer is reused briefly so reopening the switcher shows it at once; a
  * failure is not, so a Station that just came back is never shown stale.
  */
-export function probeStation(url: string): Promise<StationReachability> {
+export function probeStation(url: string): Promise<StationProbe> {
   const cached = probeCache.get(url);
   if (cached && Date.now() - cached.at < PROBE_FRESH_MS) return cached.result;
   const entry = {
@@ -107,10 +120,18 @@ export function probeStation(url: string): Promise<StationReachability> {
       cache: 'no-store',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     }).then(
-      () => 'online' as const,
-      () => {
+      (): StationProbe => ({ reachability: 'online', checkedAt: Date.now() }),
+      (error: unknown): StationProbe => {
         if (probeCache.get(url) === entry) probeCache.delete(url);
-        return 'unreachable' as const;
+        return {
+          reachability: 'unreachable',
+          checkedAt: Date.now(),
+          // A no-cors fetch hides everything else about a failure.
+          failure:
+            error instanceof DOMException && error.name === 'TimeoutError'
+              ? 'timeout'
+              : 'network',
+        };
       },
     ),
   };
@@ -120,4 +141,147 @@ export function probeStation(url: string): Promise<StationReachability> {
 
 export function forgetStationProbe(url: string): void {
   probeCache.delete(url);
+}
+
+/**
+ * A few words for each failure reason, sized for a menu row. The full
+ * sentences (`connectionFailureCopy`) name the host and say what to do; a row
+ * already shows the name, and Manage Stations owns the remedy. Keyed by the
+ * whole union so a new reason cannot ship without its phrase.
+ */
+const FAILURE_PHRASE: Record<ConnectionFailureReason, string> = {
+  offline: 'this device is offline',
+  'mixed-content': 'insecure address from this page',
+  'invalid-endpoint': 'not a Station address',
+  'identity-mismatch': 'a different Station answered',
+  'access-method-mismatch': 'reached a different way',
+  'authentication-failed': 'this device was refused',
+  'unsupported-capability-version': 'Station needs an update',
+  'client-protocol-unsupported': 'this app needs an update',
+  timeout: 'no answer in time',
+  unreachable: 'nothing answered',
+  'server-restarted': 'Station restarted',
+  'host-unavailable': 'server down or recovering',
+  'origin-not-allowed': "won't accept this app",
+  'unexpected-response': "didn't answer as a Station",
+  undetermined: 'connection not confirmed',
+  busy: 'answering slowly',
+  'awaiting-approval': 'awaiting approval',
+};
+
+export function failurePhrase(reason: ConnectionFailureReason): string {
+  return FAILURE_PHRASE[reason];
+}
+
+/** "just now", "4m ago", "2d ago", or a short date past a week. */
+export function ago(at: number, now: number): string {
+  const text = relativeTime(at, now);
+  if (text === 'now') return 'just now';
+  return /^\d/.test(text) ? `${text} ago` : text;
+}
+
+/** This device has no accepted credential for the Station. */
+export function needsAccess(connection: SavedConnection): boolean {
+  return (
+    connection.credentialState === 'required' ||
+    connection.lastError?.reason === 'authentication-failed'
+  );
+}
+
+export interface StationRowStatus {
+  /** The state in a word or two; also the row's accessible description. */
+  label: string;
+  /** Why, and when that was learned; empty when there is nothing to add. */
+  detail: string;
+}
+
+export interface StationRowInput {
+  connection: SavedConnection;
+  now: number;
+  switching: boolean;
+  /** Present only for the active Station, from its health coordinator. */
+  active?: {
+    label: string;
+    reason: ConnectionFailureReason | null;
+    healthy: boolean;
+    checkedAt: number | null;
+  };
+  probeable: boolean;
+  probe?: StationProbe;
+}
+
+function join(...parts: Array<string | false | null | undefined>): string {
+  return parts.filter(Boolean).join(' · ');
+}
+
+/**
+ * One row of the Station switcher: what state a Station is in, why, and when
+ * that was last learned. The active Station reads its live health check; any
+ * other reads the probe this opening ran, and failing that, the last result
+ * this device saved, always with its age, so an old answer never reads as
+ * current.
+ */
+export function describeStationRow({
+  connection,
+  now,
+  switching,
+  active,
+  probeable,
+  probe,
+}: StationRowInput): StationRowStatus {
+  if (switching) return { label: 'Switching…', detail: '' };
+  const lastConnected = connection.lastSuccessAt
+    ? `last connected ${ago(connection.lastSuccessAt, now)}`
+    : '';
+  if (active) {
+    return {
+      label: active.label,
+      detail: join(
+        !active.healthy && active.reason && failurePhrase(active.reason),
+        active.checkedAt !== null && `checked ${ago(active.checkedAt, now)}`,
+      ),
+    };
+  }
+  if (connection.injected && connection.injectedStatus) {
+    if (connection.injectedStatus === 'starting')
+      return { label: 'Starting…', detail: '' };
+    if (connection.injectedStatus === 'failed')
+      return { label: 'Failed to start', detail: '' };
+    if (connection.injectedStatus === 'stopped')
+      return { label: 'Not running', detail: '' };
+  }
+  if (needsAccess(connection)) {
+    return {
+      label: 'Needs access',
+      detail: connection.lastError
+        ? `refused ${ago(connection.lastError.at, now)}`
+        : '',
+    };
+  }
+  if (probe?.reachability === 'online')
+    return { label: 'Online', detail: `checked ${ago(probe.checkedAt, now)}` };
+  if (probe?.reachability === 'unreachable') {
+    return {
+      label: 'Unreachable',
+      detail: join(
+        probe.failure === 'timeout' ? 'no answer in time' : 'nothing answered',
+        `checked ${ago(probe.checkedAt, now)}`,
+        lastConnected,
+      ),
+    };
+  }
+  if (probeable) return { label: 'Checking…', detail: lastConnected };
+  // Not probeable from here (a broker route, or plain HTTP from an HTTPS
+  // page): the last thing this device saw is all there is, so say how old it is.
+  if (connection.lastError) {
+    return {
+      label: "Can't connect",
+      detail: join(
+        failurePhrase(connection.lastError.reason),
+        ago(connection.lastError.at, now),
+        lastConnected,
+      ),
+    };
+  }
+  return { label: 'Not checked', detail: lastConnected };
 }

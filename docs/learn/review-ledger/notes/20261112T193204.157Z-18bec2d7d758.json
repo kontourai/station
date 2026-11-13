@@ -1,0 +1,7 @@
+{
+  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"ui-tidy visual lane changed chat.css only (removed the from-prompt message rule, the avatar hover ring, and the prompt-glow keyframes; brand hover lift became a flat tint). Checked module-map.md chat/ references: all point at server routes and tests, none describe chat.css styling, gradients or the from-prompt marker. Nothing stale.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

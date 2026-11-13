@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/design/channel-home-authority.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). environment-security.ts gained only the optional boolean `usageConnectionFilters` on StationCapabilityFlags (additive). Checked authorization/capability ownership (line 53), EventStore room tests (line 318) and the adapter capability claim (line 428); unaffected.","inputs":["docs/design/channel-home-authority.md","packages/contracts/src/environment-security.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

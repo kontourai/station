@@ -143,6 +143,7 @@ import {
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
+import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   installSessionTmpDirPolicy,
@@ -3787,6 +3788,7 @@ describe('ClaudeAdapter', () => {
           approvalGuardian: {
             isEnabled: () => true,
             getMode: () => mode,
+            readConversation: () => NO_PERSON_INTENT,
             reviewToolCall,
           },
           logger: { info: vi.fn(), warn: vi.fn() },
@@ -9609,6 +9611,9 @@ describe('ClaudeAdapter', () => {
         thinking: undefined,
         effort: undefined,
         settings: undefined,
+        // #4828: every session marks the conversation on a native web read;
+        // with no Agent there is no PreToolUse policy.
+        hooks: { PostToolUse: [{ hooks: [expect.any(Function)] }] },
       });
     });
 

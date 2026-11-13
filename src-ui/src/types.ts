@@ -44,6 +44,7 @@ import type { PeerChatBinding } from './lib/peer-chat';
 import type { EffectiveModelSource } from './utils/execution';
 import type { TransformationReceipt } from './utils/heif-normalizer';
 import type { PlanArtifact } from './utils/planArtifacts';
+import type { EngineDetailTab } from './views/connections-hub/connection-sections';
 
 export type {
   LayoutAction,
@@ -597,7 +598,12 @@ export type NavigationView =
   | { type: 'connections-models' }
   | { type: 'connections-model-edit'; id: string }
   | { type: 'connections-engines' }
-  | { type: 'connections-engine-edit'; id: string }
+  | {
+      type: 'connections-engine-edit';
+      id: string;
+      /** Route tab; absent opens the detail's default view. */
+      tab?: EngineDetailTab;
+    }
   | { type: 'connections-engine-new'; providerId: string }
   | { type: 'connections-tools' }
   | { type: 'connections-tool-edit'; id: string }

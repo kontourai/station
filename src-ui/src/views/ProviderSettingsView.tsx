@@ -12,6 +12,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import { DetailHeader } from '../components/DetailHeader';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { resourceRow } from '../components/resource-hub/resource-row';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { CONNECTIONS_MODELS_PANE_ID } from '../components/split-pane-metrics';
 import { Empty } from '../components/state';
@@ -23,13 +24,13 @@ import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { NavigationView } from '../types';
 import { connectionEngineId } from '../utils/execution';
 import { describeStationFailure } from '../utils/stationFailure';
+import {
+  deriveConnectionHealth,
+  modelHealthInput,
+} from './connections-hub/connection-health';
 import { ProviderConnectionForm } from './provider-settings/ProviderConnectionForm';
 import { ProviderStackOverview } from './provider-settings/ProviderStackOverview';
 import { ProviderTypePicker } from './provider-settings/ProviderTypePicker';
-import {
-  modelConnectionPresentation,
-  ProviderStatusDot,
-} from './provider-settings/providerCatalog';
 import type { ProviderConnection } from './provider-settings/types';
 import {
   capabilitiesForType,
@@ -437,16 +438,16 @@ export function ProviderSettingsView({
 
   // 6-OPS-27: the list rail used to carry no readiness at all — a green dot
   // meaning `enabled` — while the hub card for the same connection asserted
-  // "Ready". One derivation now feeds both.
+  // "Ready". One derivation now feeds the row badge, the hub card and the
+  // section rail.
   const items = filtered.map((p) => {
     const described = describeProvider(p);
-    const presentation = modelConnectionPresentation(p);
-    return {
+    return resourceRow({
       id: p.id,
       name: described.name,
-      subtitle: `${presentation.readiness} · ${described.subtitle}`,
-      icon: <ProviderStatusDot tone={presentation.tone} row />,
-    };
+      status: deriveConnectionHealth(modelHealthInput(p)),
+      facts: [described.subtitle],
+    });
   });
 
   const detectedActions = [

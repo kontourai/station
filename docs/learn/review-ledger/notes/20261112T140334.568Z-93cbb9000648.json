@@ -1,0 +1,9 @@
+{
+  "revision": "ee3eb21725e958bf76c87fd21a97f1e6f983cc9c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatDockBody.offlineSettling.test.tsx only gained the SDK Session-list mock the live body now reads for Station tool titles (#3418); the dock behaviour it covers and this document's claims are unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"ChatDockBody.offlineSettling.test.tsx only gained the SDK Session-list mock (#3418); no contract this reference describes changed.","inputs":["docs/reference/contracts.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"]}
+  ]
+}

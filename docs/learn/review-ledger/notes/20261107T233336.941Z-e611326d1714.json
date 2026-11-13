@@ -1,0 +1,7 @@
+{
+  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"station-capability-flags.ts gained only the usageConnectionFilters flag entry. Checked the claim that the requirement travels with a handshake capability flag the sender checks first (line 52); it is about the portable-prepared target, not an enumerated flag list.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}

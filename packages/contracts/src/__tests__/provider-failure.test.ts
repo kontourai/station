@@ -105,6 +105,8 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['muse_turn_slot_releasing', 'busy', true],
     ['principal_unresolved', 'auth', false],
     ['project_identity_not_prepared', 'input_unsupported', false],
+    ['project_room_forbidden', 'permission_denied', false],
+    ['project_room_project_not_found', 'input_unsupported', false],
     ['provider-plan-quota-exhausted', 'quota_exhausted', false],
     ['provider_model_unavailable', 'model_unavailable', false],
     ['sandbox_unavailable', 'permission_denied', false],

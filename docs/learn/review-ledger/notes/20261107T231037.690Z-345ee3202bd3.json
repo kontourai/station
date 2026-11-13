@@ -1,0 +1,7 @@
+{
+  "revision": "3834f576143d1917e7c4a141d8eca2244772e170",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Bounded delta re-review for #4710 slice 1 fix round: Read the connection list section rechecked against connection-health (needsAttention rules, policy Not allowed), connection-section-signals (managed policy via useManagedEngineStateFor, Knowledge vectorDb-only rule), ConnectionsHub (loading state, 1.5s bound) and the engine detail (Status, Ready step, notice read deriveConnectionHealth). Failed-first-add rows stated as having no badge. Other sections not re-reviewed.","inputs":["docs/guides/connections.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/connections-hub/connection-health.ts","src-ui/src/views/connections-hub/connection-section-signals.ts"]}
+  ]
+}

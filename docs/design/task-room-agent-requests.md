@@ -102,7 +102,10 @@ clipboard screenshots and picker selections. Image previews and removal controls
 appear before sending; image-only messages are allowed. Intake reuses the chat
 limits: five attachments, 5 MiB per file and 15 MiB combined, with the same image
 conversion and resizing rules. Clipboard paste depends on the browser exposing
-files; native keyboard image insertion is not qualified by these tests.
+files; native keyboard image insertion is not qualified by these tests. On a
+phone the Task composer also shows **Paste image** beside Attach, which reads
+the clipboard's images into the same intake (see
+[chat composer attachments](chat-composer.md#32-attachments)).
 
 The [Task asset store](../../src-server/services/projects/task-room-attachments.ts)
 saves bytes separately from room history. Upload and reference resolution require

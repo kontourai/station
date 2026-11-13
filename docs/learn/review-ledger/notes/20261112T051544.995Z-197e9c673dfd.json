@@ -1,0 +1,7 @@
+{
+  "revision": "3c49101de1ce3239d166abacbeaf2d8ab1c0df30",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Rewrote the switcher reachability paragraph against StationSwitcherMenu.tsx and lib/stationSwitcher.ts (describeStationRow, probeStation): Checking…/Online/Unreachable labels, timeout vs network detail, checked/last-connected ages, unprobeable rows showing the saved failure with its age, Needs access with refusal age, and the active row's reason and check time from HeaderActions' useConnectionStatus (10s healthy poll, 500ms-to-10s backoff, foreground probe). Added the switching paragraph against StationConnectingScreen.tsx and AuthorityQueryContext's pending branches (6s threshold, Try again/Back to/Manage Stations). Covered by StationSwitcherMenu.test.tsx and authorityQueryIsolation.test.tsx.","inputs":["docs/guides/connections.md","src-ui/src/components/header/HeaderActions.tsx","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
+  ]
+}

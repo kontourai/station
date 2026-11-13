@@ -684,9 +684,11 @@ export class ProjectRoomStore {
         corrupt();
       this.assertActor(v.actor as ProjectRoomActor);
       if (author(v.actor as ProjectRoomActor) !== row.author) corrupt();
-      const input = edit
+      const edited = edit
         ? parseProjectRoomEditInput({ intentId: v.intentId, text: v.text })
-        : parseProjectRoomDeleteInput({ intentId: v.intentId });
+        : undefined;
+      const input =
+        edited ?? parseProjectRoomDeleteInput({ intentId: v.intentId });
       if (
         JSON.stringify({ kind: v.kind, messageId: v.messageId, ...input }) !==
         row.payload
@@ -697,8 +699,8 @@ export class ProjectRoomStore {
         roomId: String(v.roomId),
         messageId: String(v.messageId),
         revision: Number(v.revision),
-        kind: edit ? 'edit' : 'delete',
-        ...('text' in input ? { text: input.text } : {}),
+        kind: edited ? 'edit' : 'delete',
+        ...(edited ? { text: edited.text } : {}),
         actor: {
           id: actor.id,
           displayName: actor.displayName,

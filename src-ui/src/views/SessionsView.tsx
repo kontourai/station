@@ -45,6 +45,7 @@ import { SessionPullRequestConflictChip } from '../components/session/SessionPul
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
+import { SessionPlanProgress } from '../components/TaskPlanProgress';
 import { useActivityReview } from '../contexts/ActivityReviewContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -97,6 +98,7 @@ import {
   focusChatEventDetailForAction,
   resolveConversationOpenAction,
 } from './home/work-item-open-policy';
+import type { WorkStatus } from './home/work-status';
 import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
@@ -183,15 +185,17 @@ function searchableSessionFields(
 function ActivityRowMeta({
   session,
   agents,
+  status,
   now,
   foldedTurnCount,
 }: {
   session: OrchestrationSessionSummary;
   agents: ReturnType<typeof useAgents>;
+  /** The row's status-ladder status (`sessionWorkStatus`). */
+  status: WorkStatus;
   now: number;
   foldedTurnCount?: number;
 }) {
-  const status = sessionWorkStatus(session, agents, now);
   // The server attaches `terminalAttribution` only once a failed session has
   // closed; while it is still loaded the reason lives in the same two fields
   // the detail's failure text folds (`sessionFailureText`), so a fresh
@@ -312,6 +316,45 @@ function ActivityRowMeta({
         <span className="sr-only">{`, ${relativeTime(recency, now)}`}</span>
       )}
     </span>
+  );
+}
+
+/**
+ * An Activity row's subtitle: the meta line and, under it, the Session's
+ * agent-reported plan (#4695). Both read the row's one status-ladder status;
+ * the plan's words are part of the row's description.
+ */
+function ActivityRowSubtitle({
+  session,
+  agents,
+  now,
+  foldedTurnCount,
+  apiBase,
+}: {
+  session: OrchestrationSessionSummary;
+  agents: ReturnType<typeof useAgents>;
+  now: number;
+  foldedTurnCount?: number;
+  apiBase: string;
+}) {
+  const status = sessionWorkStatus(session, agents, now);
+  return (
+    <>
+      <ActivityRowMeta
+        session={session}
+        agents={agents}
+        status={status}
+        now={now}
+        foldedTurnCount={foldedTurnCount}
+      />
+      <SessionPlanProgress
+        sessionId={session.threadId}
+        status={status}
+        apiBase={apiBase}
+        className="activity-row__plan"
+        announce="text"
+      />
+    </>
   );
 }
 
@@ -1109,11 +1152,12 @@ export function SessionsView({
             id: s.threadId,
             name: sessionTitle(s),
             subtitle: (
-              <ActivityRowMeta
+              <ActivityRowSubtitle
                 session={s}
                 agents={agents}
                 now={now}
                 foldedTurnCount={turnCounts.get(s.threadId)}
+                apiBase={apiBase}
               />
             ),
             // EVERY row carries its section — the layout emits a heading only

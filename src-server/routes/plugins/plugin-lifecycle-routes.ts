@@ -270,7 +270,10 @@ async function findOwningPluginRegistryProvider(
     registryId: string;
   }> = [];
 
-  for (const entry of getPluginRegistryProviders()) {
+  // Enumerated once: each enumeration returns fresh entry objects, and the
+  // second scan below tells entries apart by identity.
+  const providers = getPluginRegistryProviders();
+  for (const entry of providers) {
     const installed = await entry.provider.listInstalled();
     const providerMatches = installed
       .map((plugin) => {
@@ -295,7 +298,7 @@ async function findOwningPluginRegistryProvider(
   const matchedTargets = new Set(matches.map((match) => match.installedName));
   if (matchedTargets.size === 1) {
     const [matchedTarget] = matchedTargets;
-    for (const entry of getPluginRegistryProviders()) {
+    for (const entry of providers) {
       const installed = await entry.provider.listInstalled();
       for (const plugin of installed) {
         const installedName = plugin.installedPluginName ?? plugin.id;
@@ -777,6 +780,13 @@ export function registerPluginLifecycleRoutes(
           const { status, message, ...fields } = trustRefusal;
           return c.json({ success: false, ...fields, error: message }, status);
         }
+        // The same refusal status and code as install and preview, e.g. an
+        // agent catalog that cannot be read (503) or is ambiguous (409).
+        if (isRegistryAcquisitionRefusal(error))
+          return c.json(
+            { success: false, ...registryAcquisitionRefusalDetails(error) },
+            registryAcquisitionRefusalStatus(error),
+          );
         return c.json({ success: false, error: errorMessage(error) }, 409);
       }
     }

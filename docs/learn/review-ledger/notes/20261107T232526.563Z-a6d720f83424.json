@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-read the row-badge, state list, Not allowed, attention-mark and 1.5 s resolver paragraphs against connection-health.ts (verdict order, needsAttention per kind, policyDisallowed), connection-section-signals.ts (engines filtered to setup.state!=available, models via modelHealthInput, settled gate), ConnectionsHub.tsx and AgentConnectionView.tsx (Status/Ready step/notice from health; Retry check hidden when ready or policy-disallowed, ACP only). Corrected the Retry check sentence (any non-ready command-backed engine except Not allowed, not only Setup required).","inputs":["docs/guides/connections.md","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/connections-hub/connection-health.ts"]}
+  ]
+}

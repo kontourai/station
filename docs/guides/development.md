@@ -921,7 +921,7 @@ gh api repos/kontourai/station/rules/branches/main
   line that looks like a failure while the PR is queued anyway, and a second
   attempt then reports `already queued to merge`. `autoMergeRequest` is `null`
   for an entry already in the queue. The merge queue has no REST endpoint, so
-  confirm once with this GraphQL query, then stop:
+  confirm once with this GraphQL query:
 
   ```bash
   gh api graphql -f query='{ repository(owner:"kontourai", name:"station") {
@@ -931,6 +931,15 @@ gh api repos/kontourai/station/rules/branches/main
 
   Never poll the queue; a red or conflicted dequeue shows only on the PR
   itself. A red entry is removed and the entries behind it rebuild.
+- **Done means `MERGED`.** Arming and queueing are not completion: work that
+  opens a pull request is done only when that PR's state reads `MERGED`
+  (`gh pr view <n> --repo kontourai/station --json state`). Watch it with the
+  host's pull-request tooling, such as a PR subscription or notification,
+  rather than a polling loop over the PR or the queue. A host without PR
+  tooling reports the PR as armed, with its link, and stops there instead of
+  reporting done. If it is dequeued,
+  conflicted, or otherwise cannot merge, report exactly what blocks it instead
+  of reporting done.
 - **Branches need not be up to date** (`strict_required_status_checks_policy`
   is `false`), but two independently green PRs can still break `main` in
   combination. `.github/workflows/main-health.yml` files a P1 when that

@@ -1,0 +1,7 @@
+{
+  "revision": "b5fbece343eb9b6cf3622bd6f12f07e07a9f5a8e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"HomeView.test.tsx only adds a mock for the Session activity read used by the new plan line; no module ownership or boundary described here changed.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/HomeView.test.tsx"]}
+  ]
+}

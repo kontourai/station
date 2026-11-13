@@ -24,6 +24,8 @@ vi.mock('@kontourai/station-sdk', async () => ({
     return { data: undefined };
   },
   useFeaturePreviewsQuery: () => ({ data: [] }),
+  // #3418: the live body names Sessions in Station tool rows.
+  useOrchestrationSessionsQuery: () => ({ data: [] }),
   useProjectChatDefaultsQuery: () => ({
     data: undefined,
     isFetching: false,

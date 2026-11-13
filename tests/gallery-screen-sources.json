@@ -533,6 +533,94 @@
     ],
     "room-keyboard-light-mobile": [
       "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-channels-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "room-channels-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "room-channels-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "room-channels-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
+    ],
+    "channel-nav-list-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-list-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-list-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-list-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-conversation-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "channel-nav-thread-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
     ]
   }
 }

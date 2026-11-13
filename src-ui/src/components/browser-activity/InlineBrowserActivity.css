@@ -1,0 +1,31 @@
+.inline-browser-activity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  width: min(42rem, 100%);
+  min-width: 0;
+}
+.inline-browser-activity__viewport {
+  min-height: 0;
+  overflow: hidden;
+}
+.inline-browser-activity__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  align-items: center;
+}
+.inline-browser-activity__steps {
+  min-width: 0;
+  border-top: var(--k-border-thin, 1px) solid var(--k-line);
+  padding-top: var(--k-space-2);
+}
+
+.inline-browser-activity__control {
+  min-width: 44px;
+  min-height: 44px;
+}

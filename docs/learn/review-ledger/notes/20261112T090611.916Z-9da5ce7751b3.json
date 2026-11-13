@@ -1,0 +1,13 @@
+{
+  "revision": "c8c975b850ccb9e7c7429c5210ee1de510df6a3d",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the delta: docs/reference/contracts.md changed by merging main (#4813 read-marker contracts) and this PR's one sentence that each named channel's room id keys its own Project room marker, which matches projectRoomVersionSource now addressing the marker's room as a channel. This document's claims remain accurate.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the delta: docs/reference/contracts.md changed by merging main (#4813 read-marker contracts) and this PR's one sentence that each named channel's room id keys its own Project room marker, which matches projectRoomVersionSource now addressing the marker's room as a channel. This document's claims remain accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the delta: docs/reference/contracts.md changed by merging main (#4813 read-marker contracts) and this PR's one sentence that each named channel's room id keys its own Project room marker, which matches projectRoomVersionSource now addressing the marker's room as a channel. This document's claims remain accurate.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the delta: docs/reference/contracts.md changed by merging main (#4813 read-marker contracts) and this PR's one sentence that each named channel's room id keys its own Project room marker, which matches projectRoomVersionSource now addressing the marker's room as a channel. This document's claims remain accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -24,7 +24,7 @@ allowBuilds:
   esbuild@0.28.1: true
   esbuild@0.28.2: true
   fsevents@2.3.3: true
-  koffi@3.3.6: false
+  koffi@3.3.7: false
   libxmljs2@0.37.0: false
   node-pty@1.2.0-beta.18: true
   protobufjs@7.6.5: false
@@ -101,5 +101,15 @@ patchedDependencies:
   "@voltagent/core@2.11.0": patches/voltagent-core-2.11.0.patch
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true
+# Veritas 1.12.2 declares an optional @kontourai/survey >=8.2 <9 peer that only
+# its lazily imported `governance review` transport loads, through Survey's
+# `review-workbench` and `review-console` exports. Those two trees are
+# byte-identical in Survey 8.4.0 and 9.0.0 (9.0 changed bundle claim policy, not
+# the review transport). The exact 9.0.0 value makes the next Survey bump fail
+# the lockfile sync gate until this is re-read; drop the rule once a Veritas
+# release widens its peer range (https://github.com/kontourai/veritas/issues/339).
+peerDependencyRules:
+  allowedVersions:
+    "@kontourai/veritas>@kontourai/survey": 9.0.0
 enableGlobalVirtualStore: false
 # Managed bootstrap owns install, exact-hook preflight, and artifact proofs.

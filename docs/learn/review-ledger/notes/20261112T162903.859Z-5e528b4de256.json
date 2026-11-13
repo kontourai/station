@@ -1,0 +1,9 @@
+{
+  "revision": "05b6e9d33a68fec34682a2ce6481b5a1ec742f12",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Capture stays historical: media.json already discloses it predates current labels, the tab frame and the Quiet tree map. This change adds status badges on Models rows and a shared model-status input; the capture is not cited as current appearance, so its retained evidence still holds.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Capture stays historical: media.json already discloses it predates current labels and engine controls. This change adds status badges, the engine Retry check gate and tab routing; the recording is not cited as current appearance, so its retained evidence still holds.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx"]}
+  ]
+}

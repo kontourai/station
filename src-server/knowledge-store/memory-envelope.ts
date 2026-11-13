@@ -7,9 +7,10 @@ import {
 /**
  * A distilled claim travels in a Corpus create proposal as one JSON envelope
  * (flow-agents `kits/knowledge/dream/envelope.js`, version 1.2). Station reads
- * that shape; it never writes it. The Kit does not export its decoder yet
- * (kontourai/flow-agents#1611), so this reads only the fields the host needs
- * and rejects anything that does not verify:
+ * that shape; it never writes it. Flow Agents 9.14 publishes the Kit's decoder
+ * (`@kontourai/flow-agents/memory-envelope`, kontourai/flow-agents#1611), but
+ * adopting it is a separate decision; until then this reads only the fields
+ * the host needs and rejects anything that does not verify:
  *
  * - the claim must pass the Kit's own `assertMemoryClaim`, which recomputes the
  *   content-addressed id, so an edited body is refused;

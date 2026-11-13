@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Changed input is docs/guides/connections.md; this guide defers to it for setup steps and only references the Add computer entry point and Computers section. New connections.md text (row badges, Not allowed, attention marks, Retry check wording) is about Models/Engines; the note that unconnected computers carry no mark is consistent with this guide. Unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

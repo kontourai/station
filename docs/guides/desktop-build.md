@@ -122,10 +122,22 @@ and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,
 metadata and license. Its alternate `build/esm` and `build/esnext` bundler
 distributions are omitted; normal Node imports and `require` share the retained
-implementation. Flow Agents keeps its compiled `build/`, hooks, skills, kits,
-schemas and context; its per-harness `dist/` bundles, its TypeScript `src/` and
-its own `evals/` test harness are omitted (a kit's own `evals/` is kept). The
-512 MiB runtime ceiling remains enforced.
+implementation. Semantic conventions retains its stable and incubating Node
+exports and license while omitting its `build/esm` and `build/esnext` bundler
+copies. That rule applies only to the reviewed default Node export targets;
+an added Node-specific condition or changed target keeps every distribution
+until it is reviewed. Flow Agents ships its compiled `build/`, hooks, skills, kits,
+schemas and context; since 9.14 it no longer publishes per-harness `dist/`
+bundles, a TypeScript `src/` or its own `evals/` harness, and a portability
+test fails if they return. It ships those bundles instead as one ~7 MB pack,
+`bundles/flow-agents-bundles.pack`, which staging omits. Only Flow Agents' own
+CLI expands it (`init`, `kit activate`, `workflow doctor` and the Codex home
+installer), and the packaged server runs none of them. Its esbuild edge (used
+only to rebuild those bundles) is still not followed.
+npm alias dependencies, such as Flow Agents' `@kontourai/surface-knowledge`
+(`npm:@kontourai/surface@…`), are staged under the alias name and verified
+against the real package the declaring manifest names. The 512 MiB runtime
+ceiling remains enforced.
 node-pty keeps every architecture's prebuilds for the staging operating system
 and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture

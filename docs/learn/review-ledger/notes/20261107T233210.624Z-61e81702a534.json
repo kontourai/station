@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/design/developer-surface.md","note":"Checked the route allowlist claim (/developer unknown tab segments are not-found, legacy redirects) against routing.ts diff: only the /connections/engines/ branch changed. Developer route handling is untouched.","inputs":["docs/design/developer-surface.md","src-ui/src/app-shell/routing.ts"]}
+  ]
+}

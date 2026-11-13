@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createAgentHooks } from '../../runtime/agents/agent-hooks.js';
 import { SC_READ_ONLY_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
+import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import type { VoiceTurnRuns } from '../../services/orchestration/voice-turn-runs.js';
 import type {
   IS2SProvider,
@@ -831,6 +832,7 @@ describe('VoiceSession wiring', () => {
     const guardian = {
       isEnabled: vi.fn(() => true),
       getMode: vi.fn(() => 'review'),
+      readConversation: () => NO_PERSON_INTENT,
       reviewToolCall: vi.fn().mockResolvedValue({
         decision: 'allow',
         reason: 'Safe and scoped.',

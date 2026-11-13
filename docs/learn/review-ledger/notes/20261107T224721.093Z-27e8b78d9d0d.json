@@ -1,0 +1,7 @@
+{
+  "revision": "0991f90410fa1f892202181d000935da5d268631",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Bounded delta review for #4710 slice 1: Read the connection list section rechecked against connection-health, connection-section-signals, ConnectionsHub and the Engines/Models row builders (badge plus facts, Limited engines not dispatched per enriched-agents isHonestlyAvailableConnectedAgent, policy Not allowed, rail marks including Knowledge embedding, resolver waits for reads). Route alias table unchanged; tab segment parser not user-visible yet, so not documented. Other sections not re-reviewed.","inputs":["docs/guides/connections.md","src-ui/src/app-shell/routing.ts","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx","src-ui/src/views/connections-hub/connection-health.ts","src-ui/src/views/connections-hub/connection-section-signals.ts"]}
+  ]
+}

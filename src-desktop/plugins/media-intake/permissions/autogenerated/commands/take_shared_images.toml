@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-take-shared-images"
+description = "Enables the take_shared_images command without any pre-configured scope."
+commands.allow = ["take_shared_images"]
+
+[[permission]]
+identifier = "deny-take-shared-images"
+description = "Denies the take_shared_images command without any pre-configured scope."
+commands.deny = ["take_shared_images"]

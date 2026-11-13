@@ -83,4 +83,48 @@ describe('TurnActivityProgress', () => {
       row.querySelector('.turn-activity-progress__tool')?.getAttribute('title'),
     ).toBe(`Last: ${command} · done`);
   });
+
+  test('a Station tool reads as its phrase, in the form its outcome earned (#3418)', () => {
+    const now = Date.now();
+    const openTurn = {
+      threadId: 'c1',
+      turnId: 't1',
+      startedAt: new Date(now - 60_000).toISOString(),
+    };
+    const { rerender } = render(
+      <TurnActivityProgress
+        activity={{
+          conversationId: 'c1',
+          asOfSequence: 3,
+          openTurn,
+          runningTools: [
+            {
+              name: 'mcp__station-control__wait_session',
+              callId: 'call-1',
+              startedAt: new Date(now - 5_000).toISOString(),
+            },
+          ],
+        }}
+      />,
+    );
+    const row = () => screen.getByTestId('turn-activity-progress');
+    expect(row().textContent).toMatch(/^Waiting for a Session · \d+s$/u);
+    rerender(
+      <TurnActivityProgress
+        activity={{
+          conversationId: 'c1',
+          asOfSequence: 4,
+          openTurn,
+          lastTool: {
+            name: 'mcp__station-control__declare_pull_request',
+            callId: 'call-2',
+            outcome: 'error',
+            completedAt: new Date(now - 1_000).toISOString(),
+          },
+        }}
+      />,
+    );
+    // A failed call is not said to have declared anything.
+    expect(row().textContent).toBe('Last: Declare a pull request · failed');
+  });
 });

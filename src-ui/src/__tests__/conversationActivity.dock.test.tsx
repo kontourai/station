@@ -183,6 +183,7 @@ function Thread({
         progressSilenceShownElsewhere={silenceShownElsewhere}
       />
       <ChatInputArea
+        onAttachUnavailable={() => {}}
         sessionId={CONVERSATION}
         input=""
         attachments={[]}

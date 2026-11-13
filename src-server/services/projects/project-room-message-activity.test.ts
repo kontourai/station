@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { PROJECT_ROOM_LIMITS } from '@kontourai/station-contracts/project-room';
+import {
+  PROJECT_ROOM_LIMITS,
+  type ProjectRoomActor,
+} from '@kontourai/station-contracts/project-room';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
@@ -38,7 +41,7 @@ describe('Project room message activity', () => {
     runtime.store.ensureRoom(scope, current);
   });
   afterEach(() => runtime.close());
-  const post = (actor = ada, text = 'hello', extra = {}) =>
+  const post = (actor: ProjectRoomActor = ada, text = 'hello', extra = {}) =>
     runtime.store.append(
       scope,
       actor,

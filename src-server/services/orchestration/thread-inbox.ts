@@ -156,6 +156,13 @@ export interface ThreadInboxPayload {
   readonly model?: ExecutionModelRequest;
   readonly actor: ThreadInboxActor;
   readonly clientOrigin?: ClientOrigin;
+  /**
+   * #4827: a person typed `message` into one of Station's clients, as the
+   * composer route that queued it proved (`personTypedRequest`). Written
+   * only by those routes, never copied from a request; placement forwards
+   * it so the turn is stamped `authoredBy: 'person'`.
+   */
+  readonly authoredBy?: 'person';
 }
 
 /**
@@ -313,7 +320,8 @@ function decodeAttachments(
   return files;
 }
 
-function decodePayload(raw: string): ThreadInboxPayload | undefined {
+/** Exported for tests that pin what a stored entry keeps (#4827). */
+export function decodePayload(raw: string): ThreadInboxPayload | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -374,6 +382,7 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
     ...(isClientOrigin(value.clientOrigin)
       ? { clientOrigin: value.clientOrigin }
       : {}),
+    ...(value.authoredBy === 'person' ? { authoredBy: 'person' as const } : {}),
   };
 }
 

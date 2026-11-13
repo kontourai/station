@@ -335,6 +335,7 @@ export type LiveSurfaceLeaseResult =
 export type LiveSurfaceInputRefusalCode =
   | LiveSurfaceLeaseRefusalCode
   /** The producer does not accept one of the batch's input kinds. */
+  | 'invalid-source'
   | 'unsupported-input'
   /**
    * An earlier dispatch timed out and has not settled yet. Input is refused
@@ -612,13 +613,15 @@ export interface LiveSurfaceInputBatch {
   /** The lease epoch the viewer last observed (frame header or state record). */
   epoch: number;
   events: LiveSurfaceInput[];
+  sourceId?: string;
 }
 
 export function parseLiveSurfaceInputBatch(
   value: unknown,
 ): LiveSurfaceInputBatch | null {
   const record = plainRecord(value);
-  if (!record || !onlyKeys(record, ['epoch', 'events'])) return null;
+  if (!record || !onlyKeys(record, ['epoch', 'events', 'sourceId']))
+    return null;
   if (!isLiveSurfaceEpoch(record.epoch)) return null;
   if (
     !Array.isArray(record.events) ||
@@ -632,7 +635,17 @@ export function parseLiveSurfaceInputBatch(
     if (!parsed) return null;
     events.push(parsed);
   }
-  return { epoch: record.epoch as number, events };
+  if (
+    record.sourceId !== undefined &&
+    (typeof record.sourceId !== 'string' ||
+      !/^[a-f0-9-]{36}$/.test(record.sourceId))
+  )
+    return null;
+  return {
+    epoch: record.epoch as number,
+    events,
+    ...(record.sourceId ? { sourceId: record.sourceId as string } : {}),
+  };
 }
 
 /**
@@ -642,6 +655,8 @@ export function parseLiveSurfaceInputBatch(
  * a request body.
  */
 export type LiveSurfaceLeaseRequest =
+  | { action: 'open-input-source' }
+  | { action: 'close-input-source'; sourceId: string }
   | { action: 'claim' }
   | { action: 'release'; epoch: number }
   /**
@@ -657,6 +672,15 @@ export function parseLiveSurfaceLeaseRequest(
 ): LiveSurfaceLeaseRequest | null {
   const record = plainRecord(value);
   if (!record) return null;
+  if (record.action === 'open-input-source' && onlyKeys(record, ['action']))
+    return { action: 'open-input-source' };
+  if (
+    record.action === 'close-input-source' &&
+    onlyKeys(record, ['action', 'sourceId']) &&
+    typeof record.sourceId === 'string' &&
+    /^[a-f0-9-]{36}$/.test(record.sourceId)
+  )
+    return { action: 'close-input-source', sourceId: record.sourceId };
   if (record.action === 'claim' && onlyKeys(record, ['action']))
     return { action: 'claim' };
   if (

@@ -1,0 +1,13 @@
+{
+  "revision": "8d19d408e3cb5d582bac3008c4d31acb8acc12fa",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"ToolCallDisplay now also imports StationToolGlyph.css, the Station mark's colour rule (#3418); approval previews, request cards and grants this document describes are untouched.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"ToolCallDisplay now also imports StationToolGlyph.css, the Station mark's colour rule (#3418); MCP App rendering, proxies and grants this document describes are untouched.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"theming.md now names the stylesheet that holds the Station mark's brand rule (#3418); this document's shell, plugin and distribution claims do not depend on it.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the Station mark clause against src-ui/src/components/chat/StationToolGlyph.css (.tool-call__glyph.tool-call__glyph--station: var(--k-brand), full opacity) and its import in ToolCallDisplay.tsx (#3418).","inputs":["docs/guides/theming.md","src-ui/src/index.css"]}
+  ]
+}

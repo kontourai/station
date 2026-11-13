@@ -1,18 +1,16 @@
 /**
- * The JS-side entry point for the native share-target → conversation-picker
- * flow.
+ * The JS-side gate for the native share-target → conversation-picker flow.
  *
- * This is deliberately a pure function, not a live subscription: the OS
- * receiver that would eventually call it (Android `ACTION_SEND` intent filter,
- * iOS share extension) is a separate, security-reviewed follow-up. Keeping the
- * intake as a single function makes the whole contract unit-testable with a
- * mocked adapter and payload, without any native host.
+ * The receiver is the station-media-intake plugin's Android `ACTION_SEND`/
+ * `ACTION_SEND_MULTIPLE` image filter; `ShareIntakeController` takes its
+ * pending share and hands the payload here. Keeping the gate a pure function
+ * makes the contract unit-testable with a mocked adapter and payload.
  *
- * The path is gated OFF by the `share-intake` capability. Until a reviewed
- * native receiver reports that capability as `enabled`, {@link receiveSharedImages}
- * short-circuits to an inert `disabled` outcome and never opens the picker, so
- * this ships dead-inert in production while remaining fully exercisable in
- * tests.
+ * The path is gated by the `image-share-intake` capability, which the native
+ * host reports enabled only on Android. It is distinct from `share-intake`,
+ * which the web adapter reports for PWA text shares. Without it
+ * {@link receiveSharedImages} short-circuits to `disabled` and never opens
+ * the picker.
  */
 import {
   type NativeSharedImagePayload,
@@ -23,7 +21,7 @@ import type { NativeCapabilityStatus } from './types';
 
 /** The subset of the native adapter the intake needs: the capability gate. */
 export interface ShareIntakeCapabilitySource {
-  capability(id: 'share-intake'): NativeCapabilityStatus;
+  capability(id: 'image-share-intake'): NativeCapabilityStatus;
 }
 
 type ShareIntakeOutcome =
@@ -32,7 +30,7 @@ type ShareIntakeOutcome =
   | { status: 'opened'; fileCount: number };
 
 interface ReceiveSharedImagesParams {
-  /** Reports whether the `share-intake` capability is enabled on this host. */
+  /** Reports whether the `image-share-intake` capability is enabled on this host. */
   adapter: ShareIntakeCapabilitySource;
   /** The untrusted payload delivered by the native receiver. */
   payload: unknown;
@@ -53,13 +51,13 @@ export function receiveSharedImages({
   payload,
   openPicker,
 }: ReceiveSharedImagesParams): ShareIntakeOutcome {
-  const capability = adapter.capability('share-intake');
+  const capability = adapter.capability('image-share-intake');
   if (capability.state !== 'enabled') {
     return {
       status: 'disabled',
       reason:
         capability.reason ||
-        'The share-intake capability is not enabled on this host.',
+        'The image-share-intake capability is not enabled on this host.',
     };
   }
 

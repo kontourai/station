@@ -211,6 +211,8 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4695: a live Session row reads its agent-reported plan; none here.
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
   // #4519: the connected Station has no managed policy.
   useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   // Home's start composer reads Feature Previews (the visual-skills ⋯).

@@ -124,6 +124,13 @@ export interface ForegroundMessageInput {
   target: ExecutionTarget;
   message: string;
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
+  /**
+   * #4827: set by server code only, at an entry point that proved a person
+   * typed `message` into one of Station's clients (`personTypedRequest`).
+   * Forwarded to `sendTurn` and stamped on `turn.started` as
+   * `authoredBy: 'person'`; absent everywhere else.
+   */
+  personAuthored?: true;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
@@ -430,6 +437,7 @@ export interface ExecutionTargetExecutionDependencies
       submissionDigest?: string | null;
       mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
       dispatchOrigin?: TurnDispatchOrigin;
+      personAuthored?: true;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -1624,6 +1632,7 @@ export async function executeForegroundMessage(
     input.clientOrigin ||
       input.principal ||
       input.mcpPromptOrigin ||
+      input.personAuthored ||
       submissionDigest ||
       context?.inboxPlacement ||
       context?.dispatchOrigin
@@ -1641,6 +1650,7 @@ export async function executeForegroundMessage(
           ...(input.mcpPromptOrigin
             ? { mcpPromptOrigin: input.mcpPromptOrigin }
             : {}),
+          ...(input.personAuthored ? { personAuthored: true as const } : {}),
         }
       : undefined,
   );

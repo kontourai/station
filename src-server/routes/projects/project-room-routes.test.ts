@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
+  PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_LIMITS,
   parseProjectRoomChannel,
   parseProjectRoomChannelList,
@@ -36,6 +37,7 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
 import { RoomAttachments } from '../../services/projects/task-room-attachments.js';
+import { projectRoomVersionSource } from '../../services/read-markers/room-version-sources.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
@@ -1049,8 +1051,10 @@ test("message activity: the server refuses an edit or delete of another person's
     // Not a 403: clients read a 403 as lost access and stop the room.
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: { code: 'project_room_forbidden' },
+      error: { code: PROJECT_ROOM_FORBIDDEN_CODE },
     });
+    // Pinned literal beside the constant under test.
+    expect(PROJECT_ROOM_FORBIDDEN_CODE).toBe('project_room_forbidden');
   }
   expect((await history(h, 'alice')).messages).toEqual([message]);
 });
@@ -1213,4 +1217,99 @@ test('message activity: SSE announces a reaction, an edit and a delete without a
     expect(value).toContain('"lastSeq":1');
   }
   await reader.cancel();
+});
+
+test('read markers (#3075): each channel has its own room version, read through the room service', async () => {
+  const h = await harness();
+  const general = await h.discover('bob');
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design')),
+  );
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'bob', `/channels/${design.channelId}`)),
+  );
+  for (const text of ['one', 'two'])
+    expect(
+      (
+        await api(h, 'bob', `/channels/${design.channelId}/messages`, 'POST', {
+          ...guard(view),
+          intentId: randomUUID(),
+          text,
+        })
+      ).status,
+    ).toBe(200);
+  const versions = projectRoomVersionSource(h.service);
+  const as = (who: 'alice' | 'bob') =>
+    new Request('http://localhost', {
+      headers: { authorization: `Bearer ${who}-session` },
+    });
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: design.channelId },
+      as('bob'),
+    ),
+  ).toEqual({ key: `project-room:${design.channelId}`, latestVersion: 2 });
+  // #general keeps its own key and version.
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: general.roomId },
+      as('bob'),
+    ),
+  ).toEqual({ key: `project-room:${general.roomId}`, latestVersion: 0 });
+  // A room id that is not one of this Project's channels stays unavailable.
+  expect(
+    await versions.latest(
+      { projectSlug: 'example', roomId: randomUUID() },
+      as('bob'),
+    ),
+  ).toBeUndefined();
+});
+
+test('read markers: a reaction, an edit and a delete in a named channel leave its read version where it was (#4796, #4797)', async () => {
+  const h = await harness();
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design')),
+  );
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'alice', `/channels/${design.channelId}`)),
+  );
+  const channel = `/channels/${design.channelId}`;
+  const posted = parseProjectRoomMessage(
+    await data(
+      await api(h, 'alice', `${channel}/messages`, 'POST', {
+        ...guard(view),
+        intentId: randomUUID(),
+        text: 'Draft one',
+      }),
+    ),
+  );
+  const versions = projectRoomVersionSource(h.service);
+  const asAlice = new Request('http://localhost', {
+    headers: { authorization: 'Bearer alice-session' },
+  });
+  const latest = () =>
+    versions.latest(
+      { projectSlug: 'example', roomId: design.channelId },
+      asAlice,
+    );
+  expect(await latest()).toEqual({
+    key: `project-room:${design.channelId}`,
+    latestVersion: 1,
+  });
+  const target = `${channel}/messages/${posted.messageId}`;
+  for (const [leaf, body] of [
+    ['reactions', { emoji: '👀', reacted: true }],
+    ['edit', { intentId: randomUUID(), text: 'Draft two' }],
+    ['delete', { intentId: randomUUID() }],
+  ] as const) {
+    const response = await api(h, 'alice', `${target}/${leaf}`, 'POST', {
+      ...guard(view),
+      ...body,
+    });
+    expect(response.status, leaf).toBe(200);
+    expect(await latest(), leaf).toEqual({
+      key: `project-room:${design.channelId}`,
+      latestVersion: 1,
+    });
+  }
 });

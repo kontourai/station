@@ -58,3 +58,18 @@ export function canonicalConnectionPath(path: string): string | null {
   }
   return null;
 }
+
+/**
+ * The engine detail's route tabs (`/connections/engines/<id>/<tab>`). Any
+ * other segment there is not found. The detail page does not render tabs
+ * yet; the route accepts them so links can be written against it.
+ */
+export const ENGINE_DETAIL_TABS = [
+  'overview',
+  'usage',
+  'models',
+  'accounts',
+  'settings',
+] as const;
+
+export type EngineDetailTab = (typeof ENGINE_DETAIL_TABS)[number];

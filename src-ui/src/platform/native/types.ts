@@ -6,6 +6,8 @@
  * before UI code can use them.
  */
 
+import type { SharedImageFile } from './share-image';
+
 export type NativePlatform = 'web' | 'tauri';
 
 export type NativeCapabilityState =
@@ -25,7 +27,9 @@ export type NativeCapabilityId =
   | 'host-credential-broker'
   | 'native-consent-broker'
   | 'remote-push'
-  | 'share-intake';
+  | 'share-intake'
+  | 'image-share-intake'
+  | 'clipboard-image';
 
 export interface NativeCapabilityStatus {
   id: NativeCapabilityId;
@@ -82,7 +86,9 @@ export type NativeCommandName =
   | 'configure-agent-activity'
   | 'clear-agent-activity'
   | 'open-live-update-settings'
-  | 'take-agent-activity-launch-route';
+  | 'take-agent-activity-launch-route'
+  | 'read-clipboard-images'
+  | 'take-shared-images';
 
 /**
  * What the Android agent-activity plugin reports about this phone. Local facts
@@ -532,6 +538,28 @@ export interface NativePlatformAdapter {
   subscribeToAgentActivityLaunchRoutes(
     listener: () => void,
   ): NativeEventSubscription & { ready: Promise<void> };
+  /**
+   * Images on the system clipboard, read by the media-intake plugin where
+   * `clipboard-image` is enabled. `files` is empty when the clipboard holds
+   * no image; a set past the contract's bounds is an error, never truncated.
+   */
+  readClipboardImages(): Promise<NativeCommandResult<NativeImageList>>;
+  /** Return and clear the images last shared into Station; empty when none. */
+  takeSharedImages(): Promise<NativeCommandResult<NativeImageList>>;
+  /**
+   * Called (with no payload) when images are shared while the app runs; the
+   * listener then calls `takeSharedImages`. Same `ready` contract as
+   * {@link subscribeToAgentActivityLaunchRoutes}; a no-op subscription,
+   * already ready, unless `image-share-intake` is enabled on this host.
+   */
+  subscribeToSharedImages(
+    listener: () => void,
+  ): NativeEventSubscription & { ready: Promise<void> };
+}
+
+/** Validated images from a native read; see `share-image.ts`. */
+export interface NativeImageList {
+  files: SharedImageFile[];
 }
 
 /** The settled transaction status the native consent broker returns. */

@@ -1,0 +1,87 @@
+{
+  "revision": "efe4d8e7e2f03aff28f5d3a4e44d8dbd0cfb353b",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture.md","note":"packages/contracts exports gained one subpath, ./station-tool-phrases (#3418); no export this document relies on changed, and it makes no claim enumerating contract subpaths.","inputs":["docs/architecture.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added the SessionDigest label sentence and checked it against session-digest.ts (stationToolPhrase in the bare form) and session-digest.test.ts. ConversationBody's change wraps only the live body in StationSessionTitlesProvider; the module map's ConversationBody claims about record and live density remain accurate (#3418).","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"ToolCallDisplay changed only the collapsed row's glyph (Station's mark, named Station) and label for Station tools (#3418). Approval previews, request cards, grants and MCP App rendering this document describes are untouched.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Added the Station tool rows paragraph and checked it against tool-call-labels.ts (station kind, STATION_PHASE), tool-call-groups.ts (\"used N Station tools\"), ToolCallDisplay/ToolCallBatch (ToolCallGlyph with the Station name), TurnActivityProgress and station-session-titles.tsx, with tool-call-groups.test.ts and ToolCallDisplay.stationTools.test.tsx. The index.css change is the mark's colour rule (#3418).","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ToolCallBatch.tsx","src-ui/src/components/chat/tool-call-groups.ts","src-ui/src/components/chat/tool-call-labels.ts","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"ToolCallDisplay changed only the collapsed row's glyph (Station's mark, named Station) and label for Station tools (#3418). Approval previews, request cards, grants and MCP App rendering this document describes are untouched.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/design/placement.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs. Its progress-row claim (names a running or last tool) still holds: a Station tool is now named by its phrase.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/design/settings-architecture.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"ConversationBody now wraps only the live body in StationSessionTitlesProvider, which reads the Session list through the SDK query to name Sessions in Station tool phrases; the record-density body is unchanged and no target, authority, controller or transport ownership changed (#3418).","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"ConversationBody now wraps only the live body in StationSessionTitlesProvider, which reads the Session list through the SDK query to name Sessions in Station tool phrases; the record-density body is unchanged and no target, authority, controller or transport ownership changed (#3418). Its claim that MutableSessionDetail uses ConversationBody at record density stays true; that density reads no Session list.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"packages/contracts exports gained one subpath, ./station-tool-phrases (#3418); no export this document relies on changed, and it makes no claim enumerating contract subpaths.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/glossary.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate. contracts.md gained the station-tool-phrases entry; no glossary term changes meaning.","inputs":["docs/glossary.md","docs/architecture/module-map.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/connections.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md gained the station-tool-phrases subpath entry (#3418); this guide's integration claims cite no subpath that changed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Added the Station tool label to get_session_digest's turn fields and checked it against session-digest.ts and session-digest.test.ts (bare form, Station tools only). module-map.md changed only by the matching digest sentence (#3418).","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Added Station's tool-row mark as a brand consumer and checked it against the .tool-call__glyph--station rule in index.css (var(--k-brand), full opacity); the brand passes 4.5:1 as text on page and panel surfaces, past the 3:1 a graphic needs (#3418).","inputs":["docs/guides/theming.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/patterns/backend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the station-tool-phrases entry and checked it against packages/contracts/src/station-tool-phrases.ts (stationToolOf, stationToolPhrase), its contracts test, the server coverage test and the package.json export (#3418).","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/session-api.md","note":"self-configuring-agent.md gained the digest's Station tool label; this reference's list_project_activity and get_session_digest claims (routes, scope, refusals) are unchanged (#3418).","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated by docs:mcp:generate from the updated canonical guides (digest label, contracts entry); this reference's claims about the shipped docs server and topics are unchanged. module-map.md changed only by the digest sentence (#3418).","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["docs/user/getting-started.md","src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"index.css changed only by the new .tool-call__glyph--station rule (brand colour, full opacity) for Station's tool-row mark (#3418); no selector, token, layout or surface this document cites changed, and it makes no claim about tool-row glyphs.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"module-map.md changed only by one sentence in SessionDigest's invariants: a Station tool's count carries a bare-form label from station-tool-phrases (#3418). This document's claims do not describe digest tool-call fields, so they remain accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"theming.md gained one clause naming Station's tool-row mark as a brand consumer (#3418); this document's shell, plugin and distribution claims do not depend on it.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
+  ]
+}

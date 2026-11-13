@@ -350,7 +350,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, MCP OAuth client-secret, ACP header and instance telemetry destination grants; raw material is server-only |
 | `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; host prerequisites, build-only artifact evidence and archive-byte preparation receipts. Preparation receipts never grant installation authority; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
-| `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb, and `AutomationDeliveryPage`, whose bounded `deliveries` and source `polls` retain partial coverage, timestamps and failure outcomes. The server validates and stores sources and rules and records observe-only `github-poll` deliveries; no dispatch consumes a rule yet |
+| `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb, the agent proposal shapes (#4830: `AutomationProposal`, the narrower `AutomationSourceProposalInput` and `AutomationRuleProposalInput`, Station's `AutomationProposalDescription`, `AutomationProposalConfirmation`, `AUTOMATION_PROPOSAL_LIMITS`, the refusal codes, the display-time `untrustedContentNow` and confirm-time `untrustedContentAtConfirm` marks, and the two untrusted-content copies `AUTOMATION_PROPOSAL_UNTRUSTED_COPY` and `AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY`), and `AutomationDeliveryPage`, whose bounded `deliveries` and source `polls` retain partial coverage, timestamps and failure outcomes. The server validates and stores sources and rules and records observe-only `github-poll` deliveries; no dispatch consumes a rule yet |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
 | `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
@@ -380,7 +380,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared. `SessionGrantScope` (`server` \| `rule`) scopes a session decision option |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
-| `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
+| `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, optional registered viewer `sourceId` on human batches and source open/close lease actions, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads, including bounded network metadata and picked-element provenance |
 | `@kontourai/station-contracts/knowledge-memory` | Wire shapes for private-memory review, recall, the session brief and the per-run measurement record (`station.memory-measurement/1`). Plain shapes only: the Knowledge Kit and Survey own what the words mean |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
@@ -412,7 +412,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/task-write-back` | Bounded Task-bound outbound attempts, targets, initiators, outcomes and retry chains; [source](../../packages/contracts/src/task-write-back.ts), [store tests](../../src-server/services/orchestration/__tests__/task-write-back-store.test.ts) |
 | `@kontourai/station-contracts/task-approval` | Task approval decisions, first-winner outcomes and refusal codes; bounded, closed `parseTaskApprovalDecision` and `parseTaskApprovalOutcome`. [Contract source](../../packages/contracts/src/task-approval.ts) and [parser tests](../../packages/contracts/src/__tests__/task-approval.test.ts). Store arbitration, admission and engine settlement are separate runtime work |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
-| `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs, remote OAuth client selection (`oauthClient`). `ToolDef.contentTrust`, `untrustedContentPermissions` (`ask`/`allow`/`deny`, absent means ask; a person's entry wins over a server's read-only hint), `trustReadOnlyHints` and config-writer-owned `untrustedContentChanges` carry the untrusted-content permission ([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)). `ToolMetadata.trustReview` (`IntegrationTrustReview`) lists legacy settings waiting for a person, and `engineCoverage` (`IntegrationEngineCoverage`) says per external engine whether Station gates its calls |
+| `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs, remote OAuth client selection (`oauthClient`). `ToolDef.contentTrust`, `untrustedContentPermissions` (`ask`/`allow`/`deny`, absent means ask; a person's entry wins over a server's read-only hint), `trustReadOnlyHints` and config-writer-owned `untrustedContentChanges` carry the untrusted-content permission ([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)). `ToolMetadata.trustReview` (`IntegrationTrustReview`) lists legacy settings waiting for a person, and `engineCoverage` (`IntegrationEngineCoverage`) says per external engine whether Station gates its calls. `NativeWebReadCoverage` says per engine whether its own web reads mark the conversation |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
@@ -903,7 +903,9 @@ a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
 person's approval is in state `needs_approval`. A proposal's job carries the
 proposing chat as its `target`, and `ConversationAgentSchedule.automations`
 (`ConversationAutomation`) lists the automations whose runs land in the
-conversation. The scheduler contract owns automation targets:
+conversation. `ConversationAgentSchedule.automationProposals` lists the
+agent's open Automation proposals (`AutomationProposal`, from the
+`automation` subpath). The scheduler contract owns automation targets:
 `SchedulerAutomationTarget`, `SchedulerAutomationCreator`,
 `SchedulerLogEntry.runTarget` (the claimed target, or `null` for an
 untargeted run; absent for older records),
@@ -943,6 +945,13 @@ reads it only from a station-control tool's whole result, and
 `stationControlToolName`. A history window carries it whole on
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
+
+`@kontourai/station-contracts/station-tool-phrases` words Station's own tool
+calls (#3418). `stationToolOf` recognises a Station tool by name (or a bare name
+plus `server`); `stationToolPhrase` returns its past, progressive or bare phrase
+from the call's arguments. Transcript rows, the live progress line and the
+Session digest's `label` all read it. A server test fails when a registered
+tool has no phrase.
 
 `@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
 (the claude.ai page a Claude Code `Artifact` publish produced, and its
@@ -2076,6 +2085,9 @@ its Station/thread, not a provider-clock timestamp or an authorization grant.
 Same-source cumulative replacements use that order and preserve omitted
 measured components. Older peers can omit it and retain timestamp ordering.
 Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
+Optional `connectionId` and `modelConnectionId` name the engine and model
+connections the session recorded; absence means none was recorded. They are
+local to the Station's rollup and are not part of export or peer transfer.
 `aggregateReceipts` is bounded logical transfer material, separate from the
 receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
 for limits and observation-window semantics.
@@ -2367,7 +2379,8 @@ An older client that sends only `updatedAt` records "last viewed" and moves
 no marker, so its conversations read unread until it sends `readVersion`. The
 inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
 Just finished reads; an acknowledgement writes it alongside, and unread never
-reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
+reads it. A Project room uses its `checkpoint.lastSeq`; each named channel is
+its own room, so its `roomId` keys its own marker (#4792). A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
 new marker.
 

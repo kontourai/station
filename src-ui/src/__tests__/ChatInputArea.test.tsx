@@ -109,6 +109,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     selectAttachmentFiles: vi.fn(async () => {}),
     attachmentError: null,
     onRemoveAttachment: vi.fn(),
+    onAttachUnavailable: vi.fn(),
     onClearAttachments: vi.fn(),
     onModelSelect: vi.fn(),
     onModelReset: vi.fn(),
@@ -394,9 +395,7 @@ describe('ChatInputArea', () => {
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
-    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reference chat…' }));
     const option = await screen.findByRole('option', {
       name: /Conversation A/,
     });
@@ -420,7 +419,7 @@ describe('ChatInputArea', () => {
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+        screen.queryByRole('dialog', { name: 'Reference a chat' }),
       ).toBeNull(),
     );
     fireEvent.drop(screen.getByRole('textbox'), { dataTransfer });
@@ -538,9 +537,7 @@ describe('ChatInputArea', () => {
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
-    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reference chat…' }));
     const option = await screen.findByRole('option', {
       name: /Conversation A/,
     });
@@ -560,7 +557,7 @@ describe('ChatInputArea', () => {
       '@[r:Conversation%20A|conversation-a||authority-a] ',
     );
     expect(
-      screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+      screen.queryByRole('dialog', { name: 'Reference a chat' }),
     ).toBeNull();
     expect(document.activeElement).toBe(textarea);
   });
@@ -1971,6 +1968,7 @@ function renderProps(overrides: Record<string, unknown> = {}) {
     selectAttachmentFiles: vi.fn(async () => {}),
     attachmentError: null,
     onRemoveAttachment: vi.fn(),
+    onAttachUnavailable: vi.fn(),
     onClearAttachments: vi.fn(),
     onModelSelect: vi.fn(),
     onModelReset: vi.fn(),

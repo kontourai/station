@@ -1,0 +1,7 @@
+{
+  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
+
+  "notes": [
+    {"path":"docs/design/modality-ladder.md","note":"Checked split-pane promise (selection is navigation via useUrlSelection, new as pseudo-selection) against routing.ts diff: engine detail gains an optional trailing tab segment, id selection unchanged; SplitPaneLayout only gained a type export. Claims unaffected.","inputs":["docs/design/modality-ladder.md","src-ui/src/app-shell/routing.ts"]}
+  ]
+}

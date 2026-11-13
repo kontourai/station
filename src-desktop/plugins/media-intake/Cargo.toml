@@ -1,0 +1,13 @@
+[package]
+name = "tauri-plugin-station-media-intake"
+version = "0.1.0"
+description = "Clipboard image reads and the Android image share target for Station mobile clients"
+edition = "2021"
+publish = false
+links = "tauri-plugin-station-media-intake"
+
+[build-dependencies]
+tauri-plugin = { version = "=2.7.1", features = ["build"] }
+
+[dependencies]
+tauri = { version = "=2.12.1" }

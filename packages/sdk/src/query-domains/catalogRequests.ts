@@ -254,10 +254,20 @@ export async function requestIntegrationAccount<T>(
 export interface RegistrySourceAction {
   action: 'add' | 'enable' | 'disable' | 'remove' | 'refresh';
   id?: string;
+  /**
+   * A source to add: a location and, for a repository, an optional ref. The
+   * server detects what it provides from its content.
+   */
   source?: {
-    displayName: string;
-    adapter: 'manifest' | 'directory' | 'github';
     location: string;
+    ref?: string;
+    /** A label; the server derives one from the location when absent. */
+    displayName?: string;
+    /**
+     * @deprecated Ignored: the kinds come from the source's content. Still
+     * accepted, and used only to read a local path that does not exist yet.
+     */
+    adapter?: 'manifest' | 'directory' | 'github';
   };
 }
 

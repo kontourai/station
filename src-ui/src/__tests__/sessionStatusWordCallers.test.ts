@@ -135,6 +135,153 @@ function callsStatusProducer(file: string, allowAdapters = true): boolean {
   return called;
 }
 
+/**
+ * `Component.prop` pairs whose value the component only classifies and never
+ * prints. SessionPlanProgress hands `lifecycleLabel` to
+ * sessionPlanProgressRead, which picks skip/live/settled for the plan read
+ * (#4864). Add a pair only after reading the component's whole path.
+ */
+const CLASSIFYING_PROPS = new Set(['SessionPlanProgress.lifecycleLabel']);
+
+/**
+ * Whether `node` hands its value, or something computed from it, on to its
+ * parent expression: `x.toLowerCase()`, `String(x)`, `x + 'y'`, `c ? x : y`,
+ * `(x)`, `x as T`, `x!`. The walk stops at anything else (a statement, an
+ * arrow function, a JSX expression, a template span).
+ */
+function wrapsValue(parent: ts.Node): boolean {
+  return (
+    ts.isCallExpression(parent) ||
+    ts.isPropertyAccessExpression(parent) ||
+    ts.isElementAccessExpression(parent) ||
+    ts.isBinaryExpression(parent) ||
+    ts.isConditionalExpression(parent) ||
+    ts.isParenthesizedExpression(parent) ||
+    ts.isAsExpression(parent) ||
+    ts.isSatisfiesExpression(parent) ||
+    ts.isNonNullExpression(parent)
+  );
+}
+
+/**
+ * Where a source puts the fold label in a printing position: a JSX child, a
+ * template literal, or a JSX attribute other than a classifying prop (a
+ * `title` or `aria-label` prints it as surely as a child does). The walk
+ * goes up through wrapping expressions first, so a label lower-cased,
+ * stringified or concatenated into one of those positions is reported too.
+ * A predicate computed outside JSX braces and templates is not reported;
+ * one written inside them is, as the original `{label(` scan did.
+ */
+function labelPrintSites(fileName: string, text: string): string[] {
+  const source = ts.createSourceFile(
+    fileName,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const sites: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'orchestrationLifecycleLabel'
+    ) {
+      let value: ts.Node = node;
+      while (wrapsValue(value.parent)) value = value.parent;
+      const holder = value.parent;
+      if (ts.isTemplateSpan(holder)) sites.push('template');
+      else if (ts.isJsxExpression(holder)) {
+        const attribute = holder.parent;
+        if (!ts.isJsxAttribute(attribute)) sites.push('JSX text');
+        else {
+          const element = attribute.parent.parent;
+          const prop = `${element.tagName.getText(source)}.${attribute.name.getText(source)}`;
+          if (!CLASSIFYING_PROPS.has(prop)) sites.push(`${prop} attribute`);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return sites;
+}
+
+describe('the fold-label print scan', () => {
+  test('lets a classifying prop and a predicate read the label', () => {
+    expect(
+      labelPrintSites(
+        'fixture.tsx',
+        `const row = orchestrationLifecycleLabel(s) === 'Draft' ? null : (
+          <SessionPlanProgress sessionId="a" lifecycleLabel={orchestrationLifecycleLabel(s)} />
+        );`,
+      ),
+    ).toEqual([]);
+  });
+
+  test('reports the label printed as JSX text', () => {
+    expect(
+      labelPrintSites(
+        'fixture.tsx',
+        'const row = <span>{orchestrationLifecycleLabel(s)}</span>;',
+      ),
+    ).toEqual(['JSX text']);
+  });
+
+  test('reports the label printed through a template literal', () => {
+    expect(
+      labelPrintSites(
+        'fixture.ts',
+        `const word = \`\${orchestrationLifecycleLabel(s)} now\`;`,
+      ),
+    ).toEqual(['template']);
+  });
+
+  test('reports the label printed through a text attribute', () => {
+    expect(
+      labelPrintSites(
+        'fixture.tsx',
+        'const row = <span title={orchestrationLifecycleLabel(s)} />;',
+      ),
+    ).toEqual(['span.title attribute']);
+  });
+
+  test.each([
+    ['lower-cased', '{orchestrationLifecycleLabel(s).toLowerCase()}'],
+    ['stringified', '{String(orchestrationLifecycleLabel(s))}'],
+    ['concatenated', "{orchestrationLifecycleLabel(s) + ' now'}"],
+    ['chosen by a ternary', "{live ? orchestrationLifecycleLabel(s) : ''}"],
+  ])('reports the label %s into JSX text', (_shape, child) => {
+    expect(
+      labelPrintSites('fixture.tsx', `const row = <span>${child}</span>;`),
+    ).toEqual(['JSX text']);
+  });
+
+  test('reports the label wrapped inside a template literal', () => {
+    expect(
+      labelPrintSites(
+        'fixture.ts',
+        `const word = \`\${orchestrationLifecycleLabel(s).toLowerCase()} now\`;`,
+      ),
+    ).toEqual(['template']);
+  });
+
+  test('exempts only the named component and prop', () => {
+    expect(
+      labelPrintSites(
+        'fixture.tsx',
+        `const rows = <>
+          <OtherComponent lifecycleLabel={orchestrationLifecycleLabel(s)} />
+          <SessionPlanProgress title={orchestrationLifecycleLabel(s)} />
+        </>;`,
+      ),
+    ).toEqual([
+      'OtherComponent.lifecycleLabel attribute',
+      'SessionPlanProgress.title attribute',
+    ]);
+  });
+});
+
 describe('a session state is worded by the ladder alone', () => {
   const files = sourceFiles(SRC_ROOT);
 
@@ -168,14 +315,15 @@ describe('a session state is worded by the ladder alone', () => {
   test('outside the classifiers, nothing turns the fold label into text', () => {
     // The fold label is a classification input; printing it (or switching
     // on it to pick a word) is a second vocabulary. A guarded surface may
-    // still branch on it for a predicate, so this checks the one shape a
-    // word table takes: a label used as a template or JSX text.
+    // still branch on it for a predicate or hand it to a classifying prop,
+    // so this checks the shapes that print it: JSX text, a template, or a
+    // text-bearing attribute.
     const offenders: string[] = [];
     for (const file of files) {
       const name = file.slice(SRC_ROOT.length);
       if (LABEL_READERS.has(name)) continue;
-      const source = withoutComments(readFileSync(file, 'utf8'));
-      if (/\{orchestrationLifecycleLabel\(/.test(source)) offenders.push(name);
+      const sites = labelPrintSites(file, readFileSync(file, 'utf8'));
+      if (sites.length) offenders.push(`${name} (${sites.join(', ')})`);
     }
     expect(offenders).toEqual([]);
   });

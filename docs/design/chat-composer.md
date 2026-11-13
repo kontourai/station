@@ -686,6 +686,14 @@ failed, the settled summary names them without a completed verb ("2 file
 edits"); one success keeps the completed phrase, and the failed and retried
 counts disclose the rest.
 
+Station's own tool calls carry Station's mark (named "Station" for screen
+readers) and read as actions, such as "Waited for “Fix login”" instead of "Used
+`wait_session`" (#3418). The words come from
+[`station-tool-phrases`](../../packages/contracts/src/station-tool-phrases.ts)
+and follow the same tense rule: past only after success, bare while pending or
+failed. Summaries say "used 2 Station tools"; the expanded row keeps the raw
+name.
+
 User-message action menus reserve padding before hover so their targets cannot
 cover the text. Individual tool failures remain on their transcript rows rather
 than creating global toasts. Turn attention and approval notifications keep their
@@ -1096,10 +1104,15 @@ simple per-device preference rather than claiming to detect an attached keyboard
   dictation and takes the transcript with it. An unavailable mic stays focusable;
   tapping or activating it opens its reason, including when the composer cannot
   accept dictation.
-  Paste requires the browser to deliver clipboard files. Android keyboard
-  image insertion into the native WebView is not qualified by the browser
-  clipboard tests; use the paperclip's file picker when the keyboard refuses
-  image paste.
+  Paste requires the browser to deliver clipboard files. Mobile WebViews
+  often offer no Paste for an image-only clipboard, so the reply, start and
+  Task composers show **Paste image** beside Attach in the Android and iOS
+  apps (`clipboard-image`) and on a touch browser with
+  `navigator.clipboard.read()`. It reads the clipboard's images
+  (`useClipboardImagePaste`) into that composer's own Attach path and says so
+  when the clipboard has no image. Desktop pointers paste into the field and
+  do not show it. Real-device clipboard behavior is not qualified by these
+  tests; see [native capabilities](native-capabilities.md#clipboard-images-and-the-share-target).
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the

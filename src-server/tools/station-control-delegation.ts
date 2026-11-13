@@ -6652,7 +6652,10 @@ export async function delegateTask(
 /**
  * #4512: the origin a delegated send records: `delegation` for a new
  * conversation (the delegated child it starts) or one whose current Session
- * is itself unattended, else `unknown`.
+ * is itself unattended, else `unknown`. A conversation id the send names but
+ * no Session holds yet is a new conversation too (#4830: classifying it from
+ * the facts of a Session that does not exist read `unknown`); one Station
+ * cannot read counts as new, so it is never mistaken for a person's chat.
  */
 function delegatedTargetOrigin(
   orchestrationService: OrchestrationService | undefined,
@@ -6660,6 +6663,14 @@ function delegatedTargetOrigin(
 ): TurnDispatchOrigin {
   if (!conversationId) return 'delegation';
   if (!orchestrationService) return 'unknown';
+  let existing: boolean;
+  try {
+    existing =
+      orchestrationService.conversationSessionIds(conversationId).length > 0;
+  } catch {
+    existing = false;
+  }
+  if (!existing) return 'delegation';
   const facts = orchestrationService.sessionDispatchFacts(
     orchestrationService.currentConversationSessionId(conversationId),
   );
@@ -7458,6 +7469,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
+                : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
@@ -7490,6 +7504,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
                 : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }

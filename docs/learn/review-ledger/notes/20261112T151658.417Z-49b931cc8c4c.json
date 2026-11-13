@@ -1,0 +1,7 @@
+{
+  "revision": "b5fbece343eb9b6cf3622bd6f12f07e07a9f5a8e",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"HomeView.test.tsx only adds a mock for the Session activity read used by the plan line; shell plugin and distribution claims are unaffected.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]}
+  ]
+}

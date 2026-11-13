@@ -37,8 +37,10 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 
 ## Read the connection list
 
-Each row shows one readiness state and a next action. Model connections distinguish
-saved settings from a check that actually reached the provider:
+Each Model and Engine row shows one readiness badge beside its name; the line
+under the name holds facts, not the state. An engine whose first add failed is
+listed as **Not connected yet** instead. Model connections distinguish saved
+settings from a check that actually reached the provider:
 
 - **Ready** — the current readiness evidence permits selection; it does not prove every model or tool capability.
 - **Sign in required**, **API key required**, or **Credentials required** — complete the named authentication step.
@@ -48,9 +50,23 @@ saved settings from a check that actually reached the provider:
 - **Unreachable — retrying** or **Cannot reach provider** — the latest reachability check failed; the former retains a recent pass within the retry grace period.
 - **Found, not connected** — Station observed a service-specific setup signal; connect it to Station.
 - **Setup required** — finish the remaining setup.
-- **Limited** — usable with reduced capabilities; review the details.
+- **Limited** — reduced capabilities; review the details. An engine in this state does not run agents until it reports ready again.
 - **Disabled** — configured but turned off.
+- **Not allowed** — the managed policy does not allow this engine. It is its own state, not **Disabled**, because there is nothing to turn on.
 - **Unreachable** — configured, but Station cannot reach it.
+
+The engine page's Status, its **Ready** step and its readiness notice show the
+same state as its row. A section tab carries an attention mark when an engine
+cannot run agents for a reason you can fix, a model connection
+is turned off, is missing a required key or sign-in, was refused by its last
+check, or cannot be reached after retrying; a tool server's last check
+failed; or Knowledge has no vector store. Engines the managed policy refuses,
+saved-but-untested model connections, Knowledge without an embedding model, and
+computers that are not connected carry no mark. Opening `/connections` shows a loading state until these lists load, or
+for up to 1.5 seconds, then opens the first section that needs
+attention, or Models when none does. The rows, the engine page, the marks and
+that redirect share one [readiness
+derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
@@ -179,7 +195,10 @@ events. Source-home continuations and older events without this observation
 remain unattributed. A process restart does not inherit a previous process's
 account observation. Account filtering excludes unattributed receipts; it never
 assigns old costs to today's active account. Capture counts still describe the
-engine, and account results disclose this attribution gap.
+engine, and account results disclose this attribution gap. Engine activity is
+selected inside Station's bounded observation window, so a busy engine does not
+crowd a quiet one out, and an engine with no usage in the window reports unknown
+capture rather than another engine's coverage.
 
 Reported costs and estimates remain separate. **Tokens**, **Reported cost** and
 **Estimated cost** select the daily chart measure. A cost measure with no values
@@ -364,11 +383,31 @@ without switching or opening the chooser. On a phone the chooser offers
 **Connect another device** where a computer offers **Pair phone**.
 
 Opening the chooser checks whether each other Station answers its public
-handshake, from this device, without credentials. A green dot means it
-answered; **Unreachable** means nothing did within a few seconds. Answering
-proves only that the address responds, not that this device still has access.
-Stations reached through a broker route are not checked, nor, from an HTTPS
-page, a plain-HTTP address other than loopback, which the browser would block.
+handshake, from this device, without credentials. Each row reads **Checking…**
+until its answer arrives, then **Online** or **Unreachable**, with why and
+when: "no answer in time" or "nothing answered", "checked just now", and when
+this device last connected to it. Answering proves only that the address
+responds, not that this device still has access. Stations reached through a
+broker route are not checked, nor, from an HTTPS page, a plain-HTTP address
+other than loopback, which the browser would block; those rows show the last
+failure this device saved and how old it is, or **Not checked**. A Station that
+refused this device reads **Needs access**, with when it refused where that is
+known, and keeps its needs-pairing mark even when its handshake answers. The
+current Station's row shows its live status, why its last check failed if it
+did, and when it was checked. Station checks the current Station every 10
+seconds while it is healthy; while it is failing it retries sooner, backing off
+to every 10 seconds, except after a refused credential, which waits for a
+manual retry, a credential change or the network returning. It also checks
+whenever the app returns to the foreground. The app's own supervised local
+Station is not probed, so its row has no check time.
+
+After you choose a Station, the app names it, its address and the step it is
+on while it verifies access. If that takes longer than six seconds, it says it
+has had no answer and offers **Try again**, **Back to** the Station most
+recently used before it, and **Manage Stations**, instead of waiting out the
+request deadline. In the desktop and phone apps, a Station that answered but is
+still loading its data says so after six seconds and offers **Back to** and
+**Manage Stations**.
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**
@@ -869,8 +908,9 @@ opens on that entry's first step.
    New chat uses the dock's current Project, or no Project when none is open.
    Choose **Done** to finish without opening a chat.
 
-A configured engine that reads **Setup required** offers **Retry check** on its
-engine page; a Ready engine offers **Check connection** instead.
+A configured command-backed engine that is not ready offers **Retry check** on its
+engine page, except one the managed policy refuses (**Not allowed**), which has
+no repair; a Ready engine offers **Check connection** instead.
 An engine whose first check never succeeded is saved but has no Agent yet; it
 is listed on the Engines page and at the top of Add engine as **Not connected
 yet**, and its page offers **Retry check**, **Remove**, and, for a custom
@@ -1064,6 +1104,13 @@ the engine answered. A failed check is shown as **Check failed**; a model catalo
 alone does not override that result. **Refresh models** refreshes the catalog.
 
 Model requests use the proxy; the engine and its tools still run on this Station.
+
+A proxy's HTTP 429 or rate-limit cooldown does not mean its key is invalid and
+does not create a retained sign-in failure. Wait for the provider's reset or
+repair the proxy, then retry. If Station has already retained a sign-in failure,
+fix the credentials or proxy and run **Check connection** on the engine page.
+Only a successful chat turn clears that failure; refreshing the model catalog
+or running the CLI's prerequisite-only `connections test` does not prove recovery.
 
 A routed connection authenticates with that proxy key: readiness reports the
 saved key as the engine's credential (shown as **Proxy key**) and does not
@@ -1802,6 +1849,45 @@ carried safely; see the
 An unconfirmed MCP prompt send is not automatically replayed; inspect the
 conversation before running it again. Prompt receipts expire after ten minutes
 or a Station restart, so an expired prompt must be run again.
+
+Reading the web counts too. A conversation is marked when Claude Code's
+`WebFetch` or `WebSearch` returns, when Codex completes a web search, when an
+ACP engine runs a tool it labels as a fetch, when the Station engine's HTTP
+request returns, and when an agent reads or drives a page with Station's
+browser tools. muse web reads are not seen, and no engine's shell downloads
+(`curl`, `wget`) are. `GET /api/integrations/untrusted-content/coverage`
+lists this per engine.
+
+After the mark, Station denies writes to known instruction-file and git-hook
+locations by path, as a best-effort early check. In that conversation and the
+conversations it delegates to, it refuses writes, moves and copies into:
+
+- `AGENTS.md`, `CLAUDE.md` and their local or override forms, at any depth;
+- anything under `.agents/`, `.claude/` or `.codex/`;
+- `.mcp.json`;
+- a repository's hooks and configuration (`.git/hooks`, `.git/config`,
+  `.githooks`, `.husky`, and the folder git reports as `core.hooksPath`).
+
+A shell command that names one of these, changes git configuration, or gives
+git an option that configures it or points it at another repository asks you
+first. A delegated agent that reads the web marks the agent that delegated to
+it when its result comes back. To make such a change yourself, edit the file
+directly or clear the mark.
+
+**This does not contain git hook execution.** Each of these ways around it has
+run a planted hook after a mark:
+
+- a `core.hooksPath` that points outside the repository;
+- a bare repository;
+- a repository nested inside a hooks folder;
+- a hooks folder reached through a symlink;
+- a writable `[include]` file that changes `core.hooksPath`;
+- git run inside a quoted `sh -c "…"` command or through a shell alias.
+
+Codex's own file edits and commands are not checked at all. Enforcement at the
+operating-system level is tracked in
+[#4860](https://github.com/kontourai/station/issues/4860); see the
+[coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
 
 ## Connect an OAuth MCP server to an Agent
 

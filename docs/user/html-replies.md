@@ -97,6 +97,8 @@ The Open button waits 500 ms; Cancel mutes further link requests from that reply
 until its viewer is remounted.
 
 Scripts run in an opaque sandbox with no Station session or tool bridge.
+On the phone or another computer, scripts in a visual reply may not run; HTML,
+CSS and SVG still render.
 CSP blocks ordinary network loads. Direct WebRTC constructors are disabled,
 but a nested srcdoc frame can obtain a fresh constructor and send ICE UDP
 packets in Chromium and WebKit. Published pages are **not network-isolated**:

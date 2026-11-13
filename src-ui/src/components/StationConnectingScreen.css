@@ -1,0 +1,54 @@
+.station-connecting {
+  display: flex;
+  /* Anchored from the top, so the actions appearing below the message do not
+     move what the person is reading. */
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: max(28vh, env(safe-area-inset-top))
+    max(var(--k-space-4), env(safe-area-inset-right))
+    max(var(--k-space-4), env(safe-area-inset-bottom))
+    max(var(--k-space-4), env(safe-area-inset-left));
+}
+.station-connecting__panel {
+  display: grid;
+  gap: var(--k-space-3);
+  width: min(100%, 420px);
+}
+.station-connecting__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.station-connecting__identity > div {
+  min-width: 0;
+}
+.station-connecting__title {
+  margin: 0;
+  font-size: var(--k-text-lg);
+  font-weight: 600;
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+}
+.station-connecting__host {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+.station-connecting__message {
+  margin: 0;
+  color: var(--k-text-muted);
+}
+.station-connecting__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.station-connecting__error {
+  margin: 0;
+  color: var(--k-negative);
+  overflow-wrap: anywhere;
+}
