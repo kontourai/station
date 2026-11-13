@@ -315,7 +315,10 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             return {
               actions: actions.x,
               extent: extent.x,
-              sameLine: actions.y === extent.y,
+              sameLine:
+                Math.abs(
+                  actions.y + actions.height / 2 - extent.y - extent.height / 2,
+                ) < 1,
               overflow: document.body.scrollWidth > innerWidth,
             };
           });
