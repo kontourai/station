@@ -47,7 +47,11 @@ interface Engine {
   record: () => Recorded[];
   start: (
     threadId: string,
-    extra?: { agent?: ResolvedAgentDefinition; resumeCursor?: unknown },
+    extra?: {
+      agent?: ResolvedAgentDefinition;
+      resumeCursor?: unknown;
+      modelId?: string;
+    },
   ) => Promise<{ resumeCursor?: unknown }>;
   send: (threadId: string, input: string) => Promise<string>;
   completed: (turnId: string) => Promise<CanonicalRuntimeEvent>;
@@ -108,6 +112,7 @@ function launch(
         metadata: { connectionId: CONNECTION_ID },
         ...(extra.agent ? { agent: extra.agent } : {}),
         ...(extra.resumeCursor ? { resumeCursor: extra.resumeCursor } : {}),
+        ...(extra.modelId ? { modelId: extra.modelId } : {}),
       } as never)) as { resumeCursor?: unknown },
     send: async (threadId, input) =>
       (
@@ -498,6 +503,28 @@ describe.skipIf(process.platform === 'win32')(
       expect(
         engine.record().find((entry) => entry.method === 'session/load')?.meta,
       ).toEqual(expected);
+    });
+
+    test('a model option the engine sends after answering session/new is waited for, not refused', async () => {
+      // kiro-cli 3.3.0, Station UI start with model `auto`: one start in two
+      // was refused model_not_advertised (dev Station, 2026-11-13).
+      const engine = launch({
+        ...profileOf('kiro-v3'),
+        lateModelOptionMs: 300,
+      });
+      await engine.start('late-model', { modelId: 'auto' });
+      expect(
+        engine
+          .record()
+          .find(
+            (entry) =>
+              entry.method === 'session/set_config_option' &&
+              entry.configId === 'model',
+          ),
+      ).toBeDefined();
+      expect(
+        engine.events.find((event) => event.method === 'runtime.error'),
+      ).toBeUndefined();
     });
 
     test('rewind is refused mid-turn and runs to the next turn’s prompt id after it', async () => {

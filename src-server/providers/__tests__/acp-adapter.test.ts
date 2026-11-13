@@ -126,6 +126,7 @@ function createAdapter(
     onProcess?: (process: FakeAcpProcess, index: number) => void;
     resolvePreToolPolicy?: AcpAdapterOptions['resolvePreToolPolicy'];
     sendTurnStartWaitMs?: number;
+    modelAdvertisementWaitMs?: number;
   } = {},
 ): {
   adapter: AcpAdapter;
@@ -145,6 +146,9 @@ function createAdapter(
     revokeStationControlMcpAuth: options.revokeStationControlMcpAuth,
     resolvePreToolPolicy: options.resolvePreToolPolicy,
     sendTurnStartWaitMs: options.sendTurnStartWaitMs,
+    ...(options.modelAdvertisementWaitMs !== undefined
+      ? { modelAdvertisementWaitMs: options.modelAdvertisementWaitMs }
+      : {}),
     managedWorkspaceHomeDir:
       options.managedWorkspaceHomeDir ?? managedWorkspaceHome,
     processFactory: (opts) => {
@@ -4911,11 +4915,13 @@ describe('station#1182: runtime-reported model', () => {
     await adapter.stopAll();
   });
 
-  test('refuses a requested model when the fresh session has no model option', async () => {
+  test('refuses a requested model when the fresh session has no model option, after a bounded wait', async () => {
     const { adapter, processes } = createAdapter({
       newSessionConfigOptions: [],
+      modelAdvertisementWaitMs: 200,
     });
 
+    const started = Date.now();
     await expect(
       adapter.startSession({
         provider: 'acp',
@@ -4929,6 +4935,9 @@ describe('station#1182: runtime-reported model', () => {
       code: 'model_not_advertised',
       message: expect.stringContaining('ACP model option unavailable'),
     });
+    // It waited for a late model option, and no longer than its bound.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(190);
+    expect(Date.now() - started).toBeLessThan(2_000);
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 

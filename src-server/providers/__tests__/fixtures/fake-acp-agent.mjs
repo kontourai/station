@@ -26,6 +26,10 @@
 //                        asking for its token does
 //   sessionNewRequests   sent before the session/new answer (Kiro's
 //                        `_kiro/terminal/shell_type`)
+//   lateModelOptionMs    the session/new answer leaves out the `model`
+//                        config option, which arrives that many ms later in
+//                        a `config_option_update` (an engine whose model list
+//                        loads after it answers)
 //   --prompt-steps <path>  a JSON step list replacing the default turn. Extra
 //                        step kinds: `client-request` {method, params},
 //                        `user-message-id` (a Kiro `user_message_id_assigned`
@@ -315,6 +319,18 @@ const app = acp
     if (typeof modeId === 'string') {
       if (shape.modes) shape.modes.currentModeId = modeId;
       if (modeOption) modeOption.currentValue = modeId;
+    }
+    if (typeof profile.lateModelOptionMs === 'number') {
+      const full = structuredClone(shape.configOptions ?? []);
+      setTimeout(() => {
+        client.notify(acp.methods.client.session.update, {
+          sessionId,
+          update: { sessionUpdate: 'config_option_update', configOptions: full },
+        });
+      }, profile.lateModelOptionMs);
+      shape.configOptions = (shape.configOptions ?? []).filter(
+        (option) => option.category !== 'model',
+      );
     }
     return { sessionId, ...shape };
   })

@@ -467,6 +467,11 @@ export function acpEngineExitEndsLaunch(input: {
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
   /**
+   * How long a start waits for a model option sent after `session/new`.
+   * Defaults to {@link ACP_MODEL_ADVERTISEMENT_WAIT_MS}.
+   */
+  modelAdvertisementWaitMs?: number;
+  /**
    * #3290: how long a new engine process may take to start and resume the
    * session when the approval floor changes. Defaults to the cold-start
    * bound an engine probe allows (`COLD_START_OPERATION_TIMEOUT_MS`).
@@ -776,6 +781,11 @@ export interface AcpSessionRecord {
    * whole turn). Kept for this engine process only; a turn whose id was not
    * seen cannot be a target. The single ledger for these ids.
    */
+  /**
+   * Woken by every `config_option_update`: a start waiting for a model
+   * option the engine sends after answering `session/new`.
+   */
+  configOptionWaiters?: Set<() => void>;
   turnMessages?: Array<{
     turnId: string;
     firstMessageId: string;
@@ -919,6 +929,30 @@ export const ACP_ADAPTER_CAPABILITIES = [
  * `turn.started`, both stamped by ORCHESTRATION before this adapter ever
  * sees the turn — this file needs no change to participate correctly.
  */
+/**
+ * How long a start waits for a model option the engine sends after answering
+ * `session/new` (kiro-cli 3.3 loads its model list asynchronously), before
+ * refusing a requested model as not advertised.
+ */
+export const ACP_MODEL_ADVERTISEMENT_WAIT_MS = 5_000;
+
+/** `options` with `option` in place of the entry of the same id, or added. */
+function mergeAcpConfigOption(
+  options: unknown,
+  option: { id: string },
+): unknown[] {
+  const list = Array.isArray(options) ? options : [];
+  const at = list.findIndex(
+    (entry) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as { id?: unknown }).id === option.id,
+  );
+  return at < 0
+    ? [...list, option]
+    : list.map((entry, index) => (index === at ? option : entry));
+}
+
 /** Turns whose engine prompt ids one ACP session keeps for rewind and fork. */
 export const ACP_TURN_MESSAGES_MAX = 500;
 
@@ -2025,6 +2059,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
+        // A `config_option_update` that arrived before this answer may hold
+        // a model option the answer itself left out.
+        const updatedBeforeAnswer = record.configOptions;
         record.configOptions = sessionResult.configOptions;
         const modeCatalog = advertisedAcpSessionModes({
           configOptions: sessionResult.configOptions,
@@ -2093,9 +2130,36 @@ export class AcpAdapter implements ProviderAdapterShape {
           sessionModels,
         ).currentModelId;
         const requestedModel = input.modelId?.trim();
-        const modelOption = requestedModel
+        let modelOption = requestedModel
           ? findAcpModelConfigOption(sessionResult.configOptions)
           : undefined;
+        // kiro-cli 3.3 can answer session/new before its model list has
+        // loaded and send the `model` option in a config_option_update
+        // afterwards: use one that already came, or wait a bounded time for
+        // it, before refusing a requested model as not advertised.
+        if (
+          requestedModel &&
+          !modelOption &&
+          sessionModelsObservation.kind === 'absent'
+        ) {
+          modelOption =
+            findAcpModelConfigOption(updatedBeforeAnswer) ??
+            (await this.awaitAdvertisedModelOption(
+              record,
+              this.options.modelAdvertisementWaitMs ??
+                ACP_MODEL_ADVERTISEMENT_WAIT_MS,
+            ));
+          this.requireCurrentGeneration(input.threadId, record.generation);
+          if (modelOption) {
+            record.configOptions = mergeAcpConfigOption(
+              record.configOptions,
+              modelOption,
+            );
+            reportedModel =
+              acpAdvertisedModelCatalog(record.configOptions, undefined)
+                .currentModelId ?? reportedModel;
+          }
+        }
         if (
           requestedModel &&
           !modelOption &&
@@ -3129,6 +3193,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     for (const wake of record.startWaiters ?? []) wake();
     if (!record.stopping) {
       record.stopping = true;
+      for (const wake of [...(record.configOptionWaiters ?? [])]) wake();
       record.activeTurnId = undefined;
       for (const [requestId, pending] of record.pendingRequests) {
         pending.resolve('cancel');
@@ -3261,6 +3326,35 @@ export class AcpAdapter implements ProviderAdapterShape {
     return acpSessionContinuity(
       this.requireSession(threadId).process.initResult,
     );
+  }
+
+  /**
+   * The model config option the engine advertises on this session, waiting
+   * up to `waitMs` for a `config_option_update` to bring one. Undefined when
+   * none arrives, or the session is stopped meanwhile.
+   */
+  private async awaitAdvertisedModelOption(
+    record: AcpSessionRecord,
+    waitMs: number,
+  ): Promise<ReturnType<typeof findAcpModelConfigOption>> {
+    // Real time, not the injectable clock: a frozen test clock must not
+    // turn this bound into an endless wait.
+    const deadline = Date.now() + waitMs;
+    let found = findAcpModelConfigOption(record.configOptions);
+    while (!found && !record.stopping && Date.now() < deadline) {
+      await new Promise<void>((resolve) => {
+        const waiters = (record.configOptionWaiters ??= new Set());
+        const wake = () => {
+          clearTimeout(timer);
+          waiters.delete(wake);
+          resolve();
+        };
+        const timer = setTimeout(wake, Math.max(0, deadline - Date.now()));
+        waiters.add(wake);
+      });
+      found = findAcpModelConfigOption(record.configOptions);
+    }
+    return found;
   }
 
   /** Remember the engine's id for the running turn's prompt. */
@@ -3521,6 +3615,8 @@ export class AcpAdapter implements ProviderAdapterShape {
       onSessionUpdate: async (params: SessionNotification) => {
         this.recordTurnMessage(record, params.update);
         this.handleSessionUpdate(record, params.update);
+        if (params.update.sessionUpdate === 'config_option_update')
+          for (const wake of [...(record.configOptionWaiters ?? [])]) wake();
       },
       onExtNotification: (method, params) => {
         this.handleExtensionNotification(record, method, params);
