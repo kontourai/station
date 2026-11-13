@@ -32,6 +32,7 @@ import {
 import {
   ACPCommandNotFoundError,
   ACPProcess,
+  type ACPSpawnedLaunch,
   type AcpSessionModelState,
   assertACPProviderRouteSupported,
   type InitializeResult,
@@ -595,6 +596,7 @@ export class ACPProbe {
    * referenced by nothing else.
    */
   private readonly inboundExtensionPolicy: AcpInboundExtensionHandler;
+  private readonly inboundExtensionPolicyWithoutHostAuth: AcpInboundExtensionHandler;
   /** Survivor → destroy attempts already spent on it. See {@link MAX_CLEANUP_RETRY_ATTEMPTS}. */
   private readonly pendingCleanup = new Map<ACPProcess, number>();
   /**
@@ -702,25 +704,41 @@ export class ACPProbe {
       config: ACPConnectionConfig,
     ) => void,
   ) {
-    // This probe's own registry, shared with nobody. A built-in launch that
+    // This probe's own registries, shared with nobody. A built-in launch that
     // delegates its sign-in to the host (the Kiro bundle) asks for a token
-    // before `initialize` answers, so the probe must answer it too.
-    const registry = new AcpInboundExtensionRegistry();
-    installEngineHostAuthResponders(registry, { connection: this.config });
+    // before `initialize` answers, so the probe must answer it too, unless a
+    // managed policy pin replaced what that launch runs (then the responders'
+    // launch facts no longer describe the process, and it gets none).
     // Kiro's agent service asks `_kiro/terminal/shell_type` during the
     // probe's own session/new, and a -32601 there fails it. The
     // probe answers it as the chat client does; it is the only reviewed
     // request that needs no person or session.
     const terminalFacts = acpTerminalFactsHandler();
-    if (terminalFacts)
-      for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
-        if (entry.handler === 'client.terminal-facts')
-          registry.register(entry.method, terminalFacts);
-    this.inboundExtensionPolicy = createAcpInboundExtensionRequestHandler({
-      registry,
-      logger: this.logger,
-      connectionId: `probe:${this.config.id}`,
-    });
+    const policyFor = (withHostAuth: boolean) => {
+      const registry = new AcpInboundExtensionRegistry();
+      if (withHostAuth)
+        installEngineHostAuthResponders(registry, { connection: this.config });
+      if (terminalFacts)
+        for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
+          if (entry.handler === 'client.terminal-facts')
+            registry.register(entry.method, terminalFacts);
+      return createAcpInboundExtensionRequestHandler({
+        registry,
+        logger: this.logger,
+        connectionId: `probe:${this.config.id}`,
+      });
+    };
+    this.inboundExtensionPolicy = policyFor(true);
+    this.inboundExtensionPolicyWithoutHostAuth = policyFor(false);
+  }
+
+  /** The client for one launch: no host-auth responders for a replaced one. */
+  private clientFor(launch: ACPSpawnedLaunch) {
+    return createProbeClient(
+      launch.launchReplacedByPolicy
+        ? this.inboundExtensionPolicyWithoutHostAuth
+        : this.inboundExtensionPolicy,
+    );
   }
 
   /**
@@ -912,7 +930,7 @@ export class ACPProbe {
         launchEnv: registryLaunchEnvFor(this.config),
         connection: this.config,
         credentialEnv: () => engineCredentialEnvFor(this.config),
-        createClient: () => createProbeClient(this.inboundExtensionPolicy),
+        createClient: (launch) => this.clientFor(launch),
         clientCapabilities: {},
         logger: this.logger,
         // Piped rather than inherited so a startup failure can quote the
@@ -1326,7 +1344,7 @@ export class ACPProbe {
       launchEnv: registryLaunchEnvFor(this.config),
       connection: this.config,
       credentialEnv: () => engineCredentialEnvFor(this.config),
-      createClient: () => createProbeClient(this.inboundExtensionPolicy),
+      createClient: (launch) => this.clientFor(launch),
       clientCapabilities: {},
       logger: this.logger,
     });

@@ -376,6 +376,31 @@ describe('the vault issuer', () => {
 });
 
 describe('responders on an inbound registry', () => {
+  test('a launch carrying a non-default credential profile installs nothing', async () => {
+    const { stub, service } = await setup();
+    registerEngineHostAuth(service);
+    await signInBuilderId(service, stub, {
+      accessToken: 'vault-token',
+      refreshToken: 'r',
+    });
+    const registry = new AcpInboundExtensionRegistry();
+    expect(
+      installEngineHostAuthResponders(registry, {
+        connection: {
+          id: SCOPE.connectionId,
+          command: 'station-managed:kiro-kas',
+          credentialProfileRef: 'work',
+        },
+      }),
+    ).toEqual({ credentialMethods: [], secretMethods: [] });
+    await expect(
+      createAcpInboundExtensionRequestHandler({ registry })(
+        '_kiro/auth/getAccessToken',
+        {},
+      ),
+    ).rejects.toMatchObject({ code: -32601 });
+  });
+
   test('a managed bundle launch answers getAccessToken from the vault; a custom command gets -32601 and no token', async () => {
     const { stub, service } = await setup();
     registerEngineHostAuth(service);

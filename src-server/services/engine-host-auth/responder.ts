@@ -20,7 +20,10 @@
  * Secret responders are installed only beside a credential responder: the
  * engine-held secret store is for engines Station signs in itself.
  */
-import { argvDelegatesTo } from '@kontourai/station-contracts/engine-credential-provider';
+import {
+  argvDelegatesTo,
+  ENGINE_CREDENTIAL_DEFAULT_PROFILE,
+} from '@kontourai/station-contracts/engine-credential-provider';
 import {
   type AcpInboundExtensionRegistry,
   REVIEWED_ENGINE_CREDENTIAL_BINDINGS,
@@ -34,7 +37,12 @@ export interface EngineHostAuthResponderLaunch {
     readonly id: string;
     readonly command: string;
     readonly args?: readonly string[];
-    /** Absent: `default`. */
+    /**
+     * Absent or `default`. Station keeps one sign-in per connection, under
+     * the default profile (sign-in routes, status, probe and sessions alike);
+     * any other profile installs nothing. A session start asking for one is
+     * refused before launch by the ACP adapter.
+     */
     readonly credentialProfileRef?: string;
   };
   /** Accepted for the caller's record; the derived argv is the one checked. */
@@ -73,9 +81,11 @@ export function installEngineHostAuthResponders(
     return NONE;
   }
   if (!facts.builtinDescriptor) return NONE;
+  const profile = launch.connection.credentialProfileRef;
+  if (profile && profile !== ENGINE_CREDENTIAL_DEFAULT_PROFILE) return NONE;
   const scope = {
     connectionId: launch.connection.id,
-    credentialProfileRef: launch.connection.credentialProfileRef ?? 'default',
+    credentialProfileRef: ENGINE_CREDENTIAL_DEFAULT_PROFILE,
   };
   const credentialMethods: string[] = [];
   for (const binding of REVIEWED_ENGINE_CREDENTIAL_BINDINGS) {

@@ -15,6 +15,10 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { managedRuntimeCommand } from '@kontourai/station-contracts/managed-engine-install';
+import {
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BuiltinACPConnectionRegistryProvider } from '../../../providers/llm/defaults.js';
@@ -22,6 +26,7 @@ import {
   clearAll,
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
+import { installManagedEngineLimits } from '../../../security/managed-engine-limits.js';
 import {
   engineLaunchFactsFor,
   ManagedRuntimeNotInstalledError,
@@ -318,6 +323,80 @@ test.skipIf(process.platform === 'win32')(
     expect(init?._meta?.fakeKas).toMatchObject({
       result: { accessToken: 'vault-access-token' },
     });
+  },
+  60_000,
+);
+
+test.skipIf(process.platform === 'win32')(
+  'a managed-policy pin that replaces the managed runtime gets no token, in the probe as in sessions',
+  async () => {
+    const installer = await installFakeKas();
+    registerManagedRuntimeInstalls(installer);
+    await signIn('kiro-kas-bundle');
+    // The administrator's pinned binary runs the same engine script with the
+    // same delegation argument, but it is not the runtime Station installed.
+    const script = join(home, 'pinned-acp-server.js');
+    writeFileSync(script, FAKE_ENGINE);
+    const pinnedBinary = join(home, 'pinned-engine');
+    writeFileSync(
+      pinnedBinary,
+      `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits: {
+        engines: {
+          instances: {
+            acp: {
+              locked: true,
+              binaryPath: pinnedBinary,
+              launchArgs: ['--transport=stdio', '--auth=acp-callback'],
+            },
+          },
+        },
+      },
+    });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+    installManagedEngineLimits({
+      document: parsed.document,
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+    cleanups.push(() => installManagedEngineLimits(null));
+    const launched: ACPProcess[] = [];
+    const probe = new ACPProbe(
+      {
+        id: 'kiro-kas-bundle',
+        name: 'Kiro (KAS, no CLI)',
+        command: managedRuntimeCommand('kiro-kas'),
+        args: [],
+        enabled: true,
+      },
+      quiet,
+      home,
+      (options) => {
+        const acpProcess = new ACPProcess(options);
+        launched.push(acpProcess);
+        return acpProcess;
+      },
+      20_000,
+    );
+    cleanups.push(() => probe.dispose());
+    await probe.probe('request');
+    const fakeKas = (
+      launched[0]?.initResult as
+        | { _meta?: { fakeKas?: Record<string, unknown> } }
+        | null
+        | undefined
+    )?._meta?.fakeKas;
+    // The pinned launch really ran...
+    expect(fakeKas).toMatchObject({
+      argv: ['--transport=stdio', '--auth=acp-callback'],
+    });
+    // ...and was not handed the vault's token.
+    expect(fakeKas).toMatchObject({ error: { code: -32601 } });
+    expect(JSON.stringify(fakeKas)).not.toContain('vault-access-token');
   },
   60_000,
 );

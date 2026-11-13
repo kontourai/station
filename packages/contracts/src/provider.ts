@@ -1042,6 +1042,16 @@ export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
 export const ENGINE_SIGN_IN_REQUIRED_CODE = 'engine-sign-in-required';
 
 /**
+ * A start asked for a credential profile other than `default` on a connection
+ * whose engine sign-in Station owns (the Kiro bundle). Station keeps one
+ * sign-in per such connection, under its default profile, so the start is
+ * refused before anything is launched rather than answered with another
+ * profile's token.
+ */
+export const ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE =
+  'engine-credential-profile-unsupported';
+
+/**
  * Refusal code for a send whose session's engine start failed while the send
  * waited for it. Nothing was sent. Kept, not dropped: the client keeps the
  * message queued with the reason and a Retry, and does not retry on its own.

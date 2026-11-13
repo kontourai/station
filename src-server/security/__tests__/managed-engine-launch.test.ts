@@ -148,11 +148,15 @@ describe('pinned launch fields reach the engine child', () => {
         },
       },
     });
+    const launches: unknown[] = [];
     const acp = new ACPProcess({
       command: 'user-chosen-agent',
       args: ['--yolo'],
       cwd: makeTempDir('station-managed-acp-cwd-'),
-      createClient: () => ({}) as never,
+      createClient: (launch) => {
+        launches.push(launch);
+        return {} as never;
+      },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       launchEnv: { ACME_ROUTE: 'user-route' },
     });
@@ -162,6 +166,29 @@ describe('pinned launch fields reach the engine child', () => {
     const recorded = engine.read();
     expect(recorded.argv).toEqual(['--acp', '--acme']);
     expect(recorded.env.ACME_ROUTE).toBe('gateway');
+    // The client is told the launch is not the connection's own, so host
+    // auth installs no responders for it.
+    expect(launches).toEqual([{ launchReplacedByPolicy: true }]);
+  });
+
+  test('ACP: an unlocked pin that changes nothing reports the launch as the connection resolved it', async () => {
+    const engine = recordingEngine();
+    install({ instances: { acp: { locked: false, launchArgs: ['--x'] } } });
+    const launches: unknown[] = [];
+    const acp = new ACPProcess({
+      command: engine.binary,
+      args: ['--own'],
+      cwd: makeTempDir('station-managed-acp-cwd-'),
+      createClient: (launch) => {
+        launches.push(launch);
+        return {} as never;
+      },
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    });
+    await expect(acp.start()).rejects.toThrow();
+    await acp.destroy();
+    expect(engine.read().argv).toEqual(['--own']);
+    expect(launches).toEqual([{ launchReplacedByPolicy: false }]);
   });
 
   test('Claude: pinned arguments and environment are merged into the SDK launch', async () => {

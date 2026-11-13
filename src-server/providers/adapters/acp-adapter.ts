@@ -48,6 +48,7 @@ import type {
   EngineCommandOutcome,
   EngineCommandRoute,
 } from '@kontourai/station-contracts/engine-commands';
+import { ENGINE_CREDENTIAL_DEFAULT_PROFILE } from '@kontourai/station-contracts/engine-credential-provider';
 import type {
   InputRequestContent,
   InputRequestForm,
@@ -62,6 +63,7 @@ import {
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
+  ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_NOT_ADVERTISED_CODE,
@@ -89,7 +91,10 @@ import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js
 import type { InvocationContext } from '../../runtime/types.js';
 import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
-import { registryLaunchEnvFor } from '../../services/acp/acp-engine-descriptors.js';
+import {
+  registryLaunchEnvFor,
+  stationOwnsEngineSignIn,
+} from '../../services/acp/acp-engine-descriptors.js';
 import {
   acpAdvertisedModelCatalog,
   findAcpModelConfigOption,
@@ -107,6 +112,7 @@ import { COLD_START_OPERATION_TIMEOUT_MS } from '../../services/acp/acp-probe.js
 import {
   ACPProcess,
   type ACPProcessOptions,
+  type ACPSpawnedLaunch,
 } from '../../services/acp/acp-process.js';
 import type { AcpSessionTerminals } from '../../services/acp/acp-session-terminals.js';
 import {
@@ -1111,6 +1117,20 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #4520: a connection added from the public ACP registry does not run
     // when the managed policy sets `limits.engines.acpRegistryAgents: false`.
     assertEngineAllowedByManagedPolicy('acp', config);
+    // Station keeps one engine sign-in per connection it signs in itself,
+    // under the default profile: sign-in, status and the probe all use it.
+    // Another profile is refused here, before anything is launched, rather
+    // than answered with the default profile's token.
+    if (
+      input.credentialProfileRef &&
+      input.credentialProfileRef !== ENGINE_CREDENTIAL_DEFAULT_PROFILE &&
+      stationOwnsEngineSignIn(config)
+    ) {
+      throw new SessionStartRefusedError(
+        `${config.name.trim() || config.id} signs in through Station with one sign-in per connection, so it cannot use credential profile '${input.credentialProfileRef}'. Start it without a credential profile, or add another connection for a second sign-in.`,
+        ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
+      );
+    }
     // #3290: an engine that decides which of its actions ask is not started
     // with an approval mode it would never apply. The server sends a mode
     // only to a `station` connection, so this refuses a caller-carried one.
@@ -1389,8 +1409,9 @@ export class AcpAdapter implements ProviderAdapterShape {
                 withStationOpenCodeApprovalConfig(env, floor),
             }
           : {}),
-        createClient: () =>
+        createClient: (spawned) =>
           this.buildClient(record, {
+            spawned,
             connection: config,
             cwd,
             terminals,
@@ -3388,6 +3409,7 @@ export class AcpAdapter implements ProviderAdapterShape {
   private buildClient(
     record: AcpSessionRecord,
     context: {
+      spawned: ACPSpawnedLaunch;
       connection: ACPConnectionConfig;
       cwd: string;
       terminals: Map<string, ManagedTerminal>;
@@ -3401,15 +3423,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     // launch. Host auth derives the launch facts (built-in descriptor,
     // delegation argv) from the connection itself; nothing here asserts
     // them. Built before the process speaks, because an engine may ask for
-    // its token before `initialize` returns.
+    // its token before `initialize` returns. None for a launch a managed
+    // policy pin replaced: the connection no longer describes that process.
+    // The scope is the connection's default profile, as for sign-in, status
+    // and the probe; a start asking for another profile on such a connection
+    // was refused before launch (hostAuthProfileRefusal).
     const registry = this.reviewedInboundRequests(record, context.logger);
-    const credentialProfileRef = record.recoveryStart.credentialProfileRef;
-    installEngineHostAuthResponders(registry, {
-      connection: {
-        ...context.connection,
-        ...(credentialProfileRef ? { credentialProfileRef } : {}),
-      },
-    });
+    if (!context.spawned.launchReplacedByPolicy)
+      installEngineHostAuthResponders(registry, {
+        connection: context.connection,
+      });
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,

@@ -63,7 +63,7 @@ class ClientCapturingProcess {
   };
   constructor(readonly opts: ACPProcessOptions) {}
   async start() {
-    this.client = this.opts.createClient();
+    this.client = this.opts.createClient({ launchReplacedByPolicy: false });
     return this.initResult;
   }
   async newSession() {

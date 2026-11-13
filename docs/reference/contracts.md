@@ -1085,6 +1085,7 @@ non-retryable.
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
 | `conversation-context-unavailable` | `conflict` | `false` |
+| `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
 | `engine-memory-exhausted` | `engine_crashed` | `true` |
@@ -1518,6 +1519,12 @@ required", as the ACP SDK builds it) is refused the same way, carrying
 `ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
 `provider`); the same error on a prompt is that turn's `runtime.error` with the
 same code, and chat renders both as a prompt to sign in to the engine.
+A start that asks for a credential profile other than `default` on a
+connection whose engine sign-in Station owns is refused before launch with
+`ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE`
+(`engine-credential-profile-unsupported`, kind `input_unsupported`, from
+`provider`): sign-in, status, the probe and sessions all use the default
+profile.
 A Codex turn whose engine process was killed for exhausting its workload
 memory budget ends with a `runtime.error` carrying
 `ENGINE_MEMORY_EXHAUSTED_CODE` (`engine-memory-exhausted`, from `provider`)

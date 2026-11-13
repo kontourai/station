@@ -8,6 +8,7 @@ import { type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
+import { isDeepStrictEqual } from 'node:util';
 import {
   type ClientContext,
   type ContentBlock,
@@ -142,6 +143,18 @@ export type AsyncProcessIdentityProbe = (
   pid: number,
 ) => Promise<ExactProcessIdentityProbe>;
 
+/** What {@link ACPProcess.start} actually spawned, for the client it builds. */
+export interface ACPSpawnedLaunch {
+  /**
+   * A managed policy's pin replaced the command or arguments this connection
+   * resolves to (for a managed engine, the installed runtime and its pinned
+   * argv). Host-auth responders derive their launch facts from the
+   * connection, so they no longer describe this process: a client must not
+   * install credential or secret responders for it.
+   */
+  readonly launchReplacedByPolicy: boolean;
+}
+
 export interface ACPProcessOptions {
   /**
    * #4520: the connection this process runs, when the caller has it, so a
@@ -151,8 +164,11 @@ export interface ACPProcessOptions {
   command: string;
   args?: string[];
   cwd: string;
-  /** Factory for the Client callbacks — called during connection setup */
-  createClient: () => ACPClientCallbacks;
+  /**
+   * Factory for the Client callbacks — called during connection setup, after
+   * the spawn, with what was actually launched.
+   */
+  createClient: (launch: ACPSpawnedLaunch) => ACPClientCallbacks;
   /**
    * Capabilities Station truthfully offers to this ACP peer. Interactive
    * sessions use the managed filesystem and terminal bridge by default;
@@ -526,13 +542,15 @@ export class ACPProcess extends EventEmitter {
       command: this.opts.command,
       args: this.opts.args,
     });
-    const pinned = managedEngineLaunch(
-      'acp',
-      managed
-        ? { command: managed.command, args: managed.args, env: {} }
-        : { command: this.opts.command, args: this.opts.args || [], env: {} },
-      'user',
-    );
+    const resolved = managed
+      ? { command: managed.command, args: managed.args, env: {} }
+      : { command: this.opts.command, args: this.opts.args || [], env: {} };
+    const pinned = managedEngineLaunch('acp', resolved, 'user');
+    const spawnedLaunch: ACPSpawnedLaunch = {
+      launchReplacedByPolicy:
+        pinned.command !== resolved.command ||
+        !isDeepStrictEqual([...pinned.args], [...resolved.args]),
+    };
     const bin = await this.findCommand(pinned.command);
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
     if (!bin) throw new ACPCommandNotFoundError(pinned.command);
@@ -643,7 +661,7 @@ export class ACPProcess extends EventEmitter {
     ) as ReadableStream<Uint8Array>;
     const acpStream = ndJsonStream(input, output);
 
-    const client = this.opts.createClient();
+    const client = this.opts.createClient(spawnedLaunch);
     this.connection = createACPClientApp(client).connect(acpStream).agent;
 
     this._initResult = (await Promise.race([
