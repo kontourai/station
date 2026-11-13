@@ -5688,7 +5688,7 @@ const SCREENS: Screen[] = [
           await expect(trigger).toHaveAccessibleName(/Full access/);
           await expect(trigger).toBeInViewport();
           const model = trigger.locator('.composer-run-control__model');
-          await expect(model).toHaveText(' · Mini');
+          await expect(model).toHaveText('Mini');
           const modelBox = await model.boundingBox();
           const triggerBox = await trigger.boundingBox();
           expect(modelBox).not.toBeNull();
