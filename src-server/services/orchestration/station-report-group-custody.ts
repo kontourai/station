@@ -360,24 +360,27 @@ export class StationReportGroupCustody {
     context: RuntimeSourceRequestContext,
     method: 'GET' | 'POST',
     publication?: ReportRoundsPublication,
+    admission?: <Value>(check: () => Value) => Promise<Value>,
   ) {
     context = this.bindRequest(context);
     const writer = await HomeWriterOwner.forHome(
       this.owners.environment.getProjectHomeDir(),
     );
-    const admit = <Value>(check: () => Value): Promise<Value> =>
-      publication
-        ? publication.check(
-            {
-              owner: writer,
-              current: () => {
-                context.req.raw.signal.throwIfAborted();
-                return undefined;
+    const admit =
+      admission ??
+      (<Value>(check: () => Value): Promise<Value> =>
+        publication
+          ? publication.check(
+              {
+                owner: writer,
+                current: () => {
+                  context.req.raw.signal.throwIfAborted();
+                  return undefined;
+                },
               },
-            },
-            check,
-          )
-        : writer.runRequest(context.req.raw.signal, check);
+              check,
+            )
+          : writer.runRequest(context.req.raw.signal, check));
     await admit(() => this.#request(context, method));
     const lease = await this.captureRequestLease(context, admit);
     const current = (): undefined => {
@@ -1659,38 +1662,68 @@ export class StationReportGroupCustody {
   ) {
     id(seatId);
     id(invocationId);
-    const authorized = await this.#context(context, 'GET');
-    const historical = await this.#inspect(authorized, groupId);
-    const attempt = historical?.group?.attempts.find(
-      (a) => a.seatId === seatId && a.invocationId === invocationId,
+    const writer = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
     );
-    if (!historical || !attempt?.observation) refuse();
-    const delivery = await this.#delivery(
-      authorized,
-      groupId,
-      seatId,
-      orchestration,
-      attempt.previousInvocationId === null ? undefined : invocationId,
+    const { value, captured } = await writer.runOwnedLease(
+      context.req.raw.signal,
+      async (lease) => {
+        const captured = await this.#context(
+          context,
+          'GET',
+          undefined,
+          async (check) => writer.runWithLease(lease, check),
+        );
+        const authorized = {
+          ...captured,
+          current: () => writer.runWithLease(lease, captured.current),
+        };
+        const check = <Value>(body: () => Value): Value =>
+          writer.runWithLease(lease, () =>
+            this.owners.environment.withCurrentAuthority(() => {
+              authorized.current();
+              const value = body();
+              authorized.current();
+              return value;
+            }),
+          );
+        const historical = await this.#inspect(authorized, groupId);
+        const attempt = historical?.group?.attempts.find(
+          (a) => a.seatId === seatId && a.invocationId === invocationId,
+        );
+        if (!historical || !attempt?.observation) refuse();
+        const delivery = await this.#delivery(
+          authorized,
+          groupId,
+          seatId,
+          orchestration,
+          attempt.previousInvocationId === null ? undefined : invocationId,
+          check,
+        );
+        if (delivery?.outcome !== 'started') refuse();
+        const record = await this.owners.persistence.readReportObservation(
+          groupId,
+          invocationId,
+          attempt.observation,
+          authorized.current,
+        );
+        if (record.seatId !== seatId || record.observation.kind === 'terminal')
+          refuse();
+        const still = await this.#delivery(
+          authorized,
+          groupId,
+          seatId,
+          orchestration,
+          attempt.previousInvocationId === null ? undefined : invocationId,
+          check,
+        );
+        if (!same(still, delivery)) refuse();
+        authorized.current();
+        return { value: record.observation, captured };
+      },
     );
-    if (delivery?.outcome !== 'started') refuse();
-    const record = await this.owners.persistence.readReportObservation(
-      groupId,
-      invocationId,
-      attempt.observation,
-      authorized.current,
-    );
-    if (record.seatId !== seatId || record.observation.kind === 'terminal')
-      refuse();
-    const still = await this.#delivery(
-      authorized,
-      groupId,
-      seatId,
-      orchestration,
-      attempt.previousInvocationId === null ? undefined : invocationId,
-    );
-    if (!same(still, delivery)) refuse();
-    authorized.current();
-    return record.observation;
+    captured.current();
+    return value;
   }
 
   async inspectDelivery(

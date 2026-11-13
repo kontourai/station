@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import fs, { readFileSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { flowRunHead, flowTransitionRef, loadRun } from '@kontourai/flow';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -30,7 +31,10 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { createLogger } from '../../../utils/logger.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
+import {
+  type HomeWriterLease,
+  HomeWriterOwner,
+} from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -435,13 +439,37 @@ test('funded three-seat mixed-model report serves input, member results and acco
     inputTokens += attempt.usage.inputTokens;
     outputTokens += attempt.usage.outputTokens;
     costMicros += attempt.usage.costMicros;
-    const raw = await readReportGroupResult(
-      'http://report-control.test',
-      result.group.groupId,
-      member.seatId,
-      attempt.invocationId,
-      0,
-      options,
+    const link = fs.linkSync;
+    let resultHomeHolds = 0;
+    const observedHome = vi
+      .spyOn(fs, 'linkSync')
+      .mockImplementation((from, to) => {
+        if (String(to) === join(h.f.home, 'security', '.home-writer.mutation'))
+          resultHomeHolds++;
+        return link(from, to);
+      });
+    syncBuiltinESMExports();
+    let raw: Awaited<ReturnType<typeof readReportGroupResult>>;
+    try {
+      raw = await readReportGroupResult(
+        'http://report-control.test',
+        result.group.groupId,
+        member.seatId,
+        attempt.invocationId,
+        0,
+        options,
+      );
+    } finally {
+      observedHome.mockRestore();
+      syncBuiltinESMExports();
+    }
+    assert.ok(
+      resultHomeHolds > 0,
+      'result read must exercise the physical Home observer',
+    );
+    assert.ok(
+      resultHomeHolds <= 8,
+      `one HTTP/SDK result read acquired Home ${resultHomeHolds} times; maximum 8`,
     );
     assert.equal(raw.kind, 'result');
     if (raw.kind === 'result')
@@ -467,6 +495,51 @@ test('funded three-seat mixed-model report serves input, member results and acco
   );
   assert.equal(replay.replayed, true);
   assert.equal(h.rawFetch.mock.calls.length, 3);
+  const abort = new AbortController();
+  const initialRequest = requestFor(h, 'GET');
+  const request = new Request(initialRequest, { signal: abort.signal });
+  const resultPrincipal =
+    getRuntimeAuthenticatedRequestPrincipal(initialRequest);
+  assert.ok(resultPrincipal);
+  setRuntimeAuthenticatedRequestPrincipal(request, resultPrincipal);
+  bindRuntimeLocalOperator(request);
+  const cancelled = Error('result request withdrawn after Home retirement');
+  const runOwnedLease = HomeWriterOwner.prototype.runOwnedLease;
+  let retired = false;
+  const retirement = vi
+    .spyOn(HomeWriterOwner.prototype, 'runOwnedLease')
+    .mockImplementationOnce(async function <Value>(
+      this: HomeWriterOwner,
+      signal: AbortSignal,
+      body: (lease: HomeWriterLease) => Promise<Value>,
+    ): Promise<Value> {
+      const value = await (runOwnedLease<Value>).call(this, signal, body);
+      retired = true;
+      abort.abort(cancelled);
+      return value;
+    });
+  try {
+    const member = result.group.members[0];
+    await assert.rejects(
+      () =>
+        runtime.result(
+          h.f.context(request),
+          result.group.groupId,
+          member.seatId,
+          member.attempts[0].invocationId,
+          0,
+        ),
+      (error) => error === cancelled,
+    );
+    assert.equal(
+      retired,
+      true,
+      'real result read and Home cleanup must return before cancellation',
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 3);
+  } finally {
+    retirement.mockRestore();
+  }
 }, 240000);
 
 test('explicit report input crosses real Flow dispatch, canonical answer and retained accounting once', async () => {

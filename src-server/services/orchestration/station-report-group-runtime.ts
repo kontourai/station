@@ -315,30 +315,37 @@ export class StationReportGroupRuntime {
     const writer = await HomeWriterOwner.forHome(
       this.owners.runtime.environmentSecurityService.getProjectHomeDir(),
     );
-    const admit = <Value>(check: () => Value): Promise<Value> =>
-      publication
-        ? publication.withHome(
-            {
-              owner: writer,
-              current: () => {
-                context.req.raw.signal.throwIfAborted();
-                return undefined;
-              },
-            },
-            async (scope) => scope.check(check),
-          )
-        : writer.runRequest(context.req.raw.signal, check);
-    await admit(() => this.#assertCurrent(context));
-    const lease = await this.#custody.captureRequestLease(context, admit);
-    const current = () => {
-      return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
-        () => {
-          lease.assertCurrent();
-          this.#assertCurrent(context);
-        },
-      );
+    const prepare = async (check: <Value>(body: () => Value) => Value) => {
+      const admit = async <Value>(body: () => Value): Promise<Value> =>
+        check(body);
+      await admit(() => this.#assertCurrent(context));
+      const lease = await this.#custody.captureRequestLease(context, admit);
+      const current = () => {
+        return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+          () => {
+            lease.assertCurrent();
+            this.#assertCurrent(context);
+          },
+        );
+      };
+      await admit(current);
+      return current;
     };
-    await admit(current);
+    const current = publication
+      ? await publication.withHome(
+          {
+            owner: writer,
+            current: () => {
+              context.req.raw.signal.throwIfAborted();
+              return undefined;
+            },
+          },
+          (scope) => prepare(scope.check),
+        )
+      : await writer.runOwnedLease(context.req.raw.signal, async (lease) =>
+          prepare((body) => writer.runWithLease(lease, body)),
+        );
+    current();
     return current;
   }
   async withResponseCurrent<Value>(
