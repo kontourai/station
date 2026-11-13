@@ -78,7 +78,9 @@ final class StationRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(waitForElement(scan, budget: 10))
         XCTAssertTrue(scan.isHittable)
-        let moreWays = app.buttons["More ways to connect"].firstMatch
+        // WebKit exposes an aria-haspopup="menu" button as a generic element,
+        // not an XCUIElement button, so look it up by label alone.
+        let moreWays = app.descendants(matching: .any)["More ways to connect"].firstMatch
         let connect = app.descendants(matching: .any)["Manage Stations"].firstMatch
         XCTAssertTrue(
             tap(moreWays, until: connect, budget: 20),
