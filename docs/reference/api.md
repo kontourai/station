@@ -2428,6 +2428,10 @@ records, and context occupancy comes from the newest one. Without a stored
 record, the orchestration usage fold runs over every authorized Session's
 events in lineage order.
 
+`engineMcp`, present when the engine reported its MCP servers, is the latest
+`engine-mcp.status` reports folded per Session of the lineage (a later
+Session starts a new list) with the latest report's `reconnect` bit.
+
 `contextWindowPercentage` comes from context tokens and the model's context
 window; when the window cannot be resolved it is the engine's own context
 reading where the engine reported one, and otherwise absent. Render an absent
