@@ -871,6 +871,11 @@ or not a `request.resolved` was recorded for it; the
 [Session API](session-api.md#respondtorequest) says which aborts settle which
 requests.
 
+`blockingOpenRequestIds` lists the requests that suspend progress. The additive
+`openRequestKinds` map distinguishes `input` (questions and forms) from `approval`
+(tool permissions) for unresolved IDs, including after reload. Hosts without
+the map retain conservative approval display.
+
 `OrchestrationSessionSummary.currentSessionId` names the current durable
 execution child for the row's conversation, including when no turn is open.
 It is omitted when the current child is outside the caller's readable scope.
