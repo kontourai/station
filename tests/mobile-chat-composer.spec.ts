@@ -2869,6 +2869,10 @@ test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
         .getByTestId('run-setup-trigger');
       await expect(trigger).toBeVisible();
       await expect(composer.locator('.chat-input__meta')).toBeHidden();
+      await expect(composer.locator('.chat-input__meta')).toHaveCSS(
+        'display',
+        'none',
+      );
       await expect(textarea).toBeFocused();
       await page.screenshot({
         path: testInfo.outputPath(`landscape-typing-${theme}.png`),
