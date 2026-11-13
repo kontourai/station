@@ -21,6 +21,7 @@ import {
  * | Claude `AskUserQuestion` | ≤4 choice / multi-choice | `header` | always | no |
  * | Codex `request_user_input` | choice, or free text with no options | `header` | `isOther` | `isSecret` |
  * | Cursor `cursor/ask_question` | choice / multi-choice | no | no | no |
+ * | Grok `_x.ai/ask_user_question` | choice / multi-choice | no | no | no |
  *
  * Field names are the engine's own question identity (Claude's question
  * index, Codex's and Cursor's question id) and option values are option
@@ -47,7 +48,7 @@ interface HarnessQuestionInput {
 const HARNESS_QUESTION_MESSAGE = 'The agent has questions for you';
 
 function harnessForm(
-  engine: 'claude' | 'codex' | 'cursor',
+  engine: 'claude' | 'codex' | 'cursor' | 'grok',
   requester: string,
   questions: HarnessQuestionInput[],
   message: string = HARNESS_QUESTION_MESSAGE,
@@ -261,4 +262,77 @@ export function cursorAnswers(
     });
     return { questionId: field.name, selectedOptionIds };
   });
+}
+
+/** Grok's question tool takes at most this many questions in one request. */
+const GROK_QUESTIONS_MAX = 16;
+
+/**
+ * Grok `_x.ai/ask_user_question` params → form (grok 1.0.77, live:
+ * `{sessionId, toolCallId, questions: [{question, options: [{label,
+ * description}], multiSelect}], mode}`). Its answer names each question by
+ * its text, so two questions with the same text are refused: the answer
+ * could not say which was meant. A question with no options is refused too,
+ * because only a chosen label was observed coming back.
+ */
+export function grokInputRequest(
+  params: unknown,
+  requester: string,
+): InputRequestForm | null {
+  const list = ownArray(ownRecord(params)?.questions);
+  if (!list || list.length > GROK_QUESTIONS_MAX) return null;
+  const prompts = new Set<unknown>();
+  const questions: HarnessQuestionInput[] = [];
+  for (const [index, entry] of list.entries()) {
+    const question = ownRecord(entry);
+    const options = ownArray(question?.options);
+    if (
+      !question ||
+      !options ||
+      options.length === 0 ||
+      prompts.has(question.question) ||
+      (question.multiSelect != null && typeof question.multiSelect !== 'boolean')
+    )
+      return null;
+    prompts.add(question.question);
+    questions.push({
+      id: String(index),
+      header: undefined,
+      prompt: question.question,
+      options,
+      multiple: question.multiSelect === true,
+      allowCustom: false,
+      secret: false,
+    });
+  }
+  return harnessForm('grok', requester, questions);
+}
+
+/**
+ * Grok takes the answers back as the chosen labels, keyed by question text:
+ * `{outcome: 'accepted', answers: {<question>: [<label>, ...]}}` (live: the
+ * model read `"<question>"="<label>"`). Anything but an answer goes back as
+ * `{outcome: 'cancelled'}`, which Grok tells its model is a decline, never a
+ * yes.
+ */
+export function grokQuestionResponse(
+  decision: 'accept' | 'decline' | 'cancel',
+  form: InputRequestForm,
+  content: InputRequestContent | undefined,
+): Record<string, unknown> {
+  if (decision !== 'accept' || !content) return grokQuestionCancelled();
+  return {
+    outcome: 'accepted',
+    answers: Object.fromEntries(
+      form.body.fields.map((field) => [
+        field.title ?? field.name,
+        inputRequestAnswerTexts(field, content[field.name]),
+      ]),
+    ),
+  };
+}
+
+/** The answer for a Grok question nobody answered, declined, or Station could not show. */
+export function grokQuestionCancelled(): Record<string, unknown> {
+  return { outcome: 'cancelled' };
 }

@@ -45,6 +45,7 @@ import {
 } from './acp-cursor-extensions.js';
 import {
   type EngineExtensionState,
+  type EngineTurnBoundary,
   isReplayMarkedUpdate,
   mapEngineExtensionNotification,
   mapEngineSessionInfo,
@@ -178,6 +179,8 @@ export interface AcpMapperContext {
   state?: AcpMapperState;
   /** Required session-owned bounded authority for every ACP tool update. */
   toolUpdateSupervisor: AcpToolUpdateSupervisor;
+  /** Turns the engine runs on its own (`EngineTurnBoundary`). */
+  engineTurns?: EngineTurnBoundary;
   /**
    * Where a first-seen unbound extension tuple is reported (once per
    * process). Defaults to this module's logger.

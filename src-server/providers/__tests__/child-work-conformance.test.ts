@@ -35,6 +35,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
+import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
 import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
@@ -253,11 +254,57 @@ async function replayMuseServeCaptures(): Promise<CanonicalRuntimeEvent[]> {
 }
 
 /**
- * ACP: `_kiro.dev/subagent/list_update` is the one subagent-shaped tuple a
- * Kiro ACP agent was observed sending (station#1935, bound as host chrome).
- * Only the TUPLE was observed; no payload was captured, so the params here
- * are an empty object and the claim under test is the routing: the mapper
- * forwards it as an opaque extension notification, never as child work.
+ * ACP: the REAL grok 1.0.77 captures (`GROK_LIVE_CAPTURE`), replayed through the ACP mapper's own extension routing with one
+ * session store per capture. Another session's frames (a subagent's own
+ * session streams on the same connection) are dropped, as the adapter does.
+ * The union is checked, not each capture alone: each scenario exercises a
+ * different kind of child (a command, a subagent, a monitor).
+ */
+const GROK_CHILD_WORK_CAPTURES = [
+  'background-bash-interject',
+  'background-subagent',
+  'monitor-wake-turns',
+] as const;
+
+function replayGrokCapture(capture: string): CanonicalRuntimeEvent[] {
+  const frames = readFileSync(
+    new URL(`../../../${GROK_LIVE_CAPTURE}`, import.meta.url),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.capture === capture && entry.dir === 'E->C')
+    .map((entry) => entry.msg as { method?: string; id?: unknown; params?: any });
+  const own = frames.find(
+    (msg) => typeof msg.params?.sessionId === 'string',
+  )?.params.sessionId;
+  const events: CanonicalRuntimeEvent[] = [];
+  const ctx = {
+    provider: 'acp',
+    session: { threadId: `thread-acp-${capture}` },
+    publish: (event: CanonicalRuntimeEvent) => events.push(event),
+    state: {},
+  } as unknown as Parameters<typeof mapAcpExtensionNotification>[2];
+  for (const msg of frames) {
+    if (!msg.method || msg.id !== undefined || msg.method === 'session/update')
+      continue;
+    const sessionId = msg.params?.sessionId;
+    if (typeof sessionId === 'string' && sessionId !== own) continue;
+    mapAcpExtensionNotification(msg.method, msg.params ?? {}, ctx);
+  }
+  return events;
+}
+
+async function replayAcpGrokCaptures(): Promise<CanonicalRuntimeEvent[]> {
+  return GROK_CHILD_WORK_CAPTURES.flatMap(replayGrokCapture);
+}
+
+/**
+ * `_kiro.dev/subagent/list_update` is the one subagent-shaped tuple a Kiro
+ * ACP agent was observed sending (station#1935, bound as host chrome; its
+ * engine row is pending). Only the TUPLE was observed, so the params here are
+ * an empty object and the claim is the routing: it never becomes child work.
  */
 async function replayAcpKiroSubagentTuple(): Promise<CanonicalRuntimeEvent[]> {
   const events: CanonicalRuntimeEvent[] = [];
@@ -321,7 +368,7 @@ const DRIVERS: Record<string, Driver> = {
   muse: {
     run: replayMuseServeCaptures,
   },
-  acp: { run: replayAcpKiroSubagentTuple },
+  acp: { run: replayAcpGrokCaptures },
 };
 
 /**
@@ -606,6 +653,14 @@ describe('#2456 child-work conformance tripwire', () => {
       });
     }
   }
+
+  test('acp: the Kiro subagent tuple, whose row is pending, emits no child work', async () => {
+    const events = await replayAcpKiroSubagentTuple();
+    expect(events.map((event) => event.method)).toEqual([
+      'extension.notification',
+    ]);
+    expect(childWorkDeltas(events)).toEqual([]);
+  });
 
   test('#2452 muse exec fallback: real exec output emits no child work, only its not-reported view', async () => {
     const events = await replayMuseCaptures();

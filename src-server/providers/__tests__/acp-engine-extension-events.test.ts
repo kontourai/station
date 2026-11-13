@@ -458,6 +458,7 @@ describe('engine extension events: table coverage', () => {
         return false;
       if (ENGINE_CONSUMERS_WITHOUT_SERVER_READER.has(row.consumer))
         return false;
+      if (row.pending) return false;
       if (row.consumer === 'session.message-id') return false;
       return !Object.hasOwn(ENGINE_EXTENSION_READERS, row.id);
     }).map(({ id }) => id);

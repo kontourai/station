@@ -559,9 +559,10 @@ export type ProviderDeclaredHandshakeFact =
  * (`acp-handshake-facts.ts`). A variant names an engine and protocol
  * generation, never a version: `kiro-v2` is kiro-cli's own engine
  * (`agentInfo.name` `Kiro CLI Agent`), `kiro-v3` its agent service (it
- * declares `agentCapabilities._meta.kiro`).
+ * declares `agentCapabilities._meta.kiro`), `grok-build` the xAI Grok CLI's
+ * `grok agent` (its `initialize` result sets `_meta.grokShell: true`).
  */
-export type ProviderDeclaredEngineVariant = 'kiro-v2' | 'kiro-v3';
+export type ProviderDeclaredEngineVariant = 'kiro-v2' | 'kiro-v3' | 'grok-build';
 
 /**
  * Feature flags an engine declared under its vendor namespace in

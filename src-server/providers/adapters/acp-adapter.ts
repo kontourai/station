@@ -1,4 +1,7 @@
-import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  PROVIDER_TURN_TRIGGER,
+  type ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   assertEngineAllowedByManagedPolicy,
   managedEnginePrerequisites,
@@ -35,6 +38,7 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
+  type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
@@ -99,6 +103,7 @@ import {
   acpAdvertisedModelCatalog,
   findAcpModelConfigOption,
   parseAcpSessionModelState,
+  resolveAcpEngineVariant,
 } from '../../services/acp/acp-handshake-facts.js';
 import {
   type AcpInboundExtensionHandler,
@@ -247,6 +252,15 @@ import {
   readCursorCreatePlan,
 } from './acp-cursor-extensions.js';
 import {
+  acpChildWorkNotReportedEvent,
+  acpEngineReportsChildWork,
+} from './acp-child-work.js';
+import {
+  grokInputRequest,
+  grokQuestionCancelled,
+  grokQuestionResponse,
+} from './harness-questions.js';
+import {
   type AcpInputDecision,
   type AcpInputRequestRead,
   CORE_ELICITATION_METHOD,
@@ -372,6 +386,60 @@ export interface AcpResumeCursor {
    * `startReservedSession` rejects any resume cursor missing this field.
    */
   connectionFingerprint: string;
+}
+
+/**
+ * A session-scoped frame that names another engine session than this one.
+ * One process serves one Station session, but an engine may run a subagent
+ * as a session of its own on the same connection and stream that child's
+ * updates there too (Grok 1.0.77: the child's prompt arrives as a
+ * `user_message_chunk` under the child's `sessionId`). The child's turn, text
+ * and usage are not this session's; its lineage reaches Station through the
+ * parent's child-work frames instead. Until the process has a session
+ * (during `session/new`, or a `session/load` replaying history) nothing is
+ * foreign: no child exists yet.
+ */
+export function isForeignAcpSessionFrame(
+  record: { process?: Pick<ACPProcess, 'sessionId'> },
+  frameSessionId: unknown,
+): boolean {
+  if (typeof frameSessionId !== 'string') return false;
+  // The record exists before its process does.
+  const own = record.process?.sessionId ?? null;
+  return own !== null && frameSessionId !== own;
+}
+
+/** Bound on the engine prompt ids a session remembers as its own sends'. */
+const ACP_OWN_ENGINE_PROMPTS_MAX = 64;
+
+/** Bound on the engine's own failure detail quoted into a turn failure. */
+const ACP_FAILURE_DETAIL_MAX_CHARS = 1000;
+
+/**
+ * A failed ACP request's text, with the engine's own detail when it put one
+ * in the JSON-RPC error's `data.message`. Grok answers a failed prompt
+ * `-32603 Internal error` and says why only there (live, T3 Code fixture
+ * `grok_prompt_error`: `data.message` "API error (status 400 Bad
+ * Request): ..."). The detail is one line, redacted and bounded.
+ */
+export function acpFailureMessage(error: unknown): string {
+  const base = errorMessage(error);
+  const data =
+    error !== null && typeof error === 'object'
+      ? (error as { data?: unknown }).data
+      : undefined;
+  const raw =
+    data !== null && typeof data === 'object'
+      ? (data as { message?: unknown }).message
+      : undefined;
+  if (typeof raw !== 'string') return base;
+  const detail = redactSecrets(raw.replace(/\s+/g, ' ').trim());
+  if (!detail || base.includes(detail)) return base;
+  const bounded =
+    detail.length > ACP_FAILURE_DETAIL_MAX_CHARS
+      ? `${detail.slice(0, ACP_FAILURE_DETAIL_MAX_CHARS - 1)}…`
+      : detail;
+  return `${base}: ${bounded}`;
 }
 
 export function isAcpResumeCursor(value: unknown): value is AcpResumeCursor {
@@ -756,6 +824,17 @@ export interface AcpSessionRecord {
   hostImageLaunch?: LaunchedRoot;
   /** The MCP servers the session was established with, for a relaunch. */
   mcpServers?: McpServer[];
+  /**
+   * A turn the engine opened on its own (`PROVIDER_TURN_TRIGGER`), while it
+   * runs: Station's turn id for it and the engine prompt it is.
+   */
+  providerTurn?: { turnId: string; enginePromptId: string };
+  /**
+   * Engine prompt ids seen running while Station's own send was the active
+   * turn, most recent last (bounded): a late repeat of one never opens a
+   * provider turn.
+   */
+  ownEnginePromptIds?: string[];
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
   suppressSessionUpdates?: boolean;
   configOptions?: unknown[];
@@ -1540,6 +1619,16 @@ export class AcpAdapter implements ProviderAdapterShape {
         initialState: 'created',
         metadata: { ...input.metadata, cwd, connectionId: config.id },
       });
+      // Whether this session's children can be reported is the engine's, by
+      // its own handshake; one that reports none says so once.
+      if (
+        !acpEngineReportsChildWork(
+          resolveAcpEngineVariant(acpProcess.initResult),
+        )
+      )
+        this.publish(
+          acpChildWorkNotReportedEvent({ threadId: input.threadId }),
+        );
 
       // archive#895: an authored input.agent.toolServers (including an
       // authored empty array) wins over the connection's provideToolServers
@@ -2919,7 +3008,12 @@ export class AcpAdapter implements ProviderAdapterShape {
       ...this.turnOrigin(record, targetTurnId),
       method: 'turn.aborted',
       reason: 'interrupted',
+      ...(record.providerTurn?.turnId === targetTurnId
+        ? { metadata: { trigger: PROVIDER_TURN_TRIGGER } }
+        : {}),
     });
+    if (record.providerTurn?.turnId === targetTurnId)
+      record.providerTurn = undefined;
     record.activeTurnId = undefined;
     record.session.status = 'ready';
     record.session.updatedAt = new Date().toISOString();
@@ -3603,12 +3697,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       getActiveWriter: () => null,
       nextTerminalId: context.nextTerminalId,
       onSessionUpdate: async (params: SessionNotification) => {
+        if (isForeignAcpSessionFrame(record, params.sessionId)) return;
         this.recordTurnMessage(record, params.update);
         this.handleSessionUpdate(record, params.update);
         if (params.update.sessionUpdate === 'config_option_update')
           for (const wake of [...(record.configOptionWaiters ?? [])]) wake();
       },
       onExtNotification: (method, params) => {
+        if (isForeignAcpSessionFrame(record, params?.sessionId)) return;
         this.handleExtensionNotification(record, method, params);
       },
       // Unrecognized inbound extension REQUESTS get a spec-conformant
@@ -4490,6 +4586,8 @@ export class AcpAdapter implements ProviderAdapterShape {
           readKiroOpenExternalUrl(params, requester),
           logger,
         ),
+      'grok.ask-user-question': (method, params) =>
+        this.answerGrokQuestion(record, method, params, logger),
       'client.terminal-facts': acpTerminalFactsHandler(),
     };
     const registry = new AcpInboundExtensionRegistry();
@@ -4646,6 +4744,40 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
+   * `_x.ai/ask_user_question`: the model's questions, shown as one form. A
+   * question Station cannot show, or one nobody may answer, goes back as
+   * `cancelled`, which Grok tells its model is a decline.
+   */
+  private async answerGrokQuestion(
+    record: AcpSessionRecord,
+    method: string,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const form = grokInputRequest(params, record.engineName);
+    if (!form) {
+      this.reportUnreadableEngineRequest(
+        record,
+        method,
+        logger,
+        `${record.engineName} asked a question Station could not show, so Station told it the question was declined.`,
+      );
+      return grokQuestionCancelled();
+    }
+    if (record.delegation?.denyApprovals)
+      return grokQuestionCancelled();
+    const toolCallId =
+      typeof params.toolCallId === 'string' ? params.toolCallId : undefined;
+    const answer = await this.awaitPersonRequest(record, {
+      title: form.message,
+      inputRequest: form,
+      // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
+      payload: { ...(toolCallId ? { toolCallId } : {}), toolName: method },
+    });
+    return grokQuestionResponse(answer.decision, form, answer.content);
+  }
+
+  /**
    * `cursor/create_plan`: a plan-mode request to approve a plan, shown whole
    * as a plan-review form. Only an approved plan reaches the session's plan
    * surface; a rejected or unanswered one leaves it as it was.
@@ -4792,8 +4924,97 @@ export class AcpAdapter implements ProviderAdapterShape {
       publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
+      engineTurns: {
+        started: (enginePromptId) =>
+          this.engineTurnStarted(record, enginePromptId),
+        ended: (enginePromptId, stopReason, failure) =>
+          this.engineTurnEnded(record, enginePromptId, stopReason, failure),
+      },
     };
     mapAcpExtensionNotification(method, params, ctx);
+  }
+
+  /**
+   * The engine is running prompt `enginePromptId`. While Station's own send
+   * is the active turn, that is the send's prompt and is remembered. With no
+   * turn open, a prompt Station never sent is one the engine opened itself
+   * (a wake after background work), and becomes a provider turn so its reply
+   * has a turn to land in.
+   */
+  private engineTurnStarted(
+    record: AcpSessionRecord,
+    enginePromptId: string,
+  ): void {
+    if (record.stopping) return;
+    const own = (record.ownEnginePromptIds ??= []);
+    if (record.activeTurnId) {
+      if (!record.providerTurn && !own.includes(enginePromptId)) {
+        own.push(enginePromptId);
+        if (own.length > ACP_OWN_ENGINE_PROMPTS_MAX) own.shift();
+      }
+      return;
+    }
+    if (own.includes(enginePromptId)) return;
+    const turnId = `provider:${crypto.randomUUID()}`;
+    record.providerTurn = { turnId, enginePromptId };
+    record.activeTurnId = turnId;
+    record.activeTurnOrigin = undefined;
+    record.session.status = 'running';
+    record.session.updatedAt = new Date().toISOString();
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      method: 'turn.started',
+      metadata: { trigger: PROVIDER_TURN_TRIGGER },
+    });
+  }
+
+  /** An engine prompt ended; it closes the provider turn it opened. */
+  private engineTurnEnded(
+    record: AcpSessionRecord,
+    enginePromptId: string,
+    stopReason: string | undefined,
+    failure: string | undefined,
+  ): void {
+    const turn = record.providerTurn;
+    if (!turn || turn.enginePromptId !== enginePromptId) return;
+    record.providerTurn = undefined;
+    if (record.activeTurnId !== turn.turnId) return;
+    const base = {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId: turn.turnId,
+      metadata: { trigger: PROVIDER_TURN_TRIGGER },
+    } as const;
+    if (stopReason === 'error') {
+      this.publish({
+        ...base,
+        method: 'runtime.error',
+        ...providerFailure('provider_error'),
+        severity: 'error',
+        message: failure ?? `${record.engineName} reported an error.`,
+      } satisfies ProviderRuntimeErrorEvent);
+      record.session.status = 'error';
+    } else if (stopReason === 'cancelled') {
+      this.publish({ ...base, method: 'turn.aborted', reason: 'interrupted' });
+      record.session.status = 'ready';
+    } else {
+      this.publish({
+        ...base,
+        method: 'turn.completed',
+        ...mapAcpStopReasonToTurnCompletion(
+          (stopReason ?? 'end_turn') as StopReason,
+        ),
+      });
+      record.session.status = 'ready';
+    }
+    record.session.updatedAt = new Date().toISOString();
+    record.activeTurnId = undefined;
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
@@ -4989,7 +5210,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             message: `${record.engineName} needs you to sign in before it can answer. ${errorMessage(error)}`,
           } satisfies ProviderRuntimeErrorEvent);
         } else {
-          const baseMessage = errorMessage(error);
+          const baseMessage = acpFailureMessage(error);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,

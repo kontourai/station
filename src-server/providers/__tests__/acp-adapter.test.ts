@@ -193,23 +193,36 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'reject-always', name: 'Reject always', kind: 'reject_always' },
 ];
 
+/**
+ * The once-per-session `not-reported` child-work fact a session whose engine
+ * reports no children publishes at start. These sequential readers skip it:
+ * its own tests (`child work is the engine's to report`) read it directly.
+ */
+function isChildWorkNotReported(event: CanonicalRuntimeEvent): boolean {
+  return (
+    event.method === 'child-work.updated' && event.delta.kind === 'not-reported'
+  );
+}
+
 async function nextEvent(
   iterator: AsyncIterator<CanonicalRuntimeEvent>,
   label: string,
 ): Promise<CanonicalRuntimeEvent> {
-  const result = await Promise.race([
-    iterator.next(),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`Timed out waiting for ${label}`)),
-        750,
+  for (;;) {
+    const result = await Promise.race([
+      iterator.next(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Timed out waiting for ${label}`)),
+          750,
+        ),
       ),
-    ),
-  ]);
-  if (result.done || !result.value) {
-    throw new Error(`Iterator closed while waiting for ${label}`);
+    ]);
+    if (result.done || !result.value) {
+      throw new Error(`Iterator closed while waiting for ${label}`);
+    }
+    if (!isChildWorkNotReported(result.value)) return result.value;
   }
-  return result.value;
 }
 
 async function requestPermission(
@@ -231,16 +244,21 @@ async function requestPermission(
 }
 
 /** Rejects after `ms` instead of hanging, for asserting an event never arrives. */
-function nextEventOrTimeout(
+async function nextEventOrTimeout(
   iterator: AsyncIterator<CanonicalRuntimeEvent>,
   ms: number,
 ): Promise<CanonicalRuntimeEvent | 'TIMED_OUT'> {
-  return Promise.race([
-    iterator.next().then((result) => result.value as CanonicalRuntimeEvent),
-    new Promise<'TIMED_OUT'>((resolve) =>
-      setTimeout(() => resolve('TIMED_OUT'), ms),
-    ),
-  ]);
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const event = await Promise.race([
+      iterator.next().then((result) => result.value as CanonicalRuntimeEvent),
+      new Promise<'TIMED_OUT'>((resolve) =>
+        setTimeout(() => resolve('TIMED_OUT'), Math.max(0, deadline - Date.now())),
+      ),
+    ]);
+    if (event === 'TIMED_OUT' || !event || !isChildWorkNotReported(event))
+      return event;
+  }
 }
 
 /**

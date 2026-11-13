@@ -1272,14 +1272,18 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.
+    // ACP 1.1.1 has no subagent concept, so this is the engine's: Grok Build
+    // reports subagents, background commands and monitors through its own
+    // `_x.ai/*` notifications, mapped by binding row
+    // (`ACP_CHILD_WORK_REPORTERS`). A session whose handshake names no
+    // reporting engine states `not-reported` at start, so this cell never
+    // reads as "nothing running" for an engine that cannot say.
     subagentObservability: {
-      state: 'none',
-      // ACP 1.1.1 has no subagent concept. `session/update` carries
-      // `agent_message_chunk`, `agent_thought_chunk`, `tool_call`,
-      // `tool_call_update`, `plan`, `usage_update` and mode/command/config
-      // updates only, so a subagent invocation is indistinguishable from an
-      // ordinary tool call — it arrives without a child id or model.
-      reason: 'ACP 1.1.1 has no subagent concept.',
+      state: 'declared',
+      signals: ['lifecycle', 'progress', 'usage', 'result', 'nesting'],
+      evidence:
+        'grok 1.0.77 live capture (src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl): subagent_spawned / subagent_progress / subagent_finished, _x.ai/task_backgrounded, background_tasks, _x.ai/task_completed, _x.ai/monitor_event',
+      adapterModule: 'acp-child-work.ts',
     },
     subagentControl: {
       state: 'none',

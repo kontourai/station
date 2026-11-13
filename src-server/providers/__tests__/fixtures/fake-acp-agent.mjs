@@ -183,7 +183,10 @@ async function runStep(step, sessionId, client) {
     case 'plan':
       return update({ sessionUpdate: 'plan', entries: step.entries });
     case 'notification':
-      return client.notify(step.method, step.params ?? {});
+      return client.notify(
+        step.method,
+        withSessionId(step.params ?? {}, sessionId),
+      );
     case 'client-request':
       return clientRequest(client, 'prompt', step, sessionId);
     case 'user-message-id':
