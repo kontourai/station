@@ -3,6 +3,7 @@ package io.kontourai.station.mediaintake
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -82,7 +83,7 @@ class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
   }
 
   private fun bindView(webView: WebView) {
-    activity = webView.context as Activity
+    activity = owningActivity(webView.context) ?: return
     intakeView = webView
     val bridge = activity.assets.open("station-image-paste.js").bufferedReader().use { it.readText() }
     KeyboardImageIntake.install(webView) { uris, release ->
@@ -95,7 +96,7 @@ class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
         } else {
           try {
             reads.execute {
-              release.begin()
+              if (release.isReleased) return@execute
               try {
                 val images = readImages(uris, "pasted-image")
                 val payload = filesResult(images).toString()
@@ -119,7 +120,7 @@ class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
   }
 
   override fun onDestroy(activity: AppCompatActivity) {
-    if (intakeView?.context === activity) {
+    if (intakeView?.context?.let(::owningActivity) === activity) {
       intakeView?.let(KeyboardImageIntake::uninstall)
       intakeView = null
     }
@@ -230,3 +231,15 @@ internal fun clipboardImageUris(context: Context, clip: android.content.ClipData
     { context.contentResolver.getType(it) },
     (0 until clip.description.mimeTypeCount).map { clip.description.getMimeType(it) },
   )
+
+
+/** Tauri or a themed WebView may wrap its Activity context. */
+internal fun owningActivity(context: Context): Activity? {
+  var current = context
+  val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Context, Boolean>())
+  while (seen.add(current)) {
+    if (current is Activity) return current
+    current = (current as? ContextWrapper)?.baseContext ?: return null
+  }
+  return null
+}

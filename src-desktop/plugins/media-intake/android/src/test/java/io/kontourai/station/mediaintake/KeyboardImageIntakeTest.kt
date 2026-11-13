@@ -99,22 +99,24 @@ class KeyboardImageIntakeTest {
       override fun getMenuInflater() = android.view.MenuInflater(view.context)
     }
     assertTrue(callback.onCreateActionMode(mode, menu))
-    assertNull(menu.findItem(android.R.id.paste))
+    assertEquals(0, menu.size())
     view.eligible = true
     assertTrue(callback.onPrepareActionMode(mode, menu))
     assertFalse(callback.onPrepareActionMode(mode, menu))
-    val paste = menu.findItem(android.R.id.paste)
+    val paste = menu.getItem(0)
     assertNotNull(paste)
     assertTrue(callback.onActionItemClicked(mode, paste))
     shadowOf(Looper.getMainLooper()).idle()
     assertEquals(listOf(uri), received)
     assertFalse(delegated)
-    menu.clear()
-    menu.add(0, 123456, 0, android.R.string.paste) // Chromium's own resource ID
-    assertFalse(callback.onPrepareActionMode(mode, menu))
+    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("text", "hello"))
+    menu.add(0, android.R.id.paste, 0, "Coller") // framework id, arbitrary locale
+    assertTrue(callback.onPrepareActionMode(mode, menu))
     assertEquals(1, menu.size())
     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("text", "hello"))
     assertTrue(callback.onActionItemClicked(mode, paste))
+    assertFalse(delegated) // even a stale click on our item never goes to Chromium
+    assertTrue(callback.onActionItemClicked(mode, menu.findItem(android.R.id.paste)))
     assertTrue(delegated)
     KeyboardImageIntake.uninstall(view)
   }
@@ -126,19 +128,18 @@ class KeyboardImageIntakeTest {
     view.loadUrl("https://example.com/")
     KeyboardImageIntake.install(view) { _, _ -> fail("foreign origin received content") }
     val connection = KeyboardImageIntake.connection(view, BaseInputConnection(view, false), EditorInfo().apply { inputType = android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE })
-    assertFalse(connection.commitContent(InputContentInfo(Uri.parse("content://keyboard/image"), ClipDescription("image", arrayOf("image/png")), null), 0, null))
+    assertTrue(connection.commitContent(InputContentInfo(Uri.parse("content://keyboard/image"), ClipDescription("image", arrayOf("image/png")), null), 0, null))
+    shadowOf(Looper.getMainLooper()).idle()
     assertFalse(KeyboardImageIntake.appOrigin("http://tauri.localhost.attacker/"))
     assertFalse(KeyboardImageIntake.appOrigin("https://tauri.localhost/"))
     KeyboardImageIntake.uninstall(view)
   }
 
-  @Test fun grantTimeoutStartsWhenReadingNotWhileQueued() {
+  @Test fun grantTimeoutBoundsCaptureAndQueuedRead() {
     var releases = 0
     val grant = ImageReadGrant { releases++ }
     shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(31))
-    assertEquals(0, releases)
-    grant.begin()
-    shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(31))
+
     assertEquals(1, releases)
     grant.release()
     assertEquals(1, releases)
@@ -216,9 +217,70 @@ class KeyboardImageIntakeTest {
     activity.setContentView(view)
     assertSame(view, bound)
     view.loadUrl("http://tauri.localhost/")
-    // Chromium's real onCreateInputConnection is device-owned; compile proves its signature.
+    val info = EditorInfo()
+    val connection = view.onCreateInputConnection(info)
+    assertNotSame(view.originalConnection, connection)
+    assertTrue(info.contentMimeTypes?.contains("image/png") == true)
+    val original = object : android.view.ActionMode.Callback {
+      override fun onCreateActionMode(mode: android.view.ActionMode, menu: android.view.Menu) = true
+      override fun onPrepareActionMode(mode: android.view.ActionMode, menu: android.view.Menu) = false
+      override fun onDestroyActionMode(mode: android.view.ActionMode) {}
+      override fun onActionItemClicked(mode: android.view.ActionMode, item: android.view.MenuItem) = false
+    }
+    view.startActionMode(original, android.view.ActionMode.TYPE_FLOATING)
+    assertNotNull(view.actionCallback)
+    assertNotSame(original, view.actionCallback)
     KeyboardImageIntake.detached(view)
     KeyboardImageIntake.bind = null
+  }
+
+  @Test fun keyboardCommitFromImeThreadNeverReadsWebViewState() {
+    val activity = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+    val view = object : WebView(activity) {
+      override fun getUrl(): String? {
+        check(Looper.myLooper() === Looper.getMainLooper()) { "WebView accessed from IME thread" }
+        return super.getUrl()
+      }
+    }
+    activity.setContentView(view)
+    view.loadUrl("http://tauri.localhost/")
+    var received = false
+    KeyboardImageIntake.install(view) { _, grant -> received = true; grant.release() }
+    val connection = KeyboardImageIntake.connection(view, BaseInputConnection(view, false), EditorInfo().apply {
+      inputType = android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    })
+    val thread = android.os.HandlerThread("test-ime").apply { start() }
+    val result = java.util.concurrent.FutureTask<Boolean> {
+      check(Looper.myLooper() !== Looper.getMainLooper())
+      connection.commitContent(InputContentInfo(Uri.parse("content://keyboard/image"), ClipDescription("image", arrayOf("image/png")), null), 0, null)
+    }
+    try {
+      android.os.Handler(thread.looper).post(result)
+      assertTrue(result.get(5, java.util.concurrent.TimeUnit.SECONDS))
+      shadowOf(Looper.getMainLooper()).idle()
+      assertTrue(received)
+    } finally { thread.quitSafely(); thread.join(5000); KeyboardImageIntake.uninstall(view) }
+  }
+
+  @Test fun detachReleasesPendingGrantBeforeCapture() {
+    val activity = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+    val view = WebView(activity)
+    activity.setContentView(view)
+    view.loadUrl("http://tauri.localhost/")
+    KeyboardImageIntake.install(view) { _, _ -> fail("detached receiver ran") }
+    // Hold the posted callback, as happens when a view is detached before dispatch.
+    val grant = ImageReadGrant()
+    val method = KeyboardImageIntake::class.java.getDeclaredMethod("receive", WebView::class.java, List::class.java, ImageReadGrant::class.java).apply { isAccessible = true }
+    assertEquals(true, method.invoke(KeyboardImageIntake, view, listOf(Uri.parse("content://keyboard/image")), grant))
+    KeyboardImageIntake.detached(view)
+    assertTrue(grant.isReleased)
+    shadowOf(Looper.getMainLooper()).idle()
+  }
+
+  @Test fun activityContextCanBeWrapped() {
+    val activity = org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup().get()
+    assertSame(activity, owningActivity(android.content.ContextWrapper(android.content.ContextWrapper(activity))))
+    assertNull(owningActivity(activity.applicationContext))
   }
 
 }

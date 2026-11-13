@@ -73,17 +73,20 @@ const REQUIRED_TEST_CASES = Object.freeze({
     'anOlderRetractCannotCancelANewerReShow',
     'onlyItsOwnStationKindAndRegistrationOpenIt',
   ],
-  // The share receiver's adoption decision, its URI guard and the contract's
-  // refusal bounds.
+  // Generated WebView input/menu hooks and native image handoff lifetime.
   'io.kontourai.station.mediaintake.KeyboardImageIntakeTest': [
     'keyboardCommitReachesTheInstalledReceiver',
     'unrelatedContentFallsBackToOriginalConnection',
     'systemPasteMenuRoutesImagesAndKeepsTextPaste',
     'destroyRecreateKeepsCommandsAndKeyboardReadsAlive',
     'foreignOriginsCannotReceiveImages',
-    'grantTimeoutStartsWhenReadingNotWhileQueued',
+    'grantTimeoutBoundsCaptureAndQueuedRead',
     'generatedWryViewRebindsOnAttachAndDetaches',
+    'keyboardCommitFromImeThreadNeverReadsWebViewState',
+    'detachReleasesPendingGrantBeforeCapture',
+    'activityContextCanBeWrapped',
   ],
+  // The share receiver's adoption decision, URI guard and contract bounds.
   'io.kontourai.station.mediaintake.ImageIntakeTest': [
     'nonImageOrNonShareIntentsYieldNothing',
     'refusesMoreThanTheContractCountRatherThanTruncating',
@@ -214,7 +217,11 @@ function stageRustWebView(root) {
     ),
     'utf8',
   );
+  if (template.split(': WebView(context)').length !== 2)
+    fail('unexpected Wry superclass seam');
   const source = template
+    // Stub only Chromium-owned superclass results; keep the generated overrides intact.
+    .replace(': WebView(context)', ': HookWebView(context)')
     .replaceAll('{{package}}', 'station.hookcheck')
     .replaceAll('{{class-init}}', '')
     .replaceAll('{{class-extension}}', extension);
@@ -225,6 +232,18 @@ function stageRustWebView(root) {
   writeFileSync(
     join(directory, 'Stubs.kt'),
     `package station.hookcheck
+open class HookWebView(context: android.content.Context): android.webkit.WebView(context) {
+  val originalConnection = android.view.inputmethod.BaseInputConnection(this, false)
+  var actionCallback: android.view.ActionMode.Callback? = null
+  override fun onCreateInputConnection(info: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
+    info.inputType = android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    return originalConnection
+  }
+  override fun startActionMode(callback: android.view.ActionMode.Callback, type: Int): android.view.ActionMode? {
+    actionCallback = callback
+    return null
+  }
+}
 object Rust {
   fun shouldOverride(id: String, url: String) = false
   fun onEval(id: String, request: Int, result: String) {}

@@ -24,7 +24,8 @@ internal class ImageReadGrant(private val relinquish: () -> Unit = {}) {
   private val released = AtomicBoolean(false)
   private val handler = android.os.Handler(android.os.Looper.getMainLooper())
   private val timeout = Runnable { release() }
-  fun begin() { handler.postDelayed(timeout, 30_000) }
+  init { handler.postDelayed(timeout, 30_000) }
+  internal val isReleased get() = released.get()
   fun release() {
     handler.removeCallbacks(timeout)
     if (released.compareAndSet(false, true)) relinquish()
@@ -42,6 +43,7 @@ object KeyboardImageIntake {
     return uri.scheme == "http" && uri.host == "tauri.localhost" && uri.port == -1
   }
 
+  private val pending = WeakHashMap<WebView, MutableSet<ImageReadGrant>>()
   private val receivers = WeakHashMap<WebView, (List<Uri>, ImageReadGrant) -> Unit>()
 
   internal fun install(view: WebView, receive: (List<Uri>, ImageReadGrant) -> Unit) {
@@ -49,14 +51,28 @@ object KeyboardImageIntake {
   }
 
   internal fun uninstall(view: WebView) {
-    synchronized(receivers) { receivers.remove(view) }
+    val grants = synchronized(receivers) {
+      receivers.remove(view)
+      pending.remove(view)?.toList().orEmpty()
+    }
+    grants.forEach { it.release() }
   }
 
   private fun receive(view: WebView, uris: List<Uri>, release: ImageReadGrant): Boolean {
-    if (!appOrigin(view.url)) return false
-    val receiver = synchronized(receivers) { receivers[view] } ?: return false
+    val receiver = synchronized(receivers) {
+      val receiver = receivers[view] ?: return false
+      pending.getOrPut(view) { mutableSetOf() }.apply {
+        removeAll { it.isReleased }
+        add(release)
+      }
+      receiver
+    }
     // Chromium calls InputConnection on its IME thread. Only the handoff runs here.
-    if (!view.post { receiver(uris, release) }) return false
+    if (!view.post {
+      val current = synchronized(receivers) { receivers[view] === receiver }
+      if (!current || release.isReleased || !appOrigin(view.url)) release.release()
+      else receiver(uris, release)
+    }) return false
     return true
   }
 
@@ -91,14 +107,24 @@ object KeyboardImageIntake {
       private var eligible = false
       private var alive = true
       private var imagePasteItem: MenuItem? = null
-      private fun removeImagePaste(menu: Menu) {
+      private val imagePasteId = android.view.View.generateViewId()
+      private fun removeImagePaste(menu: Menu): Boolean {
+        val removed = imagePasteItem != null
         imagePasteItem?.let { if (menu.findItem(it.itemId) === it) menu.removeItem(it.itemId) }
         imagePasteItem = null
+        return removed
       }
-      private fun isPaste(item: MenuItem) = item.itemId == android.R.id.paste ||
-        item.title?.toString() == view.context.getString(android.R.string.paste)
+      // Chromium now uses the framework id. Older providers expose this resource name.
+      // Never identify an action by translated display text.
+      private fun isPaste(item: MenuItem): Boolean {
+        if (item === imagePasteItem) return false
+        if (item.itemId == android.R.id.paste) return true
+        return try {
+          view.context.resources.getResourceEntryName(item.itemId) == "select_action_menu_paste"
+        } catch (_: android.content.res.Resources.NotFoundException) { false }
+      }
       private fun offerImagePaste(mode: ActionMode, menu: Menu): Boolean {
-        if (!appOrigin(view.url)) return false
+        if (!appOrigin(view.url)) return removeImagePaste(menu)
         val bridge = view.context.assets.open("station-image-paste.js").bufferedReader().use { it.readText() }
         view.evaluateJavascript(appScript("$bridge;window.__stationImagePaste?.eligible() === true")) { result ->
           if (alive && eligible != (result == "true")) {
@@ -108,9 +134,10 @@ object KeyboardImageIntake {
           }
         }
         val clipboard = view.context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        if (!eligible || clipboard?.primaryClipDescription?.hasMimeType("image/*") != true) return false
-        if ((0 until menu.size()).any { isPaste(menu.getItem(it)) }) return false
-        imagePasteItem = menu.add(Menu.NONE, android.R.id.paste, Menu.NONE, android.R.string.paste)
+        if (!eligible || clipboard?.primaryClipDescription?.hasMimeType("image/*") != true ||
+            (0 until menu.size()).any { isPaste(menu.getItem(it)) }) return removeImagePaste(menu)
+        if (imagePasteItem != null) return false
+        imagePasteItem = menu.add(Menu.NONE, imagePasteId, Menu.NONE, android.R.string.paste)
         return true
       }
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
@@ -129,7 +156,8 @@ object KeyboardImageIntake {
         else super.onGetContentRect(mode, target, rect)
       }
       override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-        if (eligible && isPaste(item)) {
+        val ownItem = item.itemId == imagePasteId
+        if (eligible && (ownItem || isPaste(item))) {
           val clipboard = view.context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
           val clip = clipboard?.primaryClip
           if (clip != null && clip.description.hasMimeType("image/*")) {
@@ -140,6 +168,7 @@ object KeyboardImageIntake {
             }
           }
         }
+        if (ownItem) { mode.invalidate(); return true }
         return original.onActionItemClicked(mode, item)
       }
     }
