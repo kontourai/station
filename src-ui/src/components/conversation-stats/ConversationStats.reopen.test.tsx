@@ -92,6 +92,7 @@ const REPORTED = [
 function reopened(props: {
   executionThreadId?: string;
   engineMcpServers?: ChatEngineMcpServer[];
+  engineMcpComplete?: boolean;
 }) {
   return (
     <ConversationStats
@@ -161,6 +162,24 @@ describe('ConversationStats engine MCP panel after reopen', () => {
     expect(within(region).getByText('Ready')).toBeTruthy();
     expect(within(region).queryByText('Sign-in needed')).toBeNull();
     expect(within(region).getByText('tracker')).toBeTruthy();
+  });
+
+  test('a complete live report replaces the stored list: a server it drops is gone', async () => {
+    query.data = storedStats(REPORTED);
+    render(
+      reopened({
+        executionThreadId: 'thread-1',
+        engineMcpServers: [
+          { name: 'docs', state: 'ready', scope: 'engine-config' },
+        ],
+        engineMcpComplete: true,
+      }),
+    );
+    const region = await screen.findByRole('region', {
+      name: 'Engine MCP servers',
+    });
+    expect(within(region).getByText('docs')).toBeTruthy();
+    expect(within(region).queryByText('tracker')).toBeNull();
   });
 
   test('no stored or live report, no panel', async () => {

@@ -827,6 +827,12 @@ export type ChatUIState = {
    */
   engineMcpReconnect?: true;
   /**
+   * A complete `engine-mcp.status` arrived since this chat was opened, so
+   * `engineMcpServers` is the engine's whole list; until then it holds only
+   * the partial reports, which update the conversation's stored list.
+   */
+  engineMcpComplete?: true;
+  /**
    * Synthetic event-replay occupant of this store key. Lineage ids stay
    * unset so live SSE cannot fuzzy-match the source thread into it.
    */

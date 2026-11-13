@@ -51,18 +51,16 @@ async function freePorts(count: number): Promise<number[]> {
   return ports;
 }
 
-async function occupy(port: number): Promise<Server> {
+async function occupy(port: number, host = '127.0.0.1'): Promise<Server> {
   const server = createServer((_request, response) => response.end('other'));
-  await new Promise<void>((resolve) =>
-    server.listen(port, '127.0.0.1', resolve),
-  );
+  await new Promise<void>((resolve) => server.listen(port, host, resolve));
   cleanups.push(() => new Promise((resolve) => server.close(resolve)));
   return server;
 }
 
-function accepting(port: number): Promise<boolean> {
+function accepting(port: number, host = '127.0.0.1'): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = connect(port, '127.0.0.1');
+    const socket = connect(port, host);
     socket.once('connect', () => {
       socket.destroy();
       resolve(true);
@@ -195,23 +193,33 @@ describe('Kiro social sign-in against a stub portal and service', () => {
     ).toBe(`http://localhost:${port}/signin/callback?login_option=github`);
   });
 
-  test('a callback with another state is refused, nothing is exchanged, and the listener closes', async () => {
+  test('a request without this attempt’s state is answered 404 and changes nothing, even with error=', async () => {
     const { stub, service } = await setup();
-    const { url, port } = await startSocial(service);
+    const { url, state, port } = await startSocial(service);
     await fetch(url);
-    const page = await browserCallback(
-      port,
+    for (const query of [
       '/oauth/callback?login_option=google&code=c&state=someone-elses',
-    );
-    expect(page.text).toContain('did not finish');
-    await vi.waitFor(() =>
-      expect(service.login(SCOPE)).toMatchObject({
-        phase: 'failed',
-        failure: 'refused',
-      }),
-    );
+      '/oauth/callback?error=access_denied',
+      '/oauth/callback?error=access_denied&state=someone-elses',
+      '/oauth/callback?login_option=google&code=c',
+    ])
+      expect((await browserCallback(port, query)).status).toBe(404);
+    expect(service.login(SCOPE)?.phase).toBe('awaiting-approval');
     expect(stub.requests).toEqual([]);
-    expect(service.status(SCOPE).state).toBe('signed-out');
+    expect(await accepting(port)).toBe(true);
+    // The real redirect still completes the attempt afterwards.
+    stub.exchangeAnswers.push({
+      accessToken: 'a',
+      refreshToken: 'r',
+      profileArn: SOCIAL_PROFILE_ARN,
+    });
+    await browserCallback(
+      port,
+      `/oauth/callback?login_option=google&code=c&state=${state}`,
+    );
+    await vi.waitFor(() =>
+      expect(service.login(SCOPE)?.phase).toBe('completed'),
+    );
     await vi.waitFor(async () => expect(await accepting(port)).toBe(false));
   });
 
@@ -391,7 +399,7 @@ describe('Kiro social sign-in against a stub portal and service', () => {
     });
   });
 
-  test('the listener binds IPv4 loopback only', async () => {
+  test('the listener binds loopback only, IPv4 and IPv6, and answers on both', async () => {
     const [port] = await freePorts(1);
     const listener = await openSocialCallbackListener({
       ports: [port!],
@@ -399,10 +407,78 @@ describe('Kiro social sign-in against a stub portal and service', () => {
       timeoutMs: 60_000,
     });
     cleanups.push(() => listener.cancel());
-    expect(listener.address).toBe('127.0.0.1');
-    listener.cancel();
+    expect(listener.addresses).toEqual(['127.0.0.1', '::1']);
+    expect(await accepting(port!, '::1')).toBe(true);
+    const viaV6 = await fetch(
+      `http://[::1]:${port}/oauth/callback?login_option=google&code=c6&state=abc`,
+    );
+    expect(viaV6.status).toBe(200);
+    await expect(listener.result).resolves.toMatchObject({ code: 'c6' });
     await listener.closed;
     expect(await accepting(port!)).toBe(false);
+    expect(await accepting(port!, '::1')).toBe(false);
+  });
+
+  test('a port another program holds on [::1] is skipped, though 127.0.0.1 is free there', async () => {
+    const [heldOnV6, free] = await freePorts(2);
+    await occupy(heldOnV6!, '::1');
+    const listener = await openSocialCallbackListener({
+      ports: [heldOnV6!, free!],
+      state: 'abc',
+      timeoutMs: 60_000,
+    });
+    cleanups.push(() => listener.cancel());
+    expect(listener.port).toBe(free);
+    // Nothing of ours was left on the skipped port's IPv4 address.
+    expect(await accepting(heldOnV6!)).toBe(false);
+  });
+
+  test('a listening socket that errors ends the attempt instead of crashing, and closes', async () => {
+    const [port] = await freePorts(1);
+    const servers: Server[] = [];
+    const listener = await openSocialCallbackListener({
+      ports: [port!],
+      state: 'abc',
+      timeoutMs: 60_000,
+      serverFactory: ((handler: Parameters<typeof createServer>[0]) => {
+        const server = createServer(handler);
+        servers.push(server);
+        return server;
+      }) as typeof createServer,
+    });
+    cleanups.push(() => listener.cancel());
+    servers[0]!.emit(
+      'error',
+      Object.assign(new Error('EMFILE'), { code: 'EMFILE' }),
+    );
+    await expect(listener.result).rejects.toMatchObject({
+      code: 'listener-error',
+    });
+    await listener.closed;
+    expect(await accepting(port!)).toBe(false);
+  });
+
+  test('removing the connection during the code exchange keeps no credential', async () => {
+    const { stub, service } = await setup();
+    stub.exchangeAnswers.push({
+      accessToken: 'late',
+      refreshToken: 'r',
+      profileArn: SOCIAL_PROFILE_ARN,
+      delayMs: 400,
+    });
+    const { url, state, port } = await startSocial(service);
+    await fetch(url);
+    await browserCallback(
+      port,
+      `/oauth/callback?login_option=google&code=c&state=${state}`,
+    );
+    await vi.waitFor(() =>
+      expect(stub.requests.some((r) => r.path === '/oauth/token')).toBe(true),
+    );
+    await service.removeConnection(SCOPE.connectionId);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(service.vault.read(KIRO_CREDENTIAL_KIND, SCOPE)).toBeUndefined();
+    expect(service.status(SCOPE).state).toBe('signed-out');
   });
 
   test('the production ports are the ones Kiro allowlists', () => {

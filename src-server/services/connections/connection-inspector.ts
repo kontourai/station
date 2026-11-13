@@ -33,6 +33,7 @@ import {
   raceWithSignal,
   throwIfAborted,
 } from '../../utils/bounded-async.js';
+import { stationOwnsEngineSignIn } from '../acp/acp-engine-descriptors.js';
 import {
   type ACPConnectionStatus,
   acpProviderRoutingStatus,
@@ -214,6 +215,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       connection ? [connection] : [],
     );
     const acpSettings = runtimeSettingsFor(appConfig, 'acp');
+    const acpAdapter = adapters.find((adapter) => adapter.provider === 'acp');
     for (const config of this.dependencies.acpConnections()) {
       const engineIdValue = engineId(config.id);
       const identity = this.dependencies.publicConnection(engineIdValue);
@@ -222,11 +224,32 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         .acpStatus()
         .connections?.find((connection) => connection.id === config.id);
       const enabled = (acpSettings.enabled ?? true) && config.enabled !== false;
+      // An engine Station signs in answers its handshake signed out, so the
+      // handshake cannot say it is ready: its required rows (installed
+      // runtime, Station's sign-in) come from the same readiness a chat is
+      // gated on, and one missing reads as setup required.
+      const requiredMissing =
+        enabled &&
+        request.includePrerequisites !== false &&
+        stationOwnsEngineSignIn(config) &&
+        acpAdapter?.getPrerequisites
+          ? (
+              await acpAdapter.getPrerequisites({
+                ...(request.signal ? { signal: request.signal } : {}),
+                connectionId: config.id,
+              })
+            ).filter(
+              (row) =>
+                row.category === 'required' && row.status !== 'installed',
+            )
+          : [];
       const status = !enabled
         ? 'disabled'
-        : liveStatus?.status === 'available'
-          ? 'ready'
-          : 'degraded';
+        : requiredMissing.length > 0
+          ? 'missing_prerequisites'
+          : liveStatus?.status === 'available'
+            ? 'ready'
+            : 'degraded';
       const prerequisites: Prerequisite[] = [
         {
           id: 'acp-connection',
@@ -235,6 +258,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           status: liveStatus?.status === 'available' ? 'installed' : 'missing',
           category: 'optional',
         },
+        ...requiredMissing,
       ];
       // archive#3054: the handshake's model config option IS this engine's
       // catalog — project it so the composer's wire-channel gate sees the
@@ -286,6 +310,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
             ? {}
             : {
                 readinessReason:
+                  requiredMissing[0]?.installGuide?.steps.at(-1) ??
                   liveStatus?.lastError?.message ??
                   runtimeCatalog.reason ??
                   undefined,

@@ -18,6 +18,8 @@ export type SocialAnswer =
       refreshToken?: string;
       expiresIn?: number;
       profileArn?: string;
+      /** Delay before answering, ms. */
+      delayMs?: number;
     };
 
 export interface SocialStub {
@@ -83,14 +85,21 @@ export async function startSocialStub(): Promise<SocialStub> {
           return send(answer.status, {
             ...(answer.error ? { error: answer.error } : {}),
           });
-        send(200, {
-          accessToken: answer.accessToken,
-          ...(answer.refreshToken ? { refreshToken: answer.refreshToken } : {}),
-          expiresIn: answer.expiresIn ?? 3600,
-          ...(answer.profileArn !== undefined
-            ? { profileArn: answer.profileArn }
-            : {}),
-        });
+        const delay = answer.delayMs ?? 0;
+        setTimeout(
+          () =>
+            send(200, {
+              accessToken: answer.accessToken,
+              ...(answer.refreshToken
+                ? { refreshToken: answer.refreshToken }
+                : {}),
+              expiresIn: answer.expiresIn ?? 3600,
+              ...(answer.profileArn !== undefined
+                ? { profileArn: answer.profileArn }
+                : {}),
+            }),
+          delay,
+        );
       };
       if (request.method === 'POST' && path === '/oauth/token') {
         // PKCE: the verifier must hash to the challenge the portal was given.

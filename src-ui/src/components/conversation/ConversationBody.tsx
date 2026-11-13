@@ -1885,6 +1885,7 @@ function LiveConversationBody({
           messageCount={activeSession.messages.length}
           engineMcpServers={activeSession.engineMcpServers}
           engineMcpReconnect={activeSession.engineMcpReconnect === true}
+          engineMcpComplete={activeSession.engineMcpComplete === true}
           engineName={activeAcpConnection?.name}
           executionThreadId={
             activeSession.replay || connectionRecord?.readOnly

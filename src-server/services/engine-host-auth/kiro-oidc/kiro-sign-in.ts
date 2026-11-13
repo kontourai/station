@@ -177,6 +177,10 @@ export class KiroSignIn {
     for (const [key, attempt] of this.#attempts) {
       if (key.startsWith(`${connectionId}:`)) {
         attempt.cancel?.();
+        // A step already in flight (a token poll, a code exchange) checks
+        // the phase before it writes: a removed connection gets nothing.
+        if (!isFinished(attempt.record))
+          attempt.record = { ...attempt.record, phase: 'cancelled' };
         this.#attempts.delete(key);
       }
     }
@@ -480,7 +484,10 @@ export class KiroSignIn {
     listener: KiroSocialListener,
     verifier: string,
   ): Promise<void> {
-    const fail = (reason: string, failure?: 'refused' | 'expired') => {
+    const fail = (
+      reason: string,
+      failure?: 'refused' | 'expired' | 'unavailable',
+    ) => {
       attempt.record = {
         ...attempt.record,
         phase: 'failed',
@@ -494,7 +501,14 @@ export class KiroSignIn {
     } catch (error) {
       if (attempt.record.phase !== 'awaiting-approval') return;
       if (error instanceof KiroSocialCallbackError)
-        fail(error.message, error.code === 'timeout' ? 'expired' : 'refused');
+        fail(
+          error.message,
+          error.code === 'timeout'
+            ? 'expired'
+            : error.code === 'listener-error'
+              ? 'unavailable'
+              : 'refused',
+        );
       else fail('The sign-in could not be completed.');
       return;
     }

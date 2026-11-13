@@ -244,8 +244,10 @@ export function foldEngineMcpStatus(
 }
 
 /**
- * The stats wire's `engineMcp`: `undefined` when absent, `null` when
- * malformed, else the value with servers past the bound dropped.
+ * The stats wire's `engineMcp`: `undefined` when absent, `null` when its
+ * shape is malformed, else the value with each server that does not parse
+ * dropped (one bad entry costs only itself) and servers past the bound
+ * dropped.
  */
 function readConversationEngineMcp(
   value: unknown,
@@ -258,10 +260,10 @@ function readConversationEngineMcp(
   )
     return null;
   const servers: ConversationEngineMcpServer[] = [];
-  for (const raw of value.servers.slice(0, ENGINE_MCP_STATUS_MAX_SERVERS)) {
+  for (const raw of value.servers) {
+    if (servers.length >= ENGINE_MCP_STATUS_MAX_SERVERS) break;
     const server = parseConversationEngineMcpServer(raw);
-    if (!server) return null;
-    servers.push(server);
+    if (server) servers.push(server);
   }
   return { servers, ...(value.reconnect === true ? { reconnect: true } : {}) };
 }

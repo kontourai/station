@@ -18,8 +18,9 @@
  *
  * The callback ports are the ones Kiro's auth service allowlists as redirect
  * URIs (kirocrew `CALLBACK_PORTS`); no other port is accepted there. The
- * listener binds 127.0.0.1 only, answers only the two callback paths, checks
- * the state, takes one outcome and closes. The browser must be on this
+ * listener binds 127.0.0.1 and ::1 only (a port either one holds is
+ * skipped), lets only a request with this attempt's state change anything,
+ * answers only the two callback paths, takes one outcome and closes. The browser must be on this
  * computer for the redirect to reach it.
  *
  * Every error message here is safe to log: it names a step, a status or an
@@ -88,10 +89,10 @@ export function kiroSocialProvider(
 export type KiroSocialCallbackFailure =
   | 'ports-busy'
   | 'portal-error'
-  | 'state-mismatch'
   | 'wrong-path'
   | 'no-code'
   | 'timeout'
+  | 'listener-error'
   | 'cancelled';
 
 export class KiroSocialCallbackError extends KiroOidcError {
@@ -163,8 +164,8 @@ export interface KiroSocialCallback {
 
 export interface KiroSocialListener {
   readonly port: number;
-  /** The address the socket is bound to, as the socket reports it. */
-  readonly address: string;
+  /** The loopback addresses bound, as the sockets report them. */
+  readonly addresses: readonly string[];
   /** Settles once: the callback, or a {@link KiroSocialCallbackError}. */
   readonly result: Promise<KiroSocialCallback>;
   /** Resolves when the socket is closed. */
@@ -202,31 +203,61 @@ function sameState(received: string | null, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function listenOn(server: Server, port: number): Promise<boolean> {
+type ListenOutcome = 'listening' | 'busy' | 'no-address';
+
+function listenOn(
+  server: Server,
+  host: string,
+  port: number,
+): Promise<ListenOutcome> {
   return new Promise((resolve) => {
-    const onError = () => {
+    const onError = (error: NodeJS.ErrnoException) => {
       server.off('listening', onListening);
-      resolve(false);
+      // No such address on this host (no IPv6): nothing else can hold it.
+      resolve(
+        error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT'
+          ? 'no-address'
+          : 'busy',
+      );
     };
     const onListening = () => {
       server.off('error', onError);
-      resolve(true);
+      resolve('listening');
     };
     server.once('error', onError);
     server.once('listening', onListening);
-    server.listen({ host: '127.0.0.1', port, exclusive: true });
+    server.listen({ host, port, exclusive: true, ipv6Only: host === '::1' });
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve) => {
+    if (!server.listening) return resolve();
+    server.close(() => resolve());
+    server.closeIdleConnections();
   });
 }
 
 /**
- * Bind the first free port of `ports` on 127.0.0.1 and wait for the portal's
- * redirect. A busy port is skipped; when every port is busy this rejects
- * with `ports-busy` and nothing is left listening.
+ * The loopback addresses a browser may reach for `localhost`. A port is used
+ * only when every one of them that exists here is free: on macOS 127.0.0.1:P
+ * binds while another program holds [::1]:P or [::]:P, and the browser's
+ * `localhost:P` could then reach that program. Binding the specific
+ * addresses also outranks another program's wildcard listener.
+ */
+const LOOPBACK_HOSTS = ['127.0.0.1', '::1'] as const;
+
+/**
+ * Bind the first port of `ports` free on every loopback address and wait for
+ * the portal's redirect. A busy port is skipped; when every port is busy this
+ * rejects with `ports-busy` and nothing is left listening.
  */
 export async function openSocialCallbackListener(input: {
   ports: readonly number[];
   state: string;
   timeoutMs: number;
+  /** Tests observe the servers; production uses node:http's. */
+  serverFactory?: typeof createServer;
 }): Promise<KiroSocialListener> {
   let settle!: (
     outcome:
@@ -247,7 +278,7 @@ export async function openSocialCallbackListener(input: {
   const fail = (code: KiroSocialCallbackFailure, message: string) =>
     settle({ error: new KiroSocialCallbackError(code, message) });
 
-  const server = createServer((request, response) => {
+  const onRequest: Parameters<typeof createServer>[1] = (request, response) => {
     let url: URL;
     try {
       url = new URL(request.url ?? '/', 'http://localhost');
@@ -255,22 +286,26 @@ export async function openSocialCallbackListener(input: {
       answer(response, 400, PAGE.notFound);
       return;
     }
-    const state = url.searchParams.get('state');
-    if (request.method !== 'GET' || !CALLBACK_PATHS.has(url.pathname)) {
-      // The exchange must repeat the exact path, so a near miss cannot be
-      // used. When it carries this sign-in's state it IS the portal's
-      // redirect: fail now rather than wait out the timeout. Anything else
-      // (a favicon, a port probe) changes nothing.
-      if (!settled && sameState(state, input.state))
-        fail(
-          'wrong-path',
-          'Kiro sent the browser back to an address Station does not listen on.',
-        );
-      answer(response, 404, PAGE.notFound, settled ? close : undefined);
+    // Only a request carrying this attempt's state can change it. Anything
+    // else (a favicon, a port probe, another page's <img>) gets a 404 and
+    // the wait goes on.
+    const ours = sameState(url.searchParams.get('state'), input.state);
+    if (!ours) {
+      answer(response, 404, PAGE.notFound);
       return;
     }
     if (settled) {
       answer(response, 410, PAGE.failed, close);
+      return;
+    }
+    if (request.method !== 'GET' || !CALLBACK_PATHS.has(url.pathname)) {
+      // The exchange must repeat the exact path, so a near miss cannot be
+      // used; this is the portal's redirect, so fail now rather than wait.
+      fail(
+        'wrong-path',
+        'Kiro sent the browser back to an address Station does not listen on.',
+      );
+      answer(response, 404, PAGE.notFound, close);
       return;
     }
     const portalError = url.searchParams.get('error');
@@ -281,11 +316,6 @@ export async function openSocialCallbackListener(input: {
       fail(
         'portal-error',
         `Kiro's sign-in page refused the sign-in${named ? `: ${named}` : '.'}`,
-      );
-    } else if (!sameState(state, input.state)) {
-      fail(
-        'state-mismatch',
-        'The sign-in came back from a different attempt, so Station did not use it.',
       );
     } else if (!code) {
       fail('no-code', "Kiro's sign-in page came back without a code.");
@@ -300,32 +330,56 @@ export async function openSocialCallbackListener(input: {
       });
     }
     answer(response, 200, gotCode ? PAGE.done : PAGE.failed, close);
-  });
-  server.unref();
+  };
+  const makeServer = input.serverFactory ?? createServer;
 
+  let servers: Server[] = [];
   let closing: Promise<void> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   function close(): Promise<void> {
     if (timer) clearTimeout(timer);
-    closing ??= new Promise<void>((resolve) => {
-      server.close(() => resolve());
-      server.closeIdleConnections();
-    });
+    closing ??= Promise.all(servers.map(closeServer)).then(() => undefined);
     return closing;
   }
 
   let port: number | undefined;
   for (const candidate of input.ports) {
-    if (await listenOn(server, candidate)) {
+    const bound: Server[] = [];
+    let free = true;
+    for (const host of LOOPBACK_HOSTS) {
+      const server = makeServer(onRequest);
+      server.unref();
+      const outcome = await listenOn(server, host, candidate);
+      if (outcome === 'listening') bound.push(server);
+      else if (outcome === 'busy' || host === '127.0.0.1') {
+        free = false;
+        break;
+      }
+    }
+    if (free) {
+      servers = bound;
       port = candidate;
       break;
     }
+    await Promise.all(bound.map(closeServer));
   }
   if (port === undefined)
     throw new KiroSocialCallbackError(
       'ports-busy',
       "Every port Kiro's Google and GitHub sign-in can return to is in use on this computer.",
     );
+
+  // A listening socket can still fail (EMFILE on accept, say). An 'error'
+  // event with no listener would throw in the Station process: end the
+  // attempt instead.
+  for (const server of servers)
+    server.on('error', () => {
+      fail(
+        'listener-error',
+        'Station stopped being able to listen for the sign-in on this computer.',
+      );
+      void close();
+    });
 
   timer = setTimeout(() => {
     fail(
@@ -339,14 +393,19 @@ export async function openSocialCallbackListener(input: {
   // Close as soon as an outcome is known, even if the response is still
   // being written; `close` waits for it.
   void result.then(close, close);
-  const closed = new Promise<void>((resolve) => {
-    server.once('close', () => resolve());
-  });
+  const closed = Promise.all(
+    servers.map(
+      (server) =>
+        new Promise<void>((resolve) => server.once('close', () => resolve())),
+    ),
+  ).then(() => undefined);
 
-  const bound = server.address();
   return {
     port,
-    address: typeof bound === 'object' && bound ? bound.address : '',
+    addresses: servers.map((server) => {
+      const bound = server.address();
+      return typeof bound === 'object' && bound ? bound.address : '';
+    }),
     result,
     closed,
     cancel: () => {

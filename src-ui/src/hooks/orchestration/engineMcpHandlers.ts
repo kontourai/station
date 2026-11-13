@@ -22,5 +22,7 @@ export function handleEngineMcpStatusEvent(
   chatStore.updateChat(event.threadId, {
     engineMcpServers: folded.servers,
     engineMcpReconnect: folded.reconnect,
+    engineMcpComplete:
+      event.complete === true || chat.engineMcpComplete ? true : undefined,
   });
 }

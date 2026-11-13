@@ -534,6 +534,8 @@ export interface ChatSession {
   engineMcpServers?: ChatEngineMcpServer[];
   /** See ChatUIState.engineMcpReconnect. */
   engineMcpReconnect?: true;
+  /** See ChatUIState.engineMcpComplete. */
+  engineMcpComplete?: true;
   /** Synthetic event-replay chat; absent on ordinary sessions. */
   replay?: {
     mode?: 'timeline';

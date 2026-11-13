@@ -132,20 +132,43 @@ describe('parseConversationStatsResponse engineMcp', () => {
     ['not an object', 'servers'],
     ['servers not a list', { servers: {} }],
     ['reconnect not true', { servers: [], reconnect: false }],
-    ['unknown state', { servers: [{ ...ready, state: 'exploded' }] }],
-    ['unknown scope', { servers: [{ ...ready, scope: 'global' }] }],
-    ['empty name', { servers: [{ ...ready, name: '' }] }],
-    ['name past the bound', { servers: [{ ...ready, name: 'n'.repeat(129) }] }],
-    [
-      'error past the bound',
-      { servers: [{ ...failed, error: 'e'.repeat(513) }] },
-    ],
-    ['negative tool count', { servers: [{ ...ready, toolCount: -1 }] }],
-    ['fractional tool count', { servers: [{ ...ready, toolCount: 1.5 }] }],
-  ])('refuses a malformed engineMcp (%s)', (_label, engineMcp) => {
+  ])('refuses an engineMcp of the wrong shape (%s)', (_label, engineMcp) => {
     expect(
       parseConversationStatsResponse({ ...base, engineMcp }),
     ).toBeUndefined();
+  });
+
+  test.each([
+    ['unknown state', { ...ready, state: 'exploded' }],
+    ['unknown scope', { ...ready, scope: 'global' }],
+    ['empty name', { ...ready, name: '' }],
+    ['name past the bound', { ...ready, name: 'n'.repeat(129) }],
+    ['error past the bound', { ...failed, error: 'e'.repeat(513) }],
+    ['negative tool count', { ...ready, toolCount: -1 }],
+    ['fractional tool count', { ...ready, toolCount: 1.5 }],
+  ])(
+    'drops one bad server (%s) and keeps the rest and the response',
+    (_label, bad) => {
+      const parsed = parseConversationStatsResponse({
+        ...base,
+        engineMcp: { servers: [bad, failed], reconnect: true },
+      });
+      expect(parsed?.turns).toBe(0);
+      expect(parsed?.engineMcp).toEqual({ servers: [failed], reconnect: true });
+    },
+  );
+
+  test('the bound counts the servers kept, not the entries sent', () => {
+    const servers = [
+      { ...ready, state: 'exploded' },
+      ...Array.from({ length: 64 }, (_, i) => ({ ...ready, name: `s${i}` })),
+    ];
+    const parsed = parseConversationStatsResponse({
+      ...base,
+      engineMcp: { servers },
+    });
+    expect(parsed?.engineMcp?.servers).toHaveLength(64);
+    expect(parsed?.engineMcp?.servers.at(-1)?.name).toBe('s63');
   });
 
   test('accepts a name and an error exactly at their bounds', () => {

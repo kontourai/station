@@ -8,11 +8,13 @@
  */
 import { rmSync } from 'node:fs';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { managedRuntimeCommand } from '@kontourai/station-contracts/managed-engine-install';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { requiredMissingPrerequisites } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { resetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
+import { createConnectionInspector } from '../../services/connections/connection-inspector.js';
 import {
   EngineHostAuthService,
   registerEngineHostAuth,
@@ -63,9 +65,40 @@ function adapterFor(connection: ACPConnectionConfig) {
 function signedOutVault() {
   const home = makeTempDir('managed-readiness-');
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
-  registerEngineHostAuth(
-    new EngineHostAuthService({ homeDir: home, policy: () => 'allowed' }),
-  );
+  const service = new EngineHostAuthService({
+    homeDir: home,
+    policy: () => 'allowed',
+  });
+  registerEngineHostAuth(service);
+  return service;
+}
+
+function installedBundle() {
+  registerManagedRuntimeInstalls({
+    installed: (installId) =>
+      installId === 'kiro-kas'
+        ? { runtime: process.execPath, script: '/unused/acp-server.js' }
+        : undefined,
+  });
+}
+
+/** The engines list's row for the bundle, its handshake answered. */
+async function engineRow() {
+  const outcome = await createConnectionInspector({
+    adapters: () => [adapterFor(BUNDLE)],
+    appConfig: () => ({}) as never,
+    acpConnections: () => [BUNDLE],
+    acpStatus: () =>
+      ({
+        connections: [{ id: BUNDLE.id, status: 'available' }],
+      }) as never,
+    publicConnection: (runtimeId) => ({
+      id: engineConnectionId(BUNDLE.id),
+      engineId: runtimeId,
+    }),
+    now: () => Date.now(),
+  }).inspect({ kind: 'runtime-capability-inventory' });
+  return outcome.connections.find((connection) => connection.type === 'acp');
 }
 
 test('an installed bundle reads its runtime, and a signed-out vault gates the chat with the sign-in step', async () => {
@@ -105,4 +138,32 @@ test('a bundle not installed yet says to install it from Connections, not to put
     'Install Kiro (KAS, no CLI) from its sign-in panel in Connections.',
   ]);
   expect(JSON.stringify(prerequisites)).not.toContain('on PATH');
+});
+
+test('the engines list reads a signed-out bundle as needing sign-in, not Ready, though its handshake answered', async () => {
+  signedOutVault();
+  installedBundle();
+  const row = await engineRow();
+  expect(row?.status).toBe('missing_prerequisites');
+  expect(row?.config).toMatchObject({
+    readinessReason:
+      'Sign in to Kiro (KAS, no CLI) from its sign-in panel in Connections.',
+  });
+});
+
+test('signed in, the same bundle reads Ready', async () => {
+  const service = signedOutVault();
+  installedBundle();
+  await service.vault.write(
+    'kiro.oidc-access-token',
+    { connectionId: BUNDLE.id, credentialProfileRef: 'default' },
+    {
+      identity: { kind: 'builder-id', region: 'us-east-1' },
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      signedInAt: new Date().toISOString(),
+    },
+  );
+  expect((await engineRow())?.status).toBe('ready');
 });
