@@ -578,6 +578,23 @@ export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
 }
 
 /**
+ * `muse exec` (the serve fallback) runs `--approval-mode never` and relies
+ * on muse's sandbox, which this machine's serve host said it cannot
+ * enforce. A pre-effect refusal: nothing was spawned.
+ */
+export class MuseExecSandboxUnavailableError extends SendTurnRefusedError {
+  constructor(readonly reason: string | undefined) {
+    super(
+      `Muse cannot enforce its sandbox on this machine${
+        reason ? ` (${reason})` : ''
+      }, and \`muse serve\` is unavailable, so its fallback, \`muse exec\`, would run every command uncontained without asking. Choose Full access if that is intended.`,
+      'permission_denied',
+    );
+    this.name = 'MuseExecSandboxUnavailableError';
+  }
+}
+
+/**
  * Human form of a Station-owned duration, for user-facing warnings. Exact:
  * whole hours or whole minutes when the value is one, otherwise seconds
  * (fractional when needed) — a 90 s limit reads "90 seconds", never a
@@ -1531,6 +1548,28 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
+   * `muse exec` always runs `--approval-mode never` and relies on muse's
+   * sandbox. Once a serve host reported this machine cannot enforce one,
+   * exec would run tools uncontained AND unprompted, which only Station's
+   * `never` (no approvals, no sandbox) asks for; every other posture is
+   * refused. Nothing is known before a serve host answered, and the `echo`
+   * override runs no tools.
+   */
+  private execSandboxRefusal(
+    approvalMode: ApprovalMode | undefined,
+  ): MuseExecSandboxUnavailableError | undefined {
+    if (
+      !this.options.serve ||
+      this.providerOverride === 'echo' ||
+      !this.sandboxUnavailable ||
+      approvalMode === 'never'
+    ) {
+      return undefined;
+    }
+    return new MuseExecSandboxUnavailableError(this.sandboxUnavailable.reason);
+  }
+
+  /**
    * A definitive refusal before the start boundary: an effort muse has no
    * tier for can never start, so nothing is recorded as maybe-started.
    */
@@ -1611,6 +1650,10 @@ export class MuseAdapter implements ProviderAdapterShape {
           ? serveStarted.sandbox
           : undefined;
       } catch (error) {
+        // A host that answered before failing still said whether this
+        // machine has a sandbox; the exec fallback below depends on it.
+        if (candidate.sandbox.unavailable)
+          this.sandboxUnavailable = candidate.sandbox;
         if (error instanceof MuseSandboxUnavailableError) {
           // Settled: the host was closed before any session existed, and
           // exec would run the same posture in the same missing sandbox.
@@ -1634,6 +1677,15 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (this.sessions.has(input.threadId)) {
       await serve?.stop();
       throw new Error(`Muse session already exists: ${input.threadId}`);
+    }
+    if (!serveStarted) {
+      const refusal = this.execSandboxRefusal(requestedApprovalMode);
+      if (refusal) {
+        throw new SessionStartRefusedError(
+          refusal.message,
+          'sandbox_unavailable',
+        );
+      }
     }
     // #4518: exec always runs `--approval-mode never`, which is `auto` in
     // Station's vocabulary (see `buildMuseExecArgs`): it has no channel to
@@ -1681,6 +1733,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       cwd: input.cwd,
       modelId: input.modelId,
       ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(requestedApprovalMode ? { approvalMode: requestedApprovalMode } : {}),
       stopped: false,
       ...(serve ? { serve } : {}),
       ...(sessionTmpDir ? { tmpDir: sessionTmpDir } : {}),
@@ -2071,6 +2124,10 @@ export class MuseAdapter implements ProviderAdapterShape {
         ),
       );
     }
+    const sandboxRefusal = this.execSandboxRefusal(
+      readApprovalMode(input.modelOptions) ?? record.approvalMode,
+    );
+    if (sandboxRefusal) throw this.refuseSend(input.threadId, sandboxRefusal);
     let requestedEffort: MuseReasoningEffort | undefined;
     try {
       requestedEffort =

@@ -3499,6 +3499,71 @@ describe('Muse parity: a host that cannot enforce its sandbox', () => {
     ).toEqual([]);
   });
 
+  test('once a host said there is no sandbox, a failed serve start never falls back to exec unless the posture is `never`', async () => {
+    const h = harness({
+      // The first host answers (without a sandbox); every later one dies
+      // before its handshake, so a start falls back to exec.
+      spawnHost: (args, index) => {
+        const host = new FakeMuseServeHost(args, 6000 + index);
+        if (index > 0) setImmediate(() => host.exit(2));
+        return host;
+      },
+    });
+    const learning = h.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-learn',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    learning.catch(() => {});
+    const host = await firstHost(h, () => learning);
+    await replayMuseServeCapture(host, sandboxlessFrames(), {
+      stopAt: captureIndex(
+        'steer',
+        (msg, dir) => dir === 'c2s' && msg.method === 'session/start',
+      ),
+    });
+    await expect(learning).rejects.toMatchObject({
+      code: 'sandbox_unavailable',
+    });
+    for (const approvalMode of ['ask', undefined] as const) {
+      const threadId = `thread-${approvalMode ?? 'default'}`;
+      await expect(
+        h.adapter.startSession({
+          provider: 'muse',
+          threadId,
+          ...(approvalMode ? { modelOptions: { approvalMode } } : {}),
+        }),
+      ).rejects.toMatchObject({ code: 'sandbox_unavailable' });
+      expect(await h.adapter.hasSession(threadId)).toBe(false);
+    }
+    // `never` asks for no sandbox and no prompts: exec is that posture.
+    await h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      modelOptions: { approvalMode: 'never' },
+    });
+    await settle();
+    expect(
+      of(h.events, 'session.configured').find(
+        (event) => event.threadId === THREAD,
+      )?.metadata,
+    ).toMatchObject({ museTransport: 'exec' });
+    // A turn of that exec session asking for a sandboxed posture is refused
+    // before anything spawns; one under the session's `never` runs.
+    await expect(
+      h.adapter.sendTurn({
+        threadId: THREAD,
+        input: 'go',
+        modelOptions: { approvalMode: 'ask' },
+      }),
+    ).rejects.toMatchObject({ kind: 'permission_denied' });
+    expect(h.execSpawns).toEqual([]);
+    await expect(
+      h.adapter.sendTurn({ threadId: THREAD, input: 'go' }),
+    ).rejects.toThrow('this test drives serve; exec must not spawn');
+    expect(h.execSpawns).toHaveLength(1);
+  });
+
   test('a host that reports its sandbox available labels turns enabled and warns nothing', async () => {
     const h = harness();
     const host = await liveSession(h);

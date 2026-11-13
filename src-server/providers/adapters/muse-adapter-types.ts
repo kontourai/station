@@ -1,4 +1,7 @@
-import type { ModelLaunchCapabilities } from '@kontourai/station-contracts/provider';
+import type {
+  ApprovalMode,
+  ModelLaunchCapabilities,
+} from '@kontourai/station-contracts/provider';
 import type { ProviderSession } from '../adapter-shape.js';
 import type { MuseServeSession } from './muse-serve-session.js';
 
@@ -350,6 +353,11 @@ export interface MuseSessionRecord {
    * names none sends this one; a turn that names one sends its own.
    */
   reasoningEffort?: MuseReasoningEffort;
+  /**
+   * The approval mode the session started with. An exec turn that names
+   * none runs under it, which decides whether a missing sandbox refuses it.
+   */
+  approvalMode?: ApprovalMode;
   activeTurn?: MuseActiveTurn;
   /** Set by `stopSession` so a child exit it caused is not re-classified. */
   stopped: boolean;
