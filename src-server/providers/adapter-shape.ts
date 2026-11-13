@@ -187,6 +187,25 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
 }
 
 /**
+ * A send refused because the session's engine is rewinding its context in
+ * place and has not answered yet. It shares the provider-turn code: the
+ * engine is busy with work that is not this send's turn, the send never
+ * reached it, and the same send succeeds once that work ends, so the inbox
+ * holds it and clients send it then.
+ */
+export class SessionRewindingError extends SendTurnRefusedError {
+  readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;
+
+  constructor() {
+    super(
+      'Station is rewinding this conversation; send again when it finishes.',
+      'busy',
+    );
+    this.name = 'SessionRewindingError';
+  }
+}
+
+/**
  * A send that waited for its session's engine start and gave up before the
  * start finished. Nothing reached the engine. Retryable: orchestration
  * forwards the code and clients keep the message queued.

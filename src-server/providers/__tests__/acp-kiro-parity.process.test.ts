@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { ResolvedAgentDefinition } from '@kontourai/station-contracts/provider';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
@@ -53,7 +53,11 @@ interface Engine {
       modelId?: string;
     },
   ) => Promise<{ resumeCursor?: unknown }>;
-  send: (threadId: string, input: string) => Promise<string>;
+  send: (
+    threadId: string,
+    input: string,
+    modelOptions?: Record<string, unknown>,
+  ) => Promise<string>;
   completed: (turnId: string) => Promise<CanonicalRuntimeEvent>;
   stop: () => Promise<void>;
 }
@@ -66,6 +70,7 @@ afterEach(async () => {
 function launch(
   profile: Record<string, unknown>,
   promptSteps?: unknown[],
+  adapterOptions: { logger?: unknown; rewindAnswerTimeoutMs?: number } = {},
 ): Engine {
   const dir = makeTempDir('station-acp-kiro-');
   const profilePath = join(dir, 'profile.json');
@@ -89,7 +94,8 @@ function launch(
   const adapter = new AcpAdapter({
     getConnections: async () => [connection],
     logger: quietLogger,
-  });
+    ...adapterOptions,
+  } as ConstructorParameters<typeof AcpAdapter>[0]);
   const events: CanonicalRuntimeEvent[] = [];
   const drained = (async () => {
     for await (const event of adapter.streamEvents()) events.push(event);
@@ -114,12 +120,13 @@ function launch(
         ...(extra.resumeCursor ? { resumeCursor: extra.resumeCursor } : {}),
         ...(extra.modelId ? { modelId: extra.modelId } : {}),
       } as never)) as { resumeCursor?: unknown },
-    send: async (threadId, input) =>
+    send: async (threadId, input, modelOptions) =>
       (
         await adapter.sendTurn({
           provider: 'acp',
           threadId,
           input,
+          ...(modelOptions ? { modelOptions } : {}),
           confinement: 'workspace',
         } as never)
       ).turnId,
@@ -653,7 +660,11 @@ describe.skipIf(process.platform === 'win32')(
       const rewinding = engine.adapter.rewindSession('rewind-race', first);
       await new Promise((resolve) => setTimeout(resolve, 50));
       await expect(engine.send('rewind-race', 'two')).rejects.toMatchObject({
-        name: 'SendTurnRefusedError',
+        name: 'SessionRewindingError',
+        kind: 'busy',
+        code: 'provider_turn_in_progress',
+        message:
+          'Station is rewinding this conversation; send again when it finishes.',
       });
       expect(await rewinding).toMatchObject({
         kind: 'rewound',
@@ -664,6 +675,145 @@ describe.skipIf(process.platform === 'win32')(
       ).toHaveLength(1);
       // Once the engine answered, the session takes turns again.
       await engine.completed(await engine.send('rewind-race', 'three'));
+    });
+
+    test('a send whose preparation is still with the engine when a rewind starts is refused before its prompt', async () => {
+      const engine = launch(
+        {
+          ...profileOf('kiro-v3'),
+          requestDelaysMs: {
+            'session/set_mode': 800,
+            'session/set_config_option': 800,
+          },
+          extMethodAnswers: {
+            ...(profileOf('kiro-v3').extMethodAnswers as Record<
+              string,
+              unknown
+            >),
+            '_kiro/checkpoint/revertMultiple': {
+              delayMs: 1200,
+              result: { success: true, affectedFiles: [], totalFiles: 0 },
+            },
+          },
+        },
+        [{ kind: 'user-message-id' }, { kind: 'text', text: 'ok' }],
+      );
+      await engine.start('rewind-prep');
+      const first = await engine.send('rewind-prep', 'one');
+      await engine.completed(first);
+      // The send passes its entry check, then waits on the mode change.
+      const sending = engine.send('rewind-prep', 'two', { mode: 'spec' });
+      await waitFor(
+        () =>
+          engine
+            .record()
+            .some(
+              (entry) =>
+                entry.method === 'session/set_mode' ||
+                entry.method === 'session/set_config_option',
+            )
+            ? true
+            : undefined,
+        'mode change reached the engine',
+      );
+      const rewinding = engine.adapter.rewindSession('rewind-prep', first);
+      await expect(sending).rejects.toMatchObject({
+        name: 'SessionRewindingError',
+        kind: 'busy',
+      });
+      expect(await rewinding).toMatchObject({
+        kind: 'rewound',
+        hiddenTurnIds: [first],
+      });
+      expect(
+        engine.record().filter((entry) => entry.method === 'session/prompt'),
+      ).toHaveLength(1);
+    });
+
+    test('a rewind the engine never answers fails in time, marks nothing, and frees the session', async () => {
+      const engine = launch(
+        {
+          ...profileOf('kiro-v3'),
+          extMethodAnswers: {
+            ...(profileOf('kiro-v3').extMethodAnswers as Record<
+              string,
+              unknown
+            >),
+            '_kiro/checkpoint/revertMultiple': {
+              delayMs: 600_000,
+              result: { success: true, affectedFiles: [], totalFiles: 0 },
+            },
+          },
+        },
+        [{ kind: 'user-message-id' }, { kind: 'text', text: 'ok' }],
+        { rewindAnswerTimeoutMs: 300 },
+      );
+      await engine.start('rewind-silent');
+      const first = await engine.send('rewind-silent', 'one');
+      await engine.completed(first);
+      expect(
+        await engine.adapter.rewindSession('rewind-silent', first),
+      ).toEqual({
+        kind: 'failed',
+        message:
+          'Kiro did not answer the rewind in time. Nothing is marked rewound, but the engine may still apply it.',
+      });
+      expect(
+        engine.events.some(
+          (event) =>
+            (event as { code?: string }).code === 'acp.session-rewound',
+        ),
+      ).toBe(false);
+      // The session takes turns again, and the turn is still a rewind point.
+      await engine.completed(await engine.send('rewind-silent', 'two'));
+      expect(engine.adapter.sessionContinuity('rewind-silent')).toMatchObject({
+        live: true,
+        rewind: 'in-place',
+      });
+    });
+
+    test('a roster past the child-work bound is logged through the adapter logger, once while it stays over', async () => {
+      const warn = vi.fn();
+      const roster = (count: number) => ({
+        kind: 'notification',
+        method: '_kiro.dev/subagent/list_update',
+        params: {
+          sessionId: '$sessionId',
+          subagents: Array.from({ length: count }, (_, index) => ({
+            sessionId: `sub-${index}`,
+            status: { type: 'working' },
+          })),
+        },
+      });
+      const engine = launch(
+        profileOf('kiro-v2'),
+        [
+          roster(65),
+          roster(66),
+          roster(1),
+          roster(65),
+          { kind: 'text', text: 'ok' },
+        ],
+        { logger: { ...quietLogger, warn } },
+      );
+      await engine.start('roster-bound');
+      await engine.completed(await engine.send('roster-bound', 'go'));
+      const bound = warn.mock.calls.filter(
+        ([, message]) =>
+          message ===
+          'ACP subagent roster exceeds the child-work bound; its running set is not published',
+      );
+      // Over, still over (one warning), back under, over again (a second).
+      expect(bound).toEqual([
+        [
+          { threadId: 'roster-bound', running: 65, max: 64 },
+          'ACP subagent roster exceeds the child-work bound; its running set is not published',
+        ],
+        [
+          { threadId: 'roster-bound', running: 65, max: 64 },
+          'ACP subagent roster exceeds the child-work bound; its running set is not published',
+        ],
+      ]);
     });
 
     test('rewind is refused on an engine that declares none, and on a stopped session', async () => {

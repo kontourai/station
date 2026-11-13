@@ -1069,7 +1069,9 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
  * turn it opened on its own (a provider-triggered turn, see
  * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply
  * the user did not ask for. Retryable: the same send succeeds once that turn
- * closes, so clients keep it queued and send it then.
+ * closes, so clients keep it queued and send it then. Also the code of a send
+ * refused while the engine rewinds its context in place (`rewindSession`):
+ * the same busy-until-it-ends refusal, with its own message.
  */
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 

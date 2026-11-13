@@ -303,7 +303,7 @@ export function mapAcpSessionUpdate(
         hasRawOutput: Object.hasOwn(update, 'rawOutput'),
       });
       // A vendor kind on the call (Kiro's `agent-subtask`) is also child work.
-      mapEngineToolCallMeta(update, ctx);
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       return;
     }
 
@@ -326,7 +326,7 @@ export function mapAcpSessionUpdate(
         hasContent: Object.hasOwn(update, 'content'),
         hasStatus: Object.hasOwn(update, 'status'),
       });
-      mapEngineToolCallMeta(update, ctx);
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       return;
     }
 
@@ -498,7 +498,10 @@ export function mapAcpExtensionNotification(
   }
   // Engine-extension rows (`ENGINE_EXTENSION_BINDINGS`) whose consumer is a
   // canonical event: published beside the opaque envelope below.
-  mapEngineExtensionNotification(method, params, ctx);
+  mapEngineExtensionNotification(method, params, {
+    ...ctx,
+    logger: mapperLogger(ctx),
+  });
 
   ctx.publish({
     eventId: crypto.randomUUID(),

@@ -524,7 +524,7 @@ describe('engine extension events: kirocrew golden frames', () => {
     expect(of('child-work.updated')).toHaveLength(1);
     expect(warn).toHaveBeenCalledWith(
       'ACP subagent roster exceeds the child-work bound; its running set is not published',
-      { running: 65, max: 64 },
+      { threadId: 'thread-1', running: 65, max: 64 },
     );
   });
 

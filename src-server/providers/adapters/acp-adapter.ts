@@ -186,6 +186,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionRewindingError,
   SessionStartRefusedError,
 } from '../adapter-shape.js';
 import {
@@ -508,6 +509,8 @@ export interface AcpAdapterOptions {
   }) => OpenCodeAgentReader;
   /** Overrides {@link DEFAULT_SEND_TURN_START_WAIT_MS} (tests). */
   sendTurnStartWaitMs?: number;
+  /** Bound on a rewind's engine answer (default 30 s); a test seam. */
+  rewindAnswerTimeoutMs?: number;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -975,6 +978,14 @@ function mergeAcpConfigOption(
 
 /** Turns whose engine prompt ids one ACP session keeps for rewind and fork. */
 export const ACP_TURN_MESSAGES_MAX = 500;
+
+/**
+ * How long a rewind waits for the engine's answer before it is reported
+ * failed and the session takes turns again (the live revert answered in well
+ * under a second; this is the bound, not the expectation).
+ */
+const ACP_REWIND_ANSWER_TIMEOUT_MS = 30_000;
+const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
 
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
@@ -2559,11 +2570,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     // send that provably never started. The turn-start coordinator does not
     // refuse this case first: it serializes turn STARTS, and an accepted
     // turn that is still running does not block its claim.
-    if (record.activeTurnId || record.rewinding) {
+    if (record.rewinding) throw new SessionRewindingError();
+    if (record.activeTurnId) {
       throw new SendTurnRefusedError(
-        record.rewinding
-          ? `ACP session '${input.threadId}' is rewinding.`
-          : `ACP session '${input.threadId}' already has an active turn.`,
+        `ACP session '${input.threadId}' already has an active turn.`,
         'busy',
       );
     }
@@ -2726,9 +2736,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     // A rewind that began while this send prepared the engine owns the
     // session until it answers; the send is refused retryably, before its
     // prompt reached the engine.
-    if (record.rewinding || record.activeTurnId)
+    if (record.rewinding) throw new SessionRewindingError();
+    if (record.activeTurnId)
       throw new SendTurnRefusedError(
-        `ACP session '${input.threadId}' is busy rewinding or running a turn.`,
+        `ACP session '${input.threadId}' already has an active turn.`,
         'busy',
       );
     record.activeTurnId = turnId;
@@ -3457,14 +3468,28 @@ export class AcpAdapter implements ProviderAdapterShape {
     // reach the engine (or this ledger) between the request and its answer.
     record.rewinding = true;
     let answer: ReturnType<typeof readAcpRewindAnswer>;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      answer = readAcpRewindAnswer(
-        await record.process.extMethod(binding.method, {
-          sessionId,
-          messageId: point.firstMessageId,
-        }),
-        SESSION_REWIND_AFFECTED_PATHS_MAX,
-      );
+      const answered = record.process.extMethod(binding.method, {
+        sessionId,
+        messageId: point.firstMessageId,
+      });
+      // The request has no timeout of its own, and every send waits on this
+      // one: an engine that never answers must not hold the session busy.
+      answered.catch(() => {});
+      const timedOut = new Promise<typeof ACP_REWIND_TIMED_OUT>((resolve) => {
+        deadline = setTimeout(
+          () => resolve(ACP_REWIND_TIMED_OUT),
+          this.options.rewindAnswerTimeoutMs ?? ACP_REWIND_ANSWER_TIMEOUT_MS,
+        );
+      });
+      const result = await Promise.race([answered, timedOut]);
+      if (result === ACP_REWIND_TIMED_OUT)
+        return {
+          kind: 'failed',
+          message: `${record.engineName} did not answer the rewind in time. Nothing is marked rewound, but the engine may still apply it.`,
+        };
+      answer = readAcpRewindAnswer(result, SESSION_REWIND_AFFECTED_PATHS_MAX);
     } catch (error) {
       const failure = acpCommandFailure(error);
       return {
@@ -3475,6 +3500,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             : `${record.engineName} has no rewind on this session.`,
       };
     } finally {
+      if (deadline) clearTimeout(deadline);
       record.rewinding = false;
     }
     if (!answer.success)
@@ -4155,6 +4181,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
+      ...this.mapperLogger(),
     };
     mapAcpSessionUpdate(update, ctx);
   }
@@ -4813,8 +4840,24 @@ export class AcpAdapter implements ProviderAdapterShape {
       publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
+      ...this.mapperLogger(),
     };
     mapAcpExtensionNotification(method, params, ctx);
+  }
+
+  /**
+   * The adapter's logger in the mapper's `warn(message, fields)` shape, when
+   * one was given; otherwise the mapper keeps its own module logger.
+   */
+  private mapperLogger(): Pick<AcpMapperContext, 'logger'> {
+    const logger = this.options.logger;
+    if (!logger?.warn) return {};
+    return {
+      logger: {
+        warn: (message: string, fields?: Record<string, unknown>) =>
+          logger.warn(fields ?? {}, message),
+      },
+    };
   }
 
   private publish(event: CanonicalRuntimeEvent): void {

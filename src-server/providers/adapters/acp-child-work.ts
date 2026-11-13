@@ -33,8 +33,15 @@ export interface AcpChildWorkState {
   acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
   /** Running subagents a v3 `agent-subtask` frame reported, by child id. */
   acpSubagents?: Map<string, ChildWorkItem>;
-  /** Roster children already settled, so a repeated roster does not settle them again. */
+  /**
+   * Roster children already settled, so a repeated roster does not settle
+   * them again. Bounded (oldest out): a child evicted past the bound is
+   * settled again if a later roster still restates it, which the fold
+   * treats as a no-op on an already-terminal child.
+   */
   acpSettledSubagents?: Set<string>;
+  /** The over-bound warning already logged for this session, per wire, while it stays over. */
+  acpSubagentBoundWarned?: Set<AcpSubagentWire>;
 }
 
 export interface AcpChildWorkContext {
@@ -201,6 +208,19 @@ function baseItem(
   };
 }
 
+/** Log an over-bound refusal once while the session stays over the bound. */
+function warnOverBoundOnce(
+  ctx: AcpChildWorkContext,
+  wire: AcpSubagentWire,
+  message: string,
+  fields: Record<string, unknown>,
+): void {
+  const warned = (ctx.state!.acpSubagentBoundWarned ??= new Set());
+  if (warned.has(wire)) return;
+  warned.add(wire);
+  ctx.logger?.warn(message, { threadId: ctx.session.threadId, ...fields });
+}
+
 function publishSettle(
   ctx: AcpChildWorkContext,
   item: ChildWorkItem,
@@ -283,12 +303,15 @@ export function publishAcpSubagentRoster(
   // ended, so an oversized roster publishes no running set at all and the
   // last one stands.
   if (running.length > CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
-    ctx.logger?.warn(
+    warnOverBoundOnce(
+      ctx,
+      'roster',
       'ACP subagent roster exceeds the child-work bound; its running set is not published',
       { running: running.length, max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
     );
     return;
   }
+  ctx.state.acpSubagentBoundWarned?.delete('roster');
   publishSnapshot(ctx, running);
 }
 
@@ -325,7 +348,9 @@ export function publishAcpAgentSubtask(
     // Past the registry's bound a new child is not tracked: it is never
     // shown running, and its end is ignored. Logged, so the gap is visible.
     if (roster.size >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
-      ctx.logger?.warn(
+      warnOverBoundOnce(
+        ctx,
+        'agent-subtask',
         'ACP agent-subtask past the child-work bound is not tracked',
         { max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
       );
@@ -337,6 +362,7 @@ export function publishAcpAgentSubtask(
   }
   if (!known) return;
   roster.delete(id);
+  ctx.state.acpSubagentBoundWarned?.delete('agent-subtask');
   publishSettle(ctx, item, status.status);
   publishSnapshot(ctx, [...roster.values()]);
 }
