@@ -65,7 +65,7 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "944d2b91579724df0fd073a684cadf137e98e54af6803767f6d78769c6d62822"
+      "sha256": "ceb5f3b5ab78ec6aecea0a99c552ca95915b56c2ebd0d86f051066411145ea26"
     },
     {
       "name": "developer-telemetry",
@@ -137,7 +137,7 @@
       "name": "mobile-conversation-resync",
       "width": 390,
       "height": 844,
-      "sha256": "e4b7b942e78d28c0c31d284f1c3330e6b017c5257f8e2d231a4aeaed0663c999"
+      "sha256": "366ba7f5037feb78f27f8e7abc17c5246946f62eb6ffb30a880d977ef8ba0e52"
     },
     {
       "name": "mobile-home",
@@ -347,43 +347,49 @@
       "name": "run-setup-filled-dark-1440",
       "width": 1440,
       "height": 900,
-      "sha256": "cecd92e3d3413fe1d9fbdefb0d166d832b004b921e1914c4bf10bdd84c2b4198"
+      "sha256": "8a63c5c06797dfc1566d20584b6210e27a89b1063d2ab09da7c3372bd81929d0"
     },
     {
       "name": "run-setup-filled-dark-390",
       "width": 390,
       "height": 844,
-      "sha256": "1404fa2138d4576372de1d6cdbe10bd574d9fbffdd52c9f2a3635568aebf72ae"
+      "sha256": "c2cc88b8819d74329350ac5bff7b69173efe1b75d3c16ba43a18fbe984d0c96a"
     },
     {
       "name": "run-setup-filled-dark-412",
       "width": 412,
       "height": 915,
-      "sha256": "7548ef6021377c8f7c49b77ea8730255402c7f4682553fd23bf2f53a0afb06b2"
+      "sha256": "75a1b282498bb025efef43e0742cdced693e3be48a1fd11d53384d4729bb13bd"
     },
     {
       "name": "run-setup-filled-light-1440",
       "width": 1440,
       "height": 900,
-      "sha256": "2c2dfe2737436a907889bda7449553598b49d010bb78314af372bc523a7db4fc"
+      "sha256": "59b4b15cd05d5a70f0a6ff73496e75d9d1b3c0d2d09a0110fd41d875ed9cad1f"
     },
     {
       "name": "run-setup-filled-light-390",
       "width": 390,
       "height": 844,
-      "sha256": "a7441752a6e43181e70f0e242aaa747e899b5c9adf2ee4cc0ae0ffb1f7f1dccf"
+      "sha256": "6d5abe2384d24a00fbe4f69d614ff695edb174eb47a0606f4355776307e640ab"
     },
     {
       "name": "run-setup-filled-light-412",
       "width": 412,
       "height": 915,
-      "sha256": "6bdfb446bd1df885410bcfccba82ac23ea9d5ad541afcae879d7d499080e97b2"
+      "sha256": "d7f112e26a8b0916dd77bc1e08197612692fb6d5204be86fca112bb35f70baf2"
+    },
+    {
+      "name": "run-setup-full-access-390",
+      "width": 390,
+      "height": 915,
+      "sha256": "92dbe1ee0100e750af8d89ffdb609224b1d61951398309973a0570708d7c273b"
     },
     {
       "name": "run-setup-full-access-412",
       "width": 412,
       "height": 915,
-      "sha256": "04104779827364f03d092f4b7445db1b8517b63f5f0da0279452663074dbac25"
+      "sha256": "91b30c64691767851ed9300dc3a4f179d1a3a19a224e93c9196a821bb03947ba"
     },
     {
       "name": "run-setup-light-1440",
