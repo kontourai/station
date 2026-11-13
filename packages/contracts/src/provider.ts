@@ -993,7 +993,8 @@ export const MUSE_APPROVAL_DECIDE_FAILED_CODE = 'muse-approval-decide-failed';
 /**
  * #2452: `runtime.warning` code for a Muse session that runs on the `muse
  * exec` fallback because `muse serve` could not be used (no such subcommand,
- * a failed handshake, or a protocol schema this Station has not verified).
+ * a failed handshake, or a protocol schema that is neither verified nor
+ * shown, by the binary's own schema export, to declare what Station uses).
  * On that path no approval can reach Station: tools run under `--approval-mode
  * never`, whatever approval mode was requested.
  */
@@ -1044,6 +1045,17 @@ export const MUSE_MODEL_ROUTE_UNSERVED_CODE = 'muse-model-route-unserved';
  * `details.reason` is muse's own reason when it sent one.
  */
 export const MUSE_SANDBOX_UNAVAILABLE_CODE = 'muse-sandbox-unavailable';
+
+/**
+ * `runtime.warning` code, once per session, for a `muse serve` host whose MSP
+ * stable-schema fingerprint is not one Station was verified against, but
+ * whose own exported schema still declares every method, notification and
+ * member Station uses, so the session runs on serve. `details.fingerprint`
+ * names the schema and `details.museVersion` the host's version. Structure
+ * is checked, meaning is not.
+ */
+export const MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE =
+  'muse-serve-schema-unverified-compatible';
 
 /**
  * #2324: refusal code for a send that arrived while the engine is running a

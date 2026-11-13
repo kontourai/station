@@ -16,12 +16,14 @@ import {
   type MuseServeSpawnResult,
   MuseServeTimeoutError,
 } from './muse-serve-rpc.js';
-import { verifiedMuseServeFingerprint } from './muse-serve-session.js';
+import {
+  type MuseServeSchemaCheck,
+  museServeKnownSchemaVerdict,
+} from './muse-serve-schema.js';
 
 /**
  * #2266: catalog and allowance reads through a short-lived `muse serve`
- * host: `initialize` (the schema fingerprint is checked exactly as a session
- * checks it) → `initialized` → one query → close. `model/list` and
+ * host: `initialize` (the schema is judged exactly as a session judges it) → `initialized` → one query → close. `model/list` and
  * `usage/read` are queries, not commands: no `commandId`, no session, nothing
  * durable is written (live against Muse Code 1.4.18: both answer with no
  * `session/start`).
@@ -37,12 +39,14 @@ export interface MuseDiscoveryDeps {
   terminateHost: (spawned: MuseServeSpawnResult) => Promise<void>;
   /** Bound on the whole read, handshake included. */
   timeoutMs: number;
+  /** Judges the host's schema as a session would; absent: verified only. */
+  checkSchema?: MuseServeSchemaCheck;
 }
 
-/** A host that answered but is not one this adapter was verified against. */
+/** A host that answered but whose schema this adapter does not accept. */
 export class MuseDiscoveryUnverifiedError extends Error {
-  constructor() {
-    super('The muse serve host reported an unverified MSP schema.');
+  constructor(readonly reason: string) {
+    super(`The muse serve host reported an unverified MSP schema (${reason}).`);
     this.name = 'MuseDiscoveryUnverifiedError';
   }
 }
@@ -72,8 +76,11 @@ export async function withMuseDiscoveryHost(
       },
       { timeoutMs: remaining() },
     );
-    if (!verifiedMuseServeFingerprint(initialized)) {
-      throw new MuseDiscoveryUnverifiedError();
+    const verdict = deps.checkSchema
+      ? await deps.checkSchema(initialized)
+      : museServeKnownSchemaVerdict(initialized);
+    if (verdict.kind === 'refused') {
+      throw new MuseDiscoveryUnverifiedError(verdict.reason);
     }
     connection.notify('initialized');
     const result = await connection.request(method, params, {

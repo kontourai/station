@@ -173,6 +173,7 @@ import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { runMuseMcpList } from '../../providers/adapters/muse-mcp-status.js';
+import { runMuseSchemaCommand } from '../../providers/adapters/muse-serve-schema.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
@@ -1192,7 +1193,9 @@ export class StationRuntime {
       (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(message),
   };
   private museAdapter = new MuseAdapter({
-    serve: {},
+    // A host on a schema fingerprint nobody verified is checked against its
+    // own schema export (`muse-serve-schema.ts`).
+    serve: { schemaCommandRunner: runMuseSchemaCommand },
     // #1942: Muse's credential profiles, through the same resolver as the
     // Claude and Codex adapters (lazy: invoked at session start only).
     getAppHomeEnv: createCredentialProfileAppHomeEnvResolver(

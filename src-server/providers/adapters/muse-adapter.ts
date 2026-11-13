@@ -169,6 +169,11 @@ import type {
 } from './muse-serve-rpc.js';
 import { museUuidV7 } from './muse-serve-rpc.js';
 import {
+  type MuseSchemaCommandRunner,
+  type MuseServeSchemaCheck,
+  MuseServeSchemaVerifier,
+} from './muse-serve-schema.js';
+import {
   MUSE_APPROVAL_DEADLINE_MS,
   MUSE_SERVE_APPROVAL_ACKNOWLEDGEMENT,
   MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
@@ -326,6 +331,15 @@ export interface MuseServeAdapterOptions {
   requestTimeoutMs?: number;
   interruptSettleMs?: number;
   newCommandId?: () => string;
+  /**
+   * Runs `muse --version` and `muse schema generate-json-schema` for the
+   * structural check of a host whose schema fingerprint nobody verified
+   * (`muse-serve-schema.ts`). Absent: such a host is refused, as before;
+   * the Station runtime passes `runMuseSchemaCommand`.
+   */
+  schemaCommandRunner?: MuseSchemaCommandRunner;
+  /** Bound on one schema check (default 15 s). */
+  schemaCheckTimeoutMs?: number;
 }
 
 /**
@@ -1178,6 +1192,8 @@ export class MuseAdapter implements ProviderAdapterShape {
    * otherwise.
    */
   private sandboxUnavailable: MuseServeSandboxReport | undefined;
+  /** Structural schema verdicts, per fingerprint, for this adapter's hosts. */
+  private schemaVerifier?: MuseServeSchemaVerifier;
 
   constructor(private readonly options: MuseAdapterOptions = {}) {
     // `resume` and `tool-calls` are NOT claimed: Station implements no
@@ -1240,6 +1256,16 @@ export class MuseAdapter implements ProviderAdapterShape {
     });
     this.providerRefusal = refusal;
     if (options.serve) this.childSteerOutlivesParentTurn = true;
+    if (options.serve?.schemaCommandRunner) {
+      this.schemaVerifier = new MuseServeSchemaVerifier({
+        resolveCommand: () =>
+          managedEngineBinaryPath('muse') ?? this.findBinary('muse'),
+        run: options.serve.schemaCommandRunner,
+        ...(options.serve.schemaCheckTimeoutMs !== undefined
+          ? { timeoutMs: options.serve.schemaCheckTimeoutMs }
+          : {}),
+      });
+    }
     if (options.serve && this.providerOverride !== 'echo') {
       const serve = options.serve;
       this.metadata = {
@@ -1295,6 +1321,36 @@ export class MuseAdapter implements ProviderAdapterShape {
             ),
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
       timeoutMs: serve.handshakeTimeoutMs ?? MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
+      ...this.schemaCheckFor(serve, appHomeEnv),
+    };
+  }
+
+  /**
+   * The schema check for hosts started under `appHomeEnv`: the export runs
+   * under the env the host itself runs under (the profile's config and data
+   * homes, and no ambient key on a profile run), plus the unattended
+   * launcher switches, so it reports the binary that host was launched from.
+   */
+  private schemaCheckFor(
+    serve: MuseServeAdapterOptions,
+    appHomeEnv: Record<string, string> | undefined,
+  ): { checkSchema?: MuseServeSchemaCheck } {
+    const verifier = this.schemaVerifier;
+    if (!verifier) return {};
+    const env: Record<string, string> = {
+      ...MUSE_UNATTENDED_LAUNCHER_ENV,
+      ...appHomeEnv,
+      ...(serve.dataHome ? { XDG_DATA_HOME: serve.dataHome } : {}),
+    };
+    const omitEnv = museProfileOmitsApiKey(appHomeEnv)
+      ? [MUSE_API_KEY_ENV]
+      : undefined;
+    return {
+      checkSchema: (initializeResult) =>
+        verifier.check(initializeResult, {
+          env,
+          ...(omitEnv ? { omitEnv } : {}),
+        }),
     };
   }
 
@@ -1860,6 +1916,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (!serve && this.options.serve) {
       this.publishExecTransportFacts(input.threadId, serveUnavailable);
     }
+    serve?.announceStartSchema();
     if (
       serveStarted?.sandbox.unavailable &&
       !serveStarted.plan.disableSandbox
@@ -2056,6 +2113,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         record.session = { ...record.session, model: modelId };
       },
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
+      ...this.schemaCheckFor(serve, appHomeEnv),
       newCommandId: serve.newCommandId ?? (() => museUuidV7()),
       approvalTimeoutMs: resolveMuseSupervisionBound(
         serve.approvalTimeoutMs,

@@ -14,6 +14,7 @@ import {
   MUSE_MODEL_RETRY_SCHEDULED_CODE,
   MUSE_MODEL_ROUTE_UNSERVED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
+  MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE,
 } from '@kontourai/station-contracts/provider';
 import type {
   PlanEntry,
@@ -71,12 +72,18 @@ import {
   type MuseServeSpawnResult,
   MuseServeTimeoutError,
 } from './muse-serve-rpc.js';
+import {
+  type MuseServeSchemaCheck,
+  type MuseServeSchemaVerdict,
+  museServeKnownSchemaVerdict,
+} from './muse-serve-schema.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
  * #2452: one Station session driven through a `muse serve` (MSP) host.
  *
- * What the live probes (Muse Code 1.3.0-R3401.1, re-checked against 1.4.18)
+ * What the live probes (Muse Code 1.3.0-R3401.1, re-checked against 1.4.18
+ * and 1.4.20)
  * established, and what this module relies on (captures in
  * `__tests__/fixtures/muse-serve-1.3.0-*` and `muse-serve-1.4.18-*`):
  *
@@ -113,8 +120,10 @@ import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
  * - 1.4.18 (live): `session/tokenUsage` carries one completion's `usage` and
  *   the session's `cumulative` totals, whose `cost {usd, partial}` was
  *   absent on the probed provider; `turn/modelAttemptStarted` is emitted
- *   per model call. Schema-only (never observed live): `session/contextUsage`,
- *   `session/todoListChanged`, `session/modelChanged`,
+ *   per model call. 1.4.20 (live, `muse-serve-1.4.20-cost-context`) on a
+ *   priced provider sends `cumulative.cost {usd, partial: false}` and
+ *   `session/contextUsage {windowTokens, usedTokens, pressure}`. Schema-only
+ *   (never observed live): `session/todoListChanged`, `session/modelChanged`,
  *   `session/modelRouteUnserved`, `turn/retryScheduled` and
  *   `turn/modelRetryScheduled`; each is mapped from its 1.4.18 schema shape.
  *   `session/reasoningEffortChanged` follows a `session/setReasoningEffort`,
@@ -125,36 +134,11 @@ import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 type MuseServeLogger = Pick<Logger, 'warn' | 'info'>;
 
 /**
- * Schema fingerprints of the MSP stable surface this adapter was verified
- * against (`muse schema generate-json-schema`): Muse Code 1.3.0-R3401.1,
- * and 1.4.18, whose schema was re-checked for every request, result and
- * notification shape this module reads (only additive members changed). A
- * host reporting any other fingerprint speaks a protocol nobody checked this
- * mapping against, so the session falls back to `muse exec` (and says so)
- * rather than guessing at approval and child-work shapes.
+ * The verdict on a host by its fingerprint alone (verified, or refused);
+ * see `muse-serve-schema.ts` for the policy and the structural check a
+ * session runs on a fingerprint nobody verified.
  */
-const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> = new Set([
-  'sha256:7469c9e352e67def4a59df7e439984d7194fa351e1c8b7abb34060fd977ced81',
-  'sha256:77dda18550adef14e257b015fe4e6490b722723f7d526df5ba4867939fff68a3',
-]);
-
-/**
- * The verified stable-surface fingerprint an `initialize` result reports,
- * or `undefined` when it reports none or one nobody checked this adapter
- * against. Sessions and the short-lived discovery host both gate on it.
- */
-export function verifiedMuseServeFingerprint(
-  initializeResult: unknown,
-): string | undefined {
-  const schema =
-    isRecord(initializeResult) && isRecord(initializeResult.schema)
-      ? initializeResult.schema
-      : {};
-  const fingerprint = readString(schema.fingerprint);
-  return fingerprint && MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS.has(fingerprint)
-    ? fingerprint
-    : undefined;
-}
+export { museServeKnownSchemaVerdict } from './muse-serve-schema.js';
 
 /**
  * Station's bound on an unanswered Muse approval. `muse serve` never expires
@@ -350,6 +334,11 @@ export interface MuseServeSessionDeps {
   /** The session's model changed on muse's side (`session/modelChanged`). */
   onModelChanged?: (modelId: string) => void;
   terminateHost: (spawned: MuseServeSpawnResult) => Promise<void>;
+  /**
+   * Judges a host's reported schema (`muse-serve-schema.ts`). Absent: only a
+   * verified fingerprint is accepted.
+   */
+  checkSchema?: MuseServeSchemaCheck;
   newCommandId: () => string;
   approvalTimeoutMs: number;
   /**
@@ -379,6 +368,12 @@ export interface MuseServeStarted {
   modelId?: string;
   plan: MuseServeApprovalPlan;
   sandbox: MuseServeSandboxReport;
+}
+
+/** A host accepted on a structural check of a schema nobody verified. */
+export interface MuseServeUnverifiedSchema {
+  fingerprint: string;
+  museVersion: string;
 }
 
 export interface MuseServeTurnInput {
@@ -688,6 +683,9 @@ export class MuseServeSession {
   private stopped = false;
   private stopHost?: ServeHost;
   private reportedSandboxValue?: MuseServeReportedSandbox;
+  /** Unverified-but-compatible fingerprints this session already announced. */
+  private readonly announcedSchemas = new Set<string>();
+  private startSchema?: MuseServeUnverifiedSchema;
   private stopTask?: Promise<{ terminationConfirmed: boolean }>;
   private stopConfirmed = false;
   private sending = false;
@@ -1552,12 +1550,23 @@ export class MuseServeSession {
         ...(host.sandbox.reason ? { reason: host.sandbox.reason } : {}),
       };
     }
-    if (!verifiedMuseServeFingerprint(result)) {
-      const schema =
-        isRecord(result) && isRecord(result.schema) ? result.schema : {};
-      await this.closeHost();
+    let verdict: MuseServeSchemaVerdict;
+    try {
+      verdict = this.deps.checkSchema
+        ? await this.deps.checkSchema(result)
+        : museServeKnownSchemaVerdict(result);
+    } catch (error) {
+      verdict = {
+        kind: 'refused',
+        reason: `the MSP schema check failed: ${errorMessage(error)}`,
+      };
+    }
+    // The check runs while the host waits for `initialized`: it may have
+    // exited, or the session been stopped, meanwhile.
+    if (verdict.kind === 'refused' || this.host !== host || this.stopped) {
+      if (this.host === host) await this.closeHost();
       throw new MuseServeUnavailableError(
-        `unverified MSP schema fingerprint ${readString(schema.fingerprint) ?? '(none)'}`,
+        verdict.kind === 'refused' ? verdict.reason : 'the host exited',
       );
     }
     const durability = isRecord(result) ? result.sessionDurability : undefined;
@@ -1574,7 +1583,47 @@ export class MuseServeSession {
       this.reportedSandboxValue = { availability: 'available' };
     }
     host.connection.notify('initialized');
+    if (verdict.kind === 'compatible') this.announceSchema(verdict);
     return host;
+  }
+
+  /**
+   * Publishes the start host's unverified-schema notice, once the adapter
+   * has published the session it belongs to.
+   */
+  announceStartSchema(): void {
+    const verdict = this.startSchema;
+    this.startSchema = undefined;
+    if (verdict && this.museSessionIdValue) this.announceSchema(verdict);
+  }
+
+  /**
+   * Once per session per fingerprint: this host runs on a schema nobody
+   * verified, accepted because it still declares everything Station uses.
+   */
+  private announceSchema(verdict: MuseServeUnverifiedSchema): void {
+    if (this.announcedSchemas.has(verdict.fingerprint)) return;
+    // The first host answers before the session exists: its notice waits
+    // for the adapter to publish the session ({@link announceStartSchema}).
+    if (!this.museSessionIdValue) {
+      this.startSchema = verdict;
+      return;
+    }
+    this.announcedSchemas.add(verdict.fingerprint);
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE,
+      message: `Muse ${verdict.museVersion} speaks a protocol version Station was not tested against. It still offers everything Station uses, so this session runs on it.`,
+      details: {
+        fingerprint: verdict.fingerprint,
+        museVersion: verdict.museVersion,
+      },
+    });
   }
 
   /**

@@ -1,7 +1,8 @@
 /**
  * #2452: replays a REAL `muse serve` capture (Muse Code 1.3.0-R3401.1, the
- * `fixtures/muse-serve-1.3.0-*.jsonl` files, and Muse Code 1.4.18, the
- * `fixtures/muse-serve-1.4.18-*.jsonl` files; all scrubbed: synthetic ids,
+ * `fixtures/muse-serve-1.3.0-*.jsonl` files, Muse Code 1.4.18, the
+ * `fixtures/muse-serve-1.4.18-*.jsonl` files, and Muse Code 1.4.20, the
+ * `fixtures/muse-serve-1.4.20-*.jsonl` files; all scrubbed: synthetic ids,
  * `/workspace/probe` paths, zeroed build and work hashes, and the host's own
  * reminder-agent items and session name left out) against the actual
  * `MuseAdapter`, with the host process replaced by a stream double.
@@ -53,6 +54,10 @@ const MUSE_SERVE_CAPTURE_VERSIONS = {
   // One turn, then `goal/set` on the idle session (a goal turn starts at
   // once) and `goal/pause` (`goalChanged` paused, before the ack).
   'goal-set-pause': '1.4.18',
+  // One turn on a priced provider: `session/tokenUsage` carries
+  // `cumulative.cost {usd, partial: false}` and `session/contextUsage` its
+  // window, used tokens and pressure.
+  'cost-context': '1.4.20',
 } as const;
 
 export type MuseServeCaptureName = keyof typeof MUSE_SERVE_CAPTURE_VERSIONS;

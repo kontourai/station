@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 /**
  * #2452: the `muse serve` (MSP) path of the Muse adapter, driven by REAL
@@ -22,6 +24,7 @@ import {
   MUSE_MODEL_ROUTE_UNSERVED_CODE,
   MUSE_SANDBOX_UNAVAILABLE_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
+  MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
@@ -33,7 +36,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
@@ -60,6 +63,11 @@ import {
   MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX,
   MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
 } from '../adapters/muse-serve-child-work.js';
+import {
+  MUSE_SERVE_REQUIRED_SURFACE,
+  type MuseSchemaCommandRunner,
+  museServeSchemaSurfaceGaps,
+} from '../adapters/muse-serve-schema.js';
 import {
   MUSE_APPROVAL_REVIEWING_MESSAGE,
   museServeApprovalPlan,
@@ -90,6 +98,8 @@ interface Harness {
 }
 
 const adapters: MuseAdapter[] = [];
+/** Every host any test in this file drove (see the surface check below). */
+const everyHost: FakeMuseServeHost[] = [];
 const makeCascadeHome = trackTempDirs();
 
 afterEach(async () => {
@@ -106,6 +116,7 @@ function harness(
     onRelease?: (host: FakeMuseServeHost) => void;
     env?: NodeJS.ProcessEnv;
     getAppHomeEnv?: MuseAdapterOptions['getAppHomeEnv'];
+    schemaCommandRunner?: MuseSchemaCommandRunner;
   } = {},
 ): Harness {
   const hosts: FakeMuseServeHost[] = [];
@@ -123,6 +134,7 @@ function harness(
           options.spawnHost?.(args, hosts.length) ??
           new FakeMuseServeHost(args, 5151 + hosts.length);
         hosts.push(host);
+        everyHost.push(host);
         return { process: host, release: () => options.onRelease?.(host) };
       },
       terminateHost: async (spawned) => {
@@ -139,7 +151,12 @@ function harness(
       handshakeTimeoutMs: 2_000,
       requestTimeoutMs: 2_000,
       interruptSettleMs: 300,
+      ...(options.schemaCommandRunner
+        ? { schemaCommandRunner: options.schemaCommandRunner }
+        : {}),
     },
+    // The schema check resolves `muse` like the host launch; nothing runs it.
+    findBinary: () => '/fake/bin/muse',
     processFactory: (args) => {
       execSpawns.push(args);
       throw new Error('this test drives serve; exec must not spawn');
@@ -5280,4 +5297,504 @@ describe('approval/reviewing: muse’s automated reviewer holds a call', () => {
     await settle();
     expect(of(h.events, 'tool.progress')).toEqual([]);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Slice 7: the schema fingerprint policy and the 1.4.20 cost/context capture.
+
+const SESSION_1420 = '00000000-0000-7000-8000-000000000002';
+const TURN_1420 = '00000000-0000-7000-8000-000000000005';
+const FINGERPRINT_1420 =
+  'sha256:283b1b125dcc9172928fb5d6711a92a353796d030a7c186988ed527a13cf07f0';
+/** A schema fingerprint no Muse release Station was verified against has. */
+const UNKNOWN_FINGERPRINT = `sha256:${'a'.repeat(64)}`;
+const UNKNOWN_VERSION = '1.4.99';
+
+/**
+ * Muse Code 1.4.20's own `muse schema generate-json-schema` stable export,
+ * with only its `description` texts removed.
+ */
+function stableSchemaExport(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(
+      new URL('./fixtures/muse-msp-1.4.20-stable.schema.json', import.meta.url),
+      'utf8',
+    ),
+  ) as Record<string, unknown>;
+}
+
+interface SchemaRun {
+  args: string[];
+  env: Record<string, string>;
+  omitEnv?: readonly string[];
+}
+
+/**
+ * A `muse` stand-in for the schema check: `--version` answers the next of
+ * `versions` (then `version`), and the export writes `schema` (the 1.4.20
+ * export, after `mutate`) into the folder it is given, as the real one does.
+ */
+function fakeSchemaMuse(
+  options: {
+    version?: string;
+    versions?: string[];
+    mutate?: (schema: Record<string, unknown>) => void;
+    exportCode?: number;
+  } = {},
+) {
+  const runs: SchemaRun[] = [];
+  const versions = [...(options.versions ?? [])];
+  const runner: MuseSchemaCommandRunner = async ({ args, env, omitEnv }) => {
+    runs.push({ args: [...args], env, ...(omitEnv ? { omitEnv } : {}) });
+    if (args[0] === '--version') {
+      const version = versions.shift() ?? options.version ?? UNKNOWN_VERSION;
+      return {
+        stdout: `Muse Code ${version} (${version}-R1.1)\n`,
+        stderr: '',
+        code: 0,
+      };
+    }
+    if (args[0] === 'schema' && args[1] === 'generate-json-schema') {
+      if (options.exportCode !== undefined && options.exportCode !== 0) {
+        return {
+          stdout: '',
+          stderr: 'export failed',
+          code: options.exportCode,
+        };
+      }
+      const dir = args[3];
+      const schema = stableSchemaExport();
+      options.mutate?.(schema);
+      await writeFile(
+        join(dir, 'manifest.json'),
+        JSON.stringify({ experimental: false, schemaVersion: 1 }),
+      );
+      await writeFile(join(dir, 'msp.schema.json'), JSON.stringify(schema));
+      return { stdout: '', stderr: '', code: 0 };
+    }
+    return null;
+  };
+  return {
+    runner,
+    runs,
+    exports: () => runs.filter((run) => run.args[0] === 'schema'),
+  };
+}
+
+/** The 1.4.18 `steer` capture, its host reporting `schema` and `version`. */
+function steerCaptureReporting(
+  schema: { fingerprint: string; version?: unknown },
+  museVersion = UNKNOWN_VERSION,
+): MuseServeCaptureFrame[] {
+  const frames = loadMuseServeCapture('steer');
+  const init = frames.find(
+    (frame) =>
+      frame.dir === 's2c' &&
+      (frame.msg.result as { schema?: unknown } | undefined)?.schema,
+  );
+  const result = init?.msg.result as Record<string, unknown>;
+  result.schema = { version: 1, ...schema };
+  (result.serverInfo as Record<string, unknown>).version = museVersion;
+  return frames;
+}
+
+/**
+ * Starts a session for `threadId` on the next host, replays `frames` up to
+ * the first `turn/start` (or only the handshake reply, when the host is
+ * expected to be refused), and resolves once the start settles.
+ */
+async function startReporting(
+  h: Harness,
+  threadId: string,
+  frames: MuseServeCaptureFrame[],
+  expect: 'serve' | 'refused',
+): Promise<FakeMuseServeHost> {
+  const index = h.hosts.length;
+  const started = h.adapter.startSession({
+    provider: 'muse',
+    threadId,
+    cwd: '/workspace/probe/repo',
+  });
+  started.catch(() => {});
+  for (let attempt = 0; attempt < 200 && !h.hosts[index]; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const host = h.hosts[index];
+  const initReply = frames.findIndex(
+    (frame) =>
+      frame.dir === 's2c' &&
+      (frame.msg.result as { schema?: unknown } | undefined)?.schema,
+  );
+  await replayMuseServeCapture(host, frames, {
+    stopAt:
+      expect === 'serve'
+        ? frames.findIndex((frame) => frame.msg.method === 'turn/start')
+        : initReply + 1,
+  });
+  await started;
+  await settle();
+  return host;
+}
+
+function transportOf(h: Harness, threadId: string) {
+  return of(h.events, 'session.configured').find(
+    (event) => event.threadId === threadId,
+  )?.metadata?.museTransport;
+}
+
+function unavailableReason(h: Harness, threadId: string): string | undefined {
+  const warning = of(h.events, 'runtime.warning').find(
+    (event) =>
+      event.threadId === threadId && event.code === MUSE_SERVE_UNAVAILABLE_CODE,
+  );
+  return (warning?.details as { reason?: string } | undefined)?.reason;
+}
+
+function compatibleWarnings(h: Harness) {
+  return of(h.events, 'runtime.warning').filter(
+    (event) => event.code === MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE,
+  );
+}
+
+describe('Muse serve: which schema fingerprints a host may report', () => {
+  test('the committed 1.4.20 export has every member Station uses, and so does a 1.4.18 one without the field 1.4.20 added', () => {
+    const schema = stableSchemaExport();
+    expect(museServeSchemaSurfaceGaps(schema)).toEqual([]);
+    // 1.4.18 differs only by not declaring `SessionStartParams.clear`.
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    delete (defs.SessionStartParams.properties as Record<string, unknown>)
+      .clear;
+    expect(museServeSchemaSurfaceGaps(schema)).toEqual([]);
+  });
+
+  test('a verified fingerprint (1.4.20) runs on serve with no export and no warning', async () => {
+    const muse = fakeSchemaMuse();
+    const h = harness({ schemaCommandRunner: muse.runner });
+    await startReporting(
+      h,
+      THREAD,
+      steerCaptureReporting({ fingerprint: FINGERPRINT_1420 }, '1.4.20'),
+      'serve',
+    );
+    expect(transportOf(h, THREAD)).toBe('serve');
+    expect(unavailableReason(h, THREAD)).toBeUndefined();
+    expect(compatibleWarnings(h)).toEqual([]);
+    expect(muse.runs).toEqual([]);
+  });
+
+  test('an unknown fingerprint whose export has every member Station uses runs on serve, says so once, and is exported once per fingerprint', async () => {
+    const muse = fakeSchemaMuse();
+    const h = harness({ schemaCommandRunner: muse.runner });
+    const frames = () =>
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT });
+    await startReporting(h, THREAD, frames(), 'serve');
+    expect(transportOf(h, THREAD)).toBe('serve');
+    expect(unavailableReason(h, THREAD)).toBeUndefined();
+    const warnings = compatibleWarnings(h);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      threadId: THREAD,
+      details: {
+        fingerprint: UNKNOWN_FINGERPRINT,
+        museVersion: UNKNOWN_VERSION,
+      },
+    });
+    // After the session it describes exists.
+    const order = h.events.map((event) => event.method);
+    expect(order.indexOf('runtime.warning')).toBeGreaterThan(
+      order.indexOf('session.configured'),
+    );
+    // `--version` around the export, all under the host's own env.
+    expect(muse.runs.map((run) => run.args[0])).toEqual([
+      '--version',
+      'schema',
+      '--version',
+    ]);
+    expect(muse.runs[1].args.slice(0, 3)).toEqual([
+      'schema',
+      'generate-json-schema',
+      '--out',
+    ]);
+    for (const run of muse.runs) {
+      expect(run.env).toMatchObject({
+        MUSE_NO_AUTO_UPDATE: '1',
+        MUSE_LOGIN: '0',
+      });
+    }
+    // A second session on the same schema: no second export.
+    await startReporting(h, 'thread-muse-serve-2', frames(), 'serve');
+    expect(transportOf(h, 'thread-muse-serve-2')).toBe('serve');
+    expect(muse.exports()).toHaveLength(1);
+    expect(compatibleWarnings(h).map((event) => event.threadId)).toEqual([
+      THREAD,
+      'thread-muse-serve-2',
+    ]);
+  });
+
+  test('an unknown fingerprint whose export lacks a member Station uses falls back to exec, naming what is missing', async () => {
+    const muse = fakeSchemaMuse({
+      mutate: (schema) => {
+        delete (schema.methods as Record<string, unknown>)['turn/steer'];
+        const item = (schema.$defs as Record<string, Record<string, unknown>>)
+          .Item;
+        delete (item.properties as Record<string, unknown>).callId;
+      },
+    });
+    const h = harness({ schemaCommandRunner: muse.runner });
+    const host = await startReporting(
+      h,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    expect(transportOf(h, THREAD)).toBe('exec');
+    const reason = unavailableReason(h, THREAD);
+    expect(reason).toContain('method turn/steer, Item.callId');
+    expect(reason).toContain('sha256:aaaaaaaa');
+    expect(compatibleWarnings(h)).toEqual([]);
+    expect(host.sent.map((frame) => frame.method)).toEqual(['initialize']);
+    expect(host.stdinEnded).toBe(true);
+  });
+
+  test('an export from another muse binary than the host proves nothing: a version mismatch falls back to exec', async () => {
+    // The launcher swapped binaries between the host start and the export.
+    const muse = fakeSchemaMuse({ versions: ['1.4.98', '1.4.98'] });
+    const h = harness({ schemaCommandRunner: muse.runner });
+    await startReporting(
+      h,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    expect(transportOf(h, THREAD)).toBe('exec');
+    expect(unavailableReason(h, THREAD)).toContain(
+      `the host reported Muse ${UNKNOWN_VERSION}, but the installed muse is 1.4.98`,
+    );
+    expect(compatibleWarnings(h)).toEqual([]);
+    // ... including a swap DURING the export.
+    const during = fakeSchemaMuse({
+      versions: [UNKNOWN_VERSION, '1.4.98'],
+    });
+    const h2 = harness({ schemaCommandRunner: during.runner });
+    await startReporting(
+      h2,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    expect(transportOf(h2, THREAD)).toBe('exec');
+    expect(unavailableReason(h2, THREAD)).toContain(
+      `${UNKNOWN_VERSION}, then 1.4.98`,
+    );
+  });
+
+  test('a failed export falls back to exec, and is not remembered: the next host exports again', async () => {
+    const muse = fakeSchemaMuse({ exportCode: 3 });
+    const h = harness({ schemaCommandRunner: muse.runner });
+    await startReporting(
+      h,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    expect(transportOf(h, THREAD)).toBe('exec');
+    expect(unavailableReason(h, THREAD)).toContain('muse schema exited 3');
+    expect(compatibleWarnings(h)).toEqual([]);
+    await startReporting(
+      h,
+      'thread-muse-serve-2',
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    expect(muse.exports()).toHaveLength(2);
+  });
+
+  test('another schema version, or no export runner, refuses an unknown fingerprint without exporting', async () => {
+    const muse = fakeSchemaMuse();
+    const h = harness({ schemaCommandRunner: muse.runner });
+    await startReporting(
+      h,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT, version: 2 }),
+      'refused',
+    );
+    expect(transportOf(h, THREAD)).toBe('exec');
+    expect(unavailableReason(h, THREAD)).toContain('schema version 2');
+    expect(muse.runs).toEqual([]);
+    const bare = harness();
+    await startReporting(
+      bare,
+      THREAD,
+      steerCaptureReporting({ fingerprint: UNKNOWN_FINGERPRINT }),
+      'refused',
+    );
+    expect(transportOf(bare, THREAD)).toBe('exec');
+    expect(unavailableReason(bare, THREAD)).toContain(
+      `unverified MSP schema fingerprint ${UNKNOWN_FINGERPRINT}`,
+    );
+  });
+
+  test('a discovery read judges the host as a session does: a compatible unknown fingerprint is asked for its catalog', async () => {
+    const muse = fakeSchemaMuse();
+    const init = liveInitializeResult();
+    (init.schema as Record<string, unknown>).fingerprint = UNKNOWN_FINGERPRINT;
+    (init.serverInfo as Record<string, unknown>).version = UNKNOWN_VERSION;
+    const h = harness({
+      schemaCommandRunner: muse.runner,
+      spawnHost: discoveryHost(
+        [
+          [
+            'model/list',
+            {
+              providerId: 'meta',
+              profileId: null,
+              source: 'providerCatalog',
+              models: [],
+            },
+          ],
+        ],
+        init,
+      ),
+    });
+    await expect(h.adapter.listModelCatalog!()).resolves.toEqual({
+      models: [],
+    });
+    expect(muse.exports()).toHaveLength(1);
+  });
+});
+
+describe('Muse Code 1.4.20: a priced provider reports cost and context', () => {
+  test('the live capture publishes the session cost and the context window from session/tokenUsage and session/contextUsage', async () => {
+    const h = harness();
+    const host = await startServe(h);
+    const frames = loadMuseServeCapture('cost-context');
+    expect(
+      (frames[2].msg.result as { schema: { fingerprint: string } }).schema
+        .fingerprint,
+    ).toBe(FINGERPRINT_1420);
+    await replayMuseServeCapture(host, frames, {
+      onDrivenRequest: (method) =>
+        method === 'turn/start'
+          ? h.adapter.sendTurn({ threadId: THREAD, input: 'go' })
+          : undefined,
+    });
+    await settle();
+    // A verified host: serve, no fallback.
+    expect(transportOf(h, THREAD)).toBe('serve');
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museSessionId: SESSION_1420,
+    });
+    const usage = of(h.events, 'token-usage.updated');
+    expect(usage).toHaveLength(2);
+    expect(usage[0]).toMatchObject({
+      turnId: TURN_1420,
+      promptTokens: 36166,
+      completionTokens: 15,
+      reportedCost: { amount: 0.0036196, unit: 'USD', scope: 'session' },
+    });
+    expect(usage[1]).toMatchObject({
+      turnId: TURN_1420,
+      contextTokens: 36434,
+      contextWindowTokens: 1007997,
+    });
+    expect(of(h.events, 'turn.completed')).toHaveLength(1);
+  });
+});
+
+/** Every request and notification the adapter wrote to any host in this file. */
+function sentMethods(): Set<string> {
+  return new Set(
+    everyHost.flatMap((host) =>
+      host.sent.flatMap((frame) => (frame.method ? [frame.method] : [])),
+    ),
+  );
+}
+
+describe('Muse serve: the required-surface manifest covers what the adapter uses', () => {
+  /**
+   * Replays a capture driving only the turn, with every host frame kept, or
+   * with the host frames whose method the manifest does not name dropped.
+   * The two must publish the same events: a frame the adapter reacts to is
+   * part of the surface it relies on.
+   */
+  async function replayEvents(
+    name: MuseServeCaptureName,
+    dropUnlisted: boolean,
+  ): Promise<string> {
+    const listed = new Set([
+      ...Object.keys(MUSE_SERVE_REQUIRED_SURFACE.notifications),
+      ...Object.keys(MUSE_SERVE_REQUIRED_SURFACE.requests),
+    ]);
+    const frames = loadMuseServeCapture(name).filter(
+      (frame) =>
+        !dropUnlisted ||
+        frame.dir !== 's2c' ||
+        typeof frame.msg.method !== 'string' ||
+        listed.has(frame.msg.method),
+    );
+    const h = harness();
+    const host = await startServe(h);
+    await replayMuseServeCapture(host, frames, {
+      notDriven: new Set([
+        'turn/interrupt',
+        'approval/decide',
+        'subagent/stop',
+        'turn/steer',
+        'userInput/answer',
+        'userInput/cancel',
+        'subagent/sendMessage',
+        'task/stop',
+        'session/compact',
+        'goal/pause',
+        'goal/clear',
+      ]),
+      onDrivenRequest: (method) =>
+        method === 'turn/start'
+          ? h.adapter.sendTurn({ threadId: THREAD, input: 'go' })
+          : undefined,
+    });
+    await settle();
+    const ids = new Map<string, string>();
+    for (const event of h.events) ids.set(event.eventId, `e${ids.size}`);
+    let text = JSON.stringify(
+      h.events.map(({ createdAt: _createdAt, ...event }) => event),
+    );
+    for (const [id, label] of ids) text = text.split(id).join(label);
+    return text.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'T');
+  }
+
+  for (const name of [
+    'workflow-child-approve',
+    'steer',
+    'user-input',
+    'workflow-child-steer',
+    'background-task-stop',
+    'goal-set-pause',
+    'cost-context',
+  ] as const) {
+    test(`${name}: dropping every host frame the manifest does not name changes nothing the adapter publishes`, async () => {
+      const full = await replayEvents(name, false);
+      expect(JSON.parse(full).length).toBeGreaterThan(2);
+      expect(await replayEvents(name, true)).toBe(full);
+    });
+  }
+});
+
+/**
+ * After every test in this file: each request and notification the adapter
+ * wrote to a host is one the required-surface manifest names, so a host
+ * missing it is refused rather than accepted as compatible.
+ */
+afterAll(() => {
+  // A filtered run that drove no host has nothing to check.
+  if (everyHost.length === 0) return;
+  const sent = sentMethods();
+  // Reached: the suite drove these at least.
+  for (const method of ['initialize', 'initialized', 'turn/start'])
+    expect(sent).toContain(method);
+  const named = new Set([
+    ...Object.keys(MUSE_SERVE_REQUIRED_SURFACE.methods),
+    ...Object.keys(MUSE_SERVE_REQUIRED_SURFACE.notifications),
+  ]);
+  expect([...sent].filter((method) => !named.has(method))).toEqual([]);
 });

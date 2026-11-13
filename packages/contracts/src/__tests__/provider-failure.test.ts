@@ -100,6 +100,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['muse-model-route-unserved', 'warning', false],
     ['muse-sandbox-unavailable', 'warning', false],
     ['muse-serve-host-exited', 'engine_crashed', true],
+    ['muse-serve-schema-unverified-compatible', 'warning', false],
     ['muse-serve-stop-unconfirmed', 'warning', false],
     ['muse-serve-unavailable', 'warning', false],
     ['muse-spawn-failed', 'unavailable', true],
