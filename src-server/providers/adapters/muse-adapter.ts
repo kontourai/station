@@ -9,6 +9,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import {
   EXTERNAL_ENGINE_DURABILITY,
   STEERING_ENGINE_DURABILITY,
@@ -30,7 +31,6 @@ import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
-import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
@@ -134,8 +134,8 @@ import {
   MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
   MUSE_SERVE_INTERRUPT_SETTLE_MS,
   MUSE_SERVE_REQUEST_TIMEOUT_MS,
-  type MuseServeHostPosture,
   MuseSandboxUnavailableError,
+  type MuseServeHostPosture,
   type MuseServeSandboxReport,
   MuseServeSession,
   museSandboxLabel,
@@ -1303,8 +1303,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       readApprovalMode(input.modelOptions) === 'auto'
     ) {
       throw new SessionStartRefusedError(
-        new MuseSandboxUnavailableError(this.sandboxUnavailable.reason)
-          .message,
+        new MuseSandboxUnavailableError(this.sandboxUnavailable.reason).message,
         'sandbox_unavailable',
       );
     }

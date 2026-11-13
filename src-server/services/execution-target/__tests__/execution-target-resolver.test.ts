@@ -916,7 +916,10 @@ describe('resolveExecutionTarget', () => {
       hosts[0]!.writeFrame({
         jsonrpc: '2.0',
         id: setModel.id,
-        error: { code: -32030, message: 'model `muse-nonexistent` is not in the catalog' },
+        error: {
+          code: -32030,
+          message: 'model `muse-nonexistent` is not in the catalog',
+        },
       });
       await expect(refused).rejects.toThrow(/not in the catalog/);
       expect(

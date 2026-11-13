@@ -305,7 +305,10 @@ describe('#2452 muse serve: approval mode', () => {
 
   test('approvalMode and effort are muse model options the dispatcher admits', () => {
     expect(
-      unsupportedModelOptionKeys('muse', { approvalMode: 'ask', effort: 'high' }),
+      unsupportedModelOptionKeys('muse', {
+        approvalMode: 'ask',
+        effort: 'high',
+      }),
     ).toEqual([]);
     expect(unsupportedModelOptionKeys('muse', { serviceTier: 'fast' })).toEqual(
       ['serviceTier'],
@@ -2907,7 +2910,11 @@ async function dispatchTurn(
   turn: { modelOptions?: Record<string, unknown> } = {},
   consumed: Set<SentFrame> = new Set(),
 ): Promise<SentFrame> {
-  const sending = h.adapter.sendTurn({ threadId: THREAD, input: 'go', ...turn });
+  const sending = h.adapter.sendTurn({
+    threadId: THREAD,
+    input: 'go',
+    ...turn,
+  });
   const request = await host.nextRequest('turn/start', consumed);
   consumed.add(request);
   reply(host, request, turnAck(TURN_1418));
@@ -3528,7 +3535,8 @@ describe('Muse parity: the model catalog through a short-lived host (#2266)', ()
 
   test('a host with an unverified schema is not asked for its catalog', async () => {
     const init = liveInitializeResult();
-    (init.schema as Record<string, unknown>).fingerprint = `sha256:${'0'.repeat(64)}`;
+    (init.schema as Record<string, unknown>).fingerprint =
+      `sha256:${'0'.repeat(64)}`;
     const h = harness({ spawnHost: discoveryHost([], init) });
     await expect(h.adapter.listModelCatalog!()).rejects.toThrow(
       /unverified MSP schema/,

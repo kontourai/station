@@ -6,6 +6,7 @@ import type {
   ModelOption,
   ModelOptionCapabilities,
 } from '@kontourai/station-contracts/tool';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { ProviderAdapterModelCatalog } from '../adapter-shape.js';
@@ -285,7 +286,8 @@ export function museQuotaResult(
 export function museQuotaFailure(error: unknown): ConnectionQuotaResult {
   return {
     kind: 'unavailable',
-    reason: error instanceof MuseServeTimeoutError ? 'timeout' : 'provider-error',
-    detail: errorMessage(error).slice(0, 200),
+    reason:
+      error instanceof MuseServeTimeoutError ? 'timeout' : 'provider-error',
+    detail: redactSecrets(errorMessage(error)).slice(0, 200),
   };
 }

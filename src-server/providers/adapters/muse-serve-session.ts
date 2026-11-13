@@ -41,6 +41,7 @@ import {
 import { providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import { museAnswers, museInputRequest } from './harness-questions.js';
+import type { MuseReasoningEffort } from './muse-adapter-types.js';
 import {
   createMuseServeChildWorkState,
   type MuseServeChildWorkContext,
@@ -58,7 +59,6 @@ import {
   type MuseServeSpawnResult,
   MuseServeTimeoutError,
 } from './muse-serve-rpc.js';
-import type { MuseReasoningEffort } from './muse-adapter-types.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
@@ -1398,7 +1398,9 @@ export class MuseServeSession {
         this.routeSessionFrame((turnId) => this.onContextUsage(params, turnId));
         return;
       case 'session/todoListChanged':
-        this.routeSessionFrame((turnId) => this.onTodoListChanged(params, turnId));
+        this.routeSessionFrame((turnId) =>
+          this.onTodoListChanged(params, turnId),
+        );
         return;
       case 'session/modelChanged':
         this.routeSessionFrame((turnId) => this.onModelChanged(params, turnId));
