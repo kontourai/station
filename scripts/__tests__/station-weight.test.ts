@@ -302,7 +302,6 @@ const FIXTURE_BASELINE = {
       sourceRevision: 'r',
       recordedAt: 't',
       values: {
-        serverReadyMs: 5000,
         restMemoryBytes: 1_000_000_000,
         idleSessionsMemoryBytes: 1_500_000_000,
         idleCpuPercent: 0.2,
@@ -316,7 +315,7 @@ type Metric = { status: string; value?: number; unit: string; reason?: string };
 
 /** A completed result shaped as runStationWeight writes it, at the fixture values. */
 function resultAtBaseline(host = HOST) {
-  const metrics: Record<string, Metric> = {};
+  const metrics: Record<string, Metric> = { serverReadyMs: measuredAt(5000) };
   for (const [id, value] of Object.entries({
     ...FIXTURE_BASELINE.request.values,
     ...FIXTURE_BASELINE.hosts[HOST.fingerprint].values,
@@ -346,10 +345,12 @@ describe('station-weight budgets', () => {
   test('a run at its baseline compares every comparable budget and passes', () => {
     const verdicts = evaluateBudgets(resultAtBaseline(), FIXTURE_BASELINE);
     for (const budget of STATION_WEIGHT_BUDGETS)
-      expect(verdictOf(verdicts, budget.id), budget.id).toBe('PASS');
+      expect(verdictOf(verdicts, budget.id), budget.id).toBe(
+        budget.scope === 'report' ? 'REPORTED' : 'PASS',
+      );
     expect(gateOutcome(resultAtBaseline(), verdicts)).toMatchObject({
       passed: true,
-      comparedCount: 9,
+      comparedCount: 8,
     });
   });
 
@@ -407,17 +408,12 @@ describe('station-weight budgets', () => {
     ).toBe('FAIL');
   });
 
-  test('ready time (a median of launches) fails only past +100% of its baseline', () => {
+  test('ready time is reported, never compared, however large', () => {
     const result = resultAtBaseline();
-    const base = FIXTURE_BASELINE.hosts[HOST.fingerprint].values.serverReadyMs;
-    result.metrics.serverReadyMs.value = base * 2;
-    expect(
-      verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), 'serverReadyMs'),
-    ).toBe('PASS');
-    result.metrics.serverReadyMs.value = base * 2 + 1;
-    expect(
-      verdictOf(evaluateBudgets(result, FIXTURE_BASELINE), 'serverReadyMs'),
-    ).toBe('FAIL');
+    result.metrics.serverReadyMs.value = 10 ** 9;
+    const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
+    expect(verdictOf(verdicts, 'serverReadyMs')).toBe('REPORTED');
+    expect(gateOutcome(result, verdicts).passed).toBe(true);
   });
 
   test('host budgets compare only against the same host fingerprint; request budgets compare everywhere', () => {
@@ -425,7 +421,9 @@ describe('station-weight budgets', () => {
     const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
     for (const budget of STATION_WEIGHT_BUDGETS)
       expect(verdictOf(verdicts, budget.id), budget.id).toBe(
-        budget.scope === 'host' ? 'NOT_MEASURED' : 'PASS',
+        { host: 'NOT_MEASURED', request: 'PASS', report: 'REPORTED' }[
+          budget.scope
+        ],
       );
     expect(
       verdicts.find((entry) => entry.id === 'restMemoryBytes'),
@@ -453,7 +451,7 @@ describe('station-weight gate', () => {
     const verdicts = evaluateBudgets(result, undefined);
     expect(
       verdicts.filter((entry) => entry.verdict === 'NOT_MEASURED'),
-    ).toHaveLength(9);
+    ).toHaveLength(8);
     expect(gateOutcome(result, verdicts)).toMatchObject({
       passed: false,
       comparedCount: 0,

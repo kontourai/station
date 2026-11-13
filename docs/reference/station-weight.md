@@ -30,8 +30,8 @@ decomposes what reached it, and the
    `PATH`, and this keeps Station and the control on one executable.
 4. Runs `station build --instance=<name>`, then times
    `station start --instance=<name> --temp-home --force` on free ports clear
-   of 3000 and 3141, three times by default (`--ready-launches`), with a
-   stop and an unmeasured build between launches. `--clean` is not used: it
+   of 3000 and 3141. `--ready-launches=<n>` takes the median of `n`
+   launches, with a stop and an unmeasured build between them. `--clean` is not used: it
    rebuilds, so the timing would mostly measure the build. A start after a
    stop also rebuilds the UI (16–20 s against 5.5 s for the first start),
    hence the build before each relaunch. The build time is reported
@@ -46,7 +46,7 @@ Every turn is answered by the stub (`ok`). No real model is called.
 
 | Metric | How it is measured |
 | --- | --- |
-| `serverReadyMs` | Median over the launches of: launch of `station start` until the UI listener's `/api/system/readiness` answers `status: ready`. That is the route the launcher itself trusts. It confirms the server's boot identity and needs no credential. |
+| `serverReadyMs` | Report only, never compared (see [Ready time](#ready-time)). Median over the launches of: launch of `station start` until the UI listener's `/api/system/readiness` answers `status: ready`. That is the route the launcher itself trusts. It confirms the server's boot identity and needs no credential. |
 | `restMemoryBytes` | Summed memory of the instance's tree with no sessions, once two consecutive samples 5 s apart agree within 5% (after at least 30 s, at most 300 s). |
 | `idleSessionsMemoryBytes` | The same, after three sessions each created by one stub-answered turn. Each Claude session keeps an engine process alive. |
 | `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
@@ -105,7 +105,6 @@ share a host baseline.
 
 | Budget | Headroom |
 | --- | --- |
-| `serverReadyMs` | +100% of a median of three launches (see [Ready time](#ready-time)) |
 | `restMemoryBytes`, `idleSessionsMemoryBytes`, `leftoverAfterStopMemoryBytes` | +25% |
 | `idleCpuPercent` | ×2 plus 1 percentage point |
 | `request.stationAddedTextBytes`, `request.stationAddedToolCount`, `request.stationAddedToolDefinitionBytes` | +10% |
@@ -132,12 +131,16 @@ entry, and keeps every other host.
 
 ### Ready time
 
-Ready time follows host load. Nine launches on one host at load 21–24 took
-3.8–6.3 s each; medians of three consecutive launches took 5.2–6.1 s. A
-reviewer's single launches on the same host ranged 3.6–9.0 s. The budget
-therefore compares a median of three launches with +100% headroom, which
-clears every value observed. One run is still one sample: a sustained load
-shift moves the median too, so compare several runs before claiming a change.
+`serverReadyMs` is reported with every run and never compared or recorded.
+On one shared host, a median of several launches removes per-launch jitter
+but not sustained load. Nine launches in one session (load average 21–24)
+took 3.8–6.3 s each, and medians of three consecutive launches took
+5.2–6.1 s. Twenty minutes later, at load 14–20 with a concurrent build
+slowing the host, three launches took 9.4, 9.8 and 13.5 s, a median of 9.8 s.
+A reviewer's single launches ranged 3.6–9.0 s. A +100% ceiling over a 5.2 s
+median would fail a clean tree at 9.8 s, and one over 9.8 s would pass
+anything under 19.6 s. Neither is a useful gate. Compare `serverReadyMs`
+across several runs on a quiet host before claiming a change in launch time.
 
 ### Output
 

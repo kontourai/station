@@ -6,7 +6,8 @@
  * fails, so a later improvement needs no baseline edit to pass. There are no
  * absolute magnitudes here: every limit comes from a value measured on the
  * same host (`host` scope, keyed by the host fingerprint) or from the
- * host-independent request baseline (`request` scope).
+ * host-independent request baseline (`request` scope). A `report` scope
+ * metric is reported with every run and never compared or recorded.
  *
  * A metric that was not measured, or that has no baseline to compare with,
  * is NOT_MEASURED with a reason. It is never PASS and never counted as zero,
@@ -20,11 +21,12 @@ const BASELINE_SCHEMA_VERSION = 2;
  * metric's own unit, for metrics whose baseline can sit near zero.
  */
 export const STATION_WEIGHT_BUDGETS = Object.freeze([
-  // The median of `readyLaunches` (default 3) launches, each after a fresh
-  // build. Nine launches on one host at load 21-24 ranged 3.8-6.3 s singly
-  // and 5.2-6.1 s as medians of three; the reviewer's worst single launch
-  // was 9.0 s against a 5.07 s baseline. +100% clears all of those.
-  { id: 'serverReadyMs', scope: 'host', ratio: 1, floor: 0 },
+  // Report only: ready time follows host load, not the change under test.
+  // On one host, medians of three launches took 5.2-6.1 s in one session and
+  // 9.8 s twenty minutes later at similar load average; single launches
+  // ranged 3.6-13.5 s. A ceiling either fails clean trees or catches nothing.
+  // See docs/reference/station-weight.md#ready-time.
+  { id: 'serverReadyMs', scope: 'report' },
   { id: 'restMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
   { id: 'idleSessionsMemoryBytes', scope: 'host', ratio: 0.25, floor: 0 },
   // Percentage points: a near-idle tree must not fail on scheduler noise.
@@ -58,6 +60,8 @@ export const STATION_WEIGHT_BUDGETS = Object.freeze([
   { id: 'request.sideCallCount', scope: 'request', ratio: 0, floor: 0 },
 ]);
 
+const compared = (budget) => budget.scope !== 'report';
+
 function baselineValues(baseline, budget, host) {
   if (budget.scope === 'request') return baseline?.request?.values;
   return baseline?.hosts?.[host?.fingerprint]?.values;
@@ -90,6 +94,8 @@ export function evaluateBudgets(result, baseline, { reportOnly = false } = {}) {
       };
     if (!Number.isFinite(metric.value))
       throw new Error(`${budget.id} is measured but has no finite value`);
+    if (!compared(budget))
+      return { id: budget.id, verdict: 'REPORTED', value: metric.value };
     if (reportOnly)
       return { id: budget.id, verdict: 'NOT_COMPARED', value: metric.value };
     const reference = baselineValues(baseline, budget, result.host)?.[
@@ -147,7 +153,7 @@ export function gateOutcome(result, verdicts, { reportOnly = false } = {}) {
     comparedCount,
     summary: reportOnly
       ? `REPORT_ONLY compared nothing: ${verdicts.filter((entry) => entry.verdict === 'NOT_COMPARED').length} budgets measured, 0 compared against a baseline`
-      : `compared ${comparedCount} of ${verdicts.length} budgets`,
+      : `compared ${comparedCount} of ${verdicts.filter((entry) => entry.verdict !== 'REPORTED').length} budgets`,
   };
 }
 
@@ -168,9 +174,9 @@ export function recordBaseline(result, previous) {
     throw new Error('refusing to record a baseline from a dirty tree');
   if (!result.host?.fingerprint || !result.host?.label)
     throw new Error('refusing to record a baseline without a host fingerprint');
-  const missing = STATION_WEIGHT_BUDGETS.filter(
-    (budget) => result.metrics?.[budget.id]?.status !== 'measured',
-  ).map((budget) => budget.id);
+  const missing = STATION_WEIGHT_BUDGETS.filter(compared)
+    .filter((budget) => result.metrics?.[budget.id]?.status !== 'measured')
+    .map((budget) => budget.id);
   if (missing.length)
     throw new Error(
       `refusing to record an incomplete baseline; not measured: ${missing.join(', ')}`,
@@ -208,7 +214,7 @@ export function formatVerdicts(verdicts) {
     const detail =
       entry.verdict === 'NOT_MEASURED'
         ? entry.reason
-        : entry.verdict === 'NOT_COMPARED'
+        : ['REPORTED', 'NOT_COMPARED'].includes(entry.verdict)
           ? `value=${round(entry.value)}`
           : `value=${round(entry.value)} baseline=${round(entry.baseline)} limit=${round(entry.limit)}`;
     return `[station-weight] ${entry.verdict} ${entry.id} ${detail}`;

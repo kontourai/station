@@ -112,6 +112,8 @@ describe.skipIf(!posix)('station-weight end to end', () => {
           expect(entry, JSON.stringify(entry)).toMatchObject({
             verdict: 'PASS',
           });
+        else if (budget.scope === 'report')
+          expect(entry).toMatchObject({ verdict: 'REPORTED' });
         else if (!hostBaseline)
           expect(entry).toMatchObject({
             verdict: 'NOT_MEASURED',

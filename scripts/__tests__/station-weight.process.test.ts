@@ -319,7 +319,6 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
     'request.sideCallCount': 0,
   };
   const HOST_VALUES = {
-    serverReadyMs: 5000,
     restMemoryBytes: 1_000_000_000,
     idleSessionsMemoryBytes: 1_500_000_000,
     idleCpuPercent: 0.2,
@@ -345,10 +344,9 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
     startedAt: '2026-01-01T00:00:00.000Z',
     host: HOST,
     metrics: Object.fromEntries(
-      Object.entries({ ...REQUEST, ...HOST_VALUES }).map(([id, value]) => [
-        id,
-        metric(value),
-      ]),
+      Object.entries({ serverReadyMs: 5000, ...REQUEST, ...HOST_VALUES }).map(
+        ([id, value]) => [id, metric(value)],
+      ),
     ) as Record<string, unknown>,
   });
 
@@ -394,7 +392,7 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
   test('a missing baseline file leaves every budget uncompared and exits non-zero', () => {
     const run = gate(complete(), '--no-baseline');
     expect(run.stdout).toContain('no baseline file');
-    expect(run.stdout.match(/NOT_MEASURED/g)).toHaveLength(9);
+    expect(run.stdout.match(/NOT_MEASURED/g)).toHaveLength(8);
     expect(run.status).toBe(1);
   });
 
@@ -404,7 +402,7 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
       host: { ...HOST, fingerprint: 'ffffffffffffffff' },
     });
     expect(run.stdout).toContain(
-      'not compared: serverReadyMs, restMemoryBytes, idleSessionsMemoryBytes, idleCpuPercent, leftoverAfterStopMemoryBytes',
+      'not compared: restMemoryBytes, idleSessionsMemoryBytes, idleCpuPercent, leftoverAfterStopMemoryBytes',
     );
     expect(run.status).toBe(1);
   });

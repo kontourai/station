@@ -1034,7 +1034,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   idleSessions: 3,
   stopGraceMs: 5_000,
   sideCallWindowMs: 5_000,
-  readyLaunches: 3,
+  readyLaunches: 1,
 });
 
 /**
@@ -1176,8 +1176,9 @@ export async function runStationWeight({
       note: 'reported only; not a budget',
     });
 
-    // Ready time is the median of `readyLaunches` launches; every launch but
-    // the last is stopped again, and the last one is the instance measured.
+    // Ready time is the median of `readyLaunches` launches (one by default;
+    // the metric is report-only); every launch but the last is stopped
+    // again, and the last one is the instance measured.
     // A start after a stop rebuilds the UI (measured: 16-20 s against 5.5 s
     // for the first start), so each relaunch is preceded by an unmeasured
     // build and times the same thing as the first.
