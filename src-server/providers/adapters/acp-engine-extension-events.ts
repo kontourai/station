@@ -40,6 +40,11 @@ import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
+import {
+  type AcpChildWorkState,
+  publishAcpAgentSubtask,
+  publishAcpSubagentRoster,
+} from './acp-child-work.js';
 
 /** What a reader needs from the mapper context; a subset of `AcpMapperContext`. */
 export interface EngineExtensionContext {
@@ -57,7 +62,7 @@ export interface EngineExtensionContext {
  * Adapter-owned session state the readers keep. Structurally part of
  * `AcpMapperState`, so the adapter's live session record is the store.
  */
-export interface EngineExtensionState {
+export interface EngineExtensionState extends AcpChildWorkState {
   /**
    * The last turn-scoped cost published per engine turn id. A frame the
    * engine repeats (a replay, a duplicate) reports the same whole-turn
@@ -356,6 +361,14 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
       scope: update.promoted === true && toModel ? 'session' : 'turn',
     });
   },
+  // --- child-work
+  'kiro-v2.subagent-list-update': (params, ctx) =>
+    publishAcpSubagentRoster(params, ctx),
+  // The payload is the whole `tool_call` / `tool_call_update`.
+  'kiro-v3.tool.agent-subtask': (update, ctx) => {
+    const meta = isRecord(update._meta) ? update._meta.kiro : undefined;
+    if (isRecord(meta)) publishAcpAgentSubtask(update, meta, ctx);
+  },
   // --- engine-mcp.status
   'kiro-v3.mcp-status': (params, ctx) => {
     if (!Array.isArray(params.servers)) return;
@@ -495,6 +508,37 @@ export function mapEngineSessionInfo(
     // the engine's prompt ids; nothing is published for this frame.
     if (row.consumer === 'session.message-id') continue;
     runReader(row, meta, ctx);
+  }
+}
+
+/** Every `_meta` namespace a tool-call row names, from the table itself. */
+const TOOL_CALL_META_NAMESPACES: readonly string[] = [
+  ...new Set(
+    ENGINE_EXTENSION_BINDINGS.flatMap(({ wire }) =>
+      wire.kind === 'tool-call-meta-kind' ? [wire.namespace] : [],
+    ),
+  ),
+];
+
+/**
+ * A core `tool_call` / `tool_call_update` whose vendor `_meta.<namespace>.kind`
+ * a table row binds: that row's reader gets the whole update. Ordinary tool
+ * calls carry no bound kind and are untouched; the tool call itself is still
+ * mapped as one by the caller.
+ */
+export function mapEngineToolCallMeta(
+  update: { _meta?: Record<string, unknown> | null },
+  ctx: EngineExtensionContext,
+): void {
+  for (const namespace of TOOL_CALL_META_NAMESPACES) {
+    const meta = update._meta?.[namespace];
+    if (!isRecord(meta) || typeof meta.kind !== 'string') continue;
+    const row = engineExtensionBinding({
+      kind: 'tool-call-meta-kind',
+      namespace,
+      metaKind: meta.kind,
+    });
+    if (row) runReader(row, update as Record<string, unknown>, ctx);
   }
 }
 

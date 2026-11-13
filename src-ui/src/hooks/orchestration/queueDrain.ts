@@ -183,6 +183,12 @@ const DRAIN_DURABILITY_TIMEOUT_MS = 3_000;
 /** #2324 review L2: bounded re-drains for a send refused by a provider turn. */
 const PROVIDER_TURN_REDRAIN_DELAY_MS = 1_000;
 const PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS = 10;
+/**
+ * `provider_turn_in_progress` also answers a send made while the engine
+ * rewinds the conversation, which may wait up to 30 s on the engine: the
+ * drain keeps trying a little longer than that before it asks for a retry.
+ */
+const BUSY_CONVERSATION_REDRAIN_MAX_ATTEMPTS = 35;
 const providerTurnRedrainAttempts = new Map<string, number>();
 const providerTurnRedrainTimers = new Map<
   string,
@@ -208,7 +214,11 @@ function scheduleProviderTurnRedrain(
     providerTurnRedrainAttempts.get(
       JSON.stringify([station?.runtimeKey, threadId]),
     ) ?? 0;
-  if (attempts >= PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS) {
+  const maxAttempts =
+    code === PROVIDER_TURN_IN_PROGRESS_CODE
+      ? BUSY_CONVERSATION_REDRAIN_MAX_ATTEMPTS
+      : PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS;
+  if (attempts >= maxAttempts) {
     providerTurnRedrainAttempts.delete(
       JSON.stringify([station?.runtimeKey, threadId]),
     );
@@ -223,7 +233,7 @@ function scheduleProviderTurnRedrain(
               ? 'The session is still starting. Your message is still queued; retry to send it.'
               : code === CLIENT_TURN_IN_FLIGHT_CODE
                 ? 'An earlier attempt of this message has not finished. It is still queued; retry to send it.'
-                : 'The agent is still replying. Your message is still queued; retry to send it.',
+                : 'The conversation is still busy. Your message is still queued; retry to send it.',
           code,
           at: Date.now(),
         },

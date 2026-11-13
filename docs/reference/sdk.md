@@ -612,6 +612,16 @@ caps omit its start event. An explicit `null` clears activity; only older
 responses without the field fall back to their loaded events. A missing tool
 report remains absent.
 
+`useSessionLiveContinuityQuery(threadId, apiBase?, config?)` reads what a
+live Session's engine declared it can do natively (`SessionLiveContinuity`:
+`live`, `rewind`, `fork`); a host without the read answers nothing offered.
+`useRewindSessionToTurnMutation(apiBase?, requestScope?)` and
+`rewindOrchestrationSessionToTurn({ threadId, turnId })` rewind that engine's
+context in place to before a turn and answer the typed
+`SessionRewindOutcome`; a host without the route answers `refused`
+`unsupported`. See the
+[session API](session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind).
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane

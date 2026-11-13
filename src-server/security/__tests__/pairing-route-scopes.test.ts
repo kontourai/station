@@ -508,6 +508,24 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
         '/api/orchestration',
         true,
       ],
+      // A Session's live continuity, and the person's in-place rewind of its
+      // engine context.
+      [
+        'GET',
+        '/api/orchestration/sessions/:threadId/continuity',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/rewind',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
       // An agent's wake-up and proposal leaves, and the person's own.
       [
         'POST',

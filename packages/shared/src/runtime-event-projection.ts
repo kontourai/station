@@ -31,6 +31,8 @@ import {
   EXTENSION_TRANSCRIPT_MARKER_TEXT,
   extensionTranscriptMarker,
   modelReroutedMarkerText,
+  sessionRewoundLateMarker,
+  sessionRewoundMarker,
 } from './extension-transcript-markers.js';
 import {
   inputRequestFromRequestEvent,
@@ -459,6 +461,16 @@ export function projectRuntimeEventsToMessages(
   /** The open turn's last pre-steer row, owner of last resort. */
   let preSteerRowIndex: number | undefined;
   const revokedAnswerTurns = new Set<string>();
+  // Turns an in-place engine rewind hid from the engine. The transcript is
+  // append-only: their rows stay, marked `rewound`.
+  const rewoundTurns = new Set<string>();
+  for (const ev of events) {
+    if (ev.method !== 'runtime.warning') continue;
+    for (const turnId of sessionRewoundMarker(ev)?.hiddenTurnIds ?? []) {
+      const key = turnKey(ev.threadId, turnId);
+      if (key) rewoundTurns.add(key);
+    }
+  }
   // station#1182: `turnReportedModel` is per-turn (set from turn.started/
   // turn.completed metadata); `sessionReportedModel` is the last value seen
   // on a session.configured event, carried forward as a fallback across
@@ -1615,6 +1627,16 @@ export function projectRuntimeEventsToMessages(
         // turn it happened in.
         holdOrPushMarker(ev, modelReroutedMarkerText(ev));
         break;
+      case 'runtime.warning': {
+        // An in-place engine rewind: a marker where it happened. The turns it
+        // hid stay in the transcript, marked `rewound` below.
+        const rewound = sessionRewoundMarker(ev);
+        if (rewound) holdOrPushMarker(ev, rewound.text);
+        // A late one names no turns it hid; its marker is all there is.
+        const late = sessionRewoundLateMarker(ev);
+        if (late) holdOrPushMarker(ev, late);
+        break;
+      }
       case 'session.exited':
         // The turn row itself is unchanged (it is still emitted as it
         // stands at the end); only its held markers are now owed a place.
@@ -1687,7 +1709,17 @@ export function projectRuntimeEventsToMessages(
     }
     emitAssistantTurn(openTurnSessionExited);
   }
-  return messages.map((message) => {
+  return messages.map((projected) => {
+    const message =
+      projected.metadata?.turnId &&
+      rewoundTurns.has(
+        turnKey(projected.metadata.sessionId, projected.metadata.turnId) ?? '',
+      )
+        ? {
+            ...projected,
+            metadata: { ...projected.metadata, rewound: true as const },
+          }
+        : projected;
     if (
       message.role !== 'assistant' ||
       !message.metadata?.turnId ||

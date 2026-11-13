@@ -579,9 +579,29 @@ How the events behave:
   title-suggestion event, its turns start on its own `session/prompt`
   (an engine-started turn needs the adapter to own provider-triggered
   turns), and there is no engine-policy or engine-loaded-context surface yet.
-- **Subagents.** Not mapped yet. The ACP capability-matrix subagent cell is
-  `none`, and orchestration keeps a `none` engine's child work out of the
-  session; `_kiro.dev/subagent/list_update` stays host chrome.
+- **Subagents.** ACP has no subagent concept, so the ACP capability-matrix
+  subagent cell is declared (`lifecycle`) and observed per connection
+  ([acp-child-work.ts](../../src-server/providers/adapters/acp-child-work.ts)).
+  On an engine whose handshake identifies a reporter, its frames become
+  `child-work.updated`: kiro-cli's `_kiro.dev/subagent/list_update` roster
+  (`subagents[{sessionId, sessionName, agentName, initialQuery, status:
+  {type}}]`; each terminal entry is settled and the running ones are the
+  authoritative running set) and the agent service's `tool_call` /
+  `tool_call_update` whose `_meta.kiro.kind` is `agent-subtask` (named by
+  `agentSubtaskId`; the call is still shown as a tool call). Each wire is read
+  only on a session whose handshake identifies that reporter (kiro-cli's
+  `agentInfo.name` for the roster, the `kiro` capability namespace for
+  `agent-subtask`). Any other ACP engine's session publishes `not-reported` at
+  start, and the same frames from it are ignored, so a surface never reads
+  its silence as nothing running. A roster restating a finished child settles
+  it once. A roster with more than 64 running children
+  (`CHILD_WORK_ITEMS_MAX_PER_REPORTER`) publishes no running set, since a cut
+  one would mark the rest ended; an `agent-subtask` past 64 running is not
+  tracked. Each is logged through the adapter's logger once per session while
+  it stays over the bound. No ACP subagent can be stopped on its own.
+  The roster's opaque `extension.notification` stays host chrome. Neither wire
+  has a live capture (kirocrew's live captures omit the roster because it names
+  the host's agents); the shapes are kirocrew's test vectors.
 
 Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 
@@ -642,36 +662,63 @@ logged `shellType.resolved source: client`.
 Each action is keyed on the live session's own `initialize` answer
 ([acp-session-actions.ts](../../src-server/providers/adapters/acp-session-actions.ts)).
 The ACP adapter's `metadata.continuity` stays `none` because most ACP engines
-declare neither action. `sessionContinuity(threadId)` reports a session's
-own continuity.
+declare neither rewind nor fork. `sessionContinuity(threadId)` reports a live
+session's own continuity, which
+`GET /api/orchestration/sessions/:threadId/continuity` serves
+([session API](../reference/session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind)).
 
-Only the MCP reconnect has a Station caller today (the generic route above).
-Rewind, fork, delete and steer retract are adapter methods with no caller:
-no other engine rewinds or forks natively (Claude and Codex declare both
-`none`; conversation fork is a Station replay seed for every engine),
-deleting a runtime conversation's history is refused rather than routed to
-its engine, and no surface withdraws a steer the engine already holds.
-Each needs a generic Station surface before anything can call it.
-
-- **Rewind** (`rewindSession(threadId, toTurnId)`) needs `_meta.kiro.checkpoints`.
-  It sends `_kiro/checkpoint/revertMultiple { sessionId, messageId }`, where
-  `messageId` is the prompt id of the turn after `toTurnId`. The engine
-  reported that id as `user_message_id_assigned`. A steer that cancels and
-  re-prompts gets a second id in the same turn; the rewind uses the turn's
-  first (its own prompt), the fork its last. The adapter keeps these ids for
-  the last 500 turns (`ACP_TURN_MESSAGES_MAX`). It hides that turn and
-  every later one from the model, and restores files the engine's write
-  tools changed. A rewind is refused while a turn runs, and for a turn whose
-  prompt id this engine process did not report. The transcript keeps every
-  turn. A `runtime.warning` (`code: acp.session-rewound`,
-  `ACP_SESSION_REWOUND_CODE`) records the rewind, with `hiddenTurnIds`; the
-  chat shows it as a transcript notice, not a toast.
+- **Rewind** (`rewindSession(threadId, turnId)`) is the generic "Rewind
+  conversation to here" on a past user turn, offered only while the live
+  session declares `rewind: 'in-place'`. On ACP that needs
+  `_meta.kiro.checkpoints`. It sends `_kiro/checkpoint/revertMultiple
+  { sessionId, messageId }`, where `messageId` is the prompt id the engine
+  reported for that turn as `user_message_id_assigned`. A steer that cancels
+  and re-prompts gets a second id in the same turn; the rewind uses the turn's
+  first (its own prompt), a fork its last. The adapter keeps these ids for the
+  last 500 turns (`ACP_TURN_MESSAGES_MAX`). The engine hides that turn and
+  every later one from the model, and restores files its write tools changed
+  in them; it reports them as `affectedFiles`, and the outcome and marker say
+  how many. A rewind is refused, with nothing sent, while a turn runs
+  (`turn-running`), for a turn whose prompt id this engine process did not
+  report or an earlier rewind already hid (`unknown-turn`), on an engine that
+  declared none (`unsupported`), and on a session no process holds
+  (`not-live`). While the engine answers, the session starts no turn: a send
+  is refused retryably with `provider_turn_in_progress` ("Station is
+  rewinding this conversation; send again when it finishes."), which the
+  inbox holds and resends, and a second rewind is refused `rewind-pending`.
+  A rewind is refused `send-preparing` while a send is still preparing its
+  turn (a mode or effort change, or an approval relaunch of the engine
+  process). The wait is bounded at 30 seconds: an engine that has not
+  answered by then gets `failed` ("did not answer the rewind in time"), no
+  turn is marked rewound yet, and sends are accepted again. The request stays
+  open, and other rewinds are refused `rewind-pending` until it settles or
+  for at most 5 more minutes. If the engine then applies it, no turn has
+  started since, and those 5 minutes have not passed, it is recorded as if on
+  time (the turns are marked rewound). Otherwise the transcript cannot say
+  which turns the engine now hides: a `runtime.warning`
+  (`acp.session-rewound-late`, `ACP_SESSION_REWOUND_LATE_CODE`) is drawn as
+  its own marker row ("Rewound late") and nothing is marked. The same warning
+  says the engine may have applied the rewind when its process ends (an exit
+  or a relaunch) with the request unanswered. A late refusal or error is
+  logged, and so is the 5-minute give-up. Held follow-ups are looked at again
+  as soon as the rewind ends, whatever its outcome. The marker names only turns whose prompt id the engine
+  reported; a later turn with none (an engine that skipped the report) is
+  still hidden by the engine but is not marked rewound in the transcript.
+  The transcript keeps every turn. A `runtime.warning`
+  (`code: acp.session-rewound`, `ACP_SESSION_REWOUND_CODE`, details
+  `beforeTurnId`, `hiddenTurnIds`, `affectedFileCount`) records the rewind;
+  the transcript draws it as a marker row and shows each hidden turn dimmed
+  with a Rewound badge, never as a toast. Checkpoint restore stays the
+  file-level action; the two are separate.
 - **Fork** (`forkSession(threadId, atTurnId)`) needs
   `sessionCapabilities.fork._meta.kiro.messageId`. It sends core
   `session/fork` with `_meta.kiro.messageId`, and the fork keeps that turn
-  whole. It returns the new session as a resume cursor.
-- **Delete**: `discardSession` sends core `session/delete` when the session
-  declared `sessionCapabilities.delete`, then stops the session.
+  whole. It returns the new session as a resume cursor. Nothing calls it yet:
+  conversation fork is a Station replay seed for every engine. Binding a fork
+  to the engine's forked session needs the native-fork effect protocol in the
+  event store (`reserveNativeForkEffect`, still `activation: 'unwired'`),
+  which seals the source by native identity and resume binding; the ACP
+  adapter reports neither yet.
 - **Reconnect an MCP server** (`reconnectMcpServer(threadId, name, { startOAuth })`)
   sends `_kiro/mcp/resetServer` on a session whose handshake has the `kiro`
   namespace. Kiro does not list the method, so it is a vendor-attributed
@@ -680,7 +727,14 @@ Each needs a generic Station surface before anything can call it.
 - **Steer retract** (`retractPendingSteers`) sends `_session/steer/clear`.
   Only kiro-cli's own engine gets it: its drop report names exactly the
   unread steers. The agent service's report also names steers the turn
-  already read.
+  already read. Nothing calls it yet: the clear drops every unread steer on
+  the session, whoever sent it, while the inbox withdraws only its own
+  sender's entry, and an already-sent steer has no inbox row to withdraw.
+- **Delete**: the adapter does not delete the engine's stored session.
+  Station refuses deleting a runtime conversation, and the only caller of an
+  adapter's `discardSession` is attached-session adoption, which ACP does not
+  support, so ACP has no `discardSession`. The connection probe still deletes
+  its own probe session where `session/delete` is declared.
 
 ### Session agent on the agent service
 

@@ -14,6 +14,10 @@ import {
   COOPERATIVE_STOP_BUDGET_MS,
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
+import type {
+  SessionLiveContinuity,
+  SessionRewindOutcome,
+} from '@kontourai/station-contracts/provider';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useContext } from 'react';
@@ -69,6 +73,10 @@ import {
   hasRecordedTurnFailure,
   rememberSentTurnKey,
 } from '../client/sent-turn-key';
+import {
+  getSessionLiveContinuity,
+  rewindSessionToTurn as rewindSessionToTurnClient,
+} from '../client/session-rewind';
 import { isStationAnswer } from '../client/station-envelope';
 import {
   type ConnectionReadTarget,
@@ -605,6 +613,78 @@ export function useReconnectEngineMcpServerMutation(apiBase?: string) {
   return useMutation({
     mutationFn: (input: ReconnectEngineMcpServerInput) =>
       reconnectOrchestrationEngineMcpServer({ ...input, apiBase }),
+  });
+}
+
+/**
+ * What a Session's live engine declared it can do natively (`live: false`
+ * when nothing holds it). A host without the read answers nothing offered.
+ */
+export function useSessionLiveContinuityQuery(
+  threadId: string | undefined,
+  apiBase?: string,
+  config?: QueryConfig<SessionLiveContinuity>,
+) {
+  const target = captureConnectionReadTarget(config?.readTarget);
+  apiBase = target?.targetApiBase ?? apiBase;
+  return useApiQuery(
+    [
+      'orchestration-session-continuity',
+      ...(target
+        ? [target.requestScope.authorityKey, target.runtimeKey ?? '']
+        : []),
+      apiBase ?? 'default',
+      threadId ?? '',
+    ],
+    async (signal) =>
+      getSessionLiveContinuity(await resolveApiBase(apiBase), threadId ?? '', {
+        signal,
+        requestScope: target?.requestScope,
+      }),
+    {
+      enabled: Boolean(threadId) && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 30_000,
+      gcTime: config?.gcTime,
+      refetchOnMount: config?.refetchOnMount,
+      refetchInterval: config?.refetchInterval,
+      retry: config?.retry ?? false,
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
+}
+
+export interface RewindSessionToTurnInput {
+  threadId: string;
+  /** The turn to rewind to before; it and every later turn are hidden. */
+  turnId: string;
+}
+
+/**
+ * Rewind a Session's engine context in place to before one turn. Answers the
+ * typed `SessionRewindOutcome`; a host without the route answers
+ * `unsupported`.
+ */
+export async function rewindOrchestrationSessionToTurn(
+  input: RewindSessionToTurnInput & {
+    apiBase?: string;
+    requestScope?: ApiRequestScope;
+  },
+): Promise<SessionRewindOutcome> {
+  return rewindSessionToTurnClient(
+    await resolveApiBase(input.apiBase),
+    input.threadId,
+    input.turnId,
+    input.requestScope ? { requestScope: input.requestScope } : undefined,
+  );
+}
+
+export function useRewindSessionToTurnMutation(
+  apiBase?: string,
+  requestScope?: ApiRequestScope,
+) {
+  return useMutation({
+    mutationFn: (input: RewindSessionToTurnInput) =>
+      rewindOrchestrationSessionToTurn({ ...input, apiBase, requestScope }),
   });
 }
 

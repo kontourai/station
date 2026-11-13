@@ -193,8 +193,8 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
   // engine-extension rows below, which the ACP mapper turns into canonical
   // events.
   {
-    // Its engine row (consumer `child-work`) waits on the ACP subagent cell:
-    // see `ENGINE_EXTENSION_CONSUMERS['child-work']`.
+    // Its engine row (consumer `child-work`, `acp-child-work.ts`) publishes
+    // the roster as child work; the opaque envelope itself stays chrome.
     namespace: '_kiro.dev',
     type: 'subagent/list_update',
     consumer: 'acp.host-chrome',
@@ -418,11 +418,9 @@ export const ENGINE_EXTENSION_CONSUMERS: Readonly<
     lane: 'events-ui',
     implemented: false,
   }),
-  // Not yet: the ACP capability-matrix cell for subagents is `none`, and
-  // orchestration keeps a `none` engine's child work out of the session.
-  // Declaring it needs a per-session "not reported" for ACP engines that do
-  // not send these frames, which the adapter's handshake knows.
-  'child-work': Object.freeze({ lane: 'events-ui', implemented: false }),
+  // `acp-child-work.ts`: the ACP subagent cell is declared, and an engine
+  // whose handshake names no subagent reporter says `not-reported` at start.
+  'child-work': Object.freeze({ lane: 'events-ui', implemented: true }),
   'engine.policy-state': Object.freeze({
     lane: 'events-ui',
     implemented: false,

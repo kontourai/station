@@ -889,6 +889,14 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+/* A turn an in-place engine rewind hid from the engine: kept, dimmed. */
+.message.message--rewound {
+  opacity: 0.55;
+}
+.message__rewound-badge {
+  display: flex;
+  margin-bottom: var(--k-space-1);
+}
 .message__station-glyph {
   width: 14px;
   height: 14px;
