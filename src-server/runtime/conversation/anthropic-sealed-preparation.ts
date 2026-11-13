@@ -33,11 +33,11 @@ const INPUT_SOURCES = [
 const SDK = [
   [
     'dist/index.mjs',
-    '248978f3623a1090a62797a3292c842dc4730b65d91bbb0fa7418782fb184cea',
+    '81e24dc30f6c652bf12c9aaae2d082a956020f43bd2dfde82213e56371e3d530',
   ],
   [
     'package.json',
-    '619d989dbc8529a4f19a31a7d3371383c62860981be289d5af6e746dcb587dc6',
+    'c7a50c86f1189a55186b91e3047c0e40688377b63725e402e72b87e0028ed096',
   ],
 ] as const;
 const SOURCES = [
@@ -208,15 +208,15 @@ export class AnthropicSealedPreparation {
       sourceRevision: source.source.source_admission_receipt.digest,
       optionsSha256: boundedApiWireOptionsSha256('anthropic', wire),
       sdkPackage: '@ai-sdk/anthropic',
-      sdkVersion: '3.0.138',
+      sdkVersion: '3.0.142',
     };
     const id = `anthropic-${inputTool ? 'input' : 'text'}:${sha(canonicalJson(binding))}`;
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://platform.claude.com/docs/en/about-claude/pricing',
       revision: inputTool
-        ? 'sonnet46-input-20261031-sdk30138'
-        : 'sonnet46-text-20261031-sdk30138',
+        ? 'sonnet46-input-20261031-sdk30142'
+        : 'sonnet46-text-20261031-sdk30142',
       sourceSha256s: inputTool ? [...SOURCES, ...INPUT_SOURCES] : SOURCES,
       validFromMs: inputTool ? INPUT_VALID_FROM : VALID_FROM,
       expiresAtMs: EXPIRES,
