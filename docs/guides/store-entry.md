@@ -61,9 +61,11 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
 Before starting a release train, query current GitHub releases/tags and compare
 them with `package.json`; never choose the next version from examples in a
 guide. The train must use a new `MAJOR.MINOR.PATCH` base. Preflight requires
-both `vMAJOR.MINOR.PATCH-preview.N` and `vMAJOR.MINOR.PATCH` tags to match that
-same base version. Preview numbering belongs to the tag/build overlay, so an
-accepted preview commit can be promoted to Stable without a source edit.
+both release-candidate `vMAJOR.MINOR.PATCH-rc.N` and final `vMAJOR.MINOR.PATCH`
+tags to match that same base version. Both build the Stable app at that bare
+base version; the candidate number only selects the store build slot, so an
+accepted candidate needs no source edit
+([#4929](https://github.com/kontourai/station/issues/4929)).
 
 ## 1. Apple (one-time)
 
@@ -178,8 +180,8 @@ tag that gets past Android signing):
 2. Add testers.
 3. Later tags use the keyless GitHub OIDC service account.
 
-Stable tags call the Stable delivery lane; preview tags call the Beta lane;
-the scheduled Nightly uses the same reserved day/index build number as its
+Release-candidate and final tags call the Stable delivery lane (Beta `-preview`
+tags are retired); the scheduled Nightly uses the same reserved day/index build number as its
 Android build. Every lane first reconciles the exact App Store build number:
 an absent build uploads once, PROCESSING is polled, VALID is receipted without
 a duplicate upload, and any other or ambiguous state fails closed. Receipts

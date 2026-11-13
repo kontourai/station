@@ -11,7 +11,6 @@ import {
   nativeIdentifierForChannel,
   nativeProductNameForChannel,
   nativeReleaseChannel,
-  nativeVersionFromTag,
   repositoryVersionForTag,
   taggedStoreIdentity,
   updaterPluginConfig,
@@ -21,20 +20,28 @@ import { createNightlyDesktopConfig } from '../lib/nightly-build-identity.mjs';
 describe('native release configuration', () => {
   test.each([
     ['v1.2.3', '1.2.3'],
-    ['v1.2.3-preview.4', '1.2.3-preview.4'],
+    ['v1.2.3-rc.4', '1.2.3'],
     ['v0.0.0', '0.0.0'],
   ])('binds %s to the package version %s', (tag, version) => {
-    expect(nativeVersionFromTag(tag)).toBe(version);
+    expect(repositoryVersionForTag(tag)).toBe(version);
   });
 
-  test.each(['1.2.3', 'v01.2.3', 'v1.2', 'v1.2.3-preview.0'])(
-    'rejects malformed tag %s',
-    (tag) => {
-      expect(() => nativeVersionFromTag(tag)).toThrow(
-        'Invalid native release configuration',
-      );
-    },
-  );
+  test.each([
+    '1.2.3',
+    'v01.2.3',
+    'v1.2',
+    'v1.2.3-rc.0',
+    'v1.2.3-rc.01',
+    'v1.2.3-preview.1',
+    'v1.2.3-beta.1',
+  ])('rejects malformed or retired tag %s', (tag) => {
+    expect(() => repositoryVersionForTag(tag)).toThrow(
+      'Invalid native release configuration',
+    );
+    expect(() => taggedStoreIdentity(tag)).toThrow(
+      'Invalid native release configuration',
+    );
+  });
 
   test('creates a version-only mobile overlay with store build numbers', () => {
     expect(createNativeReleaseConfig({ tag: 'v2.3.4' })).toEqual({
@@ -47,52 +54,76 @@ describe('native release configuration', () => {
     });
   });
 
-  test('derives beta package identity only for desktop and Android overlays', () => {
-    expect(nativeReleaseChannel('v2.3.4-preview.5')).toBe('beta');
-    expect(nativeReleaseChannel('v2.3.4')).toBe('stable');
-    expect(nativeIdentifierForChannel('beta')).toBe(
-      'io.kontourai.station.beta',
+  // #4929: a release candidate is the Stable app with the bare base version,
+  // so its exact bytes can later be promoted unchanged.
+  test('builds v0.2.0-rc.3 as the Stable app at version 0.2.0 in store slot 3', () => {
+    expect(taggedStoreIdentity('v0.2.0-rc.3')).toEqual({
+      releaseKind: 'rc',
+      marketingVersion: '0.2.0',
+      versionCode: 20_003,
+      bundleVersion: '20003',
+    });
+    expect(nativeReleaseChannel('v0.2.0-rc.3')).toBe('stable');
+    expect(desktopUpdaterTagForReleaseTag('v0.2.0-rc.3')).toBe(
+      'stable-desktop',
     );
-    expect(nativeProductNameForChannel('stable')).toBe('Station');
-    expect(nativeProductNameForChannel('beta')).toBe('Station Beta');
     expect(
-      createNativeReleaseConfig({
-        tag: 'v2.3.4-preview.5',
-        channelIdentity: true,
-      }),
-    ).toMatchObject({
-      identifier: 'io.kontourai.station.beta',
-      productName: 'Station Beta',
+      createNativeReleaseConfig({ tag: 'v0.2.0-rc.3', channelIdentity: true }),
+    ).toEqual({
+      version: '0.2.0',
+      identifier: 'io.kontourai.station',
+      productName: 'Station',
+      bundle: {
+        android: { versionCode: 20_003 },
+        iOS: { bundleVersion: '20003' },
+        macOS: { bundleVersion: '20003' },
+      },
+    });
+  });
+
+  test('reserves store slot 99 for the final v0.2.0 tag', () => {
+    expect(taggedStoreIdentity('v0.2.0')).toEqual({
+      releaseKind: 'final',
+      marketingVersion: '0.2.0',
+      versionCode: 20_099,
+      bundleVersion: '20099',
     });
     expect(
-      createNativeReleaseConfig({ tag: 'v2.3.4-preview.5' }),
+      createNativeReleaseConfig({ tag: 'v0.2.0', channelIdentity: true }),
+    ).toMatchObject({
+      version: '0.2.0',
+      identifier: 'io.kontourai.station',
+      productName: 'Station',
+    });
+  });
+
+  test('has no Beta identity to select', () => {
+    expect(nativeIdentifierForChannel('stable')).toBe('io.kontourai.station');
+    expect(nativeProductNameForChannel('stable')).toBe('Station');
+    expect(() => nativeIdentifierForChannel('beta')).toThrow(
+      'unsupported native release channel',
+    );
+    expect(() => nativeProductNameForChannel('beta')).toThrow(
+      'unsupported native release channel',
+    );
+    expect(
+      createNativeReleaseConfig({ tag: 'v2.3.4-rc.5' }),
     ).not.toHaveProperty('identifier');
   });
 
-  test('maps release tags to the rolling desktop channel once', () => {
-    expect(desktopUpdaterTagForReleaseTag('v2.3.4-preview.5')).toBe(
-      'beta-desktop',
+  test('maps every release tag to the Stable rolling desktop channel', () => {
+    expect(desktopUpdaterTagForReleaseTag('v2.3.4-rc.5')).toBe(
+      'stable-desktop',
     );
     expect(desktopUpdaterTagForReleaseTag('v2.3.4')).toBe('stable-desktop');
   });
 
-  test('keeps Preview marketing SemVer while assigning its macOS numeric build number', () => {
-    expect(
-      createNativeReleaseConfig({
-        tag: 'v2.3.4-preview.5',
-        channelIdentity: true,
-      }),
-    ).toMatchObject({
-      version: '2.3.4-preview.5',
-      bundle: { macOS: { bundleVersion: '20030405' } },
-    });
-  });
-
   test.each([
-    ['v0.1.0-preview.1', 10_001],
-    ['v0.1.0-preview.2', 10_002],
+    ['v0.1.0-rc.1', 10_001],
+    ['v0.1.0-rc.2', 10_002],
+    ['v0.1.0-rc.98', 10_098],
     ['v0.1.0', 10_099],
-    ['v0.1.1-preview.1', 10_101],
+    ['v0.1.1-rc.1', 10_101],
     ['v0.1.1', 10_199],
     ['v0.2.0', 20_099],
     ['v1.0.0', 10_000_099],
@@ -102,13 +133,14 @@ describe('native release configuration', () => {
     expect(identity.bundleVersion).toBe(String(versionCode));
   });
 
-  test('store versionCodes increase across the preview-then-stable sequence', () => {
+  test('store versionCodes increase across the candidate-then-final sequence', () => {
     const sequence = [
-      'v0.1.2-preview.1',
-      'v0.1.2-preview.2',
+      'v0.1.2-rc.1',
+      'v0.1.2-rc.2',
       'v0.1.2',
-      'v0.1.3-preview.1',
+      'v0.1.3-rc.1',
       'v0.1.3',
+      'v0.2.0-rc.1',
       'v0.2.0',
     ];
     const codes = sequence.map((tag) => taggedStoreIdentity(tag).versionCode);
@@ -117,21 +149,19 @@ describe('native release configuration', () => {
     }
   });
 
-  test('rejects a preview number that would overflow the versionCode slot', () => {
-    expect(() => taggedStoreIdentity('v1.2.3-preview.99')).toThrow(
-      'preview number must be 1-98',
+  test('rejects a candidate number that would take the final tag slot', () => {
+    expect(() => taggedStoreIdentity('v1.2.3-rc.99')).toThrow(
+      'release candidate number must be 1-98',
     );
   });
 
-  test('binds preview and stable tags to one repository base version', () => {
-    expect(repositoryVersionForTag('v2.3.4-preview.5')).toBe('2.3.4');
-    expect(repositoryVersionForTag('v2.3.4')).toBe('2.3.4');
+  test('binds candidate and final tags to one repository base version', () => {
     expect(
       assertRepositoryVersion({
-        tag: 'v2.3.4-preview.5',
+        tag: 'v2.3.4-rc.5',
         packageVersion: '2.3.4',
       }),
-    ).toBe('2.3.4-preview.5');
+    ).toBe('2.3.4');
     expect(
       assertRepositoryVersion({
         tag: 'v2.3.4',
@@ -143,14 +173,14 @@ describe('native release configuration', () => {
   test('fails closed when the release train differs from package.json', () => {
     expect(() =>
       assertRepositoryVersion({
-        tag: 'v2.3.4-preview.5',
+        tag: 'v2.3.4-rc.5',
         packageVersion: '2.3.5',
       }),
     ).toThrow('does not match package version');
     expect(() =>
       assertRepositoryVersion({
-        tag: 'v2.3.4-preview.5',
-        packageVersion: '2.3.4-preview.5',
+        tag: 'v2.3.4-rc.5',
+        packageVersion: '2.3.4-rc.5',
       }),
     ).toThrow('does not match package version');
   });
@@ -163,7 +193,7 @@ describe('native release configuration', () => {
 
     expect(() =>
       createNativeReleaseConfig({
-        tag: 'v2.3.4-preview.5',
+        tag: 'v2.3.4-rc.5',
         updaterPublicKey: 'trusted-public-key',
       }),
     ).toThrow('updater public key requires an updater endpoint');
@@ -173,7 +203,7 @@ describe('native release configuration', () => {
         [
           'scripts/lib/native-release-config.mjs',
           '--tag',
-          'v2.3.4-preview.5',
+          'v2.3.4-rc.5',
           '--channel-identity',
           '--output',
           output,
@@ -225,12 +255,12 @@ describe('native release configuration', () => {
     ).toThrow(/must be exactly.*stable-desktop/);
     expect(() =>
       createNativeReleaseConfig({
-        tag: 'v2.3.4-preview.5',
+        tag: 'v2.3.4-rc.5',
         updaterPublicKey: 'trusted-public-key',
         updaterEndpoint:
-          'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
+          'https://github.com/kontourai/station/releases/download/beta-desktop/latest.json',
       }),
-    ).toThrow(/must be exactly.*beta-desktop/);
+    ).toThrow(/must be exactly.*stable-desktop/);
   });
 
   test.each([
@@ -275,7 +305,7 @@ describe('native release configuration', () => {
         [
           'scripts/lib/native-release-config.mjs',
           '--tag',
-          'v2.3.4-preview.5',
+          'v2.3.4-rc.5',
           '--print-desktop-updater-tag',
         ],
         {
@@ -283,7 +313,7 @@ describe('native release configuration', () => {
           encoding: 'utf8',
         },
       ),
-    ).toBe('beta-desktop');
+    ).toBe('stable-desktop');
   });
 
   test('the shared updater plugin overlay adds an endpoint only when one is given (station#575)', () => {

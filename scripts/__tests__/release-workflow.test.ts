@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -104,7 +104,9 @@ describe('mobile release hardening contract', () => {
     );
     expect(release).toContain(')" = "$MACOS_BUNDLE_VERSION"');
     expect(testFlightDelivery).toContain("inputs.channel == 'stable'");
-    expect(release).toContain('ios_marketing_version=');
+    expect(release).toContain(
+      `marketing_version: ${githubExpression('needs.preflight.outputs.version')}`,
+    );
   });
 
   it('fails closed on update configuration and audits packaged capabilities', () => {
@@ -1483,17 +1485,8 @@ describe('native release workflow topology', () => {
   });
 
   it('builds deb and rpm before the signed AppImage overlay without post-sign mutation', () => {
-    const betaConfig = githubExpression(
-      "needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config)",
-    );
-    const debAndRpm =
-      'args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ' +
-      betaConfig +
-      ` --config ${githubExpression('runner.temp')}/tauri.version.conf.json`;
-    const appImage =
-      'args: --target x86_64-unknown-linux-gnu --bundles appimage ' +
-      betaConfig +
-      ` --config src-desktop/tauri.linux-appimage.conf.json --config ${githubExpression('runner.temp')}/tauri.release.conf.json`;
+    const debAndRpm = `args: --target x86_64-unknown-linux-gnu --bundles deb,rpm --config ${githubExpression('runner.temp')}/tauri.version.conf.json`;
+    const appImage = `args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${githubExpression('runner.temp')}/tauri.release.conf.json`;
     expect(release).toContain(
       'node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"',
     );
@@ -1628,13 +1621,16 @@ describe('native release workflow topology', () => {
     expect(release).toContain('MSI filename does not carry release version');
   });
 
-  it('routes preview tags to the beta desktop and Android package while iOS stays stable', () => {
-    expect(release).toContain(
-      'beta_desktop_config=src-desktop/tauri.beta.conf.json',
-    );
-    expect(release).toContain('beta_desktop_config=');
-    expect(release).toContain('android_package=io.kontourai.station.beta');
-    expect(release).toContain("android_product_name='Station Beta'");
+  // #4929: Beta is retired. Every tagged release, candidate or final, builds
+  // the Stable desktop, Android and iOS identity with no channel overlay.
+  it('builds every tagged release with Stable identity and no Beta overlay', () => {
+    expect(release).not.toContain('beta_desktop_config');
+    expect(release).not.toContain('BETA_DESKTOP_CONFIG');
+    expect(release).not.toContain('tauri.beta.conf.json');
+    expect(release).not.toContain('io.kontourai.station.beta');
+    expect(release).not.toContain('FIREBASE_APP_ID_BETA');
+    expect(release).not.toMatch(/'preview'|-preview/);
+    expect(release).toContain('android_package=io.kontourai.station');
     expect(release).toContain('android_product_name=Station');
     expect(release).toContain('--channel-identity');
     expect(release).toContain("package: name='$ANDROID_PACKAGE_NAME'");
@@ -1642,15 +1638,160 @@ describe('native release workflow topology', () => {
     expect(release).toContain(
       `packageName: ${githubExpression('needs.preflight.outputs.android_package')}`,
     );
-    expect(release).toContain("needs.preflight.outputs.channel == 'stable'");
     expect(release).not.toContain(
       'ios build --export-method app-store-connect --channel-identity',
     );
-    expect(release).toContain('icon_channel=stable');
-    expect(release).toContain('icon_channel=beta');
     expect(release).toContain(
-      'node scripts/apply-android-channel-icons.mjs "$icon_channel"',
+      'node scripts/apply-android-channel-icons.mjs stable',
     );
+    expect(release).toContain(
+      'node scripts/ios-channel-icons.mjs verify stable',
+    );
+    expect(release.match(/STATION_CHANNEL: (.+)/g)).toEqual(
+      Array(4).fill(
+        `STATION_CHANNEL: ${githubExpression('needs.preflight.outputs.channel')}`,
+      ),
+    );
+    const iosDevice = workflowJob(release, 'ios-device') as unknown as {
+      with: Record<string, string>;
+    };
+    expect(iosDevice.with.channel).toBe(
+      githubExpression('needs.preflight.outputs.channel'),
+    );
+    expect(workflowJob(release, 'ios-simulator').if).toBe(
+      githubExpression("needs['full-regression'].result == 'success'"),
+    );
+  });
+
+  describe('preflight tag binding (executed)', () => {
+    const packageVersion = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ).version as string;
+    const [major, minor, patch] = packageVersion.split('.').map(Number);
+    const band = major * 10_000_000 + minor * 10_000 + patch * 100;
+
+    // Runs the real preflight script up to the git tag lookup, which needs a
+    // pushed tag, and reports the values it would emit.
+    function preflightValues(tag: string): Record<string, string> {
+      const source = namedStep(
+        workflowJob(release, 'preflight'),
+        'Bind tag, package version, and source commit',
+      );
+      const run = source.run ?? '';
+      const stop = run.indexOf('release_sha=$(git rev-list');
+      expect(stop).toBeGreaterThan(0);
+      const names = [
+        'release_version',
+        'release_kind',
+        'release_channel',
+        'desktop_updater_tag',
+        'android_package',
+        'android_product_name',
+        'android_version_code',
+        'ios_bundle_version',
+        'macos_bundle_version',
+      ];
+      const report = names
+        .map((name) => `printf '%s=%s\\n' ${name} "$${name}"`)
+        .join('\n');
+      const output = execFileSync(
+        'bash',
+        ['-e', '-c', `${run.slice(0, stop)}\n${report}`],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          env: { ...process.env, RELEASE_TAG: tag },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        },
+      );
+      return Object.fromEntries(
+        output
+          .trim()
+          .split('\n')
+          .map((line) => line.split(/=(.*)/s).slice(0, 2)),
+      );
+    }
+
+    it('builds an rc tag as Stable with the bare base version and the rc store slot', () => {
+      expect(preflightValues(`v${packageVersion}-rc.3`)).toEqual({
+        release_version: packageVersion,
+        release_kind: 'rc',
+        release_channel: 'stable',
+        desktop_updater_tag: 'stable-desktop',
+        android_package: 'io.kontourai.station',
+        android_product_name: 'Station',
+        android_version_code: String(band + 3),
+        ios_bundle_version: String(band + 3),
+        macos_bundle_version: String(band + 3),
+      });
+    });
+
+    it('builds a final tag in store slot 99', () => {
+      expect(preflightValues(`v${packageVersion}`)).toMatchObject({
+        release_version: packageVersion,
+        release_kind: 'final',
+        release_channel: 'stable',
+        android_version_code: String(band + 99),
+      });
+    });
+
+    it.each([
+      `v${packageVersion}-preview.1`,
+      `v${packageVersion}-rc.0`,
+      `v${packageVersion}-rc.99`,
+    ])('refuses %s', (tag) => {
+      expect(() => preflightValues(tag)).toThrow();
+    });
+  });
+
+  // Publishing moves the Stable desktop feed, host pointer and container tags;
+  // until rc publication exists (#4929) a candidate must be refused before any
+  // of that, while a final tag still resolves.
+  it.each([
+    ['v0.2.0-rc.3', 1, 'rc publication lands in S3 of #4929'],
+    ['v0.2.0-preview.1', 1, 'is not a vX.Y.Z release tag'],
+    ['v0.2.0', 0, ''],
+  ])(
+    'Release: Publish tag recognition (executed) for %s',
+    (tag, status, message) => {
+      const run =
+        namedStep(
+          workflowJob(publish, 'resolve'),
+          'Resolve tag to one immutable commit',
+        ).run ?? '';
+      const stop = run.indexOf('# No checkout persists');
+      expect(stop).toBeGreaterThan(0);
+      const result = spawnSync('bash', ['-e', '-c', run.slice(0, stop)], {
+        encoding: 'utf8',
+        env: { ...process.env, RELEASE_TAG: tag },
+        windowsHide: true,
+      });
+      expect(result.status).toBe(status);
+      expect(result.stderr).toContain(message);
+      const channel = run.match(/echo "channel=.*"/g);
+      expect(channel).toEqual(['echo "channel=stable"']);
+    },
+  );
+
+  it.each([
+    ['refs/tags/v0.2.0-rc.3', 0],
+    ['refs/tags/v0.2.0', 0],
+    ['refs/tags/v0.2.0-preview.1', 1],
+    ['refs/tags/v0.2.0-rc.0', 1],
+  ])('TestFlight source-ref policy (executed) for %s', (sourceRef, status) => {
+    const guards = testFlightDelivery
+      .split('\n')
+      .filter((line) => line.includes('[[ "$source_ref" =~'))
+      .map((line) => line.trim());
+    expect(guards).toHaveLength(2);
+    expect(new Set(guards).size).toBe(1);
+    const result = spawnSync('bash', ['-e', '-c', guards[0]], {
+      encoding: 'utf8',
+      env: { ...process.env, source_ref: sourceRef },
+      windowsHide: true,
+    });
+    expect(result.status).toBe(status);
   });
 
   it('authenticates Play uploads with short-lived GitHub OIDC credentials', () => {
@@ -1674,47 +1815,43 @@ describe('native release workflow topology', () => {
     expect(android).not.toContain('secrets.ANDROID_KEYSTORE');
   });
 
-  it('keeps the base implicit and merges channel and tag overlays in dependency order', () => {
-    const betaConfig = githubExpression(
-      "needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config)",
-    );
+  it('keeps the base implicit and merges the tag overlay last', () => {
     const tagConfig = `${githubExpression('runner.temp')}/tauri.release.conf.json`;
     const versionConfig = `${githubExpression('runner.temp')}/tauri.version.conf.json`;
-    const betaConfigArray = '$' + '{beta_config[@]}';
 
     expect(release).not.toContain('--config src-desktop/tauri.conf.json');
     expect(release).toContain(
-      `npx tauri build --no-sign --target ${githubExpression('matrix.target')} ${betaConfig} --config ${tagConfig}`,
+      `npx tauri build --no-sign --target ${githubExpression('matrix.target')} --config ${tagConfig}`,
     );
     expect(release).toContain(
-      `args: --target x86_64-pc-windows-msvc ${betaConfig} --config ${githubExpression('runner.temp')}/tauri.windows.release.conf.json --config ${tagConfig}`,
+      `args: --target x86_64-pc-windows-msvc --config ${githubExpression('runner.temp')}/tauri.windows.release.conf.json --config ${tagConfig}`,
     );
     expect(release).toContain(
-      `args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ${betaConfig} --config ${versionConfig}`,
+      `args: --target x86_64-unknown-linux-gnu --bundles deb,rpm --config ${versionConfig}`,
     );
     expect(release).toContain(
-      `args: --target x86_64-unknown-linux-gnu --bundles appimage ${betaConfig} --config src-desktop/tauri.linux-appimage.conf.json --config ${tagConfig}`,
+      `args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${tagConfig}`,
     );
     expect(release).toContain(
-      `npx tauri android init --ci --skip-targets-install "${betaConfigArray}" --config "$RUNNER_TEMP/tauri.release.conf.json"`,
+      'npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"',
     );
     expect(release).toContain(
-      `npx tauri android build --apk --aab "${betaConfigArray}" --config "$RUNNER_TEMP/tauri.release.conf.json"`,
+      'npx tauri android build --apk --aab --config "$RUNNER_TEMP/tauri.release.conf.json"',
     );
 
     const base = tauriConfig('tauri.conf.json');
-    const beta = tauriConfig('tauri.beta.conf.json');
     const appImage = tauriConfig('tauri.linux-appimage.conf.json');
-    const stableTag = createNativeReleaseConfig({
-      tag: 'v2.3.4',
-      channelIdentity: true,
-    });
-    const betaTag = createNativeReleaseConfig({
-      tag: 'v2.3.4-preview.5',
-      channelIdentity: true,
-    });
-    const stable = mergeTauriConfigs(base, stableTag);
-    const previewAppImage = mergeTauriConfigs(base, beta, appImage, betaTag);
+    const stable = mergeTauriConfigs(
+      base,
+      createNativeReleaseConfig({ tag: 'v2.3.4', channelIdentity: true }),
+    );
+    // A release candidate merges to the same Stable app at the bare base
+    // version; only its store build number differs (#4929).
+    const candidateAppImage = mergeTauriConfigs(
+      base,
+      appImage,
+      createNativeReleaseConfig({ tag: 'v2.3.4-rc.5', channelIdentity: true }),
+    );
 
     expect(stable.version).toBe('2.3.4');
     expect(stable.identifier).toBe('io.kontourai.station');
@@ -1722,12 +1859,13 @@ describe('native release workflow topology', () => {
     expect((stable.build as Record<string, unknown>).beforeBuildCommand).toBe(
       'npm run build:native-client',
     );
-    expect(previewAppImage.version).toBe('2.3.4-preview.5');
-    expect(previewAppImage.identifier).toBe('io.kontourai.station.beta');
-    expect(previewAppImage.productName).toBe('Station Beta');
+    expect(candidateAppImage.version).toBe('2.3.4');
+    expect(candidateAppImage.identifier).toBe('io.kontourai.station');
+    expect(candidateAppImage.productName).toBe('Station');
     expect(
-      (previewAppImage.build as Record<string, unknown>).beforeBuildCommand,
-    ).toBe('npm run build:desktop:resources');
+      (candidateAppImage.bundle as Record<string, Record<string, unknown>>)
+        .macOS.bundleVersion,
+    ).toBe('20030405');
   });
 
   it('attests each producing lane and verifies all draft assets before publish', () => {

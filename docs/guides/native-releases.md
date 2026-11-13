@@ -4,7 +4,9 @@ The [release process](releasing.md) owns integration, scheduled qualification,
 repair sweeps and promotion decisions. This guide owns platform operations.
 
 Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
-or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
+or release-candidate `vMAJOR.MINOR.PATCH-rc.N` tag; Beta `-preview.N` tags are
+retired ([#4929](https://github.com/kontourai/station/issues/4929)) and
+`Release: Publish` refuses rc tags until rc publication exists. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
 one assembler creates a draft only after the deterministic inventory and every
 checksum validate. `Release: Publish` is a separately approved manual
@@ -116,12 +118,12 @@ missing updater signatures.
 
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight
-requires both `vX.Y.Z-preview.N` and `vX.Y.Z` to match that base, then creates
-a release-only Tauri overlay from the tag's exact version. Preview-to-Stable
-promotion can therefore retain the exact reviewed commit.
+requires both `vX.Y.Z-rc.N` and `vX.Y.Z` to match that base, then creates a
+release-only Tauri overlay with Stable identity and the bare base version
+`X.Y.Z` for both, so a candidate's bytes can later be promoted unchanged.
 The overlay also derives Android `versionCode` and iOS `CFBundleVersion` from
-the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + channel`, where
-channel is the preview number 1–98 or `99` for the stable tag). That integer is
+the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + slot`, where
+slot is the candidate number 1–98 or `99` for the final tag). That integer is
 what Play and App Store Connect use as the monotonic build number; do not
 fall back to Gradle's `1` / `1.0` defaults for a store upload. Nightly
 Android uses a different application id and its own day-based numbering. Before

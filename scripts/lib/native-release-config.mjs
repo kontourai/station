@@ -2,93 +2,97 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { assertProductVersion } from '../product-version.mjs';
 import { invokedDirectly } from './module-entry.mjs';
 
+// A tagged release is either a release candidate (`vX.Y.Z-rc.N`) or a final
+// Stable tag (`vX.Y.Z`). Both build with Stable identity and the bare base
+// version so a candidate's exact bytes can later be promoted unchanged (#4929).
 const RELEASE_TAG =
-  /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-preview\.(?:[1-9]\d*))?)$/;
+  /^v((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))(?:-rc\.([1-9]\d*))?$/;
 export const NATIVE_UPDATER_ARTIFACT_MODE = 'v1Compatible';
 export const STABLE_NATIVE_IDENTIFIER = 'io.kontourai.station';
-export const BETA_NATIVE_IDENTIFIER = 'io.kontourai.station.beta';
 export const STABLE_NATIVE_PRODUCT_NAME = 'Station';
-export const BETA_NATIVE_PRODUCT_NAME = 'Station Beta';
+const STABLE_DESKTOP_UPDATER_TAG = 'stable-desktop';
+// Store build slot 99 belongs to the final tag; candidates take 1-98.
+const FINAL_STORE_SLOT = 99;
 
 function fail(message) {
   throw new Error(`Invalid native release configuration: ${message}`);
 }
 
-export function nativeVersionFromTag(tag) {
+function parseReleaseTag(tag) {
   const match = typeof tag === 'string' ? RELEASE_TAG.exec(tag) : null;
   if (!match) {
-    fail('tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-preview.N');
+    fail('tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N');
   }
-  return match[1];
+  const candidate = match[5] === undefined ? null : Number(match[5]);
+  if (candidate !== null && candidate >= FINAL_STORE_SLOT) {
+    fail(
+      `release candidate number must be 1-${FINAL_STORE_SLOT - 1} so it fits the store build slot`,
+    );
+  }
+  return {
+    baseVersion: match[1],
+    major: Number(match[2]),
+    minor: Number(match[3]),
+    patch: Number(match[4]),
+    kind: candidate === null ? 'final' : 'rc',
+    candidate,
+  };
 }
 
 /**
- * The repository records the release train's stable base version once. A
- * preview suffix belongs to the immutable release tag/build overlay, not to a
- * source edit between preview and Stable promotion. This lets both tags name
- * the exact same reviewed commit while keeping package.json authoritative for
- * the train being released.
+ * The version every artifact of this tag is built with, and the one
+ * package.json must record: the bare base. The `-rc.N` suffix belongs only to
+ * the immutable tag, so every candidate and the final tag name the same
+ * reviewed base without a source edit between them.
  */
 export function repositoryVersionForTag(tag) {
-  return nativeVersionFromTag(tag).replace(/-preview\.[1-9]\d*$/, '');
+  return parseReleaseTag(tag).baseVersion;
 }
 
+/** Tagged releases are always Stable; Beta is retired (#4929). */
 export function nativeReleaseChannel(tag) {
-  nativeVersionFromTag(tag);
-  return tag.includes('-preview.') ? 'beta' : 'stable';
+  parseReleaseTag(tag);
+  return 'stable';
 }
 
 export function desktopUpdaterTagForReleaseTag(tag) {
-  return nativeReleaseChannel(tag) === 'beta'
-    ? 'beta-desktop'
-    : 'stable-desktop';
+  parseReleaseTag(tag);
+  return STABLE_DESKTOP_UPDATER_TAG;
 }
 
 export function nativeIdentifierForChannel(channel) {
   if (channel === 'stable') return STABLE_NATIVE_IDENTIFIER;
-  if (channel === 'beta') return BETA_NATIVE_IDENTIFIER;
   fail(`unsupported native release channel ${JSON.stringify(channel)}`);
 }
 
 export function nativeProductNameForChannel(channel) {
   if (channel === 'stable') return STABLE_NATIVE_PRODUCT_NAME;
-  if (channel === 'beta') return BETA_NATIVE_PRODUCT_NAME;
   fail(`unsupported native release channel ${JSON.stringify(channel)}`);
 }
 
 /**
- * Store identity for one tagged release. Marketing version is the tag without
- * the leading `v`. Android `versionCode` and iOS `CFBundleVersion` are the same
- * monotonic integer, in a band that cannot collide with a later tag:
- *   major * 10_000_000 + minor * 10_000 + patch * 100 + channel
- * where channel is the preview number (1–98) or 99 for the stable tag.
+ * Store identity for one tagged release. `releaseKind` is `rc` for
+ * `vX.Y.Z-rc.N` and `final` for `vX.Y.Z`. Marketing version is the bare base
+ * version for both candidates and the final tag. Android `versionCode` and iOS
+ * `CFBundleVersion` are the same monotonic integer, in a band that cannot
+ * collide with a later tag:
+ *   major * 10_000_000 + minor * 10_000 + patch * 100 + slot
+ * where slot is the candidate number (1–98) or 99 for the final tag, so every
+ * candidate and the final tag of one base are distinct store builds.
  * Nightly (`io.kontourai.station.nightly`) uses a different package and its
  * own day-based numbering; it does not share this space.
  */
 export function taggedStoreIdentity(tag) {
-  const marketingVersion = nativeVersionFromTag(tag);
-  const parsed =
-    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-preview\.([1-9]\d*))?$/.exec(
-      marketingVersion,
-    );
-  if (!parsed) {
-    fail('tag version could not be parsed after validation');
-  }
-  const major = Number(parsed[1]);
-  const minor = Number(parsed[2]);
-  const patch = Number(parsed[3]);
-  const preview = parsed[4] === undefined ? null : Number(parsed[4]);
-  if (preview !== null && preview > 98) {
-    fail('preview number must be 1-98 so it fits the versionCode slot');
-  }
-  const channel = preview === null ? 99 : preview;
-  const versionCode =
-    major * 10_000_000 + minor * 10_000 + patch * 100 + channel;
+  const { baseVersion, major, minor, patch, kind, candidate } =
+    parseReleaseTag(tag);
+  const slot = candidate ?? FINAL_STORE_SLOT;
+  const versionCode = major * 10_000_000 + minor * 10_000 + patch * 100 + slot;
   if (!Number.isSafeInteger(versionCode) || versionCode > 2_100_000_000) {
     fail('derived versionCode exceeds the Android maximum');
   }
   return {
-    marketingVersion,
+    releaseKind: kind,
+    marketingVersion: baseVersion,
     versionCode,
     bundleVersion: String(versionCode),
   };
@@ -194,7 +198,6 @@ export function createNativeReleaseConfig({
 }
 
 export function assertRepositoryVersion({ tag, packageVersion }) {
-  const releaseVersion = nativeVersionFromTag(tag);
   const repositoryVersion = repositoryVersionForTag(tag);
   if (repositoryVersion !== packageVersion) {
     fail(
@@ -202,7 +205,7 @@ export function assertRepositoryVersion({ tag, packageVersion }) {
     );
   }
   assertProductVersion(packageVersion);
-  return releaseVersion;
+  return repositoryVersion;
 }
 
 function option(name, args) {

@@ -11,7 +11,7 @@ const packageVersion = JSON.parse(
   readFileSync(resolve(import.meta.dirname, '../..', 'package.json'), 'utf8'),
 ).version;
 const stableTag = `v${packageVersion}`;
-const betaTag = `${stableTag}-preview.1`;
+const candidateTag = `${stableTag}-rc.1`;
 
 const profilePath = resolve(
   import.meta.dirname,
@@ -97,19 +97,39 @@ describe('local iOS release preflight', () => {
     });
   });
 
-  test('fails closed when a Beta tag is paired with a Stable provisioning profile', () => {
-    const result = localIosReleasePreflight({
-      tag: betaTag,
-      profilePath,
-      team: 'ABCDE12345',
-      identity: 'Apple Distribution: Kontour (ABCDE12345)',
-      now: new Date('2026-08-27T00:00:00Z'),
-      runCommand: localTools,
+  test('binds a release candidate to the Stable profile and its own store slot', () => {
+    expect(
+      localIosReleasePreflight({
+        tag: candidateTag,
+        profilePath,
+        team: 'ABCDE12345',
+        identity: 'Apple Distribution: Kontour (ABCDE12345)',
+        now: new Date('2026-08-27T00:00:00Z'),
+        runCommand: localTools,
+      }),
+    ).toMatchObject({
+      ready: true,
+      channel: 'stable',
+      expectedBundleIdentifier: 'io.kontourai.station',
+      marketingVersion: packageVersion,
+      buildNumber: taggedStoreIdentity(candidateTag).bundleVersion,
     });
-    expect(result.ready).toBe(false);
-    expect(result.blockers).toContainEqual(
-      expect.stringContaining('does not match expected'),
+    expect(taggedStoreIdentity(candidateTag).bundleVersion).not.toBe(
+      taggedStoreIdentity(stableTag).bundleVersion,
     );
+  });
+
+  test('refuses a retired Beta preview tag', () => {
+    expect(() =>
+      localIosReleasePreflight({
+        tag: `${stableTag}-preview.1`,
+        profilePath,
+        team: 'ABCDE12345',
+        identity: 'Apple Distribution: Kontour (ABCDE12345)',
+        now: new Date('2026-08-27T00:00:00Z'),
+        runCommand: localTools,
+      }),
+    ).toThrow('tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N');
   });
 
   test('keeps release tag/package validation fail-closed', () => {

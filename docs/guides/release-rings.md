@@ -14,6 +14,14 @@ preview numbering lives only in immutable `vX.Y.Z-preview.N` tags and their
 release overlays. Promotion never edits source, moves a tag, or relabels a
 preview artifact.
 
+> **Beta is being retired ([#4929](https://github.com/kontourai/station/issues/4929)).**
+> `Release: Stage` no longer accepts `vX.Y.Z-preview.N` tags. A release
+> candidate is tagged `vX.Y.Z-rc.N` (N from 1 to 98) and builds with Stable
+> identity and the bare base version `X.Y.Z`, taking store build slot N; a
+> final `vX.Y.Z` tag takes slot 99. `Release: Publish` refuses rc tags until rc
+> publication lands. The `preview` ring and Beta installer text below are
+> removed by later slices of that issue.
+
 Nightly is a separate, opt-in signed-public-manifest path:
 `STATION_CHANNEL=nightly` installs from the rolling `portable-nightly`
 manifest unless `STATION_INSTALL_PUBLIC_MANIFEST_URL` names another signed
