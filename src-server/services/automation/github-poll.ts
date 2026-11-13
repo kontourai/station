@@ -8,13 +8,15 @@
  * (`pollIntervalMs`) is enforced here from the ledger's poll state, so a
  * restart neither re-polls early nor loses its place. GitHub is read through
  * the external monitor's REST transport and secret-binding credential path
- * (`listGitHubWorkflowRuns`).
+ * (`listGitHubWorkflowRuns`). Telltale (`@kontourai/telltale`) owns the
+ * rest of the intake: `githubPollStep` decides which runs are in the window
+ * and where the cursor goes, and `normalizeGitHubWorkflowRun` checks each run.
  *
  * Observe-only (slice S2): each run is normalized, deduped, matched and
  * recorded; nothing is started.
  *
- * Cursor: the ledger keeps, per source, the newest `updated_at` a successful
- * poll processed. A later poll skips runs older than that cursor minus
+ * Cursor (Telltale's step, kept in Station's ledger): the ledger keeps, per
+ * source, the newest `updated_at` a successful poll processed. A later poll skips runs older than that cursor minus
  * {@link CURSOR_OVERLAP_MS}; runs inside the overlap are re-read and dedupe
  * as transport duplicates, which write nothing. The cursor never trails the
  * freshness bound, so a run already too old to act on is refused (and
@@ -28,6 +30,7 @@ import {
   type AutomationSource,
   type GitHubPollAutomationSource,
 } from '@kontourai/station-contracts/automation';
+import { githubPollStep } from '@kontourai/telltale';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
@@ -49,14 +52,15 @@ import type {
 } from './automation-ledger.js';
 import type { AutomationStore } from './automation-store.js';
 import {
-  normalizeGitHubWorkflowRun,
   WORKFLOW_RUN_COMPLETED,
+  workflowRunNormalization,
 } from './github-workflow-run.js';
+
+/** Listing lag tolerated behind the cursor before a run counts as seen. */
+export { CURSOR_OVERLAP_MS } from '@kontourai/telltale';
 
 /** Runs requested per listing; one page, never paginated. */
 const GITHUB_POLL_RUNS_PER_PAGE = 20;
-/** Listing lag tolerated behind the cursor before a run counts as seen. */
-export const CURSOR_OVERLAP_MS = 10 * 60 * 1000;
 /** Above this many pinned workflow files, one repository-wide listing is cheaper. */
 const MAX_POLLED_WORKFLOW_FILES = 4;
 const WORKFLOW_PATH = /^\.github\/workflows\/([A-Za-z0-9_.-]{1,100}\.ya?ml)$/;
@@ -143,12 +147,6 @@ function isDuePollSource(
     source.enabled &&
     source.revokedAt === undefined
   );
-}
-
-function updatedAtOf(run: unknown): number {
-  const value = (run as { updated_at?: unknown } | null)?.updated_at;
-  const ms = typeof value === 'string' ? Date.parse(value) : Number.NaN;
-  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
 }
 
 export class GitHubPollAutomationPoller {
@@ -306,23 +304,27 @@ export class GitHubPollAutomationPoller {
       return { sourceId: source.id, outcome, ...counts };
     }
 
-    // Oldest first, so an episode opens on the first failing run.
-    const runs = listings
-      .flatMap((listing) => (listing.kind === 'runs' ? listing.runs : []))
-      .sort((a, b) => updatedAtOf(a) - updatedAtOf(b));
-    const cutoff =
-      state?.cursorMs === undefined
-        ? Number.NEGATIVE_INFINITY
-        : state.cursorMs - CURSOR_OVERLAP_MS;
-    let newest = Number.NEGATIVE_INFINITY;
-    for (const run of runs) {
-      const normalized = normalizeGitHubWorkflowRun(run, {
+    // Telltale's step: runs inside the window (re-reads of the overlap
+    // included), oldest first so an episode opens on the first failing run,
+    // and the next cursor. Failed listings were handled above.
+    const step = githubPollStep({
+      listings: listings.flatMap((listing) =>
+        listing.kind === 'runs' ? [listing] : [],
+      ),
+      cursor:
+        state?.cursorMs === undefined
+          ? undefined
+          : { cursorMs: state.cursorMs },
+      repository: source.repository,
+      observedAt,
+      maxEventAgeMs: AUTOMATION_EXECUTION_LIMITS.maxEventAgeMs,
+    });
+    for (const observation of step.observations) {
+      counts.seen += 1;
+      const normalized = workflowRunNormalization(observation, {
         source,
         receivedAt: observedAt,
       });
-      const updatedAtMs = normalized.updatedAtMs;
-      if (updatedAtMs !== undefined && updatedAtMs < cutoff) continue;
-      counts.seen += 1;
       if (normalized.kind === 'refused') {
         recordAutomationRefusal({
           ledger,
@@ -335,7 +337,6 @@ export class GitHubPollAutomationPoller {
         counts.refused += 1;
         continue;
       }
-      newest = Math.max(newest, normalized.updatedAtMs);
       const result = recordAutomationEvent({
         ledger,
         rules: currentRules,
@@ -349,21 +350,13 @@ export class GitHubPollAutomationPoller {
       else if (result.outcome === 'ignored') counts.ignored += 1;
       else counts.duplicate += 1;
     }
-    const partial = listings.some(
-      (listing) => listing.kind === 'runs' && listing.partial,
-    );
+    const partial = step.outcome === 'partial';
     ledger.recordPoll({
       sourceId: source.id,
       polledAt: input.now,
       outcome: partial ? 'partial' : 'ok',
-      ...(partial
-        ? {}
-        : {
-            cursorMs: Math.max(
-              newest,
-              observedAt - AUTOMATION_EXECUTION_LIMITS.maxEventAgeMs,
-            ),
-          }),
+      // A partial page keeps the cursor where it was.
+      ...(partial ? {} : { cursorMs: step.cursor.cursorMs }),
     });
     return {
       sourceId: source.id,
