@@ -1,0 +1,9 @@
+{
+  "revision": "68499833deed15aad26bf25cd9de1d84a3c05924",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"MCPToolUIFrame.test.tsx only relaxes four colour expectations to accept both valid jsdom 31 serializations (rgb(8, 16, 24) and rgb(8,16,24)). The doc's host-style, theme and sandbox claims (e.g. ~419) describe frame behaviour, which is unchanged; no product code changed.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/__tests__/MCPToolUIFrame.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"WorkspacePaneHost.test.tsx only changes how the pop-out failure test observes the focus hand-back under jsdom 31 (spy on focus()). The guide's pop-out window label (~44) and workspacePaneHost contribution rows (~376, ~2017) are unaffected; no product code changed.","inputs":["docs/guides/plugins.md","src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx"]}
+  ]
+}
