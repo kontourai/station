@@ -318,6 +318,30 @@ describe('ConnectionInspector Interface', () => {
     expect(view?.capabilities).toContain('image-input');
   });
 
+  test('the ACP connection view carries the connection’s saved icon', async () => {
+    const subject = createConnectionInspector({
+      adapters: () => [],
+      appConfig: () => ({}) as any,
+      acpConnections: () =>
+        [{ id: 'kiro-kas', enabled: true, icon: 'brand:kiro' }] as any,
+      acpStatus: () => ({
+        connections: [{ id: 'kiro-kas', status: 'available' }],
+      }),
+      publicConnection: (runtimeId) => ({
+        id: engineConnectionId('kiro-kas'),
+        engineId: runtimeId,
+      }),
+      now: () => Date.now(),
+    });
+    const outcome = await subject.inspect({
+      kind: 'runtime-capability-inventory',
+    });
+    expect(
+      outcome.connections.find((connection) => connection.type === 'acp')
+        ?.config,
+    ).toMatchObject({ engineId: 'acp', icon: 'brand:kiro' });
+  });
+
   test('keeps public and runtime identities distinct and omits an unmapped Adapter', async () => {
     const adapter = {
       provider: 'codex',

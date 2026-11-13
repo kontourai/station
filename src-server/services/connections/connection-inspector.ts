@@ -268,6 +268,12 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         },
         config: {
           engineId: 'acp',
+          // The connection's saved icon (a built-in's `brand:kiro`), so the
+          // engines list draws the same mark for it connected as it does
+          // while it is not connected yet.
+          ...(typeof config.icon === 'string' && config.icon
+            ? { icon: config.icon }
+            : {}),
           // `readinessReason` mirrors what `inspectAdapter` projects for
           // runtime adapters: WHY this connection is not ready, from the
           // engine's own observation. For ACP that is the probe's actual

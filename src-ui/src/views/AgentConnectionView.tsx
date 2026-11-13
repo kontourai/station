@@ -374,6 +374,11 @@ export function AgentConnectionView({
                 name={connection.name}
                 id={connection.id}
                 engineId={connectionEngineId(connection)}
+                icon={
+                  typeof connection.config.icon === 'string'
+                    ? connection.config.icon
+                    : undefined
+                }
                 size={22}
               />
             ),

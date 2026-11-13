@@ -681,6 +681,30 @@ describe('AgentConnectionView', () => {
   // The section frame owns this section's single add action and reaches the
   // catalogue by route (`/connections/engines/new`), not by an in-view button
   // so the route is what these two drive now.
+  test('a connected ACP engine row draws its saved icon, not initials', async () => {
+    agentConnections = [
+      {
+        id: 'kiro-kas',
+        kind: 'agent',
+        type: 'acp',
+        name: 'Kiro (KAS)',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        // What connection-inspector projects for a saved built-in.
+        config: { engineId: 'acp', icon: 'brand:kiro' },
+        setup: { state: 'ready', detected: true, configured: true },
+      },
+    ];
+    const { container } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
+    expect(screen.getByText('Kiro (KAS)')).toBeTruthy();
+    expect(container.querySelector('.brand-icon--kiro')).toBeTruthy();
+    expect(screen.queryByText('KK')).toBeNull();
+  });
+
   test('keeps available apps in Add and shows the Station engine returned by the API', async () => {
     const { rerender } = await render(
       <AgentConnectionView onNavigate={vi.fn()} />,
