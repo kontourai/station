@@ -1,0 +1,441 @@
+/**
+ * Opt-in current-native prerequisites for child-work context sync.
+ * Synthetic loopback Messages replies exercise real CLI tool effects; they do
+ * not qualify provider billing, portable authority, or the full sync caller.
+ */
+import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import {
+  createSdkMcpServer,
+  query,
+  type SDKMessage,
+  type SDKUserMessage,
+  type SpawnOptions,
+  tool,
+} from '@anthropic-ai/claude-agent-sdk';
+import {
+  spawnOwnedChild,
+  terminateProcessTree,
+} from '../src-server/services/infra/process-utils.js';
+
+if (!process.argv.includes('--run-real-local-lab'))
+  throw new Error(
+    'Pass --run-real-local-lab to start isolated native CLI processes.',
+  );
+if (process.platform !== 'darwin' || process.arch !== 'arm64')
+  throw new Error(
+    'This bounded lab currently binds the darwin-arm64 executable.',
+  );
+
+const root = resolve(import.meta.dirname, '..');
+const require = createRequire(import.meta.url);
+const sdkRoot = dirname(require.resolve('@anthropic-ai/claude-agent-sdk'));
+const sdk = JSON.parse(readFileSync(join(sdkRoot, 'package.json'), 'utf8'));
+const manifest = JSON.parse(
+  readFileSync(join(sdkRoot, 'manifest.json'), 'utf8'),
+);
+const executable = join(
+  root,
+  'node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude',
+);
+const artifacts = mkdtempSync(join(tmpdir(), 'child-work-native-sync-lab-'));
+const workspace = join(artifacts, 'workspace');
+const home = join(artifacts, 'home');
+const registry = join(artifacts, 'owned-processes');
+for (const directory of [workspace, home, registry])
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+
+type Phase = {
+  kind: 'write' | 'sdk-mcp';
+  restricted: boolean;
+  marker: string;
+  requests: number;
+};
+let phase: Phase | undefined;
+const requests: {
+  phase: string;
+  bytes: number;
+  sha256: string;
+  toolNames: string[];
+}[] = [];
+const processes: {
+  pid?: number;
+  exit: unknown;
+  close: unknown;
+  groupClosed: boolean;
+}[] = [];
+const observations: unknown[] = [];
+assert.match(
+  process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD ?? '',
+  /^[a-f0-9]{40}$/,
+);
+const receipt: Record<string, unknown> = {
+  sourceHead: process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD,
+  driverSha256: createHash('sha256')
+    .update(readFileSync(import.meta.filename))
+    .digest('hex'),
+  scope: 'native-effect-conformance-only',
+  sdkVersion: sdk.version,
+  bundledCliVersion: manifest.version,
+  contextSyncQualified: false,
+  providerBillingQualified: false,
+  portableAuthorityQualified: false,
+  requests,
+  processes,
+  observations,
+};
+const save = () =>
+  writeFileSync(
+    join(artifacts, 'receipt.json'),
+    JSON.stringify(receipt, null, 2),
+  );
+
+function groupExists(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    throw error;
+  }
+}
+
+const server = createServer(async (request, response) => {
+  try {
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    for await (const chunk of request) {
+      bytes += chunk.length;
+      if (bytes > 1024 * 1024) throw new Error('native_request_body_limit');
+      chunks.push(Buffer.from(chunk));
+    }
+    const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+    if (path === '/v1/messages/count_tokens') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ input_tokens: 1 }));
+      return;
+    }
+    if (request.method !== 'POST' || path !== '/v1/messages' || !phase)
+      throw new Error(`unhandled_native_request:${request.method}:${path}`);
+    if (requests.length >= 24) throw new Error('native_model_request_limit');
+    const body = Buffer.concat(chunks);
+    const value = JSON.parse(body.toString('utf8'));
+    requests.push({
+      phase: `${phase.kind}:${phase.restricted ? 'restricted' : 'ordinary'}`,
+      bytes,
+      sha256: createHash('sha256').update(body).digest('hex'),
+      toolNames: (value.tools ?? []).map(
+        (entry: { name: string }) => entry.name,
+      ),
+    });
+    writeFileSync(join(artifacts, `request-${requests.length}.json`), body);
+    const first = phase.requests++ === 0;
+    const content = first
+      ? {
+          type: 'tool_use',
+          id: `tool-${randomUUID()}`,
+          name: phase.kind === 'write' ? 'Write' : 'mcp__probe__mark',
+          input: {},
+        }
+      : { type: 'text', text: '' };
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    const emit = (type: string, data: Record<string, unknown>) =>
+      response.write(
+        `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`,
+      );
+    emit('message_start', {
+      message: {
+        id: `msg-${randomUUID()}`,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model: value.model,
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 0 },
+      },
+    });
+    emit('content_block_start', { index: 0, content_block: content });
+    emit('content_block_delta', {
+      index: 0,
+      delta: first
+        ? {
+            type: 'input_json_delta',
+            partial_json: JSON.stringify(
+              phase.kind === 'write'
+                ? { file_path: phase.marker, content: 'native effect\n' }
+                : {},
+            ),
+          }
+        : { type: 'text_delta', text: 'DONE' },
+    });
+    emit('content_block_stop', { index: 0 });
+    emit('message_delta', {
+      delta: {
+        stop_reason: first ? 'tool_use' : 'end_turn',
+        stop_sequence: null,
+      },
+      usage: { output_tokens: 1 },
+    });
+    emit('message_stop', {});
+    response.end();
+  } catch (error) {
+    receipt.transportFailure = String(error);
+    save();
+    if (!response.headersSent)
+      response.writeHead(400, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        error: { type: 'invalid_request_error', message: String(error) },
+      }),
+    );
+  }
+});
+
+async function runPhase(input: Phase, resume?: string): Promise<string> {
+  phase = input;
+  const controller = new AbortController();
+  const owned: ReturnType<typeof spawnOwnedChild>[] = [];
+  const closes: Promise<unknown>[] = [];
+  const messages: SDKMessage[] = [];
+  const sdkMcp = createSdkMcpServer({
+    name: 'probe',
+    tools: [
+      tool('mark', 'Write the isolated conformance marker', {}, async () => {
+        writeFileSync(input.marker, 'native MCP effect\n');
+        return { content: [{ type: 'text', text: 'marker written' }] };
+      }),
+    ],
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  const env: Record<string, string> = {
+    HOME: home,
+    PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
+    TMPDIR: artifacts,
+    CLAUDE_CONFIG_DIR: join(home, '.claude'),
+    ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`,
+    ANTHROPIC_API_KEY: 'synthetic-local-only',
+    CLAUDE_CODE_ENTRYPOINT: 'sdk-ts',
+    CLAUDE_AGENT_SDK_VERSION: sdk.version,
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+    DISABLE_TELEMETRY: '1',
+    DISABLE_ERROR_REPORTING: '1',
+  };
+  let ready!: () => void;
+  const start = new Promise<void>((done) => {
+    ready = done;
+  });
+  async function* prompt(): AsyncGenerator<SDKUserMessage> {
+    await start;
+    yield {
+      type: 'user',
+      session_id: resume ?? '',
+      parent_tool_use_id: null,
+      message: {
+        role: 'user',
+        content: 'Use the supplied conformance tool once, then reply DONE.',
+      },
+    };
+  }
+  const deadline = setTimeout(
+    () => controller.abort(new Error('native_phase_deadline')),
+    60_000,
+  );
+  let session: ReturnType<typeof query> | undefined;
+  try {
+    session = query({
+      prompt: prompt(),
+      options: {
+        cwd: workspace,
+        env,
+        resume,
+        persistSession: true,
+        pathToClaudeCodeExecutable: executable,
+        model: 'claude-sonnet-4-5',
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
+        settingSources: [],
+        maxTurns: 3,
+        abortController: controller,
+        systemPrompt:
+          'This is an isolated native protocol conformance fixture.',
+        ...(input.restricted ? { tools: [], disallowedTools: ['*'] } : {}),
+        spawnClaudeCodeProcess(options: SpawnOptions) {
+          const handle = spawnOwnedChild(options.command, options.args, {
+            cwd: workspace,
+            env,
+            registryDir: registry,
+            owner: {
+              pid: process.pid,
+              instanceId: artifacts,
+              bootId: artifacts,
+              birth: null,
+            },
+          });
+          owned.push(handle);
+          const record: (typeof processes)[number] = {
+            pid: handle.proc.pid,
+            exit: null,
+            close: null,
+            groupClosed: false,
+          };
+          processes.push(record);
+          handle.proc.on('exit', (code, signal) => {
+            record.exit = { code, signal };
+          });
+          const close = once(handle.proc, 'close').then(([code, signal]) => {
+            record.close = { code, signal };
+          });
+          closes.push(close);
+          let stderrBytes = 0;
+          const stderr: Buffer[] = [];
+          handle.proc.stderr?.on('data', (chunk: Buffer) => {
+            stderrBytes += chunk.length;
+            if (stderrBytes <= 256 * 1024) stderr.push(Buffer.from(chunk));
+            else controller.abort(new Error('native_stderr_evidence_limit'));
+          });
+          void close.then(() =>
+            writeFileSync(
+              join(artifacts, `stderr-${record.pid}.txt`),
+              Buffer.concat(stderr),
+            ),
+          );
+          const { stdin, stdout } = handle.proc;
+          assert.ok(stdin && stdout, 'native SDK requires owned pipes');
+          return Object.assign(handle.proc, { stdin, stdout });
+        },
+      },
+    });
+    // Install after native initialization: tools:[] alone does not constrain
+    // tools that a caller subsequently adds through SDK MCP.
+    const initialized = await session.initializationResult();
+    assert.equal(initialized.claude_code_version, manifest.version);
+    const mcp = await session.setMcpServers({ probe: sdkMcp });
+    assert.deepEqual(mcp.errors, {});
+    ready();
+    for await (const message of session) {
+      messages.push(message);
+      if (
+        messages.length > 128 ||
+        Buffer.byteLength(JSON.stringify(messages)) > 4 * 1024 * 1024
+      )
+        throw new Error('native_message_evidence_limit');
+    }
+    const result = [...messages]
+      .reverse()
+      .find((message) => message.type === 'result');
+    assert.ok(result && result.type === 'result');
+    assert.equal(result.is_error, false);
+    assert.equal(result.subtype, 'success');
+    if (resume) assert.equal(result.session_id, resume);
+    assert.equal(existsSync(input.marker), !input.restricted);
+    assert.equal(input.requests, 2);
+    observations.push({ ...input, nativeSessionId: result.session_id, result });
+    return result.session_id;
+  } finally {
+    clearTimeout(deadline);
+    ready();
+    session?.close();
+    await Promise.all(
+      owned.map(async (handle, index) => {
+        await terminateProcessTree(handle.proc, {
+          graceMs: 2_000,
+          killConfirmMs: 2_000,
+        });
+        await closes[index];
+        const record = processes.find(
+          (entry) => entry.pid === handle.proc.pid,
+        )!;
+        assert.ok(handle.proc.pid);
+        record.groupClosed = !groupExists(handle.proc.pid);
+        assert.equal(
+          record.groupClosed,
+          true,
+          'owned process group must retire',
+        );
+        handle.release();
+      }),
+    );
+    writeFileSync(
+      join(
+        artifacts,
+        `messages-${input.kind}-${input.restricted}-${observations.length}.json`,
+      ),
+      JSON.stringify(messages, null, 2),
+    );
+    save();
+  }
+}
+
+try {
+  const digest = createHash('sha256');
+  for await (const chunk of createReadStream(executable)) digest.update(chunk);
+  receipt.executableSha256 = digest.digest('hex');
+  assert.equal(
+    receipt.executableSha256,
+    manifest.platforms['darwin-arm64'].checksum,
+  );
+  receipt.lockfileSha256 = createHash('sha256')
+    .update(readFileSync(join(root, 'pnpm-lock.yaml')))
+    .digest('hex');
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  for (const kind of ['write', 'sdk-mcp'] as const) {
+    const native = await runPhase({
+      kind,
+      restricted: false,
+      marker: join(workspace, `${kind}-ordinary.txt`),
+      requests: 0,
+    });
+    await runPhase(
+      {
+        kind,
+        restricted: true,
+        marker: join(workspace, `${kind}-restricted.txt`),
+        requests: 0,
+      },
+      native,
+    );
+    await runPhase(
+      {
+        kind,
+        restricted: false,
+        marker: join(workspace, `${kind}-resumed.txt`),
+        requests: 0,
+      },
+      native,
+    );
+  }
+  assert.equal(receipt.transportFailure, undefined);
+  receipt.status = 'PASS_SCOPED_ENGINE_EFFECTS';
+} catch (error) {
+  receipt.status = 'FAIL';
+  receipt.failure =
+    error instanceof Error
+      ? { message: error.message, stack: error.stack }
+      : String(error);
+  process.exitCode = 1;
+} finally {
+  server.closeAllConnections();
+  if (server.listening)
+    await new Promise<void>((done) => server.close(() => done()));
+  save();
+  process.stdout.write(
+    `${JSON.stringify({ artifacts, status: receipt.status, contextSyncQualified: false })}\n`,
+  );
+}
