@@ -791,7 +791,10 @@ opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
 The hook follows forward continuations when the server's byte limit splits a
-window, then loads older windows; it retains up to 20 windows. Named `changed` events
+window, then loads older windows; it retains up to 20 windows.
+`useProjectRoomRetainedHistory` re-reads the rows a caller still shows from
+windows the room has moved past, each time the room is invalidated, so an edit,
+delete or reaction reaches them too. Named `changed` events
 invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.

@@ -108,6 +108,29 @@ export async function mockRuntimeConversation(
       onRequest: input.onWindow,
     }),
   );
+  // This execution's latest-turn activity read (`useOrchestrationSession
+  // ActivityQuery`): since #4864 and #4873 a Session row on Home or in
+  // Activity reads its plan progress from it, so any page listing this
+  // session makes it. Only that exact read is modelled here; any other
+  // session-keyed window falls back to a route the spec itself declared, or
+  // to the fixture audit.
+  const latestTurn = createLongSessionEventWindowHandler({
+    threadId: input.id,
+    provider: input.provider,
+    availableTurns: input.turns,
+  });
+  await page.route(
+    `**/api/orchestration/sessions/${id}/event-window**`,
+    (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      return route.request().method() === 'GET' &&
+        query.get('direction') === 'newest' &&
+        query.get('turnLimit') === '1' &&
+        !query.has('cursor')
+        ? latestTurn(route)
+        : route.fallback();
+    },
+  );
   await page.route(
     new RegExp(`/api/orchestration/sessions/${id}/checkpoints(?:\\?.*)?$`),
     (route) =>

@@ -912,7 +912,8 @@ Personal Task rooms expose these authenticated routes:
 - `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
   where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
   It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
-  5 MiB each and 15 MiB decoded total. This exact POST has a 22 MiB JSON body
+  5 MiB each and 15 MiB decoded total. An image's bytes must carry the declared
+  image type's signature. This exact POST has a 22 MiB JSON body
   ceiling; it retains the standard mutation rate budget.
 - `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
   returns authenticated bytes as `application/octet-stream`, with `nosniff`,
@@ -1102,8 +1103,12 @@ reacted. The stored message row is never rewritten.
   as images, PDF, text, Markdown, CSV or JSON (`400 project_room_invalid`). An
   uploaded file can be sent only by the person who uploaded it, in one
   message, in the room it was uploaded to. Its bytes can be read only while
-  that message stands. Account-bound devices may upload and read room files;
-  unlike Task-room files, these never reach an Agent request.
+  that message stands. An image's bytes must carry the declared image type's
+  signature. Each uploader may hold 1280 files in a room. Deleting a message
+  releases its files, and each upload first releases that uploader's unsent
+  files older than a day; shared bytes are removed once no file names them.
+  Account-bound devices may upload and read room files; unlike Task-room
+  files, these never reach an Agent request.
 - **Read state.** Reactions, edits and deletes do not move the room's
   `checkpoint.lastSeq`, which read markers count, so they never mark a channel
   unread. They do wake `/events`, which sends `changed` with the same `lastSeq`
