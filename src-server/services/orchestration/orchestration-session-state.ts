@@ -786,10 +786,13 @@ export function buildOrchestrationSessionSummary(options: {
           openRequestIds: [...openRequestIds],
           openRequestKinds: Object.fromEntries(
             openRequestIds.map((id) => {
-              const event = options.events?.findLast(
-                (event) =>
-                  event.method === 'request.opened' && event.requestId === id,
-              );
+              const event = options.events
+                ?.slice()
+                .reverse()
+                .find(
+                  (event) =>
+                    event.method === 'request.opened' && event.requestId === id,
+                );
               return [
                 id,
                 event?.method === 'request.opened' &&
