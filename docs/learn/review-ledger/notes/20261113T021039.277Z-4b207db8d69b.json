@@ -1,0 +1,17 @@
+{
+  "revision": "d714181bfd600d5310aa0c316368218664444153",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"AgentConnectionView change: when the engine list read failed with no row for the selected engine, a Ready header reads Not loaded with no fix; not-ready verdicts are unchanged. The finite readiness labels and explicit-Add rules in this record are unaffected.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Added that the engine header reads Not loaded instead of Ready when the engine list could not be loaded, matching AgentConnectionView's listUnread guard; checked against the new test 'with the engine list unread, the header does not claim Ready'.","inputs":["docs/guides/connections.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"AgentConnectionView change only affects the header when the engine list read failed; the walkthrough's Connections steps assume a loaded list and still hold.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"AgentConnectionView change only replaces a Ready header with Not loaded when the engine list read failed; smoke and readiness evidence claims are unaffected.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Capture stays historical per media.json; the header guard for an unread engine list is not shown in it.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Recording stays historical per media.json; the header guard for an unread engine list is not shown in it.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}
