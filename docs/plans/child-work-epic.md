@@ -76,7 +76,7 @@ actual request includes the prior wrong ACK in native history.
 Removing only the production second attempt yields an incomplete group, one
 failed member and four model turns; the actual caller fails as intended.
 Byte-exact restoration passes the complete caller again. Private evidence is
-under `/var/folders/zz/8n7yx67d751dfk33tz367rxm0000gn/T/` in
+outside the checkout in
 `child-work-native-group-sync-opwnKT` (independently reviewed),
 `child-work-native-group-sync-lUdSJp` (retry mutation), and
 `child-work-native-group-sync-qRuesw` (restored pass). Orchestration shutdown is
@@ -133,10 +133,9 @@ and returning to bypass mode cannot reopen the restricted late SDK MCP effect.
 All ten exact native processes close with code zero, their owned process groups
 are confirmed closed and the private registry is empty. Twenty synthetic model
 requests remain within the unchanged 24-request cap and 60-second phase bound.
-Scripts types and read-only lint pass. Private artifacts are retained under
-`/var/folders/zz/8n7yx67d751dfk33tz367rxm0000gn/T/child-work-native-sync-lab-eIV8zP`;
-the six-case restored control is `child-work-native-sync-lab-I6sPSL` in the same
-parent directory.
+Scripts types and read-only lint pass. Private artifact folders retained outside
+the checkout are `child-work-native-sync-lab-eIV8zP` and the six-case restored
+control `child-work-native-sync-lab-I6sPSL`.
 
 This proves only the exercised native engine effects and permission-change
 controls. Plugin/Agent controls, production same-Session wrong-ACK/retry,
