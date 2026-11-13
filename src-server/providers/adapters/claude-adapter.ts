@@ -352,7 +352,11 @@ type PendingRequest = {
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
 // Exact native runtimes qualified for retained-Session wildcard tool denial.
-const CONTEXT_SYNC_RUNTIME_VERSIONS = new Set(['2.1.308', '2.1.318']);
+const CONTEXT_SYNC_RUNTIME_VERSIONS = new Set([
+  '2.1.308',
+  '2.1.318',
+  '2.1.322',
+]);
 /** #2494: id of the confined-credential readiness entry (macOS only). */
 const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 

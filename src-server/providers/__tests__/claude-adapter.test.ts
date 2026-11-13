@@ -292,7 +292,7 @@ async function completeClaudeTurn(
 }
 
 describe('ClaudeAdapter', () => {
-  test.each(['2.1.308', '2.1.318'])(
+  test.each(['2.1.308', '2.1.318', '2.1.322'])(
     'qualified runtime %s denies every tool at launch and rejects ordinary or stale sends',
     async (version) => {
       const controlled = Object.assign(createControlledMockQuery(), {
@@ -303,6 +303,7 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(controlled);
       let configHome = join(homedir(), '.claude');
       const adapter = new ClaudeAdapter({
+        readBundledVersion: () => version,
         getConnectionEnv: async () => ({ CLAUDE_CONFIG_DIR: configHome }),
       });
       let current = true;
@@ -321,6 +322,7 @@ describe('ClaudeAdapter', () => {
         },
       };
       try {
+        await adapter.assertContextSyncRuntime();
         await withSessionToolRestriction(restriction, () =>
           adapter.startSession({
             threadId: restriction.threadId,
@@ -393,7 +395,7 @@ describe('ClaudeAdapter', () => {
     },
   );
 
-  test.each(['2.1.307', '2.1.319', undefined])(
+  test.each(['2.1.307', '2.1.319', '2.1.323', undefined])(
     'refuses unqualified sync runtime %s before accepting a turn',
     async (version) => {
       const controlled = Object.assign(createMockQuery([]), {
@@ -402,7 +404,13 @@ describe('ClaudeAdapter', () => {
           .mockResolvedValue({ claude_code_version: version }),
       });
       mockQuery.mockReturnValue(controlled);
-      const adapter = new ClaudeAdapter();
+      const adapter = new ClaudeAdapter({
+        readBundledVersion: () => version ?? null,
+      });
+      await expect(adapter.assertContextSyncRuntime()).rejects.toThrow(
+        'group_sync_policy_unavailable',
+      );
+      expect(mockQuery).not.toHaveBeenCalled();
       await expect(
         withSessionToolRestriction(
           {
