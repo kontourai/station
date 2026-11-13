@@ -6,7 +6,7 @@ function owningPage(scope: Scope): Page {
 }
 
 /** Open the real, portaled setup using its trigger; never interact with inert choices. */
-export async function openRunSetup(scope: Scope): Promise<Locator> {
+async function openRunSetup(scope: Scope): Promise<Locator> {
   const page = owningPage(scope);
   const panel = page.getByRole('dialog', { name: 'Run setup', exact: true });
   if (!(await panel.isVisible())) {
