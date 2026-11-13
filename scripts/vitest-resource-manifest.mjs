@@ -216,6 +216,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Builds and starts an isolated Station on free ports, runs the bundled
+  // Claude engine against a loopback stub, and owns detached process trees.
+  'scripts/__tests__/station-weight.process.test.ts',
   // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
   'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
