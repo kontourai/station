@@ -39,7 +39,11 @@ afterEach(async () => {
 });
 
 async function setup(
-  options: { policy?: () => EngineHostAuthPolicy; now?: () => number } = {},
+  options: {
+    policy?: () => EngineHostAuthPolicy;
+    now?: () => number;
+    oidcRequestTimeoutMs?: number;
+  } = {},
 ) {
   const stub: OidcStub = await startOidcStub();
   const home = makeTempDir('engine-host-auth-');
@@ -51,6 +55,9 @@ async function setup(
     policy: options.policy ?? (() => 'allowed'),
     endpoints: stub.endpoints,
     ...(options.now ? { now: options.now } : {}),
+    ...(options.oidcRequestTimeoutMs !== undefined
+      ? { oidcRequestTimeoutMs: options.oidcRequestTimeoutMs }
+      : {}),
     schedule: (run, delayMs) => {
       delays.push(delayMs);
       const timer = setTimeout(run, 0);
@@ -245,19 +252,79 @@ describe('the vault issuer', () => {
     ).toHaveLength(1);
   });
 
-  test('the thirty-first issue in an hour is refused rate-limited', async () => {
+  test('a refresh endpoint that never answers is abandoned: unavailable, no token, lock released', async () => {
+    let now = Date.now();
+    const { stub, service } = await setup({
+      now: () => now,
+      oidcRequestTimeoutMs: 200,
+    });
+    await signInBuilderId(service, stub, {
+      accessToken: 'access-old',
+      refreshToken: 'refresh-1',
+      expiresIn: 600,
+    });
+    now += 9 * 60 * 1000;
+    stub.refreshAnswers.push({
+      accessToken: 'access-late',
+      refreshToken: 'refresh-2',
+      delayMs: 3_000,
+    });
+    const issuer = service.issuerFor(SCOPE);
+    const started = Date.now();
+    const result = await issuer.issue(KIRO);
+    expect(result).toEqual({ kind: 'refused', reason: 'unavailable' });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(JSON.stringify(result)).not.toMatch(/access|refresh-/);
+    // The refresh lock was released: the next issue refreshes again.
+    stub.refreshAnswers.push({
+      accessToken: 'access-new',
+      refreshToken: 'refresh-3',
+    });
+    const next = await issuer.issue(KIRO);
+    expect(next.kind === 'issued' ? next.issue.accessToken : next).toBe(
+      'access-new',
+    );
+  });
+
+  test('re-handing the unchanged cached token is not counted against the hourly cap', async () => {
     const { stub, service } = await setup();
     await signInBuilderId(service, stub, {
       accessToken: 'a',
       refreshToken: 'r',
     });
     const issuer = service.issuerFor(SCOPE);
-    for (let i = 0; i < 30; i++)
+    // Probes and relaunches each ask once; none of them changes the token.
+    for (let i = 0; i < 100; i++)
       expect((await issuer.issue(KIRO)).kind).toBe('issued');
+    expect(service.status(SCOPE).issueCount24h).toBe(1);
+  });
+
+  test('the thirty-first issue in an hour that refreshes is refused rate-limited', async () => {
+    let now = Date.now();
+    const { stub, service } = await setup({ now: () => now });
+    await signInBuilderId(service, stub, {
+      accessToken: 'access-0',
+      refreshToken: 'r',
+      expiresIn: 60, // inside the refresh margin: every issue refreshes
+    });
+    const issuer = service.issuerFor(SCOPE);
+    for (let i = 1; i <= 31; i++)
+      stub.refreshAnswers.push({ accessToken: `access-${i}`, expiresIn: 60 });
+    for (let i = 1; i <= 30; i++) {
+      now += 1_000;
+      const result = await issuer.issue(KIRO);
+      expect(result.kind === 'issued' ? result.issue.accessToken : result).toBe(
+        `access-${i}`,
+      );
+    }
+    now += 1_000;
     expect(await issuer.issue(KIRO)).toEqual({
       kind: 'refused',
       reason: 'rate-limited',
     });
+    expect(
+      stub.requests.filter((r) => r.body.grantType === 'refresh_token'),
+    ).toHaveLength(30);
   });
 
   test('managed policy off refuses every issue', async () => {

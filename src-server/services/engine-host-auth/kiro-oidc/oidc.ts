@@ -112,10 +112,19 @@ export type DevicePoll =
   | { kind: 'slow-down' }
   | { kind: 'authorized'; tokens: OidcTokens };
 
+/**
+ * Each OIDC or control-plane request is abandoned after this long. A refresh
+ * runs with the vault's refresh lock held, so a stalled endpoint must not hold
+ * it (and every issue for that scope) indefinitely.
+ */
+export const OIDC_REQUEST_TIMEOUT_MS = 15_000;
+
 interface Http {
   fetch: typeof fetch;
   endpoints: KiroOidcEndpoints;
   now: () => number;
+  /** Defaults to {@link OIDC_REQUEST_TIMEOUT_MS}. */
+  requestTimeoutMs?: number;
 }
 
 const AMZ_JSON_1_1 = {
@@ -129,6 +138,11 @@ async function postJson(
   body: unknown,
   headers: Record<string, string> = AMZ_JSON_1_1,
 ): Promise<{ status: number; data: unknown }> {
+  const timeoutMs = http.requestTimeoutMs ?? OIDC_REQUEST_TIMEOUT_MS;
+  // One signal covers the response and its body: a server that answers
+  // headers and then stalls the body is abandoned too.
+  const signal = AbortSignal.timeout(timeoutMs);
+  const host = new URL(url).host;
   let response: Response;
   try {
     response = await http.fetch(url, {
@@ -136,16 +150,21 @@ async function postJson(
       headers,
       body: JSON.stringify(body),
       redirect: 'error',
+      signal,
     });
   } catch (error) {
     throw new KiroOidcError(
-      `Could not reach ${new URL(url).host}: ${(error as Error).name}`,
+      signal.aborted
+        ? `${host} did not answer within ${timeoutMs}ms`
+        : `Could not reach ${host}: ${(error as Error).name}`,
     );
   }
   let data: unknown;
   try {
     data = await response.json();
   } catch {
+    if (signal.aborted)
+      throw new KiroOidcError(`${host} did not answer within ${timeoutMs}ms`);
     data = undefined;
   }
   return { status: response.status, data };

@@ -38,6 +38,7 @@ export interface KiroSignInDeps {
   fetch: typeof fetch;
   endpoints: KiroOidcEndpoints;
   now: () => number;
+  requestTimeoutMs?: number;
   /** Returns a cancel function. Injected so tests drive polling without a clock. */
   schedule: (run: () => void, delayMs: number) => () => void;
   vault: EngineHostAuthVault;
@@ -120,6 +121,9 @@ export class KiroSignIn {
       fetch: this.deps.fetch,
       endpoints: this.deps.endpoints,
       now: this.deps.now,
+      ...(this.deps.requestTimeoutMs !== undefined
+        ? { requestTimeoutMs: this.deps.requestTimeoutMs }
+        : {}),
     };
   }
 
@@ -379,6 +383,7 @@ export function kiroCredentialRefresher(deps: {
   fetch: typeof fetch;
   endpoints: KiroOidcEndpoints;
   now: () => number;
+  requestTimeoutMs?: number;
 }): (credential: StoredEngineCredential) => Promise<StoredEngineCredential> {
   return async (credential) => {
     const region = credential.identity.region ?? BUILDER_ID_REGION;

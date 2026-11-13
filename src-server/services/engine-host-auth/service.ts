@@ -50,6 +50,8 @@ export interface EngineHostAuthServiceOptions {
   policy: () => EngineHostAuthPolicy;
   fetch?: typeof fetch;
   endpoints?: KiroOidcEndpoints;
+  /** Per-request OIDC timeout; defaults to `OIDC_REQUEST_TIMEOUT_MS`. */
+  oidcRequestTimeoutMs?: number;
   now?: () => number;
   schedule?: (run: () => void, delayMs: number) => () => void;
   /** Extra audit sink (the structured log). The JSONL file is always written. */
@@ -101,6 +103,9 @@ export class EngineHostAuthService {
       fetch: this.#fetch,
       endpoints: this.#endpoints,
       now: this.#now,
+      ...(options.oidcRequestTimeoutMs !== undefined
+        ? { requestTimeoutMs: options.oidcRequestTimeoutMs }
+        : {}),
       schedule: options.schedule ?? defaultSchedule,
       vault: this.vault,
       onSignedIn: (scope) =>
@@ -169,6 +174,9 @@ export class EngineHostAuthService {
             fetch: this.#fetch,
             endpoints: this.#endpoints,
             now: this.#now,
+            ...(this.#options.oidcRequestTimeoutMs !== undefined
+              ? { requestTimeoutMs: this.#options.oidcRequestTimeoutMs }
+              : {}),
           }),
         },
         isRefreshRejected: (error) => error instanceof KiroRefreshRejectedError,

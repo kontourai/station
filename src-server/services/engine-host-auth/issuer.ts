@@ -5,7 +5,9 @@
  *
  * - Concurrent requests for a scope share one in-flight issue.
  * - At most {@link ENGINE_CREDENTIAL_ISSUES_PER_HOUR} issues per scope per
- *   rolling hour; the next is refused `rate-limited`.
+ *   rolling hour that refresh or hand out a token not already handed out;
+ *   the next is refused `rate-limited`. Re-handing the unchanged cached token
+ *   is not counted.
  * - A token within {@link ENGINE_CREDENTIAL_REFRESH_MARGIN_MS} of expiry is
  *   refreshed first, under the vault's cross-process lock, and the vault is
  *   re-read inside the lock so a peer's refresh is used rather than repeated.
@@ -14,6 +16,7 @@
  * - Every outcome is audited without values; managed policy can turn
  *   issuing off.
  */
+import { createHash } from 'node:crypto';
 import type {
   EngineCredentialBinding,
   EngineCredentialIssueResult,
@@ -64,10 +67,27 @@ export type EngineCredentialRefresher = (
   credential: StoredEngineCredential,
 ) => Promise<StoredEngineCredential>;
 
-/** Shared across every issuer of one service: the in-flight issues and the issue log per bucket. */
+/**
+ * Shared across every issuer of one service: the in-flight issues and the
+ * issue log per bucket. Only an issue that hands the engine a token it has not
+ * already been handed (a refresh, or a new sign-in) is logged; re-handing an
+ * unchanged cached token is free, so availability probes and restarts that
+ * each ask once cannot use up the hourly cap.
+ */
 export class EngineCredentialIssueLedger {
   readonly inFlight = new Map<string, Promise<EngineCredentialIssueResult>>();
   readonly #issued = new Map<string, number[]>();
+  /** A digest of the last token handed out per bucket, never the token. */
+  readonly #lastToken = new Map<string, string>();
+
+  /** Whether `accessToken` is the token this bucket last handed out. */
+  isLastIssued(bucket: string, accessToken: string): boolean {
+    return this.#lastToken.get(bucket) === tokenDigest(accessToken);
+  }
+
+  noteIssued(bucket: string, accessToken: string): void {
+    this.#lastToken.set(bucket, tokenDigest(accessToken));
+  }
 
   record(bucket: string, at: number): void {
     const times = this.#prune(bucket, at);
@@ -87,6 +107,8 @@ export class EngineCredentialIssueLedger {
   forget(predicate: (bucket: string) => boolean): void {
     for (const bucket of [...this.#issued.keys()])
       if (predicate(bucket)) this.#issued.delete(bucket);
+    for (const bucket of [...this.#lastToken.keys()])
+      if (predicate(bucket)) this.#lastToken.delete(bucket);
   }
 
   #prune(bucket: string, now: number): number[] {
@@ -109,6 +131,10 @@ export interface IssuerDeps {
   readonly policy: () => EngineHostAuthPolicy;
   readonly audit: EngineHostAuthAuditSink;
   readonly now: () => number;
+}
+
+function tokenDigest(accessToken: string): string {
+  return createHash('sha256').update(accessToken).digest('hex');
 }
 
 function isFresh(credential: StoredEngineCredential, now: number): boolean {
@@ -184,12 +210,6 @@ export class VaultEngineCredentialIssuer implements EngineCredentialIssuer {
     const refresher = this.deps.refreshers[kind];
     if (!refresher) return this.#refuse(kind, 'unavailable');
     const now = this.deps.now();
-    if (
-      this.deps.ledger.countSince(bucket, now, HOUR_MS) >=
-      ENGINE_CREDENTIAL_ISSUES_PER_HOUR
-    )
-      return this.#refuse(kind, 'rate-limited');
-
     let read: VaultRead | undefined;
     try {
       read = this.deps.vault.read(kind, this.scope);
@@ -198,12 +218,29 @@ export class VaultEngineCredentialIssuer implements EngineCredentialIssuer {
     }
     if (!read) return this.#refuse(kind, 'signed-out');
     let credential = read.credential;
-    if (!isFresh(credential, now)) {
-      const refreshed = await this.#refresh(kind, refresher);
-      if ('refused' in refreshed) return this.#refuse(kind, refreshed.refused);
-      credential = refreshed.credential;
+    // Re-handing the token this bucket already handed out costs nothing and
+    // is not counted. Anything else (a refresh, a new sign-in's token) is
+    // capped and logged.
+    const cached =
+      isFresh(credential, now) &&
+      this.deps.ledger.isLastIssued(bucket, credential.accessToken);
+    if (!cached) {
+      if (
+        this.deps.ledger.countSince(bucket, now, HOUR_MS) >=
+        ENGINE_CREDENTIAL_ISSUES_PER_HOUR
+      )
+        return this.#refuse(kind, 'rate-limited');
+      if (!isFresh(credential, now)) {
+        const refreshed = await this.#refresh(kind, refresher);
+        if ('refused' in refreshed)
+          return this.#refuse(kind, refreshed.refused);
+        credential = refreshed.credential;
+      }
+      if (!this.deps.ledger.isLastIssued(bucket, credential.accessToken)) {
+        this.deps.ledger.record(bucket, this.deps.now());
+        this.deps.ledger.noteIssued(bucket, credential.accessToken);
+      }
     }
-    this.deps.ledger.record(bucket, this.deps.now());
     this.#audit(kind, 'issued');
     return {
       kind: 'issued',
