@@ -484,7 +484,9 @@ test('an engine Station signs in: install with consent, then a Builder ID sign-i
     false,
   );
   expect(
-    screen.getByText(/checks every file against the checksums/),
+    screen.getByText(
+      /checked against pinned checksums and installed read-only/,
+    ),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Install' }));
   await waitFor(() =>

@@ -78,7 +78,7 @@ function InstallBlock({
         </small>
       )}
       <small>
-        {`Station downloads ${engineName} ${install.version} and the Node runtime it runs on, checks every file against the checksums this Station pins, and installs them read-only on the computer Station runs on. Nothing updates on its own.`}
+        {`Downloads ${engineName} ${install.version} and its Node.js build, checked against pinned checksums and installed read-only; it never updates itself.`}
       </small>
       {!allowed && (
         <small>This device is not allowed to install engines.</small>
@@ -343,9 +343,8 @@ export function EngineHostAuthSection({
             </form>
           )}
           <small>
-            Station keeps the Kiro sign-in for this engine only and gives{' '}
-            {engineName} a short-lived access token when it asks, never the
-            refresh token.
+            For this engine only: {engineName} gets short-lived access tokens,
+            never the refresh token.
           </small>
         </>
       )}

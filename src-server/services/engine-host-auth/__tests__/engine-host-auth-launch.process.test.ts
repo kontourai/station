@@ -66,7 +66,7 @@ beforeEach(() => {
   home = makeTempDir('engine-host-auth-launch-');
   cleanups.push(() => {
     try {
-      execFileSync('chmod', ['-R', 'u+w', home]);
+      execFileSync('chmod', ['-R', 'u+w', home], { windowsHide: true });
     } catch {}
     rmSync(home, { recursive: true, force: true });
   });

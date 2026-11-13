@@ -161,7 +161,7 @@ async function run(f: Fixture, inst = installer(f)) {
   cleanups.push(() => f.server.close());
   cleanups.push(() => {
     try {
-      execFileSync('chmod', ['-R', 'u+w', f.home]);
+      execFileSync('chmod', ['-R', 'u+w', f.home], { windowsHide: true });
     } catch {}
     rmSync(f.home, { recursive: true, force: true });
   });
@@ -192,6 +192,7 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
     expect(
       execFileSync(state.entry.runtime, [state.entry.script], {
         encoding: 'utf8',
+        windowsHide: true,
       }),
     ).toBe('fake acp server\n');
     // Read-only after install: neither a file nor the directory takes a write.
@@ -208,6 +209,7 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
     expect(
       execFileSync('ls', ['-a', join(f.home, 'engines', 'kiro-kas')], {
         encoding: 'utf8',
+        windowsHide: true,
       })
         .split('\n')
         .filter((name) => name.startsWith('.staging')),
@@ -218,17 +220,15 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
     const source = makeTempDir('managed-install-xz-');
     cleanups.push(() => rmSync(source, { recursive: true, force: true }));
     const server = join(source, 'node_modules/@kiro/agent/dist/server');
-    execFileSync('mkdir', ['-p', server]);
+    execFileSync('mkdir', ['-p', server], { windowsHide: true });
     writeFileSync(join(server, 'acp-server.js'), SERVER_JS);
     const archive = join(source, 'engine.tar.xz');
     try {
-      execFileSync(process.platform === 'darwin' ? '/usr/bin/tar' : 'tar', [
-        '-cJf',
-        archive,
-        '-C',
-        source,
-        'node_modules',
-      ]);
+      execFileSync(
+        process.platform === 'darwin' ? '/usr/bin/tar' : 'tar',
+        ['-cJf', archive, '-C', source, 'node_modules'],
+        { windowsHide: true },
+      );
     } catch {
       // A host tar without xz support cannot build the fixture.
       context.skip();
@@ -241,6 +241,7 @@ describe.skipIf(process.platform === 'win32')('ManagedInstaller', () => {
     expect(
       execFileSync(state.entry.runtime, [state.entry.script], {
         encoding: 'utf8',
+        windowsHide: true,
       }),
     ).toBe('fake acp server\n');
   });
