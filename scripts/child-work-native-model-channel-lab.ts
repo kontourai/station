@@ -26,6 +26,28 @@ if (!process.argv.includes('--run-real-local-lab'))
 const base =
   'node@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54';
 const includeEngines = process.argv.includes('--with-native-engines');
+const fixtureModel = 'station-channel-fixture';
+const fixtureCatalog = JSON.stringify({
+  models: [
+    {
+      slug: fixtureModel,
+      display_name: 'Synthetic channel fixture',
+      description:
+        'Local transport fixture only; no upstream model capability qualification.',
+      base_instructions: 'Return the fixed fixture response.',
+      supported_reasoning_levels: [],
+      shell_type: 'unified_exec',
+      visibility: 'list',
+      supported_in_api: true,
+      priority: 0,
+      support_verbosity: false,
+      truncation_policy: { mode: 'tokens', limit: 10000 },
+      context_window: 32768,
+      input_modalities: ['text'],
+      experimental_supported_tools: [],
+    },
+  ],
+});
 const engines = [
   {
     name: 'claude',
@@ -90,6 +112,10 @@ try {
   assert.ok(endpoint.startsWith('unix:///'));
   const prefix = ['--host', endpoint, '--config', dockerConfig];
   if (includeEngines) {
+    writeFileSync(join(context, 'fixture-models.json'), fixtureCatalog);
+    receipt.fixtureCatalogSha256 = createHash('sha256')
+      .update(fixtureCatalog)
+      .digest('hex');
     receipt.engines = engines;
     for (const engine of engines) {
       const signal = AbortSignal.timeout(120_000);
@@ -178,7 +204,7 @@ try {
     .digest('hex');
   writeFileSync(
     join(context, 'Dockerfile'),
-    `FROM ${base}\nCOPY native-model-worker.mjs /station/native-model-worker.mjs\n${includeEngines ? 'COPY claude codex /station/\n' : ''}USER 10000:10001\n`,
+    `FROM ${base}\nCOPY native-model-worker.mjs /station/native-model-worker.mjs\n${includeEngines ? 'COPY claude codex fixture-models.json /station/\n' : ''}USER 10000:10001\n`,
   );
   // This explicit lab owns the cache addition. Serving creation always uses --pull=never.
   await runLabCommand(docker, [...prefix, 'pull', base], root, 120_000);
@@ -217,7 +243,10 @@ try {
           currentEngine === 'claude' ? '/v1/messages' : '/v1/responses',
         );
         const body = JSON.parse(input.body.toString('utf8'));
-        assert.equal(typeof body.model, 'string');
+        assert.equal(
+          body.model,
+          currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',
+        );
         requests.push({
           engine: currentEngine,
           path: input.path,
@@ -451,7 +480,9 @@ try {
               '--sandbox',
               'danger-full-access',
               '-m',
-              'gpt-5.4',
+              fixtureModel,
+              '-c',
+              'model_catalog_json="/station/fixture-models.json"',
               '-c',
               'model_provider="station-probe"',
               '-c',
