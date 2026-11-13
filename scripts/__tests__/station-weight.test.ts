@@ -1,16 +1,9 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   contextSwitchDelta,
   hostFingerprint,
@@ -132,6 +125,8 @@ async function sendThrough(
 }
 
 const INJECTED = '[Station preamble: something Station tells the engine]';
+
+const makeTempDir = trackTempDirs();
 
 describe('station-weight stub endpoint', () => {
   test('answers a real streaming client and records the request without credentials', async () => {
@@ -1143,38 +1138,34 @@ describe('station-weight process identity', () => {
   });
 
   test('a scratch path counts only inside the resolved scratch root', () => {
-    const base = realpathSync(mkdtempSync(join(tmpdir(), 'station-weight-')));
-    try {
-      const scratch = join(base, 'scratch');
-      const outside = join(base, 'outside');
-      mkdirSync(join(scratch, 'user'), { recursive: true });
-      mkdirSync(outside);
-      symlinkSync(outside, join(scratch, 'link'));
-      // A link from outside to the scratch root is still the root.
-      symlinkSync(scratch, join(base, 'alias'));
-      const kind = (value: string) =>
-        runTagKind(
-          [`HOME=${value}`],
-          runTagging({
-            nonce: '56'.repeat(16),
-            scratch,
-            startedAtMs: 0,
-            uid: 501,
-          }),
-        );
-      // The reviewer's probes: both spell a path under the scratch root and
-      // resolve outside it.
-      expect(kind(`${scratch}/../outside`)).toBe(null);
-      expect(kind(`${scratch}/link`)).toBe(null);
-      expect(kind(`${scratch}/link/not-yet`)).toBe(null);
-      expect(kind(`${scratch}/user/../../outside`)).toBe(null);
-      // Positive controls: inside, existing or not, however spelled.
-      expect(kind(`${scratch}/user`)).toBe('path');
-      expect(kind(`${scratch}/./user/not-yet`)).toBe('path');
-      expect(kind(`${base}/alias/user`)).toBe('path');
-    } finally {
-      rmSync(base, { recursive: true, force: true });
-    }
+    const base = realpathSync(makeTempDir('station-weight-'));
+    const scratch = join(base, 'scratch');
+    const outside = join(base, 'outside');
+    mkdirSync(join(scratch, 'user'), { recursive: true });
+    mkdirSync(outside);
+    symlinkSync(outside, join(scratch, 'link'));
+    // A link from outside to the scratch root is still the root.
+    symlinkSync(scratch, join(base, 'alias'));
+    const kind = (value: string) =>
+      runTagKind(
+        [`HOME=${value}`],
+        runTagging({
+          nonce: '56'.repeat(16),
+          scratch,
+          startedAtMs: 0,
+          uid: 501,
+        }),
+      );
+    // The reviewer's probes: both spell a path under the scratch root and
+    // resolve outside it.
+    expect(kind(`${scratch}/../outside`)).toBe(null);
+    expect(kind(`${scratch}/link`)).toBe(null);
+    expect(kind(`${scratch}/link/not-yet`)).toBe(null);
+    expect(kind(`${scratch}/user/../../outside`)).toBe(null);
+    // Positive controls: inside, existing or not, however spelled.
+    expect(kind(`${scratch}/user`)).toBe('path');
+    expect(kind(`${scratch}/./user/not-yet`)).toBe('path');
+    expect(kind(`${base}/alias/user`)).toBe('path');
   });
 
   test('a macOS environment counts only from a read of the row process', () => {
