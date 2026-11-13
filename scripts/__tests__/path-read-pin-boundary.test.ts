@@ -269,6 +269,7 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
   'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
   'src-server/providers/__tests__/acp-kiro-parity.test.ts',
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
   'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
   'src-server/services/acp/__tests__/acp-handshake-facts.test.ts',
   'src-server/services/acp/__tests__/acp-probe-terminal-facts.process.test.ts',

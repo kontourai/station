@@ -24,6 +24,7 @@ import type {
 } from '@agentclientprotocol/sdk/unstable';
 import type {
   ApprovalStatus,
+  TokenUsageUpdatedEvent,
   TurnCompletedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
@@ -567,6 +568,52 @@ export function mapAcpStopReasonToTurnCompletion(
       ? reason.trim().slice(0, MAX_ACP_STOP_REASON_LENGTH)
       : '';
   return raw ? { finishReason, stopReason: raw } : { finishReason };
+}
+
+/**
+ * The token figures of one prompt answer's `usage` (ACP's unstable
+ * `PromptResponse.usage`), as `token-usage.updated` fields. That answer is
+ * the turn's: the schema calls it "Token usage for this turn", and a recorded
+ * engine's input figure falls between consecutive turns (Antigravity 1.5.8,
+ * `antigravity-1.5.8-session-frames.jsonl`), which a running total would not.
+ * `usage-semantics.ts` declares ACP `per-turn` on that evidence.
+ *
+ * Each figure is carried as reported, never derived: `totalTokens` stays the
+ * engine's own total (which may include cache reads), and no cost is read.
+ * A figure that is not a finite non-negative number is left out. Nothing
+ * when the answer carries no usable figure. The context pair stays with
+ * `usage_update`; these fields never touch it.
+ */
+export function mapAcpPromptUsage(
+  usage: unknown,
+): Pick<
+  TokenUsageUpdatedEvent,
+  | 'promptTokens'
+  | 'completionTokens'
+  | 'totalTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'reasoningTokens'
+> | null {
+  if (!usage || typeof usage !== 'object') return null;
+  const read = (key: string): number | undefined => {
+    const value = (usage as Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  };
+  const figures = {
+    promptTokens: read('inputTokens'),
+    completionTokens: read('outputTokens'),
+    totalTokens: read('totalTokens'),
+    cacheReadTokens: read('cachedReadTokens'),
+    cacheWriteTokens: read('cachedWriteTokens'),
+    reasoningTokens: read('thoughtTokens'),
+  };
+  const reported = Object.fromEntries(
+    Object.entries(figures).filter(([, value]) => value !== undefined),
+  ) as ReturnType<typeof mapAcpPromptUsage>;
+  return reported && Object.keys(reported).length > 0 ? reported : null;
 }
 
 /**

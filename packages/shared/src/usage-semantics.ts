@@ -69,6 +69,14 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     // assistant messages and emits it once, when that turn closes
     // (`opencode-session-source.ts`), so each event is that turn's figure.
     ['opencode', 'per-turn'],
+    // ACP: the adapter publishes one event per answered `session/prompt`,
+    // from that answer's `usage`, which the schema describes as "Token usage
+    // for this turn" (its field docs say "across session"; the protocol marks
+    // the field unstable). A recorded engine's input figure falls from one
+    // turn to the next (Antigravity 1.5.8, `antigravity-1.5.8-session-frames.jsonl`:
+    // 10377 then 8610), which no running total does. `usage_update` events
+    // carry only the context pair and add nothing to a sum.
+    ['acp', 'per-turn'],
   ]);
 
 /**
@@ -76,12 +84,11 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
  * (`contextTokens`/`contextWindowTokens`) and never consumed-token or cost
  * figures. They stay out of {@link PROVIDER_USAGE_SCOPE} on purpose: neither
  * scope describes an event with no totals, and declaring one would let a
- * consumer read their absent totals as zero. ACP: `session/update`'s
- * `usage_update` reports the current context window only
- * (`acp-adapter-events.ts`), so an ACP turn never has a usage total.
+ * consumer read their absent totals as zero. None today: ACP was, until its
+ * adapter read the prompt answer's `usage` (see `PROVIDER_USAGE_SCOPE`).
  */
 export const CONTEXT_OCCUPANCY_ONLY_PROVIDERS: ReadonlySet<string> =
-  new Set<string>(['acp']);
+  new Set<string>();
 
 /** True when a provider is declared to report context occupancy, never totals. */
 export function providerReportsContextOccupancyOnly(provider: string): boolean {

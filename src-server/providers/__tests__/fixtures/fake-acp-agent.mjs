@@ -30,15 +30,22 @@
 //                        config option, which arrives that many ms later in
 //                        a `config_option_update` (an engine whose model list
 //                        loads after it answers)
+//   promptResponse       fields merged into every session/prompt answer
+//                        beside `stopReason` (a recorded engine's `usage`)
 //   --prompt-steps <path>  a JSON step list replacing the default turn. Extra
 //                        step kinds: `client-request` {method, params},
 //                        `user-message-id` (a Kiro `user_message_id_assigned`
 //                        session_info_update, ids `msg-1`, `msg-2`, ...),
-//                        `wait-ms` {ms}
+//                        `wait-ms` {ms}, `update` {update} (that
+//                        session/update payload, sent as given)
 // Client-to-engine extension requests are answered from the profile's
 // `extMethodAnswers` ({ "<method>": { result } | { error } }) and recorded as
 // `{ extMethod, params }`; any other is refused -32601. `session/load`,
-// `session/fork` and `session/delete` are answered and recorded too.
+// `session/fork` and `session/delete` are answered and recorded too, and so
+// is `session/resume` when the profile's initialize advertises
+// `sessionCapabilities.resume` (refused -32601 otherwise, as before). Load and
+// resume answer with the session's shape (`sessionNew` with the modes and
+// config values set since), as a recorded engine does.
 //
 // Sign-in:
 //   --record-env <NAME>          record NAME's value in this process's
@@ -198,6 +205,8 @@ async function runStep(step, sessionId, client) {
       });
     case 'wait-ms':
       return new Promise((resolve) => setTimeout(resolve, step.ms));
+    case 'update':
+      return update(step.update);
     case 'tool': {
       const toolCallId = `call_fake_${++state.toolCalls}`;
       await update({
@@ -345,6 +354,14 @@ const app = acp
     });
     return sessionShape(params.sessionId);
   })
+  .onRequest('session/resume', ({ params }) => {
+    if (
+      profile.initialize?.agentCapabilities?.sessionCapabilities?.resume == null
+    )
+      throw acp.RequestError.methodNotFound('session/resume');
+    record({ method: 'session/resume', sessionId: params.sessionId });
+    return { sessionId: params.sessionId, ...sessionShape(params.sessionId) };
+  })
   .onRequest('session/fork', ({ params }) => {
     record({
       method: 'session/fork',
@@ -374,7 +391,7 @@ const app = acp
     if (fail === 'auth-required-on-prompt') throw authRequired();
     for (const step of promptSteps ?? defaultSteps())
       await runStep(step, params.sessionId, client);
-    return { stopReason: 'end_turn' };
+    return { stopReason: 'end_turn', ...(profile.promptResponse ?? {}) };
   })
   .onRequest('*', ({ method, params }) => {
     record({ extMethod: method, params });

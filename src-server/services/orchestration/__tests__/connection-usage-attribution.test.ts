@@ -487,7 +487,9 @@ describe('usage attribution to connections', () => {
     }
   });
 
-  test('ACP coverage says it reports context occupancy, not totals', async () => {
+  // ACP turns report totals from the prompt answer's `usage` (declared
+  // per-turn), so a turn with only the context pair is a missing report.
+  test('an ACP turn that reported only its context pair is a missing usage report', async () => {
     store.appendEvent({
       eventId: 'acp-started',
       provider: 'acp',
@@ -529,8 +531,7 @@ describe('usage attribution to connections', () => {
       expect.objectContaining({
         provider: 'acp',
         state: 'partial',
-        reason:
-          'engine reports context occupancy only, not token or cost totals',
+        reason: 'terminal turns missing usage reports',
       }),
     ]);
   });

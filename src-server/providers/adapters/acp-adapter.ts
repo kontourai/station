@@ -211,6 +211,7 @@ import {
   mapAcpDecisionToApprovalStatus,
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
+  mapAcpPromptUsage,
   mapAcpSessionUpdate,
   mapAcpStopReasonToTurnCompletion,
 } from './acp-adapter-events.js';
@@ -945,6 +946,46 @@ export const ACP_ADAPTER_CAPABILITIES = [
 const ACP_MODEL_ADVERTISEMENT_WAIT_MS = 5_000;
 
 /** `options` with `option` in place of the entry of the same id, or added. */
+/** What a `session/new`, `session/resume` or `session/load` answer advertises. */
+type AdvertisedSessionState = {
+  configOptions?: unknown[];
+  modes?: Parameters<typeof advertisedAcpSessionModes>[0]['modes'];
+  models?: unknown;
+};
+
+/**
+ * Adopt a session answer's mode catalog by the one rule every way of opening
+ * a session uses, and read its models. A catalog with no modes leaves the
+ * session's current mode as it was. `configOptions` is the caller's to set:
+ * a fresh session replaces it, a reattach keeps it when the answer has none.
+ */
+function adoptAdvertisedSessionState(
+  record: Pick<AcpSessionRecord, 'acpModeCatalog' | 'currentModeId'>,
+  answer: AdvertisedSessionState,
+): {
+  modeCatalog: AdvertisedAcpModeCatalog;
+  sessionModels: ReturnType<typeof parseAcpSessionModelState>;
+  currentModelId?: string;
+} {
+  const modeCatalog = advertisedAcpSessionModes({
+    configOptions: answer.configOptions,
+    modes: answer.modes,
+  });
+  record.acpModeCatalog = modeCatalog;
+  if (modeCatalog.modes.length > 0) {
+    record.currentModeId = modeCatalog.currentModeId;
+  }
+  const sessionModels = parseAcpSessionModelState(answer.models);
+  return {
+    modeCatalog,
+    sessionModels,
+    currentModelId: acpAdvertisedModelCatalog(
+      answer.configOptions,
+      sessionModels.kind === 'listed' ? sessionModels.state : undefined,
+    ).currentModelId,
+  };
+}
+
 function mergeAcpConfigOption(
   options: unknown,
   option: { id: string },
@@ -1983,9 +2024,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.reattaching = true;
         try {
           let outcome: 'resumed' | 'loaded';
+          // The answer carries the same `modes`, `configOptions` and
+          // `models` a `session/new` answer does.
+          let reattached: AdvertisedSessionState;
           if (reattach === 'resume') {
             try {
-              await acpProcess.resumeSession(
+              reattached = await acpProcess.resumeSession(
                 acpSessionId,
                 cwd,
                 passthroughMcpServers,
@@ -2002,7 +2046,7 @@ export class AcpAdapter implements ProviderAdapterShape {
               ) {
                 throw error;
               }
-              await acpProcess.loadSession(
+              reattached = await acpProcess.loadSession(
                 acpSessionId,
                 cwd,
                 passthroughMcpServers,
@@ -2013,7 +2057,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           } else {
             // Sent again on load: the engine registers client agents per
             // session process and has none after a restart.
-            await acpProcess.loadSession(
+            reattached = await acpProcess.loadSession(
               acpSessionId,
               cwd,
               passthroughMcpServers,
@@ -2026,6 +2070,17 @@ export class AcpAdapter implements ProviderAdapterShape {
           // be in flight (as microtasks) when the response resolves. Yield a
           // macrotask so they land while the replay is still suppressed.
           await new Promise<void>((resolve) => setImmediate(resolve));
+          // A reopened session can change mode and effort only through what
+          // this answer advertised. A field it leaves out keeps what the
+          // session already holds (a `config_option_update` sent meanwhile).
+          // No start mode, model or effort is applied: a reattach continues
+          // the session as it was.
+          if (Array.isArray(reattached.configOptions))
+            record.configOptions = reattached.configOptions;
+          reportedModel = adoptAdvertisedSessionState(record, {
+            ...reattached,
+            configOptions: record.configOptions,
+          }).currentModelId;
           acpResumeSessions.add(1, { connectionId: config.id, outcome });
         } finally {
           record.reattaching = false;
@@ -2071,14 +2126,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         // a model option the answer itself left out.
         const updatedBeforeAnswer = record.configOptions;
         record.configOptions = sessionResult.configOptions;
-        const modeCatalog = advertisedAcpSessionModes({
-          configOptions: sessionResult.configOptions,
-          modes: sessionResult.modes,
-        });
-        record.acpModeCatalog = modeCatalog;
-        if (modeCatalog.modes.length > 0) {
-          record.currentModeId = modeCatalog.currentModeId;
-        }
+        const advertised = adoptAdvertisedSessionState(record, sessionResult);
+        const modeCatalog = advertised.modeCatalog;
         // #2569: a full-access mode is the ACP form of approval `never`.
         // Outside a `host` session it is not applied, and the session keeps
         // (and reports, as `acpSessionMode`) the connection's own current
@@ -2126,17 +2175,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         }
         // #352: a `model` config option is preferred; an agent without one
         // may still list models on the session and switch with set_model.
-        const sessionModelsObservation = parseAcpSessionModelState(
-          sessionResult.models,
-        );
+        const sessionModelsObservation = advertised.sessionModels;
         const sessionModels =
           sessionModelsObservation.kind === 'listed'
             ? sessionModelsObservation.state
             : undefined;
-        reportedModel = acpAdvertisedModelCatalog(
-          sessionResult.configOptions,
-          sessionModels,
-        ).currentModelId;
+        reportedModel = advertised.currentModelId;
         const requestedModel = input.modelId?.trim();
         let modelOption = requestedModel
           ? findAcpModelConfigOption(sessionResult.configOptions)
@@ -4930,6 +4974,21 @@ export class AcpAdapter implements ProviderAdapterShape {
           command: record.command,
           args: record.args,
         });
+        // What this prompt consumed belongs to its turn even when the turn
+        // was interrupted or steered past it, so it is published before the
+        // ownership checks below (a stopped session publishes nothing).
+        const usage = mapAcpPromptUsage(response.usage);
+        if (usage && !record.stopping && this.sessions.get(threadId) === record)
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'token-usage.updated',
+            ...usage,
+          });
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
