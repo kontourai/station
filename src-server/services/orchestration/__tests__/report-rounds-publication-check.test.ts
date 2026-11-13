@@ -56,10 +56,14 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
           return open(path, flags, mode);
         });
       syncBuiltinESMExports();
+      let retiredLifetime: (() => undefined) | undefined;
       try {
         await publication.withHome({ owner, current }, async (scope) => {
+          retiredLifetime = scope.assertLifetimeCurrent;
           checks.length = 0;
           inspections = 0;
+          scope.assertLifetimeCurrent();
+          assert.deepEqual(checks, []);
           const result = {
             // biome-ignore lint/suspicious/noThenProperty: Exercise the caller-controlled then getter at the synchronous boundary.
             get then() {
@@ -96,9 +100,23 @@ test('publication synchronous checks hold Home, refuse queued withdrawal and fen
               }),
             (error) => error === failure,
           );
+          const beforeLifetime = checks.length;
+          scope.assertLifetimeCurrent();
+          assert.equal(checks.length, beforeLifetime);
+          let protectedEntered = false;
+          assert.throws(
+            () =>
+              scope.check(() => {
+                protectedEntered = true;
+              }),
+            (error) => error === failure,
+          );
+          assert.equal(protectedEntered, false);
           withdrawn = false;
           assert.throws(() => scope.check(async () => 42), TypeError);
         });
+        assert.ok(retiredLifetime);
+        assert.throws(retiredLifetime, { reason: 'borrow-unavailable' });
       } finally {
         observe.mockRestore();
         syncBuiltinESMExports();

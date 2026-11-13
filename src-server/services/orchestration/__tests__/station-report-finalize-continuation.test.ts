@@ -822,7 +822,16 @@ test('continuation publication binds exact operation parents and isolates transa
   };
   try {
     await withReportRoundsPublication(input, async (publication) => {
-      const options = { owner, current, groupId: 'parent-group', build };
+      let preparedScope: ReportRoundsScope | undefined;
+      const options = {
+        owner,
+        current,
+        groupId: 'parent-group',
+        build,
+        prepare: async (scope: ReportRoundsScope) => {
+          preparedScope = scope;
+        },
+      };
       const transactions = publication.transactionOwner(options);
       const token = await publication.acquireContinuationPublication(options);
       const request = {
@@ -859,6 +868,9 @@ test('continuation publication binds exact operation parents and isolates transa
         DelegationRoundsTransactionParentError,
       );
       const first = await transactions.acquire(request);
+      const firstScope = preparedScope;
+      assert.ok(firstScope);
+      firstScope.assertLifetimeCurrent();
       const sibling = await transactions.acquire(request);
       const flowChild = await token.flowAdmission.acquire();
       assert.throws(() => owner.runSynchronous(() => undefined), {
@@ -874,6 +886,10 @@ test('continuation publication binds exact operation parents and isolates transa
       await first.release();
       assert.throws(
         first.assertCurrent,
+        DelegationRoundsTransactionParentError,
+      );
+      assert.throws(
+        firstScope.assertLifetimeCurrent,
         DelegationRoundsTransactionParentError,
       );
       sibling.assertCurrent();

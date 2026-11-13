@@ -1333,7 +1333,7 @@ export class StationReportGroupCustody {
             const state = states.get(scope);
             if (!state) refuse();
             // The parent may still hold Home after this transaction child retires.
-            scope.current();
+            scope.assertLifetimeCurrent();
             return scope.owner.runWithLease(scope.lease, () =>
               this.owners.environment.withCurrentAuthority(() =>
                 scope.check(() => {

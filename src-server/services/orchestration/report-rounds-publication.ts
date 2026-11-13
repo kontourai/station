@@ -32,6 +32,8 @@ type Outcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
 export interface ReportRoundsScope {
   readonly owner: HomeWriterOwner;
   readonly lease: HomeWriterLease;
+  /** Publication/transaction lifetime only; does not admit Home or source use. */
+  assertLifetimeCurrent(): undefined;
   current(): undefined;
   check<T>(body: () => T): T;
 }
@@ -122,11 +124,16 @@ export async function withReportRoundsPublication<T>(
       }
       return cleanup();
     };
-    const assertCurrent = (): undefined => {
-      if (!active || !scopeActive || !lease)
+    const assertLifetimeCurrent = (): undefined => {
+      if (!active || !scopeActive)
         throw new HomeWriterUnavailableError('borrow-unavailable');
       child.assertCurrent();
       signal.throwIfAborted();
+      return undefined;
+    };
+    const assertCurrent = (): undefined => {
+      if (!lease) throw new HomeWriterUnavailableError('borrow-unavailable');
+      assertLifetimeCurrent();
       return owner.runWithLease(lease, sourceCurrent);
     };
     try {
@@ -142,7 +149,13 @@ export async function withReportRoundsPublication<T>(
           return { __proto__: null, value };
         }).value;
       return {
-        scope: { owner, lease: held, current: assertCurrent, check },
+        scope: {
+          owner,
+          lease: held,
+          assertLifetimeCurrent,
+          current: assertCurrent,
+          check,
+        },
         release,
       };
     } catch (error) {
@@ -302,9 +315,16 @@ export async function withReportRoundsPublication<T>(
       let prepared = false;
       let closing = false;
       const children = new Set<object>();
-      const assertCurrent = (): undefined => {
+      const assertParentActive = () => {
         if (!parentActive || closing)
           throw new DelegationRoundsTransactionParentError();
+      };
+      const assertLifetimeCurrent = (): undefined => {
+        assertParentActive();
+        return held.scope.assertLifetimeCurrent();
+      };
+      const assertCurrent = (): undefined => {
+        assertParentActive();
         held.scope.current();
         const checkPreparation = options.assertPreparationCurrent;
         if (prepared && checkPreparation)
@@ -316,14 +336,21 @@ export async function withReportRoundsPublication<T>(
         const child = {};
         children.add(child);
         let childActive = true;
-        const childCurrent = (): undefined => {
+        const assertChildActive = () => {
           if (!childActive || !children.has(child))
             throw new DelegationRoundsTransactionParentError();
+        };
+        const childCurrent = (): undefined => {
+          assertChildActive();
           return assertCurrent();
         };
         const scope: ReportRoundsScope = {
           owner: held.scope.owner,
           lease: held.scope.lease,
+          assertLifetimeCurrent: () => {
+            assertChildActive();
+            return assertLifetimeCurrent();
+          },
           current: childCurrent,
           check: <Value>(work: () => Value): Value => {
             childCurrent();
