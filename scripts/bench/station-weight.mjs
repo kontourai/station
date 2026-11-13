@@ -605,7 +605,7 @@ function restMetric(settled, extra = {}) {
     processCount: settled.rows.length,
     processes: processRows(settled.rows),
     settledAfterMs: settled.settledAfterMs,
-    rssSamples: settled.samples,
+    memorySamples: settled.samples,
     ...extra,
   };
   if (settled.stable)
