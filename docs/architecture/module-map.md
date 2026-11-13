@@ -2804,8 +2804,9 @@ and the outcome line; how a route reaches the engine stays with each Adapter.
 [`muse-mcp-status.ts`](../../src-server/providers/adapters/muse-mcp-status.ts)
 reads `muse mcp list --json` once per Session into `engine-mcp.status`.
 [`muse-auth.ts`](../../src-server/providers/auth/muse-auth.ts) owns Muse's XDG
-config root, credential presence (never opening the file) and the unattended
-launcher environment for probes.
+config root, credential presence (never opening the file), the unattended
+launcher environment for probes, and keeping an ambient `META_API_KEY` out of
+credential-profile runs.
 
 **Behavior and limits.** The [contracts reference](../reference/contracts.md#muse-code-on-muse-serve)
 lists what a serve Session supports and what is deliberately left out.
