@@ -58,7 +58,10 @@ import {
   MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX,
   MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
 } from '../adapters/muse-serve-child-work.js';
-import { museServeApprovalPlan } from '../adapters/muse-serve-session.js';
+import {
+  MUSE_APPROVAL_REVIEWING_MESSAGE,
+  museServeApprovalPlan,
+} from '../adapters/muse-serve-session.js';
 import { CredentialProfileEnvironmentError } from '../app-home/app-home-profiles.js';
 import {
   FakeMuseServeHost,
@@ -4705,5 +4708,103 @@ describe("Muse parity: a serve session's goal", () => {
       state: 'available',
       goal: null,
     });
+  });
+});
+
+/**
+ * `approval/reviewing` (stable MSP, Muse Code 1.4.18): no live capture holds
+ * one, so the frame below is built to the exported schema's
+ * `ApprovalRequestParams` (every required member), naming the bash call the
+ * `steer` capture has open at that point.
+ */
+describe('approval/reviewing: muse’s automated reviewer holds a call', () => {
+  const CALL_1418 = 'call_00000000000000000000000000000001';
+  function reviewingFrame(overrides: Record<string, unknown> = {}) {
+    return {
+      jsonrpc: '2.0',
+      method: 'approval/reviewing',
+      params: {
+        sessionId: '00000000-0000-7000-8000-000000000002',
+        approvalId: '00000000-0000-7000-8000-0000000000a1',
+        turnId: TURN_1418,
+        taskId: '00000000-0000-7000-8000-0000000000a1',
+        itemId: '00000000-0000-7000-8000-000000000014',
+        toolCallId: CALL_1418,
+        toolName: 'bash',
+        rawArgs: '{"command":"sleep 20 && echo ALPHA"}',
+        viewCursor: 'v10:00000000-0000-7000-8000-000000000002:99',
+        sourceRange: {
+          stream: {
+            kind: 'session',
+            id: '00000000-0000-7000-8000-000000000002',
+          },
+          first: { id: '00000000-0000-7000-8000-0000000000a2', sequence: 99 },
+          last: { id: '00000000-0000-7000-8000-0000000000a2', sequence: 99 },
+        },
+        subject: { kind: 'shell', command: 'sleep 20 && echo ALPHA' },
+        currentRequirementId: {
+          approvalId: '00000000-0000-7000-8000-0000000000a1',
+          sourceIndex: 0,
+        },
+        availableChoices: [],
+        judgeEscalated: false,
+        protectedWrite: false,
+        ...overrides,
+      },
+    };
+  }
+
+  async function atOpenBashCall(h: Harness) {
+    const host = await startServe(h);
+    await replayMuseServeCapture(host, loadMuseServeCapture('steer'), {
+      stopAt:
+        captureIndex(
+          'steer',
+          (msg) =>
+            msg.method === 'item/started' &&
+            (msg.params as { item?: { kind?: string } })?.item?.kind ===
+              'toolCall',
+        ) + 1,
+      // The capture steers before the call opens; that is not under test.
+      notDriven: new Set(['turn/steer']),
+      onDrivenRequest: (method) =>
+        method === 'turn/start'
+          ? h.adapter.sendTurn({ threadId: THREAD, input: 'go' })
+          : undefined,
+    });
+    await settle();
+    return host;
+  }
+
+  test('is progress on the waiting tool call, never a request to the user', async () => {
+    const h = harness();
+    const host = await atOpenBashCall(h);
+    expect(of(h.events, 'tool.started').map((e) => e.toolCallId)).toEqual([
+      CALL_1418,
+    ]);
+    host.writeFrame(reviewingFrame());
+    await settle();
+    expect(of(h.events, 'tool.progress')).toEqual([
+      expect.objectContaining({
+        turnId: TURN_1418,
+        itemId: `tool:${CALL_1418}`,
+        toolCallId: CALL_1418,
+        message: MUSE_APPROVAL_REVIEWING_MESSAGE,
+      }),
+    ]);
+    expect(of(h.events, 'request.opened')).toEqual([]);
+  });
+
+  test('a call Station has not seen, or a subagent’s, is not reported', async () => {
+    const h = harness();
+    const host = await atOpenBashCall(h);
+    host.writeFrame(reviewingFrame({ toolCallId: 'call_unknown' }));
+    host.writeFrame(
+      reviewingFrame({
+        subagentOrigin: { subagentId: 'child-1' },
+      }),
+    );
+    await settle();
+    expect(of(h.events, 'tool.progress')).toEqual([]);
   });
 });

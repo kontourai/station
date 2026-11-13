@@ -43,6 +43,16 @@ describe('foldEngineMcpServers', () => {
     ).toEqual(['a:ready', 'b:ready', 'c:starting']);
   });
 
+  test('keeps a server the engine only reports as configured (Muse)', () => {
+    expect(
+      foldEngineMcpServers(
+        undefined,
+        [{ name: 'm', state: 'configured', scope: 'engine-config' }],
+        true,
+      ),
+    ).toEqual([{ name: 'm', state: 'configured', scope: 'engine-config' }]);
+  });
+
   test('drops a malformed server and bounds the list', () => {
     expect(
       foldEngineMcpServers(

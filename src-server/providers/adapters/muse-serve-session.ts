@@ -578,6 +578,10 @@ function formatMuseServeDuration(ms: number): string {
   return unit(ms / 1_000, 'second');
 }
 
+/** The `tool.progress` text while muse's automated reviewer holds a call. */
+export const MUSE_APPROVAL_REVIEWING_MESSAGE =
+  "Muse's automated reviewer is checking this action before it runs.";
+
 /** MSP `approval/resolved.decision` → Station's request status. */
 function mapResolvedDecision(
   decision: string | undefined,
@@ -1802,6 +1806,9 @@ export class MuseServeSession {
       case 'approval/resolved':
         this.onApprovalResolved(params);
         return;
+      case 'approval/reviewing':
+        this.onApprovalReviewing(params);
+        return;
       case 'userInput/requested':
         this.onUserInputRequested(params);
         return;
@@ -2503,6 +2510,40 @@ export class MuseServeSession {
   }
 
   // ------------------------------------------------------------ approvals
+
+  /**
+   * `approval/reviewing` (stable MSP): muse's automated reviewer holds an
+   * approval — "typed activity, not a request". Nobody is asked anything, so
+   * it is not a `request.opened`; it is progress on the tool call waiting
+   * for it (`tool.progress`). If the reviewer escalates, the same approval
+   * then arrives as `approval/requested` (`judgeEscalated: true`) and is
+   * asked as usual; if it decides, `approval/resolved` follows.
+   *
+   * Reported only where Station can name the tool: a call (`toolCallId`, the
+   * provider's call id, which is what `tool.started` keys on) of the
+   * session's own live turn that Station has seen open. A workflow
+   * subagent's approval (`subagentOrigin`) belongs to its child work, which
+   * has no tool rows of its own here, so it is not reported.
+   */
+  private onApprovalReviewing(params: Record<string, unknown>): void {
+    if (this.stopped || isRecord(params.subagentOrigin)) return;
+    const turnId = readString(params.turnId);
+    const turn = turnId ? this.turns.get(turnId) : undefined;
+    if (!turn || turn.settled) return;
+    const callId = readString(params.toolCallId);
+    if (!callId || !turn.openTools.has(callId)) return;
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'tool.progress',
+      turnId: turn.turnId,
+      itemId: `tool:${callId}`,
+      toolCallId: callId,
+      message: MUSE_APPROVAL_REVIEWING_MESSAGE,
+    });
+  }
 
   private onApprovalRequested(params: Record<string, unknown>): void {
     const approvalId = readString(params.approvalId);
