@@ -2798,7 +2798,30 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       host: '127.0.0.1',
     });
     runtime = initializedRuntime;
+    let resolveConfiguration!: () => void;
+    let rejectConfiguration!: (error: unknown) => void;
+    const configurationReady = new Promise<void>((resolve, reject) => {
+      resolveConfiguration = resolve;
+      rejectConfiguration = reject;
+    });
+    void configurationReady.catch(() => {});
+    const reloadDefaultAgent =
+      initializedRuntime.reloadDefaultAgent.bind(initializedRuntime);
+    const observeConfiguration = vi
+      .spyOn(initializedRuntime, 'reloadDefaultAgent')
+      .mockImplementation(async () => {
+        try {
+          await reloadDefaultAgent();
+          resolveConfiguration();
+        } catch (error) {
+          rejectConfiguration(error);
+          throw error;
+        }
+      });
+    onTestFinished(() => observeConfiguration.mockRestore());
     await initializedRuntime.initialize();
+    // ACP readiness publishes a real configuration generation after boot.
+    await configurationReady;
     expect(factoryCalls).toBe(1);
     expect(boundPort).toBeGreaterThan(0);
     if (!origin) throw new Error('Actual loopback listener is required');
