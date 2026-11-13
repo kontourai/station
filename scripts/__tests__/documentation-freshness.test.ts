@@ -115,6 +115,16 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(firstTrace).not.toMatch(
       /ls-tree -r -z main -- docs\/learn\/review-ledger/,
     );
+    const coveredDelta = run(
+      f.root,
+      'record-documentation-review.mjs',
+      ['--show-delta', 'docs/a.md', '--json'],
+      scoped,
+    );
+    expect(coveredDelta.status).toBe(0);
+    expect(JSON.parse(coveredDelta.stdout).deltas).toEqual([
+      { kind: 'review', path: 'docs/a.md', fresh: true },
+    ]);
 
     git(f.root, ['switch', 'main']);
     git(f.root, [...identity, 'cherry-pick', noteCommit]);
@@ -130,6 +140,29 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(readFileSync(trace, 'utf8')).toMatch(
       /ls-tree -r -z main -- docs\/learn\/review-ledger/,
     );
+    const uncoveredDelta = run(
+      f.root,
+      'record-documentation-review.mjs',
+      ['--show-delta', 'docs/a.md', '--json'],
+      scoped,
+    );
+    expect(uncoveredDelta.status).toBe(0);
+    expect(JSON.parse(uncoveredDelta.stdout).deltas).toEqual([
+      expect.objectContaining({
+        kind: 'review',
+        path: 'docs/a.md',
+        fresh: false,
+        diffs: [
+          expect.objectContaining({
+            scope: 'current-change',
+            revision: second.mergeBase,
+            inputs: ['src/a.ts'],
+            diff: expect.stringContaining('+export const a = 2;'),
+          }),
+        ],
+      }),
+    ]);
+    expect(git(f.root, ['status', '--porcelain'])).toBe('');
   });
   function classifiedNote({
     path = '.changeset/release-fixture.md',
