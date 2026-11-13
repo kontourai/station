@@ -428,12 +428,12 @@ async function openRuntimeSession(
   await page.goto('/?dock=open');
   await expect(
     page
-      .locator('.chat-dock__tab-actions')
+      .locator('#chat-dock')
       .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   await dismissSetupLauncher(page);
   await page
-    .locator('.chat-dock__tab-actions')
+    .locator('#chat-dock')
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   const dialog = page.getByRole('region', { name: 'New chat', exact: true });

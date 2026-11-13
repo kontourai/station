@@ -482,13 +482,13 @@ async function openDefaultAgentSession(
   await dismissSetupLauncher(page);
   await expect(
     page
-      .locator('.chat-dock__tab-actions')
+      .locator('#chat-dock')
       .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   if (options?.firstMessage === undefined) return;
 
   await page
-    .locator('.chat-dock__tab-actions')
+    .locator('#chat-dock')
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   const draft = page
