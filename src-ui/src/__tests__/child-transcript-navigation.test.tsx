@@ -29,6 +29,7 @@ import {
   useChildChatNavigation,
 } from '../components/chat-dock/ChildChatNavigationContext';
 import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
 
@@ -238,27 +239,33 @@ test('a child hides the real parent header portals and restores them on return',
   const absorb = vi.fn(() => release);
   try {
     render(
-      <QueryClientProvider client={new QueryClient()}>
-        <PreviewProvider>
-          <ConversationConnectionProvider value={connection}>
-            <RegionChromeSlotsContext.Provider
-              value={{ leading, trailing, regionMenu: { actions: [], absorb } }}
-            >
-              <ChildChatNavigation
-                rootKey="parent"
-                title="Parent chat"
-                onCoveredChange={coverage}
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <PreviewProvider>
+            <ConversationConnectionProvider value={connection}>
+              <RegionChromeSlotsContext.Provider
+                value={{
+                  leading,
+                  trailing,
+                  regionMenu: { actions: [], absorb },
+                }}
               >
-                <ChatDockHeader
-                  chatIdentity={<span>Parent toolbar</span>}
-                  regionVisible
-                />
-                <Parent />
-              </ChildChatNavigation>
-            </RegionChromeSlotsContext.Provider>
-          </ConversationConnectionProvider>
-        </PreviewProvider>
-      </QueryClientProvider>,
+                <ChildChatNavigation
+                  rootKey="parent"
+                  title="Parent chat"
+                  onCoveredChange={coverage}
+                >
+                  <ChatDockHeader
+                    chatIdentity={<span>Parent toolbar</span>}
+                    regionVisible
+                  />
+                  <Parent />
+                </ChildChatNavigation>
+              </RegionChromeSlotsContext.Provider>
+            </ConversationConnectionProvider>
+          </PreviewProvider>
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
     );
     expect(within(leading).getByText('Parent toolbar')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
