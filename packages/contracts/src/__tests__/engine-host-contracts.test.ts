@@ -163,10 +163,35 @@ describe('engineCommandRequestParams', () => {
       subcommand: 'now',
     });
     expect(
-      engineCommandRequestParams('session+command-line', 's1', invocation),
+      engineCommandRequestParams('session+command-object', 's1', invocation),
     ).toEqual({
       sessionId: 's1',
-      command: '/compact now please',
+      command: { command: 'compact', args: { value: 'now please' } },
     });
+    expect(
+      engineCommandRequestParams('session+command-object', 's1', {
+        name: 'help',
+        args: '',
+      }),
+    ).toEqual({ sessionId: 's1', command: { command: 'help', args: {} } });
+  });
+
+  test('a default subcommand fills in an empty one; fixed params ride along', () => {
+    expect(
+      engineCommandRequestParams(
+        'session+subcommand',
+        's1',
+        { name: 'context', args: '  ' },
+        { defaultSubcommand: 'show' },
+      ),
+    ).toEqual({ sessionId: 's1', subcommand: 'show' });
+    expect(
+      engineCommandRequestParams(
+        'session',
+        's1',
+        { name: 'settings', args: '' },
+        { fixedParams: { observer: 'session', sessionId: 'spoofed' } },
+      ),
+    ).toEqual({ observer: 'session', sessionId: 's1' });
   });
 });

@@ -31,6 +31,7 @@ import {
   type McpServer,
   type PermissionOption,
   type PromptResponse,
+  RequestError,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
@@ -44,8 +45,13 @@ import {
   acpApprovalControl,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
+import type {
   InputRequestContent,
   InputRequestForm,
+  InputRequestUrl,
 } from '@kontourai/station-contracts/input-request';
 import type {
   CapabilityUndelivered,
@@ -194,6 +200,10 @@ import {
   mapAcpStopReasonToTurnCompletion,
 } from './acp-adapter-events.js';
 import {
+  kiroCustomAgentsMeta,
+  kiroProjectedModeApplied,
+} from './acp-agent-projection.js';
+import {
   ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
   type AcpAppliedApprovalMode,
   acpAppliedApprovalMode,
@@ -202,6 +212,14 @@ import {
   governedModeRefusal,
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
+import {
+  acpCommandAnswer,
+  acpCommandFailure,
+  acpCommandUnsupported,
+  acpDeclaredCommands,
+  readAcpSlashCommand,
+  resolveAcpCommandRoute,
+} from './acp-command-routes.js';
 import {
   type CursorRequestDecision,
   type CursorTodo,
@@ -214,15 +232,40 @@ import {
   readCursorCreatePlan,
 } from './acp-cursor-extensions.js';
 import {
+  acpLaunchIsBuiltinDescriptor,
+  installEngineHostAuthResponders,
+} from './acp-host-auth-seam.js';
+import {
+  type AcpInputDecision,
+  type AcpInputRequestRead,
+  CORE_ELICITATION_METHOD,
+  elicitationReply,
+  kiroUserInputReply,
+  readCoreElicitation,
+  readKiroMcpElicitation,
+  readKiroOpenExternalUrl,
+  readKiroUserInput,
+} from './acp-input-requests.js';
+import {
   type AcpToolServerSkip,
   type AcpToolServerSkipReason,
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
+  acpDeclaresSessionDelete,
+  acpSessionContinuity,
+  readAcpUserMessageId,
+  resolveAcpForkAtMessage,
+  resolveAcpMcpReconnect,
+  resolveAcpRewind,
+} from './acp-session-actions.js';
+import {
   type AdvertisedAcpModeCatalog,
   advertisedAcpSessionModes,
+  applyAcpEffort,
   applyAdvertisedAcpSessionMode,
   permittedAcpSessionMode,
+  requestedAcpEffort,
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
@@ -230,6 +273,7 @@ import {
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
+import { acpTerminalShellType } from './acp-terminal-facts.js';
 import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
@@ -546,7 +590,7 @@ interface AcpPendingRequest {
    * `cursor/ask_question`), answered with content, and the id of the
    * `request.opened` event an answer must name.
    */
-  inputRequest?: InputRequestForm;
+  inputRequest?: InputRequestForm | InputRequestUrl;
   eventId?: string;
   /**
    * Tool-level session-grant identity (`params.toolCall.name`), stored so
@@ -712,6 +756,12 @@ export interface AcpSessionRecord {
    * useful amount.
    */
   credentialRefusalsSurfaced?: Set<string>;
+  /**
+   * The engine's id for each turn's prompt (`user_message_id_assigned`),
+   * oldest first: the points a rewind or a native fork names. Kept for this
+   * engine process only; a turn whose id was not seen cannot be a target.
+   */
+  turnMessages?: Array<{ turnId: string; messageId: string }>;
   /** Cursor's todo list as `cursor/create_plan`/`cursor/update_todos` left it. */
   cursorTodos?: CursorTodo[];
   /**
@@ -1342,6 +1392,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           : {}),
         createClient: () =>
           this.buildClient(record, {
+            connection: config,
             cwd,
             terminals,
             ...(sessionTerminals && { sessionTerminals }),
@@ -1819,6 +1870,18 @@ export class AcpAdapter implements ProviderAdapterShape {
       // for recovery (session closed) with a truthful reason.
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.mcpServers = passthroughMcpServers;
+      // The session's agent, on an engine that takes client agents in
+      // `session/new` and `session/load` `_meta` (acp-agent-projection.ts).
+      const agentProjection = kiroCustomAgentsMeta(
+        acpProcess.initResult,
+        input.agent ? [input.agent] : [],
+      );
+      if (agentProjection && 'refused' in agentProjection)
+        this.publishAgentProjectionWarning(record, agentProjection.refused);
+      const sessionMeta =
+        agentProjection && 'meta' in agentProjection
+          ? agentProjection.meta
+          : undefined;
       if (isAcpResumeCursor(input.resumeCursor)) {
         const reattach = acpReattachMethod(acpProcess.initResult);
         if (!reattach) {
@@ -1864,14 +1927,18 @@ export class AcpAdapter implements ProviderAdapterShape {
                 acpSessionId,
                 cwd,
                 passthroughMcpServers,
+                sessionMeta,
               );
               outcome = 'loaded';
             }
           } else {
+            // Sent again on load: the engine registers client agents per
+            // session process and has none after a restart.
             await acpProcess.loadSession(
               acpSessionId,
               cwd,
               passthroughMcpServers,
+              sessionMeta,
             );
             outcome = 'loaded';
           }
@@ -1888,7 +1955,28 @@ export class AcpAdapter implements ProviderAdapterShape {
         const sessionResult = await acpProcess.newSession(
           cwd,
           passthroughMcpServers,
+          sessionMeta,
         );
+        if (sessionMeta) {
+          const applied = kiroProjectedModeApplied(
+            sessionMeta.kiro.modeId,
+            sessionResult,
+          );
+          if (!applied.applied) {
+            // Running an agent the engine supplied (with its own
+            // permissions) under Station's agent is refused outright; an
+            // agent the engine merely did not take leaves its default mode,
+            // which is said.
+            if (
+              (sessionResult.modes as { currentModeId?: unknown } | undefined)
+                ?.currentModeId === sessionMeta.kiro.modeId
+            )
+              throw new Error(
+                `ACP agent projection refused: ${applied.reason}.`,
+              );
+            this.publishAgentProjectionWarning(record, applied.reason);
+          }
+        }
         session.resumeCursor = {
           acpSessionId: sessionResult.sessionId,
           connectionId: config.id,
@@ -2041,6 +2129,19 @@ export class AcpAdapter implements ProviderAdapterShape {
             requestedModel,
             appliedOption.currentValue,
           );
+        }
+        // Effort, only through an option the session advertised; a session
+        // with none refuses it rather than dropping it (acp-session-mode.ts).
+        const requestedEffort = requestedAcpEffort(input.modelOptions);
+        if (requestedEffort) {
+          const applied = await applyAcpEffort(
+            acpProcess,
+            record.configOptions ?? sessionResult.configOptions,
+            requestedEffort,
+            config.id,
+          );
+          if (applied.configOptions)
+            record.configOptions = applied.configOptions;
         }
       }
 
@@ -2467,6 +2568,24 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.configOptions = appliedMode.configOptions;
       }
     }
+    const turnEffort = requestedAcpEffort(input.modelOptions);
+    if (turnEffort) {
+      let applied: { configOptions?: unknown[] };
+      try {
+        applied = await applyAcpEffort(
+          record.process,
+          record.configOptions,
+          turnEffort,
+          record.connectionId,
+        );
+      } catch (error) {
+        throw new SendTurnRefusedError(
+          errorMessage(error),
+          'input_unsupported',
+        );
+      }
+      if (applied.configOptions) record.configOptions = applied.configOptions;
+    }
     record.activeTurnId = turnId;
     record.activeTurnOrigin =
       input.invocationId === undefined
@@ -2542,12 +2661,32 @@ export class AcpAdapter implements ProviderAdapterShape {
       })),
     ];
     record.promptEpoch += 1;
+    // A slash command the live session routes as its own request runs as
+    // that request; anything else, and a command the engine turns out not
+    // to have, is prompt text (acp-command-routes.ts).
+    const invocation =
+      decodedAttachments.length === 0
+        ? readAcpSlashCommand(input.input)
+        : undefined;
+    const routed = invocation
+      ? resolveAcpCommandRoute(record.process.initResult, invocation)
+      : undefined;
+    const sessionId = record.process.sessionId;
     this.bindPromptSettlement(
       record,
       input.threadId,
       turnId,
       record.promptEpoch,
-      record.process.prompt(content),
+      invocation && routed?.params && sessionId
+        ? this.runEngineCommand(
+            record,
+            turnId,
+            invocation.name,
+            routed.route,
+            routed.params(sessionId),
+            () => record.process.prompt(content),
+          )
+        : record.process.prompt(content),
     );
 
     return {
@@ -2555,6 +2694,51 @@ export class AcpAdapter implements ProviderAdapterShape {
       turnId,
       resumeCursor: record.session.resumeCursor,
     };
+  }
+
+  /**
+   * Run a routed slash command as its request and show what came back as the
+   * engine's output on this turn. A refusal that means "no such command"
+   * runs the command as prompt text instead.
+   */
+  private async runEngineCommand(
+    record: AcpSessionRecord,
+    turnId: string,
+    name: string,
+    route: EngineCommandRoute,
+    params: Record<string, unknown>,
+    asPromptText: () => Promise<PromptResponse>,
+  ): Promise<PromptResponse> {
+    if (route.kind !== 'engine-request') return asPromptText();
+    let outcome: EngineCommandOutcome;
+    try {
+      outcome = acpCommandAnswer(
+        await record.process.extMethod(route.method, params),
+      );
+    } catch (error) {
+      if (acpCommandUnsupported(error)) return asPromptText();
+      outcome = acpCommandFailure(error);
+    }
+    const engine = record.engineName;
+    const text =
+      outcome.kind === 'answered'
+        ? outcome.success === false
+          ? `${engine} could not run /${name}${outcome.text ? `: ${outcome.text}` : '.'}`
+          : outcome.text || `${engine} ran /${name}.`
+        : outcome.kind === 'failed'
+          ? `${engine} refused /${name}: ${outcome.message}`
+          : `${engine} did not run /${name}.`;
+    this.publishForTurn(record, {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      itemId: `${turnId}:command`,
+      method: 'content.text-delta',
+      delta: text,
+    });
+    return { stopReason: 'end_turn' };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {
@@ -2646,7 +2830,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     let content: InputRequestContent | undefined;
-    if (pending.inputRequest) {
+    if (pending.inputRequest?.body.kind === 'url') {
+      // A link carries nothing back: the answer says only whether the
+      // person opened it, which grants nothing.
+      if (context?.inputContent !== undefined)
+        throw new Error('A link request does not accept answers.');
+    } else if (pending.inputRequest) {
       if (
         context?.expectedRequestEventId !== pending.eventId ||
         decision === 'acceptForSession'
@@ -2656,7 +2845,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // copy that reaches the engine.
       if (decision === 'accept')
         content = validateInputRequestContent(
-          pending.inputRequest,
+          pending.inputRequest as InputRequestForm,
           context?.inputContent,
         );
       else if (context?.inputContent !== undefined)
@@ -2937,18 +3126,39 @@ export class AcpAdapter implements ProviderAdapterShape {
     return results.flat();
   }
 
+  /**
+   * Each command a live session listed or its declared methods route, with
+   * how it runs on that session (`EngineCommandRoute`). Every one reaches
+   * the engine (`passthrough`); the route says whether as prompt text or as
+   * the engine's own request. Aggregated across sessions by name, as before:
+   * `sendTurn` resolves the route again on the session a command is sent to.
+   */
   async getCommands(): Promise<
     Array<{
       name: string;
       description: string;
       argumentHint?: string;
       passthrough: boolean;
+      route: EngineCommandRoute;
     }>
   > {
-    const commands = new Map<string, AcpSlashCommand>();
+    const commands = new Map<
+      string,
+      AcpSlashCommand & { route: EngineCommandRoute }
+    >();
     for (const record of this.sessions.values()) {
+      const handshake = record.process.initResult;
       for (const command of record.slashCommands ?? []) {
-        commands.set(command.name, command);
+        commands.set(command.name, {
+          ...command,
+          route: resolveAcpCommandRoute(handshake, {
+            name: command.name,
+            args: '',
+          }).route,
+        });
+      }
+      for (const command of acpDeclaredCommands(handshake)) {
+        if (!commands.has(command.name)) commands.set(command.name, command);
       }
     }
     return [...commands.values()].map((command) => ({
@@ -2956,12 +3166,230 @@ export class AcpAdapter implements ProviderAdapterShape {
       description: command.description,
       argumentHint: command.argumentHint,
       passthrough: true,
+      route: command.route,
     }));
+  }
+
+  /**
+   * This session's continuity as its own engine declared it at `initialize`
+   * (`acp-session-actions.ts`). The adapter's `metadata.continuity` stays
+   * `none`: it speaks for every ACP engine, and most declare neither.
+   */
+  sessionContinuity(threadId: string): {
+    fork: 'native' | 'none';
+    rewind: 'in-place' | 'none';
+  } {
+    return acpSessionContinuity(
+      this.requireSession(threadId).process.initResult,
+    );
+  }
+
+  /** Remember the engine's id for the running turn's prompt. */
+  private recordTurnMessage(record: AcpSessionRecord, update: unknown): void {
+    const messageId = readAcpUserMessageId(update);
+    const turnId = record.activeTurnId;
+    if (!messageId || !turnId) return;
+    record.turnMessages ??= [];
+    const known = record.turnMessages.find((entry) => entry.turnId === turnId);
+    if (known) known.messageId = messageId;
+    else record.turnMessages.push({ turnId, messageId });
+  }
+
+  /**
+   * Reconnect one of the engine's MCP servers, optionally starting its OAuth
+   * sign-in (the consent link then arrives as a URL request). Only an engine
+   * a reviewed table names (`resolveAcpMcpReconnect`); any other answers
+   * `not-declared`.
+   */
+  async reconnectMcpServer(
+    threadId: string,
+    name: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    const record = this.requireSession(threadId);
+    const binding = resolveAcpMcpReconnect(record.process.initResult);
+    const sessionId = record.process.sessionId;
+    if (!binding || !sessionId) return { kind: 'not-declared' };
+    try {
+      return acpCommandAnswer(
+        await record.process.extMethod(binding.method, {
+          sessionId,
+          serverName: name,
+          startOAuth: options.startOAuth,
+        }),
+      );
+    } catch (error) {
+      return acpCommandFailure(error);
+    }
+  }
+
+  /**
+   * Move the engine's session back to the end of `toTurnId`: every later
+   * turn is hidden from the model, and files their write tools changed are
+   * restored by the engine. Refused while a turn runs, for a turn whose
+   * prompt id this process did not see, and on an engine without a declared
+   * rewind. The transcript keeps every turn; an append-only marker records
+   * the rewind.
+   */
+  async rewindSession(
+    threadId: string,
+    toTurnId: string,
+  ): Promise<EngineCommandOutcome> {
+    const record = this.requireSession(threadId);
+    const binding = resolveAcpRewind(record.process.initResult);
+    const sessionId = record.process.sessionId;
+    if (!binding || !sessionId) return { kind: 'not-declared' };
+    if (record.activeTurnId)
+      return {
+        kind: 'failed',
+        message: 'A turn is running; stop it before rewinding.',
+      };
+    const turns = record.turnMessages ?? [];
+    const index = turns.findIndex((entry) => entry.turnId === toTurnId);
+    if (index < 0)
+      return {
+        kind: 'failed',
+        message:
+          'That turn has no engine message id on this session, so it cannot be a rewind point.',
+      };
+    const dropped = turns.slice(index + 1);
+    const first = dropped[0];
+    if (!first) return { kind: 'answered', text: 'Nothing to rewind.' };
+    let outcome: EngineCommandOutcome;
+    try {
+      outcome = acpCommandAnswer(
+        await record.process.extMethod(binding.method, {
+          sessionId,
+          messageId: first.messageId,
+        }),
+      );
+    } catch (error) {
+      return acpCommandFailure(error);
+    }
+    if (outcome.kind !== 'answered' || outcome.success !== true) return outcome;
+    record.turnMessages = turns.slice(0, index + 1);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: 'acp.session-rewound',
+      message: `${record.engineName} rewound this session to an earlier turn; the ${dropped.length === 1 ? 'later turn is' : `${dropped.length} later turns are`} hidden from the engine.`,
+      details: {
+        toTurnId,
+        hiddenTurnIds: dropped.map((entry) => entry.turnId),
+      },
+    });
+    return outcome;
+  }
+
+  /**
+   * Fork the engine's session after `atTurnId`, natively: core
+   * `session/fork` with the fork point in the engine's `_meta`, declared as
+   * `sessionCapabilities.fork._meta.<ns>.messageId`. Returns the new session
+   * as a resume cursor a new conversation starts from; this session is
+   * unchanged.
+   */
+  async forkSession(
+    threadId: string,
+    atTurnId: string,
+  ): Promise<{ resumeCursor: AcpResumeCursor } | { refused: string }> {
+    const record = this.requireSession(threadId);
+    const namespace = resolveAcpForkAtMessage(record.process.initResult);
+    const sessionId = record.process.sessionId;
+    const cursor = record.session.resumeCursor;
+    if (!namespace || !sessionId || !isAcpResumeCursor(cursor))
+      return { refused: 'This engine declared no fork at a turn.' };
+    const point = record.turnMessages?.find(
+      (entry) => entry.turnId === atTurnId,
+    );
+    if (!point)
+      return {
+        refused:
+          'That turn has no engine message id on this session, so it cannot be a fork point.',
+      };
+    const forked = await record.process.forkSession(
+      sessionId,
+      record.session.cwd ?? '',
+      record.mcpServers ?? [],
+      { [namespace]: { messageId: point.messageId } },
+    );
+    return {
+      resumeCursor: { ...cursor, acpSessionId: forked.sessionId },
+    };
+  }
+
+  /**
+   * Take back the steers a running turn has not read yet, on an engine whose
+   * steer table names a retract method. The engine answers alike whether or
+   * not anything was pending; only its own report of the drop says one was.
+   */
+  async retractPendingSteers(threadId: string): Promise<EngineCommandOutcome> {
+    const record = this.requireSession(threadId);
+    const method = resolveAcpSteerChannel(
+      record.process.initResult,
+    ).retractMethod;
+    const sessionId = record.process.sessionId;
+    if (!method || !sessionId) return { kind: 'not-declared' };
+    try {
+      return acpCommandAnswer(
+        await record.process.extMethod(method, { sessionId }),
+      );
+    } catch (error) {
+      return acpCommandFailure(error);
+    }
+  }
+
+  /**
+   * Discard this conversation's engine session: delete the engine's stored
+   * copy where it declared core `session/delete`, then stop. A delete the
+   * engine refuses is logged; the stop still happens.
+   */
+  async discardSession(threadId: string): Promise<void> {
+    const record = this.sessions.get(threadId);
+    const sessionId = record?.process.sessionId;
+    if (
+      record &&
+      !record.stopping &&
+      sessionId &&
+      acpDeclaresSessionDelete(record.process.initResult)
+    ) {
+      try {
+        await record.process.deleteSession(sessionId);
+      } catch (error) {
+        (this.options.logger ?? console).warn?.(
+          { threadId, connectionId: record.connectionId },
+          'ACP session/delete failed while discarding the session',
+          error,
+        );
+      }
+    }
+    await this.stopSession(threadId);
+  }
+
+  private publishAgentProjectionWarning(
+    record: AcpSessionRecord,
+    reason: string,
+  ): void {
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: 'acp.agent-projection-unapplied',
+      message: `${record.engineName} is running its own default agent, not this Station agent: ${reason}.`,
+      details: { connectionId: record.connectionId },
+    });
   }
 
   private buildClient(
     record: AcpSessionRecord,
     context: {
+      connection: ACPConnectionConfig;
       cwd: string;
       terminals: Map<string, ManagedTerminal>;
       sessionTerminals?: AcpSessionTerminals;
@@ -2969,6 +3397,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       logger: AcpLogger;
     },
   ): ACPClientCallbacks {
+    // This client's own registry: the reviewed requests, plus whatever
+    // credential responders host auth installs for this exact launch. Built
+    // before the process speaks, because an engine may ask for its token
+    // before `initialize` returns.
+    const registry = this.reviewedInboundRequests(record, context.logger);
+    installEngineHostAuthResponders(registry, {
+      connection: context.connection,
+      argv: context.connection.args ?? [],
+      builtinDescriptor: acpLaunchIsBuiltinDescriptor(context.connection),
+    });
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,
@@ -2983,6 +3421,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       getActiveWriter: () => null,
       nextTerminalId: context.nextTerminalId,
       onSessionUpdate: async (params: SessionNotification) => {
+        this.recordTurnMessage(record, params.update);
         this.handleSessionUpdate(record, params.update);
       },
       onExtNotification: (method, params) => {
@@ -2999,13 +3438,28 @@ export class AcpAdapter implements ProviderAdapterShape {
       // #3957: not offered to OpenCode (see the launch), so not served.
       fileMethodsOffered: record.approvalControl !== 'station',
       onExtMethod: createAcpInboundExtensionRequestHandler({
-        registry: this.reviewedInboundRequests(record, context.logger),
+        registry,
         logger: context.logger,
         connectionId: record.connectionId,
         onRefused: (method, reason) =>
           this.handleCredentialRefusal(record, method, reason),
       }),
     });
+    // What `initialize` announces follows what this registry answers
+    // (`ACP_ANNOUNCED_CLIENT_META_FLAGS`): a flag whose handler is not
+    // registered is never announced.
+    client.answersExtensionMethod = (method) => registry.answers(method);
+    client.createElicitation = {
+      modes: { form: true, url: true },
+      handle: (params) =>
+        this.answerElicitation(
+          record,
+          CORE_ELICITATION_METHOD,
+          readCoreElicitation(params, { engineName: record.engineName }),
+          params,
+          context.logger,
+        ),
+    };
 
     client.requestPermission = async (
       params: RequestPermissionRequest,
@@ -3790,19 +4244,157 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     logger: AcpLogger,
   ): AcpInboundExtensionRegistry {
+    const requester = { engineName: record.engineName };
+    const shellType = acpTerminalShellType();
+    // A handler left out (undefined) is not registered, so the method is
+    // refused and any client flag that promises it is not announced.
     const handlers: Record<
       AcpInboundExtensionRequestHandlerId,
-      AcpInboundExtensionHandler
+      AcpInboundExtensionHandler | undefined
     > = {
       'cursor.ask-question': (method, params) =>
         this.answerCursorQuestion(record, method, params, logger),
       'cursor.create-plan': (method, params) =>
         this.answerCursorPlan(record, method, params, logger),
+      'kiro.user-input': (method, params) =>
+        this.answerKiroUserInput(
+          record,
+          method,
+          readKiroUserInput(params, requester),
+          params,
+          logger,
+        ),
+      'kiro.mcp-elicitation': (method, params) =>
+        this.answerElicitation(
+          record,
+          method,
+          readKiroMcpElicitation(params, requester),
+          params,
+          logger,
+        ),
+      'kiro.open-external-url': (method, params) =>
+        this.answerOpenExternalUrl(
+          record,
+          method,
+          readKiroOpenExternalUrl(params, requester),
+          logger,
+        ),
+      'client.terminal-facts': shellType ? () => ({ ...shellType }) : undefined,
     };
     const registry = new AcpInboundExtensionRegistry();
-    for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
-      registry.register(entry.method, handlers[entry.handler]);
+    for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS) {
+      const handler = handlers[entry.handler];
+      if (handler) registry.register(entry.method, handler);
+    }
     return registry;
+  }
+
+  /**
+   * Put one engine request to the person and wait. Fail-closed: a request
+   * Station could not read, or one no person may be asked
+   * (`delegation.denyApprovals`), is answered `decline` without asking, and
+   * `person` says nobody saw it.
+   */
+  private async askPersonFor(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<{
+    decision: AcpInputDecision;
+    content?: InputRequestContent;
+    person: boolean;
+  }> {
+    if (read.kind === 'unreadable') {
+      this.reportUnreadableEngineRequest(
+        record,
+        method,
+        logger,
+        `${record.engineName} asked something Station could not show (${read.reason}), so Station answered that nobody accepted it.`,
+      );
+      return { decision: 'decline', person: false };
+    }
+    if (record.delegation?.denyApprovals)
+      return { decision: 'decline', person: false };
+    const inputRequest = read.kind === 'form' ? read.form : read.request;
+    const toolCallId =
+      typeof params.toolCallId === 'string' ? params.toolCallId : undefined;
+    const answer = await this.awaitPersonRequest(record, {
+      title: inputRequest.message,
+      inputRequest,
+      // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
+      payload: { ...(toolCallId ? { toolCallId } : {}), toolName: method },
+    });
+    return {
+      decision: answer.decision,
+      ...(answer.content ? { content: answer.content } : {}),
+      person: answer.decision !== 'cancel',
+    };
+  }
+
+  /** `elicitation/create` and `_kiro/mcp/elicitation`: MCP's answer shape. */
+  private async answerElicitation(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const answer = await this.askPersonFor(
+      record,
+      method,
+      read,
+      params,
+      logger,
+    );
+    return elicitationReply(
+      answer.decision,
+      read.kind === 'form' ? answer.content : undefined,
+    );
+  }
+
+  /** `_kiro/userInput`: always `answered`, never a decline the engine reads as yes. */
+  private async answerKiroUserInput(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const answer = await this.askPersonFor(
+      record,
+      method,
+      read,
+      params,
+      logger,
+    );
+    return kiroUserInputReply(answer.decision, answer.content, answer.person);
+  }
+
+  /**
+   * `_kiro/openExternalUrl`: shown as a link for the person to open; Station
+   * never opens it. Answered `{success: true}` once the person opened it.
+   * Otherwise the engine is told it was not opened with a `-32000` error, so
+   * its sign-in attempt ends at once instead of waiting on a callback nobody
+   * will reach (kirocrew acp/runtime_host_requests.py).
+   */
+  private async answerOpenExternalUrl(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const answer = await this.askPersonFor(record, method, read, {}, logger);
+    if (answer.decision === 'accept') return { success: true };
+    throw new RequestError(
+      -32000,
+      read.kind === 'unreadable'
+        ? 'The link was not opened: it is not an https URL Station shows.'
+        : answer.person
+          ? 'The person did not open the link.'
+          : 'No person could open the link.',
+    );
   }
 
   /** `cursor/ask_question`, through the harness-question form (#3390). */
@@ -3830,7 +4422,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
     const answer = await this.awaitPersonRequest(record, {
       title: question.form.message,
-      form: question.form,
+      inputRequest: question.form,
       // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
       payload: { toolCallId: question.toolCallId, toolName: method },
     });
@@ -3869,7 +4461,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       title: plan.name
         ? `${record.engineName} wants you to review a plan: ${plan.name}`
         : `${record.engineName} wants you to review a plan`,
-      form: plan.form,
+      inputRequest: plan.form,
       payload: { toolCallId: plan.toolCallId, toolName: method },
     });
     const response = cursorPlanResponse(answer.decision, answer.content);
@@ -3904,7 +4496,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     request: {
       title: string;
-      form: InputRequestForm;
+      inputRequest: InputRequestForm | InputRequestUrl;
       payload: Record<string, unknown>;
     },
   ): Promise<{
@@ -3925,7 +4517,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'request.opened',
       requestType: 'approval',
       title: request.title,
-      payload: { ...request.payload, inputRequest: request.form },
+      payload: { ...request.payload, inputRequest: request.inputRequest },
     });
     return new Promise((resolve) => {
       record.pendingRequests.set(requestId, {
@@ -3938,7 +4530,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         options: [],
         needsPerson: true,
         eventId,
-        inputRequest: request.form,
+        inputRequest: request.inputRequest,
         ...(origin ? { origin } : {}),
       });
     });
@@ -3950,7 +4542,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     logger: AcpLogger,
     message: string,
   ): void {
-    logger.warn?.('refused unreadable Cursor extension request', {
+    this.reportUnreadableEngineRequest(record, method, logger, message);
+  }
+
+  private reportUnreadableEngineRequest(
+    record: AcpSessionRecord,
+    method: string,
+    logger: AcpLogger,
+    message: string,
+  ): void {
+    logger.warn?.('refused unreadable engine extension request', {
       method,
       connectionId: record.connectionId,
     });

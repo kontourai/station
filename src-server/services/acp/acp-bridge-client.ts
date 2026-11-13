@@ -50,40 +50,59 @@ function extensionParams(params: unknown): Record<string, unknown> {
 
 /** Bind Station's callbacks to the SDK's validated v1 app dispatch. */
 export function createACPClientApp(callbacks: ACPClientCallbacks) {
-  return client()
-    .onNotification(methods.client.session.update, ({ params }) =>
-      callbacks.sessionUpdate(params),
-    )
-    .onRequest(methods.client.session.requestPermission, ({ params }) =>
-      callbacks.requestPermission(params),
-    )
-    .onRequest(methods.client.fs.readTextFile, ({ params }) =>
-      callbacks.readTextFile(params),
-    )
-    .onRequest(methods.client.fs.writeTextFile, ({ params }) =>
-      callbacks.writeTextFile(params),
-    )
-    .onRequest(methods.client.terminal.create, ({ params }) =>
-      callbacks.createTerminal(params),
-    )
-    .onRequest(methods.client.terminal.output, ({ params }) =>
-      callbacks.terminalOutput(params),
-    )
-    .onRequest(methods.client.terminal.release, ({ params }) =>
-      callbacks.releaseTerminal(params),
-    )
-    .onRequest(methods.client.terminal.waitForExit, ({ params }) =>
-      callbacks.waitForTerminalExit(params),
-    )
-    .onRequest(methods.client.terminal.kill, ({ params }) =>
-      callbacks.killTerminal(params),
-    )
-    .onRequest('*', ({ method, params }) =>
-      callbacks.extMethod(method, extensionParams(params)),
-    )
-    .onNotification('*', ({ method, params }) =>
-      callbacks.extNotification(method, extensionParams(params)),
-    );
+  return (
+    client()
+      .onNotification(methods.client.session.update, ({ params }) =>
+        callbacks.sessionUpdate(params),
+      )
+      .onRequest(methods.client.session.requestPermission, ({ params }) =>
+        callbacks.requestPermission(params),
+      )
+      .onRequest(methods.client.fs.readTextFile, ({ params }) =>
+        callbacks.readTextFile(params),
+      )
+      .onRequest(methods.client.fs.writeTextFile, ({ params }) =>
+        callbacks.writeTextFile(params),
+      )
+      .onRequest(methods.client.terminal.create, ({ params }) =>
+        callbacks.createTerminal(params),
+      )
+      .onRequest(methods.client.terminal.output, ({ params }) =>
+        callbacks.terminalOutput(params),
+      )
+      .onRequest(methods.client.terminal.release, ({ params }) =>
+        callbacks.releaseTerminal(params),
+      )
+      .onRequest(methods.client.terminal.waitForExit, ({ params }) =>
+        callbacks.waitForTerminalExit(params),
+      )
+      .onRequest(methods.client.terminal.kill, ({ params }) =>
+        callbacks.killTerminal(params),
+      )
+      // Core `elicitation/create` is taken here, unparsed, rather than through
+      // the SDK's typed route: the typed route would answer a malformed ask
+      // with -32602, and an engine reads an error as cancelling the tool call.
+      // The handler reads the request itself and declines what it cannot show.
+      // Without a handler (and so with no `elicitation` capability announced)
+      // it is refused like any other unanswered request.
+      .onRequest('*', ({ method, params }) => {
+        if (method === methods.client.elicitation.create) {
+          const elicitation = callbacks.createElicitation;
+          if (!elicitation) throw RequestError.methodNotFound(method);
+          return elicitation.handle(
+            params !== null &&
+              typeof params === 'object' &&
+              !Array.isArray(params)
+              ? (params as Record<string, unknown>)
+              : {},
+          );
+        }
+        return callbacks.extMethod(method, extensionParams(params));
+      })
+      .onNotification('*', ({ method, params }) =>
+        callbacks.extNotification(method, extensionParams(params)),
+      )
+  );
 }
 
 interface ACPBridgeClientContext {

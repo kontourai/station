@@ -258,3 +258,101 @@ export async function applyAdvertisedAcpSessionMode(
   await process.setMode(requestedModeId);
   return { currentModeId: requestedModeId };
 }
+
+/**
+ * The config option that sets a session's reasoning effort: ACP's
+ * `category: "thought_level"`, else an option id an engine is known to use
+ * for it. Kiro's agent service carried effort as `effortLevel` (kirocrew
+ * agent_sdk/backends_turns.py, KAS 0.66.43). On kiro-cli 3.3.0 v3 with model
+ * `auto` there is neither (live, 2026-11-13: the model list's `_meta.kiro`
+ * names per-model `effortLevels` but no option sets one), so effort is
+ * refused there rather than dropped.
+ */
+const DECLARED_EFFORT_OPTION_IDS: readonly string[] = ['effortLevel'];
+
+export interface AcpEffortConfigOption {
+  id: string;
+  currentValue?: string;
+  values: string[];
+}
+
+export function findAcpEffortConfigOption(
+  configOptions: unknown,
+): AcpEffortConfigOption | undefined {
+  if (!Array.isArray(configOptions)) return undefined;
+  const read = (option: Record<string, unknown>): AcpEffortConfigOption => ({
+    id: option.id as string,
+    ...(typeof option.currentValue === 'string'
+      ? { currentValue: option.currentValue }
+      : {}),
+    values: Array.isArray(option.options)
+      ? option.options.flatMap((entry) =>
+          typeof entry === 'string'
+            ? [entry]
+            : entry &&
+                typeof entry === 'object' &&
+                typeof (entry as { value?: unknown }).value === 'string'
+              ? [(entry as { value: string }).value]
+              : [],
+        )
+      : [],
+  });
+  const usable = configOptions.filter(
+    (option): option is Record<string, unknown> =>
+      !!option &&
+      typeof option === 'object' &&
+      typeof (option as { id?: unknown }).id === 'string' &&
+      !!(option as { id: string }).id.trim(),
+  );
+  const byCategory = usable.find(
+    (option) => option.category === 'thought_level',
+  );
+  if (byCategory) return read(byCategory);
+  const byId = usable.find((option) =>
+    DECLARED_EFFORT_OPTION_IDS.includes(option.id as string),
+  );
+  return byId ? read(byId) : undefined;
+}
+
+export function requestedAcpEffort(
+  modelOptions?: Record<string, unknown>,
+): string | undefined {
+  const value = modelOptions?.effort;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Apply `effort` through the session's effort option and read the answer
+ * back. Throws, naming the connection, when the session has no such option,
+ * the option does not list the value, or the engine reports another value.
+ */
+export async function applyAcpEffort(
+  process: Pick<AcpModeProcess, 'setConfigOption'>,
+  configOptions: unknown,
+  effort: string,
+  connectionId: string,
+): Promise<{ configOptions?: unknown[] }> {
+  const option = findAcpEffortConfigOption(configOptions);
+  if (!option)
+    throw new Error(
+      `ACP effort option unavailable: connection '${connectionId}' did not advertise a reasoning-effort configuration option for this session.`,
+    );
+  if (option.values.length > 0 && !option.values.includes(effort))
+    throw new Error(
+      `ACP effort value unsupported: connection '${connectionId}' did not advertise '${effort}' for this session.`,
+    );
+  if (option.currentValue === effort) return {};
+  const response = await process.setConfigOption(option.id, effort);
+  const next =
+    response &&
+    typeof response === 'object' &&
+    Array.isArray((response as { configOptions?: unknown }).configOptions)
+      ? (response as { configOptions: unknown[] }).configOptions
+      : undefined;
+  const applied = findAcpEffortConfigOption(next);
+  if (applied?.currentValue !== effort)
+    throw new Error(
+      `ACP effort application unverified: connection '${connectionId}' reported '${applied?.currentValue ?? 'no current value'}' after '${effort}' was requested.`,
+    );
+  return { configOptions: next };
+}

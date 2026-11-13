@@ -244,6 +244,8 @@ mechanism. Station's answer is a spec-conformant refusal:
 | Inbound | Station's response |
 |---|---|
 | `cursor/ask_question`, `cursor/create_plan` (chat sessions only) | Answered with what a person decided; see [Cursor's blocking requests](#cursors-blocking-requests) |
+| `_kiro/userInput`, `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/openExternalUrl` (chat sessions only) | Put to the person as one `station.input-request/v1`; see [Engine questions and links](#engine-questions-and-links) |
+| `_kiro/terminal/shell_type` | `{ shellType: 'sh' }` (`client.terminal-facts`); see [Engine questions and links](#engine-questions-and-links) |
 | A reviewed engine-credential or engine-secret binding's method, on a process it was registered for | Answered from Station's engine host-auth vault; see [reviewed credential bindings](#reviewed-credential-and-secret-bindings) |
 | Unrecognized extension **request** | JSON-RPC `-32601` (Method not found), plus a `warn` log naming the method and a `station.acp.inbound_extension_requests` increment |
 | Unrecognized extension **notification** | Ignored (per spec) |
@@ -348,15 +350,19 @@ over, and the probe and the chat path now agree — both fail, which is true.
 **Superseded on kiro-cli 2.35.0 (live, 2026-11-13).** `_kiro/terminal/shell_type`
 is a request with params `{sessionId}`, sent during `session/new`. Answered
 `-32601`, `session/new` now **succeeds** on `--agent-engine v3`, so it is no
-longer a blocker. It is still bound, as the `client.terminal-facts` answer
-naming the shell Station's terminal bridge runs. With
+longer a blocker. The chat adapter now answers it `{ shellType: 'sh' }`
+through the reviewed `client.terminal-facts` entry, the grammar Station's
+terminal bridge reads (see
+[Engine questions and links](#engine-questions-and-links)); the availability
+probe still refuses it. With
 `--auth-method cli`, kiro-cli keeps its own credential and sends no
 `_kiro/auth/getAccessToken`. The frames are in
 `src-server/services/acp/__tests__/fixtures/kiro-v3-2.35.0-session-frames.jsonl`.
 
 Answering any inbound extension method at all requires a reviewed registry
-entry: Cursor's two blocking requests (below), or a reviewed credential or
-secret binding (next section).
+entry: Cursor's two blocking requests (below), the engine question, link and
+terminal-facts entries, or a reviewed credential or secret binding (next
+section).
 
 ### Cursor's blocking requests
 
@@ -479,7 +485,7 @@ Each consumer is a generic Station mechanism any engine can feed:
 | Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
 | Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused | the Kiro agent-service bundle |
 | Declared features | `declaredHandshake.engineVariant`, `declaredFeatures`, `logChannels` (names only; paths stay server-side) | `agentCapabilities._meta.kiro` |
-| Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises | none on 2.35; see below |
+| Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises (or Kiro's `effortLevel` id), and read back. A session without one refuses `effort`, at start or for the turn, and never drops it | none on 2.35 or 3.3.0 with model `auto`; see below |
 
 How the events behave:
 
@@ -532,6 +538,97 @@ Observed on kiro-cli 2.35.0 `--agent-engine v3`:
   second approval.
 - **Modes.** Each mode carries `_meta.kiro.source` (`bundled` for the
   engine's own; a person's agents appear too).
+
+### Engine questions and links
+
+[acp-input-requests.ts](../../src-server/providers/adapters/acp-input-requests.ts)
+reads four wires into one `station.input-request/v1`, put to the person
+through the adapter's pending-request path (the request is cancelled when
+the turn ends or the session stops):
+
+| Wire | Request | Reply |
+|---|---|---|
+| core `elicitation/create` (fields flat) | `form` from `requestedSchema`, or `url` (`purpose: 'elicitation'`) | MCP's `{ action, content? }` |
+| `_kiro/mcp/elicitation` (fields under `params.elicitation`) | the same | the same |
+| `_kiro/userInput` `{ question, options[{ title, description, recommended }] }` | one `choice` field with `allowCustom` (a required text field when there are no options) | always `{ action: 'answered', answer }` |
+| `_kiro/openExternalUrl` `{ url }` | `url` (`purpose: 'mcp-sign-in'`); Station never opens it | `{ success: true }` once opened; otherwise a `-32000` error, so the engine's sign-in attempt ends instead of waiting |
+
+Every parser fails closed: a request Station cannot show (an unknown property
+type, a link that is not https, carries user info or is over 2,048
+characters) is answered `decline` without asking, never with a JSON-RPC
+error, because Kiro's agent service turns an error into cancelling the whole
+tool call. A session that may not ask a person (`delegation.denyApprovals`)
+declines the same way.
+
+`_kiro/userInput` never gets a decline. Its tool tells the model to read any
+reply other than `answered` with a non-empty answer as "yes". A decline, a
+cancel, or a question nobody could see is sent as `answered` with text
+saying it is not agreement.
+
+`elicitation/create` is taken unparsed through the bridge client's fallback
+route, not the SDK's typed one, which would answer a malformed ask `-32602`.
+
+`_kiro/terminal/shell_type {sessionId}` arrives during `session/new`. Kiro's
+agent service reads `{shellType}` as the grammar for its shell-command
+policy. Station's terminal bridge starts no shell: it runs a command directly
+and reads a composed one-line command with POSIX quoting. So the answer is
+`sh` (POSIX), not the person's login shell. On Windows nothing is answered,
+and the engine falls back to `unknown`. Live on kiro-cli 3.3.0 v3, the engine
+logged `shellType.resolved source: client`.
+
+### Engine session actions
+
+Each action is keyed on the live session's own `initialize` answer
+([acp-session-actions.ts](../../src-server/providers/adapters/acp-session-actions.ts)).
+The ACP adapter's `metadata.continuity` stays `none` because most ACP engines
+declare neither action. `sessionContinuity(threadId)` reports a session's
+own continuity.
+
+- **Rewind** (`rewindSession(threadId, toTurnId)`) needs `_meta.kiro.checkpoints`.
+  It sends `_kiro/checkpoint/revertMultiple { sessionId, messageId }`, where
+  `messageId` is the prompt id of the turn after `toTurnId`. The engine
+  reported that id as `user_message_id_assigned`. It hides that turn and
+  every later one from the model, and restores files the engine's write
+  tools changed. A rewind is refused while a turn runs, and for a turn whose
+  prompt id this engine process did not report. The transcript keeps every
+  turn. A `runtime.warning` (`code: acp.session-rewound`) records the rewind,
+  with `hiddenTurnIds`.
+- **Fork** (`forkSession(threadId, atTurnId)`) needs
+  `sessionCapabilities.fork._meta.kiro.messageId`. It sends core
+  `session/fork` with `_meta.kiro.messageId`, and the fork keeps that turn
+  whole. It returns the new session as a resume cursor.
+- **Delete**: `discardSession` sends core `session/delete` when the session
+  declared `sessionCapabilities.delete`, then stops the session.
+- **Reconnect an MCP server** (`reconnectMcpServer(threadId, name, { startOAuth })`)
+  sends `_kiro/mcp/resetServer` on a session whose handshake has the `kiro`
+  namespace. Kiro does not list the method, so it is a vendor-attributed
+  table entry. With `startOAuth`, the consent link arrives as
+  `_kiro/openExternalUrl`.
+- **Steer retract** (`retractPendingSteers`) sends `_session/steer/clear`.
+  Only kiro-cli's own engine gets it: its drop report names exactly the
+  unread steers. The agent service's report also names steers the turn
+  already read.
+
+### Session agent on the agent service
+
+On a session whose handshake identifies Kiro's agent service (`kiro-v3`),
+`session/new` and `session/load` carry
+`_meta.kiro.customAgents: [{ id: 'station-<slug>', description, prompt: '', tools: ['*'] }]`
+and `modeId` ([acp-agent-projection.ts](../../src-server/providers/adapters/acp-agent-projection.ts)):
+
+- `tools: ['*']`, because an absent `tools` means no tools.
+- No `permissions` block. Without one, the engine asks before every tool
+  call, so each call reaches Station's own approval policy. Live: a
+  `tools: ['*']` agent asked before `fs_write`.
+- `prompt` is empty. Station already delivers the agent's prompt on the
+  first turn, and sending it here would deliver it twice.
+- The list holds at most 50 entries. A longer list is refused, not cut.
+
+The session must report the mode as `_meta.kiro.resource.source.origin`
+`client`. If the engine started in a mode of that id with another origin (for
+example `bundled`), the start is refused. If the engine did not take the
+agent at all, a `runtime.warning` (`code: acp.agent-projection-unapplied`)
+says it runs its own default agent.
 
 ### Kiro extensions Station does not support
 
@@ -681,7 +778,35 @@ mechanism, not a general HTTP passthrough channel.
 
 ## Slash Commands
 
-Slash commands are sent as **plain prompt text** — the adapter's `sendTurn` has no command-dispatch branch. There is no separate extension-namespaced RPC dispatch step anymore; the runtime is responsible for parsing `/command` syntax out of the prompt text itself, the same way any other agent app would.
+A slash command is sent as **plain prompt text** unless the live session
+routes it as the engine's own request
+([acp-command-routes.ts](../../src-server/providers/adapters/acp-command-routes.ts),
+contract `@kontourai/station-contracts/engine-commands`). A route applies only
+when the session's `initialize` answer backs it:
+
+| Command | Request | Basis |
+|---|---|---|
+| `/compact` | `_kiro/session/compact` | declared |
+| `/context` | `_kiro/session/context` (`subcommand`, default `show`) | declared |
+| `/knowledge` | `_kiro/knowledge` (default `show`) | declared |
+| `/code` | `_kiro/codeIntelligence` (default `status`) | declared |
+| `/memory`, `/memory list`, `/memory get <id>` | `_kiro/memory/list`, `_kiro/memory/get` (read-only; any other subcommand stays prompt text) | declared |
+| `/config-template` | `_kiro/config/template` | declared |
+| `/permissions` | `_kiro/permissions/presets/list` (read-only) | declared |
+| `/settings` | `_kiro/configuration/getState` with `observer: 'session'` (read-only) | declared |
+| `/export` | `_kiro/session/export` | declared |
+| kiro-cli's `help`, `context`, `compact`, `usage`, `mcp`, `tools`, `knowledge`, `prompts`, `code`, `stats`, `guide` | `_kiro.dev/commands/execute { sessionId, command: { command, args } }` | `undeclared-engine`, keyed on `agentInfo.name` `Kiro CLI Agent` |
+
+`declared` means the method is in the session's
+`_meta.kiro.extensionMethods`. kiro-cli's other commands stay prompt text:
+`quit` ends the engine, `chat`, `clear` and `rewind` change history Station
+keeps, and `agent` and `model` change what Station reports. kiro-cli 3.3.0
+refuses the string form (`command: '/help'`) and an unknown command name with
+`-32700`. That refusal, like `-32601`, runs the command as prompt text
+instead. The engine's answer is shown on the turn as its own output. A
+`{ success: false, message }` answer is shown as the engine's failure line,
+not as a Station error. A command is routed only when it is the whole input
+of a turn with no attachments.
 
 ### Static command listing
 

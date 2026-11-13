@@ -16,8 +16,13 @@ export type EngineCommandParams =
   | 'session'
   /** `{ sessionId, subcommand }`: the first argument word. */
   | 'session+subcommand'
-  /** `{ sessionId, command }`: the whole `/name args` line. */
-  | 'session+command-line';
+  /**
+   * `{ sessionId, command: { command: name, args } }`: kiro-cli's TuiCommand
+   * object, `args` `{ value: <argument text> }` or `{}`. kiro-cli 3.3.0
+   * refuses the plain string form (`command: '/help'`) with -32700 "expected
+   * adjacently tagged enum TuiCommand" (live, 2026-11-13).
+   */
+  | 'session+command-object';
 
 /** An action Station's adapter performs itself, not through the engine's command. */
 export type EngineCommandAdapterAction = 'compact' | 'rewind' | 'export';
@@ -31,6 +36,13 @@ export type EngineCommandRoute =
       readonly basis: 'declared' | 'undeclared-engine';
       /** Where the method and its answer were observed. */
       readonly evidence: string;
+      /**
+       * `session+subcommand` only: the subcommand sent when the person typed
+       * none (Kiro's `_kiro/session/context` answers `null` without one).
+       */
+      readonly defaultSubcommand?: string;
+      /** Constant params the method requires beside the built ones. */
+      readonly fixedParams?: Readonly<Record<string, string>>;
     }
   | {
       readonly kind: 'adapter-action';
@@ -66,19 +78,28 @@ export function engineCommandRequestParams(
   params: EngineCommandParams,
   sessionId: string,
   invocation: { readonly name: string; readonly args: string },
-): Record<string, string> {
+  options: {
+    readonly defaultSubcommand?: string;
+    readonly fixedParams?: Readonly<Record<string, string>>;
+  } = {},
+): Record<string, unknown> {
+  const fixed = options.fixedParams ?? {};
   switch (params) {
     case 'session':
-      return { sessionId };
+      return { ...fixed, sessionId };
     case 'session+subcommand': {
-      const subcommand = invocation.args.trim().split(/\s+/)[0] ?? '';
-      return subcommand ? { sessionId, subcommand } : { sessionId };
+      const subcommand =
+        invocation.args.trim().split(/\s+/)[0] || options.defaultSubcommand;
+      return subcommand
+        ? { ...fixed, sessionId, subcommand }
+        : { ...fixed, sessionId };
     }
-    case 'session+command-line': {
-      const args = invocation.args.trim();
+    case 'session+command-object': {
+      const value = invocation.args.trim();
       return {
+        ...fixed,
         sessionId,
-        command: args ? `/${invocation.name} ${args}` : `/${invocation.name}`,
+        command: { command: invocation.name, args: value ? { value } : {} },
       };
     }
   }
