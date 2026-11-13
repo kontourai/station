@@ -19,6 +19,58 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Current native-effect and review-tool checkpoint (2026-11-13)
+
+Committed readiness at `0564212760f2`, explicitly compared with
+`ce8952d1da67`, terminates with one required failure and three warnings.
+Documentation truth still requires semantic reviews/captures. Session-transition
+passes. The optional connected-agent selection passes 1,663 cases and fails the
+unchanged 1,200-thread projection workload at 11.03 seconds against 10 seconds.
+The statement optimization's smaller focused pass does not qualify that cohort.
+A later SQL diagnostic at `7448f0910e57` measures 4.91 seconds overall, including
+2.08 seconds releasing event savepoints and 1.55 seconds inserting events;
+its faster result is not a stability or causal timing repair. Instrumentation
+is restored byte-exactly. The performance requirement remains unresolved.
+
+At `890f74788221`, the review inspection command also reports missing review
+coverage for the current branch. Previously, global history could appear fresh
+while the scoped gate correctly refused the same document. The repair consumes
+the existing scoped policy and preserves global-history deltas; it grants no
+approval and changes no enforcement rule. All 49 freshness cases pass. Removing
+the scoped inspection fails the intended regression; byte-exact restoration
+passes. One bounded answerability ADR review is recorded at `7448f0910e57`,
+after the complete document and orchestration delta were read and 25
+owner/contract controls passed. Other stale documents are not covered by it.
+
+Main installs Claude Agent SDK 0.3.322 with bundled CLI 2.1.322. The new opt-in
+[`child-work-native-sync-lab.ts`](../../scripts/child-work-native-sync-lab.ts)
+uses isolated homes, synthetic loopback Messages responses and owned process
+registries. It hashes the driver, lockfile and actual executable; the executable
+matches the installed manifest checksum. At `afa0d5f255aa`, ordinary Write and
+late-added SDK MCP effects execute, their restricted counterparts do not, and
+ordinary exact-native-Session resumes execute again. Removing the wildcard deny
+causes the restricted SDK MCP marker to be written. The actual failing mutation
+and its process closures are retained; byte-exact restoration passes all six
+cases. The original frozen native witness is untouched.
+
+At `de7d69c1b45d`, the original six cases plus four flag-permission/mode changes
+pass: replacing permissions with allow rules, clearing permissions, default mode,
+and returning to bypass mode cannot reopen the restricted late SDK MCP effect.
+All ten exact native processes close with code zero, their owned process groups
+are confirmed closed and the private registry is empty. Twenty synthetic model
+requests remain within the unchanged 24-request cap and 60-second phase bound.
+Scripts types and read-only lint pass. Private artifacts are retained under
+`/var/folders/zz/8n7yx67d751dfk33tz367rxm0000gn/T/child-work-native-sync-lab-eIV8zP`;
+the six-case restored control is `child-work-native-sync-lab-I6sPSL` in the same
+parent directory.
+
+This proves only the exercised native engine effects and permission-change
+controls. Plugin/Agent controls, production same-Session wrong-ACK/retry,
+provider billing and complete inherited authority remain unqualified. The
+production sync allowlist still refuses CLI 2.1.322; neither epic qualification
+flag is enabled. Real two-engine local/peer/SSH enforcement, topology/continuity,
+semantic documentation, final readiness/review and protected landing remain open.
+
 ### Main integration and projection-cost checkpoint (2026-11-13)
 
 Main through `e1e50fc7dc4b` is merged at `eec8b850d4a6`. The merge retains
