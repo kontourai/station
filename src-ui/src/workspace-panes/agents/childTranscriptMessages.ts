@@ -26,6 +26,14 @@ export function childTranscriptMessages(
               input: entry.input,
               state: 'input-available',
             },
+            ...(entry.truncated
+              ? [
+                  {
+                    type: 'text',
+                    content: '[Tool input truncated by transcript reader]',
+                  },
+                ]
+              : []),
           ],
         };
       case 'tool-result':

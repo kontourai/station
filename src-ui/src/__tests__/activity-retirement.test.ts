@@ -74,7 +74,13 @@ describe('Activity retirement', () => {
   test('the child adapter preserves text roles, tool order and omissions without inventing call/result joins', () => {
     const result = childTranscriptMessages([
       { kind: 'text', message: 0, role: 'user', text: 'Inspect' },
-      { kind: 'tool-call', message: 1, name: 'Read', input: 'file.ts' },
+      {
+        kind: 'tool-call',
+        message: 1,
+        name: 'Read',
+        input: 'file.ts',
+        truncated: true,
+      },
       { kind: 'tool-result', message: 2, text: 'missing', isError: true },
       { kind: 'omitted', message: 2, count: 3 },
       {
@@ -91,6 +97,9 @@ describe('Activity retirement', () => {
       toolName: 'Read',
       input: 'file.ts',
     });
+    expect(result[1]?.contentParts?.at(-1)?.content).toContain(
+      'Tool input truncated',
+    );
     expect(result[2]?.content).toContain('Tool error');
     expect(result[3]?.content).toContain('3 blocks');
     expect(result[4]?.content).toContain('truncated');
