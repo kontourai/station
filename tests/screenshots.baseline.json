@@ -2,6 +2,12 @@
   "schemaVersion": 2,
   "screens": [
     {
+      "name": "active-chat-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "61ada5a062f0cff89ec64fd3f0b1dde91f4cb213201f3888abc398686d5ec7a5"
+    },
+    {
       "name": "agent-editor",
       "width": 1440,
       "height": 900,
