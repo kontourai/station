@@ -2393,34 +2393,6 @@ button:hover {
   }
 }
 
-/* archive#3319: the icon-only Open fits beside the name at every width, so the
-   phone layout no longer stacks full-width action rows — one grid, name
-   truncates, 44px targets guaranteed by the buttons' own minimums. */
-.chat-dock__context-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.chat-dock__context-actions button {
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.chat-dock__context-actions button:hover,
-.chat-dock__context-actions button:focus-visible,
-.chat-dock__context-actions button.is-active {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-  outline: none;
-}
-
 .chat-dock__workspace {
   display: flex;
   flex: 1;
@@ -6480,19 +6452,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-bottom: calc(var(--space-2) + var(--safe-bottom));
   }
 
-  .chat-dock__context-actions {
-    flex: 1 1 100%;
-    min-width: 0;
-    margin-left: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-  .chat-dock__context-actions::-webkit-scrollbar {
-    display: none;
-  }
-
-  .chat-dock__context-actions button,
   .active-work-frame__file {
     min-height: 44px;
   }

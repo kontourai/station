@@ -68,10 +68,6 @@
 
     "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
-
     "src-ui/src/components/chat/chat.css",
 
     "src-ui/src/components/header/ThemeToggle.tsx",
@@ -121,8 +117,6 @@
     "src-ui/src/components/CreatePlusButton.tsx",
 
     "src-ui/src/components/CreatePlusButton.css",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
 
     "src-ui/src/components/status/live-status.css",
 

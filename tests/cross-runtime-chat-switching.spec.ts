@@ -1085,6 +1085,10 @@ async function selectInventoryConversation(
   }: { title: string; runtimeName: string; project?: string },
 ) {
   const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+  // This journey reads conversations across Projects; the Inbox otherwise follows the page.
+  await chatList
+    .getByRole('combobox', { name: 'Inbox scope' })
+    .selectOption({ label: 'All work' });
   await openConversationHistoryFromInbox(page, chatList);
   await page
     .locator('.conversation-history .session-item__content', {
