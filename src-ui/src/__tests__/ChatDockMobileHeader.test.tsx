@@ -670,6 +670,11 @@ describe('full-screen and peek control (#4391)', () => {
       screen.getAllByRole('button', { name: 'Full screen chat' }),
     ).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Expand chat' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Full screen chat' })
+        .closest('.chat-dock__mobile-actions'),
+    ).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
     expect(onToggle).toHaveBeenCalledOnce();
   });

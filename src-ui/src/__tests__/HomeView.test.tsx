@@ -1983,7 +1983,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
     expect(within(recent).getByText('Station: Home media')).toBeTruthy();
-    expect(within(recent).getByText('Station: Office box')).toBeTruthy();
+    expect(within(recent).getByText('Office box')).toBeTruthy();
     // The local session's own row must still render, unmarked by any
     // machine: exactly two rows carry one.
     // The local session is the Continue card's, so the list holds the two

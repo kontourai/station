@@ -223,7 +223,7 @@ export function ChatDockMobileHeader({
           >
             <MenuGlyph />
           </button>
-        ) : dockToggle ? (
+        ) : dockToggle && !collapsedExtent ? (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
@@ -360,7 +360,7 @@ export function ChatDockMobileHeader({
         </span>
       </div>
       <div className="chat-dock__mobile-actions">
-        {extentToggle && !collapsedExtent && (
+        {extentToggle && (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
