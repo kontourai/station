@@ -413,6 +413,16 @@ describe('Grok child work and its own session', () => {
       status: 'completed',
       result: { summary: 'bg-finished', source: 'tool-return' },
     });
+    // The turn's live usage, tokens and cost together, once.
+    expect(session.of('token-usage.updated')).toEqual([
+      expect.objectContaining({
+        promptTokens: 21927,
+        completionTokens: 309,
+        cacheReadTokens: 65536,
+        reasoningTokens: 127,
+        reportedCost: { amount: 0.022225392, unit: 'USD', scope: 'turn' },
+      }),
+    ]);
     await session.stop();
   });
 });

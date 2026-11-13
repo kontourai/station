@@ -207,11 +207,44 @@ describe('Grok turn cost', () => {
 
   test('zero ticks is an unknown price, not a free turn; the turn still ends', () => {
     const { notify, of, engineTurns } = harness();
-    notify('_x.ai/session_notification', turnCompleted({ costUsdTicks: 0 }));
-    notify('_x.ai/session_notification', turnCompleted({ costUsdTicks: -5 }));
-    notify('_x.ai/session_notification', turnCompleted('nope'));
+    notify(
+      '_x.ai/session_notification',
+      turnCompleted({ costUsdTicks: 0 }, 'p-zero'),
+    );
+    notify(
+      '_x.ai/session_notification',
+      turnCompleted({ costUsdTicks: -5 }, 'p-negative'),
+    );
+    notify('_x.ai/session_notification', turnCompleted('nope', 'p-shapeless'));
     expect(of('token-usage.updated')).toEqual([]);
     expect(engineTurns.ended).toHaveBeenCalledTimes(3);
+  });
+
+  test('tokens: the prompt is what is left of the input after the cache', () => {
+    const { notify, of } = harness();
+    notify(
+      '_x.ai/session_notification',
+      turnCompleted({
+        inputTokens: 87463,
+        outputTokens: 309,
+        totalTokens: 87772,
+        cachedReadTokens: 65536,
+        cacheCreationTokens: 0,
+        reasoningTokens: 127,
+        costUsdTicks: 222253920,
+      }),
+    );
+    expect(of('token-usage.updated')).toEqual([
+      expect.objectContaining({
+        promptTokens: 21927,
+        completionTokens: 309,
+        totalTokens: 87772,
+        cacheReadTokens: 65536,
+        cacheWriteTokens: 0,
+        reasoningTokens: 127,
+        reportedCost: { amount: 0.022225392, unit: 'USD', scope: 'turn' },
+      }),
+    ]);
   });
 
   test('a repeated turn figure is not counted twice', () => {

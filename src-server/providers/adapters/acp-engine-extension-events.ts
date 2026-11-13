@@ -90,6 +90,8 @@ export interface EngineExtensionState extends AcpChildWorkState {
    * figure; it is not published twice.
    */
   engineTurnCosts?: Map<string, number>;
+  /** Engine prompt ids whose usage was published (`grok.turn-completed`). */
+  engineTurnUsage?: Map<string, true>;
   /**
    * The MCP servers Station passed on `session/new`, by name. An engine that
    * does not say where a server came from (Grok calls every server `local`)
@@ -328,6 +330,57 @@ const GROK_MCP_STATES: Readonly<Record<string, EngineMcpServerState>> = {
 
 /** Grok's `costUsdTicks`: 10^10 ticks to the US dollar (live: 91,782,320 ticks = $0.009178232). */
 const GROK_COST_TICKS_PER_USD = 1e10;
+
+/**
+ * One engine prompt's usage from Grok's `turn_completed.usage`, published
+ * once per prompt: tokens and its cost in one event. Grok's `inputTokens` is
+ * the whole prompt, cache included (live: `totalTokens` = input + output), so
+ * the prompt tokens are what is left after the cache reads and writes. Its
+ * cost is `costUsdTicks`; Grok writes 0 when a model's price is unknown or
+ * withheld, so zero is no report rather than a free turn. A frame repeated
+ * for the same prompt is not new usage.
+ */
+function publishGrokTurnUsage(
+  ctx: EngineExtensionContext,
+  usage: Record<string, unknown>,
+  promptId: string | undefined,
+) {
+  if (promptId && ctx.state) {
+    ctx.state.engineTurnUsage ??= new Map();
+    if (ctx.state.engineTurnUsage.has(promptId)) return;
+    setBounded(ctx.state.engineTurnUsage, promptId, true);
+  }
+  const input = finiteNonNegative(usage.inputTokens);
+  const output = finiteNonNegative(usage.outputTokens);
+  const total = finiteNonNegative(usage.totalTokens);
+  const cacheRead = finiteNonNegative(usage.cachedReadTokens);
+  const cacheWrite = finiteNonNegative(usage.cacheCreationTokens);
+  const reasoning = finiteNonNegative(usage.reasoningTokens);
+  const ticks = finiteNonNegative(usage.costUsdTicks);
+  const prompt =
+    input === undefined
+      ? undefined
+      : Math.max(0, input - (cacheRead ?? 0) - (cacheWrite ?? 0));
+  const figures = {
+    ...(prompt !== undefined ? { promptTokens: prompt } : {}),
+    ...(output !== undefined ? { completionTokens: output } : {}),
+    ...(total !== undefined ? { totalTokens: total } : {}),
+    ...(cacheRead !== undefined ? { cacheReadTokens: cacheRead } : {}),
+    ...(cacheWrite !== undefined ? { cacheWriteTokens: cacheWrite } : {}),
+    ...(reasoning !== undefined ? { reasoningTokens: reasoning } : {}),
+    ...(ticks
+      ? {
+          reportedCost: {
+            amount: ticks / GROK_COST_TICKS_PER_USD,
+            unit: 'USD',
+            scope: 'turn' as const,
+          },
+        }
+      : {}),
+  };
+  if (Object.keys(figures).length === 0) return;
+  ctx.publish({ ...base(ctx), method: 'token-usage.updated', ...figures });
+}
 
 function mcpServerScope(
   ctx: EngineExtensionContext,
@@ -635,15 +688,7 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
     const update = isRecord(params.update) ? params.update : undefined;
     const promptId = engineId(update?.prompt_id);
     const usage = isRecord(update?.usage) ? update.usage : undefined;
-    const ticks = finiteNonNegative(usage?.costUsdTicks);
-    // Grok reports 0 when a model's price is unknown or withheld, so zero is
-    // no report rather than a free turn.
-    if (ticks)
-      publishReportedCost(
-        ctx,
-        { amount: ticks / GROK_COST_TICKS_PER_USD, unit: 'USD', scope: 'turn' },
-        promptId,
-      );
+    if (usage) publishGrokTurnUsage(ctx, usage, promptId);
     if (!promptId) return;
     ctx.engineTurns?.ended(
       promptId,

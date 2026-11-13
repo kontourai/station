@@ -44,6 +44,8 @@ export type EngineExtensionConsumerId =
   | 'model.rerouted'
   /** `token-usage.updated.reportedCost`. */
   | 'usage.reported-cost'
+  /** `token-usage.updated` token counts the engine reported for one turn. */
+  | 'usage.tokens'
   /** `token-usage.updated.contextPercent`. */
   | 'usage.context-percent'
   /** The engine's id for the user message, recorded against the turn for rewind and fork. */
@@ -413,6 +415,7 @@ export const ENGINE_EXTENSION_CONSUMERS: Readonly<
     lane: 'events-ui',
     implemented: true,
   }),
+  'usage.tokens': Object.freeze({ lane: 'events-ui', implemented: true }),
   'session.message-id': Object.freeze({
     lane: 'events-ui',
     implemented: true,
@@ -904,14 +907,14 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
   },
   {
     // Ends every engine prompt, a wake included (`_x.ai/session/prompt_complete`
-    // follows only Station's own prompts), and states its whole cost,
-    // subagents' calls included: `usage.costUsdTicks`.
+    // follows only Station's own prompts), and states its whole usage,
+    // subagents' calls included: token counts and `usage.costUsdTicks`.
     id: 'grok.turn-completed',
     wire: xaiUpdate('turn_completed'),
     basis: 'undeclared-engine',
     observed: GROK_LIVE,
     consumer: 'session.turn-boundary',
-    also: ['usage.reported-cost'],
+    also: ['usage.reported-cost', 'usage.tokens'],
   },
 ];
 
