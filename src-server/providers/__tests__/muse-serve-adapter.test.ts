@@ -4443,6 +4443,31 @@ describe('Muse parity: a serve session resumes after a Station restart', () => {
     expect(of(h.events, 'session.started')).toEqual([]);
   });
 
+  test('muse answering a resume with another session is a dead binding too, never adopted', async () => {
+    const h = harness();
+    const resumed = loadMuseServeCapture('resume-goal-fork').find(
+      (frame) =>
+        (frame.msg.result as { history?: unknown } | undefined)?.history !==
+        undefined,
+    );
+    const result = structuredClone(
+      resumed?.msg.result as { session: { sessionId: string } },
+    );
+    result.session.sessionId = '00000000-0000-7000-8000-0000000000ff';
+    const starting = resumeSession(h);
+    const host = await firstHost(h, () => starting);
+    const consumed = new Set<SentFrame>();
+    const initialize = await host.nextRequest('initialize', consumed);
+    consumed.add(initialize);
+    reply(host, initialize, liveInitializeResult());
+    reply(host, await host.nextRequest('session/resume', consumed), result);
+    await expect(starting).rejects.toThrow(/a different session/);
+    expect(of(h.events, 'runtime.error').map((event) => event.code)).toEqual([
+      ENGINE_SESSION_BINDING_DEAD_CODE,
+    ]);
+    expect(await h.adapter.hasSession(THREAD)).toBe(false);
+  });
+
   test('a host that cannot be used refuses the resume as retryable, with no exec fallback and no binding-dead claim', async () => {
     const h = harness({
       spawnHost: (args) => {
