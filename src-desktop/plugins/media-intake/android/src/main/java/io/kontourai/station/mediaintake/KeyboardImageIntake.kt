@@ -136,7 +136,8 @@ object KeyboardImageIntake {
         val clipboard = view.context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         if (!eligible || clipboard?.primaryClipDescription?.hasMimeType("image/*") != true ||
             (0 until menu.size()).any { isPaste(menu.getItem(it)) }) return removeImagePaste(menu)
-        if (imagePasteItem != null) return false
+        // Trust the saved item only while it is still in this menu; a provider may rebuild it.
+        if (imagePasteItem != null && menu.findItem(imagePasteId) === imagePasteItem) return false
         imagePasteItem = menu.add(Menu.NONE, imagePasteId, Menu.NONE, android.R.string.paste)
         return true
       }

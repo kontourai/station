@@ -96,7 +96,11 @@ class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
         } else {
           try {
             reads.execute {
-              if (release.isReleased) return@execute
+              if (release.isReleased) {
+                // The grant expired while queued; free the composer's pending slot too.
+                webView.post { if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.cancel($id)"), null) }
+                return@execute
+              }
               try {
                 val images = readImages(uris, "pasted-image")
                 val payload = filesResult(images).toString()

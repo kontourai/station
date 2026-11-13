@@ -103,6 +103,9 @@ class KeyboardImageIntakeTest {
     view.eligible = true
     assertTrue(callback.onPrepareActionMode(mode, menu))
     assertFalse(callback.onPrepareActionMode(mode, menu))
+    menu.clear() // a provider that rebuilds its menu must not lose our item for good
+    assertTrue(callback.onPrepareActionMode(mode, menu))
+    assertEquals(1, menu.size())
     val paste = menu.getItem(0)
     assertNotNull(paste)
     assertTrue(callback.onActionItemClicked(mode, paste))
