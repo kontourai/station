@@ -333,11 +333,11 @@ describe('recorded sealed source Session policy', () => {
           ).toEqual(STEERING_ENGINE_DURABILITY);
           expect(
             latest,
-            'non-Station profile lookup must not query the Station metadata namespace',
+            'external-engine durability lookup must not query the Station metadata namespace',
           ).not.toHaveBeenCalled();
           expect(
             first,
-            'non-Station profile lookup must not query the Station metadata namespace',
+            'external-engine durability lookup must not query the Station metadata namespace',
           ).not.toHaveBeenCalled();
         }
       } finally {
