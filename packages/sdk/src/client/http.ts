@@ -1184,7 +1184,7 @@ async function reportAuthenticated(
   if (!response.ok || opts?.authentication === 'omit') return;
   // A stale Station address can serve an HTML fallback or a sign-in page
   // with status 200. That is not evidence that it accepted this credential.
-  // Recovering here would re-key the authority gate before JSON decoding
+  // Recovering here would re-key the authority gate before JSON parsing
   // rejects the page, repeating the startup/401/recovery cycle indefinitely.
   const mediaType = response.headers
     .get('content-type')
