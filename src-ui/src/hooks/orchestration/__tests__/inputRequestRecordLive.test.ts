@@ -29,6 +29,7 @@ vi.mock('../../../contexts/ToastContext', () => ({
 }));
 
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
+let toastStore: typeof import('../../../contexts/ToastContext').toastStore;
 let handleRequestOpenedEvent: typeof import('../approvalHandlers').handleRequestOpenedEvent;
 let handleRequestResolvedEvent: typeof import('../approvalHandlers').handleRequestResolvedEvent;
 let handleToolStartedEvent: typeof import('../streamHandlers').handleToolStartedEvent;
@@ -60,6 +61,7 @@ beforeAll(async () => {
     '../approvalHandlers'
   ));
   ({ handleToolStartedEvent } = await import('../streamHandlers'));
+  ({ toastStore } = await import('../../../contexts/ToastContext'));
 });
 
 afterAll(() => {
@@ -145,6 +147,41 @@ describe('#3390 live input request record', () => {
     expect(shellRecords().map((record) => record?.outcome)).toEqual([
       'accepted',
     ]);
+  });
+
+  test('a link opens pending as a link, raises no one-click toast, and records opened', () => {
+    vi.mocked(toastStore.showToolApproval).mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:0',
+      opened('link-1', {
+        inputRequest: {
+          schema: 'station.input-request/v1',
+          source: 'harness:kiro',
+          requester: 'Kiro',
+          message: 'Sign in to the docs MCP server',
+          body: {
+            kind: 'url',
+            url: 'https://auth.example.com/authorize?x=1',
+            purpose: 'mcp-sign-in',
+          },
+        },
+      }),
+    );
+    expect(shellRecords()).toEqual([
+      {
+        requestId: 'link-1',
+        threadId: 'thread-1',
+        eventId: 'evt-link-1',
+        kind: 'url',
+        requester: 'Kiro',
+        message: 'Sign in to the docs MCP server',
+        outcome: 'pending',
+      },
+    ]);
+    // An Allow on a toast would say a link nobody showed was opened.
+    expect(toastStore.showToolApproval).not.toHaveBeenCalled();
+    handleRequestResolvedEvent(resolved('link-1', 'approved'));
+    expect(shellRecords().map((record) => record?.outcome)).toEqual(['opened']);
   });
 
   test('an approval with no call on the shell records allowed or denied; one bound to a call does not', () => {
