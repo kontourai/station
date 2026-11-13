@@ -46,11 +46,11 @@
   z-index: 2;
   right: -3px;
   top: -3px;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1;
   color: var(--k-caution);
   background: var(--k-panel);
-  border-radius: var(--k-radius-full);
+  border-radius: calc(var(--k-radius-md) * 2);
 }
 .composer-run-control .composer-choice__value {
   width: 100%;
@@ -81,7 +81,7 @@
   min-width: 44px;
   min-height: 44px;
   border-color: transparent;
-  border-radius: var(--k-radius-full);
+  border-radius: calc(var(--k-radius-md) * 2);
   background: transparent;
   box-shadow: none;
   color: var(--k-text-muted);
