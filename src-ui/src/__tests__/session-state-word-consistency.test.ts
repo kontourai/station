@@ -566,7 +566,7 @@ describe('one vocabulary on the work surfaces', () => {
     );
     for (const guarded of [
       'views/home/work-status.ts',
-          'components/chat-dock/ChatDockInboxRows.tsx',
+      'components/chat-dock/ChatDockInboxRows.tsx',
       'components/chat-dock/ChatInboxHoverCard.tsx',
       'components/chat-dock/ChatDockHeader.tsx',
       'components/home/HomeRecentWorkSection.tsx',
